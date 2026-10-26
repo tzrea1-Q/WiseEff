@@ -45,20 +45,24 @@ export type WorkbenchConfigurationFilesDialogProps = {
   onAddSourceFile: () => void;
   onCanonicalAdd?: () => void;
   onSetRoot?: (member: DtsConfigSetMemberFile) => void;
+  onSwitchSharedVersion?: (member:DtsConfigSetMemberFile)=>void;
+  onRemoveSharedReference?: (member:DtsConfigSetMemberFile)=>void;
+  onCreateShared?: (member: DtsConfigSetMemberFile) => void;
+  onConvertShared?: (member: DtsConfigSetMemberFile) => void;
 };
 
 export function WorkbenchConfigurationFilesDialog({
   open, onClose, configSet, members, canAdmin, pendingAction, loading, error, operationError = "", ready, canonical, onRetry,
   availableFiles, addErrors, memberFileId, memberRole, memberSortOrder, onMemberFileIdChange,
   onMemberRoleChange, onMemberSortOrderChange, onAddMember, onRemoveMember, canRequestReviewedMemberRemoval,
-  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot
+  onOpenFile, onUpdateFile, onOpenVersions, onAddSourceFile, onCanonicalAdd, onReviewedMemberRemoval, onSetRoot,onSwitchSharedVersion,onRemoveSharedReference,onCreateShared,onConvertShared
 }: WorkbenchConfigurationFilesDialogProps) {
   const addErrorId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
-  const busy = pendingAction === "add-member" || pendingAction === "remove-member" || Boolean(pendingAction?.startsWith("remove-member-"));
+  const busy = pendingAction === "create-shared" || pendingAction === "add-member" || pendingAction === "remove-member" || Boolean(pendingAction?.startsWith("remove-member-"));
   const checked = ready && !loading && !error;
-  const canAdd = canAdmin && checked && !canonical;
-  const canRemove = () => canAdmin && checked
+  const canAdd = canAdmin && checked && !canonical && !onCanonicalAdd;
+  const canRemove = (member: DtsConfigSetMemberFile) => !member.sharedReference && canAdmin && checked
     && (!canonical || canRequestReviewedMemberRemoval);
   const addError = addErrors[memberFileId];
   const selectedFileAvailable = availableFiles.some((file) => file.id === memberFileId);
@@ -68,18 +72,19 @@ export function WorkbenchConfigurationFilesDialog({
     {({ titleId, descriptionId }) => <>
       <header className="workbench-configuration-files-dialog__header">
         <div>
-          <h2 id={titleId}>文件管理</h2>
+          <h2 id={titleId}>配置组成</h2>
           <p id={descriptionId}>{configSet.name === "default" ? "默认配置" : configSet.name} · {members.length} 个文件{!canAdmin ? " · 只读" : ""}</p>
         </div>
-        <Button ref={closeRef} type="button" variant="ghost" size="icon-sm" aria-label="关闭文件管理" disabled={busy} onClick={onClose}>
+        <Button ref={closeRef} type="button" variant="ghost" size="icon-sm" aria-label="关闭配置组成" disabled={busy} onClick={onClose}>
           <X aria-hidden="true" />
         </Button>
       </header>
       <div className="workbench-configuration-files-dialog__body" aria-busy={loading || busy}>
         {canonical ? <p className="workbench-configuration-files-dialog__note">此配置已登记来源。添加或移除文件均需预览并确认，项目文件及历史会保留。</p> : null}
-        {canonical && canAdmin && checked && onCanonicalAdd ? <Button type="button" disabled={busy} onClick={onCanonicalAdd}>添加配置文件</Button> : null}
+        {canAdmin && checked && onCreateShared ? <p className="workbench-configuration-files-dialog__note">创建共享资源会把所选私有源码及依赖复制到本组织共享草稿；原项目配置保留。</p> : null}
+        {canAdmin && checked && onCanonicalAdd ? <Button type="button" disabled={busy} onClick={onCanonicalAdd}>添加配置文件</Button> : null}
         {loading ? <p role="status">正在核对配置文件…</p> : null}
-        {busy && pendingAction !== "add-member" ? <p role="status">正在移除文件…</p> : null}
+        {busy && pendingAction !== "add-member" ? <p role="status">{pendingAction === "create-shared" ? "正在读取冻结源码及依赖…" : "正在移除文件…"}</p> : null}
         {operationError ? <p className="workbench-configuration-files-dialog__operation-error" role="alert">{operationError}</p> : null}
         {error ? <div className="workbench-configuration-files-dialog__error" role="alert">
           <p>{error}</p><Button type="button" variant="outline" size="sm" disabled={loading || busy} onClick={onRetry}>重新核对</Button>
@@ -96,19 +101,30 @@ export function WorkbenchConfigurationFilesDialog({
             <TableCell className="workbench-configuration-files-dialog__name">
               <Button type="button" variant="link" className="workbench-configuration-files-dialog__file-link" disabled={busy}
                 onClick={() => onOpenFile(member.fileId)}>{member.fileName}</Button>
+              <p>{member.sharedReference ? `共享引用 · 版本 ${member.sharedReference.version} · 只读` : "项目私有源码"}</p>
             </TableCell>
             <TableCell>{member.format.toUpperCase()}</TableCell><TableCell>{ROLE_LABELS[member.role]}</TableCell>
             <TableCell>{member.currentVersionNumber === undefined ? "暂无版本" : `版本 ${member.currentVersionNumber}`}</TableCell>
             {members.length > 1 ? <TableCell>{member.sortOrder}</TableCell> : null}
             <TableCell><div className="workbench-configuration-files-dialog__row-actions">
-              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => onUpdateFile(member.fileId)}>{canAdmin ? "更新文件" : "更新记录"}</Button>
+              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => member.sharedReference ? onOpenFile(member.fileId) : onUpdateFile(member.fileId)}>{member.sharedReference ? "查看源码" : canAdmin ? "更新文件" : "更新记录"}</Button>
               <RowActionMenu label={`${member.fileName} 文件操作`} triggerLabel={`${member.fileName} 更多`} items={[
                 { id: "versions", label: "版本历史与下载", disabled: busy, onSelect: () => onOpenVersions(member.fileId) },
-                ...(canAdmin && checked && member.format === "dts" && member.role !== "base" && onSetRoot
+                ...(canAdmin&&checked&&member.sharedReference?.direct&&onSwitchSharedVersion
+                  && members.find(item=>item.sharedReference?.resourceId===member.sharedReference!.resourceId)?.fileId===member.fileId
+                  ?[{id:"switch-shared",label:"切换共享版本",disabled:busy,onSelect:()=>onSwitchSharedVersion(member)}]:[]),
+                ...(canAdmin&&checked&&member.sharedReference?.direct&&onRemoveSharedReference
+                  && members.find(item=>item.sharedReference?.resourceId===member.sharedReference!.resourceId)?.fileId===member.fileId
+                  ?[{id:"remove-shared",label:"移除引用",destructive:true as const,disabled:busy,onRequestConfirmation:()=>onRemoveSharedReference(member)}]:[]),
+                ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && /\.dtsi?$/u.test(member.fileName) && onCreateShared
+                  ? [{id:"create-shared",label:"创建共享资源",disabled:busy,onSelect:()=>onCreateShared(member)}] : []),
+                ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && /\.dtsi?$/u.test(member.fileName) && onConvertShared
+                  ? [{id:"convert-shared",label:"转换为共享引用",disabled:busy,onSelect:()=>onConvertShared(member)}] : []),
+                ...(canAdmin && checked && !member.sharedReference && member.format === "dts" && member.role !== "base" && onSetRoot
                   ? [{ id: "set-root", label: "设为根文件", disabled: busy, onSelect: () => onSetRoot(member) }] : []),
-                ...(canRemove() ? [{ id: "remove", label: canonical ? "预览移除影响" : "从配置移除", destructive: true as const,
+                ...(canRemove(member) ? [{ id: "remove", label: canonical ? "预览移除影响" : "从配置移除", destructive: true as const,
                   disabled: busy, onRequestConfirmation: () => onRemoveMember(member) }] : []),
-                ...(canRemove() && canonical && member.format === "json" && onReviewedMemberRemoval ? [{ id: "remove-review", label: "申请从配置移除", destructive: true as const,
+                ...(canRemove(member) && canonical && member.format === "json" && onReviewedMemberRemoval ? [{ id: "remove-review", label: "申请从配置移除", destructive: true as const,
                   disabled: busy, onRequestConfirmation: () => onReviewedMemberRemoval(member) }] : [])
               ]} />
             </div></TableCell>

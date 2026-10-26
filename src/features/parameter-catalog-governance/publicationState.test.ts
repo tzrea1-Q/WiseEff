@@ -185,7 +185,7 @@ describe("publication operator state", () => {
     }
   });
 
-  it("builds nested create-subject definitions without a published subjectId", () => {
+  it("builds standalone subject intent without a parameter definition or published subjectId", () => {
     const draft = {
       ...emptyPublicationDraft(),
       mode: "create-subject" as const,
@@ -201,23 +201,12 @@ describe("publication operator state", () => {
     };
     expect(buildPublicationChangeSet(draft)).toEqual([
       {
-        op: "create-subject-with-definitions",
+        op: "create-subject",
         kind: "driver",
         canonicalKey: "driver:acme,aux",
         selector: { kind: "driver-compatible", value: "acme,aux" },
         nature: "physical-device",
-        cardinality: "multiple",
-        definitions: [
-          {
-            propertyKey: "vbat",
-            content: {
-              displayName: "辅助电池",
-              documentation: "辅助电池电压。",
-              unit: "mV",
-              valueSchema: { type: "integer" }
-            }
-          }
-        ]
+        cardinality: "multiple"
       }
     ]);
     expect(JSON.stringify(buildPublicationChangeSet(draft))).not.toMatch(/csub_|subjectId/i);

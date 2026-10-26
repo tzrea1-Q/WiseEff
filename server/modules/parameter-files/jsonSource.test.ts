@@ -3,6 +3,13 @@ import { deleteJsonSourceMember, patchJsonSource, proveJsonSourceMemberAbsent, r
 import { patchJsonValue } from "./writebackService";
 
 describe("exact JSON source writeback", () => {
+  it("reads and patches original BOM/CRLF bytes without shifting the JSON pointer span", () => {
+    const source='\uFEFF{\r\n  "value":31, "keep":true\r\n}\r\n';
+    expect(readJsonSourceValue(Buffer.from(source),"/value")).toBe(31);
+    expect(readJsonSourceText(source,"/value")).toBe("31");
+    expect(patchJsonSource(source,"/value","32").toString("utf8")).toBe(source.replace("31","32"));
+    expect(()=>readJsonSourceValue('{"value":\uFEFF31}',"/value")).toThrow();
+  });
   it("reads exact typed values by document-absolute pointers within the registered root", () => {
     const source = '{"a/b":{"": [false,36.5,null]}, "a":{"b":9}}';
     expect(readJsonSourceValue(source, "/a~1b//1", "/a~1b")).toBe(36.5);

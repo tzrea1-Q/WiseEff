@@ -6,9 +6,12 @@ import { catalogStateFromFailure, type CatalogDomainState } from "@/application/
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 import { presentError } from "@/infrastructure/http/presentError";
 import { usePlacementReplacementPreview, type PlacementOccupant, type PlacementReplacementEvidence } from "./usePlacementReplacementPreview";
+import "@/features/parameter-catalog/parameter-catalog.css";
 
 import {
   canExecuteGovernanceAction,
@@ -302,7 +305,7 @@ export function RegistrationDialog({
       <ModalDialog
         open={open}
         onDismiss={busy ? undefined : requestClose}
-        className="confirm-dialog governance-confirm-dialog"
+        className="confirm-dialog governance-confirm-dialog registration-dialog"
         backdropClassName="param-admin-modal-backdrop"
         describedBy
       >
@@ -359,7 +362,7 @@ export function RegistrationDialog({
                         </label>
                         <label>
                           {governanceCopy.placementDisplayName}
-                          <input
+                          <Input
                             aria-label={governanceCopy.placementDisplayName}
                             value={displayName}
                             onChange={(event) => setDisplayName(event.target.value)}
@@ -390,39 +393,48 @@ export function RegistrationDialog({
                       <p>当前没有同类型目标模块。选择业务分类并命名，确认后将创建模块并完成登记。</p>
                       <label>业务分类<SelectControl ariaLabel="新模块业务分类" value={newParentId} disabled={inputDisabled}
                         onValueChange={setNewParentId} options={[{ value: "", label: "请选择业务分类" }, ...newDestinationParents.map((option) => ({ value: option.id, label: option.displayName }))]} /></label>
-                      <label>模块名称<input aria-label="新模块名称" value={newModuleName} maxLength={120} onChange={(event) => setNewModuleName(event.target.value)} /></label>
+                      <label>模块名称<Input aria-label="新模块名称" value={newModuleName} maxLength={120} onChange={(event) => setNewModuleName(event.target.value)} /></label>
                     </> : null}
                     {subjectImpact ? (
-                      <p className="governance-confirm-dialog__impact" role="status">
-                        本主体 {subjectImpact.activeDefinitionCount} 个有效定义、
-                        {subjectImpact.bindingCount === null ? "参数绑定数量暂不可用" : `${subjectImpact.bindingCount} 个参数绑定`}、
-                        {subjectImpact.projectCount === null ? "项目数量暂不可用" : `${subjectImpact.projectCount} 个项目`}，
-                        {intent === "update-placement"
-                          ? `从 ${currentModuleName ?? "当前归属"} → ${selectedDestinationName}`
-                          : `登记至 ${selectedDestinationName}`}。仅调整归属，不改参数值。
-                      </p>
+                      <section className="registration-dialog__summary" aria-label="当前主体与去向" role="status">
+                        <h3>当前主体 <strong>{subjectName}</strong></h3>
+                        <p>
+                          {subjectImpact.activeDefinitionCount} 个有效定义、
+                          {subjectImpact.bindingCount === null ? "参数绑定数量暂不可用" : `${subjectImpact.bindingCount} 个参数绑定`}、
+                          {subjectImpact.projectCount === null ? "项目数量暂不可用" : `${subjectImpact.projectCount} 个项目`}
+                        </p>
+                        <dl className="registration-dialog__placement">
+                          {intent === "update-placement" ? <div><dt>当前归属</dt><dd>{currentModuleName ?? "当前归属"}</dd></div> : null}
+                          <div><dt>{intent === "update-placement" ? "调整至" : "登记至"}</dt><dd>{selectedDestinationName}</dd></div>
+                        </dl>
+                        {!replacing ? <p>仅调整归属，不改参数值。</p> : null}
+                      </section>
                     ) : null}
-                    {replacing ? <section aria-label="替换归属影响">
-                      <p>当前主体 {subjectName}：{currentModuleName ?? "当前归属"} → {selectedDestinationName}。</p>
-                      <p>目标模块已关联 {occupant?.displayName}。替换后，该主体将置为“未分配模块”；当前主体原有模块（如有）将空出，不会自动互换。双方的登记、参数值与历史均保留。</p>
+                    {replacing ? <section className="registration-dialog__replacement" aria-label="替换归属影响">
+                      <h3>目标模块已有归属</h3>
+                      <p>原主体 <strong>{occupant?.displayName}</strong>{replacementEvidence ? `（${replacementEvidence.status === "retired" ? "已停用" : "有效"}）` : null}</p>
                       {replacementPreview.state?.status === "loading" ? <p role="status">正在读取目标主体的归属与影响…</p> : null}
                       {replacementPreview.state?.status === "error" ? <p role="alert">{replacementPreview.state.message}</p> : null}
                       {replacementEvidence ? <p role="status">
-                        原主体 {occupant?.displayName}（{replacementEvidence.status === "retired" ? "已停用" : "有效"}）：
                         {occupant?.activeDefinitionCount == null ? "有效定义数量暂不可用" : `${occupant.activeDefinitionCount} 个有效定义`}、
                         {replacementEvidence.bindingCount} 个参数绑定、{replacementEvidence.projectCount} 个项目。
                       </p> : null}
+                      <p>替换后，原主体将置为“未分配模块”；当前主体原有模块（如有）将空出，不会自动互换。</p>
+                      <p>双方的登记、参数值与历史均保留。</p>
                       {!sourceImpactReady ? <p role="alert">缺少当前主体的影响数据，请刷新双方归属后重试。</p> : null}
                       {replacementPreview.state?.status === "error" ? <button type="button" className="button subtle sm" disabled={busy}
                         onClick={() => setReplacementRefresh((value) => value + 1)}>重试读取替换影响</button> : null}
-                      <label><input type="checkbox" checked={replacementAccepted} disabled={!replacementEvidence || busy || !sourceImpactReady}
+                      <label className="governance-confirm-dialog__acknowledge"><input type="checkbox" checked={replacementAccepted} disabled={!replacementEvidence || busy || !sourceImpactReady}
                         onChange={(event) => setAcceptedReplacement(event.target.checked ? replacementEvidence : null)} />替换目标模块原有归属，并将原主体置为未分配模块</label>
                     </section> : null}
                     {intent === "register-subject" || replacing ? (
                       <label>
                         {replacing ? "替换原因" : governanceCopy.reason}
-                        <textarea
+                        <Textarea
                           aria-label={replacing ? "替换原因" : governanceCopy.reason}
+                          rows={3}
+                          className="resize-y"
+                          required={replacing}
                           maxLength={replacing ? 1000 : undefined}
                           value={reason}
                           onChange={(event) => setReason(event.target.value)}

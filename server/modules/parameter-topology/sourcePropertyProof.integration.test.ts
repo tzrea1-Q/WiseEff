@@ -11,6 +11,9 @@ import { loadExactSourceRevisionForProof, lockExactSourceRevisionsForProof } fro
 import { ingestConfigRevision } from "./ingestService";
 import { proveExactDtsProperty, type ExactDtsSourceIdentity } from "./sourcePropertyProof";
 import type { ConfigRevisionManifest } from "./types";
+import { prepareDtsSources } from "../dts/cppSources";
+import { resolveDtsConfigSetAsync } from "../dts/configSetResolver";
+import { createDtsToolchainRunner } from "../parameter-files/dtsToolchain";
 
 describe("exact DTS source value proof before pin creation", () => {
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
@@ -18,8 +21,9 @@ describe("exact DTS source value proof before pin creation", () => {
   let directory: string;
   let storage: ReturnType<typeof createLocalObjectStore>;
   let identity: ExactDtsSourceIdentity;
+  let pathIdentity: ExactDtsSourceIdentity;
   const organizationId = "org-source-proof", projectId = "project-source-proof", configSetId = "set-source-proof", userId = "user-source-proof";
-  const overlay = "/* 🧪 */\n&other { limit = <7>; };\n&charger { /delete-property/ limit; limit = <7>; };\n";
+  const overlay = "/* 🧪 */\n&{/other} { limit = <7>; };\n&charger { /delete-property/ limit; limit = <7>; };\n";
 
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("exactsourceproof");
@@ -56,6 +60,11 @@ describe("exact DTS source value proof before pin creation", () => {
        order by effect.source_order desc`, [revision.id],
     )).rows;
     identity = { organizationId,projectId,configSetId,configRevisionId: revision.id,fileId: "file-proof-2",fileVersionId: "version-proof-2",propertyName: "limit",...rows[0]! };
+    const pathRow=(await db.query<{logicalNodeId:string;nodeOccurrenceId:string;propertyOccurrenceId:string}>(
+      `select logical.logical_node_id as "logicalNodeId",effect.node_occurrence_id as "nodeOccurrenceId",effect.property_occurrence_id as "propertyOccurrenceId"
+       from dts_occurrence_effects effect join dts_logical_node_revisions logical on logical.id=effect.logical_node_revision_id
+       where effect.config_revision_id=$1 and logical.node_locator='/other' and effect.property_name='limit' order by effect.source_order desc`,[revision.id])).rows[0]!;
+    pathIdentity={...identity,...pathRow};
     await db.query(`insert into project_parameter_files(id,organization_id,project_id,file_name,format,config_set_id,config_set_role,config_set_sort_order)
       values ('file-proof-unused',$1,$2,'unused.dtsi','dts',$3,'include',4)`, [organizationId,projectId,configSetId]);
     await db.query(`insert into project_parameter_file_versions(id,file_id,version_number,storage_key,checksum,size_bytes,parsed_index,origin,created_by_user_id)
@@ -75,6 +84,80 @@ describe("exact DTS source value proof before pin creation", () => {
     });
     expect(proof).toMatchObject({ sourceName: "change.dtso",nodeLocator: "/device@0",fileVersionId: "version-proof-2",sourceSpan: { start: overlay.lastIndexOf("<7>"),end: overlay.lastIndexOf("<7>") + 3 },
       value: { kind: "cells",bits: 32,groups: [[{ kind: "integer",raw: "7",value: "7" }]] } });
+  });
+
+  it("proves the actual native path target and exact original property occurrence",async()=>{
+    const proof=await db.transaction(async tx=>{
+      await lockExactSourceRevisionsForProof(tx,[pathIdentity]);
+      return proveExactDtsProperty(tx,storage,pathIdentity);
+    });
+    expect(proof).toMatchObject({nodeLocator:"/other",sourceName:"change.dtso",fileVersionId:"version-proof-2",
+      sourceSpan:{start:overlay.indexOf("<7>"),end:overlay.indexOf("<7>")+3},value:{kind:"cells",groups:[[{value:"7"}]]}});
+    expect(overlay.slice(proof.sourceSpan.start,proof.sourceSpan.end)).toBe("<7>");
+  });
+
+  it("proves expanded macro values against original occurrences and refuses a stale compiler receipt", async () => {
+    const cppSet = "set-native-cpp-proof";
+    await db.query("insert into dts_config_set(id,organization_id,project_id,name) values($1,$2,$3,'Native CPP')", [cppSet, organizationId, projectId]);
+    const manifest: ConfigRevisionManifest = { organizationId, projectId, configSetId: cppSet, entryFile: "cpp-board.dts", includeSearchPaths: [], overlayOrder: [], members: [],
+      defines: { ENABLED: "1" }, declaredBuildInputs: { includeSearchPaths: [], defines: { ENABLED: "1" } } };
+    const source = '\uFEFF// 🧪 exact source\r\n#include "cpp-defs.h"\r\n/dts-v1/;\r\n/ { target {\r\n#if ENABLED\r\n limit = <BIT(3)>;\r\n#else\r\n limit = <0>;\r\n#endif\r\n}; };\r\n';
+    for (const [index, file] of [{ name: "cpp-board.dts", content: source, role: "base" as const },
+      { name: "cpp-defs.h", content: "#define BIT(x) (1U << (x))\n", role: "include" as const }].entries()) {
+      const fileId = `cpp-file-${index}`, fileVersionId = `cpp-version-${index}`;
+      const object = await storage.put({ organizationId, fileName: file.name, contentType: "text/plain", bytes: Buffer.from(file.content) });
+      await db.query("insert into project_parameter_files(id,organization_id,project_id,file_name,format,config_set_id,config_set_role,config_set_sort_order) values($1,$2,$3,$4,'dts',$5,$6,$7)",
+        [fileId, organizationId, projectId, file.name, cppSet, file.role, index]);
+      await db.query("insert into project_parameter_file_versions(id,file_id,version_number,storage_key,checksum,size_bytes,parsed_index,origin,created_by_user_id) values($1,$2,1,$3,$4,$5,'{}'::jsonb,'upload',$6)",
+        [fileVersionId, fileId, object.storageKey, object.checksumSha256, object.fileSizeBytes, userId]);
+      await db.query("update project_parameter_files set current_version_id=$2 where id=$1", [fileId, fileVersionId]);
+      manifest.members.push({ fileId, fileVersionId, fileName: file.name, content: file.content, role: file.role, sortOrder: index });
+    }
+    const input = { entryFile: manifest.entryFile, includeSearchPaths: ["."], overlayOrder: manifest.overlayOrder, defines: manifest.defines,
+      files: new Map(manifest.members.map(member => [member.fileName, { content: member.content, fileVersionId: `provisional-${member.fileName}` }])) };
+    const preparedSources = (await prepareDtsSources(input))!;
+    const document = preparedSources.documents.get("cpp-board.dts")!;
+    const node = document.document.topLevel[0]!.children.find(child => child.kind === "node" && child.name === "target");
+    if (!node || node.kind !== "node") throw new Error("Prepared CPP target is missing");
+    const property = node.children.find(child => child.kind === "property" && child.name === "limit");
+    if (!property || property.kind !== "property") throw new Error("Prepared CPP value is missing");
+    const snapshot = () => JSON.stringify({ ...preparedSources, documents: [...preparedSources.documents], originalDocuments: [...preparedSources.originalDocuments], origin: document.originForSpan(property.span) });
+    const frozen = snapshot();
+    expect((await resolveDtsConfigSetAsync({ ...input, preparedSources })).diagnostics).toEqual([]);
+    expect((await createDtsToolchainRunner().validate({ ...input, preparedSources }, { mode: "release" })).ok).toBe(true);
+    const auth = makeTestAuthContext({ userId, organizationId });
+    const stale = await ingestConfigRevision(db, manifest, auth, { preparedSources: { ...preparedSources, receipt: { ...preparedSources.receipt, inputDigest: `sha256:${"0".repeat(64)}` } } });
+    expect(stale.status).toBe("invalid");
+    const revision = await ingestConfigRevision(db, manifest, auth, { preparedSources });
+    expect(revision.status).toBe("resolved");
+    expect(revision.preprocessing).toMatchObject({ schemaVersion: "dts-cpp/v1", compilerVersion: "14.2.0", defines: { ENABLED: "1" } });
+    expect(revision.declaredBuildInputs).toEqual(manifest.declaredBuildInputs);
+    const row = (await db.query<{ logicalNodeId: string; nodeOccurrenceId: string; propertyOccurrenceId: string }>(
+      `select logical.logical_node_id as "logicalNodeId",effect.node_occurrence_id as "nodeOccurrenceId",effect.property_occurrence_id as "propertyOccurrenceId"
+       from dts_occurrence_effects effect join dts_logical_node_revisions logical on logical.id=effect.logical_node_revision_id
+       where effect.config_revision_id=$1 and logical.node_locator='/target' and effect.property_name='limit'`, [revision.id])).rows[0]!;
+    const cppIdentity = { organizationId, projectId, configSetId: cppSet, configRevisionId: revision.id, fileId: "cpp-file-0", fileVersionId: "cpp-version-0", propertyName: "limit", ...row };
+    const proof = await db.transaction(tx => proveExactDtsProperty(tx, storage, cppIdentity));
+    expect(proof).toMatchObject({ sourceName: "cpp-board.dts", sourceSpan: { start: source.indexOf("<BIT"), end: source.indexOf("<BIT") + "<BIT(3)>".length },
+      fileVersionId: "cpp-version-0", value: { kind: "cells", groups: [[{ value: "8" }]] } });
+    const resolvedAgain = await resolveDtsConfigSetAsync({ ...input, preparedSources,
+      files: new Map(manifest.members.map(member => [member.fileName, { content: member.content, fileVersionId: member.fileVersionId }])) });
+    expect(resolvedAgain.effective.nodesByLocator.get("/target")?.properties.get("limit")?.sourceChain.at(-1)?.origin?.fileVersionId).toBe("cpp-version-0");
+    expect(snapshot()).toBe(frozen);
+    expect((await db.query<{ raw_text: string; ast_json: unknown }>("select raw_text,ast_json from dts_property_occurrences where id=$1", [row.propertyOccurrenceId])).rows[0])
+      .toMatchObject({ raw_text: "<BIT(3)>", ast_json: { kind: "cells", groups: [[{ value: "8" }]] } });
+    await expect(db.transaction(async tx => {
+      await tx.query("update dts_config_revisions set preprocessing=jsonb_set(preprocessing,'{outputDigest}',to_jsonb($2::text)) where id=$1", [revision.id, `sha256:${"0".repeat(64)}`]);
+      return proveExactDtsProperty(tx, storage, cppIdentity);
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-invalid" } });
+    await expect(db.transaction(async tx => {
+      await tx.query("update dts_property_occurrences set raw_text='<BIT(4)>' where id=$1", [row.propertyOccurrenceId]);
+      return proveExactDtsProperty(tx, storage, cppIdentity);
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-invalid" } });
+    await expect(db.transaction(async tx => {
+      await tx.query("update dts_property_occurrences set ast_json=jsonb_set(ast_json,'{groups,0,0,value}','\"9\"'::jsonb) where id=$1", [row.propertyOccurrenceId]);
+      return proveExactDtsProperty(tx, storage, cppIdentity);
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-invalid" } });
   });
 
   it("refuses an unpinned property row whose value differs from the immutable object", async () => {
@@ -244,7 +327,7 @@ describe("exact DTS source value proof before pin creation", () => {
       expect(source.revision.includeSearchPaths).toEqual(includeSearchPaths);
       expect(source.members.find((member) => member.fileVersionId === identity.fileVersionId)?.content).toBe(overlay);
       expect((await proveExactDtsProperty(tx,storage,identity)).value).toMatchObject({ kind: "cells",groups: [[{ value: "7" }]] });
-      expect((await tx.query(`select include_search_paths from dts_config_revisions where id=$1`,[identity.configRevisionId])).rows[0]?.include_search_paths).toEqual(includeSearchPaths);
+      expect((await tx.query<{include_search_paths:string[]}>(`select include_search_paths from dts_config_revisions where id=$1`,[identity.configRevisionId])).rows[0]?.include_search_paths).toEqual(includeSearchPaths);
       throw rollback;
     })).rejects.toBe(rollback);
   });

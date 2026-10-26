@@ -1,4 +1,5 @@
 import type { RouteManifestEntry } from "./routeManifest";
+import { sharedDtsiSchemaRegistry } from "./dtoSchemas/sharedDtsi";
 import { organizationDeletionSchemaRegistry } from "./dtoSchemas/organizationDeletion";
 import { accountTransferSchemaRegistry } from "./dtoSchemas/accountTransfer";
 import { parameterCatalogSchemaRegistry } from "./dtoSchemas/parameterCatalog";
@@ -60,6 +61,9 @@ function retireLegacySurface(
 }
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
+  "parameterFiles.prepareProjectLocalOverride": { summary: "Prepare an exact project-owned property or node operation source draft", tags: ["parameter-files"],
+    requestBody: "ProjectLocalOverrideRequest", responseBody: "ProjectLocalOverrideResponse", additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" } },
+  ...sharedDtsiSchemaRegistry,
   ...organizationDeletionSchemaRegistry,
   ...accountTransferSchemaRegistry,
   ...assetHandoverSchemaRegistry,
@@ -580,6 +584,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["parameters"],
     requestBody: "PreviewProjectInitializationSnapshotRequest",
     responseBody: "ProjectInitializationSnapshotPreviewResponse"
+  },
+  "parameters.initialization.completeCopyPreview": {
+    summary: "Preview exact complete project configurations as independent private copies",
+    tags: ["parameters"],
+    requestBody: "PreviewProjectInitializationSnapshotRequest",
+    responseBody: "ProjectInitializationCompleteCopyPreviewResponse"
   },
   "parameters.initialization.submit": {
     summary: "Submit project parameter initialization for review",
@@ -2101,6 +2111,16 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["parameter-files"],
     responseBody: "ConfigSetExportResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewConfigSetImport": {
+    summary: "Preview complete original sources and exact authorized shared pins for an empty project",
+    tags: ["parameter-files"], requestBody: "ConfigSetImportPreviewRequest", responseBody: "ConfigSetImportPreviewResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyConfigSetImport": {
+    summary: "Import a confirmed complete configuration with fresh project source identities",
+    tags: ["parameter-files"], requestBody: "ConfigSetImportApplyRequest", responseBody: "ConfigSetImportApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterFiles.listConfigSetBaselines": {
     summary: "List release baselines of a config set",

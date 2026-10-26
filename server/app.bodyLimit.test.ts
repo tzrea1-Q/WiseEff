@@ -10,6 +10,23 @@ import { requestJson } from "./test/testClient";
 const samplePath = "/api/v1/log-skills/skill-1/sample";
 const sampleBodyLimit = Math.ceil(2 * 1024 * 1024 * 4 / 3) + 4 + 64 * 1024;
 
+describe("shared-source transport body limit",()=>{
+  it("rejects oversized complete-package bodies before collecting bytes at either project import action",async()=>{
+    const cap=24*1024*1024;
+    for(const path of ["/api/v1/projects/new/config-set-import/preview","/api//v1//projects//new//config-set-import//apply//"]) {
+      expect(resolveRouteBodyLimit({method:"POST",path})).toBe(cap);
+      expect(await requestDeclaredOversize(createHttpServer(createRouter(),{maxBodyBytes:resolveRouteBodyLimit}),path,"POST",cap+1)).toMatchObject({status:413});
+    }
+  });
+  it("bounds shared-source import and save aliases before collecting the request body",async()=>{
+    const cap=112*1024*1024;
+    for(const [method,path] of [["POST","/api/v2/shared-dtsi"],["POST","/api//v2//shared-dtsi//"],["PUT","/api/v2/shared-dtsi/resource/draft"],["PUT","/api//v2//shared-dtsi//resource//draft//"]] as const) {
+      expect(resolveRouteBodyLimit({method,path})).toBe(cap);
+      expect(await requestDeclaredOversize(createHttpServer(createRouter(),{maxBodyBytes:resolveRouteBodyLimit}),path,method,cap+1)).toMatchObject({status:413});
+    }
+  });
+});
+
 describe("skill recommendation transport body limit", () => {
   it("sizes the cap for bounded UTF-8 heads, paths and JSON overhead", () => {
     expect(LOG_RECOMMENDATION_HTTP_BODY_LIMIT_BYTES).toBe(200 * (64 * (2048 + 3) + 1024 * 4 + 32) + 1024);

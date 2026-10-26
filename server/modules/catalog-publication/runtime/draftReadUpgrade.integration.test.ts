@@ -9,6 +9,7 @@ import { makeTestAuthContext } from "../../../testing/authContext";
 import { migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
 import { registerCatalogProjectValueConsumerRoutes } from "../../parameter-bindings/catalogProjectValueRoutes";
 import { listCanonicalValueDrafts } from "../../parameter-bindings/drafts/repository";
+import { emptyWritableInsertSql } from "../persistence/integrationHarness";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "./provisionRuntimeLogins";
 
 describe("existing API LOGIN privilege refresh after a parameter schema upgrade", () => {
@@ -70,7 +71,7 @@ describe("existing API LOGIN privilege refresh after a parameter schema upgrade"
           await expect(api.query(`delete from ${relation} where false`)).rejects.toMatchObject({ code: "42501" });
         }
         for (const relation of ["project_parameter_source_occurrences", "project_value_source_pins"]) {
-          await expect(api.query(`insert into parameter_catalog.${relation} select * from parameter_catalog.${relation} where false`))
+          await expect(api.query(await emptyWritableInsertSql(api, `parameter_catalog.${relation}`)))
             .resolves.toMatchObject({ rowCount: 0 });
         }
         await expect(api.query("select parameter_catalog.is_replaced_current_binding('missing-binding') as replaced"))

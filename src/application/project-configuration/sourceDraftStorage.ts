@@ -10,6 +10,7 @@ export type SourceDraftBase = {
   fileVersionId: string;
   configRevisionId: string;
   sourceDigest: string;
+  localOverride?: { input: import("@/application/ports/ParameterFileRepository").ProjectLocalOverrideInput; afterValue: string | null };
 };
 
 export type SourceDraftPosition = {
@@ -75,6 +76,12 @@ function readStoredDraft(value: unknown, scope: SourceDraftScope): StoredSourceD
     || !draft.base || ![draft.base.fileVersionId, draft.base.configRevisionId, draft.base.sourceDigest]
       .every((item) => typeof item === "string" && item.length > 0)
     || typeof draft.sourceText !== "string" || !Number.isSafeInteger(draft.generation) || draft.generation < 0
+    || (draft.base.localOverride !== undefined && (!draft.base.localOverride || !draft.base.localOverride.input
+      || ![draft.base.localOverride.input.expectedConfigRevisionId, draft.base.localOverride.input.logicalNodeId, draft.base.localOverride.input.propertyName]
+        .every(item => typeof item === "string" && item.length > 0)
+      || !["set", "remove-override", "delete-property", "enable-node", "disable-node", "remove-status-override", "delete-node"].includes(draft.base.localOverride.input.action)
+      || (draft.base.localOverride.input.rawText !== undefined && typeof draft.base.localOverride.input.rawText !== "string")
+      || (draft.base.localOverride.afterValue !== null && typeof draft.base.localOverride.afterValue !== "string")))
     || (draft.baseSourceText !== undefined && typeof draft.baseSourceText !== "string")
     || (draft.rebased !== undefined && typeof draft.rebased !== "boolean")
     || (draft.originalDraft !== undefined && (!draft.originalDraft || typeof draft.originalDraft.sourceText !== "string"

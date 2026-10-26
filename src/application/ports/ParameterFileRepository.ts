@@ -272,9 +272,22 @@ export type CreateParameterFileCandidateInput = {
   contentBase64: string;
   fileId?: string;
   intent?: "source_revision";
+  localOverride?: ProjectLocalOverrideInput;
   expectedCurrentVersionId?: string;
   expectedConfigRevisionId?: string;
   clientMutationId?: string;
+};
+
+export type ProjectLocalOverrideInput = {
+  expectedConfigRevisionId: string; logicalNodeId: string; propertyName: string;
+  action: "set" | "remove-override" | "delete-property" | "enable-node" | "disable-node" | "remove-status-override" | "delete-node";
+  rawText?: string; propertyOccurrenceId?: string; targetFileId?: string;
+};
+export type ProjectLocalOverrideDraft = {
+  fileId: string; fileName: string; baseVersionId: string; configRevisionId: string;
+  before: string; after: string; beforeValue: string | null; afterValue: string | null;
+  action: ProjectLocalOverrideInput["action"];
+  localOverride?: ProjectLocalOverrideInput;
 };
 
 export type ActivateParameterFileCandidateInput = {
@@ -458,6 +471,7 @@ export interface ParameterFileRepository {
   ): Promise<ParameterFileConflictBulkResolveResult>;
   listCandidates(projectId: string, options?: { fileId?: string; includeAbandoned?: boolean }): Promise<ParameterFileCandidate[]>;
   createCandidate(projectId: string, input: CreateParameterFileCandidateInput): Promise<ParameterFileCandidate>;
+  prepareProjectLocalOverride?(projectId: string, configSetId: string, input: ProjectLocalOverrideInput): Promise<ProjectLocalOverrideDraft>;
   getCandidate(projectId: string, candidateId: string): Promise<ParameterFileCandidate>;
   getCandidateImpact(projectId: string, candidateId: string): Promise<{ item: ParameterFileCandidate; impact: ParameterFileCandidateImpact }>;
   downloadCandidate(projectId: string, candidateId: string): Promise<DownloadParameterFileCandidateResult>;

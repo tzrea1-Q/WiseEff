@@ -94,7 +94,7 @@ test.describe("M5.11 accessibility quality gate", () => {
       const configSetInspector = route.endsWith("/config-sets") || route.includes("inspector=config-set");
       await openWorkbenchPanel(page, configSetInspector ? "config-set" : "file");
       if (configSetInspector) {
-        await expect(page.getByRole("dialog", { name: "文件管理", exact: true }).getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
+        await expect(page.getByRole("dialog", { name: "配置组成", exact: true }).getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
       } else {
         await expect(page.getByText("文件格式", { exact: true }).first()).toBeVisible();
       }

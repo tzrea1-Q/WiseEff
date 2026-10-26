@@ -1,4 +1,5 @@
-import type { ZodTypeAny } from "zod";
+import { z, type ZodTypeAny } from "zod";
+import { initializationConfigSnapshotSchema, initializationSnapshotItemSchema, previewInitializationSnapshotBodySchema, upsertInitializationDraftBodySchema } from "../../parameters/schemas";
 import { organizationDeletionDtoSchemaCatalog, organizationDeletionRoutes } from "./organizationDeletion";
 export * from "./organizationDeletion";
 import { accountTransferDtoSchemaCatalog, accountTransferRoutes } from "./accountTransfer";
@@ -31,9 +32,13 @@ import { structuralReadResponseSchema, dtsSearchResponseSchema } from "./dtsStru
 import { sourceRevisionCoveredRouteIds, sourceRevisionDtoSchemaCatalog } from "./sourceRevision";
 import { parameterDefinitionDeletionDtoSchemaCatalog, parameterDefinitionDeletionCoveredRouteIds } from "./parameterDefinitionDeletion";
 import { workflowPublicationDtoSchemaCatalog, workflowPublicationCoveredRouteIds } from "./workflowPublication";
+import { sharedDtsiDtoSchemaCatalog, sharedDtsiRoutes } from "./sharedDtsi";
+export * from "./sharedDtsi";
+export * from "./dtsPreprocessing";
 export { workflowPublicationAdminStateSchema, workflowPublicationStateSchema } from "./workflowPublication";
 
 export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
+  ...sharedDtsiDtoSchemaCatalog,
   ...organizationDeletionDtoSchemaCatalog,
   ...accountTransferDtoSchemaCatalog,
   ...assetHandoverDtoSchemaCatalog,
@@ -53,10 +58,15 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...sourceRevisionDtoSchemaCatalog,
   ...parameterDefinitionDeletionDtoSchemaCatalog,
   StructuralReadResponse: structuralReadResponseSchema,
-  DtsSearchResponse: dtsSearchResponseSchema
+  DtsSearchResponse: dtsSearchResponseSchema,
+  PreviewProjectInitializationSnapshotRequest: previewInitializationSnapshotBodySchema,
+  UpsertProjectInitializationDraftRequest: upsertInitializationDraftBodySchema,
+  ProjectInitializationCompleteCopyPreviewResponse: z.object({ items: z.array(initializationSnapshotItemSchema), configSnapshots: z.array(initializationConfigSnapshotSchema) })
 };
 
 export const dtoSchemaCoveredRouteIds = [
+  "parameters.initialization.completeCopyPreview",
+  ...sharedDtsiRoutes.map(route => route.id),
   ...organizationDeletionRoutes.map(route => route.id),
   ...accountTransferRoutes.map(route => route.id),
   ...assetHandoverRoutes.map(route => route.id),
@@ -95,6 +105,7 @@ export * from "./canonicalManualSync";
 export * from "./productFeedback";
 export * from "./sourceRevision";
 export * from "./canonicalMemberAddition";
+export * from "./configSetPackage";
 export * from "./parameterDefinitionDeletion";
 export { projectBindingDtoSchema } from "../../parameter-topology/schemas";
 export { logSkillSpecSchema } from "../../logs/skillSpec";

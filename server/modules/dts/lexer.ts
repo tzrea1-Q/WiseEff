@@ -1,4 +1,5 @@
 import { stripDtsComments } from "./preprocess";
+import { dtsReferencePath,DtsPathReferenceError } from "../../../src/domain/dts/reference";
 
 export type DtsTokenKind =
   | "ident"
@@ -7,6 +8,7 @@ export type DtsTokenKind =
   | "bytes"
   | "at"
   | "amp"
+  | "path-ref"
   | "colon"
   | "lt"
   | "gt"
@@ -17,6 +19,7 @@ export type DtsTokenKind =
   | "semi"
   | "comma"
   | "eq"
+  | "operator"
   | "directive"
   | "slash"
   | "eof";
@@ -55,6 +58,7 @@ export function lexDts(source: string): DtsToken[] {
   const text = stripDtsComments(source);
   const tokens: DtsToken[] = [];
   let i = 0;
+  let parentheses = 0;
 
   const push = (kind: DtsTokenKind, start: number, end: number, value = text.slice(start, end)) => {
     tokens.push({ kind, value, span: { start, end } });
@@ -63,9 +67,20 @@ export function lexDts(source: string): DtsToken[] {
   while (i < text.length) {
     const ch = text[i];
 
-    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || i === 0 && ch === "\uFEFF") {
       i += 1;
       continue;
+    }
+
+    if(ch==="&") {
+      let brace=i+1;while(/\s/u.test(text[brace]??"") && brace<text.length)brace++;
+      if(text[brace]==="{") {
+        const end=text.indexOf("}",brace+1);
+        if(end<0)throw new DtsPathReferenceError(`Unterminated DTS node-path reference at offset ${i}`,i);
+        const reference=`{${text.slice(brace+1,end).trim()}}`;
+        try {dtsReferencePath(reference);}catch {throw new DtsPathReferenceError(`Invalid DTS node-path reference at offset ${i}`,i);}
+        push("path-ref",i,end+1,reference);i=end+1;continue;
+      }
     }
 
     if (ch === "/") {
@@ -174,9 +189,21 @@ export function lexDts(source: string): DtsToken[] {
       ";": "semi",
       ",": "comma",
       "=": "eq",
+      "+": "operator",
+      "-": "operator",
+      "*": "operator",
+      "%": "operator",
+      "|": "operator",
+      "^": "operator",
+      "~": "operator",
+      "!": "operator",
+      "?": "operator",
     };
 
     if (ch in single) {
+      if (single[ch] === "operator" && parentheses === 0) throw new Error(`Unexpected character '${ch}' at offset ${i}`);
+      if (ch === "(") parentheses += 1;
+      if (ch === ")") parentheses -= 1;
       push(single[ch], i, i + 1, ch);
       i += 1;
       continue;

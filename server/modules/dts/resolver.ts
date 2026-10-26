@@ -1,4 +1,6 @@
 import { parseDts } from "./parser";
+import { lexDts } from "./lexer";
+import { dtsActualPathTarget,dtsReferencePath } from "../../../src/domain/dts/reference";
 import type { DtsDocument, DtsNodeCst, DtsPropertyCst, DtsValueType } from "./types";
 
 export interface ResolvedPhandleRef {
@@ -56,22 +58,23 @@ function joinPath(parent: string, segment: string): string {
 }
 
 function extractPhandles(rawText: string): string[] {
-  const labels: string[] = [];
-  const re = /&([A-Za-z_][A-Za-z0-9_]*)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(rawText)) !== null) {
-    labels.push(m[1]);
-  }
-  return labels;
+  const tokens=lexDts(rawText);
+  return tokens.flatMap((token,index)=>token.kind==="path-ref"?[token.value]
+    :token.kind==="amp" && tokens[index+1]?.kind==="ident"?[tokens[index+1]!.value]:[]);
 }
 
 class Resolver {
+  constructor(private readonly externalNodePaths: ReadonlySet<string> = new Set()) {}
   private readonly byPath = new Map<string, MutableNode>();
   private readonly byLabel = new Map<string, MutableNode>();
 
   resolve(doc: DtsDocument): ResolvedDts {
     for (const node of doc.topLevel) {
       this.ingestNode(node, "");
+    }
+    for(const node of this.byPath.values())for(const ref of node.phandleRefs) {
+      const path=dtsReferencePath(ref.targetLabel);
+      if(path!==null && !dtsActualPathTarget(this.byPath,path.slice(1)) && !this.externalNodePaths.has(path))throw new Error(`Unresolved DTS node-path reference &${ref.targetLabel}`);
     }
     return { nodes: this.flatten() };
   }
@@ -80,19 +83,21 @@ class Resolver {
     let node: MutableNode;
 
     if (cst.refTarget) {
-      const existing = this.byLabel.get(cst.refTarget);
+      const path=dtsReferencePath(cst.refTarget);
+      const existing = path!==null?dtsActualPathTarget(this.byPath,path.slice(1)):this.byLabel.get(cst.refTarget);
+      if(path!==null && !existing && !this.externalNodePaths.has(path))throw new Error(`Unresolved DTS node-path reference &${cst.refTarget}`);
       if (existing) {
         node = existing;
         node.cst = cst;
       } else {
-        const path = joinPath(parentPath, cst.refTarget);
-        node = this.ensurePath(path, {
+        const targetPath = path !== null ? path.slice(1) : joinPath(parentPath, cst.refTarget);
+        node = this.ensurePath(targetPath, {
           name: cst.refTarget,
           unitAddress: undefined,
           cst,
-          isLabelStub: true,
+          isLabelStub: path === null,
         });
-        this.registerLabel(cst.refTarget, node);
+        if (path === null) this.registerLabel(cst.refTarget, node);
       }
     } else {
       const path = joinPath(parentPath, segmentFor(cst));
@@ -257,7 +262,7 @@ class Resolver {
   }
 }
 
-export function resolveDts(input: DtsDocument | string): ResolvedDts {
+export function resolveDts(input: DtsDocument | string, externalNodePaths?: ReadonlySet<string>): ResolvedDts {
   const doc = typeof input === "string" ? parseDts(input) : input;
-  return new Resolver().resolve(doc);
+  return new Resolver(externalNodePaths).resolve(doc);
 }

@@ -6,6 +6,25 @@
   min-width: 0;
 }
 
+.initialization-copy-summary {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.initialization-copy-summary .project-init-table table {
+  min-width: 0;
+}
+
+.initialization-copy-summary :is(th, td) {
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.initialization-copy-summary :is(th, td):last-child {
+  width: 65%;
+}
+
 .project-init-scope-toolbar .search-field {
   flex: 1;
   min-width: 240px;

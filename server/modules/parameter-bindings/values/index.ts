@@ -10,6 +10,7 @@ export {
   loadDeletedSourceAnchors,
   loadSourceBindingCohort,
   loadSourceBindingCohortReadOnly,
+  findCurrentSourceBindingId,
   loadConfigurationRestoreCohort,
   loadProjectBindingCatalogReleaseIds,
   hasDeletedSourceBinding,

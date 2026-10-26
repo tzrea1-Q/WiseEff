@@ -7,8 +7,6 @@ import {
   assertTrustedInvocationMatchesAuth,
   type TrustedInvocationContext,
 } from "../auth/trustedInvocation";
-import { permissionsForRoles } from "../auth/policy";
-import type { UsageProjectScope } from "../parameter-bindings/usage";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { resolveOperatingContext } from "../auth/operatingContext";
 import { parameterOrganizationId, parameterRequestAccess } from "../parameters/operatingScope";
@@ -31,8 +29,9 @@ import {
   type CatalogSubjectKind,
   type PlacementIntent,
 } from "../parameter-catalog-contract/index";
-import { canViewParameters } from "../parameter-kernel/policy";
+import { canViewParameters, parameterUsageProjectScope } from "../parameter-kernel/policy";
 import { executeProposal } from "../parameter-governance/proposals";
+import { bindSharedDtsiProposalEvidence } from "../shared-dtsi/recognition";
 import { createGovernanceCatalogQueries, GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../parameter-governance/queries";
 import type { GovernanceRegistrationRecord } from "../parameter-governance/queries";
 import { executeRegistration } from "../parameter-governance/registration";
@@ -425,19 +424,9 @@ const governanceActorKind = (auth: AuthContext): TrustedGovernanceActorKind => {
   return "org-member";
 };
 
-const catalogProjectScope = (auth: AuthContext): UsageProjectScope | null => {
-  if (!Array.isArray(auth.roles) || auth.roles.some((binding) => !binding ||
-    (binding.projectId !== null && (typeof binding.projectId !== "string" || binding.projectId.length === 0 || binding.projectId.trim() !== binding.projectId || /[\u0000-\u001F\u007F-\u009F]/u.test(binding.projectId))))) return null;
-  const eligible = auth.roles.filter((binding) => permissionsForRoles([binding.roleId]).includes("parameter:view"));
-  // Match existing parameter policy: explicit null is an organization grant;
-  // real admin/platform-admin bindings retain their established global scope.
-  if (eligible.some((binding) => binding.projectId === null || binding.roleId === "admin" || binding.roleId === "platform-admin")) return { kind: "all" };
-  return { kind: "only", ids: [...new Set(eligible.flatMap((binding) => binding.projectId === null ? [] : [binding.projectId]))] };
-};
-
 const catalogScope = (auth: AuthContext, organizationId = auth.organization.id): TrustedCatalogScope => {
   const actorKind = catalogActorKind(auth);
-  const projectScope = catalogProjectScope(auth);
+  const projectScope = parameterUsageProjectScope(auth);
   return {
     principalId: auth.user.id,
     organizationId,
@@ -723,7 +712,7 @@ const createGovernancePorts = (
     ? bindCatalogGovernanceCommands({
         executeRegistration: (command) => executeRegistration(pool, command),
         resolveReviewItem: (command) => resolveReviewItem(pool, command),
-        executeProposal: (command) => executeProposal(pool, command),
+        executeProposal: async (command) => executeProposal(pool,db ? await bindSharedDtsiProposalEvidence(db,command) : command),
         listReviewQueue: (query) => {
           const reader = createReviewQueueReader(pool);
           return reader.list(query);

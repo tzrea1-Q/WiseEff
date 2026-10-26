@@ -290,7 +290,7 @@ describe("equivalent fixed L1 scheduling", () => {
 
 describe("D2 backend shards and quality lanes", () => {
   const partitions = [
-    ["server", "l1-server-shards", "l1-server", "shard", [1, 2]],
+    ["server", "l1-server-shards", "l1-server", "shard", [1, 2, 3]],
     ["quality", "acceptance-quality-lanes", "acceptance-quality", "lane", ["visual", "consistency-1", "consistency-2", "accessibility"]],
   ] as const;
 
@@ -302,7 +302,7 @@ describe("D2 backend shards and quality lanes", () => {
     expect(worker.strategy).toEqual({ "fail-fast": false, matrix: { [axis]: values } });
     expect(worker.outputs).toBeUndefined();
     expect(worker.env[kind === "server" ? "WISEEFF_CI_SERVER_SHARD" : "WISEEFF_QUALITY_LANE"])
-      .toBe(kind === "server" ? "${{ matrix.shard }}/2" : "${{ matrix.lane }}");
+      .toBe(kind === "server" ? "${{ matrix.shard }}/3" : "${{ matrix.lane }}");
     const receipt = worker.steps.find((step: { with?: { path?: string } }) => step.with?.path === "${{ runner.temp }}/wiseeff-ci-shard/receipt.json");
     expect(receipt.with.name).toBe(`wiseeff-ci-${kind}-\${{ github.run_attempt }}-\${{ matrix.${axis} }}`);
     expect(aggregate.needs).toEqual(["detect", workerId]);

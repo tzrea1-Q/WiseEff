@@ -62,6 +62,8 @@ UI may project `active-superseded` when a Receipt exists and a later legal succe
 
 ## 4. ChangeSet contract
 
+Standalone subject creation uses the additive `create-subject` operation, containing only the canonical identity, selector and explicit Driver nature/cardinality where applicable. It publishes zero definitions through the same builder, authorization and synchronizer. Such candidates require `catalog-capability/v5`; a frozen v4 consumer rejects them before installation. Existing authoring operations keep their v4 contract and the HTTP `create-subject-with-definitions` operation still requires at least one definition. The subject registry owns the sole creation form, while definition authoring selects an existing subject and can return from that creation flow.
+
 Closed tagged union. Unknown tags fail closed.
 
 ### M1 open

@@ -105,6 +105,12 @@ export function registerAuditRoutes(
       throw new ApiError("VALIDATION_FAILED", "Invalid audit event.");
     }
     const body = parsedBody.data;
+    // Configuration owners consume these events as commit/source-admission
+    // receipts. The generic client-event endpoint cannot manufacture them.
+    if (body.kind === "config-set" && body.action === "imported" && body.targetType === "dts-config-set"
+      || body.kind === "project-initialization-approved" && body.action === "approve" && body.targetType === "project-parameter-initialization-review") {
+      throw new ApiError("FORBIDDEN", "配置操作回执只能由对应服务写入。");
+    }
     const id = randomUUID();
     const invocation = await auditInvocation(options.db, auth, request);
     const organizationId = invocation.operatingOrganization?.id ?? auth.organization.id;

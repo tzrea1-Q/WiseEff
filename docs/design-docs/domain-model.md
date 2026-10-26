@@ -62,6 +62,14 @@ Fresh mode still runs D01-D09. Each family must execute a real PostgreSQL query 
 
 ## Project Parameter Files
 
+### Fixed shared sources
+
+An Organization owns a shared DTSI resource and its immutable published versions. A **fixed shared reference** explicitly selects one version for one Project configuration. A **shared source snapshot** is that Project's own read-only file/version with verifiable upstream resource/version/member provenance. Two projects never share one project-file row, source occurrence or Binding; publishing a successor does not modify either project.
+
+Configuration composition freezes the complete source membership, parser paths, real project entry and overlay order. Adding a shared source previews an explicit native include inserted before project declarations, so project values override shared defaults. It atomically creates the local snapshots, a new private-root version, a complete revision and the existing governed value/source receipts. Ordinary file, candidate, value, member and status writers cannot alter shared snapshot bytes or identity, and a whole-root edit cannot silently disconnect an active fixed reference. Future reference change/restoration operations must derive exact published bytes under their own validated operation proof.
+
+Shared source publication is distinct from Catalog publication: [ADR-0040](../adr/0040-canonical-parameter-catalog-relational-model.md) and [ADR-0043](../adr/0043-catalog-authoring-and-online-publication.md) retain the unique Catalog synchronizer; [ADR-0046](../adr/0046-source-occurrence-identity-spans-dts-and-software-configuration.md) retains source occurrence identity and proven origin transfers. [ADR-0052](../adr/0052-shared-source-versions-pin-project-dependency-closures.md) fixes exact resource dependencies, relative mounts and the complete bounded closure. Project composition rejects version, path and label conflicts, preserves the include/overlay order, and derives every required source under one atomic receipt. Headers remain original build inputs under the deterministic preprocessing owner. Existing private DTS/JSON members retain their ownership, versions and history.
+
 Project parameter files are first-class project-scoped entities that host DTS/JSON configuration bytes in object storage with immutable version history. File versions carry a `parsed_index` (`nodePath` → normalized value) used to diff against database state, generate `file_sync` drafts, and patch nodes after review merge. For DTS, `parsed_index` is a **derived compatibility view** of the structural model (feature flag `DTS_STRUCTURAL_INGEST`, default on).
 
 | Entity | Description |
@@ -89,7 +97,7 @@ Source fields live on project values, not definitions: the same definition can b
 
 Upload or version upload with `origin=upload` parses the file, diffs each `parsed_index` entry against the matched project value, and upserts `file_sync` drafts when values differ. Matching prefers `source_file_name` + `source_node_path` (structural `nodePath`), then falls back to `name` + `module` (compatibility path; counted as `identityFallbackUses` on sync summary). First bind writes source fields on the project value. Drafts are not auto-submitted; users still run the existing submission and review workflow.
 
-**DTS structural core (P1):** `server/modules/dts/` provides lexer → CST parser → value typing/normalization → overlay/label resolver → lossless CST serializer. Upload (when `DTS_STRUCTURAL_INGEST` is on) persists `dts_nodes` / `dts_properties` / `dts_phandle_refs` and derives `parsed_index` from the merged model. `/include/` remains hard-rejected. Writeback mutates CST property `rawText` and serializes with byte-stable remainder (multiline / multi-group / `@address` supported).
+**DTS structural core (P1):** `server/modules/dts/` provides lexer → CST parser → value typing/normalization → overlay/label resolver → lossless CST serializer. Upload (when `DTS_STRUCTURAL_INGEST` is on) persists `dts_nodes` / `dts_properties` / `dts_phandle_refs` and derives `parsed_index` from the merged model. The single-file compatibility resolver does not resolve `/include/`; complete configuration composition resolves dependencies through its frozen manifest. Writeback mutates CST property `rawText` and serializes with byte-stable remainder (multiline / multi-group / `@address` supported).
 
 `origin=writeback` versions are created after `software_merge → merged` when the merged parameter has source fields. Writeback patches the current file bytes (JSON path set or DTS CST property splice) and must not trigger another sync pass.
 

@@ -55,6 +55,24 @@ beforeEach(() => { vi.stubGlobal("crypto", webcrypto); });
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("DTS whole-source workbench integration", () => {
+  it("submits a prepared project override without permitting arbitrary source editing or direct application", async () => {
+    const { props, rerender, session, createCandidate, submitCandidateSourceReview } = setup();
+    await waitFor(() => expect(session.getFile(props.scope)?.loading).toBe(false));
+    const intent = { expectedConfigRevisionId:"c1",logicalNodeId:"logical",propertyName:"rate",action:"set" as const,rawText:"<2>" };
+    act(() => { session.change(props.scope,"/ { next; };"); });
+    rerender(<WorkbenchSourceEditingPane key="scoped" {...props} canEditSource={false} canDirectApply={false} localOverrideIntent={intent} />);
+    expect(screen.getByRole("radio",{name:"编辑"})).toBeDisabled();
+    expect(screen.getByRole("textbox",{name:"test DTS"})).toHaveAttribute("readonly");
+    fireEvent.click(screen.getByRole("button",{name:"保存修改"}));
+    const dialog = await screen.findByRole("dialog",{name:"保存 DTS 修改"});
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledWith("p",expect.objectContaining({intent:"source_revision",localOverride:intent})));
+    expect(within(dialog).queryByRole("button",{name:"直接应用修改"})).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("DTS 修改原因"),{target:{value:"Project override"}});
+    await waitFor(() => expect(within(dialog).getByRole("button",{name:"提交审核"})).toBeEnabled());
+    fireEvent.click(within(dialog).getByRole("button",{name:"提交审核"}));
+    await waitFor(() => expect(submitCandidateSourceReview).toHaveBeenCalledWith("p","candidate",expect.objectContaining({assignedToUserId:"reviewer"})));
+    await session.flush();
+  });
   it("locks dismissal during discard and keeps the editable text if recovery cleanup fails", async () => {
     const { session } = setup();
     await waitFor(() => expect(screen.getByRole("radio", { name: "编辑" })).toBeEnabled());

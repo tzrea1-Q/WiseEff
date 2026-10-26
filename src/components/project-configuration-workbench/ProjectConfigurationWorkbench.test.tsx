@@ -9,7 +9,9 @@ import type { DtsStructuredRepository, DtsStructureResult } from "@/application/
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
-import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { WiseEffApiError,createApiClient } from "@/infrastructure/http/apiClient";
+import * as memberAdditionClient from "@/infrastructure/http/canonicalMemberAdditionClient";
+import * as sharedDtsiClient from "@/infrastructure/http/sharedDtsiClient";
 import * as canonicalConflictClient from "@/infrastructure/http/canonicalConflictClient";
 import * as userGovernanceClient from "@/infrastructure/http/userGovernanceClient";
 import {
@@ -282,7 +284,7 @@ function createFileRepository(
 }
 
 function createTopologyRepository(
-  overrides: Partial<Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision">> = {}
+  overrides: Partial<Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision" | "getTopology">> = {}
 ): ParameterTopologyRepository {
   return createTestParameterTopologyRepository({
     listConfigRevisions: vi.fn(async () => [
@@ -343,8 +345,8 @@ async function selectScheme(id: string) {
 
 async function openSchemeFiles() {
   const menu = await openSchemeMenu();
-  await userEvent.click(within(menu).getByRole("menuitem", { name: /^(文件管理|查看文件)$/ }));
-  return screen.findByRole("dialog", { name: "文件管理" });
+  await userEvent.click(within(menu).getByRole("menuitem", { name: /^(配置组成|查看文件)$/ }));
+  return screen.findByRole("dialog", { name: "配置组成" });
 }
 
 async function openWorkbenchVersionDetails() {
@@ -539,7 +541,7 @@ function renderSourceWorkbench(options: Parameters<typeof renderWorkbench>[0] = 
   const submitCandidateSourceReview = vi.fn().mockResolvedValue({ requestId: "source-request", status: "pending", replayed: false });
   const fileRepository = options.fileRepository ?? createFileRepository({ createCandidate, getCandidateSourcePreview, submitCandidateSourceReview,
     getSourceRevisionRequest: vi.fn().mockResolvedValue({ id: "source-request", status: "pending" }) });
-  return { ...renderWorkbench({ currentUserId: "user-a", organizationId: "org-1", canEdit: true, canAdmin: true, apiMode: true,
+  return { ...renderWorkbench({ search: "?tab=source", currentUserId: "user-a", organizationId: "org-1", canEdit: true, canAdmin: true, apiMode: true,
     topologyRepository: createTopologyRepository(), dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => ({ ...BOARD_STRUCTURE,
       navigation: { status: "ready" as const, catalogReleaseId: "release", managedNodePaths: ["board", "regulator"] } })) }),
     ...options, fileRepository }), createCandidate, getCandidateSourcePreview, submitCandidateSourceReview };
@@ -561,6 +563,105 @@ function legacyDraftStorage(baseVersionId = "version-board-12") {
 }
 
 describe("ProjectConfigurationWorkbench", () => {
+  it.each(["cancel","apply"])("continues switch %s when browser recovery storage cannot be cleared",async(action)=>{
+    const resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",target="33333333-3333-4333-8333-333333333333";
+    const scope="wiseeff.shared-switch:local-user:org-1:project-1:cs-default";
+    const storage=createMemoryStorage({[scope]:JSON.stringify({scope,reference:{resourceId,versionId:old,version:1},draft:{versionId:target,reason:"Retained switch reason"}})});
+    storage.removeItem=vi.fn(()=>{throw new Error("Browser storage unavailable");});vi.stubGlobal("sessionStorage",storage);
+    const shared=sharedDtsiClient.createSharedDtsiClient(createApiClient({baseUrl:""}));
+    vi.spyOn(sharedDtsiClient,"createSharedDtsiClient").mockReturnValue({...shared,versions:vi.fn(async()=>({items:[{id:target,resourceId,version:2,name:"Limits",changeDescription:"Next",digest:"fixed",createdAt:"today",createdByUserId:"author"}],total:1}))});
+    vi.spyOn(memberAdditionClient,"createCanonicalMemberAdditionClient").mockReturnValue({upload:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"cs-default",fileName:"limits.dtsi",format:"dts" as const,members:[],entryFile:"aurora-board.dts",includeSearchPaths:["."],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}})),apply:vi.fn(async()=>({requestId:"request",fileId:"applied-file",fileVersionId:"applied-version",configRevisionId:"new-revision"}))});
+    const dts=createDtsRepository(),{onNavigate}=renderWorkbench({apiMode:true,search:"?configSet=cs-default&file=file-board&sharedSwitch=resume",dtsRepository:dts});
+    const dialog=await screen.findByRole("dialog",{name:"切换共享版本"}),reads=vi.mocked(dts.listConfigSetFiles).mock.calls.length;
+    if(action==="cancel")await userEvent.click(within(dialog).getByRole("button",{name:"关闭"}));
+    else{
+      await userEvent.click(within(dialog).getByRole("button",{name:"预览版本切换"}));
+      await userEvent.click(await within(dialog).findByRole("button",{name:"确认切换版本"}));
+      await waitFor(()=>expect(onNavigate).toHaveBeenLastCalledWith(expect.stringContaining("file=applied-file")));
+      await waitFor(()=>expect(vi.mocked(dts.listConfigSetFiles).mock.calls.length).toBeGreaterThan(reads));
+    }
+    expect(storage.removeItem).toHaveBeenCalledWith(scope);expect(screen.queryByRole("dialog",{name:"切换共享版本"})).not.toBeInTheDocument();
+  });
+  it.each([
+    ["?configSet=cs-default&inspector=file", "源码"],
+    ["?configSet=cs-default&inspector=versions", "源码"],
+    ["?configSet=cs-default&inspector=candidates", "源码"],
+    ["?configSet=cs-default&sourceMode=history", "源码"],
+    ["?configSet=cs-default&sourceMode=working", "源码"],
+    ["?configSet=cs-default&sourceMode=history&tab=effective", "生效配置"]
+  ])("preserves the requested content tab for source deep link %s", async (search, tab) => {
+    renderWorkbench({ apiMode: true, topologyRepository: createTopologyRepository(), search });
+    await waitFor(() => expect(screen.getByRole("tab", { name: tab })).toHaveAttribute("aria-selected", "true"));
+  });
+  it("waits for loaded members before showing an empty current configuration without requesting an absent revision", async () => {
+    let releaseMembers!: () => void;
+    const pending = new Promise<Awaited<ReturnType<DtsStructuredRepository["listConfigSetFiles"]>>>(resolve => { releaseMembers = () => resolve([]); });
+    const dtsRepository = createDtsRepository({ listConfigSetFiles: vi.fn(() => pending) });
+    const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>().mockRejectedValue(new Error("No current revision"));
+    renderWorkbench({ apiMode: true, canAdmin: true, dtsRepository, topologyRepository: createTopologyRepository({ getTopology }) });
+    await waitFor(() => expect(dtsRepository.listConfigSetFiles).toHaveBeenCalled());
+    expect(getTopology).not.toHaveBeenCalled();
+    expect(screen.getByRole("status", { name: "正在加载生效配置…" })).toBeVisible();
+    await act(async () => releaseMembers());
+    expect(await screen.findByText("此配置尚无来源文件。请通过「配置」菜单添加来源或导入完整配置。")).toBeVisible();
+    expect(getTopology).not.toHaveBeenCalled();
+    expect(screen.queryByText("No current revision")).not.toBeInTheDocument();
+  });
+  it.each([true, false])("waits for current revision metadata and shows unresolved source without requesting a missing topology (admin=%s)", async (canAdmin) => {
+    let release!: (revisions: Awaited<ReturnType<ParameterTopologyRepository["listConfigRevisions"]>>) => void;
+    const revisions = new Promise<Awaited<ReturnType<ParameterTopologyRepository["listConfigRevisions"]>>>(resolve => { release = resolve; });
+    const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>().mockRejectedValue(new Error("No current revision"));
+    const listConfigRevisions = vi.fn(() => revisions);
+    renderWorkbench({ apiMode: true, canAdmin, topologyRepository: createTopologyRepository({ getTopology, listConfigRevisions }) });
+    await waitFor(() => expect(listConfigRevisions).toHaveBeenCalled());
+    expect(getTopology).not.toHaveBeenCalled();
+    expect(screen.getByRole("status", { name: "正在加载生效配置…" })).toBeVisible();
+    await act(async () => release([]));
+    expect(await screen.findByText(canAdmin ? "此配置尚无已解析的修订。请在源码中同步来源文件。" : "此配置尚无已解析的修订，请联系项目管理员。")).toBeVisible();
+    expect(getTopology).not.toHaveBeenCalled();
+  });
+  it("loads an explicit historical effective revision when current configuration members are empty", async () => {
+    const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>().mockResolvedValue({ view: "effective", projectId: PROJECT.id,
+      configSetId: "cs-default", revisionId: "historical-revision", nodes: [{ id: "old", logicalNodeId: "old", locator: "/historical", name: "historical", parentLogicalNodeId: null, effects: [] }] });
+    renderWorkbench({ apiMode: true, search: "?configSet=cs-default&tab=effective&revision=historical-revision",
+      dtsRepository: createDtsRepository({ listConfigSetFiles: vi.fn(async () => []) }), topologyRepository: createTopologyRepository({ getTopology }) });
+    expect(await screen.findByRole("treeitem", { name: "节点 /historical" })).toBeVisible();
+    expect(getTopology).toHaveBeenCalledWith(PROJECT.id, "cs-default", "historical-revision", "effective");
+  });
+  it("loads the latest failed revision and surfaces metadata failures with a scoped retry", async () => {
+    const listConfigRevisions = vi.fn<ParameterTopologyRepository["listConfigRevisions"]>()
+      .mockRejectedValueOnce(new Error("修订读取失败"))
+      .mockResolvedValue([{ id: "failed-revision", configSetId: "cs-default", revisionNumber: 1,
+        status: "validation_failed", createdAt: "2026-10-25T00:00:00Z" }]);
+    const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>().mockResolvedValue({ view: "effective", projectId: PROJECT.id,
+      configSetId: "cs-default", revisionId: "failed-revision", nodes: [] });
+    renderWorkbench({ apiMode: true, topologyRepository: createTopologyRepository({ getTopology, listConfigRevisions }) });
+    expect(await screen.findByText("修订读取失败")).toBeVisible();
+    expect(getTopology).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /^重试$/ }));
+    expect(await screen.findByText("当前配置修订没有生效设备树节点。")).toBeVisible();
+    expect(listConfigRevisions).toHaveBeenLastCalledWith(PROJECT.id, "cs-default");
+    expect(getTopology).toHaveBeenCalledWith(PROJECT.id, "cs-default", "current", "effective");
+  });
+  it("defaults to the complete effective tree, keeps compatible instances separate, and retries a failed read", async () => {
+    const getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>()
+      .mockRejectedValueOnce(new Error("读取失败"))
+      .mockResolvedValue({ view: "effective", projectId: PROJECT.id, configSetId: "cs-default", revisionId: "fixed-revision", nodes: [
+        { id: "one", logicalNodeId: "one", locator: "/first@1", name: "first", unitAddress: "1", compatible: "same,device", parentLogicalNodeId: null,
+          effects: [{ id: "e1", propertyName: "limit", effectKind: "set", nodeOccurrenceId: "o1", propertyOccurrenceId: "p1", sourceOrder: 0, rawText: "<1>" }] },
+        { id: "two", logicalNodeId: "two", locator: "/second@2", name: "second", unitAddress: "2", compatible: "same,device", parentLogicalNodeId: null,
+          effects: [{ id: "e2", propertyName: "limit", effectKind: "set", nodeOccurrenceId: "o2", propertyOccurrenceId: "p2", sourceOrder: 0, rawText: "<2>" }] }
+      ] });
+    renderWorkbench({ apiMode: true, topologyRepository: createTopologyRepository({ getTopology }), syncSearch: true });
+    await screen.findByRole("button", { name: "重试" });
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByRole("treeitem", { name: "节点 /first@1" });
+    expect(screen.getByLabelText("limit 最终值")).toHaveTextContent("<1>");
+    fireEvent.click(screen.getByRole("treeitem", { name: "节点 /second@2" }));
+    expect(screen.getByLabelText("limit 最终值")).toHaveTextContent("<2>");
+    expect(screen.getByRole("tab", { name: "生效配置" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("complementary", { name: "检查器" })).not.toBeInTheDocument();
+  });
   it("follows source scrolling in the tree without replacing the explicit source focus", async () => {
     renderSourceWorkbench({ search: "?configSet=cs-default&file=file-board&node=regulator", syncSearch: true });
     const source = await screen.findByRole("textbox", { name: "DTS 源码" });
@@ -769,7 +870,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("region", { name: "版本历史" })).toBeVisible();
     const files = await openSchemeFiles();
     expect(within(files).getByRole("table", { name: "配置文件" })).toBeVisible();
-    await user.click(within(files).getByRole("button", { name: "关闭文件管理" }));
+    await user.click(within(files).getByRole("button", { name: "关闭配置组成" }));
     expect(within(screen.getByLabelText("配置命令栏")).queryByRole("button", { name: /^更新来源/ })).not.toBeInTheDocument();
   });
 
@@ -794,7 +895,7 @@ describe("ProjectConfigurationWorkbench", () => {
     if (panel === "closed") expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
     const menu = await openSchemeMenu();
     expect(within(menu).getByRole("menuitemradio", { name: "默认配置" })).toHaveAttribute("aria-checked", "true");
-    expect(within(menu).getByRole("menuitem", { name: "文件管理" })).toBeEnabled();
+    expect(within(menu).getByRole("menuitem", { name: "配置组成" })).toBeEnabled();
     await userEvent.click(within(menu).getByRole("menuitemradio", { name: "alpha" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "配置" })).toHaveAttribute("data-value", "cs-alpha"));
     expect(screen.getByRole("button", { name: "配置" })).toHaveTextContent("alpha");
@@ -846,7 +947,7 @@ describe("ProjectConfigurationWorkbench", () => {
     }));
     const { onNavigate } = renderWorkbench({ syncSearch: true, search: "?configSet=cs-default&file=file-board&inspector=config-set",
       fileRepository: createFileRepository({ getSourceWorkflow }) });
-    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    const files = await screen.findByRole("dialog", { name: "配置组成" });
     await waitFor(() => expect(getSourceWorkflow).toHaveBeenCalledWith(PROJECT.id, "file-overlay"));
     expect(within(files).getByRole("table", { name: "配置文件" })).toBeVisible();
     expect(within(files).queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
@@ -856,13 +957,13 @@ describe("ProjectConfigurationWorkbench", () => {
     await userEvent.click(within(overlayRow).getByRole("button", { name: "charging-overlay.dtsi 更多" }));
     expect(screen.queryByRole("menuitem", { name: /从配置移除/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitem", { name: "版本历史与下载" }));
-    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "配置组成" })).not.toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "版本历史" })).toBeVisible();
     await waitFor(() => expect(onNavigate).toHaveBeenLastCalledWith(expect.stringMatching(/file=file-overlay.*inspector=versions/)));
     const reopened = await openSchemeFiles();
     const reopenedRow = within(reopened).getByRole("button", { name: "charging-overlay.dtsi" }).closest("tr")!;
     await userEvent.click(within(reopenedRow).getByRole("button", { name: "更新文件" }));
-    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "配置组成" })).not.toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "候选记录" })).toBeVisible();
     const target = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
     expect(target.get("file")).toBe("file-overlay");
@@ -882,12 +983,12 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(within(menu).queryByRole("menuitem", { name: "导出当前配置" })).not.toBeInTheDocument();
     expect(within(menu).queryByRole("menuitem", { name: "新建配置…" })).not.toBeInTheDocument();
     await userEvent.click(within(menu).getByRole("menuitem", { name: "查看文件" }));
-    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    const files = await screen.findByRole("dialog", { name: "配置组成" });
     expect(files).toHaveTextContent("只读");
     expect(within(files).queryByRole("button", { name: "更新文件" })).not.toBeInTheDocument();
     expect(within(files).queryByRole("button", { name: "添加文件" })).not.toBeInTheDocument();
     await userEvent.click(within(files).getByRole("button", { name: "charging-overlay.dtsi" }));
-    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "配置组成" })).not.toBeInTheDocument();
     await waitFor(() => expect(onNavigate).toHaveBeenLastCalledWith(expect.stringContaining("file=file-overlay")));
     const reopened = await openSchemeFiles();
     await userEvent.click(within(reopened).getByRole("button", { name: "charging-overlay.dtsi 更多" }));
@@ -2954,7 +3055,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const { onNavigate } = renderWorkbench({ syncSearch: true,
       search: "?configSet=cs-default&inspector=config-set"
     });
-    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    const files = await screen.findByRole("dialog", { name: "配置组成" });
     expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
     expect(files).toHaveTextContent("默认配置");
     expect(files).not.toHaveTextContent("default");
@@ -2962,9 +3063,9 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(within(files).getByRole("table", { name: "配置文件" }).closest("dl")).toBeNull();
     expect((await axe.run(files, { runOnly: ["definition-list", "dlitem"] })).violations).toEqual([]);
     expect(files).toBeVisible();
-    await userEvent.click(within(files).getByRole("button", { name: "关闭文件管理" }));
+    await userEvent.click(within(files).getByRole("button", { name: "关闭配置组成" }));
     await selectScheme("cs-alpha");
-    expect(screen.queryByRole("dialog", { name: "文件管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "配置组成" })).not.toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
     const latest = new URLSearchParams(String(onNavigate.mock.calls.at(-1)?.[0]).split("?")[1]);
     expect(latest.get("configSet")).toBe("cs-alpha");
@@ -2975,7 +3076,7 @@ describe("ProjectConfigurationWorkbench", () => {
     renderWorkbench({
       search: "?configSet=cs-default&inspector=config-set"
     });
-    await screen.findByRole("dialog", { name: "文件管理" });
+    await screen.findByRole("dialog", { name: "配置组成" });
     expect(screen.queryByRole("region", { name: "配置修订门禁" })).not.toBeInTheDocument();
   });
 
@@ -3364,14 +3465,14 @@ describe("ProjectConfigurationWorkbench", () => {
         expect.stringContaining("configSet=cs-board-a")
       )
     );
-    const files = await screen.findByRole("dialog", { name: "文件管理" });
+    const files = await screen.findByRole("dialog", { name: "配置组成" });
     expect(files).toBeVisible();
     const createdPath = onNavigate.mock.calls.map((call) => String(call[0]))
       .find((path) => path.includes("configSet=cs-board-a"))!;
     const createdQuery = new URLSearchParams(createdPath.split("?")[1]);
     expect(createdQuery.get("inspector")).toBe("config-set");
     for (const key of ["baseline", "candidate", "sourceMode"]) expect(createdQuery.has(key)).toBe(false);
-    await userEvent.click(within(files).getByRole("button", { name: "关闭文件管理" }));
+    await userEvent.click(within(files).getByRole("button", { name: "关闭配置组成" }));
 
     await openCreateConfigSetDialog();
     fireEvent.change(screen.getByLabelText("配置名称"), { target: { value: "Board-A" } });
@@ -3440,7 +3541,7 @@ describe("ProjectConfigurationWorkbench", () => {
 
     const files = await openSchemeFiles();
     expect(within(files).getByRole("table", { name: "配置文件" })).toHaveTextContent("notes.json");
-    expect(within(files).getByRole("button", { name: "关闭文件管理" })).toBeInTheDocument();
+    expect(within(files).getByRole("button", { name: "关闭配置组成" })).toBeInTheDocument();
     await userEvent.click(within(files).getByRole("button", { name: "aurora-board.dts 更多" }));
     const remove = await screen.findByRole("menuitem", { name: "从配置移除" });
     await waitFor(() => expect(remove).toBeEnabled());
@@ -3758,7 +3859,7 @@ describe("ProjectConfigurationWorkbench", () => {
 
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "待分配项目文件" })).toHaveTextContent("notes.json");
-    expect(screen.getByText(/仅管理员可变更配置文件、同步或导出/)).toBeInTheDocument();
+    expect(screen.queryByText(/仅管理员可变更配置文件、同步或导出/)).not.toBeInTheDocument();
     const schemes = await openSchemeMenu();
     expect(within(schemes).queryByRole("menuitem", { name: "新建配置…" })).not.toBeInTheDocument();
     expect(within(schemes).queryByRole("menuitem", { name: "导出当前配置" })).not.toBeInTheDocument();

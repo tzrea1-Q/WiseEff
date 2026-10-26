@@ -617,10 +617,17 @@ test.describe("Issue 897 canonical module ownership", () => {
     const priorEtag = priorPlacement.headers().etag;
     expect(priorEtag).toMatch(/^".+:\d+"$/);
     await driver.getByRole("button", { name: "调整归属：acme,power", exact: true }).click();
-    const placementImpact = page.getByRole("dialog", { name: "调整放置", exact: true }).getByRole("status");
-    await expect(placementImpact).toHaveText("本主体 121 个有效定义、1 个参数绑定、1 个项目，从 Issue 897 Modules / Input hardware → Issue 897 Modules / Input hardware。仅调整归属，不改参数值。");
+    const placementImpact = page.getByRole("dialog", { name: "调整放置", exact: true }).getByRole("status", { name: "当前主体与去向", exact: true });
+    const expectPlacementImpact = async (destination: string) => {
+      await expect(placementImpact.getByRole("heading", { name: "当前主体 acme,power", exact: true })).toBeVisible();
+      await expect(placementImpact.getByText("121 个有效定义、1 个参数绑定、1 个项目", { exact: true })).toBeVisible();
+      await expect(placementImpact.getByText("当前归属", { exact: true }).locator("..").getByRole("definition")).toHaveText("Issue 897 Modules / Input hardware");
+      await expect(placementImpact.getByText("调整至", { exact: true }).locator("..").getByRole("definition")).toHaveText(destination);
+      await expect(placementImpact.getByText("仅调整归属，不改参数值。", { exact: true })).toBeVisible();
+    };
+    await expectPlacementImpact("Issue 897 Modules / Input hardware");
     await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-driver-b");
-    await expect(placementImpact).toHaveText("本主体 121 个有效定义、1 个参数绑定、1 个项目，从 Issue 897 Modules / Input hardware → Issue 897 Modules / Output hardware。仅调整归属，不改参数值。");
+    await expectPlacementImpact("Issue 897 Modules / Output hardware");
     await page.screenshot({ path: info.outputPath("canonical-placement-impact.png"), animations: "disabled" });
     await page.getByRole("button", { name: "继续确认", exact: true }).click();
     await page.getByRole("checkbox", { name: "我已确认放置选择与当前目录发布" }).check();
@@ -896,7 +903,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/modules`);
     await page.getByRole("tab", { name: "来源识别" }).click();
     const discovery = page.getByRole("region", { name: "来源识别结果" });
-    await expect(discovery.getByText(/历史兼容标识：vendor,old/)).toBeVisible();
+    await expect(discovery.getByText(/历史 compatible 标识：vendor,old/)).toBeVisible();
     const unavailable = discovery.locator(".canonical-driver-discovery__item").filter({ has: page.getByText("obs_sim_1", { exact: true }) });
     await expect(unavailable.getByText("来源不可用，暂不能处理此记录。", { exact: true })).toBeVisible();
     await unavailable.locator("summary").click();

@@ -11,12 +11,12 @@ import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { parseDts, parseDtsValue, renderDtsValue, type DtsDocument, type DtsPropertyCst } from "../dts";
-import { resolveDtsConfigSet } from "../dts/configSetResolver";
+import { resolveDtsConfigSetAsync } from "../dts/configSetResolver";
 import { ensureOverlayProperty } from "../parameter-topology/overlayWriteback";
 import { canonicalizeLogicalNodeCompatible, resolveEnablementWriteLock, verifyEnablementWriteLock } from "../parameter-topology/writeLock";
 import { getChangeRequestEnablementWriteLock } from "../parameter-drafts/repository";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
-import { insertFileVersion } from "./repository";
+import { assertProjectSourceWritable, insertFileVersion } from "./repository";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import { insertParameterFileCandidate } from "./candidateRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
@@ -33,9 +33,12 @@ import type { ConfigSetRole } from "./types";
 export type { CanonicalSourceBindingPin } from "../parameter-bindings/values";
 
 export type CanonicalSourceManifest = CanonicalValueSourcePin & {
+  preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
+  declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   members: Array<{
     memberId: string; fileId: string; fileVersionId: string; sourceName: string;
     format: "dts" | "json"; role: string; sortOrder: number; checksum: string; sizeBytes: number;
+    sharedReference?: import("./types").ConfigSetMemberFileDto["sharedReference"];
   }>;
 };
 
@@ -172,12 +175,15 @@ export async function loadCanonicalSourceSnapshot(
   if (!pin) throw new ApiError("CONFLICT", "Project value is missing an exact owned source pin.");
   const source = await loadExactSourceRevisionForProof(db, objectStore, pin);
   const files: Array<{ name: string; format: "dts" | "json"; versionNumber: number; content: string }> = [];
-  const manifest: CanonicalSourceManifest = { ...pin, members: [] };
+  const declared = source.revision.declaredBuildInputs;
+  const manifest: CanonicalSourceManifest = { ...pin, ...(source.revision.preprocessing ? { preprocessing: source.revision.preprocessing } : {}),
+    ...(Object.keys(declared.defines).length || JSON.stringify(declared.includeSearchPaths) !== JSON.stringify(source.revision.includeSearchPaths) ? { declaredBuildInputs: declared } : {}), members: [] };
   for (const member of source.members) {
     if (member.format === "json") parseJsonSource(member.bytes);
     files.push({ name: member.sourceName, format: member.format, versionNumber: member.versionNumber, content: member.content });
     const { id, fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes } = member;
-    manifest.members.push({ memberId: id, fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes });
+    manifest.members.push({ memberId: id, fileId, fileVersionId, sourceName, format, role, sortOrder, checksum, sizeBytes,
+      ...(member.sharedReference ? { sharedReference: member.sharedReference } : {}) });
   }
   return { manifest, files };
 }
@@ -212,7 +218,7 @@ async function assertPreparedDeletedAnchorsRemainAbsent(
 ) {
   const deleted = await loadDeletedSourceAnchors(db,input.manifest);
   const members = input.manifest.members;
-  const resolved = deleted.some((anchor) => anchor.format === "dts") ? resolveDtsConfigSet({
+  const resolved = deleted.some((anchor) => anchor.format === "dts") ? await resolveDtsConfigSetAsync({
     entryFile: input.manifest.entryFile!, includeSearchPaths: input.manifest.includeSearchPaths,
     overlayOrder: input.manifest.overlayOrder, requireExactOrigins: true,
     files: new Map(members.flatMap((member, index) => member.format === "dts" ? [[member.sourceName, {
@@ -319,6 +325,7 @@ export async function readPinnedDtsSourceChange(
   beforeText: string,
   afterText: string,
 ) {
+  await assertDtsStructuredOrigin(db, manifest.configRevisionId);
   const row = await loadPinnedDtsProperty(db, manifest);
   const before = parseDts(beforeText);
   const properties = dtsProperties(before);
@@ -339,6 +346,7 @@ export async function readPinnedDtsSourceBatchChanges(
   beforeText: string,
   afterText: string,
 ) {
+  for (const revisionId of new Set(manifests.map(manifest => manifest.configRevisionId))) await assertDtsStructuredOrigin(db, revisionId);
   const propertyPaths = (document: DtsDocument) => {
     const properties: Array<{ property: DtsPropertyCst; path: number[] }> = [];
     const visit = (node: DtsDocument["topLevel"][number], path: number[]) => {
@@ -437,6 +445,7 @@ export async function preparePinnedNodeEnablementSourceChange(
     const persisted = await getChangeRequestEnablementWriteLock(db, { organizationId: parameterOrganizationId(auth), requestId: input.changeRequestId });
     if (!persisted) throw new ApiError("CONFLICT", "Enablement request has no immutable source lock.");
     const lock = await resolveEnablementWriteLock(db, auth, { projectId: input.projectId, logicalNodeId: input.logicalNodeId, baseRevisionId: persisted.baseConfigRevisionId });
+    await assertProjectSourceWritable(db, lock.overlayFileId);
     if (lock.sourceFileVersionId !== persisted.sourceFileVersionId || lock.expectedChecksum !== persisted.expectedChecksum
       || lock.propertyOccurrenceId !== persisted.propertyOccurrenceId || lock.occurrenceSpan?.start !== persisted.occurrenceSpan?.start
       || lock.occurrenceSpan?.end !== persisted.occurrenceSpan?.end) {
@@ -519,7 +528,7 @@ export async function commitPinnedNodeEnablementSourceChange(
   const { source, member, after, cohort, invocation, attribution } = prepared;
   const bytes = Buffer.from(after);
   const checksum = createHash("sha256").update(bytes).digest("hex");
-  const stored = await objectStore.put({ organizationId: parameterOrganizationId(auth), fileName: `canonical-source-${randomUUID()}-${member.sourceName}`, contentType: "text/plain", bytes });
+  const stored = await objectStore.put({ organizationId: parameterOrganizationId(auth), fileName: `canonical-source-${randomUUID()}.dts`, contentType: "text/plain", bytes });
   if (stored.checksumSha256 !== checksum || stored.fileSizeBytes !== bytes.length) throw new ApiError("CONFLICT", "Prepared object metadata disagrees with the source.");
   const version = await insertFileVersion(db, { id: randomUUID(), fileId: member.fileId, versionNumber: 0, storageKey: stored.storageKey,
     checksum, sizeBytes: bytes.length, parsedIndex: buildDtsParsedIndex(after), origin: "writeback", attribution });
@@ -594,6 +603,7 @@ export async function commitPinnedNodeEnablementSourceChange(
 
 /** Reproduce the exact pinned-span removal, preserving all non-target bytes. */
 export async function validatePinnedDtsSourceDeletion(db: Queryable, manifest: CanonicalSourceManifest, beforeText: string, afterText: string) {
+  await assertDtsStructuredOrigin(db, manifest.configRevisionId);
   const row = await loadPinnedDtsProperty(db, manifest);
   const before = parseDts(beforeText);
   const properties = dtsProperties(before);
@@ -606,6 +616,12 @@ export async function validatePinnedDtsSourceDeletion(db: Queryable, manifest: C
   });
   if (afterText !== expected) throw new ApiError("CONFLICT", "DTS deletion changed bytes outside its exact pinned property.");
   parseDts(afterText);
+}
+
+/** Macro definitions can have many consumers; structured writes never guess their target. */
+async function assertDtsStructuredOrigin(db: Queryable, revisionId: string) {
+  const row = (await db.query<{ preprocessing: unknown }>("select preprocessing from public.dts_config_revisions where id=$1", [revisionId])).rows[0];
+  if (row?.preprocessing) throw new ApiError("CONFLICT", "此来源使用宏或条件编译，不能通过旧式属性写回猜测修改位置。请打开原始源码编辑器修正，或在项目中添加明确的本地覆盖。", { reason: "expanded-source-requires-original-edit" });
 }
 
 /** Prepare only. The caller owns the audited transaction; no current pointer moves. */
@@ -726,6 +742,7 @@ export async function preparePinnedSourceChange(
     throw new ApiError("CONFLICT", "Source cohort changed during preparation.");
   }
   const sourceIndex = manifest.members.findIndex((member) => member.fileId === manifest.fileId && member.fileVersionId === manifest.fileVersionId);
+  await assertProjectSourceWritable(db, manifest.fileId);
   const source = files[sourceIndex]!;
   const base = Buffer.from(source.content);
   let patched: Buffer;
@@ -762,7 +779,7 @@ export async function preparePinnedSourceChange(
   const proposedDigest = createHash("sha256").update(patched).digest("hex");
   const diff = { before: source.content, after: patched.toString(), sourcePinId: manifest.sourcePinId, bindings };
   const diffDigest = createHash("sha256").update(serializeContract(diff)).digest("hex");
-  const stored = await objectStore.put({ organizationId: parameterOrganizationId(auth), fileName: `canonical-source-${randomUUID()}-${source.name}`, contentType: manifest.format === "json" ? "application/json" : "text/plain", bytes: patched });
+  const stored = await objectStore.put({ organizationId: parameterOrganizationId(auth), fileName: `canonical-source-${randomUUID()}.${manifest.format}`, contentType: manifest.format === "json" ? "application/json" : "text/plain", bytes: patched });
   if (stored.checksumSha256 !== proposedDigest || stored.fileSizeBytes !== patched.length) throw new ApiError("CONFLICT", "Prepared object metadata disagrees with the source.");
   const candidate = await insertParameterFileCandidate(db, {
     id: randomUUID(), organizationId: parameterOrganizationId(auth), projectId: input.projectId,

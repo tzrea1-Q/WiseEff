@@ -169,7 +169,7 @@ describe("createConfigSetOpsSession", () => {
     expect(session.lastError).toContain("未同步参数或创建审核请求");
     expect(session.lastError).not.toContain("Canonical source");
     if (reason === "source-membership-drift") {
-      expect(session.lastError).toContain("文件管理 → 更新文件");
+      expect(session.lastError).toContain("配置组成 → 更新文件");
       expect(session.lastError).not.toContain("页面顶部「上传候选」");
     }
   });

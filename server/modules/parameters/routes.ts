@@ -21,6 +21,7 @@ import {
   getProjectInitializationStatus,
   listPendingReviews,
   previewSnapshot,
+  previewCompleteProjectCopy,
   rejectReview,
   submitDraft,
   upsertDraft
@@ -752,7 +753,7 @@ export function registerParameterRoutes(
           effectiveValue: snapshot.effectiveValue as unknown
         }))
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId, objectStore: options.objectStore }
     );
     return { status: 200, body: { item } };
   });
@@ -775,6 +776,16 @@ export function registerParameterRoutes(
       selectedRisks: body.selectedRisks
     });
     return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/parameters/projects/:projectId/initialization/copy-preview", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(previewInitializationSnapshotBodySchema, request.body);
+    if (!options.objectStore) throw new ApiError("CONFLICT", "Source storage is unavailable.");
+    return { status: 200, body: await previewCompleteProjectCopy(db, options.objectStore, auth, {
+      projectId: params.projectId, ...body, supplementSourceProjectIds: body.supplementSourceProjectIds ?? [] }) };
   });
 
   router.post("/api/v1/parameters/projects/:projectId/initialization/submit", async (request) => {

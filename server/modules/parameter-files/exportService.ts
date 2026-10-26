@@ -1,5 +1,15 @@
 import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { type ConfigSetSourcePackage } from "../contracts/dtoSchemas/configSetPackage";
+import { loadSharedDtsiClosure, composeDtsBuildInputs } from "../shared-dtsi/dependencies";
+import { loadSourceBindingCohort, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { rethrowSourceTransactionError } from "./sourceVersion";
+import { loadCanonicalSourceSnapshot } from "./canonicalSource";
+import { loadSnapshot } from "./sourceRevisionService";
+import { CatalogSubjectId } from "../parameter-catalog-contract";
+import type { CatalogSnapshot } from "../catalog-kernel/interface";
 
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { withAuditedWrite } from "../audit/auditedWrite";
@@ -11,6 +21,7 @@ import { canAdminParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { loadConfigSetSnapshot } from "./configSetSnapshot";
+import { createDtsToolchainRunner } from "./dtsToolchain";
 import { getConfigSetById } from "./configSetRepository";
 import {
   createSubprocessDtcValidator,
@@ -19,7 +30,7 @@ import {
   type ValidationMode
 } from "./dtcValidator";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
-import type { ConfigSetRole, ParameterFileFormat } from "./types";
+import type { ConfigSetRole, ParameterFileFormat, ConfigSetMemberFileDto } from "./types";
 
 export type ExportServiceContext = AuditCorrelationContext;
 
@@ -32,6 +43,8 @@ export type ExportFileResult = {
 };
 
 export type ExportConfigSetManifestMember = {
+  sharedReference?: ConfigSetMemberFileDto["sharedReference"];
+  fileVersionId?: string;
   fileId: string;
   fileName: string;
   role: ConfigSetRole;
@@ -41,6 +54,12 @@ export type ExportConfigSetManifestMember = {
 };
 
 export type ExportConfigSetManifest = {
+  sourcePackage?: ConfigSetSourcePackage;
+  preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
+  declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
+  entryFile?: string | null;
+  includeSearchPaths?: string[];
+  overlayOrder?: string[];
   configSetId: string;
   name: string;
   projectId: string;
@@ -72,6 +91,8 @@ export type ExportFileDeps = {
 export type ExportConfigSetDeps = {
   objectStore: ObjectStore;
   validator?: DtcValidator;
+  /** Server-owned Catalog pin when the caller supplies a transaction handle. */
+  snapshot?: CatalogSnapshot;
 };
 
 function requireParameterFileAdmin(auth: AuthContext) {
@@ -212,14 +233,19 @@ export async function exportConfigSet(
   }
 
   const snapshot = await loadConfigSetSnapshot(db, deps.objectStore, configSetId);
+  if (snapshot.skipped.length) throw new ApiError("CONFLICT", "配置包含没有当前源码的文件，请修复后重新导出。");
+  const hasSharedReferences = snapshot.members.some(member => member.sharedReference);
   const manifestMembers: ExportConfigSetManifestMember[] = [];
   const files: ExportConfigSetFile[] = [];
   const dtsFilesForValidation: Array<{ name: string; content: string }> = [];
 
   for (const member of snapshot.members) {
-    const content = formatExportedContent(member.format, member.content);
+    const content = member.content;
+    const sourceName = snapshot.sourceMembers?.find(row => row.fileId === member.fileId)?.sourceName ?? member.fileName;
 
     manifestMembers.push({
+      ...(member.sharedReference ? { sharedReference: member.sharedReference } : {}),
+      ...(hasSharedReferences ? { fileVersionId: member.versionId } : {}),
       fileId: member.fileId,
       fileName: member.fileName,
       role: member.role,
@@ -229,22 +255,66 @@ export async function exportConfigSet(
     });
 
     files.push({
-      name: member.fileName,
+      name: sourceName,
       format: member.format,
       content
     });
 
     if (member.format === "dts") {
-      dtsFilesForValidation.push({ name: member.fileName, content });
+      dtsFilesForValidation.push({ name: sourceName, content });
     }
   }
 
   const validator = deps.validator ?? createSubprocessDtcValidator();
   const mode = readDtsValidationMode();
-  const validation = await validator.validate(dtsFilesForValidation, { mode });
+  const complete = (hasSharedReferences || snapshot.preprocessing || snapshot.sourceMembers) && snapshot.entryFile ? await createDtsToolchainRunner().validate({entryFile:snapshot.entryFile,
+    includeSearchPaths:snapshot.includeSearchPaths,defines:snapshot.preprocessing?.defines,overlayOrder:snapshot.overlayOrder,
+    formerRootOverlayFiles:snapshot.formerRootOverlayFiles,
+    files:new Map(dtsFilesForValidation.map(file=>[file.name,{content:file.content}]))},{mode:mode==="block"?"release":mode}) : null;
+  const validation = complete ? {ok:complete.ok,mode,compiler:complete.compiler.dtc?"dtc" as const:"unavailable" as const,diagnostics:complete.diagnostics}
+    : await validator.validate(dtsFilesForValidation, { mode });
   const requiresConfirmation = computeRequiresConfirmation(validation);
 
+  const loadReferences = async (reader: Queryable) => (await reader.query<{ resourceId: string; versionId: string; mountPath: string }>(`select resource_id as "resourceId",revision_id as "versionId",mount_path as "mountPath"
+    from public.project_shared_dtsi_references where organization_id=$1 and project_id=$2 and config_set_id=$3 and is_direct order by created_at,id`,
+    [parameterOrganizationId(auth),configSet.projectId,configSetId])).rows;
+  const references = await loadReferences(db);
+  const resources = await loadSharedDtsiClosure(db as Database, auth, references);
+  const declaredBuildInputs = snapshot.declaredBuildInputs ?? {includeSearchPaths:snapshot.includeSearchPaths,defines:snapshot.preprocessing?.defines??{}};
+  const jsonSources: ConfigSetSourcePackage["jsonSources"] = [];
+  let catalog: Awaited<ReturnType<typeof loadSnapshot>> | undefined;
+  const scope = {organizationId:parameterOrganizationId(auth),projectId:configSet.projectId,configSetId};
+  const bindings = await loadSourceBindingCohortReadOnly(db, scope);
+  for (const binding of bindings) {
+    const pin = await loadOwnedProjectValueSourcePin(db,{organizationId:parameterOrganizationId(auth),projectId:configSet.projectId,bindingId:binding.bindingId,projectValueId:binding.oldValueId});
+    if (pin?.format !== "json") continue;
+    catalog ??= await loadSnapshot(db,deps.snapshot);
+    const {manifest} = await loadCanonicalSourceSnapshot(db,deps.objectStore,{organizationId:parameterOrganizationId(auth),projectId:configSet.projectId,
+      bindingId:binding.bindingId,projectValueId:binding.oldValueId});
+    if (manifest.format !== "json") continue;
+    const sourceName = manifest.members.find(row=>row.fileId===manifest.fileId)!.sourceName;
+    const subject = manifest.configurationSchemaSubjectId && catalog?.getSubject(CatalogSubjectId(manifest.configurationSchemaSubjectId));
+    const pointer = (manifest.locator as Record<string,unknown>).pointer;
+    if (!subject || subject.status!=="found" || subject.subject.kind!=="configuration-schema" || typeof pointer!=="string")
+      throw new ApiError("CONFLICT","JSON 来源缺少当前可验证的配置模型，请先修复来源再导出。");
+    let source = jsonSources.find(row=>row.sourceName===sourceName && row.rootPointer===(manifest.rootPointer??"") && row.configurationSchemaId===subject.subject.canonicalKey);
+    if (!source) { source={sourceName,rootPointer:manifest.rootPointer??"",configurationSchemaId:String(subject.subject.canonicalKey),mappings:[]};jsonSources.push(source); }
+    source.mappings.push({definitionId:manifest.definitionId,pointer});
+  }
+  const sourcePackage: ConfigSetSourcePackage = {schemaVersion:"wiseeff-config-set/v1",entryFile:snapshot.entryFile,
+    includeSearchPaths:snapshot.includeSearchPaths,overlayOrder:snapshot.overlayOrder,formerRootOverlayFiles:snapshot.formerRootOverlayFiles??[],declaredBuildInputs,
+    resolvedBuildInputs:composeDtsBuildInputs(declaredBuildInputs,resources),...(snapshot.preprocessing?{preprocessing:snapshot.preprocessing}:{}),
+    members:snapshot.members.map((member,index)=>({sourceName:files[index]!.name,format:member.format,
+      role:snapshot.sourceMembers?.find(row=>row.fileId===member.fileId)?.role??member.role,sortOrder:member.sortOrder,
+      checksum:`sha256:${createHash("sha256").update(member.content).digest("hex")}`,
+      ...(member.sharedReference?{shared:{resourceId:member.sharedReference.resourceId,versionId:member.sharedReference.versionId,memberId:member.sharedReference.memberId}}:{})})),
+    sharedClosure:resources.map(resource=>({resourceId:resource.resourceId,versionId:resource.versionId,mountPath:resource.mountPath,
+      direct:resource.direct,digest:resource.digest,manifest:resource.item.manifest})),jsonSources};
+
   const manifest: ExportConfigSetManifest = {
+    sourcePackage,
+    ...(hasSharedReferences || snapshot.preprocessing ? { entryFile: snapshot.entryFile, includeSearchPaths: snapshot.includeSearchPaths, overlayOrder: snapshot.overlayOrder,
+      ...(snapshot.preprocessing?{preprocessing:snapshot.preprocessing}:{}),...(snapshot.declaredBuildInputs?{declaredBuildInputs:snapshot.declaredBuildInputs}:{}) } : {}),
     configSetId: configSet.id,
     name: configSet.name,
     projectId: configSet.projectId,
@@ -257,6 +327,20 @@ export async function exportConfigSet(
     },
     members: manifestMembers
   };
+
+  // Object reads and compilation await outside the source locks. Refuse a
+  // package if its original bytes, build inputs, references or JSON pins moved.
+  try { await db.transaction(async tx => {
+    await tx.query(`select id from public.dts_config_set where organization_id=$1 and project_id=$2 and id=$3 for share nowait`,
+      [scope.organizationId,scope.projectId,configSetId]);
+    await tx.query(`select id from public.project_parameter_files where organization_id=$1 and project_id=$2 and config_set_id=$3 order by id for share nowait`,
+      [scope.organizationId,scope.projectId,configSetId]);
+    const currentBindings = await loadSourceBindingCohort(tx,scope);
+    if (!isDeepStrictEqual(snapshot,await loadConfigSetSnapshot(tx,deps.objectStore,configSetId))
+      || !isDeepStrictEqual(references,await loadReferences(tx)) || !isDeepStrictEqual(bindings,currentBindings)) {
+      throw new ApiError("CONFLICT","配置来源在导出期间已变化，请重新导出。",{reason:"configuration-export-stale"});
+    }
+  }); } catch (error) { rethrowSourceTransactionError(error); }
 
   await writeExportAudit(
     db,

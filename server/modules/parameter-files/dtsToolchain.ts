@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { withEphemeralDanglingAnchorStub } from "../dts/danglingAnchorStub";
 import { lexDts } from "../dts/lexer";
 import { stripDtsComments } from "../dts/preprocess";
+import { DtsPreprocessingError, dtsPreprocessingInputDigest, pinnedDtsPreprocessor, prepareDtsSources, type DtsPreprocessingReceipt, type PreparedDtsSources } from "../dts/cppSources";
 
 export type DtsToolchainMode = "release" | "warn" | "off";
 
@@ -50,6 +51,7 @@ export type DtsToolchainArtifacts = {
   baseDtbSha256?: string;
   effectiveDtbSha256?: string;
   inputManifestSha256?: string;
+  preprocessing?: DtsPreprocessingReceipt;
 };
 
 export type DtsToolchainResult = {
@@ -66,6 +68,9 @@ export type DtsToolchainFile = {
 };
 
 export type DtsToolchainConfigSet = {
+  /** Operation-owned CPP; native compilation and schema validation still run. */
+  preparedSources?: PreparedDtsSources;
+  defines?: Readonly<Record<string, string>>;
   entryFile: string;
   includeSearchPaths?: string[];
   overlayOrder: string[];
@@ -483,6 +488,7 @@ function inputManifestHash(configSet: DtsToolchainConfigSet): string {
       entryFile: configSet.entryFile,
       overlayOrder: configSet.overlayOrder,
       includeSearchPaths: configSet.includeSearchPaths ?? [],
+      ...(configSet.defines && Object.keys(configSet.defines).length ? { defines: Object.fromEntries(Object.entries(configSet.defines).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) } : {}),
       ...(configSet.formerRootOverlayFiles?.length ? { formerRootOverlayFiles: [...configSet.formerRootOverlayFiles].sort() } : {}),
       files: entries
     })
@@ -514,7 +520,8 @@ function writeLogicalTree(rootDir: string, configSet: DtsToolchainConfigSet): Dt
       continue;
     }
     mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, file.content, "utf8");
+    // Mask the encoding marker only in ephemeral compiler input, retaining source offsets.
+    writeFileSync(abs, file.content.replace(/^\uFEFF/u, " "), "utf8");
   }
   return diagnostics;
 }
@@ -761,9 +768,28 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
 
       const tmpDir = tmpDirFactory();
       const diagnostics: DtsToolchainDiagnostic[] = [];
-      const compileConfigSet = withEphemeralOverlayFragmentWrap(
-        withEphemeralEntryCompileStub(configSet)
-      );
+      let compileConfigSet: DtsToolchainConfigSet;
+      try {
+        const sourceInput = { ...configSet, includeSearchPaths: configSet.includeSearchPaths ?? [],
+          files: new Map([...configSet.files].map(([name, file]) => [name, { ...file, fileVersionId: name }])) };
+        const supplied = configSet.preparedSources;
+        if (supplied) {
+          const pin = pinnedDtsPreprocessor();
+          if (supplied.receipt.inputDigest !== dtsPreprocessingInputDigest(sourceInput)
+            || supplied.receipt.image !== pin.image || supplied.receipt.platform !== pin.platform || supplied.receipt.compilerVersion !== pin.version) {
+            throw new DtsPreprocessingError("preprocess-stale", "预处理证明不属于当前冻结输入或固定工具链，请重新预览。", configSet.entryFile);
+          }
+        }
+        const prepared = supplied ?? await prepareDtsSources(sourceInput);
+        if (prepared) artifacts.preprocessing = prepared.receipt;
+        const semanticConfigSet = prepared ? { ...configSet, files: new Map([...configSet.files].map(([name, file]) =>
+          [name, { content: prepared.documents.get(name)?.text ?? file.content }])) } : configSet;
+        compileConfigSet = withEphemeralOverlayFragmentWrap(withEphemeralEntryCompileStub(semanticConfigSet));
+      } catch (error) {
+        rmSync(tmpDir, { recursive: true, force: true });
+        if (!(error instanceof DtsPreprocessingError)) throw error;
+        return failed(mode, "compile-failed", versions, [{ file: error.fileName, severity: "error", code: error.code, message: error.message, stage: "toolchain" }], artifacts);
+      }
 
       try {
         const pathDiagnostics = writeLogicalTree(tmpDir, compileConfigSet);

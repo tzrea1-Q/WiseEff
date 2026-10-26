@@ -186,7 +186,32 @@ export const S2_SCH_0287_FINGERPRINT =
 export const S2_SCH_0291_FINGERPRINT =
   "225e57040eb9c2b1939e103f61db72cb5dc487d7286b1adb2b68b55676bd95a0";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0291_FINGERPRINT;
+/** Fresh PostgreSQL through 0298 with native shared-source composition; 0297 CPP
+ * is not present in this measured variant. Historical pins remain unchanged. */
+export const S2_SCH_0298_NATIVE_FINGERPRINT =
+  "aefc22641fbdc54e2c21366e675deeb973b267fb9cb0c9b8c5d0aff8a0576397";
+
+/** Fresh PostgreSQL through 0304 includes the exact frozen shared-reference
+ * switch exception in the pinned-file guard. Earlier literal pins stay fixed. */
+export const S2_SCH_0304_FINGERPRINT =
+  "6df59e65136c9b369f6b7906c43718dddff41f1022d545f1fee023fe9413ca5a";
+
+/** Fresh PostgreSQL through 0309 includes 0308's exact absence-member FK
+ * projection. All earlier measured schema fingerprints remain immutable. */
+export const S2_SCH_0308_FINGERPRINT =
+  "49903364f8405e6c24211f3885457ca81e065d51eedec89b5de6a47c8573f840";
+
+/** Fresh PostgreSQL through 0310 adds the exact unchanged private-conversion
+ * receipt; the 0308 absence projection and all earlier pins remain unchanged. */
+export const S2_SCH_0310_FINGERPRINT =
+  "89c7e52fa5772733741c7bfdc184d5c372cd78b0208fc04ccc77c2403fbf515f";
+
+/** Fresh PostgreSQL through 0314 checks historical shared composition against
+ * its exact applied manifest. Every earlier measured literal remains fixed. */
+export const S2_SCH_0314_FINGERPRINT =
+  "72506760cd47ccd5b0c27d2036703cb2fec1827d8cbec37d26bfdb56b92dd5bf";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0314_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

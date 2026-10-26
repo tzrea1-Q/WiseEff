@@ -33,6 +33,7 @@ export type WorkbenchCommandBarProps = {
   pendingAction: string | null;
   onOpenActivity: () => void;
   onExportConfigSet: () => void;
+  onImportPackage?: () => void;
   onSyncFile: () => void;
   syncLabel: string;
   syncBlocked: boolean;
@@ -45,7 +46,7 @@ export function WorkbenchCommandBar({
   primaryAction, project, onLeave, configSets, selectedConfigSet, configSetsLoading,
   configSetsError, onSelectConfigSet, canAdmin, canSyncFile, onInspectorToggle,
   onOpenInspector, candidateFileInputRef, onCandidateFileChange,
-  pendingAction, onOpenActivity, onExportConfigSet,
+  pendingAction, onOpenActivity, onExportConfigSet, onImportPackage,
   onCreateConfigSet, onSyncFile, syncLabel, syncBlocked,
   createConfigSetOpen: controlledCreateOpen, onCreateConfigSetOpenChange
 }: WorkbenchCommandBarProps) {
@@ -63,7 +64,7 @@ export function WorkbenchCommandBar({
   const openDetails = (level: InspectorLevel) => onOpenInspector ? onOpenInspector(level) : onInspectorToggle();
   return <>
     <header className="configuration-workbench__command" aria-label="配置命令栏">
-      <Button type="button" variant="ghost" size="sm" onClick={onLeave}><ChevronLeft aria-hidden="true" />项目清单</Button>
+      <Button type="button" variant="ghost" size="sm" onClick={onLeave}><ChevronLeft aria-hidden="true" />{canAdmin ? "项目清单" : "项目参数"}</Button>
       <strong className="configuration-workbench__project" title={project.name}>{project.name}</strong>
       <div className="configuration-workbench__config-select">
         <DropdownMenu.Root modal={false}>
@@ -94,8 +95,10 @@ export function WorkbenchCommandBar({
               {canAdmin ? <DropdownMenu.Item className="row-action-menu__item button-size-sm"
                 disabled={pendingAction !== null}
                 onSelect={() => { schemeTriggerRef.current?.focus(); setNameError(""); setCreateOpen(true); }}><Plus aria-hidden="true" />新建配置…</DropdownMenu.Item> : null}
+              {canAdmin && onImportPackage ? <DropdownMenu.Item className="row-action-menu__item button-size-sm" disabled={pendingAction !== null}
+                onSelect={() => { schemeTriggerRef.current?.focus(); onImportPackage(); }}>导入完整配置…</DropdownMenu.Item> : null}
               {selectedConfigSet ? <DropdownMenu.Item className="row-action-menu__item button-size-sm"
-                onSelect={() => { schemeTriggerRef.current?.focus(); openDetails("config-set"); }}><FolderOpen aria-hidden="true" />{canAdmin ? "文件管理" : "查看文件"}</DropdownMenu.Item> : null}
+                onSelect={() => { schemeTriggerRef.current?.focus(); openDetails("config-set"); }}><FolderOpen aria-hidden="true" />{canAdmin ? "配置组成" : "查看文件"}</DropdownMenu.Item> : null}
               {canAdmin && selectedConfigSet ? <DropdownMenu.Item className="row-action-menu__item button-size-sm"
                 disabled={pendingAction !== null}
                 onSelect={onExportConfigSet}><Download aria-hidden="true" />{pendingAction === "export-config-set" ? "正在导出…" : "导出当前配置"}</DropdownMenu.Item> : null}

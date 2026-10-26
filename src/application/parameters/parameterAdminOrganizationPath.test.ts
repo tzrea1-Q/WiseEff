@@ -11,6 +11,11 @@ import {
 } from "./parameterAdminOrganizationPath";
 
 describe("parameterAdminOrganizationPath · organization peers", () => {
+  it("recognizes the shared source library without inventing nested source routes", () => {
+    expect(parseParameterAdminOrganizationPath("/parameter-admin/sources")).toBe("sources");
+    expect(parseParameterAdminOrganizationPath("/parameter-admin/sources/other")).toBeNull();
+    expect(buildParameterAdminOrganizationPath("sources", "resource=draft")).toBe("/parameter-admin/sources?resource=draft");
+  });
   it("maps specs and nested identity-mapping to the specs organization view", () => {
     expect(parseParameterAdminOrganizationPath("/parameter-admin/specs")).toBe("specs");
     expect(parseParameterAdminOrganizationPath("/parameter-admin/specs/identity-mapping")).toBe(

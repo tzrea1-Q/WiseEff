@@ -101,6 +101,7 @@ export type DtsConfigSetFile = {
 };
 
 export type DtsConfigSetMemberFile = DtsConfigSetFile & {
+  sharedReference?: { referenceId: string; resourceId: string; versionId: string; version: number; memberId: string; digest: string; readOnly: true; direct?:boolean };
   fileName: string;
   format: "dts" | "json";
   currentVersionId?: string;
@@ -249,6 +250,7 @@ export type DtsRestorePreviewResult = {
     members: Array<{ fileId: string; fileName: string; fromVersionId: string | null; toVersionId: string; versionNumber: number;
       role: string; sortOrder: number; action: "restore" | "reattach" | "retain-added" | "unchanged"; compositionChanged: boolean }>;
     entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[];
+    sharedDependencies?: Array<{ resourceId: string; name: string; beforeVersion: number | null; targetVersion: number; mountPath: string }>;
     impact: { parameterChanges: number; retainedBindings: number; restoredBindings: number; sourceReplacements: number };
   };
 };
@@ -284,6 +286,7 @@ export type DtsExportConfigSetManifestMember = {
 };
 
 export type DtsExportConfigSetManifest = {
+  sourcePackage?: import("@wiseeff/dto-schemas").ConfigSetSourcePackage;
   configSetId: string;
   name: string;
   projectId: string;

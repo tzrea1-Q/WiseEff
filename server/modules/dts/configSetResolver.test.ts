@@ -30,6 +30,13 @@ function loadFixtureDir(name: string): Map<string, DtsConfigSetFile> {
 }
 
 describe("resolveDtsConfigSet", () => {
+  it("reports malformed source rather than returning an empty successful graph",()=>{
+    const result=resolveDtsConfigSet({entryFile:"broken.dts",includeSearchPaths:[],overlayOrder:[],files:new Map([
+      ["broken.dts",{fileVersionId:"broken",content:"/ { value = %; };"}]
+    ])});
+    expect(result.effective.nodesByLocator.size).toBe(0);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "source-syntax", severity: "error" }));
+  });
   it("bounds repeated locator metadata even when source bytes are small", () => {
     const properties = Array.from({ length: 1000 }, (_, index) => `p${index};`).join(" ");
     const result = resolveDtsConfigSet({ entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [], requireExactOrigins: true,
@@ -178,6 +185,17 @@ describe("resolveDtsConfigSet", () => {
     ]);
   });
 
+  it("locates the overlay declaration when its body crosses included source segments", () => {
+    const result = resolveDtsConfigSet({ entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [], requireExactOrigins: true,
+      files: new Map([
+        ["board.dts", { fileVersionId: "board-v1", content: '/dts-v1/;\n/include/ "overlay.dtsi"\n/ {};\n' }],
+        ["overlay.dtsi", { fileVersionId: "overlay-v1", content: '&missing_target {\n/include/ "properties.dtsi"\n};\n' }],
+        ["properties.dtsi", { fileVersionId: "properties-v1", content: "value = <7>;\n" }],
+      ]),
+    });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "dangling-reference", fileName: "overlay.dtsi", offset: 0 })]);
+  });
+
   it("applies /delete-property/ and /delete-node/ with delete provenance", () => {
     const result = resolveDtsConfigSet({
       entryFile: "board.dts",
@@ -202,6 +220,32 @@ describe("resolveDtsConfigSet", () => {
     const sub = result.effective.nodesByLocator.get("/charger/sub");
     expect(sub?.deleted).toBe(true);
     expect(sub?.sourceChain.some((e) => e.effect === "delete" && e.fileName === "overlay.dtso")).toBe(true);
+  });
+
+  it("deletes the complete node subtree and retains the exact original deletion directive", () => {
+    const overlay = '&{/} { /delete-node/ parent; };';
+    const result = resolveDtsConfigSet({ entryFile: "board.dts", includeSearchPaths: [], overlayOrder: ["local.dtso"],
+      files: new Map([["board.dts", { fileVersionId: "base-v1", content: '/dts-v1/; / { parent { child {}; }; sibling {}; };' }],
+        ["local.dtso", { fileVersionId: "local-v2", content: overlay }]]) });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.effective.nodesByLocator.get("/parent/child")?.deleted).toBe(true);
+    expect(result.effective.nodesByLocator.get("/sibling")?.deleted).toBe(false);
+    expect(result.effective.nodesByLocator.get("/parent")?.sourceChain.at(-1)).toMatchObject({ effect: "delete",
+      origin: { fileVersionId: "local-v2", start: overlay.indexOf("/delete-node/"), end: overlay.indexOf(";") + 1 } });
+  });
+
+  it("redeclares only the deleted node with fresh properties and labels while keeping its deletion history", () => {
+    const source = '/dts-v1/; / { old_label: parent { old = <1>; child { value = <2>; }; }; }; &{/} { /delete-node/ parent; }; / { fresh_label: parent { fresh = <3>; }; };';
+    const result = resolveDtsConfigSet({ entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [],
+      files: new Map([["board.dts", { fileVersionId: "v1", content: source }]]) });
+    expect(result.diagnostics).toEqual([]);
+    const parent = result.effective.nodesByLocator.get("/parent")!;
+    expect(parent.deleted).toBe(false);
+    expect([...parent.properties.keys()]).toEqual(["fresh"]);
+    expect(parent.labels).toEqual(["fresh_label"]);
+    expect(parent.sourceChain.map(entry => entry.effect)).toEqual(["create", "delete", "create"]);
+    expect(parent.sourceChain[1]?.origin?.fileVersionId).toBe("v1");
+    expect(result.effective.nodesByLocator.get("/parent/child")?.deleted).toBe(true);
   });
 
   it("applies overlays in overlayOrder with ordered override provenance", () => {

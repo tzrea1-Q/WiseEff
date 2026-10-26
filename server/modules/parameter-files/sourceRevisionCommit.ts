@@ -26,6 +26,7 @@ import { assertSourceRevisionWriteAllowed, freezeSourceRevisionRequest, inspectS
 import type { CanonicalSourceSecurityContext } from "./canonicalSource";
 import { applySourceRestoration } from "./sourceRestoration";
 import type { DtsToolchainRunner } from "./dtsToolchain";
+import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
 
 function conflict(message: string): never { throw new ApiError("CONFLICT", message, { reason: "source-revision-stale" }); }
 
@@ -41,7 +42,7 @@ type RequestRow = { id: string; status: string; submitter_user_id: string; assig
 export async function commitSourceRevision(tx: Database, storage: ObjectStore, auth: AuthContext, snapshot: CatalogSnapshot | null,
   input: { projectId: string; requestId: string; invocation: TrustedInvocationContext; traceId: string;
     refusalSink: TrustedRefusalAuditSink; note?: string | null; catalogSnapshots?: ReadonlyMap<string, CatalogSnapshot>;
-    applicationMode?: "administrator_direct"; toolchain?: DtsToolchainRunner }
+    applicationMode?: "administrator_direct"; toolchain?: DtsToolchainRunner;producerRoot?:Database }
 ): Promise<{ requestId: string; status: "approved"; sourceRevisionProofDigest: string }> {
   const security = { invocation: input.invocation, requestId: input.traceId, refusalSink: input.refusalSink };
   await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "whole DTS source revision apply",
@@ -106,7 +107,9 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
   const version = await insertFileVersion(tx, { id: randomUUID(), fileId: frozen.fileId, versionNumber: 0,
     storageKey: candidate.storageKey, checksum: candidate.checksum, sizeBytes: candidateBytes.length,
     parsedIndex: candidate.parsedIndex, origin: "writeback", attribution });
-  await ingestDtsFileVersion(tx, version.id, inspected.after);
+  await ingestDtsFileVersion(tx, version.id, inspected.after,
+    inspected.preprocessing?.originalDocuments.get(frozen.members.find(member => member.fileId === frozen.fileId)!.sourceName),
+    inspected.configNodePaths);
   const members = [];
   for (const member of frozen.members) {
     let content = inspected.after;
@@ -121,6 +124,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       role: member.role as ConfigRevisionMemberRole, sortOrder: member.sortOrder, content });
   }
   const revision = await ingestConfigRevisionInTransaction(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
+    preprocessing: frozen.preprocessing, declaredBuildInputs: frozen.declaredBuildInputs,
     configSetId: frozen.configSetId, entryFile: frozen.entryFile, includeSearchPaths: frozen.includeSearchPaths,
     overlayOrder: frozen.overlayOrder, members }, auth, { createdByUserId: attribution.userId, domain: attribution },
     { reviewedSource: frozen.continuity });
@@ -155,7 +159,8 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     const target = frozen.targets.find((row) => row.bindingId === entry.bindingId);
     if (entry.format === "json" && target) conflict("A DTS source edit cannot mutate an unchanged JSON parameter.");
     const deleted = target?.action === "delete";
-    const property = observed.find((row) => row.logicalNodeId === entry.logicalNodeId && row.propertyKey === entry.propertyName && row.fileId === entry.fileId);
+    const afterFileId = !deleted && target ? target.afterFileId : entry.fileId;
+    const property = observed.find((row) => row.logicalNodeId === entry.logicalNodeId && row.propertyKey === entry.propertyName && row.fileId === afterFileId);
     if (entry.format !== "json" && !deleted && !property) conflict("Reviewed source property disappeared during ingest.");
     const payload = entry.format === "json" ? old.value.payload : deleted ? target.payload : rawTextToPayload(property!.propertyKey, property!.rawText);
     if (target && !sameSourceRevision(target.payload, payload)) conflict("Ingested source differs from its reviewed parameter value.");
@@ -166,7 +171,8 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       sourceCommit: { requestId: request.id, auditRef, derived: !target }
     });
     if (!appended.ok) conflict(`Whole-source value append refused: ${appended.error.kind}`);
-    const fileVersionId = entry.fileId === frozen.fileId ? version.id : entry.fileVersionId;
+    const afterMember = frozen.members.find(row => row.fileId === afterFileId)!;
+    const fileVersionId = afterFileId === frozen.fileId ? version.id : afterMember.fileVersionId;
     const locator = entry.format === "json" ? entry.locator : deleted ? { kind: "dts-source-absence", basePropertyOccurrenceId: entry.locator.propertyOccurrenceId,
       baseNodeOccurrenceId: entry.locator.nodeOccurrenceId, baseFileVersionId: entry.fileVersionId,
       fileVersionId, propertyName: entry.propertyName, logicalNodeId: entry.logicalNodeId }
@@ -183,7 +189,7 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
        file_id,file_version_id,format,property_occurrence_id,locator,locator_digest,value_state,base_source_pin_id,delete_request_id,delete_proof)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$18,$11,$12::jsonb,$13,$14,$15,$16,$17::jsonb)`,
       [sourcePinId, appended.value.currentTip, entry.bindingId, entry.definitionId, parameterOrganizationId(auth), input.projectId,
-        entry.sourceOccurrenceId, revision.id, entry.fileId, fileVersionId, deleted || entry.format === "json" ? null : property!.propertyOccurrenceId,
+        entry.sourceOccurrenceId, revision.id, afterFileId, fileVersionId, deleted || entry.format === "json" ? null : property!.propertyOccurrenceId,
         JSON.stringify(locator), `sha256:${sourceRevisionDigest(locator)}`, deleted ? "deleted" : "present",
         deleted ? entry.sourcePinId : null, deleted ? request.id : null, deletionProof ? JSON.stringify(deletionProof) : null, entry.format ?? "dts"]);
     results.push({ bindingId: entry.bindingId, oldValueId: entry.oldValueId, newValueId: appended.value.currentTip, sourcePinId,
@@ -218,12 +224,15 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
       results.push({ ...created, kind: "created" });
     }
   }
+  if(input.producerRoot && snapshot)await produceDtsReviewEvidenceInTransaction(tx,input.producerRoot,storage,auth,revision.id);
   const result = { requestId: request.id, configRevisionId: revision.id, fileVersionId: version.id,
     sourceRevisionProofDigest: frozen.proofDigest, results };
   await writeTrustedAuditEventInTx(asAuditTx(tx), { id: auditRef, invocation: input.invocation, app: "parameters",
     kind: "parameter-topology-governance", action: "value-change-applied", severity: "Medium", projectId: input.projectId,
     targetType: "project-parameter-value-change-request", targetId: request.id,
     metadata: { requestId: request.id, requestKind: "source_revision", applicationMode: request.source_revision_application_mode,
+      ...(frozen.localOverride ? { sourceOperation: "project-local-override", localOverrideAction: frozen.localOverride.input.action,
+        bindingId: frozen.localOverride.bindingId } : {}),
       appliedByUserId: auth.user.id, sourceRevisionProofDigest: frozen.proofDigest, restoredParameters: frozen.restorations?.length ?? 0, result }, traceId: input.traceId });
   await tx.query(`update public.project_parameter_file_candidates set status='active',activated_at=now(),activated_by_user_id=$2,activated_version_id=$3 where id=$1`,
     [candidate.id, auth.user.id, version.id]);
@@ -275,7 +284,7 @@ export async function applySourceRevisionCandidate(db: Database, storage: Object
     }
     await commitSourceRevision(tx, storage, auth, snapshot, { projectId: input.projectId, requestId,
       invocation: security.invocation, traceId: security.requestId, refusalSink: security.refusalSink,
-      catalogSnapshots: snapshots, applicationMode: "administrator_direct", toolchain: options.toolchain });
+      catalogSnapshots: snapshots, applicationMode: "administrator_direct", toolchain: options.toolchain,producerRoot:db });
     return { requestId };
   });
 }

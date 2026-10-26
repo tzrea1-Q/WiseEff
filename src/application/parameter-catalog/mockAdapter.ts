@@ -445,7 +445,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     async createPublicationCandidate(body, context) {
       assertPublicationWrite(store, context);
       const parsed = catalogCreatePublicationCandidateRequestSchema.parse(body);
-      const addedSubjects = parsed.changeSet.filter((change) => change.op === "create-subject-with-definitions");
+      const addedSubjects = parsed.changeSet.filter((change) => change.op === "create-subject-with-definitions" || change.op === "create-subject");
       const revised = parsed.changeSet.filter((change) => change.op === "revise-definition");
       const semantic = revised.some((change) => change.op === "revise-definition" && change.class === "semantic");
       const fakeDocumentation = revised.some((change) => {
@@ -719,12 +719,13 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         if (store.registration && store.registration.subjectId === parsed.subjectId) {
           throw catalogApiFailure("placement-conflict");
         }
-        const created = {
+        const created: typeof catalogRegistration = {
           ...catalogRegistration,
           organizationId,
           subjectId: parsed.subjectId,
           id: CATALOG_REGISTRATION_ID,
-          placement: placementFromIntent(parsed.placement),
+          status: parsed.status ?? "active",
+          placement: parsed.status === "retired" ? { ...placementFromIntent(parsed.placement), moduleId: undefined } : placementFromIntent(parsed.placement),
           catalogReleaseId: write.catalogReleaseId
         };
         store.registration = created;
@@ -737,6 +738,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
             placement: created.placement
           }
         };
+        store.definition = { ...store.definition, registration: store.subject.registration };
         return { item: created };
       });
     },

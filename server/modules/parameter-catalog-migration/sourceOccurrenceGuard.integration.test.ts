@@ -1,7 +1,8 @@
+import { insertHistoricalReplacementReceiptFixture } from "../../testing/parameterCatalog/historicalSource";
 import { applyMigrations } from "../../shared/database/migrations";
 import { migrationsDir, withTempDatabase } from "../../testing/tempDatabase";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createMigrationHarness, integerContent, MIGRATION_PRINCIPAL, migrationTrustedActor,
+import { createMigrationHarness, MIGRATION_PRINCIPAL, migrationTrustedActor,
   PREDECESSOR_DEFINITION_ID, PREDECESSOR_SUBJECT_ID, type MigrationHarness } from "./testing/harness";
 import { createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import { stabilizeCanonicalBinding } from "../parameter-bindings/binding/service";
@@ -32,7 +33,8 @@ async function seedReplacement(harness: MigrationHarness) {
     const oldBindingId = old.bindingId;
     const context = { actorKind: "org-admin" as const,principalId: MIGRATION_PRINCIPAL,organizationId };
     const preview = await harness.migration.previewDefinitionReplacement({ organizationId,oldDefinitionId: PREDECESSOR_DEFINITION_ID,
-      newSubjectId: PREDECESSOR_SUBJECT_ID,newPropertyKey: "iin_guard_max",proposedContent: integerContent("Guard max",0),
+      newSubjectId: PREDECESSOR_SUBJECT_ID,newPropertyKey: "iin_guard_max",proposedContent: {
+        displayName: "Guard max", documentation: "Guard max documentation.", unit: "mA", valueSchema: { type: "integer", minimum: 0 } },
       projectIds: [projectId],reason: "Source occurrence guard",expectedRelease: harness.pin(),context });
     if (!preview.ok) throw new Error(JSON.stringify(preview.error));
     const created = await harness.migration.createDefinitionReplacement({ organizationId,previewId: preview.value.previewId,
@@ -87,7 +89,7 @@ async function seedHistoricalBinding(input: {
   readonly value: number;
 }) {
   const { harness, snapshot } = input;
-  const definition = snapshot.getDefinitionById(input.definitionId);
+  const definition = snapshot.getDefinitionById(ParameterDefinitionId(input.definitionId));
   if (definition.status !== "found") throw new Error("Historical definition missing");
   const client = await harness.pool.connect();
   try {
@@ -209,36 +211,29 @@ async function seedHistoricalReplacement(harness: MigrationHarness) {
   const old = await seedHistoricalBinding({ harness, snapshot, organizationId, projectId,
     logicalNodeId: "root-original", registrationId, definitionId: PREDECESSOR_DEFINITION_ID,
     revisionId: "drev_acme_power_iin_max_1", value: 5 });
-  const context = { actorKind: "org-admin" as const, principalId: MIGRATION_PRINCIPAL, organizationId };
-  const preview = await harness.migration.previewDefinitionReplacement({ organizationId,
-    oldDefinitionId: PREDECESSOR_DEFINITION_ID, newSubjectId: PREDECESSOR_SUBJECT_ID,
-    newPropertyKey: "iin_guard_max", proposedContent: integerContent("Guard max", 0),
-    projectIds: [projectId], reason: "Source occurrence guard", expectedRelease: harness.pin(), context });
-  if (!preview.ok) throw new Error(JSON.stringify(preview.error));
-  if (preview.value.projects[0]?.status !== "pending") throw new Error(JSON.stringify(preview.value));
-  const created = await harness.migration.createDefinitionReplacement({ organizationId,
-    previewId: preview.value.previewId, previewFingerprint: preview.value.previewFingerprint,
-    idempotencyKey: "replacement-root", expectedRelease: harness.pin(), context,
-    trustedActor: migrationTrustedActor() });
-  if (!created.ok) throw new Error(JSON.stringify(created.error));
-  if (created.value.status !== "completed") throw new Error(JSON.stringify(created.value));
-  const replacementId = created.value.id;
-  const newDefinitionId = created.value.newIdentity.definitionId;
-  const newRevisionId = created.value.newIdentity.revisionId;
-  const published = await loadPublishedCatalog(harness.pool);
-  if (!published) throw new Error("Current Catalog missing");
+  // Publish the real successor, then replay the literal pre-0153 receipt ABI.
+  // Current replacement preview deliberately rejects this historical source-key shape.
+  const previewRelease = harness.pin();
+  const release = await harness.publishChange([{ op: "create-definition", subjectId: PREDECESSOR_SUBJECT_ID,
+    propertyKey: "iin_guard_max", content: { displayName: "Guard max", documentation: "Guard max documentation.",
+      unit: "mA", valueSchema: { type: "integer", minimum: 0 } } }], "historical-source-guard");
+  const allocated = await harness.allocatedDefinition(release.id, "iin_guard_max");
+  if (!allocated) throw new Error("Historical successor definition missing");
+  const published = harness.snapshot();
+  const successor = await seedHistoricalBinding({ harness, snapshot: published, organizationId, projectId,
+    logicalNodeId: "root-original", registrationId, definitionId: allocated.definitionId,
+    revisionId: allocated.revisionId, value: 5 });
   const other = await seedHistoricalBinding({ harness, snapshot: published, organizationId, projectId,
-    logicalNodeId: "root-other", registrationId, definitionId: newDefinitionId,
-    revisionId: newRevisionId, value: 5 });
-  const completed = created.value.projects[0]!;
-  return {
-    replacementId,
-    oldBindingId: old.bindingId,
-    newBindingId: completed.newBindingId!,
-    newValueId: completed.newValueId!,
-    otherBindingId: other.bindingId,
-    otherValueId: other.valueId,
-  };
+    logicalNodeId: "root-other", registrationId, definitionId: allocated.definitionId,
+    revisionId: allocated.revisionId, value: 5 });
+  const replacementId = await insertHistoricalReplacementReceiptFixture(harness.db, {
+    organizationId, projectId, oldBindingId: old.bindingId, oldValueId: old.valueId,
+    newBindingId: successor.bindingId, newValueId: successor.valueId,
+    newDefinitionId: allocated.definitionId, newRevisionId: allocated.revisionId,
+    previewRelease, successorRelease: release, principalId: MIGRATION_PRINCIPAL,
+  });
+  return { replacementId, oldBindingId: old.bindingId, newBindingId: successor.bindingId,
+    newValueId: successor.valueId, otherBindingId: other.bindingId, otherValueId: other.valueId };
 }
 
 describe("completed replacement source occurrence guard", () => {
@@ -342,7 +337,7 @@ describe("0153 populated upgrade", () => {
         if (kind === "cross-root") {
           await expect(applyMigrations(db,migrationsDir)).rejects.toMatchObject({ code: "23514" });
           expect((await db.query("select name from schema_migrations where name like '0153%'")).rows).toEqual([]);
-          expect((await db.query(`select to_regprocedure('parameter_catalog.assert_replacement_source_occurrence()') as guard`)).rows[0]?.guard).toBeNull();
+          expect((await db.query<{ guard: string | null }>(`select to_regprocedure('parameter_catalog.assert_replacement_source_occurrence()') as guard`)).rows[0]?.guard).toBeNull();
         } else {
           await applyMigrations(db,migrationsDir);
           expect((await db.query("select name from schema_migrations where name like '0153%'")).rows).toHaveLength(1);

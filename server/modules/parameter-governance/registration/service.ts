@@ -37,7 +37,7 @@ export const executeRegistration = async (
       if (result.ok && result.value.outcome === "committed" && invocation) {
         await writeAuditEventInTx(asAuditTx(client), invocation, { requestId: requestId! }, {
           app: "parameter-governance", kind: "parameter-catalog-registration",
-          action: result.value.replacement ? "registration-replace-placement" : `registration-${command.kind}`, severity: "Medium",
+          action: result.value.replacement ? "registration-replace-placement" : command.kind === "retire-unregistered" ? "registration-retire" : `registration-${command.kind}`, severity: "Medium",
           projectId: null, targetType: "organization-subject-registration", targetId: result.value.registrationId,
           metadata: { catalogReleaseId: command.expectedRelease.id, actorKind: context.actorKind,
             ...(command.kind === "move-placement" && command.replacement && result.value.replacement ? {
@@ -48,7 +48,7 @@ export const executeRegistration = async (
                 afterPlacementVersion: result.value.placementVersion },
               displaced: { ...result.value.replacement },
             } : {}),
-            ...((command.kind === "retire" || command.kind === "restore") ? {
+            ...((command.kind === "retire" || command.kind === "restore" || command.kind === "retire-unregistered") ? {
               reason: command.reason, beforeStatus: result.value.previousRegistrationStatus, afterStatus: result.value.registrationStatus,
             } : {}) }
         });
@@ -57,7 +57,7 @@ export const executeRegistration = async (
     });
   } catch (error) {
     const subjectId =
-      command.kind === "register" ? command.subjectId : command.registrationId;
+      command.kind === "register" || command.kind === "retire-unregistered" ? command.subjectId : command.registrationId;
     const mapped = mapWriterDatabaseError(error, command.expectedRelease, subjectId);
     if (mapped) return { ok: false, error: mapped };
     throw error;

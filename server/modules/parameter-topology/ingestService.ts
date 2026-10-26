@@ -1,12 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
+import { dtsBuildInputsSchema, type DtsBuildInputs } from "../contracts/dtoSchemas/dtsPreprocessing";
+import type { SharedDtsiManifest } from "../contracts/dtoSchemas/sharedDtsi";
+import { composeDtsBuildInputs } from "../shared-dtsi/dependencies";
+import type { PreparedDtsSources } from "../dts/cppSources";
 
 import type { AuthContext } from "../auth/types";
 import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 import {
   parseDts,
-  resolveDtsConfigSet,
+  resolveDtsConfigSetAsync,
   type DtsConfigSetFile,
   type DtsEffectiveNode,
   type DtsNodeCst,
@@ -46,7 +51,7 @@ import {
   countSingletonCardinalityConflicts,
   type ContinuityAmbiguous,
 } from "./bindingService";
-import { normalizeManifestLogicalPath, normalizePersistedManifest } from "./configRevisionManifest";
+import { normalizeIncludeSearchPaths, normalizeManifestLogicalPath, normalizePersistedManifest } from "./configRevisionManifest";
 import {
   insertConfigRevision,
   insertConfigRevisionMembers,
@@ -73,6 +78,8 @@ import type {
 export { offsetToLineColumn };
 
 export type ConfigRevisionIngestOptions = {
+  /** Exact operation-owned CPP; resolution rebuilds origins using persisted version IDs. */
+  preparedSources?: PreparedDtsSources;
   sourceCommit?: { baseConfigRevisionId: string };
   reviewedSource?: ReviewedSourceContinuity;
   /** Typed edits keep identity against the exact persisted revision they patch. */
@@ -234,8 +241,9 @@ type CollectedOccurrences = {
 function collectFileOccurrences(
   fileVersionId: string,
   content: string,
+  preparedDocument?: ReturnType<typeof parseDts>,
 ): CollectedOccurrences {
-  const doc = parseDts(content);
+  const doc = preparedDocument ?? parseDts(content);
   const nodes: PersistedNodeOccurrence[] = [];
   const properties: PersistedPropertyOccurrence[] = [];
   const byOrigin = new Map<string, SourceOccurrence>();
@@ -667,7 +675,8 @@ export async function prepareReviewedSourceContinuity(tx: Queryable, input: {
   const prepared = await buildLogicalRevisionsWithContinuity(tx, { ...input, registry,
     revisionNumber: base.revision_number + 1, continuityBaseConfigRevisionId: input.baseConfigRevisionId });
   if (prepared.ambiguous.length) throw new ApiError("CONFLICT", "DTS node identity continuity requires an explicit mapping decision.", {
-    reason: "logical-continuity-decision-needed", nodes: prepared.ambiguous.map((row) => row.previous.nodeLocator)
+    reason: "logical-continuity-decision-needed", nodes: prepared.ambiguous.map((row) => row.previous.nodeLocator),
+    candidates: prepared.ambiguous.flatMap(row=>row.continuity.candidates.map(candidate=>candidate.nodeLocator))
   });
   const newIds = new Map(prepared.logicalNodesToInsert.map((row) => {
     const node = prepared.revisions.find((entry) => entry.logicalNodeId === row.id)!;
@@ -757,6 +766,26 @@ async function ingestConfigRevisionTx(
     });
   }
 
+  const sharedInputs = (await tx.query<{name:string;mountPath:string;manifest:SharedDtsiManifest}>(`select upstream.name,reference.mount_path as "mountPath",upstream.manifest
+    from public.project_shared_dtsi_references reference join public.shared_dtsi_revisions upstream on upstream.id=reference.revision_id and upstream.organization_id=reference.organization_id
+    where reference.organization_id=$1 and reference.project_id=$2 and reference.config_set_id=$3 order by reference.created_at,reference.id`,
+    [manifest.organizationId,manifest.projectId,manifest.configSetId])).rows;
+  let declaredBuildInputs = manifest.declaredBuildInputs;
+  if (!declaredBuildInputs && sharedInputs.length) {
+    // Reuse the persisted local declaration; merged compiler inputs cannot establish ownership.
+    declaredBuildInputs = (await tx.query<{inputs:DtsBuildInputs}>(`select declared_build_inputs as inputs from public.dts_config_revisions
+      where organization_id=$1 and project_id=$2 and config_set_id=$3 and status in ('resolved','validated','compiled','pending_approval') order by revision_number desc limit 1`,
+      [manifest.organizationId,manifest.projectId,manifest.configSetId])).rows[0]?.inputs;
+    if (!declaredBuildInputs) throw new ApiError("CONFLICT","缺少项目本地构建声明，请恢复完整来源后重新预览。",{reason:"shared-build-inputs-required"});
+  }
+  const declared = dtsBuildInputsSchema.safeParse(declaredBuildInputs ?? {includeSearchPaths:normalized.manifest.includeSearchPaths,defines:manifest.defines??manifest.preprocessing?.defines??{}});
+  if (!declared.success) throw new ApiError("CONFLICT","本地构建声明无效，请修正搜索目录或构建宏后重试。",{reason:"shared-build-inputs-required"});
+  declaredBuildInputs = declared.data;
+  const effectiveInputs = composeDtsBuildInputs(declaredBuildInputs,sharedInputs.map(row=>({...row,item:{manifest:row.manifest}})));
+  if (!isDeepStrictEqual(normalizeIncludeSearchPaths(effectiveInputs.includeSearchPaths),normalized.manifest.includeSearchPaths)
+    || !isDeepStrictEqual(effectiveInputs.defines,manifest.defines??manifest.preprocessing?.defines??{}))
+    throw new ApiError("CONFLICT","完整构建输入与本地声明及固定共享版本不一致，请重新生成配置预览。",{reason:"shared-build-inputs-stale"});
+
   await lockOrganizationModuleRecognition(tx, manifest.organizationId);
   const revisionNumber = await nextConfigRevisionNumber(
     tx,
@@ -774,6 +803,7 @@ async function ingestConfigRevisionTx(
     entryFile: normalized.manifest.entryFile,
     includeSearchPaths: normalized.manifest.includeSearchPaths,
     overlayOrder: normalized.manifest.overlayOrder,
+    declaredBuildInputs,
   });
 
   await insertConfigRevisionMembers(tx, revision.id, manifest.members);
@@ -789,12 +819,29 @@ async function ingestConfigRevisionTx(
   const parseStartedAt = Date.now();
   let resolved;
   try {
-    resolved = resolveDtsConfigSet({
+    resolved = await resolveDtsConfigSetAsync({
+      preparedSources: options?.preparedSources,
+      preprocessing: manifest.preprocessing,
+      defines: manifest.defines ?? manifest.preprocessing?.defines,
       entryFile: normalized.manifest.entryFile,
       includeSearchPaths: normalized.manifest.includeSearchPaths,
       overlayOrder: normalized.manifest.overlayOrder,
       files,
     });
+    const referenced = (await tx.query<{ fileId: string; fileVersionId: string; sourceName: string; checksum: string }>(
+      `select snapshot.file_id as "fileId",snapshot.file_version_id as "fileVersionId",
+         case when reference.mount_path='' then upstream.source_name else reference.mount_path||'/'||upstream.source_name end as "sourceName",upstream.checksum
+       from public.project_shared_dtsi_references reference join public.project_shared_dtsi_snapshots snapshot on snapshot.reference_id=reference.id
+       join public.shared_dtsi_revision_members upstream on upstream.revision_id=snapshot.revision_id and upstream.member_id=snapshot.member_id
+       where reference.organization_id=$1 and reference.project_id=$2 and reference.config_set_id=$3`,
+      [manifest.organizationId, manifest.projectId, manifest.configSetId])).rows;
+    for (const reference of referenced) {
+      const member = dtsMembers.find(row => row.fileId === reference.fileId && row.fileVersionId === reference.fileVersionId && row.fileName === reference.sourceName);
+      if (!member || !(resolved.preprocessing?.declaredSourceFiles ?? resolved.sourceFiles).includes(reference.sourceName)
+        || createHash("sha256").update(member.content).digest("hex") !== reference.checksum.replace(/^sha256:/, "")) {
+        throw new ApiError("CONFLICT", "固定共享引用必须完整保留且由项目入口实际引用；请通过配置组成变更引用。", { reason: "shared-reference-closure-required" });
+      }
+    }
   } catch (error) {
     const { defaultMetricsRegistry } =
       await import("../../observability/metrics");
@@ -855,10 +902,17 @@ async function ingestConfigRevisionTx(
 
   const occurrencesByOrigin = new Map<string, SourceOccurrence | null>();
 
+  if (resolved.preprocessing) {
+    await tx.query("update public.dts_config_revisions set preprocessing=$2::jsonb where id=$1", [revision.id, JSON.stringify(resolved.preprocessing.receipt)]);
+    revision = { ...revision, preprocessing: resolved.preprocessing.receipt };
+  }
+
   for (const member of dtsMembers) {
+    if (resolved.preprocessing && /\.(h|hpp)$/u.test(member.fileName)) continue;
     const collected = collectFileOccurrences(
       member.fileVersionId,
       member.content,
+      resolved.preprocessing?.originalDocuments.get(member.fileName),
     );
     for (const node of collected.nodes) {
       await insertNodeOccurrence(tx, revision.id, node);
@@ -917,7 +971,30 @@ async function ingestConfigRevisionTx(
   }
 
   let effectOrder = 0;
+  const sourceDirective = (kind: "delete-property" | "delete-node", targetNodeLocator: string,
+    origin: { fileVersionId: string; start: number; end: number } | null | undefined) => {
+    if (!origin) return undefined;
+    const member = dtsMembers.find(row => row.fileVersionId === origin.fileVersionId);
+    if (!member || origin.start < 0 || origin.end > member.content.length || origin.end <= origin.start) return undefined;
+    const rawText = member.content.slice(origin.start, origin.end);
+    if (!rawText.startsWith(`/${kind}/`)) return undefined;
+    const start = offsetToLineColumn(member.content, origin.start), end = offsetToLineColumn(member.content, origin.end);
+    return { kind, targetNodeLocator, fileVersionId: origin.fileVersionId, rawText,
+      startOffset: origin.start, endOffset: origin.end, startLine: start.line, startColumn: start.column, endLine: end.line, endColumn: end.column };
+  };
   for (const node of resolved.effective.nodesByLocator.values()) {
+    const lastCreation = node.sourceChain.map(entry => entry.effect).lastIndexOf("create");
+    for (const [index, deletion] of node.sourceChain.entries()) {
+      // Retain real directives even if a later declaration recreates this node.
+      if (deletion.effect === "delete" && deletion.deletedNodeLocator === node.nodeLocator) {
+        const parent = continuity.revisionByLocator.get(parentLocator(node.nodeLocator) ?? "/");
+        const directive = sourceDirective("delete-node", node.nodeLocator, deletion.origin);
+        if (parent && directive) await insertOccurrenceEffect(tx, revision.id, { id: randomUUID(), logicalNodeRevisionId: parent.id,
+          propertyName: null, effectKind: "delete", nodeOccurrenceId: null, propertyOccurrenceId: null,
+          sourceOrder: effectOrder++, sourceDirective: { ...directive, ...(index < lastCreation ? { redeclared: true as const } : {}) } });
+      }
+    }
+    if (node.deleted) continue;
     const logicalRevision = continuity.revisionByLocator.get(node.nodeLocator);
     if (!logicalRevision) continue;
 
@@ -938,6 +1015,7 @@ async function ingestConfigRevisionTx(
           nodeOccurrenceId,
           propertyOccurrenceId,
           sourceOrder: effectOrder,
+          ...(entry.effect === "delete" ? { sourceDirective: sourceDirective("delete-property", node.nodeLocator, entry.origin) } : {}),
         });
         effectOrder += 1;
       }

@@ -27,6 +27,7 @@ type ReleaseBaselineMemberRow = {
 };
 
 type ConfigSetMemberFileRow = {
+  shared_reference: ConfigSetMemberFileDto["sharedReference"] | null;
   config_set_id: string;
   file_id: string;
   file_name: string;
@@ -66,6 +67,7 @@ function toReleaseBaselineMemberDto(row: ReleaseBaselineMemberRow): ReleaseBasel
 
 function toConfigSetMemberFileDto(row: ConfigSetMemberFileRow): ConfigSetMemberFileDto {
   return {
+    ...(row.shared_reference ? { sharedReference: row.shared_reference } : {}),
     configSetId: row.config_set_id,
     fileId: row.file_id,
     fileName: row.file_name,
@@ -199,19 +201,27 @@ export async function listConfigSetMemberFiles(
   const result = await db.query<ConfigSetMemberFileRow>(
     `
     select
-      ppf.config_set_id as config_set_id,
-      ppf.id as file_id,
-      ppf.file_name as file_name,
-      ppf.format as format,
-      ppf.config_set_role as config_set_role,
-      ppf.config_set_sort_order as config_set_sort_order,
-      ppf.current_version_id as current_version_id,
+      pf.config_set_id as config_set_id,
+      pf.id as file_id,
+      coalesce((select member.source_name from public.dts_config_revision_members member
+        join public.dts_config_revisions revision on revision.id=member.config_revision_id
+        where member.file_id=pf.id and member.file_version_id=pf.current_version_id
+          and revision.organization_id=pf.organization_id and revision.project_id=pf.project_id
+          and revision.config_set_id=pf.config_set_id order by revision.revision_number desc limit 1),pf.file_name) as file_name,
+      pf.format as format,
+      pf.config_set_role as config_set_role,
+      pf.config_set_sort_order as config_set_sort_order,
+      pf.current_version_id as current_version_id,
       v.version_number as version_number,
-      v.storage_key as storage_key
-    from project_parameter_files ppf
-    left join project_parameter_file_versions v on v.id = ppf.current_version_id
-    where ppf.config_set_id = $1
-    order by ppf.config_set_sort_order asc, ppf.file_name asc
+      v.storage_key as storage_key,
+      (select jsonb_build_object('referenceId',r.id,'resourceId',r.resource_id,'versionId',r.revision_id,
+        'version',upstream.version,'memberId',s.member_id,'digest',upstream.digest,'readOnly',true,'direct',r.is_direct)
+        from public.project_shared_dtsi_snapshots s join public.project_shared_dtsi_references r on r.id=s.reference_id
+        join public.shared_dtsi_revisions upstream on upstream.id=r.revision_id where s.file_id=pf.id) as shared_reference
+    from project_parameter_files pf
+    left join project_parameter_file_versions v on v.id = pf.current_version_id
+    where pf.config_set_id = $1
+    order by pf.config_set_sort_order asc, file_name asc
     `,
     [configSetId]
   );

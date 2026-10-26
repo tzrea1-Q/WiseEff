@@ -5,6 +5,7 @@ import type { ObjectStore } from "../logs/objectStore";
 import { normalizeManifestLogicalPath, normalizePersistedManifest } from "../parameter-topology/configRevisionManifest";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
 import { MAX_PARAMETER_SOURCE_BYTES } from "./jsonSource";
+import { dtsBuildInputsSchema } from "../contracts/dtoSchemas/dtsPreprocessing";
 
 export type ExactSourceRevisionIdentity = {
   organizationId: string; projectId: string; configSetId: string; configRevisionId: string;
@@ -16,6 +17,7 @@ type Member = {
   sourceName: string; role: string; sortOrder: number;
 };
 type SourceVersion = Member & {
+  sharedReference?: import("./types").ConfigSetMemberFileDto["sharedReference"];
   organizationId: string; projectId: string; configSetId: string; format: "dts" | "json";
   checksum: string; sizeBytes: number; storageKey: string; versionNumber: number;
 };
@@ -30,6 +32,13 @@ function conflict(message: string): never { throw new ApiError("CONFLICT", messa
 function limit(): never { throw new ApiError("CONFLICT", "Exact source proof exceeds its bounded capacity.", { reason: "source-proof-limit" }); }
 /** Callers must roll back their entire transaction; no reads may follow this refusal. */
 export function rethrowSourceTransactionError(error: unknown): never {
+  if ((error as { code?: string; constraint?: string })?.code === "23505"
+    && (error as { constraint?: string }).constraint === "project_parameter_files_project_id_file_name_key") {
+    throw new ApiError("CONFLICT", "文件路径冲突，请检查文件名或挂载目录后重试；当前配置未改变。", { reason: "source-file-name-conflict" });
+  }
+  if ((error as { code?: string })?.code === "55000" && /Shared reference/.test((error as Error).message)) {
+    throw new ApiError("CONFLICT", "共享引用源码只读，请通过引用变更或恢复流程操作。", { reason: "shared-reference-readonly" });
+  }
   if (["55P03", "40001"].includes((error as { code?: string } | null)?.code ?? "")) {
     throw new ApiError("CONFLICT", "Source is being changed; retry the exact proof.", { reason: "source-proof-busy" });
   }
@@ -90,14 +99,16 @@ export async function lockExactSourceRevisionsForProof(tx: Queryable, inputs: re
 /** Pre-pin read: storage metadata is always resolved server-side, never accepted from a command. */
 export async function loadExactSourceRevisionForProof(tx: Queryable, objectStore: ObjectStore, input: ExactSourceRevisionIdentity) {
   if (!objectStore?.getBounded) conflict("Exact source proof requires bounded source storage.");
-  const revisions = await tx.query<{ entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[]; status: string; manifestState: string }>(
+  const revisions = await tx.query<{ entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[]; status: string; manifestState: string; preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null;
+    declaredBuildInputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs }>(
     `select entry_file as "entryFile",include_search_paths as "includeSearchPaths",overlay_order as "overlayOrder",
-      status,manifest_state as "manifestState" from dts_config_revisions
+      status,manifest_state as "manifestState",preprocessing,declared_build_inputs as "declaredBuildInputs" from dts_config_revisions
      where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4`,
     [input.configRevisionId,input.organizationId,input.projectId,input.configSetId],
   );
   const rawRevision = revisions.rows[0];
   if (revisions.rows.length !== 1 || !rawRevision || rawRevision.manifestState !== "complete") conflict("Source revision is not an exact complete manifest.");
+  if (!dtsBuildInputsSchema.safeParse(rawRevision.declaredBuildInputs).success) conflict("Declared original-source build inputs are malformed.");
   if (Buffer.byteLength(JSON.stringify(rawRevision)) > MAX_MANIFEST_METADATA_BYTES) limit();
   if ((rawRevision.entryFile !== null && typeof rawRevision.entryFile !== "string")
     || !Array.isArray(rawRevision.includeSearchPaths) || !rawRevision.includeSearchPaths.every((path) => typeof path === "string" && !/[\u0000-\u001f\u007f]/.test(path))
@@ -107,7 +118,7 @@ export async function loadExactSourceRevisionForProof(tx: Queryable, objectStore
   const { entryFile,includeSearchPaths,overlayOrder } = rawRevision;
   const rows = (await tx.query<SourceVersion>(
     `select member.id,member.config_revision_id as "configRevisionId",member.file_id as "fileId",
-      member.file_version_id as "fileVersionId",member.source_name as "sourceName",member.role,member.sort_order as "sortOrder",
+      member.file_version_id as "fileVersionId",member.source_name as "sourceName",member.role,member.sort_order as "sortOrder",member.shared_reference as "sharedReference",
       file.organization_id as "organizationId",file.project_id as "projectId",file.config_set_id as "configSetId",file.format,
       version.checksum,version.size_bytes::float8 as "sizeBytes",version.storage_key as "storageKey",version.version_number as "versionNumber"
      from dts_config_revision_members member
@@ -149,9 +160,8 @@ export async function loadExactSourceRevisionForProof(tx: Queryable, objectStore
     if (entryFile !== null || includeSearchPaths.length !== 0 || overlayOrder.length !== 0) conflict("JSON-only source manifest contains DTS metadata.");
   } else {
     if (typeof entryFile !== "string") conflict("DTS source manifest is missing its entry file.");
-    const baseMembers = rows.filter((member) => member.role === "base");
     const dtsBaseMembers = dtsMembers.filter((member) => member.role === "base");
-    if (baseMembers.length !== 1 || dtsBaseMembers.length !== 1) conflict("DTS source manifest must have one unique DTS base member.");
+    if (dtsBaseMembers.length !== 1) conflict("DTS source manifest must have one unique DTS base member.");
     const normalized = normalizePersistedManifest({
       entryFile, includeSearchPaths, overlayOrder,
       members: dtsMembers.map((member) => ({
@@ -181,8 +191,8 @@ export async function loadExactSourceRevisionForProof(tx: Queryable, objectStore
     let content: string;
     try { content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes!); }
     catch { conflict("Exact source object is not UTF-8."); }
-    const { storageKey: _storageKey, ...metadata } = row;
-    result.push({ ...metadata, bytes: bytes!, content: content! });
+    const { storageKey: _storageKey, sharedReference, ...metadata } = row;
+    result.push({ ...metadata, ...(sharedReference ? { sharedReference } : {}), bytes: bytes!, content: content! });
   }
   return { revision: rawRevision, members: result };
 }

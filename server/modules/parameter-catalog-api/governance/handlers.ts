@@ -218,7 +218,8 @@ function proposalAuthorContext(scope: TrustedGovernanceScope): ProposalTrustedCo
   if (scope.actorKind !== "org-admin") {
     return null;
   }
-  return { actorKind: "org-admin", principalId: scope.principalId };
+  return { actorKind: "org-admin", principalId: scope.principalId,
+    ...(scope.trustedActor?.initiator === "user" ? {invocation:scope.trustedActor} : {}) };
 }
 
 function proposalReviewerContext(scope: TrustedGovernanceScope): ProposalTrustedContext | null {
@@ -598,7 +599,7 @@ async function handleCreateRegistration(
   const organizationId = request.params.organizationId ?? scope.organizationId;
   const subjectKind = await resolveSubjectKind(ports, scope, subjectId);
   if (!subjectKind) return validationFailed(request.requestId, "subjectId");
-  const destinationModuleId = parsed.data.newDestination
+  const destinationModuleId = parsed.data.status === "retired" ? undefined : parsed.data.newDestination
     ? `pmod_canonical_${createHash("sha256").update(JSON.stringify([organizationId, subjectId, idempotencyKey])).digest("hex").slice(0, 32)}`
     : await resolveDestinationModuleId(ports, scope, {
     organizationId,
@@ -606,15 +607,18 @@ async function handleCreateRegistration(
     placement,
     destinationModuleId: parsed.data.destinationModuleId,
   });
-  if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
-  const command: RegistrationCommand = {
+  if (parsed.data.status !== "retired" && !destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
+  const command: RegistrationCommand = parsed.data.status === "retired" ? {
+    kind: "retire-unregistered", organizationId, subjectId, expectedRelease: pin.pin,
+    idempotencyKey, context, reason: parsed.data.reason!.trim(),
+  } : {
     kind: "register",
     organizationId,
     subjectId,
     subjectKind,
     expectedRelease: pin.pin,
     placement,
-    destinationModuleId,
+    destinationModuleId: destinationModuleId!,
     ...(parsed.data.newDestination ? { newDestination: parsed.data.newDestination } : {}),
     method: "explicit",
     proof: { reason: parsed.data.reason ?? "explicit-registration", ...(parsed.data.newDestination ? { newDestination: parsed.data.newDestination } : {}) },

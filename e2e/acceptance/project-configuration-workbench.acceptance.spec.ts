@@ -1,6 +1,7 @@
 import { selectControlOption } from "./helpers/selectControl";
+import { waitForInteractionSurfaceReady } from "./helpers/interactionSurface";
 import "./helpers/loadAcceptanceEnvironment";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
 import { expect, test, type APIResponse, type Page, type Response } from "playwright/test";
@@ -11,6 +12,10 @@ import { asValueClient, loadPublishedCatalog, syncPublishedCatalogProjectValuesI
 import { makeTestAuthContext } from "../../server/testing/authContext";
 import { setParameterIdentityMode } from "../../server/modules/parameter-kernel/parameterIdentityMode";
 import { ingestConfigRevision } from "../../server/modules/parameter-topology/ingestService";
+import type { TopologyTree } from "../../src/domain/parameter-topology/types";
+import type { ExportConfigSetResult } from "../../server/modules/parameter-files/exportService";
+import { configSetPackageManifestName, type ConfigSetImportResult } from "../../server/modules/contracts/dtoSchemas/configSetPackage";
+import type { RestorePreviewResult } from "../../server/modules/parameter-files/baselineService";
 
 import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
@@ -77,7 +82,7 @@ async function prepareSourceFromEditor(page: Page, source: string, keyboardSave 
   const previewResponse = page.waitForResponse((response) => response.request().method() === "GET"
     && new URL(response.url()).pathname.endsWith("/source-preview"), { timeout: 60_000 });
   const save = page.getByRole("button", { name: "保存修改", exact: true });
-  if (keyboardSave) { await save.focus(); await page.keyboard.press("Enter"); } else await save.click();
+  if (keyboardSave) { await waitForInteractionSurfaceReady(page); await save.focus(); await expect(save).toBeFocused(); await page.keyboard.press("Enter"); } else await save.click();
   const candidate = await candidateResponse;
   expect(candidate.status(), await candidate.text()).toBe(201);
   expect(candidate.request().postDataJSON()).toMatchObject({ intent: "source_revision",
@@ -329,6 +334,17 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         await navigation;
         await dismissXiaozeHint(page);
         await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByRole("tab", { name: "生效配置", exact: true })).toHaveAttribute("aria-selected", "true");
+        await expect(page.getByText("此配置尚无已解析的修订。请在源码中同步来源文件。", { exact: true })).toBeVisible();
+        for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+          await page.setViewportSize(viewport);
+          const path = testInfo.outputPath(`unresolved-effective-${viewport.width}.png`);
+          await page.screenshot({ path });
+          await testInfo.attach(`Unresolved effective ${viewport.width}`, { path, contentType: "image/png" });
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+        }
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.getByRole("tab", { name: "源码", exact: true }).click();
         await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible({ timeout: 30_000 });
         await expect(page.getByRole("treeitem", { name: new RegExp(primaryFileName) })).toBeVisible();
         await expect(page.getByRole("group", { name: "待分配项目文件" })).toContainText(looseFileName);
@@ -1361,6 +1377,13 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByRole("alert").filter({ hasText: "文件或配置版本已更新" })).toBeVisible();
       await expect(editor).toContainText("DraftV2");
       await expect(page.getByRole("button", { name: "保存修改", exact: true })).toBeDisabled();
+      for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+        await page.setViewportSize(viewport);
+        const path = testInfo.outputPath(`stale-source-recovery-${viewport.width}.png`);
+        await page.screenshot({ path });
+        await testInfo.attach(`Stale source recovery ${viewport.width}`, { path, contentType: "image/png" });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      }
       const downloadPromise = page.waitForEvent("download");
       await page.getByRole("button", { name: "下载草稿", exact: true }).click();
       const download = await downloadPromise;
@@ -1640,10 +1663,10 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&inspector=config-set`
       );
       await dismissXiaozeHint(page);
-      const files = page.getByRole("dialog", { name: "文件管理", exact: true });
+      const files = page.getByRole("dialog", { name: "配置组成", exact: true });
       await expect(files).toBeVisible();
       await expect(files.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
-      await expect(files.getByRole("button", { name: "关闭文件管理" })).toBeVisible();
+      await expect(files.getByRole("button", { name: "关闭配置组成" })).toBeVisible();
       const fileActions = await openWorkbenchFileActions(page, looseFileName);
       await fileActions.getByRole("menuitem", { name: "从配置移除", exact: true }).click();
       const removeMemberDialog = page.getByRole("dialog", { name: "从配置移除文件" });
@@ -1657,7 +1680,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await removeMemberDialog.getByRole("button", { name: "确认移除" }).click();
       const removeMemberResponse = await removeMemberResponsePromise;
       expect(removeMemberResponse.ok()).toBe(true);
-      await files.getByRole("button", { name: "关闭文件管理", exact: true }).click();
+      await files.getByRole("button", { name: "关闭配置组成", exact: true }).click();
+      await page.getByRole("tab", { name: "源码", exact: true }).click();
       await expect(ungrouped).toContainText(looseFileName);
 
       await openWorkbenchPanel(page, "file");
@@ -3048,6 +3072,1096 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{ headers: adminHeaders() });
     expect((await after.json()).items.find((row: { id: string }) => row.id===binding.bindingId)).toMatchObject({ rawValue: '"RestoreV1", "keep"' });
     await expect(await openWorkbenchPanel(page,"config-set")).toContainText("retained-");
+  });
+
+  test("shared reference removal recovers project dependencies and retains source history",async({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "RemovalPrivate", "keep"; }; };',rawValuePattern:'"RemovalPrivate", "keep"',nodeLocatorPattern:"board",reason:"#1426 private source",timeoutMs:60_000});
+    const sourceName=`removal-${randomUUID()}.dtsi`,content='/ { removable: removable { compatible = "mt,mt5788"; rx_fod_cond = "RemovalShared", "keep"; }; };';
+    const created=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Removal ${randomUUID()}`,sourceName,content,changeDescription:"Removal fixture"}});expect(created.status(),await created.text()).toBe(201);const resourceId=(await created.json()).item.resourceId as string;
+    const publication=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:1}});expect(publication.status(),await publication.text()).toBe(201);
+    const published=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await publication.json()).item.id,idempotencyKey:randomUUID()}});expect(published.status(),await published.text()).toBe(201);const versionId=(await published.json()).item.id as string;
+    const compositionPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`,addition={sharedReference:{resourceId,versionId},role:"misc",sortOrder:1};
+    const preview=await request.post(apiRoute(`${compositionPath}/preview`),{headers:adminHeaders(),data:addition});expect(preview.status(),await preview.text()).toBe(200);
+    const added=await request.post(apiRoute(`${compositionPath}/apply`),{headers:adminHeaders(),data:{...addition,proofToken:(await preview.json()).item.proofToken,reason:"#1426 pin",clientMutationId:randomUUID()}});expect(added.status(),await added.text()).toBe(200);
+    const files=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});const root=((await files.json()).items as {fileId:string;fileName:string;role:string;currentVersionId:string}[]).find(file=>file.role==="base")!;
+    const original=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});expect(original.status(),await original.text()).toBe(200);const originalSource=await original.text();
+    const candidate=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{headers:adminHeaders(),data:{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",contentBase64:Buffer.from(originalSource+'\n&removable { status = "disabled"; };\n').toString("base64"),expectedCurrentVersionId:root.currentVersionId,expectedConfigRevisionId:(await added.json()).item.configRevisionId,clientMutationId:randomUUID()}});expect(candidate.status(),await candidate.text()).toBe(201);const candidateId=(await candidate.json()).item.id as string;
+    const cp=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{headers:adminHeaders()});expect(cp.status(),await cp.text()).toBe(200);
+    const ca=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`),{headers:adminHeaders(),data:{expectedCurrentVersionId:root.currentVersionId,expectedProofToken:(await cp.json()).item.proofToken,reason:"#1426 project overlay dependency",clientMutationId:randomUUID()}});expect(ca.status(),await ca.text()).toBe(200);
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({organization:organizationId,configSet:binding.configSetId,tab:"source",file:root.fileId})}`;
+    await signInBrowserAsRole(page,"guest",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const sharedReadonly=await openWorkbenchPanel(page,"config-set");await expect(sharedReadonly).toContainText("只读");await sharedReadonly.getByRole("button",{name:`${sourceName} 更多`,exact:true}).click();await expect(page.getByRole("menuitem",{name:"移除引用",exact:true})).toHaveCount(0);await page.keyboard.press("Escape");
+    const readonlyCapture=testInfo.outputPath("shared-removal-readonly-1440.png");await page.screenshot({path:readonlyCapture});await testInfo.attach("Removal read-only1440",{path:readonlyCapture,contentType:"image/png"});
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const composition=await openWorkbenchPanel(page,"config-set");await composition.getByRole("button",{name:`${sourceName} 更多`,exact:true}).click();await page.getByRole("menuitem",{name:"移除引用",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"移除共享引用",exact:true}),reason="#1426 remove this project reference";
+    await dialog.getByRole("textbox",{name:"变更说明",exact:true}).fill(reason);
+    const refusal={method:"POST",path:`${compositionPath}/preview`,status:400};expectedBrowserApiFailures.push(refusal);
+    try{
+      let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});
+      await page.route(`**${compositionPath}/preview`,async route=>{await pending;await route.continue();});
+      await dialog.getByRole("button",{name:"预览移除引用",exact:true}).click();await expect(dialog.getByRole("button",{name:"正在核对…",exact:true})).toBeDisabled();release();
+      const conflicts=dialog.getByRole("region",{name:"移除引用冲突处理",exact:true});await expect(conflicts).toContainText("找不到覆盖目标节点（&removable）");await expect(conflicts).not.toContainText("synthetic");await expect(dialog.getByRole("button",{name:"编辑项目根文件",exact:true})).toHaveCount(0);await page.unroute(`**${compositionPath}/preview`);
+      for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+        await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        const path=testInfo.outputPath(`shared-removal-error-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Removal error ${viewport.width}`,{path,contentType:"image/png"});
+      }
+      await dialog.getByRole("button",{name:"修正项目源码",exact:true}).first().focus();await page.keyboard.press("Enter");
+    }finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(refusal),1);}
+    const corrected=await prepareSourceFromEditor(page,originalSource,true);await corrected.dialog.getByRole("textbox",{name:"DTS 修改原因",exact:true}).fill("#1426 remove the dependent project overlay");
+    const saving=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/source-apply"));await corrected.dialog.getByRole("button",{name:"直接应用修改",exact:true}).click();expect((await saving).status()).toBe(200);await expect(corrected.dialog).toHaveCount(0);
+    await page.reload();await page.getByRole("button",{name:"返回移除引用",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue(reason);await expect(dialog.getByRole("button",{name:"确认移除引用",exact:true})).toHaveCount(0);
+    await dialog.getByRole("button",{name:"预览移除引用",exact:true}).click();await expect(dialog.getByRole("region",{name:"移除引用预览",exact:true})).toContainText("RemovalShared");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toBeInViewport();await expect(dialog.getByRole("button",{name:"确认移除引用",exact:true})).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      const path=testInfo.outputPath(`shared-removal-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Removal ${viewport.width}`,{path,contentType:"image/png"});
+    }
+    await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();await expect(dialog.getByRole("button",{name:"确认移除引用",exact:true})).toHaveCount(0);await dialog.getByRole("button",{name:"预览移除引用",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue(reason);
+    const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));await dialog.getByRole("button",{name:"确认移除引用",exact:true}).focus();await page.keyboard.press("Enter");expect((await applying).status()).toBe(200);await expect(dialog).toHaveCount(0);
+    await page.reload();const currentFiles=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});expect(((await currentFiles.json()).items as {fileName:string}[]).some(file=>file.fileName===sourceName)).toBe(false);
+    const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({rawValue:'"RemovalPrivate", "keep"'}));expect((await values.json()).items).not.toContainEqual(expect.objectContaining({rawValue:'"RemovalShared", "keep"'}));
+    await signInBrowserAsRole(page,"guest",disposablePageUrl(disposableRuntime,route));const readonly=await openWorkbenchPanel(page,"config-set");await expect(readonly).toContainText("只读");await readonly.getByRole("button",{name:`${root.fileName} 更多`,exact:true}).click();await expect(page.getByRole("menuitem",{name:"移除引用",exact:true})).toHaveCount(0);await page.keyboard.press("Escape");
+  });
+
+  test("restores historical shared dependencies through snapshot history with retained choice and keyboard confirmation",async({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const original='/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "SnapshotLocal", "keep"; }; };';
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:original,rawValuePattern:'"SnapshotLocal", "keep"',nodeLocatorPattern:"board",reason:"#1424 saved project decision",timeoutMs:60_000});
+    const sourceName=`snapshot-${randomUUID()}.dtsi`,content='/ { inherited { compatible = "mt,mt5788"; rx_fod_cond = "SnapshotShared", "keep"; }; };';
+    const created=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:"Snapshot shared defaults",sourceName,content,changeDescription:"Snapshot defaults"}});expect(created.status(),await created.text()).toBe(201);
+    const resourceId=(await created.json()).item.resourceId as string;
+    const publish=async(revision:number)=>{
+      const preview=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:revision}});expect(preview.status(),await preview.text()).toBe(201);
+      const published=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await preview.json()).item.id,idempotencyKey:randomUUID()}});expect(published.status(),await published.text()).toBe(201);return (await published.json()).item.id as string;
+    };
+    const first=await publish(1),compositionPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const pin=async(versionId:string,replaceVersionId?:string)=>{
+      const input={sharedReference:{resourceId,versionId,...(replaceVersionId?{replaceVersionId}:{})},role:"misc",sortOrder:1};
+      const preview=await request.post(apiRoute(`${compositionPath}/preview`),{headers:adminHeaders(),data:input});expect(preview.status(),await preview.text()).toBe(200);
+      const applied=await request.post(apiRoute(`${compositionPath}/apply`),{headers:adminHeaders(),data:{...input,proofToken:(await preview.json()).item.proofToken,reason:"#1424 fixed snapshot dependency",clientMutationId:randomUUID()}});expect(applied.status(),await applied.text()).toBe(200);return (await applied.json()).item.configRevisionId as string;
+    };
+    const initial=await pin(first);
+    const readiness=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/release-readiness`),{headers:adminHeaders()});expect(readiness.status(),await readiness.text()).toBe(200);
+    const gate=(await readiness.json()).item as DtsReleaseReadiness;expect(gate.canCreateBaseline,JSON.stringify(gate)).toBe(true);
+    const saved=await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/baselines`),{headers:adminHeaders(),data:{name:"Shared snapshot v1",gateToken:gate.gateToken,acknowledgedWarningIds:gate.warnings.filter(row=>row.acknowledgementRequired).map(row=>row.id)}});expect(saved.status(),await saved.text()).toBe(201);
+    const baselineId=(await saved.json()).item.id as string;
+    const draft=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{baseVersionId:first}});expect(draft.status(),await draft.text()).toBe(201);
+    const changed=await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{expectedRevision:(await draft.json()).item.revision,name:"Later shared defaults",sourceName,content:content.replace("SnapshotShared","LaterShared"),changeDescription:"Later dependency"}});expect(changed.status(),await changed.text()).toBe(200);
+    const second=await publish((await changed.json()).item.revision),switched=await pin(second,first);
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({configSet:binding.configSetId,baseline:baselineId})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const versions=await openWorkbenchPanel(page,"release");
+    await expect(versions.getByRole("table",{name:"快照中的文件版本",exact:true})).toContainText(sourceName);
+    await versions.getByRole("button",{name:"对比当前配置",exact:true}).click();
+    await expect(page).toHaveURL(/sourceMode=unified-diff/);
+    await openWorkbenchPanel(page,"release");
+    await expect(versions.getByRole("region",{name:"配置版本对比结果",exact:true})).toContainText(sourceName);
+    await versions.getByLabel("文件差异").getByRole("button").filter({hasText:sourceName}).click();
+    await expect(page.getByLabel("统一差异对比")).toBeVisible();
+    await openWorkbenchPanel(page,"release");
+    await versions.getByRole("button",{name:"恢复到此版本…",exact:true}).focus();await page.keyboard.press("Enter");
+    const dialog=page.getByRole("dialog",{name:"恢复版本确认",exact:true});
+    await expect(dialog).toContainText("恢复项目快照会恢复历史项目差异");
+    await expect(dialog.getByRole("table",{name:"恢复后的共享依赖",exact:true})).toContainText("v2 → v1");
+    await dialog.getByRole("textbox",{name:"恢复原因",exact:true}).fill("#1424 restore the complete saved project");
+    const root=await lookupParameterFileVersion({fileName:binding.fileName});
+    const rootSource=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.versionId}/content`),{headers:adminHeaders()});expect(rootSource.status(),await rootSource.text()).toBe(200);
+    const candidate=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{headers:adminHeaders(),data:{fileId:root.fileId,fileName:binding.fileName,intent:"source_revision",contentBase64:Buffer.from((await rootSource.text()).replace("SnapshotLocal","LaterLocal")).toString("base64"),expectedCurrentVersionId:root.versionId,expectedConfigRevisionId:switched,clientMutationId:randomUUID()}});expect(candidate.status(),await candidate.text()).toBe(201);
+    const candidateId=(await candidate.json()).item.id as string;
+    const sourcePreview=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{headers:adminHeaders()});expect(sourcePreview.status(),await sourcePreview.text()).toBe(200);
+    const drift=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`),{headers:adminHeaders(),data:{expectedCurrentVersionId:root.versionId,expectedProofToken:(await sourcePreview.json()).item.proofToken,reason:"Later project decision",clientMutationId:randomUUID()}});expect(drift.status(),await drift.text()).toBe(200);
+    const rollbackPath=`/api/v1/projects/${projectId}/baselines/${baselineId}/rollback`,failure={method:"POST",path:rollbackPath,status:409};expectedBrowserApiFailures.push(failure);
+    try {
+      const stale=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===rollbackPath);
+      await dialog.getByRole("button",{name:"确认恢复",exact:true}).focus();await page.keyboard.press("Enter");expect((await stale).status()).toBe(409);
+      await expect(dialog.getByRole("alert")).toContainText("过期");await expect(dialog.getByRole("textbox",{name:"恢复原因",exact:true})).toHaveValue("#1424 restore the complete saved project");
+    } finally {expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(failure),1);}
+    await dialog.getByRole("button",{name:"重新预览",exact:true}).click();
+    await expect(dialog.getByRole("table",{name:"恢复后的共享依赖",exact:true})).toContainText("v2 → v1");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+      await page.setViewportSize(viewport);await expect(dialog.getByRole("button",{name:"确认恢复",exact:true})).toBeInViewport();
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      const path=testInfo.outputPath(`shared-snapshot-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Shared snapshot ${viewport.width}`,{path,contentType:"image/png"});
+    }
+    const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===rollbackPath);
+    await dialog.getByRole("button",{name:"确认恢复",exact:true}).focus();await page.keyboard.press("Enter");const restored=await applying;expect(restored.status(),await restored.text()).toBe(200);
+    expect([initial,switched]).not.toContain((await restored.json()).item.configRevisionId);await expect(dialog).toHaveCount(0);await page.reload();
+    const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({id:binding.bindingId,rawValue:'"SnapshotLocal", "keep"'}));
+    await page.getByRole("button",{name:"关闭配置版本",exact:true}).click();
+    await expect(versions).toHaveCount(0);
+    await page.getByRole("tab",{name:"生效配置",exact:true}).click();await page.getByRole("treeitem",{name:"节点 /inherited",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"SnapshotShared", "keep"');
+    const files=await openWorkbenchPanel(page,"config-set"),sharedRow=files.getByRole("row").filter({hasText:sourceName});await expect(sharedRow).toContainText("共享引用 · 版本 1 · 只读");
+    await sharedRow.getByRole("button",{name:"查看源码",exact:true}).click();await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("SnapshotShared");await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);
+  });
+
+  test("two projects retain independent shared pins through local decisions, version changes, snapshot recovery and package reimport", async ({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const call=async<T,>(method:"GET"|"POST"|"PUT",path:string,data?:unknown):Promise<T>=>{
+      const response=await request.fetch(apiRoute(path),{method,headers:adminHeaders(),...(data===undefined?{}:{data})});
+      expect(response.ok(),`${method} ${path}: ${await response.text()}`).toBe(true);
+      return response.json() as Promise<T>;
+    };
+    const prefix=`parent-${randomUUID()}`,a=`${prefix}-a`,b=`${prefix}-b`,target=`${prefix}-import`;
+    const sets:Record<string,string>={};
+    async function createEmptyProject(id:string,code:string) {
+      await call("POST","/api/v1/parameters/admin/projects",{id,name:code,code});
+      await call("PUT",`/api/v1/parameters/projects/${id}/initialization/draft`,{projectName:code,projectCode:code,ownerUserId:acceptanceCast.xuYun.userId,
+        sourceProjectIds:[],primarySourceProjectId:null,supplementSourceProjectIds:[],selectedModuleIds:[],selectedRisks:[],selectedSourceBindingIds:[],bindingSnapshots:[],emptyLibrary:true,notes:"#1410 approved empty project"});
+      const review=await call<{item:{id:string}}>("POST",`/api/v1/parameters/projects/${id}/initialization/submit`,{});
+      await call("POST",`/api/v1/parameters/admin/initialization-reviews/${review.item.id}/approve`,{});
+    }
+    const originalRoot='/dts-v1/;\r\n// Original private project entry\r\n/ { };\r\n',rootName="boards/product/board.dts";
+    const privateJson='{\r\n  "projectOwned": true\r\n}\r\n',jsonName="software/private.json";
+    const seed=new JSZip();seed.file(rootName,originalRoot,{createFolders:false});seed.file(jsonName,privateJson,{createFolders:false});
+    seed.file(configSetPackageManifestName,JSON.stringify({sourcePackage:{schemaVersion:"wiseeff-config-set/v1",entryFile:rootName,
+      includeSearchPaths:["."],overlayOrder:[],declaredBuildInputs:{includeSearchPaths:["."],defines:{}},resolvedBuildInputs:{includeSearchPaths:["."],defines:{}},sharedClosure:[],jsonSources:[],
+      members:[{sourceName:rootName,format:"dts",role:"base",sortOrder:0,checksum:`sha256:${createHash("sha256").update(originalRoot).digest("hex")}`},
+        {sourceName:jsonName,format:"json",role:"thermal",sortOrder:2,checksum:`sha256:${createHash("sha256").update(privateJson).digest("hex")}`}]}}));
+    const archive={name:"initial-project.zip",contentBase64:await seed.generateAsync({type:"base64"})};
+    for(const [id,code] of [[a,"PARENTA"],[b,"PARENTB"],[target,"PARENTIMPORT"]] as const) {
+      await createEmptyProject(id,code);
+      if(id===target)continue;
+      const input={name:"Independent product configuration",ownership:"private",archive};
+      const preview=await call<{item:{proofToken:string}}>("POST",`/api/v1/projects/${id}/config-set-import/preview`,input);
+      const receipt=await call<{item:ConfigSetImportResult}>("POST",`/api/v1/projects/${id}/config-set-import/apply`,{...input,proofToken:preview.item.proofToken,reason:"#1410 import original private inputs",clientMutationId:randomUUID()});
+      sets[id]=receipt.item.configSetId;
+    }
+    const sourceName="hardware/battery.dtsi",sharedV1='/ { battery { compatible = "mt,mt5788"; rx_fod_cond = "SharedV1", "keep"; status = "okay"; }; };\n';
+    const draft=await call<{item:{resourceId:string}}>("POST","/api/v2/shared-dtsi",{name:"Two-project immutable battery defaults",sourceName,content:sharedV1,changeDescription:"#1410 immutable defaults v1"});
+    const resourceId=draft.item.resourceId;
+    async function publish(revision:number) {
+      const preview=await call<{item:{id:string}}>("POST",`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:revision});
+      return (await call<{item:{id:string}}>("POST",`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.item.id,idempotencyKey:randomUUID()})).item.id;
+    }
+    async function pin(id:string,versionId:string,replaceVersionId?:string) {
+      const path=`/api/v1/projects/${id}/config-sets/${sets[id]}/member-addition`;
+      const input={role:"misc",sortOrder:1,sharedReference:{resourceId,versionId,mountPath:"shared",...(replaceVersionId?{replaceVersionId}:{})}};
+      const preview=await call<{item:{proofToken:string}}>("POST",`${path}/preview`,input);
+      return (await call<{item:{configRevisionId:string}}>("POST",`${path}/apply`,{...input,proofToken:preview.item.proofToken,reason:"#1410 explicitly select this project version",clientMutationId:randomUUID()})).item.configRevisionId;
+    }
+    const v1=await publish(1),initialA=await pin(a,v1),initialB=await pin(b,v1);
+    const exportProject=(id:string)=>call<ExportConfigSetResult>("GET",`/api/v1/projects/${id}/config-sets/${sets[id]}/export`);
+    type Binding={id:string;sourceOccurrenceId:string;logicalNodeId:string;currentValueId:string;rawValue:string};
+    const bindings=async(id:string)=>(await call<{items:Binding[]}>("GET",`/api/v2/projects/${id}/parameter-bindings`)).items;
+    async function graph(id:string) {
+      const revisions=await call<{items:{id:string}[]}>("GET",`/api/v2/projects/${id}/config-sets/${sets[id]}/revisions`);
+      const result:{item:TopologyTree}=await call("GET",`/api/v2/projects/${id}/config-sets/${sets[id]}/revisions/${revisions.items[0]!.id}/topology`);
+      if(result.item.view!=="effective")throw new Error("Expected actual effective configuration");
+      return result.item;
+    }
+    const originalA=(await bindings(a))[0]!,beforeB=await exportProject(b),bindingsB=await bindings(b);
+    expect(originalA.rawValue).toBe('"SharedV1", "keep"');expect(bindingsB[0]!.rawValue).toBe('"SharedV1", "keep"');
+    expect(originalA.id).not.toBe(bindingsB[0]!.id);expect(originalA.sourceOccurrenceId).not.toBe(bindingsB[0]!.sourceOccurrenceId);
+    async function applySource(file:{fileId:string;fileName:string;baseVersionId:string;configRevisionId:string;after:string;localOverride?:unknown}) {
+      const candidate=await call<{item:{id:string}}>("POST",`/api/v1/projects/${a}/parameter-file-candidates`,{fileId:file.fileId,fileName:file.fileName,intent:"source_revision",
+        expectedCurrentVersionId:file.baseVersionId,expectedConfigRevisionId:file.configRevisionId,contentBase64:Buffer.from(file.after).toString("base64"),clientMutationId:randomUUID(),...(file.localOverride?{localOverride:file.localOverride}:{})});
+      const preview=await call<{item:{proofToken:string}}>("GET",`/api/v1/projects/${a}/parameter-file-candidates/${candidate.item.id}/source-preview`);
+      return (await call<{item:{configRevisionId:string}}>("POST",`/api/v1/projects/${a}/parameter-file-candidates/${candidate.item.id}/source-apply`,{expectedCurrentVersionId:file.baseVersionId,expectedProofToken:preview.item.proofToken,reason:"#1410 project-owned source decision",clientMutationId:randomUUID()})).item.configRevisionId;
+    }
+    for(const [action,propertyName,rawText] of [["set","rx_fod_cond",'"ProjectA", "keep"'],["disable-node","status",undefined]] as const) {
+      const current=await graph(a),node=current.nodes.find(row=>row.locator==="/battery")!;
+      const prepared=await call<{item:Parameters<typeof applySource>[0]}>("POST",`/api/v1/projects/${a}/config-sets/${sets[a]}/local-override/prepare`,{
+        expectedConfigRevisionId:current.revisionId,logicalNodeId:node.logicalNodeId,propertyName,action,...(rawText?{rawText}:{})});
+      await applySource(prepared.item);
+    }
+    expect((await bindings(a))[0]).toMatchObject({id:originalA.id,sourceOccurrenceId:originalA.sourceOccurrenceId,rawValue:'"ProjectA", "keep"'});
+    expect((await graph(a)).nodes.find(row=>row.locator==="/battery")!.enablement).toMatchObject({selfEnabled:false,rawToken:"disabled"});
+    const beforePublication=await exportProject(a);
+    const nextDraft=await call<{item:{revision:number}}>("POST",`/api/v2/shared-dtsi/${resourceId}/draft`,{baseVersionId:v1});
+    const saved=await call<{item:{revision:number}}>("PUT",`/api/v2/shared-dtsi/${resourceId}/draft`,{expectedRevision:nextDraft.item.revision,name:"Two-project immutable battery defaults",sourceName,
+      content:sharedV1.replace("SharedV1","SharedV2"),changeDescription:"#1410 successor does not upgrade projects"});
+    const v2=await publish(saved.item.revision);
+    expect((await exportProject(a)).files).toEqual(beforePublication.files);expect((await exportProject(b)).files).toEqual(beforeB.files);
+    const upgradedA=await pin(a,v2,v1),downgradedA=await pin(a,v1,v2);
+    expect(new Set([initialA,upgradedA,downgradedA]).size).toBe(3);
+    expect((await bindings(a))[0]).toMatchObject({id:originalA.id,rawValue:'"ProjectA", "keep"'});
+    expect((await graph(a)).nodes.find(row=>row.locator==="/battery")!.enablement).toMatchObject({selfEnabled:false});
+    expect((await exportProject(b)).manifest.sourcePackage).toEqual(beforeB.manifest.sourcePackage);expect(await bindings(b)).toEqual(bindingsB);expect((await graph(b)).revisionId).toBe(initialB);
+    const readiness=(await call<{item:DtsReleaseReadiness}>("GET",`/api/v1/projects/${a}/config-sets/${sets[a]}/release-readiness`)).item;
+    expect(readiness.canCreateBaseline,JSON.stringify(readiness)).toBe(true);
+    const baseline=await call<{item:{id:string}}>("POST",`/api/v1/projects/${a}/config-sets/${sets[a]}/baselines`,{name:"Complete shared and project decisions",gateToken:readiness.gateToken,acknowledgedWarningIds:readiness.warnings.filter(row=>row.acknowledgementRequired).map(row=>row.id)});
+    const frozen=await exportProject(a),root=frozen.manifest.members.find(row=>row.role==="base")!;
+    const currentFiles=await call<{items:{fileId:string;fileName:string;currentVersionId:string}[]}>("GET",`/api/v1/projects/${a}/config-sets/${sets[a]}/files`);
+    const currentRoot=currentFiles.items.find(row=>row.fileId===root.fileId)!;
+    await applySource({fileId:root.fileId,fileName:currentRoot.fileName,baseVersionId:currentRoot.currentVersionId,configRevisionId:downgradedA,
+      after:frozen.files.find(row=>row.name===rootName)!.content.replace('"ProjectA"','"ChangedAfterSnapshot"')});
+    expect((await bindings(a))[0]!.rawValue).toBe('"ChangedAfterSnapshot", "keep"');
+    const restore=(await call<{item:RestorePreviewResult}>("GET",`/api/v1/projects/${a}/baselines/${baseline.item.id}/restore-preview`)).item;
+    expect(restore.canonical?.canRestore,JSON.stringify(restore)).toBe(true);
+    const recovered=await call<{item:{configRevisionId:string}}>("POST",`/api/v1/projects/${a}/baselines/${baseline.item.id}/rollback`,{
+      proofToken:restore.canonical!.proofToken,sourceConfigRevisionId:downgradedA,confirmCompositionChanges:true,reason:"#1410 recover complete historical project decisions",clientMutationId:randomUUID()});
+    expect(recovered.item.configRevisionId).not.toBe(downgradedA);expect((await exportProject(a)).files).toEqual(frozen.files);
+    expect((await bindings(a))[0]).toMatchObject({id:originalA.id,rawValue:'"ProjectA", "keep"'});
+    const history=await call<{items:{successAuditRef:string}[]}>("GET",`/api/v2/projects/${a}/parameter-bindings/${originalA.id}/change-history`);
+    expect(history.items.length).toBeGreaterThanOrEqual(5);expect(history.items.every(row=>Boolean(row.successAuditRef))).toBe(true);
+    const route=(id:string)=>disposablePageUrl(disposableRuntime,`/parameter-admin/projects/${id}/configuration?${new URLSearchParams({configSet:sets[id]!,tab:"effective",node:"/battery"})}`);
+    await signInBrowserAsRole(page,"admin",route(a));await dismissXiaozeHint(page);
+    await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"ProjectA", "keep"');
+    await expect(page.getByText("节点未启用（disabled） · 不可达",{exact:true})).toBeVisible();
+    const screenshot=async(name:string)=>{const path=testInfo.outputPath(name);await page.screenshot({path});await testInfo.attach(name,{path,contentType:"image/png"});};
+    await screenshot("parent-effective-a-1440.png");
+    await page.getByRole("button",{name:"配置",exact:true}).click();const downloading=page.waitForEvent("download");await page.getByRole("menuitem",{name:"导出当前配置",exact:true}).click();
+    const download=await downloading,downloadPath=await download.path();expect(downloadPath).not.toBeNull();const bytes=await readFile(downloadPath!);
+    const downloaded=await JSZip.loadAsync(bytes,{checkCRC32:true});
+    for(const file of frozen.files)expect(await downloaded.file(file.name)!.async("string")).toBe(file.content);
+    expect(JSON.parse(await downloaded.file(configSetPackageManifestName)!.async("string"))).toMatchObject({sourcePackage:frozen.manifest.sourcePackage});
+    await page.goto(disposablePageUrl(disposableRuntime,`/parameter-admin/projects/${target}/configuration`));
+    await expect(page.getByText("此配置尚无来源文件。请通过「配置」菜单添加来源或导入完整配置。",{exact:true})).toBeVisible();
+    await screenshot("parent-empty-project-1440.png");
+    await page.getByRole("button",{name:"配置",exact:true}).click();await page.getByRole("menuitem",{name:"导入完整配置…",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"导入完整配置",exact:true});
+    await dialog.getByLabel("配置包",{exact:true}).setInputFiles({name:download.suggestedFilename(),mimeType:"application/zip",buffer:bytes});
+    await dialog.getByRole("textbox",{name:"配置名称",exact:true}).fill("Reimported complete product configuration");
+    await dialog.getByRole("button",{name:"预览导入",exact:true}).click();await expect(dialog.getByLabel("配置导入预览")).toContainText("共享只读");
+    await dialog.getByRole("textbox",{name:"导入原因",exact:true}).fill("#1410 reproduce exact original closure with new project identities");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+      await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      await expect(dialog.getByRole("button",{name:"确认导入",exact:true})).toBeInViewport({ratio:1});await screenshot(`parent-reimport-preview-${viewport.width}.png`);
+    }
+    const importing=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===`/api/v1/projects/${target}/config-set-import/apply`);
+    await dialog.getByRole("button",{name:"确认导入",exact:true}).focus();await page.keyboard.press("Enter");
+    const imported=await importing;expect(imported.status(),await imported.text()).toBe(200);sets[target]=((await imported.json()).item as ConfigSetImportResult).configSetId;
+    await expect(dialog).toHaveCount(0);await page.reload();
+    const reimported=await exportProject(target);expect(reimported.files).toEqual(frozen.files);expect(reimported.manifest.sourcePackage).toEqual(frozen.manifest.sourcePackage);
+    const importedBinding=(await bindings(target))[0]!;
+    expect(importedBinding).toMatchObject({rawValue:'"ProjectA", "keep"'});
+    expect(importedBinding.id).not.toBe(originalA.id);expect(importedBinding.sourceOccurrenceId).not.toBe(originalA.sourceOccurrenceId);expect(importedBinding.logicalNodeId).not.toBe(originalA.logicalNodeId);
+    expect(reimported.manifest.members.every(row=>frozen.manifest.members.every(old=>old.fileId!==row.fileId))).toBe(true);
+    const importedGraph=await graph(target),node=importedGraph.nodes.find(row=>row.locator==="/battery")!;
+    expect(node.enablement).toMatchObject({selfEnabled:false});
+    const origins=node.effects.filter(row=>row.propertyName==="rx_fod_cond");
+    expect(origins.map(row=>row.rawText)).toEqual(['"SharedV1", "keep"','"ProjectA", "keep"']);
+    expect(origins[0]!.source).toMatchObject({sourceName:`shared/${sourceName}`,sharedReference:{resourceId,versionId:v1,readOnly:true}});
+    expect(origins[1]!.source).toMatchObject({sourceName:rootName});
+    await page.goto(route(target));await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"ProjectA", "keep"');await screenshot("parent-reimport-effective-1280.png");
+    const sharedFile=reimported.manifest.members.find(row=>row.sharedReference)!;
+    await page.goto(disposablePageUrl(disposableRuntime,`/parameter-admin/projects/${target}/configuration?${new URLSearchParams({configSet:sets[target]!,file:sharedFile.fileId})}`));
+    await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("SharedV1");await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);await screenshot("parent-reimport-shared-readonly-1280.png");
+    expect((await exportProject(b)).files).toEqual(beforeB.files);expect(await bindings(b)).toEqual(bindingsB);expect((await graph(b)).revisionId).toBe(initialB);
+  });
+
+  test("shared version switch preserves private overrides and creates new revisions in both directions", async ({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "PrivateChoice", "keep"; }; };',rawValuePattern:'"PrivateChoice", "keep"',nodeLocatorPattern:"board",reason:"#1422 private decision",timeoutMs:60_000});
+    const sourceName=`switch-${randomUUID()}.dtsi`,content='/ { board { rx_fod_cond = "SharedOld", "keep"; }; inherited { compatible = "mt,mt5788"; rx_fod_cond = "SharedOld", "keep"; status = "okay"; }; };';
+    const created=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Switch ${randomUUID()}`,sourceName,content,changeDescription:"Original defaults"}});
+    expect(created.status(),await created.text()).toBe(201);const resourceId=(await created.json()).item.resourceId as string;
+    const publish=async(revision:number)=>{
+      const preview=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:revision}});expect(preview.status(),await preview.text()).toBe(201);
+      const result=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await preview.json()).item.id,idempotencyKey:`switch-${randomUUID()}`}});expect(result.status(),await result.text()).toBe(201);return (await result.json()).item.id as string;
+    };
+    const v1=await publish(1),compositionPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const addition={sharedReference:{resourceId,versionId:v1},role:"misc",sortOrder:1};
+    const initialPreview=await request.post(apiRoute(`${compositionPath}/preview`),{headers:adminHeaders(),data:addition});expect(initialPreview.status(),await initialPreview.text()).toBe(200);
+    const initial=await request.post(apiRoute(`${compositionPath}/apply`),{headers:adminHeaders(),data:{...addition,proofToken:(await initialPreview.json()).item.proofToken,reason:"#1422 initial dependency",clientMutationId:`switch-${randomUUID()}`}});expect(initial.status(),await initial.text()).toBe(200);
+    const initialRevision=(await initial.json()).item.configRevisionId as string;
+    const draft=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{baseVersionId:v1}});expect(draft.status(),await draft.text()).toBe(201);
+    const saved=await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{expectedRevision:(await draft.json()).item.revision,name:"Changed defaults",sourceName,content:content.replaceAll("SharedOld","SharedNew").replace('status = "okay"','status = "disabled"'),changeDescription:"New defaults and node status"}});expect(saved.status(),await saved.text()).toBe(200);
+    const v2=await publish((await saved.json()).item.revision);
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({organization:organizationId,configSet:binding.configSetId,tab:"effective",node:"/board"})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const revisions:string[]=[];
+    for(const [index,target] of [v2,v1].entries()) {
+      const composition=await openWorkbenchPanel(page,"config-set");
+      await composition.getByRole("button",{name:`${sourceName} 更多`,exact:true}).click();
+      await page.getByRole("menuitem",{name:"切换共享版本",exact:true}).click();
+      const dialog=page.getByRole("dialog",{name:"切换共享版本",exact:true});
+      const versionControl=dialog.getByRole("combobox",{name:"固定版本",exact:true});await selectControlOption(versionControl,target);
+      await expect(page.getByRole("listbox")).toBeHidden();await expect(versionControl).toBeFocused();
+      const previewButton=dialog.getByRole("button",{name:"预览版本切换",exact:true});await previewButton.focus();await expect(previewButton).toBeFocused();await page.keyboard.press("Enter");
+      const preview=dialog.getByRole("region",{name:"版本切换预览",exact:true});await expect(preview).toContainText("构建与参数约束校验通过");
+      await expect(preview).toContainText("保留本地覆盖");await expect(preview).toContainText('"PrivateChoice", "keep"');await expect(preview).toContainText("status");
+      await dialog.getByRole("textbox",{name:"变更说明",exact:true}).fill("#1422 preserve the project decision");
+      if(index===0) {
+        for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+          await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+          await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toBeInViewport();
+          const path=testInfo.outputPath(`shared-switch-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Shared switch ${viewport.width}`,{path,contentType:"image/png"});
+        }
+        await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
+        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("#1422 preserve the project decision");
+        const files=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});
+        const root=((await files.json()).items as {fileId:string;fileName:string;role:string;currentVersionId:string}[]).find(file=>file.role==="base")!;
+        const original=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});
+        const candidate=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{headers:adminHeaders(),data:{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",
+          contentBase64:Buffer.from((await original.text())+'\n// Concurrent project note retained by switching\n').toString("base64"),expectedCurrentVersionId:root.currentVersionId,expectedConfigRevisionId:initialRevision,clientMutationId:`switch-drift-${randomUUID()}`}});expect(candidate.status(),await candidate.text()).toBe(201);
+        const candidateId=(await candidate.json()).item.id as string;
+        const sourcePreview=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{headers:adminHeaders()});expect(sourcePreview.status(),await sourcePreview.text()).toBe(200);
+        const drift=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`),{headers:adminHeaders(),data:{expectedCurrentVersionId:root.currentVersionId,expectedProofToken:(await sourcePreview.json()).item.proofToken,reason:"Concurrent project note",clientMutationId:`switch-drift-apply-${randomUUID()}`}});expect(drift.status(),await drift.text()).toBe(200);
+        const expectedFailure={method:"POST",path:`${compositionPath}/apply`,status:409};expectedBrowserApiFailures.push(expectedFailure);
+        try {
+          const stale=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));
+          await dialog.getByRole("button",{name:"确认切换版本",exact:true}).click();const refused=await stale;expect(refused.status(),await refused.text()).toBe(409);
+          await expect(dialog.getByRole("alert")).toContainText("预览");await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
+          await page.setViewportSize({width:1440,height:900});const errorPath=testInfo.outputPath("shared-switch-stale-1440.png");await page.screenshot({path:errorPath});await testInfo.attach("Shared switch stale source",{path:errorPath,contentType:"image/png"});
+        } finally {expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(expectedFailure),1);}
+        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("#1422 preserve the project decision");
+      }
+      const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));
+      await dialog.getByRole("button",{name:"确认切换版本",exact:true}).focus();await page.keyboard.press("Enter");
+      const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);revisions.push((await applied.json()).item.configRevisionId);
+      await expect(dialog).toHaveCount(0);await page.getByRole("tab",{name:"生效配置",exact:true}).click();
+      await page.getByRole("treeitem",{name:"节点 /board",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"PrivateChoice", "keep"');
+      await page.getByRole("treeitem",{name:"节点 /inherited",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText(index===0?'"SharedNew", "keep"':'"SharedOld", "keep"');
+      await page.reload();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText(index===0?'"SharedNew", "keep"':'"SharedOld", "keep"');
+    }
+    expect(new Set([initialRevision,...revisions]).size).toBe(3);
+    const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({id:binding.bindingId,rawValue:'"PrivateChoice", "keep"'}));
+  });
+
+  test("shared switch conflicts return from exact source correction and identity inspection with a fresh preview",async({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Private", "keep"; }; };',rawValuePattern:'"Private", "keep"',nodeLocatorPattern:"board",reason:"#1423 recovery",timeoutMs:60_000});
+    const sourceName=`recover-${randomUUID()}.dtsi`,content='/ { inherited { compatible = "mt,mt5788"; rx_fod_cond = "Shared", "keep"; }; recovery_bus { dev@10 { reg = <0x10>; }; }; };';
+    const created=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Recovery ${randomUUID()}`,sourceName,content,changeDescription:"Original source"}});
+    expect(created.status(),await created.text()).toBe(201);const resourceId=(await created.json()).item.resourceId as string;
+    const publish=async(revision:number)=>{
+      const p=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:revision}});expect(p.status(),await p.text()).toBe(201);
+      const v=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await p.json()).item.id,idempotencyKey:randomUUID()}});expect(v.status(),await v.text()).toBe(201);return (await v.json()).item.id as string;
+    };
+    const v1=await publish(1),compositionPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const initial={sharedReference:{resourceId,versionId:v1},role:"misc",sortOrder:1};
+    const p=await request.post(apiRoute(`${compositionPath}/preview`),{headers:adminHeaders(),data:initial});expect(p.status(),await p.text()).toBe(200);
+    const a=await request.post(apiRoute(`${compositionPath}/apply`),{headers:adminHeaders(),data:{...initial,proofToken:(await p.json()).item.proofToken,reason:"Pin recovery source",clientMutationId:randomUUID()}});expect(a.status(),await a.text()).toBe(200);
+    let base=v1;
+    const next=async(text:string)=>{
+      const d=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{baseVersionId:base}});expect(d.status(),await d.text()).toBe(201);
+      const s=await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{expectedRevision:(await d.json()).item.revision,name:"Recovery versions",sourceName,content:text,changeDescription:"Explicit recovery choice"}});expect(s.status(),await s.text()).toBe(200);
+      return base=await publish((await s.json()).item.revision);
+    };
+    const missing=content.replace('rx_fod_cond = "Shared", "keep";',''),v2=await next(missing),v3=await next(missing.replace('dev@10 { reg = <0x10>; };','left@10 { reg = <0x10>; }; right@10 { reg = <0x10>; };'));
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({organization:organizationId,configSet:binding.configSetId,tab:"effective",node:"/board"})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const composition=await openWorkbenchPanel(page,"config-set");await composition.getByRole("button",{name:`${sourceName} 更多`,exact:true}).click();await page.getByRole("menuitem",{name:"切换共享版本",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"切换共享版本",exact:true}),reason="#1423 retain the target and project decision";
+    await selectControlOption(dialog.getByRole("combobox",{name:"固定版本",exact:true}),v3);await dialog.getByRole("textbox",{name:"变更说明",exact:true}).fill(reason);
+    const expected={method:"POST",path:`${compositionPath}/preview`,status:409};expectedBrowserApiFailures.push(expected);
+    try{
+      await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("region",{name:"版本冲突处理",exact:true})).toContainText("/recovery_bus/left@10");
+      await expect(dialog.getByRole("region",{name:"版本冲突处理",exact:true})).toContainText("/recovery_bus/right@10");
+      await dialog.getByRole("button",{name:"核对共享来源",exact:true}).first().click();
+      await expect(page.getByRole("tab",{name:"来源识别",exact:true})).toHaveAttribute("aria-selected","true");
+      await page.reload();await page.getByRole("link",{name:"返回项目节点",exact:true}).click();
+      await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue(reason);await expect(dialog.getByRole("combobox",{name:"固定版本",exact:true})).toHaveAttribute("data-value",v3);
+      await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
+      await selectControlOption(dialog.getByRole("combobox",{name:"固定版本",exact:true}),v2);
+      await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("region",{name:"版本冲突处理",exact:true})).toContainText("/inherited");
+      for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+        await page.setViewportSize(viewport);await expect(dialog.getByRole("button",{name:"编辑项目根文件",exact:true})).toBeInViewport();
+        expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        const path=testInfo.outputPath(`switch-conflict-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Switch conflict ${viewport.width}`,{path,contentType:"image/png"});
+      }
+      await page.evaluate(()=>document.documentElement.classList.add("dark"));
+      await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveCSS("color","rgb(232, 236, 244)");
+      const darkPath=testInfo.outputPath("switch-conflict-dark-1280.png");await page.screenshot({path:darkPath});await testInfo.attach("Switch conflict dark 1280",{path:darkPath,contentType:"image/png"});
+      await page.evaluate(()=>document.documentElement.classList.remove("dark"));
+      await dialog.getByRole("button",{name:"编辑项目根文件",exact:true}).focus();await page.keyboard.press("Enter");
+    }finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(expected),1);}
+    const files=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});const root=((await files.json()).items as {fileId:string;fileName:string;role:string;currentVersionId:string}[]).find(file=>file.role==="base")!;
+    const original=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});expect(original.status(),await original.text()).toBe(200);
+    const corrected=(await original.text())+'\n/ { inherited { rx_fod_cond = "Recovered", "keep"; }; };\n';
+    const saved=await prepareSourceFromEditor(page,corrected,true);await saved.dialog.getByRole("textbox",{name:"DTS 修改原因",exact:true}).fill("#1423 keep the required declaration in this project");
+    const sourceApplying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/source-apply"));
+    await saved.dialog.getByRole("button",{name:"直接应用修改",exact:true}).click();expect((await sourceApplying).status()).toBe(200);await expect(saved.dialog).toHaveCount(0);
+    await page.reload();await page.getByRole("button",{name:"返回版本切换",exact:true}).click();
+    await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue(reason);await expect(dialog.getByRole("combobox",{name:"固定版本",exact:true})).toHaveAttribute("data-value",v2);await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
+    await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("region",{name:"版本切换预览",exact:true})).toContainText("构建与参数约束校验通过");
+    const revisions=await request.get(apiRoute(`/api/v2/projects/${projectId}/config-sets/${binding.configSetId}/revisions`),{headers:adminHeaders()});const current=((await revisions.json()).items as {id:string;revisionNumber:number}[]).sort((x,y)=>y.revisionNumber-x.revisionNumber)[0]!;
+    const latestFiles=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});const latest=((await latestFiles.json()).items as {fileId:string;currentVersionId:string}[]).find(file=>file.fileId===root.fileId)!;
+    const c=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{headers:adminHeaders(),data:{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",contentBase64:Buffer.from(corrected+"\n// Changed again after recovery\n").toString("base64"),expectedCurrentVersionId:latest.currentVersionId,expectedConfigRevisionId:current.id,clientMutationId:randomUUID()}});expect(c.status(),await c.text()).toBe(201);const candidateId=(await c.json()).item.id as string;
+    const cp=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{headers:adminHeaders()});expect(cp.status(),await cp.text()).toBe(200);
+    const ca=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`),{headers:adminHeaders(),data:{expectedCurrentVersionId:latest.currentVersionId,expectedProofToken:(await cp.json()).item.proofToken,reason:"Concurrent correction",clientMutationId:randomUUID()}});expect(ca.status(),await ca.text()).toBe(200);
+    const stale={method:"POST",path:`${compositionPath}/apply`,status:409};expectedBrowserApiFailures.push(stale);
+    try{await dialog.getByRole("button",{name:"确认切换版本",exact:true}).click();await expect(dialog.getByRole("alert")).toContainText("预览");await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);}finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(stale),1);}
+    await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue(reason);
+    const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));await dialog.getByRole("button",{name:"确认切换版本",exact:true}).focus();await page.keyboard.press("Enter");expect((await applying).status()).toBe(200);await expect(dialog).toHaveCount(0);
+    const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({rawValue:'"Recovered", "keep"'}));
+  });
+
+  test("shared successor comparison and authorized usage retain the exact project pin", async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const sample='/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "ProjectLocal", "keep"; }; };';
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:sample,rawValuePattern:'"ProjectLocal", "keep"',nodeLocatorPattern:"board",reason:"#1421 fixed usage",timeoutMs:60_000});
+    const publish=async(resource:string,revision:number)=>{
+      const preview=await request.post(apiRoute(`/api/v2/shared-dtsi/${resource}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:revision}});
+      expect(preview.status(),await preview.text()).toBe(201);
+      const response=await request.post(apiRoute(`/api/v2/shared-dtsi/${resource}/publications`),{headers:adminHeaders(),data:{previewId:(await preview.json()).item.id,idempotencyKey:`t10-${randomUUID()}`}});
+      expect(response.status(),await response.text()).toBe(201);return (await response.json()).item as import("../../server/modules/contracts/dtoSchemas/sharedDtsi").SharedDtsiVersion;
+    };
+    const dependency=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Shared dependency ${randomUUID()}`,sourceName:"leaf.dtsi",content:'/ { dependency { status = "okay"; }; };',changeDescription:"Exact dependency"}});
+    expect(dependency.status(),await dependency.text()).toBe(201);
+    const leaf=await publish((await dependency.json()).item.resourceId,1);
+    const content='/include/ "parts/common.dtsi"\n/include/ "vendor/leaf.dtsi"\n/ { board { rx_fod_cond = "SharedOriginal", "keep"; }; };\n';
+    const resource=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Shared comparison ${randomUUID()}`,members:[{sourceName:"main.dtsi",content},
+      {sourceName:"parts/common.dtsi",content:'/ { common { status = "okay"; }; };\n'}],dependencies:[{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}],changeDescription:"Original published source"}});
+    expect(resource.status(),await resource.text()).toBe(201);
+    const resourceId=(await resource.json()).item.resourceId as string,first=await publish(resourceId,1);
+    const addition={sharedReference:{resourceId,versionId:first.id},role:"misc",sortOrder:1};
+    const composition=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const preview=await request.post(apiRoute(`${composition}/preview`),{headers:adminHeaders(),data:addition});expect(preview.status(),await preview.text()).toBe(200);
+    const applied=await request.post(apiRoute(`${composition}/apply`),{headers:adminHeaders(),data:{...addition,proofToken:(await preview.json()).item.proofToken,reason:"#1421 immutable pin",clientMutationId:`t10-pin-${randomUUID()}`}});
+    expect(applied.status(),await applied.text()).toBe(200);
+    const route=`/parameter-admin/sources?${new URLSearchParams({organization:organizationId,resource:resourceId})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
+    await page.getByRole("tab",{name:"版本",exact:true}).click();
+    await expect(page.getByRole("button",{name:"v1",exact:true})).toBeVisible();
+    await expect(page.getByRole("button",{name:"比较所选版本",exact:true})).toHaveCount(0);
+    await page.getByRole("button",{name:"创建新版本",exact:true}).click();
+    await expect(page.getByLabel("变更说明",{exact:true})).toHaveValue("");
+    const draftResponse=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}`),{headers:adminHeaders()});
+    const draft=(await draftResponse.json()).item as import("../../server/modules/contracts/dtoSchemas/sharedDtsi").SharedDtsiDraft;
+    expect(draft.members.map(({id,sourceName,content:source})=>({id,sourceName,content:source}))).toEqual(first.members.map(({id,sourceName,content:source})=>({id,sourceName,content:source})));
+    expect(draft.dependencies).toEqual(first.manifest.dependencies);
+    const changed=content.replace("SharedOriginal","SharedSuccessor");
+    await page.getByLabel("DTSI 源码",{exact:true}).fill(changed);
+    await page.getByLabel("变更说明",{exact:true}).fill("Shared successor; projects remain pinned");
+    await page.getByRole("button",{name:"预览发布",exact:true}).click();
+    await expect(page.getByText("本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。",{exact:true})).toBeVisible();
+    await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByText("v2 · 已发布，只读",{exact:true})).toBeVisible();
+    const current=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/detail`),{headers:adminHeaders()});const secondId=(await current.json()).item.currentVersion.id as string;
+    const secondResponse=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${secondId}`),{headers:adminHeaders()});const second=(await secondResponse.json()).item as typeof first;
+    expect(second.members.map(member=>member.id)).toEqual(first.members.map(member=>member.id));expect(second.manifest.dependencyClosure).toEqual(first.manifest.dependencyClosure);
+    expect(second.members.find(member=>member.sourceName==="main.dtsi")!.content).toBe(changed);
+    const sourceScreenshot=testInfo.outputPath("shared-successor-source-1440.png");await page.screenshot({path:sourceScreenshot});await testInfo.attach("Shared successor source 1440",{path:sourceScreenshot,contentType:"image/png"});
+    await page.getByRole("tab",{name:"版本",exact:true}).click();
+    await page.getByRole("checkbox",{name:"选择版本 v1",exact:true}).check();await page.getByRole("checkbox",{name:"选择版本 v2",exact:true}).check();
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);const screenshot=testInfo.outputPath(`shared-history-${viewport.width}.png`);await page.screenshot({path:screenshot});await testInfo.attach(`Shared history ${viewport.width}`,{path:screenshot,contentType:"image/png"});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+    await page.getByRole("button",{name:"比较所选版本",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByRole("region",{name:"共享原始源码修改片段",exact:true})).toContainText("SharedSuccessor");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      const fullSource=page.getByText("查看完整源文件",{exact:true});await fullSource.focus();await page.keyboard.press("Enter");
+      await expect(page.getByLabel("共享原始源码变更前",{exact:true})).toHaveText(content);await expect(page.getByLabel("共享原始源码变更后",{exact:true})).toHaveText(changed);
+      await fullSource.focus();await page.keyboard.press("Enter");
+      const screenshot=testInfo.outputPath(`shared-comparison-${viewport.width}.png`);await page.screenshot({path:screenshot});await testInfo.attach(`Shared comparison ${viewport.width}`,{path:screenshot,contentType:"image/png"});
+    }
+    await page.getByRole("radio",{name:"语义声明",exact:true}).click();
+    await expect(page.getByRole("region",{name:"有序语义声明修改片段",exact:true})).toContainText('"SharedSuccessor"');
+    await page.setViewportSize({width:1440,height:900});await page.evaluate(()=>document.documentElement.classList.add("dark"));
+    const semanticScreenshot=testInfo.outputPath("shared-semantic-dark-1440.png");await page.screenshot({path:semanticScreenshot,animations:"disabled"});await testInfo.attach("Shared semantic dark 1440",{path:semanticScreenshot,contentType:"image/png"});
+    await page.evaluate(()=>document.documentElement.classList.remove("dark"));
+    await page.getByRole("tab",{name:"使用情况",exact:true}).click();
+    await expect(page.getByText("有新版本 · 未评估",{exact:true})).toBeVisible();
+    const configLink=page.locator(`a[href*="configSet=${binding.configSetId}"]`);await expect(configLink).toBeVisible();
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);const screenshot=testInfo.outputPath(`shared-usages-${viewport.width}.png`);await page.screenshot({path:screenshot});await testInfo.attach(`Shared usages ${viewport.width}`,{path:screenshot,contentType:"image/png"});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+    await page.getByRole("button",{name:"v1",exact:true}).click();await expect(page.getByText("v1 · 历史版本，只读",{exact:true})).toBeVisible();
+    await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toContainText("SharedOriginal");
+    await page.getByRole("tab",{name:"使用情况",exact:true}).click();await configLink.click();
+    expect(new URL(page.url()).searchParams.get("configSet")).toBe(binding.configSetId);
+    await expect(page.getByRole("tab",{name:"生效配置",exact:true})).toHaveAttribute("aria-selected","true");
+    await page.getByRole("treeitem",{name:"节点 /board",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"ProjectLocal", "keep"');
+    const usages=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/usages`),{headers:adminHeaders()});
+    expect((await usages.json()).items).toContainEqual(expect.objectContaining({projectId,configSetId:binding.configSetId,versionId:first.id,version:1,direct:true,upgradeAvailable:true,evaluation:"not-evaluated"}));
+    const old=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${first.id}`),{headers:adminHeaders()});expect((await old.json()).item.members).toEqual(first.members);
+  });
+
+  test("project editor reviews node status and explicit deletions through native source workflow", async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_fod_cond",
+      dts: '/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Private", "keep"; }; };',
+      rawValuePattern: '"Private", "keep"', nodeLocatorPattern: "board", reason: "#1420 node operations", timeoutMs: 60_000 });
+    const longValue = `Shared-${"value-".repeat(35)}`;
+    const source = `/ { bus { inherited { compatible = "mt,mt5788"; rx_fod_cond = "${longValue}", "keep"; }; }; sibling { compatible = "mt,mt5788"; rx_fod_cond = "Sibling", "keep"; }; };`;
+    const draft = await request.post(apiRoute("/api/v2/shared-dtsi"), { headers: adminHeaders(), data: {
+      name: `Node operations ${randomUUID()}`, sourceName: `node-${randomUUID()}.dtsi`, content: source, changeDescription: "Node operation fixture"
+    } });
+    expect(draft.status(), await draft.text()).toBe(201); const resourceId = (await draft.json()).item.resourceId as string;
+    const publicationPreview = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`), { headers: adminHeaders(), data: { expectedRevision: 1 } });
+    expect(publicationPreview.status(), await publicationPreview.text()).toBe(201);
+    const publication = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`), { headers: adminHeaders(), data: {
+      previewId: (await publicationPreview.json()).item.id, idempotencyKey: `node-${randomUUID()}`
+    } });
+    expect(publication.status(), await publication.text()).toBe(201); const versionId = (await publication.json()).item.id as string;
+    const composition = `/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const addition = { sharedReference: { resourceId, versionId }, role: "misc", sortOrder: 1 };
+    const additionPreview = await request.post(apiRoute(`${composition}/preview`), { headers: adminHeaders(), data: addition });
+    expect(additionPreview.status(), await additionPreview.text()).toBe(200);
+    const added = await request.post(apiRoute(`${composition}/apply`), { headers: adminHeaders(), data: {
+      ...addition, proofToken: (await additionPreview.json()).item.proofToken, reason: "#1420 shared node fixture", clientMutationId: `node-${randomUUID()}`
+    } });
+    expect(added.status(), await added.text()).toBe(200);
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ organization: organizationId, configSet: binding.configSetId, tab: "effective", node: "/bus/inherited" })}`;
+    await signInBrowserAsRole(page, "hardware-user", disposablePageUrl(disposableRuntime, route)); await dismissXiaozeHint(page);
+    const property = page.locator('[data-effective-property="rx_fod_cond"]');
+    await expect(property.getByLabel("rx_fod_cond 最终值", { exact: true })).toContainText(longValue);
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+      await page.setViewportSize(viewport);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      const screenshot = testInfo.outputPath(`node-property-${viewport.width}.png`);
+      await page.screenshot({ path: screenshot }); await testInfo.attach(`Node property ${viewport.width}`, { path: screenshot, contentType: "image/png" });
+    }
+    await page.getByRole("treeitem", { name: "节点 /bus", exact: true }).click();
+    const preparePath = `/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/local-override/prepare`;
+    const expectedFailure = { method: "POST", path: preparePath, status: 409 };
+    expectedBrowserApiFailures.push(expectedFailure);
+    try {
+      let releasePrepare!: () => void;
+      const held = new Promise<void>(resolve => { releasePrepare = resolve; });
+      await page.route(`**${preparePath}`, async intercepted => {
+        await held;
+        await intercepted.continue({ postData: JSON.stringify({ ...intercepted.request().postDataJSON(), expectedConfigRevisionId: "stale" }) });
+      }, { times: 1 });
+      await selectControlOption(page.getByRole("combobox", { name: "节点操作", exact: true }), "disable-node");
+      await expect(page.getByRole("listbox")).toBeHidden();
+      await expect(page.getByRole("combobox", { name: "节点操作", exact: true })).toBeFocused(); await page.keyboard.press("Tab");
+      await expect(page.getByRole("button", { name: "查看节点差异", exact: true })).toBeFocused(); await page.keyboard.press("Enter");
+      await expect(page.getByRole("button", { name: "查看节点差异", exact: true })).toBeDisabled();
+      releasePrepare();
+      await expect(page.getByRole("alert")).toContainText("配置已变化");
+      await expect(page.getByRole("combobox", { name: "节点操作", exact: true })).toHaveAttribute("data-value", "disable-node");
+      for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+        await page.setViewportSize(viewport);
+        await expect(page.getByRole("button", { name: "查看节点差异", exact: true })).toBeInViewport({ ratio: 1 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+        const screenshot = testInfo.outputPath(`node-operations-${viewport.width}.png`);
+        await page.screenshot({ path: screenshot }); await testInfo.attach(`Node operations ${viewport.width}`, { path: screenshot, contentType: "image/png" });
+      }
+      async function applyPrepared(action: string, choice?: string) {
+        const preparedResponse = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === preparePath);
+        if (choice) {
+          await selectControlOption(page.getByRole("combobox", { name: "节点操作", exact: true }), choice);
+          await expect(page.getByRole("listbox")).toBeHidden();
+          await expect(page.getByRole("combobox", { name: "节点操作", exact: true })).toBeFocused(); await page.keyboard.press("Tab");
+          await expect(page.getByRole("button", { name: "查看节点差异", exact: true })).toBeFocused(); await page.keyboard.press("Enter");
+        } else await property.getByRole("button", { name: "删除此属性", exact: true }).click();
+        const prepared = await preparedResponse; expect(prepared.status(), await prepared.text()).toBe(200);
+        const generated = (await prepared.json()).item as { after: string; afterValue: string | null };
+        const sourceEditor = page.getByRole("textbox", { name: "DTS 源码", exact: true });
+        await expect(sourceEditor).toContainText(action === "delete-node" ? "/delete-node/ bus;" : action === "delete-property" ? "/delete-property/ rx_fod_cond;" : "/dts-v1/");
+        if (action === "disable-node") {
+          await page.getByRole("button", { name: "放弃修改", exact: true }).click();
+          const discard = page.getByRole("dialog", { name: "放弃本地 DTS 修改？", exact: true });
+          await discard.getByRole("button", { name: "取消", exact: true }).click();
+          await expect(sourceEditor).toContainText('"disabled"');
+          await page.reload(); await expect(sourceEditor).toContainText('"disabled"');
+        }
+        if (action === "delete-property") {
+          expect(generated.afterValue).toBeNull();
+          await expect(page.getByText(/显式删除属性后/)).toContainText("继承值不生效");
+        }
+        const candidateResponse = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/parameter-file-candidates"));
+        const previewResponse = page.waitForResponse(response => response.request().method() === "GET" && new URL(response.url()).pathname.endsWith("/source-preview"));
+        await page.getByRole("button", { name: "保存修改", exact: true }).click();
+        const candidate = await candidateResponse; expect(candidate.status(), await candidate.text()).toBe(201);
+        expect(candidate.request().postDataJSON().localOverride.action).toBe(action);
+        const preview = await previewResponse; expect(preview.status(), await preview.text()).toBe(200);
+        const checked = (await preview.json()).item as ParameterFileSourcePreview;
+        const dialog = page.getByRole("dialog", { name: "保存 DTS 修改", exact: true });
+        await expect(dialog.getByRole("button", { name: "直接应用修改", exact: true })).toHaveCount(0);
+        await dialog.getByRole("textbox", { name: "DTS 修改原因", exact: true }).fill(`#1420 ${action}`);
+        const reviewer = checked.reviewers!.find(person => person.userId === acceptanceCast.acceptanceAdmin.userId) ?? checked.reviewers![0]!;
+        await selectControlOption(dialog.getByRole("combobox", { name: "DTS 软件审核人" }), reviewer.userId);
+        await expect(page.getByRole("listbox")).toBeHidden();
+        const submittedResponse = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/source-submit"));
+        await dialog.getByRole("button", { name: "提交审核", exact: true }).click();
+        const submitted = await submittedResponse; expect(submitted.status(), await submitted.text()).toBe(200);
+        await expect(page.getByText("已提交审核 · 工作配置尚未更新", { exact: true })).toBeVisible();
+        const reviewerCast = Object.values(acceptanceCast).find(person => person.userId === reviewer.userId)!;
+        const approved = await request.post(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${(await submitted.json()).item.requestId}/review`), {
+          headers: authHeadersForUser(reviewer.userId, reviewerCast.email, reviewer.name), data: { decision: "approve", proofDigest: checked.proofToken }
+        });
+        expect(approved.status(), await approved.text()).toBe(200);
+        await page.getByRole("button", { name: "检查审核结果", exact: true }).click();
+        await expect(page.getByText("当前工作配置", { exact: true })).toBeVisible();
+        await page.getByRole("tab", { name: "生效配置", exact: true }).click();
+      }
+      await applyPrepared("disable-node", "disable-node");
+      await expect(page.getByText('节点未启用（disabled） · 不可达', { exact: true })).toBeVisible();
+      await page.getByRole("treeitem", { name: "节点 /bus/inherited", exact: true }).click();
+      await expect(page.getByText(/祖先 \/bus 阻断/)).toBeVisible();
+      await page.getByRole("treeitem", { name: "节点 /bus", exact: true }).click();
+      await applyPrepared("enable-node", "enable-node");
+      await expect(page.getByText("节点已启用 · 可达", { exact: true })).toBeVisible();
+      await applyPrepared("remove-status-override", "remove-status-override");
+      await page.getByRole("treeitem", { name: "节点 /bus/inherited", exact: true }).click();
+      await applyPrepared("delete-property");
+      await expect(property.getByText("显式删除属性 · 继承值不生效", { exact: true })).toBeVisible();
+      await expect(property.getByLabel("rx_fod_cond 最终值", { exact: true })).not.toContainText(longValue);
+      await property.getByRole("link").first().click();
+      await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("/delete-property/ rx_fod_cond;");
+      expect(new URL(page.url()).searchParams.get("line")).toMatch(/^[1-9]\d*$/);
+      await page.goto(disposablePageUrl(disposableRuntime, route.replace("node=%2Fbus%2Finherited", "node=%2Fbus")));
+      await applyPrepared("delete-node", "delete-node");
+      await page.goto(disposablePageUrl(disposableRuntime, route.replace("node=%2Fbus%2Finherited", "node=%2F")));
+      await expect(page.getByText(/已显式删除节点/)).toContainText("/bus");
+      await expect(page.getByRole("treeitem", { name: "节点 /bus", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("treeitem", { name: "节点 /bus/inherited", exact: true })).toHaveCount(0);
+      await page.getByText(/已显式删除节点/).getByRole("link").click();
+      await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("/delete-node/ bus;");
+      expect(new URL(page.url()).searchParams.get("line")).toMatch(/^[1-9]\d*$/);
+      await page.getByRole("tab", { name: "生效配置", exact: true }).click();
+      await page.getByRole("treeitem", { name: "节点 /sibling", exact: true }).click();
+      await expect(property.getByLabel("rx_fod_cond 最终值", { exact: true })).toHaveText('"Sibling", "keep"');
+      const unchanged = await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${versionId}`), { headers: adminHeaders() });
+      expect(unchanged.status(), await unchanged.text()).toBe(200); expect(JSON.stringify(await unchanged.json())).toContain(longValue);
+      await signInBrowserAsRole(page, "guest", disposablePageUrl(disposableRuntime, route.replace("node=%2Fbus%2Finherited", "node=%2Fsibling")));
+      await expect(property.getByLabel("rx_fod_cond 最终值", { exact: true })).toHaveText('"Sibling", "keep"');
+      await expect(page.getByRole("combobox", { name: "节点操作", exact: true })).toHaveCount(0);
+      await expect(property.getByRole("button", { name: "删除此属性", exact: true })).toHaveCount(0);
+    } finally { expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(expectedFailure), 1); }
+  });
+
+  for(const actor of ["admin","hardware-user","guest"] as const) test(`project local override and removal preserve inherited values through the source workflow (${actor})`, async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const binding = await seedIsolatedBinding(request, { propertyKey:"rx_fod_cond",
+      dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Private", "keep"; }; };',
+      rawValuePattern:'"Private", "keep"',nodeLocatorPattern:"board",reason:"#1419 local override",timeoutMs:60_000 });
+    const sourceName=`local-${randomUUID()}.dtsi`;
+    const source='/ { inherited { compatible = "mt,mt5788"; rx_fod_cond = "SharedDefault", "keep"; }; };';
+    const draft=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Local override ${randomUUID()}`,sourceName,content:source,changeDescription:"Shared default"}});
+    expect(draft.status(),await draft.text()).toBe(201);const resourceId=(await draft.json()).item.resourceId as string;
+    const pubPreview=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:1}});
+    expect(pubPreview.status(),await pubPreview.text()).toBe(201);
+    const publication=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await pubPreview.json()).item.id,idempotencyKey:`local-${randomUUID()}`}});
+    expect(publication.status(),await publication.text()).toBe(201);const versionId=(await publication.json()).item.id as string;
+    const composition=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const addition={sharedReference:{resourceId,versionId},role:"misc",sortOrder:1};
+    const preview=await request.post(apiRoute(`${composition}/preview`),{headers:adminHeaders(),data:addition});
+    expect(preview.status(),await preview.text()).toBe(200);
+    const added=await request.post(apiRoute(`${composition}/apply`),{headers:adminHeaders(),data:{...addition,proofToken:(await preview.json()).item.proofToken,reason:"#1419 pin shared source",clientMutationId:`local-${randomUUID()}`}});
+    expect(added.status(),await added.text()).toBe(200);const sharedFileId=(await added.json()).item.fileId as string;
+    const bindingsPath=`/api/v2/projects/${projectId}/parameter-bindings`;
+    const before=(await (await request.get(apiRoute(bindingsPath),{headers:adminHeaders()})).json()).items as {id:string;sourceNodePath:string;rawValue:string;sourceFileId:string}[];
+    const inherited=before.find(row=>row.sourceFileId===sharedFileId && (row.sourceNodePath==="/inherited" || row.sourceNodePath==="inherited"))!;
+    expect(inherited.rawValue).toBe('"SharedDefault", "keep"');
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({organization:organizationId,configSet:binding.configSetId,tab:"effective",node:"/inherited"})}`;
+    await signInBrowserAsRole(page,actor,disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const property=page.locator('[data-effective-property="rx_fod_cond"]');
+    await expect(property.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"SharedDefault", "keep"');
+    await expect(property.getByRole("button",{name:"撤销本项目覆盖",exact:true})).toHaveCount(0);
+    if(actor==="guest") {
+      const nextDraft=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{baseVersionId:versionId}});
+      expect(nextDraft.status(),await nextDraft.text()).toBe(201);
+      const nextSave=await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{expectedRevision:(await nextDraft.json()).item.revision,
+        name:"Reader successor",sourceName,content:source.replace("SharedDefault","SharedSuccessor"),changeDescription:"New published version leaves project v1 fixed"}});
+      expect(nextSave.status(),await nextSave.text()).toBe(200);
+      const nextPreview=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:(await nextSave.json()).item.revision}});
+      expect(nextPreview.status(),await nextPreview.text()).toBe(201);
+      const nextPublished=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await nextPreview.json()).item.id,idempotencyKey:`reader-${randomUUID()}`}});
+      expect(nextPublished.status(),await nextPublished.text()).toBe(201);
+      await expect(property.getByRole("button",{name:"在本项目覆盖",exact:true})).toHaveCount(0);
+      await property.getByRole("link",{name:"共享资源 v1",exact:true}).click();
+      await expect(page.getByText("v1 · 历史版本，只读",{exact:true})).toBeVisible();
+      await expect(page.getByRole("textbox",{name:"已发布 DTSI 源码",exact:true})).toContainText("SharedDefault");
+      await expect(page.getByRole("textbox",{name:"已发布 DTSI 源码",exact:true})).toHaveAttribute("aria-readonly","true");
+      await expect(page.getByRole("button",{name:"保存草稿",exact:true})).toHaveCount(0);
+      await expect(page.getByRole("navigation",{name:"组织配置子视图"})).toHaveCount(0);
+      for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+        await page.setViewportSize(viewport);const path=testInfo.outputPath(`reader-source-${viewport.width}.png`);await page.screenshot({path});
+        await testInfo.attach(`Reader source ${viewport.width}`,{path,contentType:"image/png"});
+      }
+      await page.getByRole("link",{name:"返回项目节点",exact:true}).click();
+      await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("SharedDefault");
+      expect(new URL(page.url()).searchParams.get("version")).toBeTruthy();
+      await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);
+      await page.getByRole("tab",{name:"生效配置",exact:true}).click();
+      await page.getByRole("treeitem",{name:"节点 /board",exact:true}).click();
+      await property.getByRole("link").first().click();
+      await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("Private");
+      await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);
+      await page.getByRole("button",{name:"项目参数",exact:true}).click();
+      await expect(page).toHaveURL(/\/parameters\?project=aurora/);return;
+    }
+    await property.getByRole("button",{name:"在本项目覆盖",exact:true}).focus();await page.keyboard.press("Enter");
+    await property.getByRole("textbox",{name:"rx_fod_cond 本项目值",exact:true}).fill('"ProjectLocal", "keep"');
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+      await page.setViewportSize(viewport);
+      const input = property.getByRole("textbox",{name:"rx_fod_cond 本项目值",exact:true});
+      const difference = property.getByRole("button",{name:"查看源码差异",exact:true});
+      await input.focus();
+      const before = await input.evaluate(element => {
+        const task = element.closest(".navigator-workbench__task")!;
+        return { scrollTop: task.scrollTop, documentTop: document.documentElement.scrollTop };
+      });
+      await page.keyboard.press("Tab");
+      await expect(difference).toBeFocused();
+      await expect(difference).toBeInViewport({ratio:1});
+      await difference.click({trial:true});
+      const after = await difference.evaluate(element => {
+        const task = element.closest(".navigator-workbench__task")!;
+        return { scrollTop: task.scrollTop, scrollHeight: task.scrollHeight, clientHeight: task.clientHeight,
+          overflowY: getComputedStyle(task).overflowY, documentTop: document.documentElement.scrollTop };
+      });
+      expect(after.documentTop).toBe(before.documentTop);
+      if(viewport.width===1280) {
+        expect(after.overflowY).toBe("auto");
+        expect(after.scrollHeight).toBeGreaterThan(after.clientHeight);
+        expect(after.scrollTop).toBeGreaterThan(before.scrollTop);
+      }
+      const path=testInfo.outputPath(`local-override-${viewport.width}.png`);
+      await page.screenshot({path});await testInfo.attach(`Local override ${viewport.width}`,{path,contentType:"image/png"});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
+    }
+    async function savePrepared(action: "set" | "remove-override") {
+      const preparedResponse=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/local-override/prepare"),{timeout:60_000});
+      if(action==="set")await property.getByRole("button",{name:"查看源码差异",exact:true}).click();
+      else {const remove=property.getByRole("button",{name:"撤销本项目覆盖",exact:true});await expect(remove).toBeEnabled();await remove.focus();await expect(remove).toBeFocused();await page.keyboard.press("Enter");}
+      const prepared=await preparedResponse;expect(prepared.status(),await prepared.text()).toBe(200);
+      const item=(await prepared.json()).item as {before:string;after:string;afterValue:string};
+      await expect(page.getByRole("textbox",{name:"DTS 源码",exact:true})).toContainText(action === "set" ? "ProjectLocal" : "/dts-v1/");
+      if(action==="remove-override") {
+        expect(item.afterValue).toBe('"SharedDefault", "keep"');expect(item.after).not.toContain("/delete-property/ rx_fod_cond");
+        await expect(page.getByText(/撤销本项目覆盖后/)).toContainText("SharedDefault");
+      }
+      await expect(page.getByRole("radio",{name:"编辑",exact:true})).toBeDisabled();
+      if(action==="set") {await page.reload();await expect(page.getByRole("textbox",{name:"DTS 源码",exact:true})).toContainText("ProjectLocal");
+        await expect(page.getByRole("radio",{name:"编辑",exact:true})).toBeDisabled();}
+      await waitForInteractionSurfaceReady(page);
+      const sourceCandidate=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/parameter-file-candidates"),{timeout:60_000});
+      const sourcePreview=page.waitForResponse(response=>response.request().method()==="GET" && new URL(response.url()).pathname.endsWith("/source-preview"),{timeout:60_000});
+      const save=page.getByRole("button",{name:"保存修改",exact:true});
+      await expect(save).toBeEnabled();
+      await save.focus();await expect(save).toBeFocused();await page.keyboard.press("Enter");
+      const candidate=await sourceCandidate;expect(candidate.status(),await candidate.text()).toBe(201);
+      expect(Buffer.from(candidate.request().postDataJSON().contentBase64,"base64").toString("utf8")).toBe(item.after);
+      expect(candidate.request().postDataJSON().localOverride.action).toBe(action);
+      const checked=await sourcePreview;expect(checked.status(),await checked.text()).toBe(200);expect((await checked.json()).item.after).toBe(item.after);
+      const saved={dialog:page.getByRole("dialog",{name:"保存 DTS 修改",exact:true})};
+      await saved.dialog.getByRole("textbox",{name:"DTS 修改原因",exact:true}).fill(`#1419 ${action} only in this project`);
+      if(actor==="admin") {
+        const applying=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/source-apply"));
+        const apply=saved.dialog.getByRole("button",{name:"直接应用修改",exact:true});await apply.focus();await expect(apply).toBeFocused();await page.keyboard.press("Enter");
+        const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);
+      } else {
+        await expect(saved.dialog.getByRole("button",{name:"直接应用修改",exact:true})).toHaveCount(0);
+        const sourcePreview=(await checked.json()).item as ParameterFileSourcePreview;
+        const reviewer=sourcePreview.reviewers?.find(person=>person.userId===acceptanceCast.acceptanceAdmin.userId) ?? sourcePreview.reviewers?.[0];expect(reviewer).toBeDefined();
+        await selectControlOption(saved.dialog.getByRole("combobox",{name:"DTS 软件审核人"}),reviewer!.userId);
+        const submission=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname.endsWith("/source-submit"));
+        const submit=saved.dialog.getByRole("button",{name:"提交审核",exact:true});await submit.focus();await expect(submit).toBeFocused();await page.keyboard.press("Enter");
+        const submitted=await submission;expect(submitted.status(),await submitted.text()).toBe(200);
+        const requestId=(await submitted.json()).item.requestId as string;
+        await expect(page.getByText("已提交审核 · 工作配置尚未更新",{exact:true})).toBeVisible();
+        const approval=await request.post(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${requestId}/review`),{headers:authHeadersForUser(reviewer!.userId,Object.values(acceptanceCast).find(person=>person.userId===reviewer!.userId)!.email,reviewer!.name),
+          data:{decision:"approve",proofDigest:sourcePreview.proofToken}});
+        expect(approval.status(),await approval.text()).toBe(200);
+        expect((await approval.json()).item).toMatchObject({applicationMode:"separate_review",reviewerUserId:reviewer!.userId});
+        await page.getByRole("button",{name:"检查审核结果",exact:true}).click();await expect(page.getByText("当前工作配置",{exact:true})).toBeVisible();
+      }
+      await expect(saved.dialog).toHaveCount(0);
+      await page.getByRole("tab",{name:"生效配置",exact:true}).click();
+    }
+    await savePrepared("set");await expect(property.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"ProjectLocal", "keep"');
+    await savePrepared("remove-override");await expect(property.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"SharedDefault", "keep"');
+    const final=(await (await request.get(apiRoute(bindingsPath),{headers:adminHeaders()})).json()).items as {id:string;rawValue:string}[];
+    expect(final.find(row=>row.id===inherited.id)?.rawValue).toBe('"SharedDefault", "keep"');
+    const sharedRead=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${versionId}`),{headers:adminHeaders()});
+    expect(sharedRead.status(),await sharedRead.text()).toBe(200);expect(JSON.stringify(await sharedRead.json())).toContain("SharedDefault");
+  });
+
+  test("effective configuration preserves ordered origins and exact historical source links", async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const sample = '/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "ProjectFinal", "keep"; }; second { compatible = "mt,mt5788"; rx_fod_cond = "SecondInstance", "keep"; }; };';
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_fod_cond", dts: sample,
+      rawValuePattern: '"ProjectFinal", "keep"', nodeLocatorPattern: "board", reason: "#1418 effective configuration", timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const sourceName = `origins-${randomUUID()}.dtsi`;
+    const source = '/ {\n bus { status = "disabled"; leaf { status = "okay"; }; };\n board { rx_fod_cond = "SharedDefault", "keep"; };\n};';
+    const draft = await request.post(apiRoute("/api/v2/shared-dtsi"), { headers: adminHeaders(), data: {
+      name: `Origins ${randomUUID()}`, sourceName, content: source, changeDescription: "Original shared source" } });
+    expect(draft.status(), await draft.text()).toBe(201);
+    const resourceId = (await draft.json()).item.resourceId as string;
+    const publicationPreview = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`), { headers: adminHeaders(), data: { expectedRevision: 1 } });
+    expect(publicationPreview.status(), await publicationPreview.text()).toBe(201);
+    const published = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`), { headers: adminHeaders(),
+      data: { previewId: (await publicationPreview.json()).item.id, idempotencyKey: `origins-${randomUUID()}` } });
+    expect(published.status(), await published.text()).toBe(201);
+    const versionId = (await published.json()).item.id as string;
+    const compositionPath = `/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition`;
+    const addition = { sharedReference: { resourceId, versionId }, role: "misc", sortOrder: 1 };
+    const preview = await request.post(apiRoute(`${compositionPath}/preview`), { headers: adminHeaders(), data: addition });
+    expect(preview.status(), await preview.text()).toBe(200);
+    const applied = await request.post(apiRoute(`${compositionPath}/apply`), { headers: adminHeaders(), data: {
+      ...addition, proofToken: (await preview.json()).item.proofToken, reason: "#1418 fixed origins", clientMutationId: `origins-${randomUUID()}` } });
+    expect(applied.status(), await applied.text()).toBe(200);
+    const revisionId = (await applied.json()).item.configRevisionId as string;
+    const topologyResponse = await request.get(apiRoute(`/api/v2/projects/${projectId}/config-sets/${binding.configSetId}/revisions/${revisionId}/topology`), { headers: adminHeaders() });
+    expect(topologyResponse.status(), await topologyResponse.text()).toBe(200);
+    const topology = (await topologyResponse.json()).item as Extract<import("../../src/domain/parameter-topology/types").TopologyTree, { view: "effective" }>;
+    const chain = topology.nodes.find(node => node.locator === "/board")!.effects.filter(effect => effect.propertyName === "rx_fod_cond");
+    expect(chain.map(effect => effect.rawText)).toEqual(['"SharedDefault", "keep"', '"ProjectFinal", "keep"']);
+    expect(chain[0]!.source).toMatchObject({ sourceName, startLine: 3, sharedReference: { versionId } });
+    const root = chain.at(-1)!.source!;
+    const exactRoot = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.fileVersionId}/content`), { headers: adminHeaders() });
+    const originalRoot = await exactRoot.text();
+    const candidate = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`), { headers: adminHeaders(), data: {
+      fileId: root.fileId, fileName: binding.fileName, contentBase64: Buffer.from(originalRoot.replace("ProjectFinal", "NewCurrent")).toString("base64"),
+      intent: "source_revision", expectedCurrentVersionId: root.fileVersionId, expectedConfigRevisionId: revisionId, clientMutationId: `new-root-${randomUUID()}` } });
+    expect(candidate.status(), await candidate.text()).toBe(201);
+    const candidateId = (await candidate.json()).item.id as string;
+    const sourcePreview = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`), { headers: adminHeaders() });
+    expect(sourcePreview.status(), await sourcePreview.text()).toBe(200);
+    const current = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`), { headers: adminHeaders(), data: {
+      expectedCurrentVersionId: root.fileVersionId, expectedProofToken: (await sourcePreview.json()).item.proofToken,
+      reason: "Advance current source while retaining history", clientMutationId: `new-root-apply-${randomUUID()}` } });
+    expect(current.status(), await current.text()).toBe(200);
+    const nextDraft = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`), { headers: adminHeaders(), data: { baseVersionId: versionId } });
+    expect(nextDraft.status(), await nextDraft.text()).toBe(201);
+    const nextSave = await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`), { headers: adminHeaders(), data: {
+      expectedRevision: (await nextDraft.json()).item.revision, name: "Successor source", sourceName, content: source.replace("SharedDefault", "Successor"), changeDescription: "Successor" } });
+    expect(nextSave.status(), await nextSave.text()).toBe(200);
+    const nextPreview = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`), { headers: adminHeaders(), data: { expectedRevision: (await nextSave.json()).item.revision } });
+    const nextPublication = await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`), { headers: adminHeaders(), data: { previewId: (await nextPreview.json()).item.id, idempotencyKey: `next-${randomUUID()}` } });
+    expect(nextPublication.status(), await nextPublication.text()).toBe(201);
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ organization: organizationId,
+      configSet: binding.configSetId, revision: revisionId, tab: "effective", node: "/board" })}`;
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, route)); await dismissXiaozeHint(page);
+    await expect(page.getByLabel("rx_fod_cond 最终值", { exact: true })).toHaveText('"ProjectFinal", "keep"');
+    await expect(page.getByRole("treeitem", { name: "节点 /", exact: true })).toBeVisible();
+    await expect(page.getByRole("treeitem", { name: "节点 /second", exact: true })).toBeVisible();
+    await page.getByRole("treeitem", { name: "节点 /second", exact: true }).click();
+    await expect(page.getByLabel("rx_fod_cond 最终值", { exact: true })).toHaveText('"SecondInstance", "keep"');
+    await page.getByRole("treeitem", { name: "节点 /bus/leaf", exact: true }).click();
+    await expect(page.getByText("节点已启用 · 祖先 /bus 阻断", { exact: true })).toBeVisible();
+    await page.getByRole("treeitem", { name: "节点 /board", exact: true }).click();
+    await expect(page.getByRole("list", { name: "rx_fod_cond 来源链" })).toBeHidden();
+    await page.getByText("继承与覆盖（2）", { exact: true }).focus(); await page.keyboard.press("Enter");
+    const origins = page.getByRole("list", { name: "rx_fod_cond 来源链" });
+    await expect(origins.getByRole("listitem")).toHaveCount(2);
+    await expect(origins.getByRole("listitem").first()).toContainText('"SharedDefault", "keep"');
+    await expect(page.getByRole("button", { name: /配置版本/ })).not.toContainText("检查中");
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+      await page.setViewportSize(viewport);
+      const screenshot = testInfo.outputPath(`effective-origins-${viewport.width}.png`);
+      await page.screenshot({ path: screenshot }); await testInfo.attach(`Effective origins ${viewport.width}`, { path: screenshot, contentType: "image/png" });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    }
+    await origins.getByRole("link", { name: "共享资源 v1", exact: true }).click();
+    await expect(page.getByText("v1 · 历史版本，只读", { exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "已发布 DTSI 源码", exact: true })).toContainText("SharedDefault");
+    await expect(page.getByRole("textbox", { name: "已发布 DTSI 源码", exact: true })).toHaveAttribute("aria-readonly", "true");
+    expect(new URL(page.url()).searchParams.get("line")).toBe("3");
+    await page.getByRole("link", { name: "返回项目节点", exact: true }).click();
+    await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("SharedDefault");
+    await expect(page.getByRole("radio", { name: "编辑", exact: true })).toHaveCount(0);
+    await page.getByRole("tab", { name: "生效配置", exact: true }).click();
+    await expect(page.getByLabel("rx_fod_cond 最终值", { exact: true })).toHaveText('"ProjectFinal", "keep"');
+    await page.getByRole("link", { name: `${binding.fileName}:${root.startLine}`, exact: true }).first().click();
+    await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText("ProjectFinal");
+    await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).not.toContainText("NewCurrent");
+    expect(new URL(page.url()).searchParams.get("version")).toBe(root.fileVersionId);
+    expect(new URL(page.url()).searchParams.get("revision")).toBe(revisionId);
+    expect(new URL(page.url()).searchParams.get("organization")).toBe(organizationId);
+    await expect(page.getByRole("radio", { name: "编辑", exact: true })).toHaveCount(0);
+    expect(file.fileId).toBe(root.fileId);
+  });
+
+  test("administrator publishes a private DTS root through the existing shared resource editor without converting the project", async ({ page, request }, testInfo) => {
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const sample='/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "PrivateShared", "keep"; }; };';
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:sample,rawValuePattern:'"PrivateShared", "keep"',
+      nodeLocatorPattern:"board",reason:"#1428 private shared publication",timeoutMs:60_000});
+    const file=await lookupParameterFileVersion({fileName:binding.fileName});
+    const membersPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`;
+    const before=(await (await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items;
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({configSet:binding.configSetId,file:file.fileId})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    const composition=await openWorkbenchPanel(page,"config-set");
+    await composition.getByRole("button",{name:`${binding.fileName} 更多`,exact:true}).click();
+    await page.getByRole("menuitem",{name:"创建共享资源",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByRole("region",{name:"共享 DTSI 草稿",exact:true})).toBeVisible();
+    const resourceId=new URL(page.url()).searchParams.get("resource")!;
+    await expect(page.getByLabel("文件路径",{exact:true})).toHaveValue(binding.fileName);
+    await expect(page.getByText("已复制所选私有源码及依赖。本组织有查看权限的用户可读取草稿与发布版本；来源项目配置保持不变。",{exact:true})).toBeVisible();
+    await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("PrivateShared");
+    await page.getByLabel("资源名称",{exact:true}).fill(`Private board ${randomUUID()}`);
+    await page.getByLabel("变更说明",{exact:true}).fill("#1428 publish an independent frozen private source");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
+      await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeInViewport({ratio:1});
+      const path=testInfo.outputPath(`private-shared-draft-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Private shared draft ${viewport.width}`,{path,contentType:"image/png"});
+    }
+    await page.getByRole("button",{name:"预览发布",exact:true}).click();
+    await expect(page.getByRole("region",{name:"共享原始源码修改片段",exact:true})).toContainText("PrivateShared");
+    await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
+    const detail=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/detail`),{headers:adminHeaders()});
+    const versionId=(await detail.json()).item.currentVersion.id as string;
+    const version=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${versionId}`),{headers:adminHeaders()});
+    expect((await version.json()).item).toMatchObject({members:[expect.objectContaining({sourceName:binding.fileName,content:sample})],
+      manifest:{sourceEvidence:{digest:expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)}}});
+    expect((await (await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items).toEqual(before);
+    const after=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});
+    expect((await after.json()).items.find((item:{id:string})=>item.id===binding.bindingId)).toMatchObject({rawValue:'"PrivateShared", "keep"'});
+    await page.goto(disposablePageUrl(disposableRuntime,route));
+    const retained=await openWorkbenchPanel(page,"config-set");
+    await expect(retained.getByRole("row").filter({hasText:binding.fileName})).toContainText("项目私有源码");
+  });
+
+  test("administrator explicitly converts a published private source with unchanged identity and recoverable confirmation",async({page,request},testInfo)=>{
+    await seedAcceptanceRoleMatrix();await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const sample='/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "PrivateConversion", "keep"; }; };';
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:sample,rawValuePattern:'"PrivateConversion", "keep"',nodeLocatorPattern:"board",reason:"#1429 explicit private conversion",timeoutMs:60_000});
+    const file=await lookupParameterFileVersion({fileName:binding.fileName}),membersPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`;
+    const before=(await(await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items;
+    const route=`/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({configSet:binding.configSetId,file:file.fileId})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,route));await dismissXiaozeHint(page);
+    let composition=await openWorkbenchPanel(page,"config-set");await composition.getByRole("button",{name:`${binding.fileName} 更多`,exact:true}).click();
+    await page.getByRole("menuitem",{name:"创建共享资源",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByRole("region",{name:"共享 DTSI 草稿",exact:true})).toBeVisible();
+    const resourceId=new URL(page.url()).searchParams.get("resource")!,name=`Conversion source ${randomUUID()}`;
+    await page.getByLabel("资源名称",{exact:true}).fill(name);await page.getByLabel("变更说明",{exact:true}).fill("#1429 publish the original source without converting it");
+    await page.getByRole("button",{name:"预览发布",exact:true}).click();await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
+    await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
+    const detail=(await(await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/detail`),{headers:adminHeaders()})).json()).item;
+    const versionId=detail.currentVersion.id as string;
+    expect((await(await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items).toEqual(before);
+    await page.goto(disposablePageUrl(disposableRuntime,route));composition=await openWorkbenchPanel(page,"config-set");
+    await composition.getByRole("button",{name:`${binding.fileName} 更多`,exact:true}).click();await page.getByRole("menuitem",{name:"转换为共享引用",exact:true}).focus();await page.keyboard.press("Enter");
+    const dialog=page.getByRole("dialog",{name:"转换为共享引用",exact:true});await expect(dialog).toBeVisible();
+    await dialog.getByRole("searchbox",{name:"搜索共享资源",exact:true}).fill(`${name} no-match`);await expect(dialog.getByText("没有匹配的共享资源。请先创建并发布资源，或调整搜索。",{exact:true})).toBeVisible();
+    const empty=testInfo.outputPath("private-conversion-empty-1440.png");await page.screenshot({path:empty});
+    await dialog.getByRole("searchbox",{name:"搜索共享资源",exact:true}).fill(name);
+    let releaseVersions:()=>void=()=>{};const versionsGate=new Promise<void>(resolve=>{releaseVersions=resolve;});
+    const versionsPattern=`**/api/v2/shared-dtsi/${resourceId}/versions?*`;
+    await page.route(versionsPattern,async intercepted=>{await versionsGate;await intercepted.continue();});
+    const resourceControl=dialog.getByRole("combobox",{name:"共享资源",exact:true});
+    try{await selectControlOption(resourceControl,resourceId,"disabled");await expect(dialog.getByText("正在读取共享版本…",{exact:true})).toBeVisible();await expect(resourceControl).toBeDisabled();await expect(dialog.getByRole("button",{name:"预览共享转换",exact:true})).toBeDisabled();const loading=testInfo.outputPath("private-conversion-loading-1440.png");await page.screenshot({path:loading});}
+    finally{releaseVersions();}
+    await expect(resourceControl).toBeFocused();
+    await selectControlOption(dialog.getByRole("combobox",{name:"固定版本",exact:true}),versionId);await page.unroute(versionsPattern);
+    const previewPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/preview`;
+    const previewing=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===previewPath);
+    await dialog.getByRole("button",{name:"预览共享转换",exact:true}).focus();await page.keyboard.press("Enter");const preview=await previewing;expect(preview.status(),await preview.text()).toBe(200);
+    const proof=(await preview.json()).item;expect(proof).toMatchObject({sharedConversion:{semanticEqual:true,identitiesRetained:true},impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0}});
+    expect(proof.sharedConversion.files).toContainEqual(expect.objectContaining({fileId:file.fileId,fileVersionId:file.versionId,sourceName:binding.fileName}));
+    await dialog.getByRole("textbox",{name:"变更说明",exact:true}).fill("Keep original source, values and history");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){await page.setViewportSize(viewport);await expect(dialog.getByRole("button",{name:"确认转换引用",exact:true})).toBeInViewport({ratio:1});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const path=testInfo.outputPath(`private-conversion-preview-${viewport.width}.png`);await page.screenshot({path});}
+    await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();expect((await(await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items).toEqual(before);
+    await dialog.getByRole("button",{name:"预览共享转换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("Keep original source, values and history");
+    const retired=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/lifecycle`),{headers:adminHeaders(),data:{state:"retired",expectedLifecycleRevision:detail.lifecycleRevision,idempotencyKey:`conversion-retire-${randomUUID()}`}});expect(retired.status(),await retired.text()).toBe(200);
+    const failure={method:"POST",path:previewPath.replace(/preview$/u,"apply"),status:409};expectedBrowserApiFailures.push(failure);
+    try{await dialog.getByRole("button",{name:"确认转换引用",exact:true}).click();await expect(dialog.getByRole("alert")).toContainText("资源已停用");await expect(dialog.getByRole("button",{name:"确认转换引用",exact:true})).toHaveCount(0);const path=testInfo.outputPath("private-conversion-error-1280.png");await page.screenshot({path});}
+    finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(failure),1);}
+    expect((await(await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items).toEqual(before);
+    const restored=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/lifecycle`),{headers:adminHeaders(),data:{state:"active",expectedLifecycleRevision:(await retired.json()).item.lifecycleRevision,idempotencyKey:`conversion-reactivate-${randomUUID()}`}});expect(restored.status(),await restored.text()).toBe(200);
+    await dialog.getByRole("button",{name:"预览共享转换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("Keep original source, values and history");
+    await page.evaluate(()=>document.documentElement.classList.add("dark"));await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveCSS("color","rgb(232, 236, 244)");const dark=testInfo.outputPath("private-conversion-dark-1280.png");await page.screenshot({path:dark});await page.evaluate(()=>document.documentElement.classList.remove("dark"));
+    const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===failure.path);
+    await dialog.getByRole("button",{name:"确认转换引用",exact:true}).focus();await page.keyboard.press("Enter");const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);await expect(dialog).toHaveCount(0);
+    const after=(await(await request.get(apiRoute(membersPath),{headers:adminHeaders()})).json()).items;
+    expect(after.map((member:{fileId:string;currentVersionId:string})=>[member.fileId,member.currentVersionId])).toEqual(before.map((member:{fileId:string;currentVersionId:string})=>[member.fileId,member.currentVersionId]));
+    expect(after).toContainEqual(expect.objectContaining({fileId:file.fileId,sharedReference:expect.objectContaining({resourceId,versionId,readOnly:true})}));
+    const values=await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`),{headers:adminHeaders()});expect((await values.json()).items).toContainEqual(expect.objectContaining({id:binding.bindingId,rawValue:'"PrivateConversion", "keep"'}));
+    await expect(page.getByRole("region",{name:"DTS 源码",exact:true})).toContainText("PrivateConversion");await expect(page.getByRole("radio",{name:"编辑",exact:true})).toHaveCount(0);
+    const readonly=testInfo.outputPath("private-conversion-readonly-1280.png");await page.screenshot({path:readonly});
+    await recordOperationEvidence({operationId:"PROJ-CONFIG-PRIVATE-SHARED-001",title:"Explicit private source conversion",status:"passed",role:"Admin",route,page,testInfo,assertions:["ui","api","screenshot"],artifacts:[empty,dark,readonly],api:[summarizeApiResponse(preview,{method:"POST",path:previewPath}),summarizeApiResponse(applied,{method:"POST",path:failure.path})],notes:"Real promotion/publication, independent conversion preview/cancel, current retirement refusal and recovery, original file/version and Binding preservation, read-only source; private snapshot restoration and adversarial provenance are separately covered by the native HTTP suite."});
+  });
+
+  test("administrator references a fixed shared DTSI version through configuration composition", async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request, [{ subjectId: "csub_drv_mt_mt5788", canonicalName: "mt,mt5788" }]);
+    const sample = '/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "FixedProject", "keep"; }; };';
+    const binding = await seedIsolatedBinding(request, { propertyKey: "rx_fod_cond", dts: sample,
+      rawValuePattern: '"FixedProject", "keep"', nodeLocatorPattern: "board", reason: "#1416 fixed shared reference", timeoutMs: 60_000 });
+    const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+    const name = `Fixed shared ${randomUUID()}`, sourceName = `fixed-${randomUUID()}.dtsi`;
+    const leafName=`Fixed dependency ${randomUUID()}`;
+    const leafDraftResponse=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{
+      name:leafName,sourceName:"leaf.dtsi",content:'/ { dependency_node: dependency-node { status = "okay"; }; };',changeDescription:"#1417 exact dependency"}});
+    expect(leafDraftResponse.status(),await leafDraftResponse.text()).toBe(201);
+    const leafDraft=(await leafDraftResponse.json()).item as {resourceId:string};
+    const leafPreview=await request.post(apiRoute(`/api/v2/shared-dtsi/${leafDraft.resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:1}});
+    expect(leafPreview.status(),await leafPreview.text()).toBe(201);
+    const leafPublished=await request.post(apiRoute(`/api/v2/shared-dtsi/${leafDraft.resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await leafPreview.json()).item.id,idempotencyKey:`dep-${randomUUID()}`}});
+    expect(leafPublished.status(),await leafPublished.text()).toBe(201);
+    const leafVersion=(await leafPublished.json()).item as {id:string};
+    const source = '/include/ "parts/common.dtsi"\n/include/ "vendor/leaf.dtsi"\n/ { board { rx_fod_cond = "SharedDefault", "keep"; }; };';
+    const draftResponse = await request.post(apiRoute("/api/v2/shared-dtsi"), { headers: adminHeaders(), data: {
+      name,members:[{sourceName,content:source},{sourceName:"parts/common.dtsi",content:'/ { common { status = "okay"; }; };'}],
+      dependencies:[{resourceId:leafDraft.resourceId,versionId:leafVersion.id,mountPath:"vendor"}],changeDescription: "Initial complete fixed shared source" } });
+    expect(draftResponse.status(), await draftResponse.text()).toBe(201);
+    const draft = (await draftResponse.json()).item as { resourceId: string; revision: number };
+    const previewResponse = await request.post(apiRoute(`/api/v2/shared-dtsi/${draft.resourceId}/publication-preview`), {
+      headers: adminHeaders(), data: { expectedRevision: draft.revision } });
+    expect(previewResponse.status(), await previewResponse.text()).toBe(201);
+    const publishedResponse = await request.post(apiRoute(`/api/v2/shared-dtsi/${draft.resourceId}/publications`), {
+      headers: adminHeaders(), data: { previewId: (await previewResponse.json()).item.id, idempotencyKey: `fixed-${randomUUID()}` } });
+    expect(publishedResponse.status(), await publishedResponse.text()).toBe(201);
+    const versionId = (await publishedResponse.json()).item.id as string;
+    const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({ configSet: binding.configSetId, file: file.fileId })}`;
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, route)); await dismissXiaozeHint(page);
+    const composition = await openWorkbenchPanel(page, "config-set");
+    await expect(composition).toHaveAccessibleName("配置组成");
+    await composition.getByRole("button", { name: "添加配置文件", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "加入配置文件", exact: true });
+    await selectControlOption(dialog.getByRole("combobox", { name: "文件来源", exact: true }), "shared");
+    await dialog.getByRole("searchbox", { name: "搜索共享资源", exact: true }).fill(name);
+    await selectControlOption(dialog.getByRole("combobox", { name: "共享资源", exact: true }), draft.resourceId);
+    await expect(dialog.getByRole("button", { name: "预览加入配置", exact: true })).toBeDisabled();
+    await selectControlOption(dialog.getByRole("combobox", { name: "固定版本", exact: true }), versionId);
+    const previewing = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/member-addition/preview"), { timeout: 60_000 });
+    await dialog.getByRole("button", { name: "预览加入配置", exact: true }).click();
+    const preview = await previewing; expect(preview.status(), await preview.text()).toBe(200);
+    expect(preview.request().postDataJSON()).toMatchObject({ sharedReference: { resourceId: draft.resourceId, versionId }, role: "misc" });
+    await expect(dialog.getByRole("region", { name: "加入配置预览" })).toContainText(sourceName);
+    await expect(dialog.getByRole("region",{name:"加入配置预览"})).toContainText(`${leafName} · 版本 1 · 间接依赖`);
+    await expect(dialog.getByRole("region",{name:"加入配置预览"})).toContainText("vendor/leaf.dtsi");
+    await expect(dialog).toHaveAccessibleDescription("选择共享资源及固定版本，预览配置变化后确认引用。");
+    await expect(dialog.getByLabel("确认后根文件源码", { exact: true })).toBeHidden();
+    await dialog.getByText(`项目根文件 include 变更：${binding.fileName}`, { exact: true }).click();
+    await expect(dialog.getByLabel("当前根文件源码", { exact: true })).toHaveText(sample);
+    await expect(dialog.getByLabel("确认后根文件源码", { exact: true })).toContainText(`/include/ "${sourceName}"`);
+    await expect(dialog.getByLabel("确认后根文件源码", { exact: true })).toContainText('"FixedProject"');
+    await dialog.getByText(`项目根文件 include 变更：${binding.fileName}`, { exact: true }).click();
+    await dialog.getByLabel("加入原因", { exact: true }).fill("#1416 reviewed exact fixed version and private-root include change");
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+      await page.setViewportSize(viewport);
+      const confirmation = dialog.getByRole("button", { name: "确认加入配置", exact: true });
+      await expect(confirmation).toBeEnabled();
+      await expect(confirmation).toBeInViewport({ ratio: 1 });
+      await expect(dialog.getByLabel("加入原因", { exact: true })).toBeInViewport({ ratio: 1 });
+      const path = testInfo.outputPath(`fixed-shared-reference-${viewport.width}.png`);
+      await page.screenshot({ path }); await testInfo.attach(`Fixed shared reference ${viewport.width}`, { path, contentType: "image/png" });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    }
+    const applying = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/member-addition/apply"), { timeout: 60_000 });
+    await dialog.getByRole("button", { name: "确认加入配置", exact: true }).focus(); await page.keyboard.press("Enter");
+    const applied = await applying; expect(applied.status(), await applied.text()).toBe(200);
+    const receipt = (await applied.json()).item as { fileId: string; fileVersionId: string };
+    await expect(dialog).toHaveCount(0); await page.reload();
+    const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers: adminHeaders() });
+    expect((await after.json()).items.find((item: { id: string }) => item.id === binding.bindingId)).toMatchObject({ rawValue: '"FixedProject", "keep"' });
+    const files = await openWorkbenchPanel(page, "config-set");
+    const row = files.getByRole("row").filter({ hasText: sourceName });
+    await expect(row).toContainText("共享引用 · 版本 1 · 只读");
+    await expect(row.getByRole("button", { name: "更新文件", exact: true })).toHaveCount(0);
+    await row.getByRole("button", { name: "查看源码", exact: true }).click();
+    await expect(page.getByRole("region", { name: "DTS 源码", exact: true })).toContainText('vendor/leaf.dtsi');
+    await expect(page.getByRole("radio", { name: "编辑", exact: true })).toHaveCount(0);
+    const exact = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${receipt.fileId}/versions/${receipt.fileVersionId}/content`), { headers: adminHeaders() });
+    expect(await exact.text()).toBe(source);
+    const leafUsages=await request.get(apiRoute(`/api/v2/shared-dtsi/${leafDraft.resourceId}/usages`),{headers:adminHeaders()});
+    expect(leafUsages.status(),await leafUsages.text()).toBe(200);
+    expect((await leafUsages.json()).items).toContainEqual(expect.objectContaining({projectId,direct:false}));
   });
 
   test("administrator adds a staged overlay to a Canonical configuration through preview and keyboard confirmation", async ({ page, request }, testInfo) => {

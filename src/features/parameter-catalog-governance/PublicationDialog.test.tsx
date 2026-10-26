@@ -30,6 +30,7 @@ const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
 function renderDialog(
   options: {
     actor?: CatalogActorKind;
+    intent?: "create-definition" | "create-subject";
     permissions?: readonly string[];
     publicationOutcome?: "queued" | "active" | "active-superseded" | "needs-rebase" | "policy-disabled" | "frozen";
     createIdempotencyKey?: () => string;
@@ -58,6 +59,7 @@ function renderDialog(
   const element = (
     <PublicationDialog
       open
+      intent={options.intent}
       actor={options.actor ?? "user"}
       sessionPermissions={options.permissions ?? ["catalog:author", "catalog:publish"]}
       domainState={ready}
@@ -94,7 +96,7 @@ async function fillSupportedDefinition(user: ReturnType<typeof userEvent.setup>)
   const propertyKey = screen.getByLabelText("属性键");
   const displayName = screen.getByLabelText("显示名称");
   const documentation = screen.getByLabelText("说明");
-  const reason = screen.getByLabelText("草稿原因");
+  const reason = screen.getByLabelText("变更说明");
   await user.clear(propertyKey);
   await user.type(propertyKey, "iin_hold");
   await user.clear(displayName);
@@ -151,14 +153,74 @@ describe("PublicationDialog", () => {
     expect(screen.getByLabelText("属性键")).toHaveValue("iin_hold");
     expect(screen.getByLabelText("显示名称")).toHaveValue("保持电流");
     expect(screen.getByLabelText("说明")).toHaveValue("最小保持电流。");
-    expect(screen.getByRole("button", { name: "发布到目录" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("does not call its own successful activation a stale preview after the Catalog refreshes", async () => {
+    const { changeRelease, ports } = renderDialog({ actor: "org-admin", publicationOutcome: "active" });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    await screen.findByText(/目录发布已生效/);
+    vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue({ items: [], totalCount: 0,
+      hasMore: false, nextCursor: null, catalogReleaseId: "crel_after_publication" });
+    changeRelease("crel_after_publication");
+    await waitFor(() => expect(screen.queryByText(/正文已修改，旧预览已作废/)).not.toBeInTheDocument());
+    expect(screen.queryByLabelText("发布预览")).not.toBeInTheDocument();
+  });
+
+  it("creates a configuration schema using an explicit governed identity without driver facts", async () => {
+    const { createCandidate } = renderDialog({ actor: "org-admin", intent: "create-subject" });
+    await selectControlOption(await screen.findByLabelText("主体类型"), "configuration-schema");
+    await userEvent.setup().type(screen.getByLabelText("配置规范标识"), "wiseeff.power-profile");
+    expect(screen.queryByLabelText("驱动性质")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("实例基数")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledWith({ changeSet: [{
+      op: "create-subject", kind: "configuration-schema", canonicalKey: "configuration-schema:wiseeff.power-profile",
+      selector: { kind: "configuration-schema-id", value: "wiseeff.power-profile" },
+    }] }, expect.anything()));
+    expect(screen.queryByText(/新驱动可能改变节点类型回退匹配/)).not.toBeInTheDocument();
+  });
+
+  it("creates a standalone subject without parameter fields or a second creation mode", async () => {
+    const { createCandidate, createProposal } = renderDialog({ actor: "org-admin", intent: "create-subject" });
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("compatible 标识"), "acme,declaration-only");
+    expect(screen.queryByLabelText("属性键")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("显示名称")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预览发布" })).toBeDisabled();
+    await selectControlOption(screen.getByLabelText("驱动性质"), "physical-device");
+    await selectControlOption(screen.getByLabelText("实例基数"), "multiple");
+    await user.type(screen.getByLabelText("变更说明"), "登记设备声明");
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(createProposal).toHaveBeenCalledWith(expect.objectContaining({ requestedChange: {
+      kind: "create-subject", changeSet: [{
+        op: "create-subject", kind: "driver", canonicalKey: "driver:acme,declaration-only",
+        selector: { kind: "driver-compatible", value: "acme,declaration-only" },
+        nature: "physical-device", cardinality: "multiple",
+      }],
+    } }), expect.anything()));
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledWith(expect.objectContaining({ changeSet: [{
+      op: "create-subject", kind: "driver", canonicalKey: "driver:acme,declaration-only",
+      selector: { kind: "driver-compatible", value: "acme,declaration-only" },
+      nature: "physical-device", cardinality: "multiple",
+    }] }), expect.anything()));
+    expect(screen.getByLabelText("发布预览")).toHaveTextContent("高");
   });
 
   it("keeps creation separate from editing and has no permanent evidence refresh action", async () => {
     renderDialog();
     await screen.findByLabelText("已发布主体");
-    expect(screen.getAllByRole("radio").map((item) => item.getAttribute("value"))).toEqual(["create-definition", "create-subject"]);
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "刷新证据" })).not.toBeInTheDocument();
   });
 
@@ -193,16 +255,16 @@ describe("PublicationDialog", () => {
   });
 
   it("allows creating a new subject when the current directory has no subjects", async () => {
-    const { createCandidate } = renderDialog({ prepare: (ports) => {
+    const { createCandidate } = renderDialog({ intent: "create-subject", prepare: (ports) => {
       const page = { items: [], totalCount: 0, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID };
       vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue(page);
       vi.spyOn(ports.catalog, "listDefinitions").mockResolvedValue(page);
     } });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("radio", { name: "新增主体" }));
-    await user.type(screen.getByLabelText("选择器"), "vendor,new");
-    await user.type(screen.getByLabelText("属性键"), "new-value");
-    await user.type(screen.getByLabelText("显示名称"), "新参数");
+    await screen.findByLabelText("compatible 标识");
+    await user.type(screen.getByLabelText("compatible 标识"), "vendor,new");
+    await selectControlOption(screen.getByLabelText("驱动性质"), "physical-device");
+    await selectControlOption(screen.getByLabelText("实例基数"), "multiple");
     await user.click(screen.getByRole("button", { name: "预览发布" }));
     await confirm("确认预览");
     await waitFor(() => expect(createCandidate).toHaveBeenCalledOnce());
@@ -297,7 +359,7 @@ describe("PublicationDialog", () => {
     expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeVisible();
     expect(screen.queryByLabelText(/摘要|仓库|Git|digest|release version|内部编号/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/不必填写内部编号/)).toBeVisible();
+    expect(screen.getByText("此处编写共享参数规范，项目取值在项目工作台修改。")).toBeVisible();
   });
 
   it("saves a draft through existing Proposal resources then previews a typed ChangeSet", async () => {
@@ -327,7 +389,7 @@ describe("PublicationDialog", () => {
       }),
       { catalogReleaseId: CATALOG_RELEASE_ID }
     );
-    expect(await screen.findByText("低风险仍需发布权限确认。单人策略未开启时不能自行批准。")).toBeVisible();
+    expect(await screen.findByText("组织管理员可核对当前影响后确认发布。")).toBeVisible();
     expect(screen.getByLabelText("发布预览")).toHaveTextContent("新增定义");
   });
 
@@ -425,26 +487,22 @@ describe("PublicationDialog", () => {
 
   it("previews a new driver as high risk without a published subjectId", async () => {
     const { createCandidate } = renderDialog({
+      intent: "create-subject",
       actor: "org-admin",
       permissions: ["catalog:author", "catalog:publish"]
     });
     const user = userEvent.setup();
-    await user.click(await screen.findByLabelText("新增主体"));
-    expect(await screen.findByRole("dialog", { name: "新增主体及首批定义" })).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: "新增主体" })).toBeVisible();
     await selectControlOption(screen.getByLabelText("主体类型"), "driver");
-    await user.type(screen.getByLabelText("选择器"), "acme,aux");
-    await user.clear(screen.getByLabelText("属性键"));
-    await user.type(screen.getByLabelText("属性键"), "vbat");
-    await user.clear(screen.getByLabelText("显示名称"));
-    await user.type(screen.getByLabelText("显示名称"), "辅助电池");
-    await user.clear(screen.getByLabelText("说明"));
-    await user.type(screen.getByLabelText("说明"), "辅助电池电压。");
+    await user.type(screen.getByLabelText("compatible 标识"), "acme,aux");
+    await selectControlOption(screen.getByLabelText("驱动性质"), "physical-device");
+    await selectControlOption(screen.getByLabelText("实例基数"), "multiple");
     await user.click(screen.getByRole("button", { name: "预览发布" }));
     await confirm("确认预览");
     await waitFor(() => expect(createCandidate).toHaveBeenCalledTimes(1));
     const body = createCandidate.mock.calls[0]?.[0] as { changeSet: Array<Record<string, unknown>> };
     expect(body.changeSet[0]).toMatchObject({
-      op: "create-subject-with-definitions",
+      op: "create-subject",
       kind: "driver"
     });
     expect(JSON.stringify(body.changeSet[0])).not.toMatch(/csub_acme|subjectId/i);
@@ -454,6 +512,7 @@ describe("PublicationDialog", () => {
 
   it("keeps catalog success visible when registration followup fails", async () => {
     const { ports } = renderDialog({
+      intent: "create-subject",
       actor: "org-admin",
       permissions: ["catalog:author", "catalog:publish"],
       publicationOutcome: "active"
@@ -462,12 +521,9 @@ describe("PublicationDialog", () => {
       catalogApiFailure("placement-conflict")
     );
     const user = userEvent.setup();
-    await user.click(await screen.findByLabelText("新增主体"));
-    await user.type(screen.getByLabelText("选择器"), "acme,aux");
-    await user.clear(screen.getByLabelText("属性键"));
-    await user.type(screen.getByLabelText("属性键"), "vbat");
-    await user.clear(screen.getByLabelText("显示名称"));
-    await user.type(screen.getByLabelText("显示名称"), "辅助电池");
+    await user.type(await screen.findByLabelText("compatible 标识"), "acme,aux");
+    await selectControlOption(screen.getByLabelText("驱动性质"), "physical-device");
+    await selectControlOption(screen.getByLabelText("实例基数"), "multiple");
     await user.click(screen.getByRole("button", { name: "预览发布" }));
     await confirm("确认预览");
     await user.click(await screen.findByRole("button", { name: "发布到目录" }));

@@ -917,6 +917,7 @@ export function CatalogPage({
         resizableNavigator
         taskLabel={catalogListLabel}
         toolbar={<>
+          {anchor.sourceReturn ? <a href={anchor.sourceReturn}>{anchor.sourceReturn.startsWith("/parameter-admin/projects/")?"返回项目来源":"返回来源识别"}</a> : null}
           <form
             className="parameter-catalog__search"
             onCompositionStart={() => setSearchComposing(true)}

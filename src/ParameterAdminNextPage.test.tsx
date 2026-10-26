@@ -142,15 +142,16 @@ function renderPage(options: {
 
 describe("ParameterAdminNextPage · shell", () => {
   it.each([
-    { nav: "组织配置子视图", first: "参数定义管理", second: "模块管理", path: "/parameter-admin/modules" },
-    { nav: "参数定义管理子视图", first: "定义库", second: "节点对应", path: "/parameter-admin/specs/identity-mapping?project=aurora" }
-  ])("preserves the destination and query contract of $nav by keyboard", async ({ nav, first, second, path }) => {
+    { nav: "组织配置子视图", first: "参数定义管理", second: "模块管理", key: "{ArrowRight}", path: "/parameter-admin/modules" },
+    { nav: "组织配置子视图", first: "参数定义管理", second: "共享 DTSI", key: "{End}", path: "/parameter-admin/sources" },
+    { nav: "参数定义管理子视图", first: "定义库", second: "节点对应", key: "{End}", path: "/parameter-admin/specs/identity-mapping?project=aurora" }
+  ])("preserves the destination and query contract of $nav by keyboard", async ({ nav, first, second, key, path }) => {
     const user = userEvent.setup();
     const { onNavigate } = renderPage({ path: "/parameter-admin/specs?project=aurora", runtimeMode: "api",
       repository: createRepository({ listMappingTasks: vi.fn().mockRejectedValue(new Error("任务计数不可用")) }) });
     const navigation = screen.getByRole("navigation", { name: nav });
     within(navigation).getByRole("button", { name: first }).focus();
-    await user.keyboard("{End}");
+    await user.keyboard(key);
     expect(within(navigation).getByRole("button", { name: new RegExp(second) })).toHaveFocus();
     await user.keyboard("{Enter}");
     expect(onNavigate).toHaveBeenCalledWith(path);
@@ -1006,7 +1007,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     });
     await waitFor(() =>
       expect(configSets.onNavigate).toHaveBeenCalledWith(
-        `/parameter-admin/projects/${projectId}/configuration?configSet=cs-default&inspector=config-set`
+        `/parameter-admin/projects/${projectId}/configuration?configSet=cs-default&inspector=config-set&tab=source`
       )
     );
     cleanup();

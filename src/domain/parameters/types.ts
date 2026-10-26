@@ -222,6 +222,7 @@ export type {
 } from "./initializationTypes";
 
 export type ProjectParameterInitializationDraft = {
+  sourceConfigSnapshots?: import("./initializationTypes").InitializationConfigSnapshot[];
   id: string;
   projectId: string;
   projectName: string;

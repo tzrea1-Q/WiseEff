@@ -22,6 +22,8 @@ import {
   type DtsToolchainProbe
 } from "./dtsToolchain";
 import { missingReferencedLabels } from "../dts/danglingAnchorStub";
+import { resolveDtsConfigSet } from "../dts/configSetResolver";
+import { prepareDtsSources } from "../dts/cppSources";
 
 type FakeChild = ChildProcess & {
   stdoutEmitter: EventEmitter;
@@ -276,6 +278,50 @@ describe("checkPinnedToolchainVersions", () => {
 });
 
 describe("createDtsToolchainRunner", () => {
+  it("validates exact prepared CPP without reopening the compiler and refuses changed frozen inputs", async () => {
+    const source = '#include "defs.h"\n/dts-v1/; / { target { limit = <VALUE>; }; };';
+    const input = { entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [], defines: { ENABLED: "1" }, files: new Map([
+      ["board.dts", { fileVersionId: "provisional-board", content: source }],
+      ["defs.h", { fileVersionId: "provisional-header", content: "#define VALUE 8\n" }],
+    ]) };
+    const preparedSources = (await prepareDtsSources(input))!;
+    const snapshot = () => JSON.stringify({ ...preparedSources, documents: [...preparedSources.documents], originalDocuments: [...preparedSources.originalDocuments] });
+    const before = snapshot(), commands: string[] = [];
+    const runner = createDtsToolchainRunner({ probeTools: async () => pinnedProbe(), tmpDirFactory: trackingTmpDirFactory,
+      spawnFn: fakeSpawnScript((command, args) => {
+        commands.push(command);
+        if (command === "dtc") {
+          expect(readFileSync(args.at(-1)!, "utf8")).toContain("<8>");
+          writeFileSync(args[args.indexOf("-o") + 1], Buffer.from("prepared-dtb"));
+        }
+        return { code: 0 };
+      }) });
+    const config = { ...input, preparedSources }, path = process.env.PATH;
+    // The prepared operation already ran the controlled compiler; native tools still run.
+    process.env.PATH = trackingTmpDirFactory();
+    try {
+      const result = await runner.validate(config, { mode: "release" });
+      expect(result).toMatchObject({ ok: true, artifacts: { preprocessing: preparedSources.receipt } });
+      expect(commands).toEqual(["dtc", "dt-validate"]);
+      const final = resolveDtsConfigSet({ ...input, preparedSources, files: new Map([...input.files].map(([name, file]) => [name, { ...file, fileVersionId: `persisted-${name}` }])) });
+      expect(final.diagnostics).toEqual([]);
+      expect(final.effective.nodesByLocator.get("/target")?.properties.get("limit")?.sourceChain.at(-1)?.origin)
+        .toEqual({ fileVersionId: "persisted-board.dts", start: source.indexOf("<VALUE>"), end: source.indexOf("<VALUE>") + 7, mode: "expanded-v1" });
+      for (const changed of [
+        { ...config, defines: { ENABLED: "2" } }, { ...config, entryFile: "defs.h" },
+        { ...config, overlayOrder: ["board.dts"] }, { ...config, includeSearchPaths: ["vendor"] },
+        { ...config, files: new Map([...input.files, ["defs.h", { fileVersionId: "changed", content: "#define VALUE 9\n" }]]) },
+        { ...config, preparedSources: { ...preparedSources, receipt: { ...preparedSources.receipt, image: "untrusted/compiler" } } },
+      ]) {
+        const refused = await runner.validate(changed, { mode: "release" });
+        expect(refused.ok).toBe(false);
+        expect(refused.diagnostics).toContainEqual(expect.objectContaining({ code: "preprocess-stale" }));
+      }
+      expect(commands).toEqual(["dtc", "dt-validate"]);
+      expect(snapshot()).toBe(before);
+    } finally { if (path === undefined) delete process.env.PATH; else process.env.PATH = path; }
+  });
+
   it("compiles base+overlay, runs dt-validate, and returns artifact hashes in release mode", async () => {
     const spawnFn = fakeSpawnScript((command, args) => {
       if (command === "dtc" && args.includes("-O") && args.includes("dtb")) {
@@ -600,6 +646,37 @@ describe("ephemeral overlay fragment wrap", () => {
 });
 
 describe("real dts toolchain (optional)", () => {
+  it("matches native dtc when a deleted node is freshly declared without reviving its old subtree", () => {
+    const source = '/dts-v1/; / { old_label: parent { old = <1>; child { value = <2>; }; }; }; &{/} { /delete-node/ parent; }; / { fresh_label: parent { fresh = <3>; }; };';
+    const compiled = spawnSync(resolveDtsToolchainCommands().dtc, ["-I", "dts", "-O", "dts"], { input: source, encoding: "utf8" });
+    expect(compiled.status, compiled.stderr).toBe(0);
+    expect(compiled.stdout).toMatch(/fresh\s*=\s*<0x0*3>/);
+    expect(compiled.stdout).not.toMatch(/old_label|\bold\s*=|\bchild\s*\{/);
+    for (const content of [source, compiled.stdout]) {
+      const graph = resolveDtsConfigSet({ entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [],
+        files: new Map([["board.dts", { fileVersionId: "v1", content }]]) });
+      expect(graph.diagnostics).toEqual([]);
+      expect([...graph.effective.nodesByLocator.values()].filter(node => !node.deleted).map(node => node.nodeLocator)).toEqual(["/", "/parent"]);
+      expect([...graph.effective.nodesByLocator.get("/parent")!.properties.keys()]).toEqual(["fresh"]);
+    }
+  });
+
+  it("compiles frozen header/BIT inputs to the same native DTB as their literal value", async () => {
+    const literal = happyConfigSet();
+    const content = literal.files.get(literal.entryFile)!.content.replace('model = "toolchain-fixture";', 'model = "toolchain-fixture"; flags = <8>;');
+    const cpp = { ...literal, files: new Map(literal.files) };
+    cpp.files.set(literal.entryFile, { content: `#include "cpp-defs.h"\n${content.replace("flags = <8>", "flags = <BIT(3)>")}` });
+    cpp.files.set("cpp-defs.h", { content: "#define BIT(x) (1U << (x))\n" });
+    const runner = createDtsToolchainRunner();
+    const expanded = await runner.validate(cpp, { mode: "release" });
+    expect(expanded.artifacts.preprocessing).toMatchObject({ schemaVersion: "dts-cpp/v1", compilerVersion: "14.2.0" });
+    expect(expanded.artifacts.baseDtbSha256, JSON.stringify(expanded.diagnostics)).toMatch(/^[a-f0-9]{64}$/u);
+    const reference = await runner.validate({ ...literal, files: new Map(literal.files).set(literal.entryFile, { content }) }, { mode: "release" });
+    expect(expanded.artifacts.baseDtbSha256).toBe(reference.artifacts.baseDtbSha256);
+    expect(expanded.artifacts.effectiveDtbSha256).toBe(reference.artifacts.effectiveDtbSha256);
+    expect(cpp.files.get(literal.entryFile)!.content).toContain("<BIT(3)>");
+  }, 30_000);
+
   it(
     "validates a tiny base+overlay set when host tools are present",
     async () => {

@@ -9,6 +9,7 @@ import { organizationInvitationRoutes } from "./dtoSchemas/organizationInvitatio
 import { organizationTeamRoutes } from "./dtoSchemas/organizationTeams";
 import { organizationWorkspaceRoutes } from "./dtoSchemas/organizationWorkspace";
 import { assetHandoverRoutes } from "./dtoSchemas/organizationAssetHandover";
+import { sharedDtsiRoutes } from "./dtoSchemas/sharedDtsi";
 
 export type RouteModule =
   | "workflow-publication"
@@ -40,6 +41,7 @@ export type RouteManifestEntry = {
 };
 
 export const routeManifest = [
+  ...sharedDtsiRoutes,
   ...organizationDeletionRoutes,
   ...accountTransferRoutes,
   ...assetHandoverRoutes,
@@ -355,6 +357,13 @@ export const routeManifest = [
     id: "parameters.initialization.preview",
     method: "POST",
     path: "/api/v1/parameters/projects/:projectId/initialization/preview",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.initialization.completeCopyPreview",
+    method: "POST",
+    path: "/api/v1/parameters/projects/:projectId/initialization/copy-preview",
     module: "parameters",
     stability: "mvp"
   },
@@ -1299,10 +1308,13 @@ export const routeManifest = [
   },
   { id: "parameterFiles.listConfigSets", method: "GET", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.previewCanonicalMemberAddition", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/preview", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.prepareProjectLocalOverride", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/local-override/prepare", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.applyCanonicalMemberAddition", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/apply", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.previewAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-preview", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.applyAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-apply", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.createConfigSet", method: "POST", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.previewConfigSetImport", method: "POST", path: "/api/v1/projects/:projectId/config-set-import/preview", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.applyConfigSetImport", method: "POST", path: "/api/v1/projects/:projectId/config-set-import/apply", module: "parameter-files", stability: "mvp" },
   {
     id: "parameterFiles.addConfigSetFile",
     method: "POST",

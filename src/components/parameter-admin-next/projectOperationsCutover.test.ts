@@ -41,11 +41,11 @@ describe("projectOperationsCutover", () => {
     );
   });
 
-  it("maps config-sets to inspector=config-set and preserves configSet", () => {
+  it("maps legacy config-sets to the source composition inspector and preserves configSet", () => {
     expect(
       buildCanonicalConfigurationPath("proj-1", "config-sets", "?configSet=cs-default")
     ).toBe(
-      "/parameter-admin/projects/proj-1/configuration?configSet=cs-default&inspector=config-set"
+      "/parameter-admin/projects/proj-1/configuration?configSet=cs-default&inspector=config-set&tab=source"
     );
   });
 

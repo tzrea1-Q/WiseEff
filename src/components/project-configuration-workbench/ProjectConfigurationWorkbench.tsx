@@ -7,6 +7,9 @@ import type {
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { TopologyTree } from "@/domain/parameter-topology/types";
+import { effectiveStructureNodes, WorkbenchEffectiveConfiguration } from "./WorkbenchEffectiveConfiguration";
+import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { WorkbenchMemberRemovalDialog } from "./WorkbenchMemberRemovalDialog";
 import { WorkbenchSetRootDialog } from "./WorkbenchSetRootDialog";
@@ -15,6 +18,8 @@ import { CanonicalBatchSubmitDialog } from "@/features/parameter-review/Canonica
 import { permitsFreshBatchRequest } from "@/application/project-configuration/candidateRequestReceipt";
 import type {
   ParameterFileRepository,
+  ProjectLocalOverrideInput,
+  ProjectLocalOverrideDraft,
   ParameterFileSourceReviewStatus,
   ParameterFileSourceWorkflow,
   ProjectParameterFileVersion
@@ -55,13 +60,17 @@ import {
 import { WorkbenchInspectorPanel } from "./WorkbenchInspectorPanel";
 import { WorkbenchConfigurationFilesDialog } from "./WorkbenchConfigurationFilesDialog";
 import { WorkbenchMemberAdditionDialog } from "./WorkbenchMemberAdditionDialog";
+import type { SharedSwitchConflict } from "@wiseeff/dto-schemas";
 import { WorkbenchRevisionGate } from "./WorkbenchRevisionGate";
 import { WorkbenchSourceCanvas } from "./WorkbenchSourceCanvas";
 import { WorkbenchSourceEditingPane } from "./WorkbenchSourceEditingPane";
 import { createSourceEditSession } from "@/application/project-configuration/sourceEditSession";
+import { sourceDraftKey } from "@/application/project-configuration/sourceDraftStorage";
 import type { WorkbenchDtsEditorSessions } from "./WorkbenchDtsEditor";
 import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
 import { WorkbenchSetupGate } from "./WorkbenchSetupGate";
+import { WorkbenchPackageImportDialog } from "./WorkbenchPackageImportDialog";
+import { createConfigSetPackageClient } from "@/infrastructure/http/configSetPackageClient";
 import { resolveParamAdminProjectsReturnPath } from "@/hooks/useParamAdminProjectsSearch";
 import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitrationDock";
 import { WorkbenchTaskDock } from "./WorkbenchTaskDock";
@@ -102,6 +111,7 @@ import type { ApiClient } from "@/infrastructure/http/apiClient";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { createCanonicalConflictClient } from "@/infrastructure/http/canonicalConflictClient";
 import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
+import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
 import { createAdministratorMemberRemovalClient } from "@/infrastructure/http/administratorMemberRemovalClient";
 
 export type ProjectConfigurationWorkbenchProject = {
@@ -141,7 +151,7 @@ export type ProjectConfigurationWorkbenchProps = {
    */
   topologyRepository?: Pick<
     ParameterTopologyRepository,
-    "listConfigRevisions" | "validateRevision" | "listBindings" | "createBindingDraft"
+    "listConfigRevisions" | "validateRevision" | "listBindings" | "createBindingDraft" | "getTopology"
   >;
 };
 
@@ -167,6 +177,16 @@ export function ProjectConfigurationWorkbench({
   const governanceClient = useMemo(() => createUserGovernanceClient(apiClient), [apiClient]);
   const conflictClient = useMemo(() => createCanonicalConflictClient(apiClient), [apiClient]);
   const additionClient = useMemo(() => createCanonicalMemberAdditionClient(apiClient), [apiClient]);
+  const sharedDtsiClient = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : undefined, [apiClient]);
+  const packageClient = useMemo(() => createConfigSetPackageClient(apiClient), [apiClient]);
+  const [packageImportOpen, setPackageImportOpen] = useState(false);
+  const sharedImportScope = useMemo(() => ({currentUserId, organizationId, projectId:project.id, search, sharedDtsiClient}), [currentUserId, organizationId, project.id, search, sharedDtsiClient]);
+  const currentSharedImport = useRef<object | null>(sharedImportScope);
+  currentSharedImport.current = sharedImportScope;
+  useEffect(() => {
+    currentSharedImport.current = sharedImportScope;
+    return () => { if(currentSharedImport.current === sharedImportScope) currentSharedImport.current = null; };
+  },[sharedImportScope]);
   const removalClient = useMemo(() => createAdministratorMemberRemovalClient(apiClient), [apiClient]);
   const { toast } = useToast();
   const [memberRemovalTarget, setMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
@@ -419,6 +439,9 @@ export function ProjectConfigurationWorkbench({
     () => navigationSession.resolveSelectedConfigSet({ search, configSets }),
     [configSets, navigationSession, search]
   );
+  const sharedImportRevisionId = revisionGate.loading || revisionGate.error ? null : revisionGate.revisions
+    .filter(revision => revision.configSetId === selectedConfigSet?.id && ["resolved","validated","compiled","pending_approval"].includes(revision.status))
+    .sort((left,right) => right.revisionNumber-left.revisionNumber)[0]?.id ?? null;
   const configBaselines = useMemo(
     () => baselines.filter((item) => item.configSetId === selectedConfigSet?.id),
     [baselines, selectedConfigSet?.id]
@@ -492,9 +515,79 @@ export function ProjectConfigurationWorkbench({
   const canvasMode: WorkbenchCanvasMode = parseCanvasMode(queryValue(search, "sourceMode"));
   const requestedTab = queryValue(search, "tab");
   const contentTab = requestedTab === "conflicts" ? "conflicts"
+    : requestedTab === "effective" ? "effective"
     : requestedTab === "source" || requestedTab === "structure" ? "source"
-    : queryValue(search, "tasks") === "conflicts" || queryValue(search, "dock") === "conflicts" ? "conflicts" : "source";
-  const showContentTabs = contentTab === "conflicts" || syncConflicts.length > 0 || Boolean(conflictsError);
+    : queryValue(search, "tasks") === "conflicts" || queryValue(search, "dock") === "conflicts" ? "conflicts"
+    : apiMode && topologyRepository && !queryValue(search, "file") && !queryValue(search, "sourceMode")
+      && !["file", "versions", "candidates"].includes(queryValue(search, "inspector") ?? "") ? "effective" : "source";
+  const showContentTabs = Boolean(topologyRepository) || contentTab === "conflicts" || syncConflicts.length > 0 || Boolean(conflictsError);
+  const effectiveRevision = queryValue(search, "revision") ?? "current";
+  const currentEffective = ["current", "latest", "head"].includes(effectiveRevision);
+  const currentEffectiveRevisionId = revisionGate.revisions.filter(revision => revision.configSetId === selectedConfigSet?.id && revision.status !== "resolving")
+    .sort((left, right) => right.revisionNumber - left.revisionNumber)[0]?.id ?? null;
+  const effectiveKey = `${project.id}/${selectedConfigSet?.id}/${effectiveRevision}/${currentEffective ? currentEffectiveRevisionId : ""}`;
+  const [effectiveRetry, setEffectiveRetry] = useState(0);
+  const [effectiveResult, setEffectiveResult] = useState<{ key: string; tree?: Extract<TopologyTree, { view: "effective" }>; error?: string } | null>(null);
+  useEffect(() => {
+    if (contentTab !== "effective" || !selectedConfigSet || !topologyRepository) return;
+    setEffectiveResult(null);
+    if (currentEffective && (membersListLoading || membersError || selectedMembers.length === 0
+      || revisionGate.loading || revisionGate.error || !currentEffectiveRevisionId)) return;
+    let cancelled = false;
+    void topologyRepository.getTopology(project.id, selectedConfigSet.id, effectiveRevision, "effective").then(tree => {
+      if (tree.view !== "effective") throw new Error("生效配置返回了错误的视图，请重试。");
+      if (!cancelled) setEffectiveResult({ key: effectiveKey, tree });
+    }).catch(error => { if (!cancelled) setEffectiveResult({ key: effectiveKey, error: presentError(error, "生效配置加载失败。") }); });
+    return () => { cancelled = true; };
+  }, [contentTab, currentEffective, currentEffectiveRevisionId, effectiveKey, effectiveRetry, effectiveRevision, membersError, membersListLoading, project.id, revisionGate.error, revisionGate.loading, selectedConfigSet, selectedMembers.length, topologyRepository]);
+  const effectiveTree = effectiveResult?.key === effectiveKey ? effectiveResult.tree : undefined;
+  const effectiveError = effectiveResult?.key === effectiveKey ? effectiveResult.error : undefined;
+  const effectiveNodes = useMemo(() => effectiveStructureNodes(effectiveTree?.nodes ?? []), [effectiveTree]);
+  const effectiveNodePath = queryValue(search, "node") ?? effectiveTree?.nodes.find(node => node.locator !== "/")?.locator ?? "/";
+  const effectiveNode = effectiveTree?.nodes.find(node => node.locator === effectiveNodePath) ?? null;
+  const [localOverrideDraft, setLocalOverrideDraft] = useState<(ProjectLocalOverrideDraft & { input: ProjectLocalOverrideInput }) | null>(null);
+  const selectedSourceOverride = Object.values(sourceEditSnapshot.files).find(file => file.scope.projectId === project.id
+    && file.scope.configSetId === selectedConfigSet?.id && file.scope.fileId === selectedMember?.fileId)?.base.localOverride;
+  const describeLocalChange = (action: ProjectLocalOverrideInput["action"], value: string | null) => {
+    const label = { set: "本项目覆盖后", "remove-override": "撤销本项目覆盖后", "delete-property": "显式删除属性后",
+      "enable-node": "在本项目启用后", "disable-node": "在本项目禁用后", "remove-status-override": "撤销本项目状态覆盖后", "delete-node": "显式删除节点后" }[action];
+    return `${label}：${action === "delete-node" ? "节点及子节点不存在" : value ?? (action === "delete-property" ? "属性缺失，继承值不生效" : "属性缺失")}。保存时将重新验证完整配置。`;
+  };
+  const overrideContext = useRef("");
+  overrideContext.current = `${effectiveKey}/${effectiveTree?.revisionId ?? ""}/${contentTab}/${effectiveNodePath}`;
+  const prepareLocalOverride = async (input: ProjectLocalOverrideInput) => {
+    if (!fileRepository.prepareProjectLocalOverride || !selectedConfigSet || !resolvedOrganizationId) return;
+    sourceFlushRef.current?.();
+    if (sessionDraftsDirty || Object.values(sourceEditSession.getSnapshot().files).some(file => file.dirty)) throw new Error("请先保存或放弃现有草稿，再准备本项目覆盖。");
+    const context = overrideContext.current;
+    const draft = await fileRepository.prepareProjectLocalOverride(project.id, selectedConfigSet.id, input);
+    if (overrideContext.current !== context) return;
+    if (draft.before === draft.after) throw new Error("此值与当前本项目声明相同，没有需要保存的修改。");
+    const scope = { userId: currentUserId, organizationId: resolvedOrganizationId, projectId: project.id,
+      configSetId: selectedConfigSet.id, fileId: draft.fileId };
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(draft.before));
+    if (overrideContext.current !== context) return;
+    await sourceEditSession.open({ scope, sourceText: draft.before, base: { fileVersionId: draft.baseVersionId,
+      configRevisionId: draft.configRevisionId, sourceDigest: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join(""),
+      ...(draft.localOverride ? { localOverride: { input: draft.localOverride, afterValue: draft.afterValue } } : {}) } });
+    if (overrideContext.current !== context) return;
+    if (sourceEditSession.getFile(scope)?.dirty) throw new Error("此文件已有恢复草稿，请先在项目源码中处理。");
+    sourceEditorSessions.delete(sourceDraftKey(scope));
+    sourceEditSession.change(scope, draft.after);
+    if (!await sourceEditSession.flush(scope)) throw new Error("无法保存本地恢复草稿，请重试后再提交。");
+    if (overrideContext.current !== context) return;
+    setLocalOverrideDraft({ ...draft, input });
+    const params = new URLSearchParams(search); params.set("tab", "source");
+    onNavigate(formatWorkbenchPath(project.id, params.toString(), { configSet: selectedConfigSet.id, file: draft.fileId,
+      sourceMode: "working", version: null, inspector: null }));
+  };
+  const selectEffectiveNode = (node: string, property: string | null = null) => {
+    const params = new URLSearchParams(search);
+    params.set("tab", "effective"); params.set("node", node);
+    params.delete("inspector"); setInspectorOpen(false);
+    if (property) params.set("property", property); else params.delete("property");
+    onNavigate(`/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${params}`);
+  };
   const contentTabsWereVisible = useRef(showContentTabs);
   useEffect(() => {
     if (contentTabsWereVisible.current && !showContentTabs && document.activeElement === document.body) {
@@ -508,6 +601,7 @@ export function ProjectConfigurationWorkbench({
   const selectContentTab = (tab: string) => {
     const params = new URLSearchParams(search);
     params.set("tab", tab);
+    if (tab === "effective") { setInspectorOpen(false); params.delete("inspector"); }
     onNavigate(`/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${params.toString()}`);
   };
 
@@ -527,10 +621,10 @@ export function ProjectConfigurationWorkbench({
     setInspectorOpen(true);
     if (!selectedConfigSet) return;
     const switchingFile = fileId && fileId !== selectedMember?.fileId;
-    const targetPath = formatWorkbenchPath(project.id, search, { configSet: selectedConfigSet.id, inspector: level,
+    const targetPath = formatWorkbenchPath(project.id, ["file", "versions", "candidates"].includes(level) ? canvasSearch : search, { configSet: selectedConfigSet.id, inspector: level,
       ...(switchingFile ? { file: fileId, node: null, property: null, sourceMode: null, version: null, candidate: null } : {}) });
     if (targetPath !== `/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${search.replace(/^\?/, "")}`) onNavigate(targetPath);
-  }, [onNavigate, project.id, search, selectedConfigSet, selectedMember?.fileId]);
+  }, [onNavigate, project.id, search, canvasSearch, selectedConfigSet, selectedMember?.fileId]);
   const closeInspector = () => {
     setInspectorOpen(false);
     if (selectedConfigSet && queryValue(search, "inspector")) onNavigate(formatWorkbenchPath(project.id, search, {
@@ -663,6 +757,57 @@ export function ProjectConfigurationWorkbench({
     return result;
   }, [projectFiles, sourceWorkflowsByFileId]);
   const [memberAdditionOpen, setMemberAdditionOpen] = useState(false);
+  const [switchSharedMember,setSwitchSharedMember]=useState<DtsConfigSetMemberFile|null>(null);
+  const [conversionSource,setConversionSource]=useState<{configRevisionId:string;fileId:string;fileVersionId:string;sourceName:string}|undefined>();
+  const resolvedOrganizationId = organizationId ?? selectedConfigSet?.organizationId ?? null;
+  const switchTaskKey=`wiseeff.shared-switch:${currentUserId}:${resolvedOrganizationId}:${project.id}:${selectedConfigSet?.id}`;
+  type SwitchTask={scope:string;operation?:"remove";reference:{resourceId:string;versionId:string;version:number};draft:{versionId:string;reason:string}};
+  const [switchTask,setSwitchTask]=useState<SwitchTask|null>(null);
+  const activeSwitchTask=switchTask?.scope===switchTaskKey?switchTask:null;
+  useEffect(()=>{
+    setMemberAdditionOpen(false);setConversionSource(undefined);setSwitchSharedMember(null);
+    try {
+      const saved=JSON.parse(sessionStorage.getItem(switchTaskKey)??"null") as SwitchTask|null;
+      if(saved?.scope===switchTaskKey && typeof saved.reference?.resourceId==="string" && typeof saved.reference.versionId==="string"
+        && typeof saved.reference.version==="number" && typeof saved.draft?.versionId==="string" && typeof saved.draft.reason==="string")setSwitchTask(saved);
+    }catch{/* A missing recovery draft never supplies a preview proof. */}
+  },[switchTaskKey]);
+  const saveSwitchTask=useCallback((task:SwitchTask)=>{
+    sessionStorage.setItem(switchTaskKey,JSON.stringify(task));setSwitchTask(task);
+  },[switchTaskKey]);
+  const updateSwitchDraft=useCallback((draft:SwitchTask["draft"])=>{
+    setSwitchTask(current=>{
+      if(!current || current.scope!==switchTaskKey || current.draft.versionId===draft.versionId && current.draft.reason===draft.reason)return current;
+      const next={...current,draft};try{sessionStorage.setItem(switchTaskKey,JSON.stringify(next));}catch{/* Keep the in-page task when browser storage is unavailable. */}return next;
+    });
+  },[switchTaskKey]);
+  const dismissSwitchTask=()=>{setMemberAdditionOpen(false);setConversionSource(undefined);setSwitchSharedMember(null);setSwitchTask(null);try{sessionStorage.removeItem(switchTaskKey);}catch{/* Cancellation remains available when browser storage is unavailable. */}};
+  const resumedSwitch=useRef("");
+  useEffect(()=>{
+    if(queryValue(search,"sharedSwitch")==="resume" && activeSwitchTask && canAdmin && resumedSwitch.current!==switchTaskKey){
+      resumedSwitch.current=switchTaskKey;setMemberAdditionOpen(true);
+    }
+  },[search,activeSwitchTask,canAdmin,switchTaskKey]);
+  const recoverSwitch=(location:SharedSwitchConflict,draft:SwitchTask["draft"])=>{
+    const reference=activeSwitchTask?.reference??switchSharedMember?.sharedReference;
+    if(!reference || !selectedConfigSet)return;
+    try{saveSwitchTask({scope:switchTaskKey,...(activeSwitchTask?.operation?{operation:activeSwitchTask.operation}:{}),reference,draft});}catch{toast({tone:"danger",message:"无法保存引用变更任务，请检查浏览器存储后重试。"});return;}
+    setMemberAdditionOpen(false);resumedSwitch.current="";
+    const params=new URLSearchParams({organizationId:resolvedOrganizationId??"",configSet:selectedConfigSet.id,tab:"source",sourceMode:"working",sharedSwitch:"paused"});
+    if(location.fileId&&!location.resourceId)params.set("file",location.fileId);
+    if(location.node)params.set("node",location.node);
+    if(location.property)params.set("property",location.property);
+    if(location.line){params.set("line",String(location.line));setFocusLineOverride(location.line);}
+    const returnPath=`/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${params}`;
+    if(location.resourceId && location.versionId){
+      params.set("sharedSwitch","resume");
+      const sharedParams=new URLSearchParams({organization:resolvedOrganizationId??"",resource:location.resourceId,version:location.versionId,
+        tab:location.identity?"recognition":"source",projectContext:`/parameter-admin/projects/${encodeURIComponent(project.id)}/configuration?${params}`});
+      if(location.memberId)sharedParams.set("member",location.memberId);
+      if(location.line)sharedParams.set("line",String(location.line));
+      onNavigate(`/parameter-admin/sources?${sharedParams}`);
+    }else onNavigate(returnPath);
+  };
   const sourceWorkflowSetCanonical = selectedMembers.some(
     (member) => sourceWorkflowsByFileId[member.fileId]?.canonical === true
   );
@@ -779,8 +924,9 @@ export function ProjectConfigurationWorkbench({
       selectedMembers,
       projectFiles
     });
-    if (path) onNavigate(path);
+    if (path) onNavigate(contentTab === "effective" && !queryValue(search, "tab") ? `${path}&tab=effective` : path);
   }, [
+    contentTab,
     filesLoading,
     membersListLoading,
     navigationSession,
@@ -813,14 +959,16 @@ export function ProjectConfigurationWorkbench({
     void workspaceLoadSession.loadStructure(
       project.id,
       selectedMemberFileId,
-      selectedMemberVersionId,
+      canvasMode === "history" && historyVersionId ? historyVersionId : selectedMemberVersionId,
       dtsRepository,
       apiMode ? { navigationScope: "organization" } : undefined
     );
   }, [
     apiMode,
+    canvasMode,
     dtsRepository,
     project.id,
+    historyVersionId,
     selectedMemberFileId,
     selectedMemberVersionId,
     structureRetry,
@@ -969,7 +1117,7 @@ export function ProjectConfigurationWorkbench({
 
   const handleRequestRollbackVersion = useCallback(
     (version: ProjectParameterFileVersion) => {
-      if (!canAdmin || !selectedMember) return;
+      if (!canAdmin || !selectedMember || selectedMember.sharedReference) return;
       if (sourceWorkflowLoading || sourceWorkflowError || !sourceWorkflow) {
         showToast(sourceWorkflowError || "来源工作流仍在加载，暂不能执行版本回滚。");
         return;
@@ -1105,6 +1253,7 @@ export function ProjectConfigurationWorkbench({
     restoreWorkbenchBaseline
   } = useWorkbenchBaselineOrchestration({
     projectId: project.id,
+    apiMode,
     search: canvasSearch,
     onNavigate,
     canAdmin,
@@ -1221,7 +1370,7 @@ export function ProjectConfigurationWorkbench({
     setBaselinesRetry
   });
 
-  const canSubmitBatchReview = Boolean(apiMode && canEdit && canAdmin && activeCandidate?.status === "ready"
+  const canSubmitBatchReview = Boolean(apiMode && canEdit && canAdmin && !selectedMember?.sharedReference && activeCandidate?.status === "ready"
     && sourcePreview?.kind === "canonical" && sourcePreview.candidateId === activeCandidate.id
     && ["json", "dts"].includes(sourcePreview.format.toLowerCase()) && sourcePreview.proofToken
     && sourcePreview.bindings && sourcePreview.bindings.length >= 2
@@ -1384,7 +1533,7 @@ export function ProjectConfigurationWorkbench({
     Boolean(selectedStructureNode) &&
     !canEditCritical &&
     isCriticalDtsNodePath(selectedStructureNode!.nodePath);
-  const editorLocked = !canEdit || criticalLocked || staleDraftLocked;
+  const editorLocked = !canEdit || Boolean(selectedMember?.sharedReference) || criticalLocked || staleDraftLocked;
 
   const activePropertyDraftKey =
     selectedMember && selectedStructureNode && selectedStructureProperty
@@ -1419,7 +1568,6 @@ export function ProjectConfigurationWorkbench({
     });
   }, [activePropertyDraft, propertyDefinition.status, propertyValueSchema, selectedMember, selectedStructureNode, selectedStructureProperty, structuredEditSession]);
 
-  const resolvedOrganizationId = organizationId ?? selectedConfigSet?.organizationId ?? null;
   const sessionDraftScope = useMemo<SessionDraftScope | null>(() => {
     if (
       !currentUserId ||
@@ -1501,14 +1649,15 @@ export function ProjectConfigurationWorkbench({
     setTasksOpen(true);
   }, [structuredEditSession]);
 
+  const workbenchReturnPath = canAdmin ? resolveParamAdminProjectsReturnPath(search) : `/parameters?project=${encodeURIComponent(project.id)}`;
   const handleLeaveWorkbench = useCallback(() => {
     sourceFlushRef.current?.();
     if (sessionDraftsDirty || sourceDraftsDirty) {
       setLeaveConfirmOpen(true);
       return;
     }
-    onNavigate(resolveParamAdminProjectsReturnPath(search));
-  }, [onNavigate, search, sessionDraftsDirty, sourceDraftsDirty]);
+    onNavigate(workbenchReturnPath);
+  }, [onNavigate, workbenchReturnPath, sessionDraftsDirty, sourceDraftsDirty]);
 
   const handleKeepDraftsAndLeave = useCallback(() => {
     if (sourceDiscarding.current) return;
@@ -1519,12 +1668,12 @@ export function ProjectConfigurationWorkbench({
       if (!ok) throw new Error("无法保存本地恢复草稿，请重试或先下载草稿。");
       if (structuredEditSession.getSnapshot().storageError) throw new Error("参数恢复草稿保存失败，请留在本页重试或复制草稿。");
       setLeaveConfirmOpen(false);
-      onNavigate(resolveParamAdminProjectsReturnPath(search));
+      onNavigate(workbenchReturnPath);
     }).catch((cause) => {
       sourceDiscarding.current = false;
       setLeaveError(presentError(cause, "保留草稿失败，请重试。"));
     }).finally(() => setLeavePending(false));
-  }, [onNavigate, search, sourceEditSession, structuredEditSession]);
+  }, [onNavigate, workbenchReturnPath, sourceEditSession, structuredEditSession]);
 
   const handleDiscardAndLeave = useCallback(() => {
     if (sourceDiscarding.current) return;
@@ -1539,13 +1688,13 @@ export function ProjectConfigurationWorkbench({
         structuredEditSession.discard();
         setSourceBufferDirty(false);
         setLeaveConfirmOpen(false);
-        onNavigate(resolveParamAdminProjectsReturnPath(search));
+        onNavigate(workbenchReturnPath);
       } catch (cause) {
         sourceDiscarding.current = false;
         setLeaveError(presentError(cause, "放弃本地修改失败，请重试。"));
       } finally { setLeavePending(false); }
     })();
-  }, [onNavigate, search, sourceEditSession, sourceEditorSessions, structuredEditSession]);
+  }, [onNavigate, workbenchReturnPath, sourceEditSession, sourceEditorSessions, structuredEditSession]);
 
   const handleStructuredValueChange = useCallback(
     (next: StructuredValueChange) => {
@@ -1583,7 +1732,7 @@ export function ProjectConfigurationWorkbench({
   );
 
   const handleSubmitSelected = useCallback(async () => {
-    if (!selectedMember || !canEdit || submittingEdits) return;
+    if (!selectedMember || selectedMember.sharedReference || !canEdit || submittingEdits) return;
     try {
       await structuredEditSession.submit({
         projectId: project.id,
@@ -1693,11 +1842,12 @@ export function ProjectConfigurationWorkbench({
               selectedPropertyName={selectedPropertyName}
               selectedNodePath={selectedNodePath}
               sourceUpdateUpload={<div className="configuration-workbench__source-update-upload">
-                {selectedMember ? <p>更新「{selectedMember.fileName}」，上传后先核对差异。</p> : null}
-                {canAdmin ? <Button type="button" size="sm" variant="outline" disabled={uploadingCandidate}
+                {selectedMember?.sharedReference ? <p>共享引用版本 {selectedMember.sharedReference.version} 的来源只读；可查看来源和历史。</p>
+                  : selectedMember ? <p>更新「{selectedMember.fileName}」，上传后先核对差异。</p> : null}
+                {canAdmin && !selectedMember?.sharedReference ? <Button type="button" size="sm" variant="outline" disabled={uploadingCandidate}
                   onClick={() => candidateFileInputRef.current?.click()}>
                   {uploadingCandidate ? "上传中…" : selectedMember ? "上传新文件" : "添加来源文件"}
-                </Button> : <p role="note">仅项目管理员可上传文件，已有更新记录可查看。</p>}
+                </Button> : !canAdmin ? <p role="note">仅项目管理员可上传文件，已有更新记录可查看。</p> : null}
                 {candidateError && canvasMode !== "candidate" ? <p role="alert">{candidateError}</p> : null}
                 {candidateRecords.reviewStatusError && candidateRecords.items.length > 0
                   ? <p role="status">审核状态暂不可用，可打开记录核对。</p> : null}
@@ -1731,7 +1881,7 @@ export function ProjectConfigurationWorkbench({
               baselinePinnedMembersLoading={baselinePinnedMembersLoading}
               baselinePinnedMembersError={baselinePinnedMembersError}
               onRetryBaselineMembers={() => { void releaseBaselineSession.loadPinnedMembers(project.id, dtsRepository); }}
-              canAdmin={canAdmin}
+              canAdmin={canAdmin && (inspectorLevel === "release" || !selectedMember?.sharedReference)}
               releaseReadiness={readinessError ? null : releaseReadiness}
               sessionDraftsDirty={sessionDraftsDirty || sourceDraftsDirty}
               sourceEditing={selectedMember?.format === "dts"}
@@ -1770,7 +1920,7 @@ export function ProjectConfigurationWorkbench({
                   : `/parameter-review?project=${encodeURIComponent(project.id)}`);
               }}
               canRecompute={canAdmin && canRecompute}
-              canActivate={canAdmin && canActivate && (activeCandidate?.fileId ? legacySourceWorkflowConfirmed : sourceWorkflowSetReady && !sourceWorkflowSetCanonical && sourcePreview?.kind === "legacy" && !sourcePreviewLoading && !sourcePreviewError)}
+              canActivate={canAdmin && !selectedMember?.sharedReference && canActivate && (activeCandidate?.fileId ? legacySourceWorkflowConfirmed : sourceWorkflowSetReady && !sourceWorkflowSetCanonical && sourcePreview?.kind === "legacy" && !sourcePreviewLoading && !sourcePreviewError)}
               canAbandon={canAdmin && canAbandon}
               onRecomputeCandidate={handleRecomputeCandidate}
               onActivateCandidate={handleOpenActivateCandidate}
@@ -1827,9 +1977,14 @@ export function ProjectConfigurationWorkbench({
 
   return (
     <section className="configuration-workbench" aria-label="项目配置工作台" ref={workbenchBodyRef}>
+      {activeSwitchTask && !memberAdditionOpen && canAdmin?<div role="group" aria-label="待重新预览的版本切换">
+        <Button type="button" variant="outline" onClick={()=>setMemberAdditionOpen(true)}>{activeSwitchTask.operation==="remove"?"返回移除引用":"返回版本切换"}</Button>
+        <Button type="button" variant="outline" onClick={dismissSwitchTask}>{activeSwitchTask.operation==="remove"?"取消移除引用":"取消版本切换"}</Button>
+        <span>{activeSwitchTask.operation==="remove"?"待移除引用与变更说明已保留；修正生效后重新预览。":"目标版本与变更说明已保留；修正生效后重新预览。"}</span>
+      </div>:null}
       <NavigatorWorkbench
         pageKey={`project-configuration:${project.id}`}
-        navigatorLabel="配置导航"
+        navigatorLabel={contentTab === "effective" ? "设备树" : "配置导航"}
         taskLabel="配置内容"
         panelId={showContentTabs ? `project-configuration-${contentTab}-panel` : undefined}
         tabId={showContentTabs ? `project-configuration-${contentTab}-tab` : undefined}
@@ -1849,7 +2004,7 @@ export function ProjectConfigurationWorkbench({
         configSetsError={configSetsError}
         onSelectConfigSet={selectConfigSet}
         canAdmin={canAdmin}
-        canSyncFile={canAdmin && Boolean(selectedMember) && sourceWorkflow?.canonical === false}
+        canSyncFile={canAdmin && Boolean(selectedMember) && !selectedMember?.sharedReference && sourceWorkflow?.canonical === false}
         onInspectorToggle={() => { if (inspectorOpen) closeInspector(); else openInspector("file"); }}
         candidateFileInputRef={candidateFileInputRef}
         onOpenInspector={openInspector}
@@ -1862,12 +2017,13 @@ export function ProjectConfigurationWorkbench({
         pendingAction={pendingAction}
         onOpenActivity={openActivityInspector}
         onExportConfigSet={() => void runAction("export-config-set", exportSelectedConfigSet)}
+        onImportPackage={apiMode && !filesLoading && !filesError && !configSetsLoading && !configSetsError && !projectFiles.length ? () => setPackageImportOpen(true) : undefined}
         onCreateConfigSet={submitCreateConfigSet}
       />
           {showContentTabs ? <div className="configuration-workbench__viewbar"><ViewSwitch variant="tabs" ariaLabel="项目配置内容" value={contentTab}
             onValueChange={selectContentTab}
-            items={[{ value: "source", label: "源码" },
-              { value: "conflicts", label: syncConflicts.length ? `冲突（${syncConflicts.length}）` : "冲突" }]
+            items={[...(topologyRepository ? [{ value: "effective", label: "生效配置" }] : []), { value: "source", label: "源码" },
+              ...(contentTab === "conflicts" || syncConflicts.length || conflictsError ? [{ value: "conflicts", label: syncConflicts.length ? `冲突（${syncConflicts.length}）` : "冲突" }] : [])]
               .map((item) => ({ ...item, id: `project-configuration-${item.value}-tab`, panelId: `project-configuration-${item.value}-panel` }))} />
           </div> : null}
         </div>}
@@ -1891,10 +2047,16 @@ export function ProjectConfigurationWorkbench({
         selectedConfigSet={selectedConfigSet ?? null}
         canAdmin={canAdmin}
         onCreateConfigSet={() => setCreateConfigSetOpen(true)}
+        onImportPackage={apiMode && !filesLoading && !filesError && !configSetsLoading && !configSetsError && !projectFiles.length ? () => setPackageImportOpen(true) : undefined}
       />
         </>}
         navigator={<>
-          {selectedConfigSet ? <WorkbenchSourceTree
+          {contentTab === "effective" ? <>
+            <p className="configuration-workbench__effective-tree-note">完整合成设备树 · 包含未纳入业务导航的节点</p>
+            {effectiveTree ? <div role="tree" aria-label="生效设备树"><WorkbenchStructureTree nodes={effectiveNodes} fileId="effective"
+              selectedNodePath={effectiveNodePath} selectedPropertyName={queryValue(search, "property")} sessionDrafts={{}} ariaLabel="生效节点"
+              onSelectNode={selectEffectiveNode} onSelectProperty={selectEffectiveNode} showValues includeRoot defaultExpandDepth={3} /></div> : null}
+          </> : selectedConfigSet ? <WorkbenchSourceTree
             showStructure={contentTab === "source"}
             treeRegionRef={treeRegionRef}
             selectedConfigSet={selectedConfigSet}
@@ -1941,8 +2103,25 @@ export function ProjectConfigurationWorkbench({
         inspector={inspectorLevel === "release" ? null : inspectorPanel}
       >
         {!selectedConfigSet ? <SectionEmpty message="选择或新建配置以查看项目配置。" /> : null}
+        {contentTab === "effective" && selectedConfigSet ? !topologyRepository
+          ? <SectionEmpty message="生效配置需要 API 模式。" />
+          : currentEffective && membersError ? <SectionError message={membersError} onRetry={() => workspaceLoadSession.retryMembers()} />
+          : currentEffective && membersListLoading ? <SectionSkeleton label="正在加载生效配置…" />
+          : currentEffective && selectedMembers.length === 0 ? <SectionEmpty message={canAdmin ? "此配置尚无来源文件。请通过「配置」菜单添加来源或导入完整配置。" : "此配置尚无来源文件，请联系项目管理员。"} />
+          : currentEffective && revisionGate.error ? <SectionError message={revisionGate.error} onRetry={() => void revisionGate.session.load(project.id, selectedConfigSet.id, topologyRepository)} />
+          : currentEffective && revisionGate.loading ? <SectionSkeleton label="正在加载生效配置…" />
+          : currentEffective && !currentEffectiveRevisionId ? <SectionEmpty message={canAdmin ? "此配置尚无已解析的修订。请在源码中同步来源文件。" : "此配置尚无已解析的修订，请联系项目管理员。"} />
+          : effectiveError ? <SectionError message={effectiveError} onRetry={() => setEffectiveRetry(value => value + 1)} />
+          : !effectiveTree ? <SectionSkeleton label="正在加载生效配置…" />
+          : effectiveTree.nodes.length === 0 ? <SectionEmpty message="当前配置修订没有生效设备树节点。" />
+          : <WorkbenchEffectiveConfiguration key={`${effectiveTree.revisionId}/${effectiveNode?.logicalNodeId}`} node={effectiveNode}
+            blockingAncestorPath={effectiveTree.nodes.find(node => node.logicalNodeId === effectiveNode?.enablement?.blockingAncestorId)?.locator}
+            projectId={project.id} configSetId={selectedConfigSet.id} revisionId={effectiveTree.revisionId} search={search} onNavigate={onNavigate}
+            overrideTargets={selectedMembers.filter(member => member.format === "dts" && !member.sharedReference && !/\.(h|hpp)$/u.test(member.fileName))
+              .sort((a,b) => (a.role === "overlay" ? -1 : 0) - (b.role === "overlay" ? -1 : 0)).map(member => ({fileId:member.fileId,fileName:member.fileName}))}
+            onPrepareOverride={apiMode && canEdit && effectiveRevision === "current" && fileRepository.prepareProjectLocalOverride ? prepareLocalOverride : undefined} /> : null}
         {contentTab === "source" && selectedConfigSet ? <WorkbenchSourceCanvas
-            workingEditor={selectedMember?.format === "dts" && selectedMember.currentVersionId && source && resolvedOrganizationId
+            workingEditor={selectedMember?.format === "dts" && !selectedMember.sharedReference && selectedMember.currentVersionId && source && resolvedOrganizationId
               && !sourceLoading && !sourceError && sourceIdentity?.projectId === project.id
               && sourceIdentity.fileId === selectedMember.fileId && sourceIdentity.versionId === selectedMember.currentVersionId ? <WorkbenchSourceEditingPane
               scope={{ userId: currentUserId, organizationId: resolvedOrganizationId, projectId: project.id, configSetId: selectedConfigSet.id, fileId: selectedMember.fileId }}
@@ -1950,9 +2129,16 @@ export function ProjectConfigurationWorkbench({
               configRevisionId={revisionGate.loading || revisionGate.error ? null : revisionGate.revisions
                 .filter((revision) => revision.configSetId === selectedConfigSet.id && ["resolved", "validated", "compiled", "pending_approval"].includes(revision.status))
                 .sort((left, right) => right.revisionNumber - left.revisionNumber)[0]?.id ?? null}
-              source={source} repository={fileRepository} canEdit={apiMode && canEdit && canAdmin}
+              source={source} repository={fileRepository} canEdit={apiMode && canEdit && (canAdmin || Boolean(selectedSourceOverride)) && !selectedMember.sharedReference}
+              canEditSource={apiMode && canEdit && canAdmin && !selectedSourceOverride} canDirectApply={apiMode && canEdit && canAdmin}
+              localOverrideIntent={selectedSourceOverride?.input}
+              changeSummary={selectedSourceOverride
+                ? describeLocalChange(selectedSourceOverride.input.action, selectedSourceOverride.afterValue)
+                : localOverrideDraft?.fileId === selectedMember.fileId && localOverrideDraft.baseVersionId === selectedMember.currentVersionId
+                  ? describeLocalChange(localOverrideDraft.action, localOverrideDraft.afterValue) : undefined}
               visible={canvasMode === "working"} legacyDraftsDirty={sessionDraftsDirty} onOpenLegacyDrafts={() => setTasksOpen(true)}
               onDirtyChange={setSourceBufferDirty} onRefresh={() => {
+                setLocalOverrideDraft(null);
                 workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers(); workspaceLoadSession.retrySource();
                 workspaceLoadSession.retryStructure(); setSourceWorkflowReloadToken((value) => value + 1); setVersionsReloadToken((value) => value + 1);
                 if (topologyRepository) void revisionGate.session.load(project.id, selectedConfigSet.id, topologyRepository);
@@ -1985,8 +2171,8 @@ export function ProjectConfigurationWorkbench({
             candidateLoading={candidateLoading}
             compareSource={compareSource}
             unifiedDiffText={unifiedDiffText}
-            focusSpan={focusSpan}
-            focusLineOverride={focusLineOverride}
+            focusSpan={queryValue(search, "line") ? null : focusSpan}
+            focusLineOverride={/^[1-9]\d*$/.test(queryValue(search, "line") ?? "") ? Number(queryValue(search, "line")) : focusLineOverride}
             restoredScrollLine={restoredScrollLine}
             findQuery={findQuery}
             findNextToken={findNextToken}
@@ -2057,20 +2243,51 @@ export function ProjectConfigurationWorkbench({
         onUpdateFile={(fileId) => openInspector("candidates", fileId)}
         onOpenVersions={(fileId) => openInspector("versions", fileId)}
         onAddSourceFile={() => openInspector("candidates")}
-        onCanonicalAdd={apiMode ? () => setMemberAdditionOpen(true) : undefined}
+        onCanonicalAdd={apiMode ? () => {dismissSwitchTask();setMemberAdditionOpen(true);} : undefined}
+        onSwitchSharedVersion={apiMode?member=>{setSwitchSharedMember(member);if(member.sharedReference){const task={scope:switchTaskKey,reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}}setMemberAdditionOpen(true);}:undefined}
+        onRemoveSharedReference={apiMode?member=>{if(member.sharedReference){const task:SwitchTask={scope:switchTaskKey,operation:"remove",reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}setMemberAdditionOpen(true);}}:undefined}
         onSetRoot={apiMode ? setSetRootTarget : undefined}
+        onConvertShared={apiMode&&sharedImportRevisionId?member=>{if(!member.currentVersionId)return;dismissSwitchTask();setConversionSource({configRevisionId:sharedImportRevisionId,fileId:member.fileId,fileVersionId:member.currentVersionId,sourceName:member.fileName});setMemberAdditionOpen(true);}:undefined}
+        onCreateShared={apiMode && sharedDtsiClient && sharedImportRevisionId ? member => {
+          void runAction("create-shared",async () => {
+            if(!member.currentVersionId) throw new Error("请先重新核对配置修订与文件版本。");
+            let draft;
+            try { draft = await sharedDtsiClient.importProject(project.id,selectedConfigSet.id,{name:member.fileName,
+              configRevisionId:sharedImportRevisionId,fileId:member.fileId,fileVersionId:member.currentVersionId}); }
+            catch(error) { if(currentSharedImport.current === sharedImportScope) throw error;return; }
+            if(currentSharedImport.current !== sharedImportScope) return;
+            const params = new URLSearchParams({resource:draft.resourceId,version:"draft"});
+            if(resolvedOrganizationId) params.set("organization",resolvedOrganizationId);
+            onNavigate(`/parameter-admin/sources?${params}`);
+          });
+        } : undefined}
       /> : null}
-      {memberAdditionOpen && selectedConfigSet ? <WorkbenchMemberAdditionDialog projectId={project.id} configSets={configSets}
-        client={additionClient}
+      {memberAdditionOpen && canAdmin && selectedConfigSet ? <WorkbenchMemberAdditionDialog key={`${resolvedOrganizationId}:${project.id}:${selectedConfigSet.id}`} projectId={project.id} configSets={configSets}
+        client={additionClient} sharedClient={sharedDtsiClient}
+        switchReference={activeSwitchTask?.operation==="remove"?undefined:activeSwitchTask?.reference??switchSharedMember?.sharedReference}
+        removeReference={activeSwitchTask?.operation==="remove"?activeSwitchTask.reference:undefined}
+        conversionSource={conversionSource}
+        switchDraft={activeSwitchTask?.draft} onSwitchDraftChange={updateSwitchDraft} onRecoverSwitch={recoverSwitch}
+        projectRoot={selectedMembers.find(member=>member.role==="base")?{fileId:selectedMembers.find(member=>member.role==="base")!.fileId,sourceName:selectedMembers.find(member=>member.role==="base")!.fileName}:undefined}
         catalogRepository={memberRemovalRepository} fileRepository={fileRepository}
-        initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={() => setMemberAdditionOpen(false)}
+        initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={()=>{if(activeSwitchTask?.operation==="remove"){workspaceLoadSession.retryFiles();workspaceLoadSession.retryMembers();}dismissSwitchTask();}}
         onApplied={(configSetId, fileId) => {
-          setMemberAdditionOpen(false); setInspectorOpen(false); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
+          dismissSwitchTask(); setInspectorOpen(false); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
           workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure(); setSourceWorkflowReloadToken((value) => value + 1);
           setVersionsReloadToken((value) => value + 1);
           if (topologyRepository) void revisionGate.session.load(project.id, configSetId, topologyRepository);
           onNavigate(formatWorkbenchPath(project.id, canvasSearch, { configSet: configSetId, file: fileId, inspector: null,
             sourceMode: null, version: null, candidate: null, baseline: null, node: null, property: null }));
+        }} /> : null}
+
+      {packageImportOpen && apiMode && canAdmin ? <WorkbenchPackageImportDialog key={`${resolvedOrganizationId}:${project.id}`} projectId={project.id} client={packageClient}
+        onDismiss={() => setPackageImportOpen(false)} onApplied={async result => {
+          workspaceLoadSession.setConfigSets(await dtsRepository.listConfigSets(project.id));
+          setPackageImportOpen(false); workspaceLoadSession.retryConfigSets(); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
+          workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure();
+          if (topologyRepository) void revisionGate.session.load(project.id, result.configSetId, topologyRepository);
+          onNavigate(formatWorkbenchPath(project.id, canvasSearch, { configSet: result.configSetId, file: result.fileIds[0]??null,
+            inspector: null, sourceMode: null, version: null, candidate: null, baseline: null, node: null, property: null }));
         }} /> : null}
 
       <WorkbenchCandidateActivateDialog

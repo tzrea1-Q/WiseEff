@@ -4,6 +4,7 @@ import type {
   TopologyNodeEnablement,
   TopologyView
 } from "@/domain/parameter-topology/types";
+import { dtsReferencePath } from "@/domain/dts/reference";
 
 export type TopologyTreeProps = {
   view: TopologyView;
@@ -78,7 +79,9 @@ export function TopologyTree({
     return (
       <ul className="topology-tree" role="tree" aria-label="源拓扑树">
         {sourceNodes.map((node) => {
-          const unresolved = Boolean(node.refTarget && !sourceNodes.some((n) => n.labels.includes(node.refTarget!)));
+          const targetPath=node.refTarget?dtsReferencePath(node.refTarget):null;
+          const unresolved = Boolean(node.refTarget && !sourceNodes.some((n) => targetPath!==null
+            ?!n.refTarget && n.nodePath===targetPath:n.labels.includes(node.refTarget!)));
           const name = unresolved
             ? `${sourceLabel(node)} （未解析）`
             : sourceLabel(node);

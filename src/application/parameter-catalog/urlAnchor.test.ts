@@ -7,9 +7,26 @@ import {
   readLegacyCatalogBookmark,
   serializeCatalogUrlAnchor
 } from "./urlAnchor";
+
+it("retains only a local shared-version return link across Catalog anchor normalization", () => {
+  const href="/parameter-admin/sources?resource=11111111-1111-4111-8111-111111111111&version=22222222-2222-4222-8222-222222222222&tab=recognition";
+  const anchor=parseCatalogUrlAnchor(`?subjectId=subject&sourceReturn=${encodeURIComponent(href)}`);
+  expect(parseCatalogUrlAnchor(serializeCatalogUrlAnchor(anchor))).toHaveProperty("sourceReturn",href);
+  expect(parseCatalogUrlAnchor("?sourceReturn=https%3A%2F%2Fevil.example")).not.toHaveProperty("sourceReturn");
+  const project="/parameter-admin/projects/project/configuration?configSet=set&revision=revision&file=file&version=version&node=%2Fdevice%402";
+  expect(parseCatalogUrlAnchor(serializeCatalogUrlAnchor({...anchor,sourceReturn:project})).sourceReturn).toBe(project);
+});
 import { CATALOG_DEFINITION_ID, CATALOG_RELEASE_ID, CATALOG_REVIEW_ITEM_ID, CATALOG_SUBJECT_ID } from "./fixtures";
 
 describe("catalog URL and release anchors", () => {
+  it("retains the new-definition return intent when the current Catalog pin is added", () => {
+    const returned = parseCatalogUrlAnchor("?subjectId=csub_declaration&createDefinition=1");
+    const pinned = { ...returned, catalogReleaseId: "crel_after_publication" };
+    expect(buildCatalogHref(pinned)).toBe("/parameter-admin/specs?subjectId=csub_declaration&catalogReleaseId=crel_after_publication&createDefinition=1");
+    expect(buildCatalogHref({ ...pinned, createDefinition: false })).toBe("/parameter-admin/specs?subjectId=csub_declaration&catalogReleaseId=crel_after_publication");
+    expect(parseCatalogUrlAnchor("?createDefinition=yes").createDefinition).toBeUndefined();
+  });
+
   it("persists the explicit retired-subject filter without accepting arbitrary truthy values", () => {
     const anchor = parseCatalogUrlAnchor("?q=power&pageSize=20&includeRetiredSubjects=true");
     expect(anchor.includeRetiredSubjects).toBe(true);

@@ -15,6 +15,7 @@ import { ProjectDeletionPreviewDialog } from "@/components/admin/ProjectDeletion
 import { ProjectConfigurationWorkbench } from "@/components/project-configuration-workbench/ProjectConfigurationWorkbench";
 import { ProjectReviewRolesPanel } from "./ProjectReviewRolesPanel";
 import type { ApiClient } from "@/infrastructure/http/apiClient";
+import type { AuthContextDto } from "@/infrastructure/http/authClient";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { createAuditClient } from "@/infrastructure/http/auditClient";
 import { migrateLegacyRoleId } from "@/domain/users/types";
@@ -70,6 +71,8 @@ export type ProjectsOperationsPanelProps = {
   parameterActions?: ParameterPageActions;
   runtimeMode?: WiseEffRuntimeMode;
   apiClient?: ApiClient;
+  sessionPermissions?: readonly string[] | null;
+  projectMemberships?: AuthContextDto["projectMemberships"];
   onNewProject?: () => void;
   parameterFileRepository?: ParameterFileRepository;
   parameterCatalogRepository?: ParameterCatalogRepository;
@@ -91,6 +94,8 @@ export function ProjectsOperationsPanel({
   parameterActions,
   runtimeMode = "mock",
   apiClient,
+  sessionPermissions,
+  projectMemberships,
   onNewProject,
   parameterFileRepository,
   parameterCatalogRepository,
@@ -123,6 +128,7 @@ export function ProjectsOperationsPanel({
   );
   const topologyRepository = useMemo(
     () => ({
+      getTopology: (...args: Parameters<typeof application.getTopology>) => application.getTopology(...args),
       listConfigRevisions: (projectId: string, configSetId: string) =>
         application.listConfigRevisions(projectId, configSetId),
       validateRevision: (projectId: string, revisionId: string) =>
@@ -159,14 +165,14 @@ export function ProjectsOperationsPanel({
     onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/${nextView}${listPath === "/parameter-admin/projects" ? "" : `?returnTo=${encodeURIComponent(listPath)}`}`);
   };
 
-  const mockRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
-  const rows = isApiMode ? apiRows : mockRows;
+  const stateRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
+  const rows = isApiMode && canAdmin ? apiRows : stateRows;
   const projectIds = JSON.stringify(state.configDraft.projects.map((project) => project.id));
   const editingProject = rows.find((row) => row.id === editingProjectId) ?? null;
   const selectedProject = projectId ? rows.find((row) => row.id === projectId) ?? null : null;
 
   const loadProjects = useCallback(async () => {
-    if (!isApiMode) {
+    if (!isApiMode || !canAdmin) {
       return;
     }
     setLoading(true);
@@ -300,7 +306,7 @@ export function ProjectsOperationsPanel({
 
   const configurationOpen = Boolean(projectId && configurationRoute && !legacyView);
   const reviewRolesOpen = Boolean(projectId && routeView === "review-roles");
-  const projectsReady = !isApiMode || projectsLoaded;
+  const projectsReady = !isApiMode || !canAdmin || projectsLoaded;
   const projectMissing = Boolean(projectId) && (configurationOpen || Boolean(legacyView) || reviewRolesOpen) && projectsReady && !error && !selectedProject;
 
   return (
@@ -405,8 +411,9 @@ export function ProjectsOperationsPanel({
           apiMode={isApiMode}
           listAuditEvents={(params) => auditQuery.listAuditEvents(params)}
           currentUserId={state.currentUserId}
-          canEdit
-          canEditCritical
+          canEdit={isApiMode && sessionPermissions !== undefined ? Boolean(sessionPermissions?.includes("parameter:edit") && (canAdmin
+            || projectMemberships?.some(member => member.projectId === projectId && member.roles.length > 0))) : canPerform(state.activeRoleId,"parameter.edit")}
+          canEditCritical={isApiMode && sessionPermissions !== undefined ? Boolean(sessionPermissions?.includes("parameter:edit-critical")) : canAdmin}
           canAdmin={canAdmin}
           topologyRepository={topologyRepository}
         />

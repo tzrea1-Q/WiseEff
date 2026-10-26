@@ -78,7 +78,7 @@ export function playwrightInventory(report: any, executed: boolean): Inventory {
 
 export function selectShardReceipts(receipts: ShardReceipt[], kind: Kind, identity: Identity): ShardReceipt[] {
   requireShard(kind === "server" || kind === "quality", "KIND");
-  const lanes: readonly string[] = kind === "server" ? ["1", "2"] : qualityLanes;
+  const lanes: readonly string[] = kind === "server" ? ["1", "2", "3"] : qualityLanes;
   const selected = new Map<string, ShardReceipt>();
   const seen = new Set<string>();
   for (const receipt of receipts) {
@@ -150,7 +150,7 @@ function load(name: string): any {
 }
 
 export function discoverServerInventory(identity: Identity): void {
-  requireShard(/^[12]\/2$/.test(process.env.WISEEFF_CI_SERVER_SHARD ?? ""), "LANE");
+  requireShard(/^[123]\/3$/.test(process.env.WISEEFF_CI_SERVER_SHARD ?? ""), "LANE");
   const startedAt = Date.now();
   const args = ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.server.config.ts"];
   const listed = JSON.parse(execFileSync(process.execPath, [...args, "--filesOnly", "--json"], { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 }));
@@ -181,7 +181,7 @@ export function recordServerExecution(report: unknown, files: string[], native: 
 
 export function finishServerReceipt(receipt: any, identity: Identity): void {
   const shard = process.env.WISEEFF_CI_SERVER_SHARD;
-  requireShard(shard !== undefined && /^[12]\/2$/.test(shard), "LANE");
+  requireShard(shard !== undefined && /^[123]\/3$/.test(shard), "LANE");
   const discovery = load("discovery.json");
   const execution = load("execution.json");
   requireShard(equal(discovery.identity, identity) && equal(execution.native, receipt.reports.server), "IDENTITY");
@@ -228,7 +228,7 @@ async function aggregate(kind: Kind) {
   }
   requireShard(process.env.RUNNER_TEMP, "TEMP");
   const directory = path.join(process.env.RUNNER_TEMP, "wiseeff-ci-shards");
-  const lanes: readonly string[] = kind === "server" ? ["1", "2"] : qualityLanes;
+  const lanes: readonly string[] = kind === "server" ? ["1", "2", "3"] : qualityLanes;
   const receipts = readShardReceipts(directory, kind, identity);
   const planned = validateShardInventories(receipts, kind, identity);
   if (kind === "server") {

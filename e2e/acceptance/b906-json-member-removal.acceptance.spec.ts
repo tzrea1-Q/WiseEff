@@ -359,7 +359,7 @@ test(`#906 B previews canonical member actions for ${format} without mutation`, 
       await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/projects/aurora/configuration?configSet=${setId}&inspector=config-set`);
       await dismissXiaozeHint(page);
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      const filePanel = page.getByRole("dialog", { name: "文件管理", exact: true });
+      const filePanel = page.getByRole("dialog", { name: "配置组成", exact: true });
       await expect(filePanel.getByRole("table", { name: "配置文件", exact: true })).toBeVisible();
       await expect(filePanel.getByRole("button", { name: "添加文件", exact: true })).toHaveCount(0);
       await expect(filePanel.getByRole("combobox", { name: "待加入文件", exact: true })).toHaveCount(0);
@@ -392,7 +392,8 @@ test(`#906 B previews canonical member actions for ${format} without mutation`, 
       } else {
         await expect(page.getByRole("dialog", { name: "申请从配置移除文件" })).toHaveCount(0);
       }
-      await filePanel.getByRole("button", { name: "关闭文件管理", exact: true }).click();
+      await filePanel.getByRole("button", { name: "关闭配置组成", exact: true }).click();
+      await page.getByRole("tab", { name: "源码", exact: true }).click();
       const treeAssign = page.getByRole("button", { name: `加入 ${ungrouped.name}` });
       await expect(treeAssign).toBeDisabled();
       const treeReasonId = await treeAssign.getAttribute("aria-describedby");
@@ -405,7 +406,7 @@ test(`#906 B previews canonical member actions for ${format} without mutation`, 
       await scheme.focus();
       await page.keyboard.press("Enter");
       const schemeMenu = page.getByRole("menu");
-      await expect(schemeMenu.getByRole("menuitem", { name: "文件管理", exact: true })).toBeVisible();
+      await expect(schemeMenu.getByRole("menuitem", { name: "配置组成", exact: true })).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(schemeMenu).toBeHidden();
       await expect(scheme).toBeFocused();

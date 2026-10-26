@@ -30,9 +30,13 @@ import {
   updateParameterFileCandidateParseResult
 } from "./candidateRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
+import { resolveDtsConfigSetAsync } from "../dts";
+import { prepareProjectLocalOverride } from "./projectLocalOverride";
+import type { SourceRevisionCandidateContext } from "./types";
 import { getCanonicalSourceWorkflow } from "./canonicalFileWorkflow";
 import {
   assertLegacySourceMutationAllowed,
+  assertProjectSourceWritable,
   getFileVersionById,
   getProjectParameterFileById,
   getProjectParameterFileByName,
@@ -44,6 +48,8 @@ import { getConfigSetById, setFileConfigSetMembership } from "./configSetReposit
 import { detectFormat, extractCompatiblesFromDtsSource, MAX_FILE_BYTES, maybeIngestSemanticConfigRevision } from "./service";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
+import { DtsPreprocessingError } from "../dts/cppSources";
+import { loadConfigSetSnapshot } from "./configSetSnapshot";
 import { syncFileVersion } from "./syncService";
 import type {
   CandidateBlocker,
@@ -99,6 +105,7 @@ export type CreateCandidateInput = {
   bytes: Buffer;
   fileId?: string;
   intent?: "source_revision";
+  localOverride?: NonNullable<SourceRevisionCandidateContext["localOverride"]>["input"];
   expectedCurrentVersionId?: string;
   expectedConfigRevisionId?: string;
   clientMutationId?: string;
@@ -235,6 +242,8 @@ export async function computeCandidateImpact(input: {
   candidateLabel: string;
   registeredCompatibles: string[];
   canonicalSourceWorkflow?: boolean;
+  semanticCandidateSource?: string;
+  semanticBaseSource?: string;
   openConflicts: Array<{
     id: string;
     parameterName?: string;
@@ -257,7 +266,7 @@ export async function computeCandidateImpact(input: {
     if (input.format === "json") {
       buildJsonParsedIndex(input.candidateSource);
     } else {
-      buildDtsParsedIndex(input.candidateSource);
+      buildDtsParsedIndex(input.semanticCandidateSource ?? input.candidateSource);
     }
   } catch (error) {
     parsedIndexOk = false;
@@ -287,7 +296,7 @@ export async function computeCandidateImpact(input: {
   let structuralDiff: CandidateImpact["structuralDiff"] = [];
   if (input.format === "dts") {
     try {
-      structuralDiff = diffResolvedDts(input.baseSource ?? "", input.candidateSource);
+      structuralDiff = diffResolvedDts(input.semanticBaseSource ?? input.baseSource ?? "", input.semanticCandidateSource ?? input.candidateSource);
     } catch (error) {
       diagnostics.push({
         severity: "error",
@@ -304,7 +313,7 @@ export async function computeCandidateImpact(input: {
   const coverage =
     input.format === "dts"
       ? buildIngestDriverSummary({
-          observedCompatibles: extractCompatiblesFromDtsSource(input.candidateSource),
+          observedCompatibles: extractCompatiblesFromDtsSource(input.semanticCandidateSource ?? input.candidateSource),
           registeredCompatibles: new Set(input.registeredCompatibles)
         })
       : undefined;
@@ -380,13 +389,13 @@ async function createCandidateInScope(
   callerOwnsTransaction: boolean
 ): Promise<ProjectParameterFileCandidateDto> {
   const trustedContext = normalizeCandidateCreationContext(auth, context, "parameter file candidate creation");
-  requireCandidateAdmin(auth);
+  if (!(input.intent === "source_revision" && input.localOverride)) requireCandidateAdmin(auth);
 
   const sourceRevision = input.intent === "source_revision";
   const mutationDigest = sourceRevision ? createHash("sha256").update(JSON.stringify({
     fileId: input.fileId, fileName: input.fileName, baseVersionId: input.expectedCurrentVersionId,
     baseConfigRevisionId: input.expectedConfigRevisionId,
-    content: createHash("sha256").update(input.bytes).digest("hex")
+    content: createHash("sha256").update(input.bytes).digest("hex"), ...(input.localOverride ? { localOverride: input.localOverride } : {})
   })).digest("hex") : undefined;
   const replay = async (tx: Queryable) => {
     if (!sourceRevision) return null;
@@ -449,6 +458,7 @@ async function createCandidateInScope(
     if (!file || file.projectId !== input.projectId) {
       throw new ApiError("NOT_FOUND", "Project parameter file was not found.", { fileId });
     }
+    await assertProjectSourceWritable(db, fileId);
     existingFileName = file.fileName;
     if (fileName !== file.fileName) {
       throw new ApiError("VALIDATION_FAILED", "fileName must match the existing file when fileId is provided.", {
@@ -481,9 +491,23 @@ async function createCandidateInScope(
 
   const candidateId = randomUUID();
   const source = input.bytes.toString("utf8");
+  const verifyLocalOverride = async (tx: Database, configSetId: string) => {
+    const prepared = await prepareProjectLocalOverride(tx, objectStore, auth, { ...input.localOverride!, projectId: input.projectId, configSetId }, undefined, true);
+    if ((!prepared.binding && !prepared.nodeOperation) || prepared.after !== source || prepared.fileId !== fileId
+      || prepared.baseVersionId !== input.expectedCurrentVersionId || prepared.configRevisionId !== input.expectedConfigRevisionId) {
+      throw new ApiError("FORBIDDEN", "仅允许服务器证明的单属性或单节点操作，不能夹带其他源码修改。", { reason: "local-override-patch-mismatch" });
+    }
+    return { input: input.localOverride!, ...prepared.binding, ...(prepared.nodeOperation ? { nodeOperation: true as const } : {}), authorUserId: auth.user.id };
+  };
+  if (input.localOverride) {
+    const file = (await db.query<{ config_set_id: string }>("select config_set_id from public.project_parameter_files where id=$1 and organization_id=$2 and project_id=$3", [fileId, parameterOrganizationId(auth), input.projectId])).rows[0];
+    if (!file?.config_set_id) throw new ApiError("NOT_FOUND", "Project override target was not found.");
+    await db.transaction(tx => verifyLocalOverride(tx, file.config_set_id));
+  }
+  const storageFileName = `candidate-${candidateId}.${format}`;
   const stored = await objectStore.put({
     organizationId: parameterOrganizationId(auth),
-    fileName: `candidate-${candidateId}-${fileName}`,
+    fileName: storageFileName,
     contentType: contentTypeForFormat(format),
     bytes: input.bytes
   });
@@ -502,8 +526,8 @@ async function createCandidateInScope(
            and config.project_id=file.project_id
          where file.id=$1 and file.organization_id=$2 and file.project_id=$3 for update of config,file`,
         [fileId, parameterOrganizationId(auth), input.projectId])).rows[0];
-      const revision = current ? (await tx.query<{ id: string }>(
-        `select id from public.dts_config_revisions where config_set_id=$1 and organization_id=$2 and project_id=$3
+      const revision = current ? (await tx.query<{ id: string; preprocessing: unknown }>(
+        `select id,preprocessing from public.dts_config_revisions where config_set_id=$1 and organization_id=$2 and project_id=$3
          and status in ('resolved','validated','compiled','pending_approval') order by revision_number desc limit 1`,
         [current.config_set_id, parameterOrganizationId(auth), input.projectId])).rows[0] : undefined;
       if (!current || current.current_version_id !== input.expectedCurrentVersionId || revision?.id !== input.expectedConfigRevisionId) {
@@ -511,7 +535,8 @@ async function createCandidateInScope(
       }
       baseVersionId = current.current_version_id;
       sourceRevisionContext = { kind: "source_revision", configSetId: current.config_set_id,
-        baseVersionId, baseConfigRevisionId: input.expectedConfigRevisionId!, clientMutationId: input.clientMutationId! };
+        baseVersionId, baseConfigRevisionId: input.expectedConfigRevisionId!, clientMutationId: input.clientMutationId!,
+        ...(input.localOverride ? { localOverride: await verifyLocalOverride(tx, current.config_set_id) } : {}) };
     }
     const uploading = await insertParameterFileCandidate(tx, {
       id: candidateId,
@@ -543,8 +568,23 @@ async function createCandidateInScope(
 
     let parsedIndex = {};
     try {
-      parsedIndex = validatedJsonIndex ?? buildParsedIndex(format, input.bytes);
+      if (sourceRevisionContext) {
+        const snapshot = await loadConfigSetSnapshot(tx, objectStore, sourceRevisionContext.configSetId);
+        const name = (await tx.query<{ sourceName: string }>("select source_name as \"sourceName\" from public.dts_config_revision_members where config_revision_id=$1 and file_id=$2",
+          [sourceRevisionContext.baseConfigRevisionId, fileId])).rows[0]?.sourceName;
+        if (!name || !snapshot.entryFile) throw new ApiError("CONFLICT", "完整原始工程来源已变化，请重新打开源码编辑器。");
+        const files = new Map([...snapshot.toolchainFiles].map(([key, file]) => [key, { ...file, fileVersionId: key }]));
+        const manifest = { entryFile: snapshot.entryFile, includeSearchPaths: snapshot.includeSearchPaths, overlayOrder: snapshot.overlayOrder, files, defines: snapshot.preprocessing?.defines };
+        files.set(name, { content: source, fileVersionId: candidateId });
+        const after = await resolveDtsConfigSetAsync({ ...manifest, requireExactOrigins: true });
+        const failure = after.diagnostics.find(row => row.severity === "error");
+        if (failure) throw new DtsPreprocessingError(failure.code === "preprocess-busy" ? "preprocess-busy" : "preprocess-input", failure.message, failure.fileName, failure.offset);
+        parsedIndex = Object.fromEntries([...after.effective.nodesByLocator.values()].flatMap(node => [...node.properties]
+          .filter(([, property]) => !node.deleted && !property.deleted && property.sourceChain.at(-1)?.fileName === name)
+          .map(([key, property]) => [node.nodeLocator === "/" ? key : `${node.nodeLocator.slice(1)}/${key}`, { value: property.normalizedValue }])));
+      } else parsedIndex = validatedJsonIndex ?? buildParsedIndex(format, input.bytes);
     } catch (error) {
+      if (error instanceof DtsPreprocessingError && error.code === "preprocess-busy") throw error;
       const parseDiagnostics: CandidateDiagnostic[] = [
         {
           severity: "error",
@@ -584,7 +624,9 @@ async function createCandidateInScope(
           ).filter((conflict) => conflict.fileVersionId === baseVersionId)
         : [];
 
-    const computed = await computeCandidateImpact({
+    // Whole-source candidates resolve only with their exact complete manifest:
+    // a valid reference into an included member is unresolved in isolation.
+    const computed = sourceRevision ? { status: "ready" as const, diagnostics: [], impact: {}, blockers: [] } : await computeCandidateImpact({
       canonicalSourceWorkflow: openConflicts.length > 0 && fileId != null
         && (await getCanonicalSourceWorkflow(tx, auth, { projectId: input.projectId, fileId })).canonical,
       format,
@@ -621,7 +663,16 @@ async function createCandidateInScope(
     );
     return updated;
   };
-  return callerOwnsTransaction ? persist(db) : db.transaction(persist);
+  try { return await (callerOwnsTransaction ? persist(db) : db.transaction(persist)); }
+  catch (error) {
+    if (error instanceof DtsPreprocessingError && error.code === "preprocess-busy") {
+      const ownedKey = objectStore.planKey?.({ organizationId: parameterOrganizationId(auth), fileName: storageFileName,
+        contentType: contentTypeForFormat(format), bytes: input.bytes });
+      if (!callerOwnsTransaction && ownedKey === stored.storageKey) await objectStore.delete?.(ownedKey).catch(() => undefined);
+      throw new ApiError("CONFLICT", error.message, { reason: error.code });
+    }
+    throw error;
+  }
 }
 
 export async function getCandidate(

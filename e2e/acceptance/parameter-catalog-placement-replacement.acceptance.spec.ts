@@ -42,7 +42,7 @@ test("explicitly replaces an occupied placement after a stale preview without ch
   try {
     await pool.query(`insert into public.projects(id,organization_id,name,code,status)
       values ($1,$2,'Placement replacement source project','PLACEMENT-REPLACE','initialized')`, [projectId, organizationId]);
-    for (const [id, name, compatible] of [[sourceModuleId, "Source driver", "acme,power"], [targetModuleId, "Target driver", PLACEMENT_PEER_COMPATIBLE]]) {
+    for (const [id, name, compatible] of [[sourceModuleId, "Source driver", "acme,power"], [targetModuleId, "Power / Battery / Battery Authentication / Replacement driver with a long module path", PLACEMENT_PEER_COMPATIBLE]]) {
       const attributionId = `attr-${id}`;
       await pool.query(`insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,source_key)
         values ($1,$2,'driver-registration',$3,$4)`, [attributionId, organizationId, name, `compatible:${compatible}`]);
@@ -127,6 +127,31 @@ test("explicitly replaces an occupied placement after a stale preview without ch
     await dialog.getByRole("checkbox", { name: /替换目标模块原有归属/ }).check();
     await expect(preview).toContainText(`${impact.bindingCount} 个参数绑定`);
     await dialog.getByRole("textbox", { name: "替换原因" }).fill("修正已有主体与模块的错误对应");
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
+      await page.setViewportSize(viewport);
+      const layout = await dialog.evaluate((card) => {
+        const scroll = card.querySelector<HTMLElement>(".confirm-dialog__scroll")!;
+        const textarea = card.querySelector<HTMLTextAreaElement>("textarea")!;
+        const bounds = card.getBoundingClientRect();
+        const field = textarea.getBoundingClientRect();
+        const style = getComputedStyle(textarea);
+        return { width: scroll.clientWidth, contentWidth: scroll.scrollWidth,
+          top: bounds.top, bottom: bounds.bottom, left: bounds.left, right: bounds.right,
+          fieldLeft: field.left, fieldRight: field.right, fieldWidth: field.width,
+          borderWidth: parseFloat(style.borderTopWidth), radius: parseFloat(style.borderTopLeftRadius) };
+      });
+      expect(layout.contentWidth).toBeLessThanOrEqual(layout.width + 1);
+      expect(layout.top).toBeGreaterThanOrEqual(0);
+      expect(layout.bottom).toBeLessThanOrEqual(viewport.height);
+      expect(layout.fieldLeft).toBeGreaterThanOrEqual(layout.left);
+      expect(layout.fieldRight).toBeLessThanOrEqual(layout.right);
+      expect(layout.fieldWidth).toBeGreaterThan(400);
+      expect(layout.borderWidth).toBeGreaterThan(0);
+      expect(layout.radius).toBeGreaterThan(0);
+      await expect(dialog.getByRole("button", { name: "继续确认" })).toBeInViewport();
+      await catalogScreenshot(page, testInfo, `placement-replacement-editor-${viewport.width}x${viewport.height}`);
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
     await dialog.getByRole("button", { name: "继续确认" }).click();
     const confirmation = page.getByRole("dialog", { name: "确认替换归属", exact: true });
     await expect(confirmation).toContainText("未分配模块");

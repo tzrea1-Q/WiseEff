@@ -1,4 +1,5 @@
 import type {
+  InitializationConfigSnapshot,
   InitializationDraftDto,
   InitializationReviewDto,
   PreviewInitializationSnapshotInput,
@@ -20,6 +21,7 @@ export interface ParameterInitializationRepository {
   getInitialization(projectId: string): Promise<ProjectInitializationStateDto>;
   upsertDraft(input: UpsertInitializationDraftInput): Promise<InitializationDraftDto>;
   previewSnapshot(input: PreviewInitializationSnapshotInput): Promise<SemanticInitializationSnapshotItem[]>;
+  previewCompleteCopy?(input: PreviewInitializationSnapshotInput): Promise<{ items: SemanticInitializationSnapshotItem[]; configSnapshots: InitializationConfigSnapshot[] }>;
   submit(projectId: string): Promise<InitializationReviewDto>;
   listPendingReviews(): Promise<InitializationReviewDto[]>;
   approve(reviewId: string): Promise<InitializationReviewDto>;

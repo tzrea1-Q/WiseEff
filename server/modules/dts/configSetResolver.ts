@@ -1,7 +1,11 @@
 import posixPath from "node:path/posix";
+import { isDeepStrictEqual } from "node:util";
 
 import { parseDts } from "./parser";
 import { stripDtsComments } from "./preprocess";
+import { lexDts } from "./lexer";
+import { DtsPreprocessingError, dtsPreprocessingInputDigest, prepareDtsSources, requiresDtsPreprocessing, type PreparedDtsSources, type DtsPreprocessingReceipt, type DtsPreprocessingFailureCode } from "./cppSources";
+import { dtsActualPathTarget,dtsReferencePath,DtsPathReferenceError } from "../../../src/domain/dts/reference";
 import type { DtsDeleteNodeCst, DtsDeletePropertyCst, DtsNodeCst, DtsPropertyCst, DtsValue, DtsValueType } from "./types";
 
 /**
@@ -21,10 +25,16 @@ export type DtsConfigSetFile = {
 export type DtsConfigSetInput = {
   entryFile: string;
   includeSearchPaths: string[];
+  defines?: Readonly<Record<string, string>>;
   overlayOrder: string[];
   files: ReadonlyMap<string, DtsConfigSetFile>;
   /** Strict, bounded provenance entry used for canonical source proofs. */
   requireExactOrigins?: boolean;
+  preprocessing?: DtsPreprocessingReceipt | null;
+  /** Server-owned result prepared asynchronously from these exact frozen inputs. */
+  preparedSources?: PreparedDtsSources;
+  /** Library inspection only: exact frozen external requirements, never project context. */
+  libraryExternalReferences?: ReadonlySet<string>;
 };
 
 export type DtsResolutionDiagnosticCode =
@@ -34,7 +44,7 @@ export type DtsResolutionDiagnosticCode =
   | "target-unresolved"
   | "dangling-reference"
   | "label-duplicate"
-  | "source-proof-limit";
+  | "source-proof-limit" | "source-syntax" | DtsPreprocessingFailureCode;
 
 class SourceProofLimit extends Error {}
 
@@ -43,6 +53,7 @@ export type DtsResolutionDiagnostic = {
   severity: "error" | "warning";
   fileName: string;
   message: string;
+  offset?: number;
 };
 
 export type DtsSourceEffect = "set" | "override" | "delete";
@@ -54,7 +65,7 @@ export interface DtsSourceChainEntry {
   effect: DtsSourceEffect;
   rawText: string;
   /** Original UTF-16 property span; null when expansion crosses source segments. */
-  origin: { fileVersionId: string; start: number; end: number } | null;
+  origin: { fileVersionId: string; start: number; end: number; mode?: "expanded-v1" } | null;
 }
 
 export type DtsNodeEffect = "create" | "delete";
@@ -63,6 +74,9 @@ export interface DtsNodeSourceChainEntry {
   fileName: string;
   nodeLocator: string;
   effect: DtsNodeEffect;
+  /** Exact original delete directive, never a synthetic property occurrence. */
+  origin?: DtsSourceChainEntry["origin"];
+  deletedNodeLocator?: string;
 }
 
 export interface DtsEffectiveProperty {
@@ -77,6 +91,8 @@ export interface DtsEffectiveProperty {
 }
 
 export interface DtsEffectiveNode {
+  /** An unresolved external label is context, never an actual absolute node identity. */
+  isLabelStub?: true;
   nodeLocator: string;
   name: string;
   unitAddress?: string;
@@ -94,6 +110,9 @@ export interface DtsEffectiveConfigSet {
 export interface DtsConfigSetResult {
   effective: DtsEffectiveConfigSet;
   diagnostics: DtsResolutionDiagnostic[];
+  /** Actual files expanded from the real entry and ordered overlays. */
+  sourceFiles: string[];
+  preprocessing?: PreparedDtsSources;
 }
 
 interface MutableProperty {
@@ -113,6 +132,7 @@ interface MutableNode {
   unitAddress?: string;
   labels: Set<string>;
   deleted: boolean;
+  isLabelStub: boolean;
   properties: Map<string, MutableProperty>;
   sourceChain: DtsNodeSourceChainEntry[];
 }
@@ -127,10 +147,12 @@ interface Segment {
 interface Builder {
   text: string;
   segments: Segment[];
+  sourceFiles: Set<string>;
   proofBudget?: { expandedBytes: number; entries: number; metadataBytes: number };
 }
 
 interface WalkContext {
+  libraryExternalReferences?: ReadonlySet<string>;
   fileForOffset: (offset: number) => string;
   originForSpan: (span: { start: number; end: number }) => DtsSourceChainEntry["origin"];
   visitEntry: () => void;
@@ -163,12 +185,13 @@ function isEscaping(normalized: string): boolean {
 type IncludeResolution = { ok: true; fileName: string } | { ok: false; code: "include-missing" | "path-escape" };
 
 /** Resolve an `/include/ "path"` request against the including file, then declared search roots. */
-function resolveIncludeTarget(
+export function resolveIncludeTarget(
   includingFile: string,
   requestedPath: string,
   includeSearchPaths: readonly string[],
   files: ReadonlyMap<string, DtsConfigSetFile>,
 ): IncludeResolution {
+  if (posixPath.isAbsolute(requestedPath) || /[:\\\u0000-\u001f\u007f]/u.test(requestedPath)) return {ok:false,code:"path-escape"};
   const candidates = [
     posixPath.normalize(posixPath.join(posixPath.dirname(includingFile), requestedPath)),
     ...includeSearchPaths.map((root) => posixPath.normalize(posixPath.join(root, requestedPath))),
@@ -232,6 +255,7 @@ function expandFile(
     return;
   }
   const file = files.get(fileName);
+  if (file) builder.sourceFiles.add(fileName);
   if (!file) {
     diagnostics.push({
       code: "include-missing",
@@ -247,12 +271,16 @@ function expandFile(
   // `stripDtsComments` preserves length (comments → spaces), so spans stay aligned with
   // the original file while the combined document remains parseable.
   const cleaned = stripDtsComments(file.content);
-  const includeRe = /\/include\/\s*"([^"]*)"\s*;?/g;
   let cursor = 0;
-  for (const match of cleaned.matchAll(includeRe)) {
-    const matchIndex = match.index ?? 0;
+  let tokens:ReturnType<typeof lexDts>;
+  try {tokens=lexDts(cleaned);}catch(error){if(error instanceof DtsPathReferenceError)error.sourceName=fileName;throw error;}
+  for (let i=0;i<tokens.length;i++) {
+    const token=tokens[i]!;
+    if (token.kind!=="directive" || token.value!=="/include/" || tokens[i+1]?.kind!=="string") continue;
+    const argument=tokens[i+1]!;
+    const matchIndex = token.span.start;
     appendText(builder, cleaned.slice(cursor, matchIndex), fileName, cursor);
-    const requestedPath = match[1];
+    const requestedPath = argument.value.slice(1,-1);
     const resolution = resolveIncludeTarget(fileName, requestedPath, includeSearchPaths, files);
     if (resolution.ok) {
       expandFile(resolution.fileName, nextStack, files, includeSearchPaths, diagnostics, builder, requireExactOrigins);
@@ -261,15 +289,27 @@ function expandFile(
         code: resolution.code,
         severity: "error",
         fileName,
+        offset: matchIndex,
         message:
           resolution.code === "path-escape"
             ? `Include path "${requestedPath}" in "${fileName}" resolves outside the config set`
             : `Include target "${requestedPath}" referenced from "${fileName}" was not found`,
       });
     }
-    cursor = matchIndex + match[0].length;
+    cursor = tokens[i+2]?.kind==="semi" ? tokens[i+2]!.span.end : argument.span.end;
   }
   appendText(builder, cleaned.slice(cursor), fileName, cursor);
+}
+
+/** Bounded native include expansion with original source spans, also usable by reusable libraries. */
+export function expandDtsIncludes(input: Pick<DtsConfigSetInput,"entryFile"|"files"|"includeSearchPaths">) {
+  const builder: Builder = {text:"",segments:[],sourceFiles:new Set(),proofBudget:{expandedBytes:0,entries:0,metadataBytes:0}};
+  const diagnostics: DtsResolutionDiagnostic[] = [];
+  expandFile(input.entryFile,[],input.files,input.includeSearchPaths,diagnostics,builder,true);
+  return {text:builder.text,diagnostics,originAt(offset:number) {
+    const segment=builder.segments.find(value=>offset>=value.start && offset<value.end) ?? builder.segments.at(-1);
+    return segment ? {fileName:segment.fileName,offset:segment.sourceStart+Math.max(0,offset-segment.start)} : {fileName:input.entryFile,offset:0};
+  }};
 }
 
 function resolveSegment(segments: readonly Segment[], offset: number): string {
@@ -279,9 +319,20 @@ function resolveSegment(segments: readonly Segment[], offset: number): string {
   return segments.length > 0 ? segments[segments.length - 1].fileName : "";
 }
 
-function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress: string | undefined, fileName: string): MutableNode {
+function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress: string | undefined, fileName: string,isLabelStub=false): MutableNode {
   const existing = ctx.byLocator.get(locator);
-  if (existing) return existing;
+  if (existing) {
+    if (!isLabelStub) {
+      existing.isLabelStub = false;
+      if (existing.deleted) {
+        existing.deleted = false;
+        existing.properties.clear();
+        existing.labels.clear();
+        existing.sourceChain.push({ fileName, nodeLocator: displayLocator(locator), effect: "create" });
+      }
+    }
+    return existing;
+  }
   ctx.retainMetadata(locator, name, fileName);
   const node: MutableNode = {
     locator,
@@ -289,6 +340,7 @@ function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress
     unitAddress,
     labels: new Set(),
     deleted: false,
+    isLabelStub,
     properties: new Map(),
     sourceChain: [{ fileName, nodeLocator: displayLocator(locator), effect: "create" }],
   };
@@ -384,8 +436,15 @@ function walkDeleteNode(ctx: WalkContext, parent: MutableNode, cst: DtsDeleteNod
     });
     return;
   }
-  target.deleted = true;
-  target.sourceChain.push({ fileName, nodeLocator: displayLocator(target.locator), effect: "delete" });
+  const deletedNodeLocator = displayLocator(target.locator);
+  for (const node of ctx.byLocator.values()) {
+    if (node.locator !== target.locator && !node.locator.startsWith(`${target.locator}/`)) continue;
+    node.deleted = true;
+    for (const label of node.labels) if (ctx.byLabel.get(label) === node) ctx.byLabel.delete(label);
+    node.labels.clear();
+    node.sourceChain.push({ fileName, nodeLocator: displayLocator(node.locator), effect: "delete",
+      origin: ctx.originForSpan(cst.span), deletedNodeLocator });
+  }
 }
 
 function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): void {
@@ -394,7 +453,14 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
   let node: MutableNode;
 
   if (cst.refTarget) {
-    const target = ctx.byLabel.get(cst.refTarget);
+    const path=dtsReferencePath(cst.refTarget);
+    const offset = ctx.originForSpan({ start: cst.span.start, end: cst.span.start })?.start;
+    const target = path!==null?dtsActualPathTarget(ctx.byLocator,path.slice(1)):ctx.byLabel.get(cst.refTarget);
+    if(path!==null && (!target || target.deleted) && !ctx.libraryExternalReferences?.has(`&${cst.refTarget}`)) {
+      ctx.diagnostics.push({code:"target-unresolved",severity:"error",fileName,offset,
+        message:`Overlay target "&${cst.refTarget}" is not defined in the uploaded file set`});
+      return;
+    }
     if (!target) {
       // Self-anchoring overlay: the referenced label is not defined anywhere in the
       // uploaded file set. Dropping the fragment would silently lose its business
@@ -407,10 +473,11 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
         code: "dangling-reference",
         severity: "warning",
         fileName,
+        offset,
         message: `Overlay target "&${cst.refTarget}" is not defined in the uploaded file set; its properties are attached to a synthetic anchor node so parameters stay manageable (full-tree resolution unavailable until the definition is provided)`,
       });
-      node = ensureNode(ctx, cst.refTarget, cst.refTarget, undefined, fileName);
-      registerLabel(ctx, cst.refTarget, node, fileName);
+      node = ensureNode(ctx, cst.refTarget, cst.refTarget, undefined, fileName,true);
+      if(path===null)registerLabel(ctx, cst.refTarget, node, fileName);
     } else {
       node = target;
     }
@@ -443,22 +510,34 @@ function ingestDocument(
   diagnostics: DtsResolutionDiagnostic[],
   byLocator: Map<string, MutableNode>,
   byLabel: Map<string, MutableNode>,
+  sourceFiles: Set<string>,
   proofBudget?: Builder["proofBudget"],
+  preprocessing?: PreparedDtsSources,
 ): void {
-  const builder: Builder = { text: "", segments: [], proofBudget };
-  expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder, input.requireExactOrigins);
+  const builder: Builder = { text: "", segments: [], sourceFiles, proofBudget };
 
   let topLevel: DtsNodeCst[];
   try {
-    topLevel = parseDts(builder.text).topLevel;
-  } catch {
-    // A malformed member is reported structurally elsewhere (parser safety); the config-set
-    // resolver only owns include/overlay provenance diagnostics.
+    if (preprocessing) {
+      topLevel = preprocessing.documents.get(fileName)!.document.topLevel;
+      for (const source of preprocessing.sourceFiles) sourceFiles.add(source);
+    } else {
+      expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder, input.requireExactOrigins);
+      topLevel = parseDts(builder.text).topLevel;
+    }
+  } catch (error) {
+    if (error instanceof SourceProofLimit) throw error;
+    if(error instanceof DtsPathReferenceError)diagnostics.push({code:"target-unresolved",severity:"error",fileName:error.sourceName??fileName,offset:error.offset,message:error.message});
+    else diagnostics.push({ code: "source-syntax", severity: "error", fileName,
+      message: error instanceof Error ? error.message : "设备树源码语法不受支持，请在原始源码中修正。" });
     return;
   }
 
   const ctx: WalkContext = {
-    fileForOffset: (offset) => resolveSegment(builder.segments, offset),
+    libraryExternalReferences:input.libraryExternalReferences,
+    fileForOffset: (offset) => preprocessing
+      ? preprocessing.documents.get(fileName)!.originForSpan({ start: offset, end: offset })?.sourceName ?? fileName
+      : resolveSegment(builder.segments, offset),
     visitEntry: () => { if (proofBudget && ++proofBudget.entries > 100_000) throw new SourceProofLimit(); },
     retainMetadata: (...fields) => {
       if (!proofBudget) return;
@@ -466,7 +545,12 @@ function ingestDocument(
       if (proofBudget.metadataBytes > 8 * 1024 * 1024) throw new SourceProofLimit();
     },
     originForSpan: (span) => {
-      const segment = builder.segments.find((entry) => span.start >= entry.start && span.end <= entry.end);
+      if (preprocessing) {
+        const origin = preprocessing.documents.get(fileName)!.originForSpan(span);
+        const file = origin && input.files.get(origin.sourceName);
+        return origin && file ? { fileVersionId: file.fileVersionId, start: origin.start, end: origin.end, mode: "expanded-v1" } : null;
+      }
+      const segment = builder.segments.find((entry) => span.start >= entry.start && span.start < entry.end && span.end <= entry.end);
       const file = segment && input.files.get(segment.fileName);
       return segment && file ? {
         fileVersionId: file.fileVersionId,
@@ -491,6 +575,7 @@ function finalize(byLocator: Map<string, MutableNode>): Map<string, DtsEffective
       properties.set(name, { ...prop, sourceChain: [...prop.sourceChain] });
     }
     out.set(displayLocator(node.locator), {
+      ...(node.isLabelStub ? { isLabelStub: true as const } : {}),
       nodeLocator: displayLocator(node.locator),
       name: node.name,
       unitAddress: node.unitAddress,
@@ -513,6 +598,7 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
   const diagnostics: DtsResolutionDiagnostic[] = [];
   const byLocator = new Map<string, MutableNode>();
   const byLabel = new Map<string, MutableNode>();
+  const sourceFiles = new Set<string>();
   const proofBudget = input.requireExactOrigins ? { expandedBytes: 0, entries: 0, metadataBytes: 0 } : undefined;
 
   if (!input.files.has(input.entryFile)) {
@@ -522,11 +608,17 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
       fileName: input.entryFile,
       message: `Entry file "${input.entryFile}" was not found in the config set manifest`,
     });
-    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics };
+    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics, sourceFiles: [] };
   }
 
   try {
-    ingestDocument(input.entryFile, input, diagnostics, byLocator, byLabel, proofBudget);
+    const preprocessing = input.preparedSources;
+    if (requiresDtsPreprocessing(input.files, input.defines ?? input.preprocessing?.defines) && !preprocessing) throw new DtsPreprocessingError("preprocess-unavailable", "原始工程需要通过受控异步预处理入口解析。", input.entryFile);
+    if (preprocessing && preprocessing.receipt.inputDigest !== dtsPreprocessingInputDigest(input)) throw new DtsPreprocessingError("preprocess-stale", "预处理证明不属于当前冻结输入，请重新预览。", input.entryFile);
+    if (input.preprocessing && !isDeepStrictEqual(input.preprocessing, preprocessing?.receipt)) {
+      throw new DtsPreprocessingError("preprocess-stale", "冻结的预处理输入或工具身份已经变化，请重新预览。", input.entryFile);
+    }
+    ingestDocument(input.entryFile, input, diagnostics, byLocator, byLabel, sourceFiles, proofBudget, preprocessing);
 
     for (const overlayFile of input.overlayOrder) {
       if (!input.files.has(overlayFile)) {
@@ -538,14 +630,37 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
         });
         continue;
       }
-      ingestDocument(overlayFile, input, diagnostics, byLocator, byLabel, proofBudget);
+      ingestDocument(overlayFile, input, diagnostics, byLocator, byLabel, sourceFiles, proofBudget, preprocessing);
     }
 
-    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics };
+    for(const node of byLocator.values())for(const property of node.properties.values()) {
+      if(node.deleted || property.deleted)continue;
+      for(const token of lexDts(property.rawText))if(token.kind==="path-ref") {
+        const target=dtsActualPathTarget(byLocator,dtsReferencePath(token.value)!.slice(1));
+        if((!target || target.deleted)&&!input.libraryExternalReferences?.has(`&${token.value}`))diagnostics.push({code:"target-unresolved",severity:"error",fileName:property.sourceChain.at(-1)!.fileName,
+          message:`Property reference "&${token.value}" is not defined in the uploaded file set`});
+      }
+    }
+    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics, sourceFiles: [...sourceFiles], ...(preprocessing ? { preprocessing } : {}) };
   } catch (error) {
+    if (error instanceof DtsPreprocessingError) return { effective: { nodesByLocator: new Map() }, sourceFiles: [], diagnostics: [{
+      code: error.code, severity: "error", fileName: error.fileName, offset: error.offset, message: error.message,
+    }] };
     if (!(error instanceof SourceProofLimit)) throw error;
-    return { effective: { nodesByLocator: new Map() }, diagnostics: [{
+    return { effective: { nodesByLocator: new Map() }, sourceFiles: [], diagnostics: [{
       code: "source-proof-limit",severity: "error",fileName: input.entryFile,message: "Exact source proof exceeds its bounded capacity.",
     }] };
+  }
+}
+
+/** The API source owner awaits native work; the existing pure resolver stays synchronous. */
+export async function resolveDtsConfigSetAsync(input: DtsConfigSetInput): Promise<DtsConfigSetResult> {
+  try {
+    const preparedSources = input.preparedSources ?? await prepareDtsSources(input) ?? undefined;
+    return resolveDtsConfigSet({ ...input, preparedSources });
+  } catch (error) {
+    if (!(error instanceof DtsPreprocessingError)) throw error;
+    return { effective: { nodesByLocator: new Map() }, sourceFiles: [], diagnostics: [{ code: error.code, severity: "error",
+      fileName: error.fileName, offset: error.offset, message: error.message }] };
   }
 }

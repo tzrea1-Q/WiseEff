@@ -10,6 +10,7 @@ import {
   withSourceEnablement,
 } from "../../../src/domain/parameter-topology/nodeEnablement";
 import { normalizeManifestLogicalPath } from "./configRevisionManifest";
+import { renderDtsValue } from "../dts";
 import type {
   ConfigRevisionManifestMember,
   ConfigRevisionManifestState,
@@ -21,7 +22,7 @@ import type {
   PersistedPropertyOccurrence,
   PersistedValidationDiagnostic,
 } from "./types";
-import type { TopologyNodeEnablement } from "../../../src/domain/parameter-topology/types";
+import type { EffectiveTopologyEffect, TopologyNodeEnablement } from "../../../src/domain/parameter-topology/types";
 
 type RevisionRow = TrustedInvocationDomainAttributionRow & {
   id: string;
@@ -33,6 +34,8 @@ type RevisionRow = TrustedInvocationDomainAttributionRow & {
   entry_file: string | null;
   include_search_paths: unknown;
   overlay_order: unknown;
+  preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null;
+  declared_build_inputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   manifest_state: ConfigRevisionManifestState;
   created_by_user_id: string | null;
   created_at: string | Date;
@@ -68,6 +71,9 @@ function toRevisionDto(row: RevisionRow): DtsConfigRevisionDto {
     entryFile: row.entry_file ?? undefined,
     includeSearchPaths: parseStringArray(row.include_search_paths),
     overlayOrder: parseStringArray(row.overlay_order),
+    ...(row.preprocessing ? { preprocessing: row.preprocessing } : {}),
+    ...(row.preprocessing || row.declared_build_inputs?.includeSearchPaths.some(path => path !== ".") || Object.keys(row.declared_build_inputs?.defines ?? {}).length
+      ? { declaredBuildInputs: row.declared_build_inputs } : {}),
     manifestState: row.manifest_state ?? "complete",
     createdByUserId: row.created_by_user_id ?? undefined,
     createdAt: dateTimeToIso(row.created_at),
@@ -100,6 +106,7 @@ export async function insertConfigRevision(
     entryFile?: string;
     includeSearchPaths?: string[];
     overlayOrder?: string[];
+    declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
     attribution?: TrustedInvocationDomainAttribution;
   },
 ): Promise<DtsConfigRevisionDto> {
@@ -109,8 +116,8 @@ export async function insertConfigRevision(
       id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
       initiator_type, initiator_system_kind, initiator_system_name,
       initiator_session_id, initiator_tool_call_id, initiator_approval_id,
-      entry_file, include_search_paths, overlay_order, manifest_state
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, 'complete')
+      entry_file, include_search_paths, overlay_order, declared_build_inputs, manifest_state
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17::jsonb, 'complete')
     returning *
     `,
     [
@@ -130,6 +137,7 @@ export async function insertConfigRevision(
       input.entryFile ?? null,
       JSON.stringify(input.includeSearchPaths ?? []),
       JSON.stringify(input.overlayOrder ?? []),
+      JSON.stringify(input.declaredBuildInputs ?? { includeSearchPaths: input.includeSearchPaths ?? [], defines: {} }),
     ],
   );
   return toRevisionDto(result.rows[0]);
@@ -330,8 +338,8 @@ export async function insertOccurrenceEffect(
     `
     insert into dts_occurrence_effects (
       id, config_revision_id, logical_node_revision_id, property_name, effect_kind,
-      node_occurrence_id, property_occurrence_id, source_order
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8)
+      node_occurrence_id, property_occurrence_id, source_order, source_directive
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
     `,
     [
       effect.id,
@@ -342,6 +350,7 @@ export async function insertOccurrenceEffect(
       effect.nodeOccurrenceId,
       effect.propertyOccurrenceId,
       effect.sourceOrder,
+      effect.sourceDirective ? JSON.stringify(effect.sourceDirective) : null,
     ],
   );
 }
@@ -743,6 +752,7 @@ type EffectiveNodeRow = {
 };
 
 type EffectRow = {
+  source_directive: PersistedOccurrenceEffect["sourceDirective"] | null;
   id: string;
   logical_node_revision_id: string;
   property_name: string | null;
@@ -750,12 +760,23 @@ type EffectRow = {
   node_occurrence_id: string | null;
   property_occurrence_id: string | null;
   source_order: number | string;
+  raw_text: string | null;
+  ast_json: EffectiveTopologyEffect["value"] | null;
+  file_id: string | null;
+  file_version_id: string | null;
+  source_name: string | null;
+  shared_reference: NonNullable<EffectiveTopologyEffect["source"]>["sharedReference"] | null;
+  start_line: number | null;
+  start_column: number | null;
+  end_line: number | null;
+  end_column: number | null;
 };
 
 type StatusEffectRow = {
   logical_node_revision_id: string;
   effect_kind: "set" | "override" | "delete";
   raw_text: string | null;
+  ast_json: EffectiveTopologyEffect["value"] | null;
   source_order: number | string;
 };
 
@@ -771,14 +792,7 @@ export async function listEffectiveTopology(
     unitAddress?: string;
     compatible?: string;
     parentLogicalNodeId: string | null;
-    effects: Array<{
-      id: string;
-      propertyName: string | null;
-      effectKind: "set" | "override" | "delete";
-      nodeOccurrenceId: string | null;
-      propertyOccurrenceId: string | null;
-      sourceOrder: number;
-    }>;
+    effects: EffectiveTopologyEffect[];
     enablement: TopologyNodeEnablement;
   }>;
 }> {
@@ -794,17 +808,27 @@ export async function listEffectiveTopology(
     ),
     db.query<EffectRow>(
       `
-      select id, logical_node_revision_id, property_name, effect_kind,
-             node_occurrence_id, property_occurrence_id, source_order
-      from dts_occurrence_effects
-      where config_revision_id = $1
-      order by source_order asc
+      select e.id, e.logical_node_revision_id, e.property_name, e.effect_kind,
+             e.node_occurrence_id, e.property_occurrence_id, e.source_order,
+             coalesce(e.source_directive->>'rawText',p.raw_text) as raw_text, p.ast_json,
+             m.file_id, m.file_version_id, m.source_name, m.shared_reference,
+             coalesce((e.source_directive->>'startLine')::int,p.start_line) as start_line,
+             coalesce((e.source_directive->>'startColumn')::int,p.start_column) as start_column,
+             coalesce((e.source_directive->>'endLine')::int,p.end_line) as end_line,
+             coalesce((e.source_directive->>'endColumn')::int,p.end_column) as end_column,
+             e.source_directive
+      from dts_occurrence_effects e
+      left join dts_property_occurrences p on p.id = e.property_occurrence_id and p.config_revision_id = e.config_revision_id
+      left join dts_node_occurrences n on n.id = e.node_occurrence_id and n.config_revision_id = e.config_revision_id
+      left join dts_config_revision_members m on m.file_version_id = coalesce(e.source_directive->>'fileVersionId',p.file_version_id, n.file_version_id) and m.config_revision_id = e.config_revision_id
+      where e.config_revision_id = $1
+      order by e.source_order asc, e.id asc
       `,
       [configRevisionId],
     ),
     db.query<StatusEffectRow>(
       `
-      select oe.logical_node_revision_id, oe.effect_kind, po.raw_text, oe.source_order
+      select oe.logical_node_revision_id, oe.effect_kind, po.raw_text, po.ast_json, oe.source_order
       from dts_occurrence_effects oe
       left join dts_property_occurrences po on po.id = oe.property_occurrence_id
       where oe.config_revision_id = $1
@@ -828,7 +852,7 @@ export async function listEffectiveTopology(
     if (row.effect_kind === "delete") {
       rawStatusByNode.set(row.logical_node_revision_id, null);
     } else {
-      rawStatusByNode.set(row.logical_node_revision_id, row.raw_text);
+      rawStatusByNode.set(row.logical_node_revision_id, row.ast_json?.kind === "strings" ? renderDtsValue(row.ast_json) : row.raw_text);
     }
   }
 
@@ -848,6 +872,17 @@ export async function listEffectiveTopology(
       nodeOccurrenceId: effect.node_occurrence_id,
       propertyOccurrenceId: effect.property_occurrence_id,
       sourceOrder: Number(effect.source_order),
+      ...(effect.source_directive ? { directive: { kind: effect.source_directive.kind, targetNodeLocator: effect.source_directive.targetNodeLocator,
+        ...(effect.source_directive.redeclared ? { redeclared: true as const } : {}) } } : {}),
+      ...(effect.raw_text != null ? { rawText: effect.raw_text } : {}),
+      ...(effect.ast_json && ["boolean", "empty", "strings", "bytes", "cells", "mixed"].includes(effect.ast_json.kind)
+        ? { value: effect.ast_json, valueText: renderDtsValue(effect.ast_json) } : {}),
+      ...(effect.file_id && effect.file_version_id && effect.source_name ? { source: {
+        fileId: effect.file_id, fileVersionId: effect.file_version_id, sourceName: effect.source_name,
+        ...(effect.start_line != null ? { startLine: Number(effect.start_line), startColumn: Number(effect.start_column),
+          endLine: Number(effect.end_line), endColumn: Number(effect.end_column) } : {}),
+        ...(effect.shared_reference ? { sharedReference: effect.shared_reference } : {})
+      } } : {}),
     })),
   }));
 

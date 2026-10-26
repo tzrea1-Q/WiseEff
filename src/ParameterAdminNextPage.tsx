@@ -38,6 +38,7 @@ import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
 import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
 import { createDtsStructuredClient } from "@/infrastructure/http/dtsStructuredClient";
+import { SharedDtsiPage } from "@/features/shared-dtsi/SharedDtsiPage";
 
 function buildParameterAuditCenterPath(projectId: string) {
   const params = new URLSearchParams({ app: "parameter" });
@@ -78,6 +79,7 @@ export type ParameterAdminNextPageProps = {
   catalogOrganizationId?: string;
   sessionPermissions?: readonly string[] | null;
   sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
+  projectMemberships?: AuthContextDto["projectMemberships"];
 };
 
 /**
@@ -108,6 +110,7 @@ export function ParameterAdminNextPage({
   runtime,
   catalogOrganizationId,
   sessionPermissions,
+  projectMemberships,
   sessionRoles
 }: ParameterAdminNextPageProps) {
   const topology = useMemo(
@@ -182,6 +185,7 @@ export function ParameterAdminNextPage({
         onAnchorChange={handleCatalogAnchorChange}
         organizationId={catalogOrganizationId}
         currentPersonId={state?.currentUserId ?? ""}
+        onCreateSubject={() => onNavigate("/parameter-admin/modules?createSubject=1&returnTo=definitions")}
         projects={projects}
         moduleRegistry={moduleRegistry}
         relatedKnowledge={definitionRelatedKnowledge}
@@ -226,7 +230,7 @@ export function ParameterAdminNextPage({
             : "param-admin-shell"
         }
       >
-        {!isConfigurationWorkbenchRoute ? (
+        {!isConfigurationWorkbenchRoute && (runtimeMode !== "api" || sessionPermissions === undefined || sessionPermissions?.includes("admin:access")) ? (
           <div className="param-admin-navigation">
             <ParameterAdminNextScopeNav active={area} onNavigate={onNavigate} />
             {organizationView ? <ParameterAdminOrganizationSubNav active={organizationView} onNavigate={onNavigate} /> : null}
@@ -248,6 +252,8 @@ export function ParameterAdminNextPage({
               parameterFileRepository={fileRepository}
               dtsStructuredRepository={dtsRepository}
               configurationWorkbenchEnabled={configurationWorkbenchEnabled}
+              sessionPermissions={sessionPermissions}
+              projectMemberships={projectMemberships}
             />
           ) : (
             <section className="param-admin-main" aria-label="项目运营">
@@ -258,6 +264,11 @@ export function ParameterAdminNextPage({
           )
         ) : organizationView ? (
           <>
+            {organizationView === "sources" ? <SharedDtsiPage key={catalogOrganizationId ?? "home"} apiClient={runtime?.parameterApiClient}
+              canCreateSubject={Boolean(sessionPermissions?.includes("catalog:author"))}
+              canReviewSource={Boolean(sessionRoles?.some(role=>role.roleId==="platform-admin"&&role.projectId===null))}
+              canProposeSource={Boolean(sessionRoles?.some(role=>role.roleId==="admin"&&role.projectId===null) && !sessionRoles?.some(role=>role.roleId==="platform-admin"&&role.projectId===null))}
+              canWrite={Boolean(sessionPermissions?.includes("admin:access"))} organizationId={catalogOrganizationId} search={search} onNavigate={onNavigate} /> : null}
             {organizationView === "specs" ? <OrganizationBulkImportPanel
               apiClient={runtime?.parameterApiClient}
               projects={projects}
@@ -286,6 +297,7 @@ export function ParameterAdminNextPage({
             ) : null}
             {organizationView === "modules" ? (
               <OrganizationModuleGovernancePanel
+                currentPersonId={state?.currentUserId ?? ""}
                 apiClient={runtime?.parameterApiClient}
                 projects={projects}
                 pathname={pathname}

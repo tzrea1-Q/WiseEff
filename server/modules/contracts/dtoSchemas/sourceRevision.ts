@@ -6,6 +6,17 @@ export const sourceRevisionStatusSchema = z.enum(["pending", "approved", "reject
 const mutationId = id.max(200);
 const reason = z.string().trim().min(1).max(2000);
 
+export const projectLocalOverrideRequestSchema = z.object({
+  expectedConfigRevisionId: id, logicalNodeId: id, propertyName: id.max(240),
+  action: z.enum(["set", "remove-override", "delete-property", "enable-node", "disable-node", "remove-status-override", "delete-node"]), rawText: z.string().max(1024 * 1024).optional(),
+  propertyOccurrenceId: id.optional(), targetFileId: id.optional()
+}).strict();
+export const projectLocalOverrideResponseSchema = z.object({ item: z.object({
+  fileId: id, fileName: id, baseVersionId: id, configRevisionId: id,
+  before: z.string(), after: z.string(), beforeValue: z.string().nullable(), afterValue: z.string().nullable(),
+  action: projectLocalOverrideRequestSchema.shape.action, localOverride: projectLocalOverrideRequestSchema.optional()
+}).strict() }).strict();
+
 export const sourceRevisionImpactSchema = z.object({
   parameterChanges: z.number().int().nonnegative(),
   restoredParameters: z.number().int().nonnegative().optional(),
@@ -16,6 +27,7 @@ export const sourceRevisionImpactSchema = z.object({
 const legacyCandidateRequestSchema = z.object({ fileName: id, contentBase64: id, fileId: id.optional() }).strict();
 export const sourceRevisionCandidateRequestSchema = legacyCandidateRequestSchema.extend({
   intent: z.literal("source_revision"), fileId: id,
+  localOverride: projectLocalOverrideRequestSchema.optional(),
   expectedCurrentVersionId: id, expectedConfigRevisionId: id, clientMutationId: mutationId
 });
 export const createParameterFileCandidateRequestSchema = z.union([sourceRevisionCandidateRequestSchema, legacyCandidateRequestSchema]);
@@ -73,6 +85,8 @@ export const canonicalSourceSubmissionResponseSchema = z.object({ item: z.object
 }).strict() }).strict();
 
 export const sourceRevisionDtoSchemaCatalog = {
+  ProjectLocalOverrideRequest: projectLocalOverrideRequestSchema,
+  ProjectLocalOverrideResponse: projectLocalOverrideResponseSchema,
   CreateParameterFileCandidateRequest: createParameterFileCandidateRequestSchema,
   CanonicalSourceSubmitRequest: canonicalSourceSubmitRequestSchema,
   CanonicalSourceSubmissionResponse: canonicalSourceSubmissionResponseSchema,
@@ -87,6 +101,7 @@ export const sourceRevisionDtoSchemaCatalog = {
 };
 
 export const sourceRevisionCoveredRouteIds = [
+  "parameterFiles.prepareProjectLocalOverride",
   "parameterFiles.previewCanonicalCandidate", "parameterFiles.submitCanonicalCandidate",
   "parameterFiles.applySourceRevisionCandidate",
   "parameterFiles.listSourceRevisionRequests", "parameterFiles.getSourceRevisionRequest",

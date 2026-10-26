@@ -183,6 +183,8 @@ export type ProjectParameterFileCandidateDto = {
 export type SourceRevisionCandidateContext = {
   kind: "source_revision"; configSetId: string; baseConfigRevisionId: string;
   baseVersionId: string; clientMutationId: string;
+  localOverride?: { input: import("zod").infer<typeof import("../contracts/dtoSchemas/sourceRevision").projectLocalOverrideRequestSchema>;
+    bindingId?: string; definitionId?: string; oldValueId?: string; sourcePinId?: string; nodeOperation?: true; authorUserId: string };
 };
 
 export type InsertParameterFileCandidateInput = {
@@ -324,6 +326,7 @@ export type InsertReleaseBaselineMemberInput = {
 };
 
 export type ConfigSetMemberFileDto = {
+  sharedReference?: { referenceId: string; resourceId: string; versionId: string; version: number; memberId: string; digest: string; readOnly: true; direct?:boolean };
   configSetId: string;
   fileId: string;
   fileName: string;

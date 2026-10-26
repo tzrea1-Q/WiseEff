@@ -6,7 +6,7 @@ import type { AuthContext } from "../auth/types";
 import { trustedDomainAttribution } from "../auth/trustedInvocation";
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
-import { resolveDtsConfigSet } from "../dts";
+import { resolveDtsConfigSet, resolveDtsConfigSetAsync } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, parseCompatibles, rawTextToPayload, resolveObservedSubject } from "../parameter-bindings/catalogProjectValueSync";
 import { appendProjectValue, loadConfigurationRestoreCohort, loadOwnedProjectValueSourcePin, lockSourceConfigurationBindings, readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
@@ -26,6 +26,9 @@ import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } f
 import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { insertFileVersion } from "./repository";
 import { ingestDtsFileVersion } from "./structuralIngest";
+import { loadSharedDtsiClosure, mountedSharedPath } from "../shared-dtsi/dependencies";
+import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
+import type { MemberAdditionPreview } from "./canonicalMemberAddition";
 import { rethrowSourceTransactionError } from "./sourceVersion";
 import type { ParsedIndex } from "./types";
 
@@ -33,8 +36,10 @@ export type BaselineSourceSnapshot = { configRevisionId: string; sourcePinCount:
 type Member = { fileId: string; fileVersionId: string; sourceName: string; format: "dts" | "json";
   role: ConfigRevisionMemberRole; sortOrder: number; checksum: string; sizeBytes: number; storageKey: string;
   versionNumber: number; parsedIndex: ParsedIndex; currentVersionId: string | null; currentConfigSetId: string | null;
-  currentRole: string | null; currentOrder: number };
-type Revision = { id: string; revision_number: number; entry_file: string | null; include_search_paths: string[]; overlay_order: string[] };
+  currentRole: string | null; currentOrder: number;
+  sharedReference: import("./types").ConfigSetMemberFileDto["sharedReference"] | null };
+type Revision = { id: string; revision_number: number; entry_file: string | null; include_search_paths: string[]; overlay_order: string[];
+  preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null; declared_build_inputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs };
 export type CanonicalRestorePreview = {
   canRestore: boolean; proofToken?: string; sourceConfigRevisionId?: string;
   missingInformation: string[]; historicalRevisions: Array<{ id: string; revisionNumber: number }>;
@@ -42,13 +47,14 @@ export type CanonicalRestorePreview = {
   members: Array<{ fileId: string; fileName: string; fromVersionId: string | null; toVersionId: string;
     versionNumber: number; role: string; sortOrder: number; action: "restore" | "reattach" | "retain-added" | "unchanged"; compositionChanged: boolean }>;
   entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[];
+  sharedDependencies?: Array<{ resourceId: string; name: string; beforeVersion: number | null; targetVersion: number; mountPath: string }>;
   impact: { parameterChanges: number; retainedBindings: number; restoredBindings: number; sourceReplacements: number };
 };
 function conflict(message: string): never { throw new ApiError("CONFLICT", message, { reason: "configuration-restore-stale" }); }
 
 async function revisionMembers(tx: Queryable, auth: AuthContext, projectId: string, configSetId: string, revisionId: string): Promise<Member[]> {
   return (await tx.query<Member>(`select member.file_id as "fileId",member.file_version_id as "fileVersionId",
-    member.source_name as "sourceName",file.format,member.role,member.sort_order as "sortOrder",
+    member.source_name as "sourceName",member.shared_reference as "sharedReference",file.format,member.role,member.sort_order as "sortOrder",
     version.checksum,version.size_bytes::float8 as "sizeBytes",version.storage_key as "storageKey",
     version.version_number as "versionNumber",version.parsed_index as "parsedIndex",
     file.current_version_id as "currentVersionId",file.config_set_id as "currentConfigSetId",
@@ -140,6 +146,69 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const extras = currentMembers.filter((row) => !targetMembers.some((target) => target.fileId === row.fileId));
   const members = [...targetMembers,...extras].sort((a,b) => a.sortOrder-b.sortOrder || a.fileId.localeCompare(b.fileId));
   if (new Set(members.map((row) => row.sourceName)).size !== members.length) conflict("恢复后的来源名称重复，请在配置编辑器修正后重新预览。");
+  // Recover mount/direct metadata only from the committed receipt that created
+  // the exact historical file version, never from its filename or current pin.
+  const sharedMembers = members.filter((member) => member.sharedReference);
+  const sharedComposition: NonNullable<MemberAdditionPreview["sharedComposition"]> = [];
+  for (const member of sharedMembers) {
+    const pin = member.sharedReference!;
+    if (sharedComposition.some((resource) => resource.resourceId === pin.resourceId)) continue;
+    const receipt = (await tx.query<{ resource: typeof sharedComposition[number] }>(`select resource from public.project_parameter_value_change_requests request,
+      jsonb_array_elements(request.source_revision_context->'sharedComposition') resource
+      where request.organization_id=$1 and request.project_id=$2 and request.source_revision_config_set_id=$3
+        and request.status='approved' and request.apply_outcome='committed' and request.applied_file_version_ids ? $4
+        and resource->>'resourceId'=$5 and resource->>'versionId'=$6 and resource->>'digest'=$7
+        and exists(select 1 from jsonb_array_elements(resource->'sources') source where source->>'memberId'=$8
+          and source->>'fileId'=$9 and source->>'sourceName'=$10)
+      union all select resource from public.audit_events event
+        join public.dts_config_revisions imported on imported.id=event.metadata->'result'->>'configRevisionId'
+          and imported.organization_id=event.organization_id and imported.project_id=event.project_id and imported.config_set_id=event.target_id
+          and imported.status='resolved'
+        join public.dts_config_revision_members original on original.config_revision_id=imported.id
+          and original.file_id=$9 and original.file_version_id=$4 and original.source_name=$10
+        cross join lateral jsonb_array_elements(case when jsonb_typeof(event.metadata->'sharedComposition')='array'
+          then event.metadata->'sharedComposition' else '[]'::jsonb end) resource
+      where event.organization_id=$1 and event.project_id=$2 and event.target_id=$3
+        and event.app='parameters' and event.kind='config-set' and event.action='imported' and event.target_type='dts-config-set'
+        and event.actor_type='user' and (event.actor_user_id=imported.created_by_user_id
+          or (event.actor_user_id is null and imported.created_by_user_id is null and imported.initiator_type='legacy'
+            and event.historical_attribution#>>'{actors,actor_user_id,source}'='recorded'
+            and imported.historical_attribution#>>'{actors,created_by_user_id,source}'='recorded'
+            and event.historical_attribution#>>'{actors,actor_user_id,id}'=imported.historical_attribution#>>'{actors,created_by_user_id,id}'))
+        and event.metadata->'result'->>'configSetId'=event.target_id and event.metadata->>'ownership'='reuse'
+        and resource->>'resourceId'=$5 and resource->>'versionId'=$6 and resource->>'digest'=$7
+        and original.shared_reference->>'resourceId'=$5 and original.shared_reference->>'versionId'=$6
+        and original.shared_reference->>'digest'=$7 and original.shared_reference->>'memberId'=$8
+        and exists(select 1 from jsonb_array_elements(resource->'sources') source where source->>'memberId'=$8
+          and source->>'fileId'=$9 and source->>'fileVersionId'=$4 and source->>'sourceName'=$10)
+      limit 1`,
+      [parameterOrganizationId(auth),input.projectId,configSetId,member.fileVersionId,pin.resourceId,pin.versionId,pin.digest,pin.memberId,member.fileId,member.sourceName])).rows[0]?.resource;
+    if (!receipt) conflict("历史共享依赖缺少准确的已批准来源回执，无法恢复；当前配置未改变。");
+    const sources = sharedMembers.filter((source) => source.sharedReference!.resourceId === pin.resourceId);
+    if (sources.some((source) => source.sharedReference!.versionId !== pin.versionId || source.sharedReference!.digest !== pin.digest)) conflict("保留的新成员与历史共享依赖版本冲突，请先核对完整配置。");
+    sharedComposition.push({ ...receipt,sources: sources.map((source) => ({ memberId: source.sharedReference!.memberId,
+      fileId: source.fileId,fileVersionId: source.fileVersionId,sourceName: source.sourceName })) });
+  }
+  const resources = await loadSharedDtsiClosure(tx,auth,sharedComposition.filter((resource) => resource.direct)
+    .map(({ resourceId,versionId,mountPath }) => ({ resourceId,versionId,mountPath })));
+  if (resources.length !== sharedComposition.length || resources.some((resource) => {
+    const saved = sharedComposition.find((row) => row.resourceId === resource.resourceId);
+    return !saved || saved.versionId !== resource.versionId || saved.digest !== resource.digest || saved.mountPath !== resource.mountPath
+      || saved.sources.length !== resource.item.members.length || resource.item.members.some((upstream) => !members.some((source) =>
+        source.sharedReference?.resourceId === resource.resourceId && source.sharedReference.memberId === upstream.id
+        && source.sourceName === mountedSharedPath(resource.mountPath,upstream.sourceName)
+        && source.checksum.replace(/^sha256:/,"") === upstream.checksum.replace(/^sha256:/,"") && source.sizeBytes === upstream.sizeBytes));
+  })) conflict("历史共享闭包与固定发布版本不一致，无法恢复。");
+  const beforeReferences = (await tx.query<{id:string;resourceId:string;versionId:string;mountPath:string;direct:boolean}>(`select id,resource_id as "resourceId",revision_id as "versionId",mount_path as "mountPath",is_direct as direct
+    from public.project_shared_dtsi_references where organization_id=$1 and project_id=$2 and config_set_id=$3 order by id`,[parameterOrganizationId(auth),input.projectId,configSetId])).rows;
+  const beforeSources = (await tx.query<{fileId:string;fileVersionId:string;referenceId:string;memberId:string;sourceName:string}>(`select source.file_id as "fileId",source.file_version_id as "fileVersionId",source.reference_id as "referenceId",source.member_id as "memberId",case when reference.mount_path='' then member.source_name else reference.mount_path||'/'||member.source_name end as "sourceName"
+    from public.project_shared_dtsi_snapshots source join public.project_parameter_files pf on pf.id=source.file_id
+    join public.project_shared_dtsi_references reference on reference.id=source.reference_id
+    join public.shared_dtsi_revision_members member on member.revision_id=source.revision_id and member.member_id=source.member_id
+    where source.reference_id=any($1::text[]) order by source.file_id`,[beforeReferences.map((row) => row.id)])).rows;
+  if (sharedComposition.length) preview.sharedDependencies = sharedComposition.map((resource) => ({ resourceId: resource.resourceId,name: resource.name,
+    beforeVersion: currentMembers.find((member) => member.sharedReference?.resourceId === resource.resourceId)?.sharedReference?.version ?? null,
+    targetVersion: resource.version,mountPath: resource.mountPath }));
   const contents = new Map<string,string>();
   if (!storage.getBounded) throw new ApiError("INTERNAL_ERROR","Bounded source storage is required.");
   for (const member of [...currentMembers,...members]) {
@@ -154,16 +223,18 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const dts = members.filter((row) => row.format === "dts");
   const entryFile = targetRevision.entry_file ?? (dts.length ? current.entry_file : null);
   const includeSearchPaths = targetRevision.entry_file ? targetRevision.include_search_paths : current.include_search_paths;
+  const defines = (targetRevision.entry_file ? targetRevision.preprocessing : current.preprocessing)?.defines;
+  const declaredBuildInputs = targetRevision.entry_file ? targetRevision.declared_build_inputs : current.declared_build_inputs;
   const overlayOrder = [...targetRevision.overlay_order,...current.overlay_order.filter((name) => extras.some((row) => row.sourceName === name))];
   let continuity: ReviewedSourceContinuity | null = null;
   let resolved: ReturnType<typeof resolveDtsConfigSet> | null = null;
   if (dts.length) {
     if (!entryFile) conflict("历史修订缺少 DTS 入口；请在配置编辑器补齐来源并另存完整快照。");
     const files = new Map(dts.map((row) => [row.sourceName,{ content: contents.get(`${row.fileId}:${row.fileVersionId}`)!,fileVersionId: row.fileVersionId }]));
-    resolved = resolveDtsConfigSet({ entryFile,includeSearchPaths,overlayOrder,files,requireExactOrigins: true });
+    resolved = await resolveDtsConfigSetAsync({ entryFile,includeSearchPaths,overlayOrder,files,defines,requireExactOrigins: true });
     if (resolved.diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) throw new ApiError("VALIDATION_FAILED","恢复组合包含未解决的 include/overlay 引用。",{ diagnostics: resolved.diagnostics });
     const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, configSetId, members, overlayOrder);
-    const validated = await createDtsToolchainRunner().validate({ entryFile,includeSearchPaths,overlayOrder,files,formerRootOverlayFiles },{ mode: "release" });
+    const validated = await createDtsToolchainRunner().validate({ entryFile,includeSearchPaths,overlayOrder,files,defines,formerRootOverlayFiles },{ mode: "release" });
     if (!validated.ok || validated.mode !== "release") throw new ApiError("VALIDATION_FAILED","恢复组合未通过 DTS 工具链；当前配置未改变。",{ diagnostics: validated.diagnostics });
     continuity = await prepareReviewedSourceContinuity(tx,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,
       configSetId,baseConfigRevisionId: current.id,restorationBaseConfigRevisionId: targetRevision.id,
@@ -212,20 +283,24 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       action: retained ? "retain-added" : member.currentConfigSetId !== configSetId ? "reattach" : member.currentVersionId !== member.fileVersionId || compositionChanged ? "restore" : "unchanged" };
   });
   preview.requiresCompositionConfirmation = preview.members.some((row) => row.compositionChanged)
-    || entryFile !== current.entry_file || !sameSourceRevision(includeSearchPaths,current.include_search_paths) || !sameSourceRevision(overlayOrder,current.overlay_order);
+    || entryFile !== current.entry_file || !sameSourceRevision(includeSearchPaths,current.include_search_paths) || !sameSourceRevision(overlayOrder,current.overlay_order)
+    || !sameSourceRevision(declaredBuildInputs,current.declared_build_inputs);
   preview.entryFile = entryFile; preview.includeSearchPaths = includeSearchPaths; preview.overlayOrder = overlayOrder;
   preview.impact = { parameterChanges: planned.filter((row) => row.changed).length,retainedBindings: planned.length,
     restoredBindings: planned.filter((row) => !row.active).length,sourceReplacements: planned.filter((row) => row.fileId !== row.sourceFileId).length };
   const facts = { kind: "configuration_restore" as const,organizationId: parameterOrganizationId(auth),projectId: input.projectId,baselineId: input.baselineId,
     candidateId: null,configSetId,baseConfigRevisionId: current.id,snapshotConfigRevisionId: targetRevision.id,
     baseDigest: sourceRevisionDigest(currentMembers),proposedDigest: sourceRevisionDigest(members),members,cohort: planned,continuity,
-    entryFile,includeSearchPaths,overlayOrder,catalogRelease: snapshot ? { id: snapshot.release.id,digest: snapshot.release.digest } : null,
+    ...(sharedComposition.length || beforeReferences.length ? { sharedComposition,sharedSwitch: { beforeReferences,beforeSources,
+      beforeFiles: [...beforeSources,...sharedMembers.map((member) => ({ fileId: member.fileId,fileVersionId: member.currentVersionId }))] } } : {}),
+    entryFile,includeSearchPaths,overlayOrder,declaredBuildInputs, ...(resolved?.preprocessing ? { preprocessing: resolved.preprocessing.receipt } : {}), catalogRelease: snapshot ? { id: snapshot.release.id,digest: snapshot.release.digest } : null,
     targets: planned.filter((row) => row.changed).map((row) => ({ bindingId: row.bindingId,action: "set" as const,payload: row.payload,afterFileId: row.fileId,propertyName: row.propertyName })),
     originTransfers: planned.filter((row) => row.fileId !== row.sourceFileId).map((row) => ({ bindingId: row.bindingId,oldValueId: row.oldValueId,
       sourcePinId: row.sourcePinId,fromFileId: row.sourceFileId,toFileId: row.fileId })) };
   const proof = { ...facts,proofDigest: sourceRevisionDigest(facts) };
   preview.canRestore = true; preview.proofToken = proof.proofDigest; preview.sourceConfigRevisionId = targetRevision.id;
-  return { preview,proof,contents,configSetId };
+  return { preview,proof,contents,configSetId,preprocessing:resolved?.preprocessing,
+    configNodePaths: resolved ? new Set(resolved.effective.nodesByLocator.keys()) : undefined };
 }
 
 export async function previewCanonicalBaselineRestore(db: Database, storage: ObjectStore, auth: AuthContext,
@@ -275,12 +350,22 @@ export async function applyCanonicalBaselineRestore(db: Database, storage: Objec
     const attribution = trustedDomainAttribution(security.invocation), versionIds = new Map<string,string>();
     for (const member of proof.members) {
       let versionId = member.fileVersionId;
-      if (member.currentVersionId !== member.fileVersionId) {
+      if (member.sharedReference) {
+        versionId = (await tx.query<{id:string}>("select public.derive_shared_dtsi_switch_version($1,$2,$3,$4) as id",
+          [requestId,member.fileId,randomUUID(),member.storageKey])).rows[0]!.id;
+        if (member.format === "dts" && !/\.(h|hpp)$/u.test(member.sourceName)) await ingestDtsFileVersion(tx,versionId,contents!.get(`${member.fileId}:${member.fileVersionId}`)!, inspected.preprocessing?.originalDocuments.get(member.sourceName), inspected.configNodePaths);
+        versionIds.set(member.fileId,versionId);
+        continue;
+      } else if(proof.sharedSwitch && (await tx.query("select 1 from public.dts_config_revision_members where file_id=$1 and shared_reference is not null limit 1",[member.fileId])).rowCount){
+        versionId=(await tx.query<{id:string}>("select public.restore_private_shared_dtsi_source($1,$2) as id",[requestId,member.fileId])).rows[0]!.id;
+        versionIds.set(member.fileId,versionId);
+        continue;
+      } else if (member.currentVersionId !== member.fileVersionId) {
         const version = await insertFileVersion(tx,{ id: randomUUID(),fileId: member.fileId,versionNumber: 0,
           storageKey: member.storageKey,checksum: member.checksum,sizeBytes: member.sizeBytes,parsedIndex: member.parsedIndex,
           origin: "rollback",attribution });
         versionId = version.id;
-        if (member.format === "dts") await ingestDtsFileVersion(tx,versionId,contents!.get(`${member.fileId}:${member.fileVersionId}`)!);
+        if (member.format === "dts" && !/\.(h|hpp)$/u.test(member.sourceName)) await ingestDtsFileVersion(tx,versionId,contents!.get(`${member.fileId}:${member.fileVersionId}`)!, inspected.preprocessing?.originalDocuments.get(member.sourceName), inspected.configNodePaths);
       }
       const moved = await tx.query(`update public.project_parameter_files set current_version_id=$2,config_set_id=$3,
         config_set_role=$4,config_set_sort_order=$5,updated_at=now() where id=$1 and organization_id=$6 and project_id=$7
@@ -290,14 +375,17 @@ export async function applyCanonicalBaselineRestore(db: Database, storage: Objec
       if (moved.rowCount !== 1) conflict("配置文件发生并发修改，整次恢复已回滚。");
       versionIds.set(member.fileId,versionId);
     }
+    if (proof.sharedSwitch) await tx.query("select public.apply_shared_dtsi_switch($1,$2::jsonb)",[requestId,JSON.stringify(proof.members.filter((member) => member.sharedReference)
+      .map((member) => ({ fileId: member.fileId,fileVersionId: versionIds.get(member.fileId)! })))]);
     const members = proof.members.map((member) => ({ ...member,fileName: member.sourceName,fileVersionId: versionIds.get(member.fileId)!,
       content: contents!.get(`${member.fileId}:${member.fileVersionId}`)! }));
     let revisionId: string;
     if (proof.entryFile && proof.continuity) {
       const revision = await ingestConfigRevisionInTransaction(tx,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId,
-        entryFile: proof.entryFile,includeSearchPaths: proof.includeSearchPaths,overlayOrder: proof.overlayOrder,members },auth,
+        entryFile: proof.entryFile,includeSearchPaths: proof.includeSearchPaths,overlayOrder: proof.overlayOrder,preprocessing:proof.preprocessing,declaredBuildInputs:proof.declaredBuildInputs,members },auth,
         { createdByUserId: auth.user.id,domain: attribution },{ reviewedSource: proof.continuity });
       if (revision.status !== "resolved") conflict("恢复配置构建失败，整次恢复已回滚。");
+      if (snapshot) await produceDtsReviewEvidenceInTransaction(tx,db,storage,auth,revision.id);
       revisionId = revision.id;
     } else {
       revisionId = randomUUID();

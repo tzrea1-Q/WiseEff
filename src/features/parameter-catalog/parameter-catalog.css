@@ -1214,6 +1214,68 @@ button.parameter-catalog__tree-toggle:hover {
   min-width: 0;
 }
 
+.governance-confirm-dialog.registration-dialog {
+  width: min(44rem, calc(100vw - var(--space-12)));
+}
+
+.registration-dialog .confirm-dialog__scroll,
+.registration-dialog .governance-confirm-dialog__body,
+.registration-dialog .registration-dialog-fields {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.registration-dialog .registration-dialog-fields {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow-wrap: anywhere;
+}
+
+.registration-dialog .registration-dialog-fields > label {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.registration-dialog [role="combobox"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.registration-dialog__summary,
+.registration-dialog__replacement {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background: var(--surface-low);
+}
+
+.registration-dialog :is(h3, dl, dd) {
+  margin: 0;
+}
+
+.registration-dialog h3 {
+  color: var(--text);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-bold);
+}
+
+.registration-dialog__placement > div {
+  display: grid;
+  grid-template-columns: 5em minmax(0, 1fr);
+  gap: var(--space-2);
+  padding-block: var(--space-1);
+}
+
+.registration-dialog__placement dd {
+  color: var(--text);
+}
+
 .parameter-catalog-publication-dialog {
   width: min(40rem, calc(100vw - var(--space-8)));
   max-height: min(88vh, 52rem);

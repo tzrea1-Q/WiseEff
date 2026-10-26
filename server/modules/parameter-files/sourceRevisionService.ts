@@ -9,7 +9,7 @@ import { getAuthContext } from "../auth/repository";
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import { createCatalogKernel, PropertyKey, type CatalogSnapshot } from "../catalog-kernel/interface";
 import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitionSettings";
-import { resolveDtsConfigSet } from "../dts";
+import { resolveDtsConfigSetAsync } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles,
   lockSourceCatalogGovernance, loadActiveOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
@@ -20,8 +20,6 @@ import type { ProjectValuePayload } from "../parameter-bindings/values";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
 import { CatalogReleaseId, CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 import { canAdminParameters, canEditParameters, canReviewParameters, canReviewParameterStage, canViewParameters } from "../parameter-kernel/policy";
-import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
-import { canonicalizeLogicalNodeCompatible } from "../parameter-topology/writeLock";
 import { prepareReviewedSourceContinuity, type ReviewedSourceContinuity } from "../parameter-topology/ingestService";
 import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface";
 import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
@@ -31,6 +29,8 @@ import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
 import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
 import { matchingDeletedSourceAnchors, prepareSourceRestorations, sourceRestorationNodes, type SourceRestoration } from "./sourceRestoration";
+import { assertProjectSourceOperationSensitiveWrites, prepareProjectLocalOverride } from "./projectLocalOverride";
+import type { SourceRevisionCandidateContext } from "./types";
 
 export const sourceRevisionDigest = (input: string | Buffer | object) => createHash("sha256")
   .update(typeof input === "string" || Buffer.isBuffer(input) ? input : serializeContract(input as ContractJsonValue)).digest("hex");
@@ -62,10 +62,14 @@ export type SourceRevisionProof = {
   baseDigest: string; proposedDigest: string; members: SourceRevisionMember[];
   cohort: SourceRevisionCohort[]; continuity: ReviewedSourceContinuity;
   entryFile: string; includeSearchPaths: string[]; overlayOrder: string[];
+  preprocessing?: import("../dts/cppSources").DtsPreprocessingReceipt;
+  declaredBuildInputs?: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs;
   catalogRelease: { id: string; digest: string } | null;
   pinnedCatalogReleases: Array<{ id: string; digest: string }>;
   registrations: Array<{ id: string; subjectId: string }>;
   targets: SourceRevisionTarget[]; newProperties: SourceRevisionNewProperty[];
+  originTransfers?: Array<{ bindingId: string; oldValueId: string; sourcePinId: string; fromFileId: string; toFileId: string }>;
+  localOverride?: SourceRevisionCandidateContext["localOverride"];
   restorations?: SourceRestoration[];
   proofDigest: string;
 };
@@ -125,6 +129,16 @@ export async function requireCurrentSourceAdministrator(tx: Database, auth: Auth
   return invocation ? withParameterAccess(current, invocation) : current;
 }
 
+export async function requireCurrentSourceEditor(tx: Database, auth: AuthContext, projectId: string): Promise<AuthContext> {
+  const user = (await tx.query<{ id: string }>("select id from public.users where id=$1 and organization_id=$2 and is_active for no key update",
+    [auth.user.id, auth.organization.id])).rows[0];
+  if (!user) throw new ApiError("FORBIDDEN", "A current active project editor is required.");
+  const current = await getAuthContext(tx, auth.user.id);
+  if (!canOperateInOrganization(current, parameterOrganizationId(auth)) || !canEditParameters(current, projectId)) throw new ApiError("FORBIDDEN", "Current project edit permission is required.");
+  const invocation = parameterInvocation(auth);
+  return invocation ? withParameterAccess(current, invocation) : current;
+}
+
 export async function loadSourceRevisionCatalogSnapshots(db: Database, projectId: string,
   organizationId: string, current: CatalogSnapshot | null, includeRetained = true): Promise<ReadonlyMap<string, CatalogSnapshot>> {
   const snapshots = new Map<string, CatalogSnapshot>(current ? [[current.release.id, current]] : []);
@@ -161,7 +175,8 @@ export async function sourceRevisionReviewers(tx: Database, auth: AuthContext, p
 export async function inspectSourceRevision(tx: Database, storage: ObjectStore, auth: AuthContext,
   input: { projectId: string; candidateId: string }, snapshot: CatalogSnapshot | null,
   options: { lock?: boolean; toolchain?: DtsToolchainRunner; snapshots?: ReadonlyMap<string, CatalogSnapshot> } = {}
-): Promise<{ proof: SourceRevisionProof; before: string; after: string; diagnostics: SourceRevisionDiagnostic[] }> {
+): Promise<{ proof: SourceRevisionProof; before: string; after: string; diagnostics: SourceRevisionDiagnostic[];
+  preprocessing?: import("../dts/cppSources").PreparedDtsSources; configNodePaths: ReadonlySet<string> }> {
   const candidate = await getParameterFileCandidateById(tx, { organizationId: parameterOrganizationId(auth), ...input });
   const context = candidate?.sourceRevisionContext;
   if (!candidate || !context || !candidate.fileId || candidate.format !== "dts") throw new ApiError("NOT_FOUND", "Whole-source candidate was not found.");
@@ -179,8 +194,9 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
       [context.configSetId, parameterOrganizationId(auth), input.projectId]);
   }
   if (snapshot) snapshot = await loadOrganizationCatalogSnapshot(tx, parameterOrganizationId(auth), snapshot);
-  const revision = (await tx.query<{ id: string; entry_file: string; include_search_paths: string[]; overlay_order: string[] }>(
-    `select id,entry_file,include_search_paths,overlay_order from public.dts_config_revisions
+  const revision = (await tx.query<{ id: string; entry_file: string; include_search_paths: string[]; overlay_order: string[];
+    preprocessing: import("../dts/cppSources").DtsPreprocessingReceipt | null; declared_build_inputs: import("../contracts/dtoSchemas/dtsPreprocessing").DtsBuildInputs }>(
+    `select id,entry_file,include_search_paths,overlay_order,preprocessing,declared_build_inputs from public.dts_config_revisions
      where config_set_id=$1 and organization_id=$2 and project_id=$3
        and status in ('resolved','validated','compiled','pending_approval') order by revision_number desc limit 1`,
     [context.configSetId, parameterOrganizationId(auth), input.projectId])).rows[0];
@@ -220,9 +236,18 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   const bytes = await storage.getBounded(candidate.storageKey, MAX_PARAMETER_SOURCE_BYTES);
   if (bytes.length !== candidate.sizeBytes || sourceRevisionDigest(bytes) !== candidate.checksum.replace(/^sha256:/, "")) conflict("Candidate source bytes failed integrity verification.");
   const after = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  if (context.localOverride) {
+    const generated = await prepareProjectLocalOverride(tx, storage, auth, { ...context.localOverride.input,
+      projectId: input.projectId, configSetId: context.configSetId }, undefined, true);
+    if (generated.after !== after || generated.before !== before || generated.fileId !== candidate.fileId
+      || generated.nodeOperation !== context.localOverride.nodeOperation
+      || generated.binding?.bindingId !== context.localOverride.bindingId || generated.binding?.oldValueId !== context.localOverride.oldValueId
+      || generated.binding?.definitionId !== context.localOverride.definitionId || generated.binding?.sourcePinId !== context.localOverride.sourcePinId) conflict("The local override differs from its exact authorized property patch.");
+  }
   const changed = rows.find((row) => row.fileId === candidate.fileId)!;
   files.set(changed.sourceName, { content: after, fileVersionId: candidate.id });
-  const resolved = resolveDtsConfigSet({ entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths,
+  const resolved = await resolveDtsConfigSetAsync({ entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths,
+    defines: revision.preprocessing?.defines,
     overlayOrder: revision.overlay_order, requireExactOrigins: true, files });
   const diagnostics: SourceRevisionDiagnostic[] = resolved.diagnostics.map((row) => ({
     severity: row.severity, code: row.code, message: row.message, file: row.fileName
@@ -233,6 +258,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   const restorationScope = { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: context.configSetId };
   const anchors = await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, rows);
   const toolchain = await (options.toolchain ?? createDtsToolchainRunner()).validate({
+    defines: revision.preprocessing?.defines,
     entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths,
     overlayOrder: revision.overlay_order, files,
     formerRootOverlayFiles: await loadFormerRootOverlayFiles(tx, context.configSetId, rows, revision.overlay_order)
@@ -270,6 +296,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   }
   const cohort: SourceRevisionCohort[] = [];
   const targets: SourceRevisionTarget[] = [];
+  const originTransfers: NonNullable<SourceRevisionProof["originTransfers"]> = [];
   const matchingSnapshots = new Map<string, CatalogSnapshot>(snapshot ? [[snapshot.release.id, snapshot]] : []);
   for (const entry of await loadSourceBindingCohortReadOnly(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: context.configSetId })) {
     const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
@@ -315,9 +342,9 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     const resolvedSubject = node ? resolveObservedSubject(matchingSnapshot, {
       compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name
     }) : null;
-    const source = node && !node.deleted && property && !property.deleted && originMember?.fileId === pin.fileId
+    const source = node && !node.deleted && property && !property.deleted && originMember && property.sourceChain.at(-1)?.origin
       && resolvedSubject?.subjectId === registration.subjectId
-      ? { payload: rawTextToPayload(pin.locator.propertyName, property.rawText), fileId: pin.fileId, propertyName: pin.locator.propertyName }
+      ? { payload: rawTextToPayload(pin.locator.propertyName, property.rawText), fileId: originMember.fileId, propertyName: pin.locator.propertyName }
       : null;
     const frozen = { ...entry, fileId: pin.fileId, fileVersionId: pin.fileVersionId, logicalNodeId: pin.logicalNodeId,
       propertyName: pin.locator.propertyName, valueState: "present" as const, locator: pin.locator };
@@ -325,11 +352,13 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     if (source) {
       // Existing Bindings retain their pinned revision, never migrate to a newly selected Definition implicitly.
       assertCanonicalValueConstraints(definition.revision, source.payload, true);
-      if (!sameSourceRevision(old.value.payload, source.payload)) targets.push({
+      if (!sameSourceRevision(old.value.payload, source.payload) || source.fileId !== pin.fileId) targets.push({
         bindingId: entry.bindingId, action: "set", payload: source.payload, afterFileId: source.fileId, propertyName: source.propertyName
       });
+      if (source.fileId !== pin.fileId) originTransfers.push({ bindingId: entry.bindingId, oldValueId: entry.oldValueId,
+        sourcePinId: pin.sourcePinId, fromFileId: pin.fileId, toFileId: source.fileId });
       const registeredIndex = sourceProperties.findIndex((row) => row.logicalNodeId === pin.logicalNodeId
-        && row.fileId === pin.fileId && row.propertyName === pin.locator.propertyName);
+        && row.fileId === source.fileId && row.propertyName === pin.locator.propertyName);
       if (registeredIndex >= 0) sourceProperties.splice(registeredIndex, 1);
     } else targets.push({ bindingId: entry.bindingId, action: "delete", payload: old.value.payload,
       afterFileId: pin.fileId, propertyName: pin.locator.propertyName });
@@ -353,29 +382,33 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     candidateId: candidate.id, fileId: candidate.fileId, configSetId: context.configSetId, baseVersionId: context.baseVersionId,
     baseConfigRevisionId: revision.id, baseDigest: sourceRevisionDigest(Buffer.from(before)), proposedDigest: sourceRevisionDigest(bytes),
     entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths, overlayOrder: revision.overlay_order,
+    ...(resolved.preprocessing ? { preprocessing: resolved.preprocessing.receipt } : {}),
+    declaredBuildInputs: revision.declared_build_inputs,
     members, cohort, continuity, catalogRelease: snapshot ? { id: snapshot.release.id, digest: snapshot.release.digest } : null,
     pinnedCatalogReleases: [...new Set(cohort.map((row) => row.catalogReleaseId))].sort().map((id) => {
       const pinned = options.snapshots?.get(id) ?? snapshot!;
       return { id, digest: pinned.release.digest };
-    }), registrations, targets, newProperties: sourceProperties, ...(restorations.length ? { restorations } : {}) };
-  return { proof: { ...base, proofDigest: sourceRevisionDigest(base) }, before, after, diagnostics };
+    }), registrations, targets, newProperties: sourceProperties, ...(context.localOverride ? { localOverride: context.localOverride } : {}), ...(originTransfers.length ? { originTransfers } : {}), ...(restorations.length ? { restorations } : {}) };
+  return { proof: { ...base, proofDigest: sourceRevisionDigest(base) }, before, after, diagnostics,
+    preprocessing: resolved.preprocessing, configNodePaths: new Set(resolved.effective.nodesByLocator.keys()) };
 }
 
 export async function assertSourceRevisionWriteAllowed(tx: Database, auth: AuthContext, proof: SourceRevisionProof,
   security: CanonicalSourceSecurityContext) {
   await requireCanonicalUserInvocation(auth, security, { projectId: proof.projectId, operation: "whole DTS source revision",
     targetType: "project-parameter-file", targetId: proof.fileId });
-  if (!canAdminParameters(auth) || !canEditParameters(auth, proof.projectId)) throw new ApiError("FORBIDDEN", "File administration and project edit permission are required.");
+  if ((!proof.localOverride && !canAdminParameters(auth)) || !canEditParameters(auth, proof.projectId)) throw new ApiError("FORBIDDEN", "Source administration or an exact project-local override and edit permission are required.");
   // Check every effective before/after node: unregistered source is still subject to sensitive-node policy.
   const before = (await tx.query<{ node_locator: string; compatible: string | null }>(
     "select node_locator,compatible from dts_logical_node_revisions where config_revision_id=$1", [proof.baseConfigRevisionId])).rows;
   const nodes = [...before.map((row) => [row.node_locator, row.compatible] as const),
     ...proof.continuity.nodes.map((row) => [row.nodeLocator, row.compatible ?? null] as const)];
-  for (const [nodePath, compatible] of nodes) await assertTrustedSensitiveNodeWriteAllowed(tx, auth, {
-    organizationId: parameterOrganizationId(auth), projectId: proof.projectId, nodePath,
-    sourcePath: { kind: "node-locator", value: nodePath }, compatible: canonicalizeLogicalNodeCompatible(compatible),
-    compatibleIsAuthoritative: true, invocation: security.invocation, requestId: security.requestId, refusalSink: security.refusalSink
-  });
+  const localLocator = proof.localOverride ? (await tx.query<{ node_locator: string }>(
+    "select node_locator from public.dts_logical_node_revisions where config_revision_id=$1 and logical_node_id=$2",
+    [proof.baseConfigRevisionId, proof.localOverride.input.logicalNodeId])).rows[0]?.node_locator : undefined;
+  if (proof.localOverride && !localLocator) conflict("The exact local override node is not continuous.");
+  await assertProjectSourceOperationSensitiveWrites(tx, auth, nodes, { projectId: proof.projectId,
+    ...(localLocator ? { nodePath: localLocator, subtree: proof.localOverride?.nodeOperation } : {}) }, security);
 }
 
 export async function previewSourceRevisionCandidate(db: Database, storage: ObjectStore, auth: AuthContext,
@@ -413,7 +446,7 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
 ): Promise<{ requestId: string; status: "pending" | "approved" | "rejected" | "withdrawn"; replayed: boolean }> {
   await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "whole DTS source revision submit",
     targetType: "project-parameter-file-candidate", targetId: input.candidateId });
-  if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) throw new ApiError("FORBIDDEN", "File administration and project edit permission are required.");
+  if (!canEditParameters(auth, input.projectId)) throw new ApiError("FORBIDDEN", "Project edit permission is required.");
   if (!input.reason.trim() || !input.clientMutationId.trim() || input.clientMutationId.length > 160) throw new ApiError("VALIDATION_FAILED", "A reason and mutation key are required.");
   const snapshot = await loadSnapshot(db, options.snapshot);
   const snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, parameterOrganizationId(auth), snapshot);
@@ -439,6 +472,8 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
       throw new ApiError("VALIDATION_FAILED", "Choose another software reviewer with file administration permission.");
     }
     const { proof, before, after } = await inspectSourceRevision(tx, storage, auth, input, snapshot, { ...options, lock: true, snapshots });
+    auth = proof.localOverride ? await requireCurrentSourceEditor(tx, auth, input.projectId) : await requireCurrentSourceAdministrator(tx, auth, input.projectId);
+    if (proof.localOverride && proof.localOverride.authorUserId !== auth.user.id) throw new ApiError("FORBIDDEN", "Only the local override author can submit this exact patch.");
     await assertSourceRevisionWriteAllowed(tx, auth, proof, security);
     if (proof.baseVersionId !== input.expectedCurrentVersionId || proof.proofDigest !== input.expectedProofToken) conflict("Source revision no longer matches the reviewed preview.");
     if (before === after) throw new ApiError("VALIDATION_FAILED", "Source has no changes.");
@@ -447,6 +482,8 @@ export async function submitSourceRevisionCandidate(db: Database, storage: Objec
       kind: "parameter-topology-governance", action: "value-change-submitted", severity: "Medium", projectId: input.projectId,
       targetType: "project-parameter-value-change-request", targetId: requestId,
       metadata: { requestId, requestKind: "source_revision", sourceRevisionProofDigest: proof.proofDigest,
+        ...(proof.localOverride ? { sourceOperation: "project-local-override", localOverrideAction: proof.localOverride.input.action,
+          bindingId: proof.localOverride.bindingId } : {}),
         candidateId: proof.candidateId, configSetId: proof.configSetId, parameterChanges: proof.targets.length + proof.newProperties.length },
       traceId: security.requestId });
     return { requestId, status: "pending", replayed: false };

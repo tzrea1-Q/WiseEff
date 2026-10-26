@@ -156,7 +156,9 @@ class Parser {
     let refTarget: string | undefined;
     let isOverlayRoot = false;
 
-    if (this.check("amp")) {
+    if (this.check("path-ref")) {
+      refTarget=this.advance().value;
+    } else if (this.check("amp")) {
       this.advance();
       const label = this.expect("ident", "Expected label after &");
       refTarget = label.value;
@@ -220,7 +222,7 @@ class Parser {
     while (this.check("ident", offset) && this.check("colon", offset + 1)) {
       offset += 2;
     }
-    if (this.check("amp", offset)) return true;
+    if (this.check("amp", offset) || this.check("path-ref",offset)) return true;
     if (this.check("slash", offset)) return true;
     if (!this.check("ident", offset)) return false;
     offset += 1;
@@ -304,13 +306,16 @@ class Parser {
 
     const startTok = this.peek();
     let depth = 0;
+    let parentheses = 0;
     let end = startTok.span.end;
 
     while (!this.check("eof")) {
       if (this.check("semi") && depth === 0) break;
       const tok = this.advance();
-      if (tok.kind === "lt") depth += 1;
-      if (tok.kind === "gt") depth -= 1;
+      if (tok.kind === "lparen") parentheses += 1;
+      if (tok.kind === "rparen") parentheses -= 1;
+      if (tok.kind === "lt" && parentheses === 0) depth += 1;
+      if (tok.kind === "gt" && parentheses === 0) depth -= 1;
       end = tok.span.end;
     }
 

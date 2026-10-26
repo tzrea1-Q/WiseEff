@@ -47,6 +47,7 @@ import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard
 import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
 import { isRetiredCatalogWriteRoute, registerCatalogLegacyRetirementRoutes } from "./modules/parameter-catalog-api/legacy/routes";
 import { registerParameterModuleRoutes } from "./modules/parameter-modules/routes";
+import { registerSharedDtsiRoutes } from "./modules/shared-dtsi/routes";
 import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
 import { registerCatalogProjectValueConsumerRoutes } from "./modules/parameter-bindings/catalogProjectValueRoutes";
 import { registerDtsReloadRoutes } from "./modules/dts-reload/routes";
@@ -254,6 +255,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     db: options.db,
     getCurrentAuthContext: authResolver
   });
+  registerSharedDtsiRoutes(router, { db: options.db, objectStore: options.objectStore, getCurrentAuthContext: authResolver });
   registerParameterTopologyRoutes(router, {
     db: options.db,
     objectStore: parameterObjectStore,
@@ -436,6 +438,10 @@ export const LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES =
 export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
 
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  // Base64 of a bounded 17 MiB ZIP plus the name, ownership choice and confirmation.
+  if (method === "POST" && /^\/+api\/+v1\/+projects\/+[^/]+\/+config-set-import\/+(?:preview|apply)\/*$/u.test(path)) return 24 * 1024 * 1024;
+  // Allow JSON escaping of the bounded 16 MiB set plus the selected legacy member alias.
+  if (["POST","PUT"].includes(method) && /^\/+api\/+v2\/+shared-dtsi(?:\/+[^/]+\/+draft)?\/*$/u.test(path)) return 112 * 1024 * 1024;
   if (method === "POST" && /^\/+api\/+v1\/+log-skills\/+recommend\/*$/.test(path)) {
     return LOG_RECOMMENDATION_HTTP_BODY_LIMIT_BYTES;
   }

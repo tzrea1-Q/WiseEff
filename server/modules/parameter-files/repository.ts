@@ -89,11 +89,24 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
   };
 }
 
+/** Project-global storage identity; original paths belong to immutable revision members. */
+export function configurationSourceFileName(configSetId: string, sourceName: string): string {
+  return `initialization-${configSetId}-${sourceName}`;
+}
+
+/** Use the existing pf alias; exact current bytes keep their logical source path. */
+const currentSourceNameSql = `coalesce((select member.source_name from public.dts_config_revision_members member
+    join public.dts_config_revisions revision on revision.id=member.config_revision_id
+    where member.file_id=pf.id and member.file_version_id=pf.current_version_id
+      and revision.organization_id=pf.organization_id and revision.project_id=pf.project_id
+      and (pf.config_set_id is null or revision.config_set_id=pf.config_set_id)
+    order by revision.revision_number desc limit 1),pf.file_name)`;
+
 const fileSelectColumns = `
   pf.id,
   pf.organization_id,
   pf.project_id,
-  pf.file_name,
+  ${currentSourceNameSql} as file_name,
   pf.format,
   pf.module_hint,
   pf.current_version_id,
@@ -211,6 +224,7 @@ export async function insertFileVersion(
   db: Queryable,
   input: InsertFileVersionInput
 ): Promise<ProjectParameterFileVersionDto> {
+  await assertProjectSourceWritable(db, input.fileId);
   const accountableUserId = input.attribution ? input.attribution.userId : input.createdByUserId ?? null;
   const initiatorType = input.attribution?.initiatorType ?? (accountableUserId ? "user" : "legacy");
   const result = await db.query<ProjectParameterFileVersionRow>(
@@ -261,18 +275,29 @@ export async function insertFileVersion(
 /** Fence legacy source or membership changes against canonical initialization/apply. */
 export async function assertLegacySourceMutationAllowed(db: Queryable, fileId: string | string[], destinationConfigSetId?: string): Promise<void> {
   const fileIds = [...new Set(typeof fileId === "string" ? [fileId] : fileId)].sort();
+  for (const id of fileIds) await assertProjectSourceWritable(db, id);
   const before = await db.query<{ id: string; config_set_id: string | null }>(`select id,config_set_id from project_parameter_files where id=any($1::text[]) order by id`, [fileIds]);
   const setIds = [...new Set([...before.rows.map((row) => row.config_set_id),destinationConfigSetId].filter((id): id is string => Boolean(id)))].sort();
   await db.query(`select id from dts_config_set where id=any($1::text[]) order by id for update`, [setIds]);
   const locked = await db.query<{ id: string; config_set_id: string | null }>(`select id,config_set_id from project_parameter_files where id=any($1::text[]) order by id for update`, [fileIds]);
   if (JSON.stringify(before.rows) !== JSON.stringify(locked.rows)) throw new ApiError("CONFLICT", "Source membership changed during mutation.");
   const canonical = await db.query(
-    `select 1 from parameter_catalog.project_parameter_source_occurrences where file_id=any($1::text[]) or config_set_id=any($2::text[]) limit 1`,
+    `select 1 from parameter_catalog.project_parameter_source_occurrences where file_id=any($1::text[]) or config_set_id=any($2::text[])
+     union all select 1 from public.project_shared_dtsi_references where config_set_id=any($2::text[]) limit 1`,
     [fileIds,setIds],
   );
   if (canonical.rows.length) throw new ApiError("CONFLICT", "Canonical source changes require a prepared and approved source transaction.", {
     reason: "canonical-source-transaction-required",
   });
+}
+
+/** Shared snapshot bytes and identity can only be derived by an explicit reference operation. */
+export async function assertProjectSourceWritable(db: Queryable, fileId: string): Promise<void> {
+  if ((await db.query(`select 1 where not public.shared_dtsi_private_source_is_restored($1) and (
+    exists(select 1 from public.project_shared_dtsi_snapshots where file_id=$1)
+    or exists(select 1 from public.dts_config_revision_members where file_id=$1 and shared_reference is not null))`, [fileId])).rows.length) {
+    throw new ApiError("CONFLICT", "共享引用源码只读，请修改项目覆盖或变更固定引用版本。", { reason: "shared-reference-readonly" });
+  }
 }
 
 export async function setCurrentVersion(

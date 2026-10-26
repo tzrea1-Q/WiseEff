@@ -47,6 +47,18 @@ export async function captureDatabaseError(action: Promise<unknown>): Promise<pg
   throw new Error("Expected PostgreSQL to reject the operation");
 }
 
+/** Probe INSERT on every writable column without assigning generated columns or creating rows. */
+export async function emptyWritableInsertSql(db: Queryable, relation: string): Promise<string> {
+  const columns = (await db.query<{ name: string }>(
+    `select attname as name from pg_attribute where attrelid=$1::regclass
+       and attnum>0 and not attisdropped and attgenerated='' and attidentity<>'a' order by attnum`,
+    [relation],
+  )).rows.map(({ name }) => pg.escapeIdentifier(name)).join(",");
+  if (!columns) throw new Error(`No writable columns: ${relation}`);
+  const table = relation.split(".").map((part) => pg.escapeIdentifier(part)).join(".");
+  return `insert into ${table} (${columns}) select ${columns} from ${table} where false`;
+}
+
 export async function captureSavepointError(
   client: pg.Client,
   action: () => Promise<unknown>,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dtsBuildInputsSchema, dtsPreprocessingReceiptSchema } from "./dtsPreprocessing";
 
 import {
   catalogSubjectKinds,
@@ -408,6 +409,7 @@ export const catalogRegistrationDtoSchema = catalogObject({
 
 export const catalogRegisterSubjectRequestSchema = catalogObject({
   subjectId: z.string(),
+  status: z.literal("retired").optional(),
   placement: catalogPlacementIntentSchema,
   destinationModuleId: z.string().min(1).optional(),
   newDestination: catalogObject({
@@ -416,6 +418,10 @@ export const catalogRegisterSubjectRequestSchema = catalogObject({
   }).optional(),
   reason: z.string().optional()
 }).superRefine((value, context) => {
+  if (value.status === "retired" && (value.placement.mode !== "use-default" || value.destinationModuleId || value.newDestination ||
+      !value.reason?.trim() || value.reason.trim().length > 1000 || /[\u0000-\u001f\u007f-\u009f]/u.test(value.reason))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Retiring an unregistered subject requires a reason and no module destination." });
+  }
   if (value.newDestination && (value.destinationModuleId || value.placement.mode !== "use-default")) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "A new destination requires an explicit business parent and no existing destination." });
   }
@@ -725,8 +731,7 @@ export const catalogNestedDefinitionDraftSchema = catalogObject({
   content: catalogSupportedDefinitionContentSchema
 });
 
-export const catalogCreateSubjectWithDefinitionsChangeSchema = catalogObject({
-  op: z.literal("create-subject-with-definitions"),
+const catalogSubjectCreationFields = {
   kind: z.enum(["driver", "node-type"]),
   canonicalKey: z.string(),
   selector: catalogObject({
@@ -734,7 +739,12 @@ export const catalogCreateSubjectWithDefinitionsChangeSchema = catalogObject({
     value: z.string()
   }),
   nature: z.enum(["physical-device", "logical-service"]).optional(),
-  cardinality: z.enum(["multiple", "singleton-per-project"]).optional(),
+  cardinality: z.enum(["multiple", "singleton-per-project"]).optional()
+};
+
+export const catalogCreateSubjectWithDefinitionsChangeSchema = catalogObject({
+  op: z.literal("create-subject-with-definitions"),
+  ...catalogSubjectCreationFields,
   definitions: z.array(catalogNestedDefinitionDraftSchema).min(1).max(32)
 });
 
@@ -743,6 +753,16 @@ export const catalogReviseDefinitionChangeSchema = catalogObject({
   definitionId: z.string(),
   class: z.enum(["documentation", "semantic"]),
   content: catalogSupportedDefinitionContentSchema
+});
+
+export const catalogCreateSubjectChangeSchema = catalogObject({
+  op: z.literal("create-subject"),
+  ...catalogSubjectCreationFields,
+  kind: z.enum(["driver", "node-type", "configuration-schema"]),
+  selector: catalogObject({
+    kind: z.enum(["driver-compatible", "node-type-name", "configuration-schema-id"]),
+    value: z.string()
+  })
 });
 
 export const catalogCreateDefinitionChangeSchema = catalogObject({
@@ -781,6 +801,7 @@ export const catalogRestoreDefinitionChangeSchema = catalogObject({
 });
 
 export const catalogChangeSchema = z.union([
+  catalogCreateSubjectChangeSchema,
   catalogCreateDefinitionChangeSchema,
   catalogCreateSubjectWithDefinitionsChangeSchema,
   catalogReviseDefinitionChangeSchema,
@@ -1041,6 +1062,8 @@ export const canonicalSourceManifestSchema = catalogObject({
   logicalNodeId: z.string().nullable(), configurationInstanceId: z.string().nullable(),
   configurationSchemaSubjectId: z.string().nullable(), rootPointer: z.string().nullable(),
   entryFile: z.string().nullable(), includeSearchPaths: z.array(z.string()), overlayOrder: z.array(z.string()),
+  preprocessing: dtsPreprocessingReceiptSchema.optional(),
+  declaredBuildInputs: dtsBuildInputsSchema.optional(),
   locator: z.union([
     catalogObject({ kind: z.literal("json-pointer"), pointer: z.string() }),
     catalogObject({ kind: z.literal("dts-property"), propertyOccurrenceId: z.string(), nodeOccurrenceId: z.string(),
@@ -1401,7 +1424,8 @@ export const catalogDriverCompatibleDiscoveryResponseSchema = z.union([
         catalogObject({status: z.literal("historical"), currentConfigRevisionId: z.string(),
           historicalCompatibles: z.array(z.string())}),
         catalogObject({status: z.literal("current"), configSetId: z.string(), sourceName: z.string(),
-          fileVersionId: z.string(), sourceDigest: z.string(), revisionDigest: z.string()})
+          fileVersionId: z.string(), sourceDigest: z.string(), revisionDigest: z.string(),
+          location:catalogObject({fileId:z.string(),nodeLocator:z.string(),line:z.number().int().positive()}).optional()})
       ]),
       compatibles: z.array(catalogObject({
         compatible: z.string(),

@@ -1,10 +1,9 @@
 import { parameterOrganizationId } from "../parameters/operatingScope";
-import { isDeepStrictEqual } from "node:util";
 
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
-import { parseDtsValue } from "../dts";
+import { offsetToLineColumn } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { parseCanonicalCompatibleSelector } from "../parameter-catalog-contract";
 import { canonicalSourceConfigSetRole } from "../parameter-files/canonicalSource";
@@ -33,6 +32,7 @@ export type CurrentDtsCompatibleSourceResult =
       members: Array<{ fileId: string; fileVersionId: string; sourceName: string;
         format: "dts" | "json"; role: string; sortOrder: number; checksum: string; sizeBytes: number }>;
       compatibles: string[]; observationProof: ExactDtsSourceProof; compatibleProof: ExactDtsSourceProof;
+      compatibleLine: number;
     };
 
 type CompatibleEffect = {
@@ -94,13 +94,14 @@ export async function readCurrentDtsCompatibleSource(
       }
       const compatibleMember = source.members.find((member) => member.fileVersionId === final.fileVersionId);
       if (!compatibleMember || compatibleMember.format !== "dts") return unavailable("compatible-source-ambiguous");
-      const compatibleProof = await proveExactDtsProperty(tx, objectStore, {
+      const compatibleProof = locator.propertyName==="compatible" && locator.propertyOccurrenceId===final.propertyOccurrenceId
+        && locator.nodeOccurrenceId===final.nodeOccurrenceId && locator.fileVersionId===final.fileVersionId ? observationProof : await proveExactDtsProperty(tx, objectStore, {
         ...identity, fileId: compatibleMember.fileId, fileVersionId: final.fileVersionId,
         logicalNodeId: input.logicalNodeId, propertyName: "compatible",
         propertyOccurrenceId: final.propertyOccurrenceId, nodeOccurrenceId: final.nodeOccurrenceId,
       }, { purpose: "review-evidence" });
-      const parsed = parseDtsValue("compatible", final.rawText).value;
-      if (!isDeepStrictEqual(parsed, compatibleProof.value) || parsed.kind !== "strings" || !parsed.values.length
+      const parsed = compatibleProof.value;
+      if (parsed.kind !== "strings" || !parsed.values.length
         || parsed.values.some((value) => !parseCanonicalCompatibleSelector(value).ok)) {
         return unavailable("compatible-invalid");
       }
@@ -114,7 +115,7 @@ export async function readCurrentDtsCompatibleSource(
         return !file || file.config_set_role !== canonicalSourceConfigSetRole(member.role)
           || file.config_set_sort_order !== member.sortOrder || file.format !== member.format;
       })) return unavailable("source-membership-drift");
-      const matching = (await tx.query<{ id: string }>(
+      let matching = (await tx.query<{ id: string }>(
         `select revision.id from dts_config_revisions revision
          where revision.organization_id=$1 and revision.project_id=$2 and revision.config_set_id=$3
            and revision.manifest_state='complete'
@@ -128,10 +129,46 @@ export async function readCurrentDtsCompatibleSource(
              where member.config_revision_id=revision.id and (file.id is null
                or file.current_version_id is distinct from member.file_version_id
                or file.config_set_role is distinct from case when member.role='include' then 'misc' else member.role end
-               or file.config_set_sort_order is distinct from member.sort_order)
+               or file.config_set_sort_order is distinct from member.sort_order
+               or (member.shared_reference is not null) is distinct from exists(
+                 select 1 from public.project_shared_dtsi_snapshots snapshot where snapshot.file_id=member.file_id
+                   and snapshot.file_version_id=member.file_version_id)
+               or member.shared_reference is not null and not exists(
+                 select 1 from public.project_shared_dtsi_snapshots snapshot
+                 join public.project_shared_dtsi_references reference on reference.id=snapshot.reference_id
+                 join public.shared_dtsi_revisions upstream on upstream.id=reference.revision_id
+                 where snapshot.file_id=member.file_id and snapshot.file_version_id=member.file_version_id
+                   and snapshot.reference_id=member.shared_reference->>'referenceId'
+                   and reference.resource_id=member.shared_reference->>'resourceId' and reference.revision_id=member.shared_reference->>'versionId'
+                   and snapshot.member_id=member.shared_reference->>'memberId' and upstream.digest=member.shared_reference->>'digest'))
            ) order by revision.id limit 2`,
         [input.organizationId,input.projectId,input.configSetId,current.length],
       )).rows;
+      if(matching.length>1){
+        // Identical private versions may return through a governed historical restore.
+        // Duplicate unreceipted revisions remain ambiguous; a locator/latest timestamp is never identity proof.
+        matching=(await tx.query<{id:string}>(`select revision.id from public.dts_config_revisions revision
+          where revision.organization_id=$1 and revision.project_id=$2 and revision.config_set_id=$3
+            and revision.id=(select id from public.dts_config_revisions where organization_id=$1 and project_id=$2
+              and config_set_id=$3 and status='resolved' order by revision_number desc limit 1)
+            and exists(select 1 from public.project_parameter_value_change_requests request
+              where request.organization_id=$1 and request.project_id=$2 and request.source_revision_config_set_id=$3
+                and request.request_kind='configuration_restore' and request.source_revision_application_mode='administrator_direct'
+                and (request.status='approved' and request.apply_outcome='committed' and request.applied_source_result->>'configRevisionId'=revision.id
+                  or request.status='pending' and revision.id=$4
+                    and exists(select 1 from public.dts_config_revisions base where base.id=request.source_revision_context->>'baseConfigRevisionId'
+                      and base.organization_id=$1 and base.project_id=$2 and base.config_set_id=$3 and base.revision_number+1=revision.revision_number)
+                    and (select count(*) from public.dts_config_revision_members where config_revision_id=revision.id)
+                      =jsonb_array_length(request.source_revision_context->'members')
+                    and not exists(select 1 from public.dts_config_revision_members member where member.config_revision_id=revision.id
+                      and (member.shared_reference is not null or not exists(select 1 from jsonb_array_elements(request.source_revision_context->'members') planned
+                        join public.dts_config_revision_members historical on historical.config_revision_id=request.source_revision_context->>'snapshotConfigRevisionId'
+                          and historical.file_id=planned->>'fileId' and historical.file_version_id=planned->>'fileVersionId' and historical.shared_reference is null
+                        where planned->>'fileId'=member.file_id and planned->>'fileVersionId'=member.file_version_id
+                          and planned->>'sourceName'=member.source_name and planned->>'role'=member.role and (planned->>'sortOrder')::integer=member.sort_order)))))`,
+          [input.organizationId,input.projectId,input.configSetId,input.configRevisionId])).rows;
+        if(matching.length!==1)return unavailable("ambiguous-current-revision");
+      }
       if (matching.length !== 1) return unavailable(matching.length ? "ambiguous-current-revision" : "current-revision-unavailable");
       if (matching[0]!.id !== input.configRevisionId) {
         const member = current[0]!;
@@ -149,6 +186,7 @@ export async function readCurrentDtsCompatibleSource(
         members: source.members.map(({ fileId,fileVersionId,sourceName,format,role,sortOrder,checksum,sizeBytes }) =>
           ({ fileId,fileVersionId,sourceName,format,role,sortOrder,checksum,sizeBytes })),
         compatibles: parsed.values, observationProof, compatibleProof,
+        compatibleLine:offsetToLineColumn(source.members.find(member=>member.fileId===compatibleProof.fileId)!.content,compatibleProof.sourceSpan.start).line,
       };
     });
   } catch (error) {

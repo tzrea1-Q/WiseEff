@@ -133,7 +133,7 @@ export function WorkbenchSourceCanvas({
             <h2>{displayedFileName}</h2>
             <span title={canvasMode === "candidate" ? candidateId ?? undefined : canvasMode === "working" ? selectedMember?.currentVersionId ?? undefined : historyVersionId ?? undefined}>
               {canvasMode === "working"
-                ? "工作配置"
+                ? selectedMember?.sharedReference ? `共享固定版本 ${selectedMember.sharedReference.version} · 只读` : "工作配置"
                 : canvasMode === "history"
                   ? "历史版本 · 只读"
                   : canvasMode === "candidate"
@@ -220,7 +220,7 @@ export function WorkbenchSourceCanvas({
       !selectedMember.currentVersionId ? (
         <div className="configuration-workbench__source-state" role="status">
           <strong>配置文件没有活跃版本</strong>
-          <p>文件身份仍保留在树中；请在「文件管理」中打开该文件的「版本历史与下载」检查。</p>
+          <p>文件身份仍保留在树中；请在「配置组成」中打开该文件的「版本历史与下载」检查。</p>
         </div>
       ) : null}
       {!sourceLoading &&
@@ -233,7 +233,7 @@ export function WorkbenchSourceCanvas({
       !source ? (
         <div className="configuration-workbench__source-state" role="status">
           <strong>源码内容为空</strong>
-          <p>当前活跃版本没有可显示的源码内容；可重试或在「文件管理」中查看该文件的版本历史。</p>
+          <p>当前活跃版本没有可显示的源码内容；可重试或在「配置组成」中查看该文件的版本历史。</p>
           <button
             className="button subtle configuration-workbench__retry"
             type="button"

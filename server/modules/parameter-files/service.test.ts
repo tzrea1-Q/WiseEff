@@ -145,26 +145,26 @@ describe.skipIf(!databaseAvailable)("project parameter file upload service", () 
     expect(drafts[0].reason).toContain("Synced from config.json:battery/temp_max");
   });
 
-  it("upload new json file creates file + v1 with parsed_index", async () => {
+  it.each(["config.json", "software/nested/config.json"])("upload creates the original logical JSON file %s and a v1 with parsed_index", async (fileName) => {
     const { objectStore, putCalls, entries } = makeObjectStore();
     const bytes = Buffer.from('{"battery":{"temp_max":85}}', "utf8");
 
     const result = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
       projectId: "project-1",
-      fileName: "config.json",
+      fileName,
       bytes
     });
 
     expect(putCalls).toEqual([
       {
         organizationId: "org-1",
-        fileName: expect.stringMatching(/^parameter-upload-[0-9a-f-]{36}-config\.json$/),
+        fileName: expect.stringMatching(/^parameter-upload-[0-9a-f-]{36}\.json$/),
         contentType: "application/json",
         bytes
       }
     ]);
     expect(result.file.currentVersionNumber).toBe(1);
-    expect(result.file.fileName).toBe("config.json");
+    expect(result.file.fileName).toBe(fileName);
     expect(result.version.storageKey).not.toBe(`org-1/${result.version.checksum}-config.json`);
     expect(result.version.versionNumber).toBe(1);
     expect(result.version.parsedIndex).toEqual({ "battery/temp_max": { value: "85" } });
@@ -178,7 +178,7 @@ describe.skipIf(!databaseAvailable)("project parameter file upload service", () 
       [result.version.id]
     );
     expect(stored.rows[0]).toEqual({
-      file_name: "config.json",
+      file_name: fileName,
       parsed_index: { "battery/temp_max": { value: "85" } },
       origin: "upload"
     });
@@ -234,6 +234,14 @@ describe.skipIf(!databaseAvailable)("project parameter file upload service", () 
         bytes: Buffer.from("x", "utf8")
       })
     ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Unsupported parameter file extension."));
+    expect(putCalls).toHaveLength(0);
+    expect(await fileRowCount()).toBe(0);
+  });
+
+  it.each(["../config.json", "parts/../config.json", "/config.json", "C:\\config.json", "parts\\config.json", "parts//config.json"])("refuses unsafe logical source name %s before object creation", async (fileName) => {
+    const { objectStore, putCalls } = makeObjectStore();
+    await expect(uploadProjectParameterFile(db, objectStore, adminAuth(), { projectId: "project-1", fileName, bytes: Buffer.from("{}") }))
+      .rejects.toMatchObject({ code: "VALIDATION_FAILED" });
     expect(putCalls).toHaveLength(0);
     expect(await fileRowCount()).toBe(0);
   });
