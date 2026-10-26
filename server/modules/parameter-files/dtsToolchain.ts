@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { withEphemeralDanglingAnchorStub } from "../dts/danglingAnchorStub";
 import { lexDts } from "../dts/lexer";
 import { stripDtsComments } from "../dts/preprocess";
-import { DtsPreprocessingError, prepareDtsSources, type DtsPreprocessingReceipt } from "../dts/cppSources";
+import { DtsPreprocessingError, dtsPreprocessingInputDigest, pinnedDtsPreprocessor, prepareDtsSources, type DtsPreprocessingReceipt, type PreparedDtsSources } from "../dts/cppSources";
 
 export type DtsToolchainMode = "release" | "warn" | "off";
 
@@ -68,6 +68,8 @@ export type DtsToolchainFile = {
 };
 
 export type DtsToolchainConfigSet = {
+  /** Operation-owned CPP; native compilation and schema validation still run. */
+  preparedSources?: PreparedDtsSources;
   defines?: Readonly<Record<string, string>>;
   entryFile: string;
   includeSearchPaths?: string[];
@@ -768,8 +770,17 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
       const diagnostics: DtsToolchainDiagnostic[] = [];
       let compileConfigSet: DtsToolchainConfigSet;
       try {
-        const prepared = await prepareDtsSources({ ...configSet, includeSearchPaths: configSet.includeSearchPaths ?? [],
-          files: new Map([...configSet.files].map(([name, file]) => [name, { ...file, fileVersionId: name }])) });
+        const sourceInput = { ...configSet, includeSearchPaths: configSet.includeSearchPaths ?? [],
+          files: new Map([...configSet.files].map(([name, file]) => [name, { ...file, fileVersionId: name }])) };
+        const supplied = configSet.preparedSources;
+        if (supplied) {
+          const pin = pinnedDtsPreprocessor();
+          if (supplied.receipt.inputDigest !== dtsPreprocessingInputDigest(sourceInput)
+            || supplied.receipt.image !== pin.image || supplied.receipt.platform !== pin.platform || supplied.receipt.compilerVersion !== pin.version) {
+            throw new DtsPreprocessingError("preprocess-stale", "预处理证明不属于当前冻结输入或固定工具链，请重新预览。", configSet.entryFile);
+          }
+        }
+        const prepared = supplied ?? await prepareDtsSources(sourceInput);
         if (prepared) artifacts.preprocessing = prepared.receipt;
         const semanticConfigSet = prepared ? { ...configSet, files: new Map([...configSet.files].map(([name, file]) =>
           [name, { content: prepared.documents.get(name)?.text ?? file.content }])) } : configSet;

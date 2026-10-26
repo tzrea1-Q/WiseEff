@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { dtsBuildInputsSchema, type DtsBuildInputs } from "../contracts/dtoSchemas/dtsPreprocessing";
 import type { SharedDtsiManifest } from "../contracts/dtoSchemas/sharedDtsi";
 import { composeDtsBuildInputs } from "../shared-dtsi/dependencies";
+import type { PreparedDtsSources } from "../dts/cppSources";
 
 import type { AuthContext } from "../auth/types";
 import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
@@ -77,6 +78,8 @@ import type {
 export { offsetToLineColumn };
 
 export type ConfigRevisionIngestOptions = {
+  /** Exact operation-owned CPP; resolution rebuilds origins using persisted version IDs. */
+  preparedSources?: PreparedDtsSources;
   sourceCommit?: { baseConfigRevisionId: string };
   reviewedSource?: ReviewedSourceContinuity;
   /** Typed edits keep identity against the exact persisted revision they patch. */
@@ -817,6 +820,7 @@ async function ingestConfigRevisionTx(
   let resolved;
   try {
     resolved = await resolveDtsConfigSetAsync({
+      preparedSources: options?.preparedSources,
       preprocessing: manifest.preprocessing,
       defines: manifest.defines ?? manifest.preprocessing?.defines,
       entryFile: normalized.manifest.entryFile,
