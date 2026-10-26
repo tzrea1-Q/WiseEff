@@ -139,6 +139,22 @@ it("saves and previews multiline DTS examples through the create form", async ()
 });
 
 describe("PublicationDialog", () => {
+  it("explains duplicate definitions and preserves the draft without offering publication", async () => {
+    const { publish } = renderDialog({ prepare: (ports) => {
+      vi.mocked(ports.catalog.createPublicationCandidate).mockRejectedValue(catalogApiFailure("definition-already-exists"));
+    } });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    expect(await screen.findByText("该主体下已存在同名参数定义，请在目录中找到已有定义进行修改。输入已保留。")).toBeVisible();
+    expect(screen.getByLabelText("属性键")).toHaveValue("iin_hold");
+    expect(screen.getByLabelText("显示名称")).toHaveValue("保持电流");
+    expect(screen.getByLabelText("说明")).toHaveValue("最小保持电流。");
+    expect(screen.getByRole("button", { name: "发布到目录" })).toBeDisabled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("keeps creation separate from editing and has no permanent evidence refresh action", async () => {
     renderDialog();
     await screen.findByLabelText("已发布主体");

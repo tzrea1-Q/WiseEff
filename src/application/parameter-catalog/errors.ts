@@ -8,6 +8,7 @@ const FAILURE_CODE: Record<CatalogApiFailureReason, string> = {
   "subject-not-published": "NOT_FOUND",
   "subject-retired": "CONFLICT",
   "definition-not-found": "NOT_FOUND",
+  "definition-already-exists": "CONFLICT",
   "definition-retired": "CONFLICT",
   "registration-required": "CONFLICT",
   "placement-conflict": "CONFLICT",

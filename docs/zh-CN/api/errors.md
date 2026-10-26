@@ -19,6 +19,10 @@
 - 新增错误码 `RATE_LIMITED` 对应 HTTP 429，用于本地账号登录/注册滑动窗口限流。完整码表见英文版。
 - 规范参数目录冻结 `SERVICE_UNAVAILABLE` / 503（`details.reason = catalog-not-ready`）以及 PCAT 稳定 `details.reason` 集合，并增加 CP-00 发布 reason（403/409/422；job GET 保持 200，`effective` 仅来自核验 Receipt，`active-superseded` 不是失败）。客户端必须按 reason 分支，不得解析 `message`。完整码表与 reason 列表见英文版。
 
+## 同名定义预览冲突
+
+创建发布候选时，如果同一主体下已有相同属性键，或同一 ChangeSet 中重复创建该属性键，返回 HTTP 409（`CONFLICT`，`details.reason = definition-already-exists`，`retryable = false`）。保留草稿输入，找到已有定义进行修改，或修正属性键后重新预览。此情况属于定义冲突；被拒绝的预览不会持久化候选或发布产物。
+
 ## 同类中文文档
 
 - [docs/zh-CN/api/README.md](README.md)

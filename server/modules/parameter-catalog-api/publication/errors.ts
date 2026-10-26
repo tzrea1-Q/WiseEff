@@ -15,6 +15,7 @@ const REASON_HTTP_STATUS: Partial<Record<CatalogApiFailureReason, number>> = {
   "publication-frozen": 409,
   "candidate-stale": 409,
   "candidate-tampered": 409,
+  "definition-already-exists": 409,
   "needs-rebase": 409,
   "publication-authorization-revoked": 409,
   "idempotency-key-conflict": 409,
