@@ -508,7 +508,7 @@ async function runTest(command: string, identity: Identity) {
   const shard = process.env.WISEEFF_CI_SERVER_SHARD;
   const job = process.env.GITHUB_JOB === "l1-server-shards" ? "l1-server" : process.env.GITHUB_JOB;
   requireCi(Object.hasOwn(testCommands, command) && testCommands[command].job === job, "UNKNOWN_COMMAND");
-  if (command === "server") requireCi(process.env.GITHUB_JOB === "l1-server-shards" && /^[12]\/2$/.test(shard ?? ""), "SERVER_SHARD");
+  if (command === "server") requireCi(process.env.GITHUB_JOB === "l1-server-shards" && /^[123]\/3$/.test(shard ?? ""), "SERVER_SHARD");
   const specification = testCommands[command];
   requireCi(process.env.RUNNER_TEMP && path.isAbsolute(process.env.RUNNER_TEMP), "REPORT_TEMP");
   const directory = mkdtempSync(path.join(realpathSync(process.env.RUNNER_TEMP), "wiseeff-l1-"));
@@ -555,7 +555,7 @@ async function main() {
   const identity = currentIdentity();
   if (mode === "test") {
     if (command === "server") {
-      requireCi(process.env.GITHUB_JOB === "l1-server-shards" && /^[12]\/2$/.test(process.env.WISEEFF_CI_SERVER_SHARD ?? ""), "SERVER_SHARD");
+      requireCi(process.env.GITHUB_JOB === "l1-server-shards" && /^[123]\/3$/.test(process.env.WISEEFF_CI_SERVER_SHARD ?? ""), "SERVER_SHARD");
       const shards = await import(new URL("./ci-shard-results.ts", import.meta.url).href);
       shards.discoverServerInventory(identity);
     }

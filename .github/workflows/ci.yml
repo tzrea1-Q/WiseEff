@@ -419,7 +419,7 @@ jobs:
         run: node --experimental-strip-types scripts/ci-required-results.ts receipt
 
   l1-server-shards:
-    name: L1 backend shard ${{ matrix.shard }}/2
+    name: L1 backend shard ${{ matrix.shard }}/3
     needs: detect
     if: needs.detect.outputs.run_l1 == 'true'
     runs-on: ubuntu-latest
@@ -427,7 +427,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -449,7 +449,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_l1_server
-      WISEEFF_CI_SERVER_SHARD: ${{ matrix.shard }}/2
+      WISEEFF_CI_SERVER_SHARD: ${{ matrix.shard }}/3
     steps:
       - name: Check out repository
         id: checkout

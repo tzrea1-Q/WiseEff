@@ -683,7 +683,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   const shardCli = "node --experimental-strip-types scripts/ci-shard-results.ts";
   const receiptPath = "${{ runner.temp }}/wiseeff-ci-shard/receipt.json";
   for (const [kind, workerId, aggregateId, flag, axis, values, workerName, aggregateName, database] of [
-    ["server", "l1-server-shards", "l1-server", "run_l1", "shard", [1, 2], "L1 backend shard ${{ matrix.shard }}/2", "L1 backend", "wiseeff_l1_server"],
+    ["server", "l1-server-shards", "l1-server", "run_l1", "shard", [1, 2, 3], "L1 backend shard ${{ matrix.shard }}/3", "L1 backend", "wiseeff_l1_server"],
     ["quality", "acceptance-quality-lanes", "acceptance-quality", "run_quality", "lane", ["visual", "consistency-1", "consistency-2", "accessibility"], "Acceptance quality lane (${{ matrix.lane }})", "Acceptance quality", "wiseeff"],
   ] as const) {
     const worker = jobs?.[workerId];
@@ -702,7 +702,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       && postgres.options === `--health-cmd "pg_isready -U wiseeff -d ${database}" --health-interval 10s --health-timeout 5s --health-retries 5`
       && worker?.env?.DATABASE_URL === `postgres://wiseeff:wiseeff@127.0.0.1:5432/${database}`, `${workerId} requires its original healthy job-owned PostgreSQL service.`);
     check(worker?.env?.[kind === "server" ? "WISEEFF_CI_SERVER_SHARD" : "WISEEFF_QUALITY_LANE"]
-      === (kind === "server" ? "${{ matrix.shard }}/2" : "${{ matrix.lane }}"), `${workerId} must pass its own matrix partition to the runner.`);
+      === (kind === "server" ? "${{ matrix.shard }}/3" : "${{ matrix.lane }}"), `${workerId} must pass its own matrix partition to the runner.`);
     const uploads = steps.filter((step) => step.uses === "actions/upload-artifact@v4" && step.with?.path === receiptPath);
     const upload = uploads[0];
     check(uploads.length === 1 && upload?.with?.name === `wiseeff-ci-${kind}-\${{ github.run_attempt }}-\${{ matrix.${axis} }}`

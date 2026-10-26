@@ -13,7 +13,7 @@ const identity: Identity = {
 };
 const testId = (index: number) => String(index).repeat(64);
 function receipts(kind: "quality" | "server"): ShardReceipt[] {
-  const lanes = kind === "server" ? ["1", "2"] : qualityLanes;
+  const lanes = kind === "server" ? ["1", "2", "3"] : qualityLanes;
   const warmup = kind === "quality" ? [testId(9)] : [];
   const inventory = { tests: [...lanes.map((_, index) => testId(index + 1)), ...warmup].sort(), warmup,
     files: [...lanes.map((lane) => `${lane}/test.ts`), ...(kind === "quality" ? ["runtime-warmup/test.ts"] : [])].sort() };
@@ -54,14 +54,14 @@ describe("complete CI shard inventories", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
-  it.each([undefined, "", "3/2", "1/3", "1"])("rejects an absent or invalid backend shard before reading receipts: %s", (shard) => {
+  it.each([undefined, "", "3/2", "1/2", "4/3", "1/4", "1"])("rejects an absent or invalid backend shard before reading receipts: %s", (shard) => {
     vi.stubEnv("WISEEFF_CI_SERVER_SHARD", shard);
     try {
       expect(() => finishServerReceipt({}, identity)).toThrow("CI_SHARD_LANE");
     } finally { vi.unstubAllEnvs(); }
   });
   it.each(["quality", "server"] as const)("requires every %s lane and exactly-once inventory", (kind) => {
-    expect(validateShardInventories(receipts(kind), kind, identity).tests.length).toBe(kind === "server" ? 2 : 5);
+    expect(validateShardInventories(receipts(kind), kind, identity).tests.length).toBe(kind === "server" ? 3 : 5);
   });
   it.each(["quality", "server"] as const)("accepts earlier-attempt %s receipts and selects the newest per lane numerically", (kind) => {
     const older = receipts(kind).map((receipt) => ({ ...receipt, identity: { ...identity, attempt: "9" } }));
@@ -104,10 +104,10 @@ describe("complete CI shard inventories", () => {
       expect(() => readShardReceipts(directory, kind, current)).toThrow("CI_SHARD_ARTIFACTS");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
-  it("publishes a current-attempt backend aggregate from mixed-attempt shard artifacts", () => {
+  it.each(["success", "missing-third", "duplicate-third", "foreign-third", "empty-third", "skipped-third", "failed-third", "cancelled-third"])("requires all three successful backend receipts when aggregating mixed attempts: %s", (scenario) => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "wiseeff-ci-aggregate-"));
     try {
-      const current: Identity = { ...identity, event: "push", ref: "refs/heads/main", base: "", head: "", attempt: "2",
+      const current: Identity = { ...identity, event: "push", ref: "refs/heads/main", base: "", head: "", attempt: "3",
         sha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
         tree: execFileSync("git", ["rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim() };
       const shards = receipts("server").map((receipt, index) => {
@@ -117,6 +117,12 @@ describe("complete CI shard inventories", () => {
           reports: { server: { version: 1, command: "server", identity: shardIdentity, passed: 1, skipped: 0, files: 1,
             optionalSkips: {}, sha256: "a".repeat(64), filesSha256: "b".repeat(64) } } } };
       });
+      if (scenario === "missing-third") shards.pop();
+      if (scenario === "duplicate-third") shards[2].lane = "2";
+      if (scenario === "foreign-third") shards[2].identity = { ...shards[2].identity, sha: "5".repeat(40) };
+      if (scenario === "empty-third") shards[2].executed.tests = [];
+      if (scenario === "skipped-third") shards[2].receipt.reports.server.skipped = 1;
+      if (scenario === "failed-third") shards[2].receipt.commands.server = "failure";
       for (const receipt of shards) {
         const folder = path.join(directory, "wiseeff-ci-shards", `wiseeff-ci-server-${receipt.identity.attempt}-${receipt.lane}`);
         mkdirSync(folder, { recursive: true });
@@ -124,11 +130,16 @@ describe("complete CI shard inventories", () => {
       }
       const output = path.join(directory, "output");
       const needs = { detect: { result: "success", outputs: { selected: "true", docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" } },
-        "l1-server-shards": { result: "success" } };
+        "l1-server-shards": { result: scenario === "cancelled-third" ? "cancelled" : "success" } };
       const result = spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-shard-results.ts", "aggregate", "server"], { encoding: "utf8",
         env: { ...process.env, GITHUB_REPOSITORY: current.repository, GITHUB_RUN_ID: current.runId, GITHUB_RUN_ATTEMPT: current.attempt,
           GITHUB_EVENT_NAME: current.event, GITHUB_REF: current.ref, GITHUB_SHA: current.sha, GITHUB_JOB: "l1-server", GITHUB_OUTPUT: output,
           EFF_BASE_SHA: "", EFF_HEAD_SHA: "", EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false", EFF_NEEDS: JSON.stringify(needs), RUNNER_TEMP: directory } });
+      if (scenario !== "success") {
+        expect(result.status, scenario).toBe(1);
+        expect(existsSync(output) ? readFileSync(output, "utf8") : "").not.toContain("receipt=");
+        return;
+      }
       expect(result.status, result.stderr).toBe(0);
       const outputs = Object.fromEntries(readFileSync(output, "utf8").trim().split("\n").map((line) => {
         const separator = line.indexOf("=");
@@ -136,7 +147,7 @@ describe("complete CI shard inventories", () => {
       }));
       expect(outputs.identity).toEqual(current);
       expect(outputs.receipt.identity).toEqual(current);
-      expect(outputs.receipt.reports.server).toMatchObject({ identity: current, passed: 2, files: 2 });
+      expect(outputs.receipt.reports.server).toMatchObject({ identity: current, passed: 3, files: 3 });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
   it.each(["quality", "server"] as const)("rejects a missing, duplicate, extra or unknown %s lane", (kind) => {
@@ -170,7 +181,7 @@ describe("complete CI shard inventories", () => {
   });
   it("rejects backend files with overlapping shard ownership", () => {
     const changed = receipts("server");
-    changed[1].executed.files.push(changed[0].executed.files[0]);
+    changed[2].executed.files.push(changed[0].executed.files[0]);
     expect(() => validateShardInventories(changed, "server", identity)).toThrow("FILE_OVERLAP");
   });
 
@@ -212,17 +223,17 @@ globalSetup: serverConfig.test.globalSetup.length ? [${JSON.stringify(setup)}] :
       mkdirSync(path.join(directory, "server"));
       mkdirSync(path.join(directory, "node_modules/server"), { recursive: true });
       writeFileSync(path.join(directory, "node_modules/server/excluded.test.ts"), 'throw new Error("Excluded file was loaded");');
-      for (const name of ["first", "second", "third", "fourth"]) writeFileSync(path.join(directory, "server", `${name}.test.ts`),
+      for (const name of ["first", "second", "third", "fourth", "fifth", "sixth"]) writeFileSync(path.join(directory, "server", `${name}.test.ts`),
         `import { describe, test, expect } from ${JSON.stringify(path.resolve("node_modules/vitest/dist/index.js"))};\ndescribe("parent", () => { test.each([1, 2])("case %i", value => expect(value).toBeGreaterThan(0)); });`);
       const args = [path.resolve("node_modules/vitest/vitest.mjs"), "--config", config, "--root", directory, "--configLoader", "runner", "--includeTaskLocation"];
       const listedFiles = JSON.parse(execFileSync(process.execPath, [args[0], "list", ...args.slice(1), "--filesOnly", "--json"], { encoding: "utf8" }));
       expect(existsSync(marker)).toBe(false);
       const allFiles = listedFiles.map((entry: { file: string }) => path.relative(directory, entry.file)).sort();
-      expect(allFiles).toHaveLength(4);
-      const plan = balanceServerShards(allFiles, 2, { "server/first.test.ts": 90, "server/second.test.ts": 80,
-        "server/third.test.ts": 20, "server/fourth.test.ts": 10 });
+      expect(allFiles).toHaveLength(6);
+      const plan = balanceServerShards(allFiles, 3, { "server/first.test.ts": 90, "server/second.test.ts": 80,
+        "server/third.test.ts": 20, "server/fourth.test.ts": 10, "server/fifth.test.ts": 70, "server/sixth.test.ts": 30 });
       const shards: ShardReceipt[] = [];
-      for (const lane of ["1", "2"]) {
+      for (const lane of ["1", "2", "3"]) {
         const files = plan[Number(lane) - 1].files;
         const collectionOutput = path.join(directory, `collection-${lane}.json`);
         const output = path.join(directory, `report-${lane}.json`);
@@ -237,31 +248,31 @@ globalSetup: serverConfig.test.globalSetup.length ? [${JSON.stringify(setup)}] :
         shards.push({ version: 1, kind: "server", lane, identity: { ...identity, attempt: lane }, inventory: { ...owned, files: allFiles },
           executed, receipt: null });
       }
-      expect(validateShardInventories(shards, "server", { ...identity, attempt: "2" }).tests).toHaveLength(8);
-      expect(readFileSync(marker, "utf8")).toBe("setup\nsetup\n");
+      expect(validateShardInventories(shards, "server", { ...identity, attempt: "3" }).tests).toHaveLength(12);
+      expect(readFileSync(marker, "utf8")).toBe("setup\nsetup\nsetup\n");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 30_000);
-  it("matches real unsharded Vitest list against two native shard reports", () => {
+  it("matches real unsharded Vitest list against three native shard reports", () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "wiseeff-shard-native-"));
     try {
       const config = path.join(directory, "vitest.config.mjs");
       writeFileSync(config, 'export default { test: { include: ["*.test.mjs"], environment: "node", maxWorkers: 1 } };');
-      for (const name of ["first", "second"]) writeFileSync(path.join(directory, `${name}.test.mjs`),
+      for (const name of ["first", "second", "third", "fourth", "fifth", "sixth"]) writeFileSync(path.join(directory, `${name}.test.mjs`),
         `import { describe, test, expect } from ${JSON.stringify(path.resolve("node_modules/vitest/dist/index.js"))};\ndescribe("parent", () => { test.each([1, 2])("case %i", value => expect(value).toBeGreaterThan(0)); });`);
       const args = [path.resolve("node_modules/vitest/vitest.mjs"), "--config", config, "--root", directory, "--configLoader", "runner", "--includeTaskLocation"];
       const listed = path.join(directory, "listed.json");
       execFileSync(process.execPath, [args[0], "list", ...args.slice(1), `--json=${listed}`], { stdio: "pipe" });
       const planned = vitestInventory(JSON.parse(readFileSync(listed, "utf8")), directory);
       const shards: ShardReceipt[] = [];
-      for (const lane of ["1", "2"]) {
+      for (const lane of ["1", "2", "3"]) {
         const ownedList = path.join(directory, `owned-${lane}.json`);
-        execFileSync(process.execPath, [args[0], "list", ...args.slice(1), `--shard=${lane}/2`, `--json=${ownedList}`], { stdio: "pipe" });
+        execFileSync(process.execPath, [args[0], "list", ...args.slice(1), `--shard=${lane}/3`, `--json=${ownedList}`], { stdio: "pipe" });
         const owned = vitestInventory(JSON.parse(readFileSync(ownedList, "utf8")), directory);
         const output = path.join(directory, `report-${lane}.json`);
-        execFileSync(process.execPath, [args[0], "run", ...args.slice(1), `--shard=${lane}/2`, "--reporter=json", `--outputFile=${output}`], { stdio: "pipe" });
+        execFileSync(process.execPath, [args[0], "run", ...args.slice(1), `--shard=${lane}/3`, "--reporter=json", `--outputFile=${output}`], { stdio: "pipe" });
         const executed = vitestExecution(JSON.parse(readFileSync(output, "utf8")), directory);
         expect(owned).toEqual(executed);
-        expect(owned.files).toHaveLength(1);
+        expect(owned.files).toHaveLength(2);
         shards.push({ version: 1, kind: "server", lane, identity, inventory: { ...planned, tests: owned.tests },
           executed, receipt: null });
       }

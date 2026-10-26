@@ -16,7 +16,7 @@ function serverFile(file: string): boolean {
 
 export function balanceServerShards(
   files: readonly string[],
-  shardCount = 2,
+  shardCount = 3,
   durations: Record<string, number> = measurements.fileDurationMs,
 ): Array<{ files: string[]; durationMs: number }> {
   requireServerPlan(files.every(serverFile) && durations !== null && typeof durations === "object" && !Array.isArray(durations)
