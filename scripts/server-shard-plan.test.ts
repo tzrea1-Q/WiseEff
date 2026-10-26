@@ -3,9 +3,22 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { balanceServerShards, serverDurationsFromReport } from "./server-shard-plan";
+import { balanceServerShards, orderServerFiles, serverDurationsFromReport } from "./server-shard-plan";
 
 describe("duration-balanced backend ownership", () => {
+  it("runs long files first without changing the inventory, with conservative unknown weights and deterministic ties", () => {
+    const files = ["server/d.test.ts", "server/b.test.ts", "server/a.test.ts", "server/c.test.ts"];
+    const durations = { "server/a.test.ts": 90, "server/b.test.ts": 80, "server/c.test.ts": 80, "server/d.test.ts": 10 };
+    expect(orderServerFiles([])).toEqual([]);
+    expect(orderServerFiles(files, durations)).toEqual(["server/a.test.ts", "server/b.test.ts", "server/c.test.ts", "server/d.test.ts"]);
+    expect(orderServerFiles([...files].reverse(), durations)).toEqual(orderServerFiles(files, durations));
+    expect(files).toEqual(["server/d.test.ts", "server/b.test.ts", "server/a.test.ts", "server/c.test.ts"]);
+    expect(orderServerFiles([...files, "server/new.test.ts", "server/zero.test.ts"], { ...durations, "server/zero.test.ts": 0 }))
+      .toEqual(["server/a.test.ts", "server/new.test.ts", "server/zero.test.ts", "server/b.test.ts", "server/c.test.ts", "server/d.test.ts"]);
+    expect(() => orderServerFiles(["server/a.test.ts", "server/a.test.ts"], durations)).toThrow();
+    expect(() => orderServerFiles(files, { "server/a.test.ts": -1 })).toThrow();
+  });
+
   it("balances whole files deterministically and covers new and zero-duration files exactly once", () => {
     const durations = { "server/a.test.ts": 90, "server/b.test.ts": 80, "server/c.test.ts": 20, "server/d.test.ts": 10 };
     const files = Object.keys(durations);

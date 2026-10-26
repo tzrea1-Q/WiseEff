@@ -26,6 +26,15 @@ export function balanceServerShards(
   return shards;
 }
 
+export function orderServerFiles(files: readonly string[], durations: Record<string, number> = measurements.fileDurationMs): string[] {
+  if (!files.length) return [];
+  // Reuse the inventory and weight guards; existing shard ownership is unchanged.
+  balanceServerShards(files, 1, durations);
+  const fallback = Math.max(1, ...Object.values(durations));
+  return [...files].sort((left, right) => (durations[right] || fallback) - (durations[left] || fallback)
+    || (left < right ? -1 : left > right ? 1 : 0));
+}
+
 export function serverDurationsFromReport(report: unknown, root: string): Record<string, number> {
   requireServerPlan(report !== null && typeof report === "object" && "testResults" in report);
   const results = report.testResults;
