@@ -21,6 +21,7 @@ vi.mock("@/features/parameter-catalog", () => ({
     }, [props.onDomainStateChange]);
     return <>
       <button onClick={() => setOpen(true)}>打开定义编辑器</button>
+      <button onClick={() => props.onAction?.("preview-publication")}>新增定义</button>
       <button onClick={props.onEditorClosed}>刷新目录</button>
       {open && props.renderDefinitionEditor?.(activeDefinition, {
         domainState: deriveCatalogDomainState({ document: readyCatalogDocument }),
@@ -66,6 +67,37 @@ async function readSubjectOptions() {
 }
 
 describe("CatalogOrganizationSurface editor subject collection", () => {
+  it("advances the pinned catalog after creating a definition in a new release", async () => {
+    const user = userEvent.setup();
+    const { catalog, governance } = createMockCatalogPorts({ scenario: "ready", publicationOutcome: "active" });
+    const latest = "crel_new_definition_active";
+    const current = vi.spyOn(catalog, "getCatalog").mockResolvedValue({
+      ...readyCatalogDocument, item: { ...readyCatalogDocument.item!, catalogReleaseId: latest }
+    });
+    const navigate = vi.fn();
+    render(<CatalogOrganizationSurface catalog={catalog} governance={governance}
+      actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
+      search={`?catalogReleaseId=${CATALOG_RELEASE_ID}`} onAnchorChange={navigate}
+      organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="person-admin" />);
+    await user.click(screen.getByRole("button", { name: "新增定义" }));
+    await selectControlOption(await screen.findByLabelText("已发布主体"), registeredSubject.id);
+    await user.type(screen.getByLabelText("属性键"), "plim_para");
+    await user.type(screen.getByLabelText("显示名称"), "限制功率参数");
+    await user.type(screen.getByLabelText("变更说明"), "新增定义回归测试");
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    const preview = await screen.findByRole("dialog", { name: /确认预览/ });
+    await user.click(within(preview).getByRole("checkbox"));
+    await user.click(within(preview).getByRole("button", { name: "确认预览" }));
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    const confirmation = await screen.findByRole("dialog", { name: /确认发布/ });
+    await user.click(within(confirmation).getByRole("checkbox"));
+    await user.click(within(confirmation).getByRole("button", { name: "确认发布" }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(
+      expect.stringContaining(`catalogReleaseId=${latest}`), "replace"
+    ));
+    expect(current).toHaveBeenCalledTimes(1);
+  });
+
   it("advances the reload anchor after a content publication activates while keeping its result visible", async () => {
     const user = userEvent.setup();
     const { catalog } = createMockCatalogPorts({ scenario: "ready", publicationOutcome: "queued" });
