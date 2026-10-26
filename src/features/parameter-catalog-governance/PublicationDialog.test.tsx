@@ -11,6 +11,7 @@ import {
   CATALOG_SUBJECT_ID,
   readyCatalogDocument,
   activeDefinition,
+  catalogPublicationJob,
   registeredSubject,
   retiredSubject,
   unregisteredSubject
@@ -46,6 +47,7 @@ function renderDialog(
   const publish = vi.spyOn(ports.catalog, "publishPublicationCandidate");
   const getPublication = vi.spyOn(ports.catalog, "getPublication");
   const completed = vi.fn();
+  const refreshed = vi.fn();
   if (options.paginate) {
     const subjects = ports.catalog.listSubjects.bind(ports.catalog);
     vi.spyOn(ports.catalog, "listSubjects").mockImplementation(async (query) => {
@@ -83,11 +85,11 @@ function renderDialog(
       createIdempotencyKey={options.createIdempotencyKey ?? (() => "pub-key")}
       onOpenChange={vi.fn()}
       onCompleted={completed}
-      onRefreshEvidence={vi.fn()}
+      onRefreshEvidence={refreshed}
     />
   );
   const view = render(element);
-  return { ...view, ports, createProposal, createCandidate, publish, getPublication, completed,
+  return { ...view, ports, createProposal, createCandidate, publish, getPublication, completed, refreshed,
     changeRelease: (catalogReleaseId: string) => view.rerender(cloneElement(element, { catalogReleaseId })) };
 }
 
@@ -155,6 +157,36 @@ describe("PublicationDialog", () => {
     expect(screen.getByLabelText("说明")).toHaveValue("最小保持电流。");
     expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  it.each(["active", "active-superseded"] as const)(
+    "refreshes the host release pin exactly once after %s publication",
+    async (publicationOutcome) => {
+      const { completed, refreshed } = renderDialog({ actor: "org-admin", publicationOutcome });
+      const user = userEvent.setup();
+      await fillSupportedDefinition(user);
+      await user.click(screen.getByRole("button", { name: "预览发布" }));
+      await confirm("确认预览");
+      await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+      await confirm("确认发布");
+      await waitFor(() => expect(refreshed).toHaveBeenCalledTimes(1));
+      expect(completed).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it("refreshes the host release pin when a queued publication becomes active", async () => {
+    const { ports, completed, refreshed } = renderDialog({ actor: "org-admin", publicationOutcome: "queued" });
+    vi.spyOn(ports.catalog, "getPublication").mockResolvedValue({
+      item: { ...catalogPublicationJob, status: "active", effective: true, isCurrent: true, currentness: "active" }
+    });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    await waitFor(() => expect(refreshed).toHaveBeenCalledTimes(1));
+    expect(completed).toHaveBeenCalledTimes(1);
   });
 
   it("does not call its own successful activation a stale preview after the Catalog refreshes", async () => {
