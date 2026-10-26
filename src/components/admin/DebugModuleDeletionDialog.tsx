@@ -40,12 +40,14 @@ export function DebugModuleDeletionDialog({ module, modules, onPreview, onDelete
       setPreview(null); setError(presentError(failure, "删除失败，迁移目标已保留，请重新预览后重试。"));
     } finally { setPending(false); }
   };
-  return <ConfirmDialog open title={`删除调试模块「${module.name}」`} tone="danger" confirmLabel="迁移节点并删除模块"
+  // A module without nodes has nothing to migrate, so it needs no target.
+  const empty = preview?.nodeCount === 0 && !targetId;
+  return <ConfirmDialog open title={`删除调试模块「${module.name}」`} tone="danger" confirmLabel={empty ? "删除模块" : "迁移节点并删除模块"}
     pending={pending} confirmDisabled={loading || !preview?.canDelete} error={error} onCancel={onCancel} onConfirm={() => { void confirm(); }}
     description={<><p>仅删除此叶子分类；节点 ID、定义、设备关联和调试历史全部保留。</p>
-      {loading ? <p role="status">正在核对节点和模块…</p> : preview ? <p>将迁移 {preview.nodeCount} 个节点，其中 {preview.legacyNodeCount} 个使用旧名称归属。</p> : null}</>}
+      {loading ? <p role="status">正在核对节点和模块…</p> : preview && !empty ? <p>将迁移 {preview.nodeCount} 个节点{preview.legacyNodeCount ? `，其中 ${preview.legacyNodeCount} 个使用旧名称归属` : ""}。</p> : null}</>}
     extra={<>
-      <div className="field"><span id={targetLabelId}>节点迁移目标</span>
+      {empty ? null : <div className="field"><span id={targetLabelId}>节点迁移目标</span>
         <ModuleTreeSelect mode="single" label="节点迁移目标" labelledBy={targetLabelId} nodes={modules}
           selectableIds={new Set(modules.filter(item => item.id !== module.id).map(item => item.id))}
           value={targetId} onChange={value => {
@@ -54,7 +56,7 @@ export function DebugModuleDeletionDialog({ module, modules, onPreview, onDelete
             setLoading(true); setPreview(null); setTargetId(nextTargetId);
           }} disabled={pending}
           placeholder="未分类" includeRootOption rootOptionLabel="未分类" portalMenu />
-      </div>
+      </div>}
       {preview?.children.length ? <div><p>仍有子模块，请先调整以下子模块：</p><ul>{preview.children.map(child =>
         <li key={child.id}><button type="button" className="button subtle" onClick={() => onMoveChild(child.id)}>移动「{child.name}」</button></li>)}</ul></div> : null}
       {preview?.ambiguousNodes.length ? <div><p>同名模块使旧名称归属不明确，请先为这些节点指定模块：</p><ul>{preview.ambiguousNodes.map(node =>

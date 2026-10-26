@@ -54,4 +54,25 @@ describe("DebugModuleDeletionDialog", () => {
     expect(confirm).toBeDisabled();
     expect(onCancel).not.toHaveBeenCalled();
   });
+
+  it("deletes a module without nodes directly, without asking for a migration target", async () => {
+    const user = userEvent.setup();
+    const empty: DebugModuleDeletionPreview = {
+      module: modules[0]!, target: null, nodeCount: 0, legacyNodeCount: 0,
+      children: [], ambiguousNodes: [], canDelete: true, previewDigest: "empty-proof"
+    };
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    render(<DebugModuleDeletionDialog module={modules[0]!} modules={modules} onPreview={vi.fn().mockResolvedValue(empty)}
+      onDelete={onDelete} onCancel={onCancel} onMoveChild={vi.fn()} onEditNode={vi.fn()} />);
+    const confirm = await screen.findByRole("button", { name: "删除模块" });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    expect(screen.queryByRole("button", { name: "节点迁移目标" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/将迁移/)).not.toBeInTheDocument();
+    await user.click(confirm);
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith("source", {
+      targetModuleId: null, previewDigest: "empty-proof", clientMutationId: expect.any(String)
+    });
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
 });

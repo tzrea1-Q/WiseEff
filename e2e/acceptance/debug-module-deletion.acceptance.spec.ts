@@ -41,7 +41,7 @@ test("#1319 transfers all nodes once, preserves the stale confirmation target, a
   };
   const blocked = await openDelete(parentId, parentName);
   await expect(blocked.getByRole("button", { name: `移动「${sourceName}」` })).toBeVisible();
-  await expect(blocked.getByRole("button", { name: "迁移节点并删除模块" })).toBeDisabled();
+  await expect(blocked.getByRole("button", { name: "删除模块", exact: true })).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(blocked).toBeHidden();
   const dialog = await openDelete(sourceId, sourceName);
