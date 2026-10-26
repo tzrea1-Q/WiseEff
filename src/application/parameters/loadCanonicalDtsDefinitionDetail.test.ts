@@ -46,6 +46,25 @@ describe("loadCanonicalDtsDefinitionDetail", () => {
     });
   });
 
+  it("loads the current Catalog revision without rewriting the project pin", async () => {
+    const getDefinition = vi.fn().mockResolvedValue({ item: {
+      id: "definition-gpio-int", propertyKey: "gpio_int",
+      currentRevision: {
+        id: "revision-4", definitionId: "definition-gpio-int", revisionNumber: 4,
+        displayName: "新说明", documentation: "发布的新说明", contentDigest: "sha256:r4",
+        valueShape: { kind: "json-schema", schema: { type: "string" } },
+        constraints: { kind: "none" }, unit: null,
+        examples: ["example"], publishedInCatalogReleaseId: "release-4"
+      }
+    } });
+    const { loadCurrentCanonicalDtsDefinitionDetail } = await import("./loadCanonicalDtsDefinitionDetail");
+    const detail = await loadCurrentCanonicalDtsDefinitionDetail({ getDefinition }, {
+      definitionId: "definition-gpio-int", propertyKey: "gpio_int"
+    });
+    expect(getDefinition).toHaveBeenCalledWith("definition-gpio-int");
+    expect(detail).toMatchObject({ revisionId: "revision-4", documentation: "发布的新说明", examples: ["example"] });
+  });
+
   it("propagates canonical 404s and rejects a response for a different revision", async () => {
     const getDefinitionRevision = vi.fn().mockResolvedValue({
       item: {
