@@ -55,12 +55,13 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
     return requestJson<T>(createWiseEffServer({ db, agentCheckpointer: checkpointer, objectStore: store, auth: { mode: "production", verifier: createTokenVerifier({ issuer, secret }) }, env: { AUTH_PROVIDER: "hmac" }, deviceBridge: { connectionPool: pool } }), path,
       { method, headers: { Authorization: `Bearer ${token}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   }
-  async function start() {
+  async function prepareDeletion() {
     const path = "/api/v1/platform/organizations/runtime-target";
     const preview = await request<{ item: { stateDigest: string } }>(`${path}/deletion-preview`);
     expect(preview.status, preview.bodyText).toBe(200);
-    return request<{ item: { id: string; status: string } }>(`${path}/deletions`, "POST", { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: "runtime-target" });
+    return () => request<{ item: { id: string; status: string } }>(`${path}/deletions`, "POST", { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: "runtime-target" });
   }
+  async function start() { return (await prepareDeletion())(); }
   async function checkpoint(thread = "no-session") {
     const key = `runtime-target:runtime-member:${thread}`;
     await checkpointer.withNamespaceLease(key, async () => {
@@ -141,8 +142,10 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
       admitNamespace: (input, namespace) => registerAgentCheckpointNamespace(db, checkpointer, original, input.threadId, namespace),
       model: { async invoke() { entered(); await held; return { content: "Private model answer" }; } } });
     const writer = graph.run({ message: "Question", context: {}, threadId: "separate-store", requestContext: { auth: original, requestId: "held-graph", sessionId: "separate-store" } }); await started;
-    const deletion = start();
+    let deletion!: ReturnType<typeof start>;
     try {
+      const submit = await prepareDeletion();
+      deletion = submit();
       await expect.poll(async () => (await db.query<{ status: string }>("select status from organizations where id='runtime-target'")).rows[0]?.status).toBe("deleting");
       expect((await db.query("select id from users where id='runtime-member'")).rowCount).toBe(1);
       await expect(createXiaozeTurnPersister({ db })({ auth: original, invocation: createUserInvocation(original), requestId: "late-turn", threadId: "late-session", runId: "late-run", pageContext: {}, assistantMessage: { id: "late-message", content: "Must never return" } })).rejects.toBeDefined();
@@ -173,8 +176,10 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
     store.put = async input => { key = store.planKey!(input); const written = await put(input); entered(); await held; return written; };
     const upload = createProductFeedback(db, store, await getAuthContext(db, "runtime-member"), { pagePath: "/", pageTitle: "Page", feedbackType: "experience", description: "Late feedback",
       attachments: [{ fileName: "screen.png", contentType: "image/png", contentBase64: Buffer.from("held image").toString("base64") }] }).then(value => ({ value }), error => ({ error }));
-    await started; const deletion = start();
+    await started; let deletion!: ReturnType<typeof start>;
     try {
+      const submit = await prepareDeletion();
+      deletion = submit();
       await expect.poll(async () => (await db.query<{ status: string }>("select status from organizations where id='runtime-target'")).rows[0]?.status).toBe("deleting");
       expect(await store.get(key)).toEqual(Buffer.from("held image"));
       expect((await db.query("select id from users where id='runtime-member'")).rowCount).toBe(1);
