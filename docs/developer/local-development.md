@@ -93,7 +93,11 @@ Start the full local stack:
 npm run dev:all
 ```
 
-This command starts Docker PostgreSQL through `compose.yaml`, waits for it to accept connections, runs migrations and M0-M3 seeds, then starts the API and an API-mode Vite frontend. The API process starts the log-analysis worker when `DATABASE_URL` and local object storage are configured.
+This command starts Docker PostgreSQL through `compose.yaml`, waits for it to accept connections, runs `dev:setup`, then starts the API, an API-mode Vite frontend and an independent publication manager. For a database already running on the configured local port, use `npm run dev:all -- --no-postgres`; it leaves that PostgreSQL service untouched. The API process starts the log-analysis worker when `DATABASE_URL` and local object storage are configured.
+
+`npm run dev:setup` is the shared interactive-development preparation contract. It requires explicit `NODE_ENV=development` and a loopback PostgreSQL URL, runs migrations and M0-M3 seeds, adopts the exact committed demo Catalog through the synchronizer with `synthetic-fixture` evidence, enables only the initial publication policy, and verifies the seeded Org Admin's real authoring/publication surface. It provisions separate non-superuser API/worker/manager LOGINs using the existing provisioner. Private DSNs live under `.wiseeff-tools/local-development/` in 0700 directories and 0600 files; repeat setup reuses them without password rotation. The ordinary API never receives the manager DSN.
+
+Setup fails if publication was deliberately disabled, frozen, or the pre-adoption Catalog differs from the exact committed seed. It does not clear those states. After adoption, seeds retain the database's current Catalog, including online successors. API startup remains verify-only; raw `db:seed:all` is a data-fixture contract and does not establish an interactive authoring environment. A successful seed or `/health/live` alone is insufficient: setup must pass the real publication-surface and manager-identity checks, and the manager process must run for publication jobs to activate. These local checks do not establish target-host or production readiness.
 
 `db:seed:all` and `db:seed:m1` initialize parameter data **only through canonical owners**. M1 installs the pinned constrained vendor Catalog through `seedPublishedCatalog` (the existing Catalog installer), creates taxonomy/modules and canonical-only source structural revisions, then registers canonical Subjects and materializes canonical Bindings and Project values. It does not initialize legacy Spec, Binding, flat Definition, or PPV rows. The Aurora `watchdog_time` demo history comes from a real canonical draft → submit → review → source commit, not direct history inserts. Seeding is idempotent; reruns should not duplicate canonical Catalog, Binding, value, or history rows.
 
@@ -105,7 +109,7 @@ In development and tests, the startup identity resolver also recognizes that can
 
 An existing dual-track database can fail the local cutover/boot guard. Do not use seeding to upgrade populated pre-canonical data or wipe a database/volume as a default remedy. First inventory the database, Docker volumes, object storage, and other checkouts using them; any destructive reset requires explicit authorization. Prefer a separate empty local database for demo seeding. Populated-upgrade operator workflows (#824) are unchanged; follow [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md) for the fail-closed maintenance path.
 
-Before starting, the launcher checks the required local ports. If port `5432` is already used by a WiseEff PostgreSQL Docker container, it restarts that container and waits for readiness. If ports `8787` or `5173` are already used by WiseEff API/web services, it stops those existing processes so the current checkout can restart them. Unknown services on those ports are left untouched and reported as blockers.
+Before starting, the launcher checks the configured database, API and frontend ports (defaults `5432`, `8787`, `5173`). Without `--no-postgres`, an existing WiseEff PostgreSQL container on the database port is restarted and awaited. Existing WiseEff API/web processes on the configured ports are stopped so the current checkout can restart them. Unknown services remain untouched and are reported as blockers. Use distinct ports and a separate database/object-store for independent worktrees; `WISEEFF_PUBLICATION_MANAGER_HEALTH_PORT` also needs a free port (default `8791`).
 
 The default local URLs are:
 
@@ -198,6 +202,8 @@ Shared password: `WiseEff-Dev!`
 Non-development seeds skip these credentials. Empty non-demo installs still use `npm run admin:bootstrap`.
 
 ## Manual Service Startup
+
+For an interactive environment with an existing local PostgreSQL service, use `npm run dev:all -- --no-postgres`. This runs the shared setup and passes the private API LOGIN to the API child and the manager LOGIN only to the separate manager child. `npm run dev:setup` can also prepare and verify the environment without starting services. The individual commands below are low-level diagnostics; `dev:api` does not perform Catalog adoption or start its manager. `npm run dev:publication` starts only the manager using the prepared private credentials.
 
 Use the manual commands when you want separate terminals or an existing PostgreSQL instance instead of Docker Compose.
 

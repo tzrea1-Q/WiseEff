@@ -90,7 +90,15 @@ npm run catalog:lane:env -- cleanup --abandoned
 
 ## Canonical-only 本地种子
 
-`npm run dev:all` 启动 Docker PostgreSQL，执行 migrations 与 M0–M3 seeds，再启动 API 和 API-mode 前端。`db:seed:all` 与 `db:seed:m1` **只通过 canonical owners 初始化参数数据**：M1 使用现有 Catalog installer 的 `seedPublishedCatalog` 安装钉扎的受约束 vendor Catalog，创建 taxonomy/modules，并导入 canonical-only 来源结构修订；随后注册 canonical Subjects，物化 canonical Bindings 和 Project values。不初始化 legacy Spec、Binding、flat Definition 或 PPV 行。Aurora 的 `watchdog_time` 演示历史来自真实 canonical 草稿 → 提交 → 审核 → source commit，不直接插入历史。种子保持幂等，重复运行不应增加重复的 canonical Catalog、Binding、value 或 history 行。
+交互式 API 开发环境使用 `npm run dev:setup`，或使用自动调用它的 `npm run dev:all`。准备入口要求显式 `NODE_ENV=development` 与 loopback PostgreSQL URL，执行迁移和 M0–M3 种子，再通过唯一同步器接管仓库精确演示目录，记录 `synthetic-fixture`，仅启用初始发布策略，并实测种子组织管理员的编写/发布权限。
+
+已有本地 PostgreSQL 时使用 `npm run dev:all -- --no-postgres`，它不重启数据库，同时启动 API、API 模式前端和独立发布进程。不同工作树应使用独立数据库、对象存储及 API/前端端口；发布进程健康端口 `WISEEFF_PUBLICATION_MANAGER_HEALTH_PORT` 也须空闲（默认 `8791`）。启动器检查配置端口，保留未知服务。
+
+准备入口复用既有 provisioner，创建不同的非 superuser API/worker/manager LOGIN；私密 DSN 保存在 `.wiseeff-tools/local-development/`，目录权限 0700、文件 0600。重复执行复用凭据，不自动轮换密码，API 不获得 manager DSN。人为关闭的发布策略、冻结状态或不匹配的未接管目录会令准备失败，不会被自动解除。接管后种子保留数据库 current，包括在线发布的后继版本。
+
+普通 API 启动仍只校验，原始 `db:seed:all` 仍是数据夹具契约，不完成在线编写准备。种子成功或 `/health/live` 正常不足以判定开发环境可用；还须通过真实 publication-surface 与 manager 身份检查，发布进程运行后任务才能激活。`dev:setup` 可仅准备而不启动；`dev:publication` 单独启动已准备的 manager；低层 `dev:api` 不接管目录也不启动 manager。这些本地检查不能作为目标主机或生产就绪证据。
+
+`db:seed:all` 与 `db:seed:m1` **只通过 canonical owners 初始化参数数据**：M1 使用现有 Catalog installer 的 `seedPublishedCatalog` 安装钉扎的受约束 vendor Catalog，创建 taxonomy/modules，并导入 canonical-only 来源结构修订；随后注册 canonical Subjects，物化 canonical Bindings 和 Project values。不初始化 legacy Spec、Binding、flat Definition 或 PPV 行。Aurora 的 `watchdog_time` 演示历史来自真实 canonical 草稿 → 提交 → 审核 → source commit，不直接插入历史。种子保持幂等，重复运行不应增加重复的 canonical Catalog、Binding、value 或 history 行。
 
 空的本地开发库使用有序种子：
 

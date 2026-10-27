@@ -13,6 +13,8 @@ WiseEff 的变更应保持产品可用、可测试、可审计。先读智能体
 
 ## 运行与安全边界
 
+交互式本地 API 环境使用 `npm run dev:setup`：执行迁移、全部种子、精确演示目录接管、初始发布策略和独立 API/manager LOGIN 验证。`npm run dev:all` 自动调用它；已有本地 PostgreSQL 时使用 `npm run dev:all -- --no-postgres`。原始 `db:seed:all` 只准备数据夹具，不启用在线编写，也不启动发布进程。数据库前置条件和手动启动见[本地开发](../developer/local-development.md)。
+
 首次运行 M1 seed 前执行 `npm run dtc:bootstrap` 与 `npm run dtc:check -- --required`。`db:seed:m1` 会先真实编译三份项目 DTS，再写入参数库、项目值与结构化数据。
 
 需要已发布 Catalog 的新建本地或演示数据库，应使用 `npm run db:seed:all`，而不是分别执行四个 seed 命令。它在 M0 与 M1 之间安装 Catalog；单独执行 M1 只会同步已发布的 Catalog。默认种子发布为 `crel_vendor_catalog_3`（版本 `1.2.1`），提供中文显示名与说明，并保留原有 Acme 和 vendor 1/2 发布。临时语义 Binding 辅助函数在该精确种子上安装 `crel_acceptance_bindings_1`（版本 `1.3.0`），从已编译种子派生前驱 pin 和下一发布序号；重放仍须经过安装器校验。`schemas/dts/catalog-release/vendor-catalog-1.yaml` 固定原始编译源，避免重写历史 digest 和修订。

@@ -18,12 +18,11 @@ npm ci
 copy .env.example .env
 npm run dtc:bootstrap
 npm run dtc:check -- --required
-npm run db:migrate
-npm run db:seed:m0
-npm run db:seed:m1
-npm run db:seed:m2
-npm run db:seed:m3
+npm run dev:setup
+npm run dev:all -- --no-postgres
 ```
+
+`dev:setup` is the interactive local API setup contract: migrations, all seeds, exact demo Catalog adoption, initial publication policy and separate API/manager LOGIN verification. `dev:all` calls it automatically; `--no-postgres` uses an already running local database. Raw `db:seed:all` prepares data fixtures only and does not enable online authoring or start the publication manager. See [local development](docs/developer/local-development.md) for database prerequisites and manual startup.
 
 `db:seed:m1` compiles the three full DTS project fixtures before writing parameter data. The seed therefore requires `dtc`; the bootstrap command installs it with Homebrew on macOS or the native package manager on supported Linux distributions.
 

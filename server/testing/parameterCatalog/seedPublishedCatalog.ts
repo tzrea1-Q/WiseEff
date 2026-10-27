@@ -3,6 +3,7 @@ import type pg from "pg";
 import { jsonCatalogReleaseSource } from "../../modules/catalog-kernel/interface";
 import { readCurrentCatalogPointer } from "../../modules/catalog-kernel/install/currentPointer";
 import { installPublishedRelease } from "../../modules/catalog-kernel/install/installer";
+import { publicationRegimeActive } from "../../modules/catalog-kernel/install/publicationActivation";
 import { firstReleaseBundle } from "./cutoverPopulatedFixture";
 import { compileLocalizedVendorCatalogSuccessor } from "../../../scripts/compile-vendor-catalog-release";
 
@@ -15,6 +16,9 @@ export async function seedPublishedCatalog(pool: pg.Pool) {
   const localized = compileLocalizedVendorCatalogSuccessor();
   const vendor = localized.previous;
   const pointer = await readCurrentCatalogPointer(pool);
+  // Once adopted, only the publication pipeline may advance current. Seeding
+  // must preserve in-product successors instead of replaying the demo lineage.
+  if (pointer.kind === "installed" && await publicationRegimeActive(pool)) return pointer.current;
   if (pointer.kind === "installed" && pointer.current.id === localized.compiled.release.id
     && pointer.current.digest === localized.compiled.release.digest) {
     return pointer.current;

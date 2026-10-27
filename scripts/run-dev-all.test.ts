@@ -50,11 +50,7 @@ describe("buildDevAllPlan", () => {
         "docker-compose",
         ["-f", "compose.yaml", "exec", "-T", "postgres", "sh", "-c", "until pg_isready -U wiseeff -d wiseeff; do sleep 1; done"]
       ],
-      ["database", "npm", ["run", "db:migrate"]],
-      ["seed:m0", "npm", ["run", "db:seed:m0"]],
-      ["seed:m1", "npm", ["run", "db:seed:m1"]],
-      ["seed:m2", "npm", ["run", "db:seed:m2"]],
-      ["seed:m3", "npm", ["run", "db:seed:m3"]]
+      ["database", "npm", ["run", "dev:setup"]]
     ]);
   });
 
@@ -69,15 +65,12 @@ describe("buildDevAllPlan", () => {
     expect(plan.prepare.map((step) => [step.label, step.command, step.args])).toEqual([
       ["postgres", "docker", ["compose", "up", "-d", "postgres"]],
       ["postgres:ready", "docker", ["compose", "exec", "-T", "postgres", "sh", "-c", "until pg_isready -U wiseeff -d wiseeff; do sleep 1; done"]],
-      ["database", "npm", ["run", "db:migrate"]],
-      ["seed:m0", "npm", ["run", "db:seed:m0"]],
-      ["seed:m1", "npm", ["run", "db:seed:m1"]],
-      ["seed:m2", "npm", ["run", "db:seed:m2"]],
-      ["seed:m3", "npm", ["run", "db:seed:m3"]]
+      ["database", "npm", ["run", "dev:setup"]]
     ]);
     expect(plan.services.map((service) => [service.label, service.command, service.args])).toEqual([
       ["api", "npm", ["run", "dev:api"]],
-      ["web", "npm", ["run", "dev"]]
+      ["web", "npm", ["run", "dev"]],
+      ["publication", "npm", ["run", "dev:publication"]]
     ]);
     expect(plan.services[1].env).toMatchObject({
       VITE_WISEEFF_RUNTIME_MODE: "api",
@@ -138,6 +131,24 @@ describe("buildDevAllPlan", () => {
       AUTH_TOKEN_ISSUER: "wiseeff-local",
       AUTH_TOKEN_HMAC_SECRET: "wiseeff-local-hmac-secret-32-chars-minimum"
     });
+  });
+
+  it("leaves an existing database untouched with --no-postgres", async () => {
+    const { runtime } = createPortRuntime({ isPortOpen: vi.fn(async (port) => port === 55452) });
+    await recoverDevAllPorts({ databasePort: 55452, apiPort: 22052, webPort: 5180, manageDatabase: false, shell: false }, runtime);
+    expect(runtime.isPortOpen).not.toHaveBeenCalledWith(55452);
+    expect(runtime.findDockerOwnerByPublishedPort).not.toHaveBeenCalled();
+    expect(runtime.runCommand).not.toHaveBeenCalled();
+  });
+
+  it("recognizes the current Chinese-branded frontend before restarting it", async () => {
+    const { calls, runtime } = createPortRuntime({
+      isPortOpen: vi.fn(async (port) => port === 5180),
+      fetchText: vi.fn(async () => '<link href="/wiseeff-icon.svg"/><title>雷泽</title><div id="root"></div>'),
+      findListeningPid: vi.fn(async () => 222),
+    });
+    await recoverDevAllPorts({ databasePort: 55452, apiPort: 22052, webPort: 5180, manageDatabase: false, shell: false }, runtime);
+    expect(calls).toEqual(["kill:222", "wait-free:5180"]);
   });
 
   it("restarts an existing WiseEff PostgreSQL container on the configured database port and skips compose startup", async () => {

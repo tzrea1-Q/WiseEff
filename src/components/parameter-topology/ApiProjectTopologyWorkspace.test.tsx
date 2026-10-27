@@ -222,6 +222,9 @@ describe("ApiProjectTopologyWorkspace", () => {
       listConfigSets={() => new Promise(() => undefined)} />);
     expect(within(screen.getByRole("region", { name: "DTS 参数列表" })).getByRole("status"))
       .toHaveTextContent("正在加载项目拓扑与绑定…");
+    expect(screen.queryByText("暂无模块分组")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "DTS 参数列表" })).toHaveClass("dts-workbench-list");
+    expect(within(screen.getByRole("group", { name: "工作台操作" })).getByRole("searchbox", { name: "搜索 DTS 参数" })).toBeDisabled();
   });
   const protectedJsonBinding = (projectId = "aurora", id = "json-current") => ({
     ...TOPOLOGY_TEACHING_BINDINGS[0],

@@ -1731,14 +1731,14 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     }
   });
 
-  it("keeps initial interaction unavailable until its domain settles without waiting for unrelated devices", async () => {
+  it.each(["/parameter-home", "/parameters"])("keeps initial interaction unavailable until its domain settles without waiting for unrelated devices (%s)", async (path) => {
     let completeProjects!: (projects: typeof initialState.configDraft.projects) => void;
     let failDevices!: (error: Error) => void;
     const projects = new Promise<typeof initialState.configDraft.projects>((resolve) => { completeProjects = resolve; });
     const devices = new Promise<never>((_, reject) => { failDevices = reject; });
     const parameterRepository = createTestParameterRepository({ listProjects: vi.fn(() => projects) });
     const { container } = renderApp({
-      path: "/parameter-home",
+      path,
       runtimeMode: "api",
       ports: {
         authClient: createTestAuthClient("admin"),
@@ -1752,10 +1752,16 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       expect(main).toHaveAttribute("data-runtime-state", "loading");
       expect(main).toHaveAttribute("aria-busy", "true");
       expect(container.querySelector(".page-content")).toHaveAttribute("inert");
+      if (path === "/parameters") {
+        expect(container.querySelector(".page-content")).not.toBeVisible();
+        expect(screen.getByRole("combobox", { name: "项目" })).toBeDisabled();
+        expect(screen.getByRole("combobox", { name: "项目" })).toHaveTextContent("正在加载项目…");
+      }
       await act(async () => { completeProjects([apiProject]); });
       await waitFor(() => expect(main).toHaveAttribute("data-runtime-state", "ready"));
       expect(main).toHaveAttribute("aria-busy", "false");
       expect(container.querySelector(".page-content")).not.toHaveAttribute("inert");
+      expect(container.querySelector(".page-content")).toBeVisible();
       await act(async () => { failDevices(new Error("optional devices unavailable")); });
       expect(main).toHaveAttribute("data-runtime-state", "ready");
       expect(container.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();

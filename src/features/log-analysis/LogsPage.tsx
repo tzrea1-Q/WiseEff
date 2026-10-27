@@ -569,7 +569,11 @@ export function LogsPage({ state, dispatch, onNavigate, search, logActions, runt
         pageKey="logs"
         navigatorLabel="日志记录"
         taskLabel="日志任务区"
-        toolbar={null}
+        toolbar={<div className="logs-current-log">
+          <FileText size={18} aria-hidden="true" />
+          <div><strong title={activeLog.fileName}>{activeLog.fileName}</strong>
+            <span>{logStatusLabels[activeLog.status]} · 共 {state.logs.length} 条日志</span></div>
+        </div>}
         primaryAction={hasActiveLog ? <Button onClick={openUploadDialog}>
           <Upload size={16} />上传新日志
         </Button> : undefined}
@@ -584,15 +588,26 @@ export function LogsPage({ state, dispatch, onNavigate, search, logActions, runt
               <button aria-pressed={log.id === activeLog.id} className={log.id === activeLog.id ? "history-item active" : "history-item"}
                 key={log.id} type="button" onClick={() => setSelectedLogId(log.id)}>
                 <strong title={log.fileName}>{log.fileName}</strong>
-                <span className="logs-history-status"><span className="analysis-provenance__badge">{logStatusLabels[log.status]}</span></span>
-                <time>{formatLogDateTime(log.capturedAt)}</time>
+                <div className="logs-history-detail">
+                  <span>{logStatusLabels[log.status]}</span>
+                  <time>{formatLogDateTime(log.capturedAt)}</time>
+                </div>
               </button>
             ))}
             {state.logs.length > 0 && !historyLogs.length ? <SectionEmpty icon={<FileText aria-hidden size={20} />} message="没有匹配的日志记录" /> : null}
           </div>
         </aside>}
       >
-      {hasActiveLog ? <LogConclusionCard
+      <div className="logs-task-header" role="group" aria-label="日志视图">
+        <ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
+          onValueChange={(value) => setAuxTab(value as LogsAuxTab)}
+          items={([["report", "报告"], ["signals", "信号"], ["files", "文件"], ["trace", "分析轨迹"]] as const)
+            .filter(([value]) => value !== "trace" || canViewTrace)
+            .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} />
+        {activeLog.canDelete && logRepository?.previewLogDeletion && logRepository.purgeLog ? <Button variant="destructive" size="sm" onClick={() => setDeletionLogId(activeLog.id)}>删除日志</Button> : null}
+      </div>
+      <TabPanel className="logs-task-panel" role="tabpanel" id={`logs-aux-${auxTab}`} aria-labelledby={`logs-aux-tab-${auxTab}`}>
+      {auxTab === "report" ? <LogConclusionCard
           organizationId={new URLSearchParams(search).get("organizationId") ?? undefined}
           log={activeLog}
           canViewSkill={canViewTrace}
@@ -620,14 +635,7 @@ export function LogsPage({ state, dispatch, onNavigate, search, logActions, runt
           onRetry={activeLog.status === "Failed" ? openUploadDialog : handleRetryLog}
           retryPending={retryPending}
         /> : null}
-      {activeLog.canDelete && logRepository?.previewLogDeletion && logRepository.purgeLog ? <Button variant="destructive" onClick={() => setDeletionLogId(activeLog.id)}>删除日志</Button> : null}
       {retryError?.logId === activeLog.id ? <p role="alert">{retryError.message}</p> : null}
-      <div className="px-4 pb-4"><ViewSwitch variant="tabs" ariaLabel="日志辅助信息" value={auxTab}
-        onValueChange={(value) => setAuxTab(value as LogsAuxTab)}
-        items={([["report", "报告"], ["signals", "信号"], ["files", "文件"], ["trace", "分析轨迹"]] as const)
-          .filter(([value]) => value !== "trace" || canViewTrace)
-          .map(([value, label]) => ({ value, label, id: `logs-aux-tab-${value}`, panelId: `logs-aux-${value}` }))} /></div>
-      <TabPanel role="tabpanel" id={`logs-aux-${auxTab}`} aria-labelledby={`logs-aux-tab-${auxTab}`}>
       {auxTab === "trace" ? (canViewTrace ? <LogTraceTab key={`${activeLog.id}:${activeLog.updatedAtIso}`} logId={activeLog.id} analysis={activeLog} repository={logRepository}
         onOpenLine={(file, line, lines) => setViewer({ file, lines: lines ?? [line] })} /> : null)
         : auxTab === "signals" ? <SignalsTab summary={activeLog.signalSummary} rawFilePath={rawFilePath} rawLineCount={activeLog.rawLines.length} fileCount={activeLog.files?.length || 1}
@@ -1109,17 +1117,18 @@ function LogConclusionCard({
   const complete = log.status === "Complete";
   return <section className="logs-conclusion-card" aria-labelledby="log-conclusion-title">
     <div className="logs-conclusion-head">
-      <span className="analysis-provenance__badge">{logStatusLabels[log.status]}</span>
       <div>
         <h2 id="log-conclusion-title" className={!complete ? "logs-analyzing-anim" : undefined}>{complete ? log.conclusion : "正在分析…"}</h2>
         {complete ? <p>{log.impact}</p> : null}
       </div>
     </div>
     <LogHeaderMeta log={log} />
-    {complete ? <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} canOpenKnowledge={canOpenKnowledge} onNavigate={onNavigate} organizationId={organizationId} /> : null}
+    {complete ? <div className="logs-conclusion-summary">
+      <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} canOpenKnowledge={canOpenKnowledge} onNavigate={onNavigate} organizationId={organizationId} />
+      <ConfidenceBar value={log.confidence} status={log.status} />
+    </div> : null}
     {log.analysisQuestion ? <div className="logs-analysis-question"><strong>用户问题</strong><span>{log.analysisQuestion}</span></div> : null}
     {complete ? <>
-      <ConfidenceBar value={log.confidence} status={log.status} />
       <div className="logs-conclusion-actions">
         {relatedParameterLocated && onPrimary ? <Button onClick={onPrimary}>查看关联参数</Button> : null}
         <RowActionMenu label="报告操作" triggerLabel="更多" items={[

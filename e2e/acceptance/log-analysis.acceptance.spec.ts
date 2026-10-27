@@ -576,7 +576,8 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     const completedLog = await latestLogByFile(page, supportedFileName);
     await historyItem(page, supportedFileName).click();
     await expect(page.locator("#log-conclusion-title")).toContainText(/过热|降额/);
-    await expect(page.locator(".logs-conclusion-head")).toContainText("已完成");
+    await expect(page.getByRole("group", { name: "工作台操作", exact: true })).toContainText("已完成");
+    await expect(page.getByRole("tabpanel", { name: "报告", exact: true }).locator("#log-conclusion-title")).toBeVisible();
     await expect(page.getByRole("tablist", { name: "日志辅助信息" }).getByRole("tab"))
       .toHaveText(["报告", "信号", "文件", "分析轨迹"]);
     await expect(page.getByRole("region", { name: "日志任务区", exact: true }).getByRole("tablist", { name: "日志辅助信息" })).toBeVisible();
@@ -696,6 +697,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await unsupportedHistoryItem.click();
     const failureAlert = page.getByRole("alert").filter({ hasText: "日志处理失败" });
     await expect(failureAlert).toBeVisible();
+    await expect(page.getByRole("tabpanel", { name: "报告", exact: true }).getByRole("alert")).toContainText("日志处理失败");
     await expect(failureAlert).toContainText("不支持此日志格式");
     await expect(failureAlert).not.toContainText("Unsupported log format");
     await expect(failureAlert.getByRole("button", { name: "重新上传" })).toBeVisible();

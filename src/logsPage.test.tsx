@@ -46,17 +46,20 @@ describe("LogsPage · Header", () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  it("将标签页置于详情标题下，未知文件清单时不声称文件数", async () => {
+  it("保留当前文件上下文，标签页先于报告内容，切换文件时不重复结论", async () => {
     const log = { ...initialState.logs[1], files: undefined, fileSizeMB: 0 };
     render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
     const task = screen.getByRole("region", { name: "日志任务区" });
     const tabs = within(task).getByRole("tablist", { name: "日志辅助信息" });
     const header = within(task).getByRole("region", { name: log.conclusion });
-    expect(header.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tabs.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "工作台操作" })).getByText(log.fileName)).toBeVisible();
+    expect(within(screen.getByRole("tabpanel", { name: "报告" })).getByRole("region", { name: log.conclusion })).toBeVisible();
     expect(header).not.toHaveTextContent(/个文件/);
     expect(screen.getByRole("region", { name: "日志记录" })).not.toContainElement(tabs);
     await userEvent.click(within(tabs).getByRole("tab", { name: "文件" }));
     expect(within(screen.getByRole("tabpanel", { name: "文件" })).getByText("该历史记录暂无文件清单。")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: log.conclusion })).not.toBeInTheDocument();
   });
 
   it("重新分析失败只显示一次服务端消息，且可再次重试", async () => {
@@ -424,6 +427,7 @@ describe("LogsPage · Header", () => {
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot/ }));
 
     const summary = screen.getByRole("alert");
+    expect(screen.getByRole("tabpanel", { name: "报告" })).toContainElement(summary);
     const failedLog = initialState.logs.find((log) => log.status === "Failed")!;
     expect(summary).toHaveTextContent("日志处理失败");
     expect(summary).toHaveTextContent("在日志解析阶段失败");

@@ -67,6 +67,7 @@ import {
   partitionDanglingReferenceDiagnostics
 } from "@/domain/parameter-topology/toolchainDiagnostics";
 import { WorkbenchDiagnosticsSection } from "./WorkbenchDiagnosticsSection";
+import { ProjectParametersLoading } from "./ProjectParametersLoading";
 import {
   JsonBindingPanel,
   type JsonBindingHistoryEntry,
@@ -1497,15 +1498,17 @@ export function ApiProjectTopologyWorkspace({
   if (loadState.kind !== "ready") {
     return (
       <div className="api-project-topology-workspace">
-      <section className="dts-parameter-workbench" aria-label="DTS 参数工作台" aria-busy={loadState.kind === "loading"}>
+      {loadState.kind === "loading" ? <ProjectParametersLoading message="正在加载项目拓扑与绑定…"
+        notice={notice || unavailableBinding ? <>{notice}{unavailableBinding}</> : undefined} /> : (
+      <section className="dts-parameter-workbench" aria-label="DTS 参数工作台">
         <NavigatorWorkbench pageKey="parameters" toolbar={null} navigatorLabel="模块导航"
           navigator={<SectionEmpty message="暂无模块分组" />} taskLabel="DTS 参数列表"
           notice={notice || unavailableBinding ? <>{notice}{unavailableBinding}</> : undefined}
-          taskState={loadState.kind === "loading" ? { kind: "loading", message: "正在加载项目拓扑与绑定…" }
-            : loadState.kind === "empty" ? { kind: "empty", message: loadState.message }
+          taskState={loadState.kind === "empty" ? { kind: "empty", message: loadState.message }
             : { kind: "error", message: `${loadState.code === "NOT_FOUND" ? "未找到拓扑资源（404）。" : ""}${loadState.message}`,
               onRetry: () => setReloadToken((token) => token + 1) }} />
       </section>
+      )}
       {jsonFormatPanel ?? jsonContent}
       </div>
     );

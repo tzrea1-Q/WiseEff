@@ -49,9 +49,11 @@ test("#1412 creates a missing declaration-only driver through the single registr
     expect(enabled.ok).toBe(true);
     await openCatalogAt(page, "org-admin");
     await page.getByRole("button", { name: "新增定义", exact: true }).click();
-    await page.getByRole("dialog", { name: "向已发布主体新增定义", exact: true })
-      .getByRole("button", { name: "创建缺少的主体", exact: true }).click();
-    await expect(page).toHaveURL(/\/parameter-admin\/modules\?createSubject=1/);
+    const newDefinition = page.getByRole("dialog", { name: "向已发布主体新增定义", exact: true });
+    await expect(newDefinition.getByRole("button", { name: "创建缺少的主体", exact: true })).toHaveCount(0);
+    await newDefinition.getByRole("button", { name: "关闭", exact: true }).click();
+    await page.goto(catalogAppUrl("/parameter-admin/modules"));
+    await page.getByRole("button", { name: "新增主体", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "新增主体", exact: true });
     const compatible = `wiseeff,declaration-${Date.now().toString(36)}`;
     await dialog.getByLabel("compatible 标识", { exact: true }).fill(compatible);
