@@ -2,6 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { readLocalDevelopmentRuntime } from "./local-development";
 import {
   buildDockerComposeCommand,
   DEFAULT_DOCKER_COMPOSE_INVOCATION,
@@ -25,6 +26,7 @@ export type DevAllPlan = {
 };
 
 export type DevAllPortOptions = {
+  manageDatabase?: boolean;
   databasePort: number;
   apiPort: number;
   webPort: number;
@@ -52,7 +54,6 @@ export type DevAllPortRecoveryResult = {
   skipPrepareLabels: string[];
 };
 
-const seedScripts = ["db:seed:m0", "db:seed:m1", "db:seed:m2", "db:seed:m3"];
 const execFileAsync = promisify(execFile);
 
 export function buildDevAllPlan(
@@ -86,24 +87,19 @@ export function buildDevAllPlan(
     prepare: [
       { label: "postgres", command: postgresUp.command, args: postgresUp.args, shell: false },
       { label: "postgres:ready", command: postgresReady.command, args: postgresReady.args, shell: false },
-      { label: "database", command: "npm", args: ["run", "db:migrate"], env: serviceEnv, shell: npmShell },
-      ...seedScripts.map((script) => ({
-        label: script.replace("db:", ""),
-        command: "npm",
-        args: ["run", script],
-        env: serviceEnv,
-        shell: npmShell
-      }))
+      { label: "database", command: "npm", args: ["run", "dev:setup"], env: serviceEnv, shell: npmShell }
     ],
     services: [
       { label: "api", command: "npm", args: ["run", "dev:api"], env: serviceEnv, shell: npmShell },
-      { label: "web", command: "npm", args: ["run", "dev"], env: frontendEnv, shell: npmShell }
+      { label: "web", command: "npm", args: ["run", "dev"], env: frontendEnv, shell: npmShell },
+      { label: "publication", command: "npm", args: ["run", "dev:publication"], env: serviceEnv, shell: npmShell }
     ]
   };
 }
 
 function normalizeLocalDevEnv(env: RuntimeEnv): RuntimeEnv {
   return {
+    NODE_ENV: "development",
     AUTH_MODE: "production",
     AUTH_PROVIDER: "local",
     DATABASE_URL: "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",
@@ -120,7 +116,7 @@ export async function recoverDevAllPorts(
 ): Promise<DevAllPortRecoveryResult> {
   const skipPrepareLabels: string[] = [];
 
-  if (await runtime.isPortOpen(options.databasePort)) {
+  if (options.manageDatabase !== false && await runtime.isPortOpen(options.databasePort)) {
     const owner = await runtime.findDockerOwnerByPublishedPort(options.databasePort);
     if (!owner || !isWiseEffPostgresOwner(owner)) {
       throw new Error(
@@ -177,7 +173,7 @@ function looksLikeWiseEffWeb(body: string | undefined) {
     return false;
   }
 
-  return body.includes("WiseEff") && body.includes('id="root"');
+  return (body.includes("WiseEff") || body.includes('href="/wiseeff-icon.svg"')) && body.includes('id="root"');
 }
 
 async function recoverHttpServicePort(options: {
@@ -376,17 +372,26 @@ async function runDevAll() {
   const dockerCompose = await resolveDockerCompose({ composeFile: "compose.yaml" });
   const plan = buildDevAllPlan(process.env, process.platform, dockerCompose);
   const apiPort = Number(plan.services[0].env?.PORT ?? process.env.PORT ?? 8787);
+  const skipPostgres = process.argv.includes("--no-postgres");
 
   try {
-    const recovery = await recoverDevAllPorts({ databasePort: 5432, apiPort, webPort: 5173, shell: process.platform === "win32" });
+    const databasePort = Number(new URL(plan.services[0].env!.DATABASE_URL!).port || 5432);
+    const webPort = Number(plan.services[1].env?.WISEEFF_FRONTEND_PORT ?? 5173);
+    const recovery = await recoverDevAllPorts({ databasePort, apiPort, webPort, manageDatabase: !skipPostgres, shell: process.platform === "win32" });
     const skipPrepareLabels = new Set(recovery.skipPrepareLabels);
     for (const step of plan.prepare) {
+      if (skipPostgres && step.label.startsWith("postgres")) continue;
       if (skipPrepareLabels.has(step.label)) {
         console.log(`[dev:all] ${step.label}: skipped because an existing WiseEff service was recovered.`);
         continue;
       }
       await runCommand(step);
     }
+    const runtime = readLocalDevelopmentRuntime(plan.services[0].env!);
+    plan.services[0].env = { ...plan.services[0].env, DATABASE_URL: runtime.api, WISEEFF_LOCAL_DEVELOPMENT_RUNTIME: "1", WISEEFF_PUBLICATION_MANAGER_DATABASE_URL: undefined };
+    plan.services[1].env = { ...plan.services[1].env, DATABASE_URL: undefined, WISEEFF_PUBLICATION_MANAGER_DATABASE_URL: undefined };
+    // The management entry loads only its private manager DSN, in a separate process.
+    plan.services[2].env = { ...plan.services[2].env, WISEEFF_PUBLICATION_MANAGER_DATABASE_URL: undefined };
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);

@@ -50,7 +50,6 @@ export type CatalogOrganizationSurfaceProps = {
   onAnchorChange: (href: string, mode: "push" | "replace") => void;
   organizationId?: string;
   currentPersonId: string;
-  onCreateSubject?: () => void;
   relatedKnowledge?: SpecRelatedKnowledgeSource;
   projects?: readonly { id: string; name: string }[];
   moduleRegistry?: Pick<ParameterModuleRegistryRepository, "getRegistry">;
@@ -68,7 +67,6 @@ export function CatalogOrganizationSurface({
   onAnchorChange,
   organizationId,
   currentPersonId,
-  onCreateSubject,
   relatedKnowledge,
   projects,
   moduleRegistry,
@@ -501,7 +499,6 @@ export function CatalogOrganizationSurface({
         <PublicationDialog
           open
           initialSubjectId={subjectId}
-          onCreateSubject={onCreateSubject}
           actor={actor}
           sessionPermissions={sessionPermissions}
           domainState={domainState}

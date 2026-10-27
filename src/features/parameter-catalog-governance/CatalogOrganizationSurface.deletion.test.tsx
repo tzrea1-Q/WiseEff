@@ -63,14 +63,16 @@ describe("platform definition deletion", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: `彻底删除 ${activeDefinition.propertyKey}` })).toBeEnabled());
   });
 
-  it("deletes with one impact confirmation and clears detail selection while preserving filters and navigation", async () => {
+  it("keeps deletion out of the editor and deletes from the list while preserving filters and navigation", async () => {
     const initialSearch = `?definitionId=${activeDefinition.id}&q=${activeDefinition.propertyKey}&lifecycle=active&moduleNodeId=module:${CATALOG_MODULE_ID}&revisionId=old-revision`;
     const { catalog, anchors } = setup({ search: initialSearch });
     const remove = vi.spyOn(catalog, "deleteDefinition");
     const preview = vi.spyOn(catalog, "previewDefinitionDeletion");
     const user = userEvent.setup();
     const detail = await screen.findByRole("dialog", { name: `查看 ${activeDefinition.propertyKey}` });
-    await user.click(within(detail).getByRole("button", { name: "彻底删除此定义" }));
+    expect(within(detail).queryByRole("button", { name: "彻底删除此定义" })).not.toBeInTheDocument();
+    await user.click(within(detail).getByRole("button", { name: "关闭" }));
+    await user.click(await screen.findByRole("button", { name: `彻底删除 ${activeDefinition.propertyKey}` }));
     const dialog = await screen.findByRole("dialog", { name: `彻底删除 ${activeDefinition.propertyKey}` });
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "彻底删除" })).toBeEnabled());
     expect(dialog).toHaveTextContent("全平台");

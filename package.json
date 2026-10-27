@@ -12,6 +12,8 @@
     "verify:report": "tsx scripts/verify.ts report",
     "dev": "VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=${VITE_WISEEFF_API_BASE_URL:-http://127.0.0.1:8787} vite --host 127.0.0.1",
     "dev:all": "tsx scripts/run-dev-all.ts",
+    "dev:setup": "tsx scripts/local-development.ts",
+    "dev:publication": "tsx scripts/local-development.ts manager",
     "dev:api": "tsx watch server/index.ts",
     "worker:logs": "tsx server/modules/logs/workerRunner.ts",
     "publication:manager": "tsx server/modules/catalog-publication/jobs/managerRunner.ts",

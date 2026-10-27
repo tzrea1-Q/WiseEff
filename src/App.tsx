@@ -23,6 +23,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, u
 import type { FormEvent, ReactNode } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
+import { ProjectParametersLoading } from "./components/parameter-topology/ProjectParametersLoading";
 import { PageRouter, type PageProps } from "@/app/routes";
 import { DebuggingAdminPage } from "@/DebuggingAdminPage";
 import {
@@ -1166,6 +1167,7 @@ function AppShell({
   const pageRuntimeState = runtimeMode !== "api" || !pageRuntimeDomain
     ? "ready"
     : apiRuntimePending.has(pageRuntimeDomain) ? "loading" : apiRuntimeFailures.has(pageRuntimeDomain) ? "error" : "ready";
+  const loadingProjectParameters = page.key === "parameters" && pageRuntimeState === "loading";
   const apiRuntimeStatusBanner =
     pageRuntimeState === "error" && pageRuntimeDomain ? (
       <div className="api-runtime-error-banner" role="alert" aria-live="assertive">
@@ -1231,6 +1233,7 @@ function AppShell({
             pageLeadingActions={topBarLeadingActions}
             onNewProject={() => setProjectInitOpen(true)}
             canCreateProject={runtimeMode === "api" ? apiAuthPermissions.includes("admin:access") : undefined}
+            projectsLoading={pageRuntimeDomain === "parameters" && pageRuntimeState === "loading"}
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
             onChangeCurrentUserPassword={handleChangeCurrentUserPassword}
@@ -1294,9 +1297,10 @@ function AppShell({
               data-runtime-state={pageRuntimeState}
               aria-busy={pageRuntimeState === "loading"}
             >
-              {apiRuntimeStatusBanner}
+              {loadingProjectParameters ? null : apiRuntimeStatusBanner}
               {publicationPreviewBanner}
-              <div className="page-content" inert={pageRuntimeState === "loading"}>
+              {loadingProjectParameters ? <ProjectParametersLoading /> : null}
+              <div className="page-content" inert={pageRuntimeState === "loading"} hidden={loadingProjectParameters}>
                 <OrganizationBusinessWorkspace proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
                 <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                   page={page}
@@ -1574,6 +1578,7 @@ function TopBar({
   pageLeadingActions,
   onNewProject,
   canCreateProject: canCreateProjectOverride,
+  projectsLoading = false,
   onLogout,
   onUpdateCurrentUserProfile,
   onChangeCurrentUserPassword,
@@ -1591,6 +1596,7 @@ function TopBar({
   pageLeadingActions?: ReactNode;
   onNewProject: () => void;
   canCreateProject?: boolean;
+  projectsLoading?: boolean;
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
   onChangeCurrentUserPassword?: (input: ChangeCurrentUserPasswordInput) => Promise<void>;
@@ -1675,7 +1681,9 @@ function TopBar({
           <SelectControl
             ariaLabel="项目"
             className="topbar-project-select"
-            value={selectedProjectId}
+            value={projectsLoading ? "" : selectedProjectId}
+            placeholder={projectsLoading ? "正在加载项目…" : "选择项目"}
+            disabled={projectsLoading}
             onValueChange={handleProjectChange}
             options={projectOptions}
           />

@@ -1,0 +1,8 @@
+.project-parameters-loading .navigator-workbench__navigator {
+  height: var(--navigator-workbench-pane-height);
+}
+
+.project-parameters-loading .section-skeleton {
+  align-content: start;
+  padding: var(--space-4);
+}

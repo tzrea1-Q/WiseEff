@@ -168,6 +168,7 @@ test.describe("restored definition workspace and governed authoring", () => {
     await edit.click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "彻底删除此定义", exact: true })).toHaveCount(0);
     if (permissions.authoringAllowed) {
       await expect(dialog.locator(".definition-editor__form")).toBeVisible();
       // Explicit manifest and an actual change: preview stays disabled until the

@@ -185,7 +185,6 @@ export function ParameterAdminNextPage({
         onAnchorChange={handleCatalogAnchorChange}
         organizationId={catalogOrganizationId}
         currentPersonId={state?.currentUserId ?? ""}
-        onCreateSubject={() => onNavigate("/parameter-admin/modules?createSubject=1&returnTo=definitions")}
         projects={projects}
         moduleRegistry={moduleRegistry}
         relatedKnowledge={definitionRelatedKnowledge}

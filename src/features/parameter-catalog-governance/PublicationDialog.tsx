@@ -67,7 +67,6 @@ export type PublicationDialogProps = {
   intent?: "create-definition" | "create-subject";
   initialSubjectId?: string;
   sourcePrefill?: { compatible: string; label: string; href: string; reference: SharedDtsiRecognitionReference };
-  onCreateSubject?: () => void;
   onAddDefinition?: (subjectId: string) => void;
   actor: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
@@ -89,7 +88,6 @@ export function PublicationDialog({
   intent = "create-definition",
   initialSubjectId = "",
   sourcePrefill,
-  onCreateSubject,
   onAddDefinition,
   actor,
   sessionPermissions,
@@ -127,7 +125,6 @@ export function PublicationDialog({
   const initialDraft = (): PublicationDraft => ({ ...emptyPublicationDraft(), mode: intent, subjectId: initialSubjectId,
     ...(intent === "create-subject" ? { nature: "", cardinality: "", selectorValue: sourcePrefill?.compatible ?? "" } : {}) });
   const [draft, setDraft] = useState<PublicationDraft>(initialDraft);
-  const leaveAction = useRef<(() => void) | null>(null);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
   const [subjectReadEpoch, setSubjectReadEpoch] = useState(0);
   const [followup, setFollowup] = useState<FollowupStatus>("idle");
@@ -186,24 +183,12 @@ export function PublicationDialog({
   }, [open, draftDirty]);
 
   const requestClose = () => {
-    leaveAction.current = null;
     if (draftDirty && !leaveConfirm) {
       setLeaveConfirm(true);
       return;
     }
     setLeaveConfirm(false);
     onOpenChange(false);
-  };
-
-  const requestCreateSubject = () => {
-    if (!onCreateSubject) return;
-    if (draftDirty) {
-      leaveAction.current = onCreateSubject;
-      setLeaveConfirm(true);
-    } else {
-      onOpenChange(false);
-      onCreateSubject();
-    }
   };
 
   const patchDraft = (patch: Partial<PublicationDraft>) => {
@@ -688,7 +673,6 @@ export function PublicationDialog({
                           ...publishedSubjects.map((item) => ({ value: item.id, label: `${catalogSubjectTypeLabel(item.type)} · ${item.canonicalName}` }))]}
                       />
                     </label>
-                    {onCreateSubject ? <button type="button" className="button ghost sm" onClick={requestCreateSubject}>创建缺少的主体</button> : null}
                     </>
                     )}
                     {draft.mode !== "create-subject" ? <>
@@ -975,10 +959,8 @@ export function PublicationDialog({
         onConfirm={() => {
           setLeaveConfirm(false);
           onOpenChange(false);
-          leaveAction.current?.();
-          leaveAction.current = null;
         }}
-        onCancel={() => { setLeaveConfirm(false); leaveAction.current = null; }}
+        onCancel={() => setLeaveConfirm(false)}
       />
     </>
   );

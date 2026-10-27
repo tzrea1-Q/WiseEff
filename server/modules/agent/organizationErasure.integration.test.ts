@@ -9,6 +9,7 @@ import { createWiseEffServer } from "../../app";
 import { requestJson } from "../../test/testClient";
 import { createEphemeralTestDatabase, withTestClusterRoleCatalogLock } from "../../testing/testDatabase";
 import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { seedBaselineAuthCatalog } from "../auth/baselineCatalog";
 import { getAuthContext } from "../auth/repository";
@@ -55,11 +56,34 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
     return requestJson<T>(createWiseEffServer({ db, agentCheckpointer: checkpointer, objectStore: store, auth: { mode: "production", verifier: createTokenVerifier({ issuer, secret }) }, env: { AUTH_PROVIDER: "hmac" }, deviceBridge: { connectionPool: pool } }), path,
       { method, headers: { Authorization: `Bearer ${token}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   }
-  async function start() {
+  async function prepareDeletion() {
     const path = "/api/v1/platform/organizations/runtime-target";
     const preview = await request<{ item: { stateDigest: string } }>(`${path}/deletion-preview`);
     expect(preview.status, preview.bodyText).toBe(200);
-    return request<{ item: { id: string; status: string } }>(`${path}/deletions`, "POST", { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: "runtime-target" });
+    return () => request<{ item: { id: string; status: string } }>(`${path}/deletions`, "POST", { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: "runtime-target" });
+  }
+  async function start() { return (await prepareDeletion())(); }
+  function observeCommittedDeletion() {
+    const inspectStore = checkpointer.inspectStore.bind(checkpointer);
+    let committed!: () => void;
+    const reached = new Promise<void>(resolve => { committed = resolve; });
+    checkpointer.inspectStore = async (...args) => {
+      const store = await inspectStore(...args);
+      // Preview/admission transactions still look active from this connection.
+      // Only real post-commit erasure inspection can release this signal.
+      const organization = (await db.query<{ status: string }>("select status from organizations where id='runtime-target'")).rows[0];
+      if (organization?.status === "deleting") committed();
+      return store;
+    };
+    return {
+      async wait(deletion: ReturnType<typeof start>, namespaceBlocked?: Promise<void>) {
+        await Promise.race([
+          namespaceBlocked ? Promise.all([reached, namespaceBlocked]) : reached,
+          deletion.then(result => { throw new Error(`Deletion settled before the required erasure checkpoint: HTTP ${result.status}, status ${result.body?.item?.status}`); }),
+        ]);
+      },
+      restore() { checkpointer.inspectStore = inspectStore; },
+    };
   }
   async function checkpoint(thread = "no-session") {
     const key = `runtime-target:runtime-member:${thread}`;
@@ -141,12 +165,25 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
       admitNamespace: (input, namespace) => registerAgentCheckpointNamespace(db, checkpointer, original, input.threadId, namespace),
       model: { async invoke() { entered(); await held; return { content: "Private model answer" }; } } });
     const writer = graph.run({ message: "Question", context: {}, threadId: "separate-store", requestContext: { auth: original, requestId: "held-graph", sessionId: "separate-store" } }); await started;
-    const deletion = start();
+    const observed = observeCommittedDeletion(), deleteThread = checkpointer.deleteThread.bind(checkpointer);
+    let blocked!: () => void;
+    const namespaceBlocked = new Promise<void>(resolve => { blocked = resolve; });
+    checkpointer.deleteThread = async thread => {
+      try { await deleteThread(thread); }
+      catch (error) {
+        if (thread === key && error instanceof ApiError && error.details?.reason === "xiaoze-thread-busy") blocked();
+        throw error;
+      }
+    };
+    let deletion!: ReturnType<typeof start>;
     try {
-      await expect.poll(async () => (await db.query<{ status: string }>("select status from organizations where id='runtime-target'")).rows[0]?.status).toBe("deleting");
+      const submit = await prepareDeletion();
+      deletion = submit();
+      await observed.wait(deletion, namespaceBlocked);
+      expect((await db.query<{ status: string }>("select status from organizations where id='runtime-target'")).rows[0]?.status).toBe("deleting");
       expect((await db.query("select id from users where id='runtime-member'")).rowCount).toBe(1);
       await expect(createXiaozeTurnPersister({ db })({ auth: original, invocation: createUserInvocation(original), requestId: "late-turn", threadId: "late-session", runId: "late-run", pageContext: {}, assistantMessage: { id: "late-message", content: "Must never return" } })).rejects.toBeDefined();
-    } finally { release(); await writer; }
+    } finally { observed.restore(); checkpointer.deleteThread = deleteThread; release(); await writer; if (deletion) await deletion; }
     expect((await deletion).body.item.status).toBe("deleted");
     expect((await checkpointer.inspectStore(key)).entries).toEqual([]);
     expect((await db.query("select id from agent_sessions where id='late-session'")).rowCount).toBe(0);
@@ -173,12 +210,15 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
     store.put = async input => { key = store.planKey!(input); const written = await put(input); entered(); await held; return written; };
     const upload = createProductFeedback(db, store, await getAuthContext(db, "runtime-member"), { pagePath: "/", pageTitle: "Page", feedbackType: "experience", description: "Late feedback",
       attachments: [{ fileName: "screen.png", contentType: "image/png", contentBase64: Buffer.from("held image").toString("base64") }] }).then(value => ({ value }), error => ({ error }));
-    await started; const deletion = start();
+    await started; const observed = observeCommittedDeletion(); let deletion!: ReturnType<typeof start>;
     try {
-      await expect.poll(async () => (await db.query<{ status: string }>("select status from organizations where id='runtime-target'")).rows[0]?.status).toBe("deleting");
+      const submit = await prepareDeletion();
+      deletion = submit();
+      await observed.wait(deletion);
+      expect((await db.query<{ status: string }>("select status from organizations where id='runtime-target'")).rows[0]?.status).toBe("deleting");
       expect(await store.get(key)).toEqual(Buffer.from("held image"));
       expect((await db.query("select id from users where id='runtime-member'")).rowCount).toBe(1);
-    } finally { release(); }
+    } finally { observed.restore(); release(); await upload; if (deletion) await deletion; }
     expect(await upload).toHaveProperty("error");
     expect((await deletion).body.item.status).toBe("deleted"); await expect(store.get(key)).rejects.toBeDefined();
   });

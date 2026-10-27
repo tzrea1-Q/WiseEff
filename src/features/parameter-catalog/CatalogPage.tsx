@@ -1192,8 +1192,6 @@ export function CatalogPage({
               </div>
 
               <div className="confirm-dialog__scroll parameter-catalog__editor-dialog-scroll">
-                {canDeleteDefinition ? <button type="button" className="button subtle"
-                  disabled={editorState.pending} onClick={() => setDeletingDefinition(definition)}>彻底删除此定义</button> : null}
                 {!definitionEditable && readOnlyLabel ? (
                   <p className="parameter-catalog__read-only" role="status">{readOnlyLabel}</p>
                 ) : !definitionEditable && domainState.kind !== "ready" && statusMessage ? (
