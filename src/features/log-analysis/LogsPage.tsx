@@ -589,7 +589,7 @@ export function LogsPage({ state, dispatch, onNavigate, search, logActions, runt
                 key={log.id} type="button" onClick={() => setSelectedLogId(log.id)}>
                 <strong title={log.fileName}>{log.fileName}</strong>
                 <div className="logs-history-detail">
-                  <span>{logStatusLabels[log.status]}</span>
+                  <span className="logs-history-status">{logStatusLabels[log.status]}</span>
                   <time>{formatLogDateTime(log.capturedAt)}</time>
                 </div>
               </button>
