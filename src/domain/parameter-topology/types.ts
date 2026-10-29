@@ -144,6 +144,7 @@ export type CanonicalDtsDefinitionDetail = {
   constraints: unknown;
   documentation: string | null;
   unit: string | null;
+  examples?: readonly unknown[];
   catalogReleaseId: string;
 };
 

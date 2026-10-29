@@ -55,7 +55,7 @@ import type { TrayHydrationDraft } from "@/application/parameters/canonicalDraft
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { buildDtsReloadHandoffPath } from "@/domain/dtsReload/handoff";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
-import { loadCanonicalDtsDefinitionDetail } from "@/application/parameters/loadCanonicalDtsDefinitionDetail";
+import { loadCanonicalDtsDefinitionDetail, loadCurrentCanonicalDtsDefinitionDetail } from "@/application/parameters/loadCanonicalDtsDefinitionDetail";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
 import { downloadJsonWorkbenchCsv } from "@/application/parameters/exportJsonWorkbenchRows";
 import {
@@ -1256,6 +1256,11 @@ export function ApiProjectTopologyWorkspace({
     [canonicalRepository]
   );
 
+  const loadLatestParameterSpec = useCallback((definitionId: string, propertyKey: string) => {
+    if (!canonicalRepository?.getDefinition) return Promise.reject(new Error("canonical definition repository unavailable"));
+    return loadCurrentCanonicalDtsDefinitionDetail(canonicalRepository, { definitionId, propertyKey });
+  }, [canonicalRepository]);
+
   const loadPrimaryDtsSource = useCallback(async (sourceFileName?: string) => {
     const files = await parameterFileRepo.listFiles(projectId);
     const projectFiles = files.filter((file) => file.projectId === projectId && file.enabled && file.format === "dts");
@@ -1478,6 +1483,7 @@ export function ApiProjectTopologyWorkspace({
       onExportBinding={canonicalRepository?.getCanonicalBindingExport ? exportCanonicalBinding : undefined}
       onLoadHistory={repository.listBindingHistory ? loadCanonicalBindingHistory : undefined}
       loadPrimaryJsonSource={loadPrimaryJsonSource}
+      loadLatestParameterSpec={loadLatestParameterSpec}
       onExportRows={(bindings) => downloadJsonWorkbenchCsv(bindings, `json-parameters-${projectId}.csv`)}
       projectName={projectName ?? projectId}
       toolbarActions={activeFormatTab === "json" ? formatSwitcher : undefined}
@@ -1574,6 +1580,7 @@ export function ApiProjectTopologyWorkspace({
             loadBindingHistory={loadBindingHistory}
             loadBindingCompare={loadBindingCompare}
             loadParameterSpec={loadParameterSpec}
+            loadLatestParameterSpec={loadLatestParameterSpec}
             loadPrimaryDtsSource={loadPrimaryDtsSource}
             currentEdits={currentEdits}
             expandAllNodesByDefault

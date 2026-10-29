@@ -99,6 +99,8 @@ export type DtsParameterWorkbenchProps = {
     effectiveRevisionId: string,
     propertyKey: string
   ) => Promise<ParameterSpecDetail | CanonicalDtsDefinitionDetail>;
+  /** Latest catalog revision is read for display only, never for project validation. */
+  loadLatestParameterSpec?: (definitionId: string, propertyKey: string) => Promise<CanonicalDtsDefinitionDetail>;
   /** Optional mature-workbench current-edits tray rendered inside the DTS region. */
   currentEdits?: ReactNode;
   /**
@@ -208,6 +210,7 @@ export function DtsParameterWorkbench({
   loadBindingHistory,
   loadBindingCompare,
   loadParameterSpec,
+  loadLatestParameterSpec,
   currentEdits,
   governanceContent,
   notice,
@@ -540,6 +543,8 @@ export function DtsParameterWorkbench({
   const [specDetailStatus, setSpecDetailStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [specDetailErrorMessage, setSpecDetailErrorMessage] = useState<string | null>(null);
   const [specDetailRetryToken, setSpecDetailRetryToken] = useState(0);
+  const [latestDefinition, setLatestDefinition] = useState<CanonicalDtsDefinitionDetail | null>(null);
+  const [latestStatus, setLatestStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
 
   useEffect(() => {
     if (!selectedBindingId || !loadBindingHistory) {
@@ -602,6 +607,29 @@ export function DtsParameterWorkbench({
       cancelled = true;
     };
   }, [selectedBindingId, loadBindingCompare, compareRetryToken]);
+
+  useEffect(() => {
+    if (!selectedRow?.definitionId || !loadLatestParameterSpec) {
+      setLatestDefinition(null);
+      setLatestStatus("idle");
+      return undefined;
+    }
+    let cancelled = false;
+    setLatestDefinition(null);
+    setLatestStatus("loading");
+    void loadLatestParameterSpec(selectedRow.definitionId, selectedRow.propertyKey)
+      .then((detail) => {
+        if (cancelled) return;
+        if (detail.definitionId !== selectedRow.definitionId || detail.propertyKey !== selectedRow.propertyKey) {
+          setLatestStatus("error");
+          return;
+        }
+        setLatestDefinition(detail);
+        setLatestStatus("ready");
+      })
+      .catch(() => { if (!cancelled) setLatestStatus("error"); });
+    return () => { cancelled = true; };
+  }, [selectedRow?.definitionId, selectedRow?.propertyKey, loadLatestParameterSpec, specDetailRetryToken]);
 
   useEffect(() => {
     if (!selectedRow || !loadParameterSpec) {
@@ -848,6 +876,8 @@ export function DtsParameterWorkbench({
           baseProjectId={projectId ?? "current"}
           baseProjectName={projectName || projectId || "当前项目"}
           specDetail={specDetail}
+          latestDefinition={latestDefinition?.definitionId === (selectedRow.definitionId ?? selectedRow.parameterSpecId) ? latestDefinition : null}
+          latestStatus={latestStatus}
           specDetailStatus={specDetailStatus}
           specDetailErrorMessage={specDetailErrorMessage}
           onRetrySpecDetail={() => setSpecDetailRetryToken((token) => token + 1)}

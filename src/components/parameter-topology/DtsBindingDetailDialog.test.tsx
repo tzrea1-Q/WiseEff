@@ -104,6 +104,27 @@ describe("DtsBindingDetailDialog unified inspector", () => {
     expect(screen.getByRole("textbox", { name: "目标值" })).toHaveValue('"short"');
   });
 
+  it("shows current published meaning while retaining pinned units and constraints", () => {
+    const latestDefinition = {
+      definitionId: "canonical-gpio", propertyKey: "gpio_int", revisionId: "revision-new",
+      revisionNumber: 5, contentDigest: "sha256:new", displayName: "最新名称",
+      documentation: "后台刚刚修改的说明", unit: "mV",
+      valueShape: { kind: "json-schema", schema: { type: "integer" } },
+      constraints: { kind: "none" }, catalogReleaseId: "release-new", examples: ["<3>"]
+    };
+    renderDialog({
+      row: gpioRow({ definitionId: "canonical-gpio", effectiveRevisionId: "revision-old", documentation: "项目旧说明" }),
+      latestStatus: "ready", latestDefinition,
+      specDetailStatus: "ready", specDetail
+    });
+    const dialog = screen.getByRole("dialog", { name: "最新名称 · 参数详情" });
+    expect(within(dialog).getByText("后台刚刚修改的说明")).toBeInTheDocument();
+    expect(within(dialog).queryByText("项目旧说明")).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/项目合同仍固定于 revision-old/)).toBeInTheDocument();
+    expect(within(dialog).getByText("最新目录示例（仅供参考）")).toBeInTheDocument();
+    expect(field(dialog, "约束")).toHaveTextContent("每组 3 项");
+  });
+
   it("prioritizes pinned description and documentation and exposes definition before technical identity", () => {
     renderDialog({ row: gpioRow({ description: "固定版本的展示描述。", documentation: "固定版本的参数说明。" }), specDetail, specDetailStatus: "ready" });
     const dialog = screen.getByRole("dialog", { name: "GPIO 中断 · 参数详情" });

@@ -3,6 +3,7 @@ import { SectionEmpty } from "@/components/common/SectionState";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Boxes, CircleX, Download, FileCode } from "lucide-react";
 import type {
+  CanonicalDtsDefinitionDetail,
   ProjectParameterBinding,
   TopologyDiagnostic
 } from "@/domain/parameter-topology/types";
@@ -74,6 +75,7 @@ export type JsonBindingPanelProps = {
   onExportBinding?: (bindingId: string) => Promise<void>;
   onLoadHistory?: (bindingId: string) => Promise<readonly JsonBindingHistoryEntry[]>;
   loadPrimaryJsonSource?: () => Promise<PrimaryJsonSource>;
+  loadLatestParameterSpec?: (definitionId: string, propertyKey: string) => Promise<CanonicalDtsDefinitionDetail>;
   onExportRows?: (bindings: readonly ProjectParameterBinding[]) => void;
   projectName?: string;
 };
@@ -179,6 +181,7 @@ export function JsonBindingPanel({
   onExportBinding,
   onLoadHistory,
   loadPrimaryJsonSource,
+  loadLatestParameterSpec,
   onExportRows,
   projectName
 }: JsonBindingPanelProps) {
@@ -210,6 +213,32 @@ export function JsonBindingPanel({
     () => (viewingBindingId ? jsonBindings.find((b) => b.id === viewingBindingId) ?? null : null),
     [viewingBindingId, jsonBindings]
   );
+  const [latestDefinition, setLatestDefinition] = useState<CanonicalDtsDefinitionDetail | null>(null);
+  const [latestStatus, setLatestStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  useEffect(() => {
+    if (!activeViewBinding?.definitionId || !loadLatestParameterSpec) {
+      setLatestDefinition(null);
+      setLatestStatus("idle");
+      return undefined;
+    }
+    let cancelled = false;
+    setLatestDefinition(null);
+    setLatestStatus("loading");
+    void loadLatestParameterSpec(activeViewBinding.definitionId, activeViewBinding.propertyKey)
+      .then((detail) => {
+        if (cancelled) return;
+        if (detail.definitionId !== activeViewBinding.definitionId || detail.propertyKey !== activeViewBinding.propertyKey) {
+          setLatestStatus("error");
+          return;
+        }
+        setLatestDefinition(detail);
+        setLatestStatus("ready");
+      })
+      .catch(() => { if (!cancelled) setLatestStatus("error"); });
+    return () => { cancelled = true; };
+  }, [activeViewBinding?.definitionId, activeViewBinding?.propertyKey, loadLatestParameterSpec]);
+  const visibleLatestDefinition = latestStatus === "ready" && latestDefinition?.definitionId === activeViewBinding?.definitionId &&
+    latestDefinition?.propertyKey === activeViewBinding?.propertyKey ? latestDefinition : null;
 
   type Draft = { rawValue: string; reason: string; action: "set" | "delete" };
   const [localDrafts, setLocalDrafts] = useState<Record<string, Draft>>({});
@@ -765,7 +794,7 @@ export function JsonBindingPanel({
           {({ titleId, descriptionId }) => <>
             <header className="json-binding-detail__head">
               <div>
-                <h2 id={titleId}>{activeViewBinding.currentDisplayName || activeViewBinding.displayName || activeViewBinding.propertyKey} 参数详情</h2>
+                <h2 id={titleId}>{visibleLatestDefinition?.displayName || activeViewBinding.currentDisplayName || activeViewBinding.displayName || activeViewBinding.propertyKey} 参数详情</h2>
                 <p id={descriptionId}>{projectName ? `${projectName} · ` : ""}{moduleLabel(activeViewBinding)} · {activeViewBinding.instanceName || "固定配置"}</p>
                 <code>{activeViewBinding.propertyKey}</code>
               </div>
@@ -786,7 +815,13 @@ export function JsonBindingPanel({
                 <div className="json-binding-detail__configuration">
                   <section aria-label="当前配置">
                     <h3>当前生效值</h3>
-                    {activeViewBinding.description || activeViewBinding.documentation ? <p>{activeViewBinding.description || activeViewBinding.documentation}</p> : null}
+                    {latestStatus === "loading" ? <p role="status">正在读取最新目录说明…</p> : null}
+                     {latestStatus === "error" ? <p role="status">最新目录说明暂不可用，当前展示项目固定修订。</p> : null}
+                     {visibleLatestDefinition && visibleLatestDefinition.revisionId !== (activeViewBinding.effectiveRevisionId ?? activeViewBinding.parameterSpecVersionId) ?
+                       <p role="status">当前目录定义 v{visibleLatestDefinition.revisionNumber} · 项目合同仍固定于 {activeViewBinding.effectiveRevisionId ?? activeViewBinding.parameterSpecVersionId}。说明来自最新目录，项目的校验规则与参数值未改变。</p> : null}
+                     {visibleLatestDefinition ? (visibleLatestDefinition.documentation ? <p>{visibleLatestDefinition.documentation}</p> : null)
+                       : activeViewBinding.description || activeViewBinding.documentation ? <p>{activeViewBinding.description || activeViewBinding.documentation}</p> : null}
+                     {visibleLatestDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{JSON.stringify(visibleLatestDefinition.examples, null, 2)}</pre></div> : null}
                     <pre className="json-binding-card__preview-code">{prettyJson(activeViewBinding.rawValue)}</pre>
                     <p className="json-binding-detail__hint">类型：JSON · {activeViewBinding.schemaState === "valid" ? "有效配置" : "待校验"}</p>
                   </section>
