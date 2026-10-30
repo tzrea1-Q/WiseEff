@@ -1,6 +1,13 @@
 import type { AgentToolMetadata } from "../toolMetadata";
 import type { PerceptionToolDescriptor } from "./modelTypes";
 
+export const DEFINITION_IMPORT_FRONTEND_TOOL: PerceptionToolDescriptor = {
+  name: "openDefinitionImport",
+  description: "Send prepared Markdown to the frontend import dialog for a human to review. Does not preview or publish.",
+  schema: { type: "object", properties: { document: { type: "string", minLength: 1, maxLength: 1_048_576 } }, required: ["document"], additionalProperties: false },
+  frontend: true
+};
+
 export { getXiaozeToolLabel } from "../toolMetadata";
 
 /**
@@ -22,7 +29,8 @@ export function formatToolCatalogForSystemPrompt(tools: PerceptionToolDescriptor
     return "No WiseEff tools are currently registered for this session.";
   }
 
-  const readTools = tools.filter((tool) => !tool.requiresApproval);
+  const readTools = tools.filter((tool) => !tool.requiresApproval && !tool.frontend);
+  const frontendTools = tools.filter((tool) => tool.frontend);
   const mutatingTools = tools.filter((tool) => tool.requiresApproval);
 
   const formatEntry = (tool: PerceptionToolDescriptor) =>
@@ -34,6 +42,9 @@ export function formatToolCatalogForSystemPrompt(tools: PerceptionToolDescriptor
     "",
     "### Perception (read-only)",
     ...readTools.map(formatEntry),
+    "",
+    "### Frontend handoff (no server execution)",
+    ...frontendTools.map(formatEntry),
     "",
     "### Action (approval required)",
     ...(mutatingTools.length > 0 ? mutatingTools.map(formatEntry) : ["- (none registered)"]),

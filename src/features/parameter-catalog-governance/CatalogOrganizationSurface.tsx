@@ -12,6 +12,7 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import { CatalogPage } from "@/features/parameter-catalog";
+import { onDefinitionImportHandoff, takeDefinitionImportHandoff } from "@/features/agent/definitionImportHandoff";
 
 import { CatalogHistoryBody } from "../parameter-catalog/CatalogPage";
 import { DefinitionEditorBody } from "./DefinitionEditorBody";
@@ -106,6 +107,9 @@ export function CatalogOrganizationSurface({
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [importDocument, setImportDocument] = useState<string | undefined>();
+  const [handoffEpoch, setHandoffEpoch] = useState(0);
+  useEffect(() => onDefinitionImportHandoff(() => setHandoffEpoch((value) => value + 1)), []);
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
   const [pendingWorkOpen, setPendingWorkOpen] = useState(Boolean(anchor.reviewItemId) || reviewQueueRequested);
@@ -127,6 +131,12 @@ export function CatalogOrganizationSurface({
     ownerState: CatalogDomainState;
   } | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
+  useEffect(() => {
+    if (importOpen || actor === "agent" || !sessionPermissions?.includes("catalog:author") ||
+      !publicationSurfaceAllowsAuthoring(publicationSurface) || !domainState || !organizationId || !catalogReleaseId) return;
+    const document = takeDefinitionImportHandoff(organizationId, currentPersonId);
+    if (document !== undefined) { setImportDocument(document); setImportOpen(true); }
+  }, [handoffEpoch, importOpen, actor, sessionPermissions, publicationSurface, domainState, organizationId, catalogReleaseId, currentPersonId]);
   useEffect(() => { setReviewCount(undefined); }, [organizationId, catalogReleaseId]);
 
   useEffect(() => {
@@ -326,7 +336,7 @@ export function CatalogOrganizationSurface({
         onAnchorChange={onAnchorChange}
         onDomainStateChange={setDomainState}
         onAction={handleAction}
-        onImportDefinitions={actor !== "agent" && sessionPermissions?.includes("catalog:author") && publicationSurfaceAllowsAuthoring(publicationSurface) && domainState && organizationId && catalogReleaseId ? () => setImportOpen(true) : undefined}
+        onImportDefinitions={actor !== "agent" && sessionPermissions?.includes("catalog:author") && publicationSurfaceAllowsAuthoring(publicationSurface) && domainState && organizationId && catalogReleaseId ? () => { setImportDocument(undefined); setImportOpen(true); } : undefined}
         onOpenPendingWork={reviewQueueAllowed ? () => setPendingWorkOpen(true) : undefined}
         onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
         onDefinitionDeleted={() => setCleanupEpoch(value => value + 1)}
@@ -499,7 +509,7 @@ export function CatalogOrganizationSurface({
         />
       ) : null}
       {catalogReleaseId && domainState && organizationId && importOpen ? <DefinitionImportDialog key={`markdown-import-${organizationId}-${currentPersonId}`}
-        open runtimeMode={runtimeMode} actor={actor} sessionPermissions={sessionPermissions} domainState={domainState} catalog={catalog} governance={governance} moduleRegistry={moduleRegistry}
+        open initialDocument={importDocument} runtimeMode={runtimeMode} actor={actor} sessionPermissions={sessionPermissions} domainState={domainState} catalog={catalog} governance={governance} moduleRegistry={moduleRegistry}
         catalogReleaseId={catalogReleaseId} currentPersonId={currentPersonId} organizationId={organizationId}
         publicationSurface={publicationSurface} createIdempotencyKey={createGovernanceIdempotencyKey}
         onCompleted={() => setSurfaceEpoch((value) => value + 1)} onRefreshEvidence={refreshCurrentCatalog}

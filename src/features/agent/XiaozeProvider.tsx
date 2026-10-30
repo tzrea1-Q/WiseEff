@@ -32,6 +32,7 @@ import { XiaozePromptDebugProvider } from "./XiaozePromptDebugContext";
 import { XiaozePromptDebugRequestRegistrar } from "./XiaozePromptDebugRegistrar";
 import { XiaozeThreadController } from "./XiaozeThreadController";
 import { useXiaozeThreads, XiaozeThreadProvider } from "./XiaozeThreadContext";
+import { useToast } from "@/components/common/toast/ToastProvider";
 
 const XIAOZE_POPUP_LABELS = {
   modalHeaderTitle: "小泽",
@@ -55,14 +56,17 @@ export type XiaozeProviderProps = {
   children: ReactNode;
   userId?: string;
   organizationId?: string;
+  homeOrganizationId?: string;
+  permissions?: readonly string[] | null;
   agentUrl?: string;
   enabled?: boolean;
   /** CopilotKit AG-UI inspector; off by default and gated to admin in AppShell. */
   enableInspector?: boolean;
 };
 
-function XiaozeRuntimeTools({ organizationId }: { organizationId?: string }) {
-  useXiaozeFrontendTools(organizationId);
+function XiaozeRuntimeTools({ organizationId, homeOrganizationId, userId, permissions }: Pick<XiaozeProviderProps, "organizationId" | "homeOrganizationId" | "userId" | "permissions">) {
+  const { toast } = useToast();
+  useXiaozeFrontendTools(organizationId, permissions, userId, (message) => toast({ tone: "info", message }), homeOrganizationId);
   return <XiaozeApprovalCard />;
 }
 
@@ -99,12 +103,14 @@ export function XiaozeProactiveInsights({ enabled, organizationId }: { enabled: 
   );
 }
 
-type EnabledXiaozeProviderProps = Pick<XiaozeProviderProps, "children" | "agentUrl" | "enableInspector" | "userId" | "organizationId">;
+type EnabledXiaozeProviderProps = Pick<XiaozeProviderProps, "children" | "agentUrl" | "enableInspector" | "userId" | "organizationId" | "homeOrganizationId" | "permissions">;
 
 function EnabledXiaozeProvider({
   children,
   userId,
   organizationId,
+  homeOrganizationId,
+  permissions,
   agentUrl,
   enableInspector = false
 }: EnabledXiaozeProviderProps) {
@@ -120,7 +126,7 @@ function EnabledXiaozeProvider({
               <XiaozeTurnReplyProvider>
                 <XiaozeTurnStateProvider>
                   {children}
-                  <XiaozeRuntimeTools organizationId={organizationId} />
+                  <XiaozeRuntimeTools organizationId={organizationId} homeOrganizationId={homeOrganizationId} userId={userId} permissions={permissions} />
                   <XiaozeThreadController />
                   <XiaozePromptDebugRequestRegistrar />
                   <XiaozePromptDebugCapture enabled={xiaozePromptDebugEnabled} />
@@ -139,13 +145,13 @@ function EnabledXiaozeProvider({
   );
 }
 
-export function XiaozeProvider({ enabled = true, children, agentUrl, enableInspector = false, userId, organizationId }: XiaozeProviderProps) {
+export function XiaozeProvider({ enabled = true, children, agentUrl, enableInspector = false, userId, organizationId, homeOrganizationId, permissions }: XiaozeProviderProps) {
   if (!enabled) {
     return children;
   }
 
   return (
-    <EnabledXiaozeProvider key={`${userId ?? "anonymous"}:${organizationId ?? "home"}`} agentUrl={agentUrl} enableInspector={enableInspector} userId={userId} organizationId={organizationId}>
+    <EnabledXiaozeProvider key={`${userId ?? "anonymous"}:${organizationId ?? "home"}`} agentUrl={agentUrl} enableInspector={enableInspector} userId={userId} organizationId={organizationId} homeOrganizationId={homeOrganizationId} permissions={permissions}>
       {children}
     </EnabledXiaozeProvider>
   );

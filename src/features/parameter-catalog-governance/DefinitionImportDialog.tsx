@@ -29,6 +29,7 @@ import { DEFINITION_IMPORT_TEMPLATE } from "./definitionImportTemplate";
 
 export type DefinitionImportDialogProps = {
   open: boolean;
+  initialDocument?: string;
   runtimeMode?: WiseEffRuntimeMode;
   actor: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
@@ -91,7 +92,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   useEffect(() => {
     if (!open) { flow.stopPolling(); return undefined; }
     flow.restore(true, () => null);
-    setDocument("");
+    setDocument(props.initialDocument ?? "");
     setFileName("粘贴.md");
     setUploadedFileName(null);
     setEntries(null);

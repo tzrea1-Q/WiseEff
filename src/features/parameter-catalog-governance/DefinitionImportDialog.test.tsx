@@ -20,12 +20,13 @@ function renderImport(options: {
   outcome?: "active" | "needs-rebase";
   runtimeMode?: "api" | "mock";
   modules?: ParameterModule[];
+  initialDocument?: string;
   prepare?: (ports: ReturnType<typeof createMockCatalogPorts>) => void;
 } = {}) {
   const ports = createMockCatalogPorts({ publicationOutcome: options.outcome ?? "active" });
   options.prepare?.(ports);
   const completed = vi.fn();
-  render(<DefinitionImportDialog open runtimeMode={options.runtimeMode ?? "api"}
+  render(<DefinitionImportDialog open initialDocument={options.initialDocument} runtimeMode={options.runtimeMode ?? "api"}
     actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
     domainState={deriveCatalogDomainState({ document: readyCatalogDocument })} catalog={ports.catalog}
     governance={ports.governance}
@@ -39,6 +40,20 @@ function renderImport(options: {
     createIdempotencyKey={() => "pub-key"} onOpenChange={vi.fn()} onCompleted={completed} />);
   return { ports, completed };
 }
+
+it("opens a prepared document as editable pasted text without previewing or publishing", async () => {
+  const preview = vi.fn();
+  const { ports } = renderImport({ initialDocument: "# Driver `acme,power`\n", prepare: (ports) => {
+    ports.catalog.previewMarkdownImport = preview;
+  } });
+  const publish = vi.spyOn(ports.catalog, "publishPublicationCandidate");
+  expect(screen.getByLabelText("Markdown 文档")).toHaveValue("# Driver `acme,power`\n");
+  expect(preview).not.toHaveBeenCalled();
+  expect(publish).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "解析并预览" })).toBeEnabled();
+  await userEvent.setup().type(screen.getByLabelText("Markdown 文档"), "说明");
+  expect(screen.getByLabelText("Markdown 文档")).toHaveValue("# Driver `acme,power`\n说明");
+});
 
 function module(id: string, name: string, parentId: string | null, kind: ParameterModule["kind"]): ParameterModule {
   return { id, name, parentId, kind, sortOrder: 0, description: "", scope: "", importance: "medium", origin: "curated",
