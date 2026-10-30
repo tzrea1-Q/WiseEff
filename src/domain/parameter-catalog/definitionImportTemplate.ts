@@ -56,7 +56,7 @@ export const DEFINITION_IMPORT_TEMPLATE = `# Driver \`vendor,existing-driver\`
 数组和 mixed 的示例使用 JSON；每行一个示例，最多 8 行。数组的项数限制作用于最外层，数值边界作用于最内层的数值类型，最多嵌套 4 层。字段值中的竖线请写为 \\|。
 
 # Driver \`vendor,new-driver\`
-nature: physical-device · cardinality: multiple
+nature: physical-device · cardinality: multiple · 业务分类：电源 / 充电管理 · 模块名称：充电芯片
 
 ## \`new-property\` 新主体参数
 | 字段 | 值 |

@@ -88745,6 +88745,45 @@
                   "noChange": {
                     "type": "boolean"
                   },
+                  "placementHints": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "string"
+                        },
+                        "subjectId": {
+                          "type": "string"
+                        },
+                        "categoryPath": {
+                          "type": "string"
+                        },
+                        "moduleName": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "number"
+                        },
+                        "warnings": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "selector",
+                        "line",
+                        "warnings"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "entries": {
                     "type": "array",
                     "items": {
@@ -88842,6 +88881,7 @@
                 "required": [
                   "candidate",
                   "noChange",
+                  "placementHints",
                   "entries",
                   "source"
                 ],
@@ -88940,6 +88980,45 @@
               "noChange": {
                 "type": "boolean"
               },
+              "placementHints": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    },
+                    "selector": {
+                      "type": "string"
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "categoryPath": {
+                      "type": "string"
+                    },
+                    "moduleName": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "number"
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "selector",
+                    "line",
+                    "warnings"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "entries": {
                 "type": "array",
                 "items": {
@@ -89037,6 +89116,7 @@
             "required": [
               "candidate",
               "noChange",
+              "placementHints",
               "entries",
               "source"
             ],

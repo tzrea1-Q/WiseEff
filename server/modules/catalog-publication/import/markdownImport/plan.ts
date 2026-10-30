@@ -28,10 +28,11 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
   if (definitionCount > MAX_IMPORT_DEFINITIONS) {
     return { entries: [documentError({ subjectHeading: "", definitionHeading: "", field: "文档", line: 1,
       message: `最多导入 ${MAX_IMPORT_DEFINITIONS} 条定义（本文档 ${definitionCount} 条），请按主体拆分文档。` })],
-    changeSet: null, noChange: false, source };
+    changeSet: null, noChange: false, source, placementHints: [] };
   }
   const entries: ImportEntry[] = [];
   const changes: CatalogChange[] = [];
+  const placementHints: { kind: string; selector: string; subjectId?: string; categoryPath?: string; moduleName?: string; line: number }[] = [];
   const seen = new Set<string>();
   const newSubjects = new Map<string, ReturnType<typeof resolveSubject>>();
   for (const issue of syntax.diagnostics.filter((item) => item.subjectLine === undefined)) {
@@ -39,6 +40,10 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
   }
   for (const section of syntax.subjects) {
     const resolved = resolveSubject(section, snapshot);
+    if (section.kind && resolved.hintLine !== undefined) placementHints.push({ kind: section.kind, selector: section.selector,
+      ...(resolved.subject ? { subjectId: resolved.subject.content.id } : {}),
+      ...(resolved.categoryPath ? { categoryPath: resolved.categoryPath } : {}),
+      ...(resolved.moduleName ? { moduleName: resolved.moduleName } : {}), line: resolved.hintLine });
     if (!resolved.subject && section.kind) {
       const previous = newSubjects.get(section.selector);
       if (previous && (previous.section.kind !== section.kind || previous.nature !== resolved.nature
@@ -97,5 +102,5 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
   for (const entry of entries) entry.diagnostics.sort((a, b) => a.line - b.line);
   const ready = entries.every((entry) => entry.outcome === "create" || entry.outcome === "skip");
   return { entries, changeSet: ready && changes.length > 0 ? changes : null,
-    noChange: entries.length > 0 && entries.every((entry) => entry.outcome === "skip"), source };
+    noChange: entries.length > 0 && entries.every((entry) => entry.outcome === "skip"), source, placementHints };
 }

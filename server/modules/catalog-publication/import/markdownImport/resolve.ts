@@ -14,6 +14,9 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
   section: Subject;
   nature?: "physical-device" | "logical-service";
   cardinality?: "multiple" | "singleton-per-project";
+  categoryPath?: string;
+  moduleName?: string;
+  hintLine?: number;
 } {
   const diagnostics: ImportDiagnostic[] = [];
   const selectorKind = section.kind ? SELECTOR_KIND[section.kind] : undefined;
@@ -41,12 +44,27 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
   }
   let nature: "physical-device" | "logical-service" | undefined;
   let cardinality: "multiple" | "singleton-per-project" | undefined;
+  let categoryPath: string | undefined;
+  let moduleName: string | undefined;
+  let hintLine: number | undefined;
   for (const metadata of section.metadataLines) {
-    const match = /^nature: (physical-device|logical-service)\s*·\s*cardinality: (multiple|singleton-per-project)\s*$/u
-      .exec(metadata.text);
-    if (!match || section.kind !== "driver" || nature !== undefined) {
+    const parts = metadata.text.split(/\s*·\s*/u);
+    const facts = parts.filter((part) => !/^(业务分类|模块名称)：/u.test(part));
+    const match = facts.length ? /^nature: (physical-device|logical-service)\s*·\s*cardinality: (multiple|singleton-per-project)$/u.exec(facts.join(" · ")) : null;
+    let invalid = facts.length > 0 && (!match || section.kind !== "driver" || nature !== undefined);
+    for (const part of parts.filter((item) => /^(业务分类|模块名称)：/u.test(item))) {
+      const value = part.slice(part.indexOf("：") + 1).trim();
+      if (part.startsWith("业务分类：")) {
+        if (categoryPath !== undefined || !value || value.split(" / ").some((segment) => !segment.trim() || segment.includes("/"))) invalid = true;
+        else categoryPath = value;
+      } else if (moduleName !== undefined || !value) invalid = true;
+      else moduleName = value;
+      hintLine = metadata.line;
+    }
+    if (!metadata.text.trim() || (!facts.length && hintLine === undefined)) invalid = true;
+    if (invalid) {
       diagnostics.push(diagnostic(section, null, "主体", "主体信息不符合模板。", metadata.line));
-    } else {
+    } else if (match) {
       nature = match[1] as "physical-device" | "logical-service";
       cardinality = match[2] as "multiple" | "singleton-per-project";
       if (subject?.content.kind === "driver" && (!("nature" in subject.content.subtype)
@@ -58,7 +76,7 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
   if (section.kind === "driver" && !subject && !nature) {
     diagnostics.push(diagnostic(section, null, "主体", "新建 Driver 必须填写 nature 和 cardinality。", section.line));
   }
-  return { subject, diagnostics, section, nature, cardinality };
+  return { subject, diagnostics, section, nature, cardinality, categoryPath, moduleName, hintLine };
 }
 
 /** Convert this subject's accepted definitions to existing publication operations. */

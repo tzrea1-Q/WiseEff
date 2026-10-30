@@ -4,12 +4,12 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import {
   CATALOG_AUTHOR_PERSON_ID, CATALOG_ORGANIZATION_ID, CATALOG_RELEASE_ID, CATALOG_SUBJECT_ID,
-  catalogPublicationCandidate, catalogPublicationJob, catalogRegistration, readyCatalogDocument, registeredSubject, unregisteredSubject,
+  catalogPublicationCandidate, catalogPublicationJob, readyCatalogDocument, registeredSubject, unregisteredSubject,
 } from "@/application/parameter-catalog/fixtures";
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
-import { selectControlOption } from "@/test/selectControlOption";
+import { takeBatchRegistrationHandoff } from "./batchRegistrationHandoff";
 import { PUBLICATION_JOB_STORAGE_KEY } from "./publicationJobStorage";
 import { emptyPublicationDraft } from "./publicationState";
 import { DefinitionImportDialog } from "./DefinitionImportDialog";
@@ -60,7 +60,7 @@ function module(id: string, name: string, parentId: string | null, kind: Paramet
     sourceKey: null, effectiveImportance: "medium", parameterCount: 0, definitionCount: 0 };
 }
 
-it("lists unregistered new subjects after activation and keeps publication success on registration failure", async () => {
+it("hands unregistered new subjects to batch registration without registering them", async () => {
   const { ports } = renderImport({ prepare: (ports) => {
     ports.catalog.previewMarkdownImport = async (_, context) => {
       const response = await ports.catalog.createPublicationCandidate({ changeSet: [{ op: "create-subject-with-definitions",
@@ -68,12 +68,12 @@ it("lists unregistered new subjects after activation and keeps publication succe
         nature: "physical-device", cardinality: "multiple", definitions: [{ propertyKey: "one", content: {
           displayName: "参数", documentation: "", valueSchema: { type: "integer" },
         } }] }] }, context);
-      return { item: { candidate: response.item, noChange: false, source: { fileName: "d.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [] } };
+      return { item: { candidate: response.item, noChange: false, source: { fileName: "d.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [], placementHints: [] } };
     };
     vi.spyOn(ports.catalog, "getSubject").mockImplementation(async (id) => ({ item: {
       ...unregisteredSubject, id, canonicalName: "acme,new", registration: { status: "unregistered" },
     } }));
-    vi.spyOn(ports.governance, "createRegistration").mockRejectedValueOnce(new Error("registration failed"));
+    vi.spyOn(ports.governance, "createRegistration");
   } });
   const user = userEvent.setup();
   await user.type(screen.getByLabelText("Markdown 文档"), "文档内容");
@@ -81,30 +81,12 @@ it("lists unregistered new subjects after activation and keeps publication succe
   expect(await screen.findByLabelText("发布预览")).toHaveTextContent("风险高");
   await user.click(screen.getByRole("button", { name: "发布到目录" }));
   await confirm("确认发布");
-  const register = await screen.findByRole("button", { name: "登记 acme,new" });
-  expect(register).toHaveTextContent(/^登记$/);
-  await user.click(register);
-  const dialog = await screen.findByRole("dialog", { name: "登记主体" });
+  await user.click(await screen.findByRole("button", { name: "前往批量登记" }));
   expect(ports.governance.createRegistration).not.toHaveBeenCalled();
-  expect(within(dialog).getByText("acme,new")).toBeVisible();
-  expect(within(dialog).getByRole("button", { name: "继续确认" })).toBeDisabled();
-  await selectControlOption(within(dialog).getByRole("combobox", { name: "目标模块" }), "target");
-  await user.click(within(dialog).getByRole("button", { name: "继续确认" }));
-  await confirm("确认登记");
-  expect(await within(dialog).findByRole("alert")).toBeVisible();
-  expect(screen.getByRole("status", { name: "发布任务状态" })).toHaveTextContent("生效");
-  expect(ports.governance.createRegistration).toHaveBeenCalledTimes(1);
-  expect(ports.governance.createRegistration).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID,
-    expect.objectContaining({ subjectId: "csub_new_1", destinationModuleId: "target" }), expect.anything());
-  await user.click(within(dialog).getByRole("button", { name: "继续确认" }));
-  await confirm("确认登记");
-  await waitFor(() => expect(screen.queryByRole("button", { name: "登记 acme,new" })).not.toBeInTheDocument());
-  expect(screen.getByText("已登记 acme,new")).toBeVisible();
-  expect(ports.governance.createRegistration).toHaveBeenCalledTimes(2);
-  expect(vi.mocked(ports.governance.createRegistration).mock.calls.map((call) => call[2].idempotencyKey)).toEqual(["pub-key", "pub-key"]);
+  expect(takeBatchRegistrationHandoff(CATALOG_ORGANIZATION_ID, CATALOG_AUTHOR_PERSON_ID)).toMatchObject({ subjectIds: ["csub_new_1"] });
 });
 
-it("offers module creation when all matching modules are occupied", async () => {
+it("offers batch registration after restoring an activated import", async () => {
   window.localStorage.setItem(PUBLICATION_JOB_STORAGE_KEY, JSON.stringify({
     jobId: catalogPublicationJob.id, candidateId: catalogPublicationJob.candidateId,
     catalogReleaseId: CATALOG_RELEASE_ID, userId: CATALOG_AUTHOR_PERSON_ID,
@@ -117,25 +99,14 @@ it("offers module creation when all matching modules are occupied", async () => 
     vi.spyOn(ports.catalog, "getPublicationCandidate").mockResolvedValue({ item: { ...catalogPublicationCandidate,
       impactSummary: { addedDefinitionCount: 1, changedDefinitionCount: 0, addedSubjectCount: 1, addedSubjectIds: ["new"] } } });
     vi.spyOn(ports.catalog, "getSubject").mockResolvedValue({ item: { ...unregisteredSubject, id: "new", canonicalName: "acme,new" } });
-    const list = ports.governance.listRegistrations;
-    vi.spyOn(ports.governance, "listRegistrations").mockImplementation(async (org, query) => ({
-      ...await list(org, query), items: [{ ...catalogRegistration, placement: { ...catalogRegistration.placement, moduleId: "target" } }],
-    }));
     vi.spyOn(ports.governance, "createRegistration");
   } });
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "登记 acme,new" }));
-  const dialog = await screen.findByRole("dialog", { name: "登记主体" });
-  await selectControlOption(within(dialog).getByRole("combobox", { name: "新模块业务分类" }), "business");
-  await user.type(within(dialog).getByLabelText("模块名称"), "新充电器");
-  await user.click(within(dialog).getByRole("button", { name: "继续确认" }));
-  await confirm("确认登记");
-  await waitFor(() => expect(screen.queryByRole("button", { name: "登记 acme,new" })).not.toBeInTheDocument());
-  expect(ports.governance.createRegistration).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID,
-    expect.objectContaining({ subjectId: "new", newDestination: { parentModuleId: "business", name: "新充电器" } }), expect.anything());
+  await userEvent.click(await screen.findByRole("button", { name: "前往批量登记" }));
+  expect(takeBatchRegistrationHandoff(CATALOG_ORGANIZATION_ID, CATALOG_AUTHOR_PERSON_ID)).toMatchObject({ subjectIds: ["new"] });
+  expect(ports.governance.createRegistration).not.toHaveBeenCalled();
 });
 
-it("keeps publication active and refuses a blind registration when module inventory fails", async () => {
+it("keeps publication active and reports a subject lookup failure", async () => {
   window.localStorage.setItem(PUBLICATION_JOB_STORAGE_KEY, JSON.stringify({
     jobId: catalogPublicationJob.id, candidateId: catalogPublicationJob.candidateId,
     catalogReleaseId: CATALOG_RELEASE_ID, userId: CATALOG_AUTHOR_PERSON_ID,
@@ -147,13 +118,11 @@ it("keeps publication active and refuses a blind registration when module invent
     } });
     vi.spyOn(ports.catalog, "getPublicationCandidate").mockResolvedValue({ item: { ...catalogPublicationCandidate,
       impactSummary: { addedDefinitionCount: 1, changedDefinitionCount: 0, addedSubjectCount: 1, addedSubjectIds: ["new"] } } });
-    vi.spyOn(ports.catalog, "getSubject").mockResolvedValue({ item: { ...unregisteredSubject, id: "new", canonicalName: "acme,new" } });
-    vi.spyOn(ports.governance, "listRegistrations").mockRejectedValue(new Error("offline"));
+    vi.spyOn(ports.catalog, "getSubject").mockRejectedValue(new Error("offline"));
     vi.spyOn(ports.governance, "createRegistration");
   } });
-  await userEvent.click(await screen.findByRole("button", { name: "登记 acme,new" }));
-  expect(await screen.findByText(/无法加载登记目标/)).toHaveTextContent("发布仍已生效");
-  expect(screen.queryByRole("dialog", { name: "登记主体" })).not.toBeInTheDocument();
+  expect(await screen.findByText(/新主体的登记状态加载失败/)).toHaveTextContent("发布仍已生效");
+  expect(screen.queryByRole("button", { name: "前往批量登记" })).not.toBeInTheDocument();
   expect(ports.governance.createRegistration).not.toHaveBeenCalled();
 });
 
@@ -178,7 +147,7 @@ it("previews pasted text, publishes and tracks the existing publication job", as
         op: "create-definition", subjectId: CATALOG_SUBJECT_ID, propertyKey: "batch_one",
         content: { displayName: "电流", documentation: "", valueSchema: { type: "integer" } },
       }] }, { catalogReleaseId: CATALOG_RELEASE_ID });
-      return { item: { candidate: response.item, noChange: false, source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" },
+      return { item: { candidate: response.item, noChange: false, placementHints: [], source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" },
         entries: [{ subjectHeading: "# Driver `acme,power`", definitionHeading: "## `batch_one` 电流",
           selector: "acme,power", propertyKey: "batch_one", displayName: "电流",
           outcome: "create", diagnostics: [] }] } };
@@ -207,7 +176,7 @@ it("previews pasted text, publishes and tracks the existing publication job", as
 });
 
 it("uploads Markdown and shows the line of each diagnostic", async () => {
-  const preview = vi.fn(async () => ({ item: { candidate: null, noChange: false,
+  const preview = vi.fn(async () => ({ item: { candidate: null, noChange: false, placementHints: [],
     source: { fileName: "bad.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [{
       subjectHeading: "# Driver `acme,power`", definitionHeading: "## `bad` 错误", outcome: "error" as const,
       selector: "acme,power", propertyKey: "bad", displayName: "错误参数",
@@ -238,7 +207,7 @@ it("uploads Markdown and shows the line of each diagnostic", async () => {
 
 it("summarizes outcomes and filters errors and conflicts without losing the counts", async () => {
   renderImport({ prepare: (ports) => {
-    ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null, noChange: false,
+    ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null, noChange: false, placementHints: [],
       source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" },
       entries: (["create", "error", "skip", "conflict"] as const).map((outcome) => ({
         subjectHeading: "# Driver `acme,power`", definitionHeading: `## \`${outcome}\` 名称`,
@@ -260,7 +229,7 @@ it("summarizes outcomes and filters errors and conflicts without losing the coun
 
 it("omits zero counts from a mixed create and skip summary", async () => {
   renderImport({ prepare: (ports) => {
-    ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null, noChange: false,
+    ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null, noChange: false, placementHints: [],
       source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" },
       entries: (["create", "skip", "skip", "skip"] as const).map((outcome, index) => ({
         subjectHeading: "# Driver `acme,power`", definitionHeading: `## \`key${index}\` 名称`,
@@ -282,7 +251,7 @@ it("keeps the document on rebase and invalidates a preview after editing", async
         op: "create-definition", subjectId: CATALOG_SUBJECT_ID, propertyKey: `batch_${requests.length}`,
         content: { displayName: "电流", documentation: "", valueSchema: { type: "integer" } },
       }] }, context);
-      return { item: { candidate: response.item, noChange: false, source: { fileName: markdownImport.fileName,
+      return { item: { candidate: response.item, noChange: false, placementHints: [], source: { fileName: markdownImport.fileName,
         sha256: "sha256:test", parserVersion: "v1" }, entries: [] } };
     };
   } });
@@ -298,9 +267,10 @@ it("keeps the document on rebase and invalidates a preview after editing", async
   expect(screen.getByRole("button", { name: "解析并预览" })).toBeEnabled();
 });
 
-it("shows a no-change result without offering publication", async () => {
+it("shows non-blocking placement warnings alongside a no-change result", async () => {
   renderImport({ prepare: (ports) => {
     ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null, noChange: true,
+      placementHints: [{ kind: "driver", selector: "acme,power", categoryPath: "不存在", line: 2, warnings: ["业务分类不存在。"] }],
       source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [{
         subjectHeading: "# Driver `acme,power`", definitionHeading: "## `key` 参数",
         selector: "acme,power", propertyKey: "key", displayName: "参数",
@@ -311,6 +281,7 @@ it("shows a no-change result without offering publication", async () => {
   await user.type(screen.getByLabelText("Markdown 文档"), "文档内容");
   await user.click(screen.getByRole("button", { name: "解析并预览" }));
   expect(await screen.findByText("没有需要发布的变更。")).toBeVisible();
+  expect(screen.getByText("acme,power · 第 2 行：业务分类不存在。")).toBeVisible();
   expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
 });
 
@@ -337,6 +308,6 @@ it("restores a stored import job and tracks activation without storing the docum
   await waitFor(() => expect(completed).toHaveBeenCalledTimes(1));
   expect(screen.getByRole("status", { name: "发布任务状态" })).toHaveTextContent("生效");
   expect(window.localStorage.getItem(PUBLICATION_JOB_STORAGE_KEY)).toBeNull();
-  expect(await screen.findByRole("button", { name: "登记 acme,new" })).toBeVisible();
+  expect(await screen.findByRole("button", { name: "前往批量登记" })).toBeVisible();
   expect(screen.queryByText("acme,registered")).not.toBeInTheDocument();
 });

@@ -1490,6 +1490,8 @@ export const catalogPublicationCandidateResponseSchema = itemEnvelopeSchema(
 export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObject({
   candidate: catalogPublicationCandidateDtoSchema.nullable(),
   noChange: z.boolean(),
+  placementHints: z.array(catalogObject({ kind: z.string(), selector: z.string(), subjectId: z.string().optional(),
+    categoryPath: z.string().optional(), moduleName: z.string().optional(), line: z.number().int().positive(), warnings: z.array(z.string()) })),
   entries: z.array(catalogObject({
     subjectHeading: z.string(), definitionHeading: z.string(),
     selector: z.string(), propertyKey: z.string(), displayName: z.string(),

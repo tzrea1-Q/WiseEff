@@ -235,6 +235,7 @@ export function bindCatalogPublicationCommands(input: {
         return { ok: false, error: { kind: "reason", reason: "candidate-stale" } };
       }
       let plan: ReturnType<typeof planMarkdownImport> | undefined;
+      let placementHints: (ReturnType<typeof planMarkdownImport>["placementHints"][number] & { warnings: string[] })[] = [];
       if (command.markdownImport) {
         const artifact = await getArtifactByDigest(db, pointer.current.digest);
         if (!artifact.ok) return { ok: false, error: { kind: "reason", reason: "artifact-missing" } };
@@ -242,7 +243,45 @@ export function bindCatalogPublicationCommands(input: {
         const snapshot = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
         plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot);
-        if (!plan.changeSet) return { ok: true, value: { candidate: null, noChange: plan.noChange, entries: plan.entries, source: plan.source } };
+        if (plan.placementHints.length && pool) {
+          const [modules, registrations] = await Promise.all([
+            pool.query<{ id: string; name: string; parentId: string | null; kind: string }>(
+              `select id, name, parent_id as "parentId", kind from public.parameter_modules where organization_id = $1`, [command.organizationId]),
+            pool.query<{ subjectId: string; moduleId: string }>(
+              `select registration.subject_id as "subjectId", placement.module_id as "moduleId"
+               from parameter_catalog.organization_subject_registrations registration
+               join parameter_catalog.subject_placements placement on placement.id = registration.current_placement_id
+               where registration.organization_id = $1`, [command.organizationId]),
+          ]);
+          const pathFor = (id: string) => {
+            const parts: string[] = [];
+            const seen = new Set<string>();
+            let current: string | null = id;
+            while (current && !seen.has(current)) {
+              seen.add(current);
+              const module = modules.rows.find((item) => item.id === current);
+              if (!module) break;
+              parts.unshift(module.name);
+              current = module.parentId;
+            }
+            return parts.join(" / ");
+          };
+          placementHints = plan.placementHints.map((hint) => {
+            const warnings: string[] = [];
+            const registered = registrations.rows.find((item) => item.subjectId === hint.subjectId);
+            const subject = snapshot.documents.find((item) => item.kind === "subject" && item.content.id === hint.subjectId);
+            const canonicalName = subject?.kind === "subject" ? subject.content.canonicalKey : `${hint.kind}:${hint.selector}`;
+            if (registered) warnings.push(`已登记于 ${pathFor(registered.moduleId)}，未改动`);
+            else if (hint.categoryPath) {
+              const parents = modules.rows.filter((item) => (item.kind === "business" || (item.kind === "unclassified" && hint.categoryPath === "未分类")) && pathFor(item.id) === hint.categoryPath);
+              if (!parents.length) warnings.push("业务分类不存在。");
+              else if (parents.length > 1) warnings.push("业务分类路径不唯一。");
+              else if (modules.rows.some((item) => item.parentId === parents[0]!.id && item.name === (hint.moduleName ?? canonicalName))) warnings.push("同一分类下已有同名模块。");
+            }
+            return { ...hint, warnings };
+          });
+        }
+        if (!plan.changeSet) return { ok: true, value: { candidate: null, noChange: plan.noChange, entries: plan.entries, source: plan.source, placementHints } };
       }
       const parsed = plan?.changeSet ?? parsePublicationChangeSet(command.changeSet);
       if ("error" in parsed) return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
@@ -268,7 +307,7 @@ export function bindCatalogPublicationCommands(input: {
         capabilityContract: capabilityOf(previewed.value.candidate),
         authorOrganizationId: command.organizationId,
       };
-      return { ok: true, value: plan ? { candidate, noChange: plan.noChange, entries: plan.entries, source: plan.source } : candidate };
+      return { ok: true, value: plan ? { candidate, noChange: plan.noChange, entries: plan.entries, source: plan.source, placementHints } : candidate };
     },
     async getCandidate(query) {
       let candidateId: ReturnType<typeof CatalogCandidateId>;
