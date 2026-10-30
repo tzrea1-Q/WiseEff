@@ -129,7 +129,7 @@ export type CatalogPublicationPorts = {
   readonly currentRelease: () => Promise<CatalogReleasePin | null>;
   readonly previewCandidate: (
     command: PreviewPublicationCommand,
-  ) => Promise<{ ok: true; value: PublicationCandidateView | { candidate: PublicationCandidateView | null; entries: ReturnType<typeof planMarkdownImport>["entries"]; source: { fileName: string; sha256: string; parserVersion: string } } } | { ok: false; error: CatalogPublicationFailure }>;
+  ) => Promise<{ ok: true; value: PublicationCandidateView | { candidate: PublicationCandidateView | null; noChange: boolean; entries: ReturnType<typeof planMarkdownImport>["entries"]; source: { fileName: string; sha256: string; parserVersion: string } } } | { ok: false; error: CatalogPublicationFailure }>;
   readonly getCandidate: (input: {
     readonly candidateId: string;
     readonly organizationId: string;

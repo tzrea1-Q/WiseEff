@@ -51,6 +51,51 @@ describe("Definition import planner", () => {
     expect(planMarkdownImport(section("a") + section("a").replace("`acme,new`", "`acme,new`  "), "d.md", snapshot).changeSet).toBeNull();
     expect(planMarkdownImport(section("a").replace("Driver `acme,new`", "NodeType `acme,power`"), "d.md", snapshot).changeSet).toBeNull();
   });
+  it("skips identical heads and only creates new entries in a repeated document", () => {
+    const existing = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n| 单位 | mA |\n| 最小值 | 0 |\n\nMaximum accepted input current.";
+    const snapshot = firstAcmePredecessor().first;
+    const allSkip = planMarkdownImport(existing, "d.md", snapshot);
+    expect(allSkip.entries.map((entry) => entry.outcome)).toEqual(["skip"]);
+    expect(allSkip.changeSet).toBeNull();
+    expect(allSkip.noChange).toBe(true);
+    const mixed = planMarkdownImport(`${existing}\n${document.slice(document.indexOf("## `import-two`"))}`, "d.md", snapshot);
+    expect(mixed.entries.map((entry) => entry.outcome)).toEqual(["skip", "create"]);
+    expect(mixed.changeSet).toHaveLength(1);
+    expect(mixed.changeSet?.[0]).toMatchObject({ propertyKey: "import-two" });
+  });
+
+  it("reports changed and retired heads as conflicts alongside located errors", () => {
+    const snapshot = structuredClone(firstAcmePredecessor().first);
+    const existing = snapshot.documents.find((item) => item.kind === "definition" && item.content.propertyKey === "iin_max");
+    if (!existing || existing.kind !== "definition") throw new Error("fixture missing");
+    const changed = "# Driver `acme,power`\n## `iin_max` Changed\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n";
+    const input = `${changed}\n## \`invalid\` 参数\n| 字段 | 值 |\n| --- | --- |\n| 类型 | unknown |\n| 默认值 | 1 |\n${changed.slice(changed.indexOf("##"))}`;
+    const plan = planMarkdownImport(input, "d.md", snapshot);
+    expect(plan.entries.map((entry) => entry.outcome)).toEqual(["conflict", "error", "error"]);
+    expect(plan.entries[0]?.diagnostics[0]).toMatchObject({ subjectHeading: "# Driver `acme,power`", definitionHeading: "## `iin_max` Changed", field: "属性键", line: 2 });
+    expect(plan.entries[1]?.diagnostics.map((item) => item.field)).toEqual(expect.arrayContaining(["类型", "默认值"]));
+    expect(plan.entries[2]?.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ field: "属性键", message: expect.stringContaining("重复") })]));
+    expect(plan.entries[2]?.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining("不同内容") })]));
+    expect(plan.changeSet).toBeNull();
+    expect(plan.noChange).toBe(false);
+    const retiredSnapshot = { ...snapshot, documents: snapshot.documents.map((item) => item === existing
+      ? { ...existing, content: { ...existing.content, revision: { ...existing.content.revision, lifecycle: "retired" as const } } } : item) };
+    const retired = planMarkdownImport(changed, "d.md", retiredSnapshot);
+    expect(retired.entries[0]).toMatchObject({ outcome: "conflict", diagnostics: [expect.objectContaining({ message: expect.stringContaining("恢复") })] });
+  });
+
+  it.each([
+    { description: "other" }, { unit: "V" }, { examples: [3] },
+    { valueSchema: { type: "integer", minimum: 1 } }, { documentation: "Other" }, { displayName: "Other" },
+    { lifecycle: "deprecated" as const },
+  ])("treats every changed head content or non-active lifecycle as conflict: %j", (changed) => {
+    const snapshot = firstAcmePredecessor().first;
+    const modified = { ...snapshot, documents: snapshot.documents.map((item) => item.kind === "definition" && item.content.propertyKey === "iin_max"
+      ? { ...item, content: { ...item.content, revision: { ...item.content.revision, ...changed } } } : item) };
+    const input = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n| 单位 | mA |\n| 最小值 | 0 |\n\nMaximum accepted input current.";
+    expect(planMarkdownImport(input, "d.md", modified).entries[0]?.outcome).toBe("conflict");
+  });
+
   it("plans a deterministic batch against the snapshot", () => {
     const snapshot = firstAcmePredecessor().first;
     const plan = planMarkdownImport(document, "definitions.md", snapshot);
@@ -117,7 +162,11 @@ describe("Definition import planner", () => {
     expect(planMarkdownImport(document.replace("# Driver `acme,power`", "# Driver `acme,power`\nnature: logical-service · cardinality: multiple"), "d.md", snapshot).changeSet).toBeNull();
     expect(planMarkdownImport(`意外内容\n${document}`, "d.md", snapshot).changeSet).toBeNull();
     const many = `# Driver \`acme,power\`\n${Array.from({ length: 129 }, (_, i) => `## \`import-${i}\` 名称\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |`).join("\n")}`;
-    expect(planMarkdownImport(many, "d.md", snapshot).changeSet).toBeNull();
+    const oversized = planMarkdownImport(many, "d.md", snapshot);
+    expect(oversized.changeSet).toBeNull();
+    expect(oversized.entries[128]?.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "文档", message: expect.stringContaining("按主体拆分") }),
+    ]));
   });
 
   it("counts definitions, not document-level diagnostics, against the 128-definition limit", () => {

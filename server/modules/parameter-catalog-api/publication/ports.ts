@@ -242,7 +242,7 @@ export function bindCatalogPublicationCommands(input: {
         const snapshot = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
         plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot);
-        if (!plan.changeSet) return { ok: true, value: { candidate: null, entries: plan.entries, source: plan.source } };
+        if (!plan.changeSet) return { ok: true, value: { candidate: null, noChange: plan.noChange, entries: plan.entries, source: plan.source } };
       }
       const parsed = plan?.changeSet ?? parsePublicationChangeSet(command.changeSet);
       if ("error" in parsed) return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
@@ -268,7 +268,7 @@ export function bindCatalogPublicationCommands(input: {
         capabilityContract: capabilityOf(previewed.value.candidate),
         authorOrganizationId: command.organizationId,
       };
-      return { ok: true, value: plan ? { candidate, entries: plan.entries, source: plan.source } : candidate };
+      return { ok: true, value: plan ? { candidate, noChange: plan.noChange, entries: plan.entries, source: plan.source } : candidate };
     },
     async getCandidate(query) {
       let candidateId: ReturnType<typeof CatalogCandidateId>;

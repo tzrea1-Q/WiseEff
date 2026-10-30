@@ -1466,6 +1466,7 @@ export const catalogPublicationCandidateResponseSchema = itemEnvelopeSchema(
 ).superRefine(rejectLegacySpecKeys);
 export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObject({
   candidate: catalogPublicationCandidateDtoSchema.nullable(),
+  noChange: z.boolean(),
   entries: z.array(catalogObject({
     subjectHeading: z.string(), definitionHeading: z.string(),
     selector: z.string(), propertyKey: z.string(), displayName: z.string(),

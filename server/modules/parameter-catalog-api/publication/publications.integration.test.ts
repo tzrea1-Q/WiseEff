@@ -232,6 +232,23 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     })).status).toBe(403);
   });
 
+  it("reports all-skip and conflict without freezing a Candidate", async () => {
+    authenticateAs(publisherScope());
+    const document = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n| 单位 | mA |\n| 最小值 | 0 |\n\nMaximum accepted input current.";
+    const post = (text: string) => request("POST", "/api/v2/catalog/publication-candidates", {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { markdownImport: { document: text, fileName: "repeat.md" } },
+    });
+    const before = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
+    const skipped = await post(document);
+    expect(skipped.status).toBe(200);
+    expect(catalogMarkdownImportResponseSchema.parse(skipped.body).item).toMatchObject({ candidate: null, noChange: true, entries: [{ outcome: "skip" }] });
+    const conflict = await post(document.replace("Input current limit", "Changed"));
+    expect(conflict.status).toBe(200);
+    expect(catalogMarkdownImportResponseSchema.parse(conflict.body).item).toMatchObject({ candidate: null, noChange: false, entries: [{ outcome: "conflict" }] });
+    const after = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
+    expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+  });
+
   it("accepts 128 changes on the preview route and rejects 129", async () => {
     authenticateAs(publisherScope());
     const changes = Array.from({ length: 129 }, (_, i) => changeSetFor(`cap_${i}`)[0]);
