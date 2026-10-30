@@ -6,6 +6,101 @@ import { BatchRegistrationTable } from "./BatchRegistrationTable";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockParameterCatalogGovernanceRepository } from "@/application/parameter-catalog/mockAdapter";
 
+it("edits selected rows together, switches to a free module, and excludes and re-adds rows", async () => {
+  const items = [
+    { id: "a", kind: "driver" as const, canonicalName: "driver-a", availableModuleIds: ["free"] },
+    { id: "b", kind: "driver" as const, canonicalName: "driver-b", availableModuleIds: ["free"] },
+    { id: "c", kind: "node-type" as const, canonicalName: "node-c", availableModuleIds: [] },
+  ];
+  const modules = [
+    { id: "cat", name: "电源", parentId: null, kind: "business", occupied: false },
+    { id: "free", name: "空闲驱动", parentId: "cat", kind: "driver-group", occupied: false },
+    { id: "busy", name: "占用驱动", parentId: "cat", kind: "driver-group", occupied: true },
+  ];
+  const createBatchRegistration = vi.fn().mockResolvedValue({ batchId: "batch", items: [] });
+  render(<BatchRegistrationTable repository={{ listUnregisteredSubjects: vi.fn().mockResolvedValue({ catalogReleaseId: "release-1", items, modules }), createBatchRegistration }} organizationId="org" catalogReleaseId="release-1" />);
+  const user = userEvent.setup();
+  await screen.findByRole("checkbox", { name: "选择 driver-a" });
+  await user.click(screen.getByRole("checkbox", { name: "选择 node-c" }));
+  await selectControlOption(screen.getByRole("combobox", { name: "批量业务分类" }), "category:cat");
+  await user.click(screen.getByRole("button", { name: "设置业务分类" }));
+  expect(screen.getByRole("combobox", { name: "driver-a 的业务分类" })).toHaveAttribute("data-value", "category:cat");
+  expect(screen.getByRole("combobox", { name: "driver-b 的业务分类" })).toHaveAttribute("data-value", "category:cat");
+  expect(screen.getByRole("combobox", { name: "node-c 的业务分类" })).toHaveAttribute("data-value", "");
+  const name = screen.getByRole("textbox", { name: "driver-a 的模块名称" });
+  await user.clear(name); await user.type(name, "新名称");
+  const target = screen.getByRole("combobox", { name: "driver-b 的登记目标" });
+  await user.click(target);
+  expect(screen.queryByRole("option", { name: /占用驱动/ })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("option", { name: /空闲驱动/ }));
+  await user.click(screen.getByRole("checkbox", { name: "选择 driver-b" }));
+  await user.click(screen.getByRole("button", { name: "继续确认（1）" }));
+  expect(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByText("登记 1 个主体，新建 1 个模块。")).toBeInTheDocument();
+  await user.click(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByRole("button", { name: "取消" }));
+  await user.click(screen.getByRole("checkbox", { name: "选择 driver-b" }));
+  await user.click(screen.getByRole("button", { name: "继续确认（2）" }));
+  const dialog = screen.getByRole("dialog", { name: "确认批量登记" });
+  expect(within(dialog).getByText("登记 2 个主体，新建 1 个模块。")).toBeInTheDocument();
+  await user.click(within(dialog).getByRole("button", { name: "确认登记" }));
+  await waitFor(() => expect(createBatchRegistration).toHaveBeenCalledWith("org", { rows: [
+    { subjectId: "a", target: { type: "new-module", parentModuleId: "cat", name: "新名称" } },
+    { subjectId: "b", target: { type: "existing-module", moduleId: "free" } },
+  ] }, expect.anything()));
+});
+
+it("keeps remaining edits and shows row rejections until evidence is reread", async () => {
+  const items = [
+    { id: "a", kind: "driver" as const, canonicalName: "driver-a", availableModuleIds: [] },
+    { id: "b", kind: "driver" as const, canonicalName: "driver-b", availableModuleIds: [] },
+  ];
+  const data = { catalogReleaseId: "release-1", items, modules: [] };
+  const listUnregisteredSubjects = vi.fn().mockResolvedValueOnce(data).mockResolvedValueOnce({ ...data, items: items.slice(1) });
+  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, message: "主体已登记，请刷新。" }, { index: 1, message: "目标不可用。" }] }, "request"));
+  render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration }} organizationId="org" catalogReleaseId="release-1" />);
+  const user = userEvent.setup();
+  await screen.findByRole("checkbox", { name: "选择 driver-a" });
+  await selectControlOption(screen.getByRole("combobox", { name: "批量业务分类" }), "unclassified");
+  await user.click(screen.getByRole("button", { name: "设置业务分类" }));
+  await user.type(screen.getByRole("textbox", { name: "driver-b 的模块名称" }), "-编辑");
+  await user.click(screen.getByRole("button", { name: "继续确认（2）" }));
+  await user.click(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByRole("button", { name: "确认登记" }));
+  expect(await screen.findByText("主体已登记，请刷新。")).toBeInTheDocument();
+  expect(screen.getByText("目标不可用。").closest("tr")).toHaveTextContent("driver-b");
+  await user.click(screen.getByRole("button", { name: "重新读取" }));
+  await waitFor(() => expect(screen.queryByText(/driver-a ·/)).not.toBeInTheDocument());
+  expect(screen.getByRole("textbox", { name: "driver-b 的模块名称" })).toHaveValue("driver-b-编辑");
+  expect(screen.getByRole("combobox", { name: "driver-b 的业务分类" })).toHaveAttribute("data-value", "unclassified");
+});
+
+it("requires a new target when a chosen module becomes occupied after rereading", async () => {
+  const subject = { id: "a", kind: "driver" as const, canonicalName: "driver-a", availableModuleIds: ["free"] };
+  const module = { id: "free", name: "空闲驱动", parentId: null, kind: "driver-group", occupied: false };
+  const listUnregisteredSubjects = vi.fn().mockResolvedValueOnce({ catalogReleaseId: "release-1", items: [subject], modules: [module] })
+    .mockResolvedValueOnce({ catalogReleaseId: "release-1", items: [{ ...subject, availableModuleIds: [] }], modules: [{ ...module, occupied: true }] });
+  render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration: vi.fn() }} organizationId="org" catalogReleaseId="release-1" />);
+  await screen.findByRole("checkbox", { name: "选择 driver-a" });
+  await selectControlOption(screen.getByRole("combobox", { name: "driver-a 的登记目标" }), "free");
+  await userEvent.setup().click(screen.getByRole("button", { name: "重新读取" }));
+  expect(await screen.findByText("目标模块已不可用，请重新选择。")).toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole("button", { name: "继续确认（1）" }));
+  expect(screen.queryByRole("dialog", { name: "确认批量登记" })).not.toBeInTheDocument();
+});
+
+it("prevents two re-added rows from targeting the same existing module", async () => {
+  const items = ["a", "b"].map((id) => ({ id, kind: "driver" as const, canonicalName: id, availableModuleIds: ["free"] }));
+  const modules = [{ id: "free", name: "空闲驱动", parentId: null, kind: "driver-group", occupied: false }];
+  render(<BatchRegistrationTable repository={{ listUnregisteredSubjects: vi.fn().mockResolvedValue({ catalogReleaseId: "release-1", items, modules }), createBatchRegistration: vi.fn() }} organizationId="org" catalogReleaseId="release-1" />);
+  const user = userEvent.setup();
+  await screen.findByRole("checkbox", { name: "选择 a" });
+  await user.click(screen.getByRole("checkbox", { name: "选择 a" }));
+  await selectControlOption(screen.getByRole("combobox", { name: "a 的登记目标" }), "free");
+  await selectControlOption(screen.getByRole("combobox", { name: "b 的登记目标" }), "free");
+  await user.click(screen.getByRole("checkbox", { name: "选择 a" }));
+  await user.click(screen.getByRole("button", { name: "继续确认（2）" }));
+  expect(screen.getAllByText("同一模块不能用于多个主体。")).toHaveLength(2);
+  expect(screen.queryByRole("dialog", { name: "确认批量登记" })).not.toBeInTheDocument();
+});
+
 it.each([
   ["关闭按钮", "selection"],
   ["Escape", "category"],
@@ -124,6 +219,8 @@ it("defaults selection by source and preserves remaining selections after a succ
   expect((screen.getByRole("checkbox", { name: "选择 node-b" }) as HTMLInputElement).checked).toBe(false);
   expect((screen.getByRole("checkbox", { name: "选择 schema-c" }) as HTMLInputElement).checked).toBe(false);
   expect(screen.getByRole("status")).toHaveTextContent("已登记 1 个主体。");
+  expect(screen.getByRole("combobox", { name: "来源" }).parentElement?.parentElement).toContainElement(screen.getByRole("button", { name: "重新读取" }));
+  expect(screen.getByRole("combobox", { name: "来源" }).parentElement?.parentElement).not.toContainElement(screen.getByRole("status"));
 });
 
 it("places category and name errors beneath their controls and links them accessibly", async () => {
@@ -180,7 +277,7 @@ it("shows source-specific empty states inside the table and puts the disabled co
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration: vi.fn() }} organizationId="org" catalogReleaseId="release-1" onClose={onClose} />);
   const empty = await screen.findByText("本组织发布引入的主体都已登记。可切换来源查看全部 Catalog 主体。");
   expect(empty.tagName).toBe("TD");
-  expect(empty).toHaveAttribute("colspan", "4");
+  expect(empty).toHaveAttribute("colspan", "5");
   const confirm = screen.getByRole("button", { name: "继续确认（0）" });
   expect(confirm).toBeDisabled();
   const close = screen.getByRole("button", { name: "关闭" });
