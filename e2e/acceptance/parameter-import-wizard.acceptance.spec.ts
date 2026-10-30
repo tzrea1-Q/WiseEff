@@ -123,12 +123,12 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     ]);
 
     await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin"));
-    const openImport = page.getByRole("button", { name: "打开批量参数导入" });
+    const openImport = page.getByRole("button", { name: "打开项目值批量导入" });
     await expect(openImport).toBeVisible({ timeout: 30_000 });
     await dismissXiaozeHint(page);
     await prepareInteractionSurface(page);
     await openImport.click();
-    const wizard = page.getByRole("dialog", { name: "批量参数导入" });
+    const wizard = page.getByRole("dialog", { name: "项目值批量导入" });
     await expect(wizard).toBeVisible();
 
     await expect(wizard.getByRole("region", { name: "选择来源与目标项目" })).toBeVisible();
@@ -326,12 +326,12 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
 
     await assertPostCutoverIdentity();
     await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin"));
-    const openImport = page.getByRole("button", { name: "打开批量参数导入" });
+    const openImport = page.getByRole("button", { name: "打开项目值批量导入" });
     await expect(openImport).toBeVisible({ timeout: 30_000 });
     await dismissXiaozeHint(page);
     await prepareInteractionSurface(page);
     await openImport.click();
-    const wizard = page.getByRole("dialog", { name: "批量参数导入" });
+    const wizard = page.getByRole("dialog", { name: "项目值批量导入" });
     await expect(wizard).toBeVisible();
     await selectControlOption(wizard.getByRole("combobox", { name: "目标项目" }), projectId);
     await wizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();

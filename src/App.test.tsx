@@ -3702,7 +3702,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-admin",
-        present: ["参数管理后台", "组织配置", "项目运营", "批量参数导入", "参数定义管理", "模块导航"],
+        present: ["参数管理后台", "组织配置", "项目运营", "项目值批量导入", "参数定义管理", "模块导航"],
         absent: ["项目参数 Admin", "items", "events", "建设中", "目录发布"]
       },
       {
@@ -4110,7 +4110,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
     expect(within(scopeNav).getByRole("button", { name: "组织配置" })).toHaveAttribute("aria-current", "page");
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    expect(within(topbar).getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
+    expect(within(topbar).getByRole("button", { name: "打开项目值批量导入" })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-page", "true");
     expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();

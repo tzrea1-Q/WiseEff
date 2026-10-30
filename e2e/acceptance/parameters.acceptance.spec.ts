@@ -189,11 +189,11 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await prepareInteractionSurface(page);
 
     // #847 replaced the spec-library region with CatalogPage; bulk import stays a TopBar action.
-    const openImport = page.getByRole("button", { name: "打开批量参数导入" });
+    const openImport = page.getByRole("button", { name: "打开项目值批量导入" });
     await expect(openImport).toBeVisible({ timeout: 15_000 });
     await openImport.click();
-    // The wizard dialog is named by its eyebrow title "批量参数导入" (stable across steps).
-    const importWizard = page.getByRole("dialog", { name: "批量参数导入" });
+    // The wizard dialog is named by its eyebrow title "项目值批量导入" (stable across steps).
+    const importWizard = page.getByRole("dialog", { name: "项目值批量导入" });
     await expect(importWizard).toBeVisible();
     await importWizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();
     const pasteDialog = page.getByRole("dialog", { name: "粘贴导入内容" });

@@ -65,7 +65,7 @@ function renderCard(overrides: Partial<Parameters<typeof ImportReviewCard>[0]> =
       {...overrides}
     />,
     { wrapper: ({ children }) => <ModalDialog open className="confirm-dialog" onDismiss={() => undefined}>
-      {({ titleId }) => <><h2 id={titleId}>批量参数导入</h2>{children}</>}
+      {({ titleId }) => <><h2 id={titleId}>项目值批量导入</h2>{children}</>}
     </ModalDialog> }
   );
   return { ...utils, onApprove, onSkip, onUpdate, onConfirmNew };

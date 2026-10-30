@@ -92,7 +92,8 @@ export function usePublicationFlow(input: {
     setCandidate({
       id: stored.candidateId, expectedBaseReleaseId: stored.catalogReleaseId,
       expectedBaseReleaseDigest: "", riskClass: "low",
-      impactSummary: { addedDefinitionCount: 1, changedDefinitionCount: 0, addedSubjectCount: 0 },
+      impactSummary: { addedDefinitionCount: 1, changedDefinitionCount: 0, addedSubjectCount: 0,
+        ...(Array.isArray(stored.addedSubjectIds) ? { addedSubjectIds: stored.addedSubjectIds.filter((id): id is string => typeof id === "string") } : {}) },
       capabilityContract: { revision: "", allowListId: "" },
     });
     setJob({
@@ -158,6 +159,7 @@ export function usePublicationFlow(input: {
       writeStoredPublicationJob({
         jobId: published.item.id, candidateId: candidate.id, catalogReleaseId,
         userId: currentPersonId, organizationId, draft,
+        ...(candidate.impactSummary.addedSubjectIds ? { addedSubjectIds: candidate.impactSummary.addedSubjectIds } : {}),
         ...(markdownImport ? { markdownImport: true } : {}), idempotencyKey: key,
       });
       applyJob(published.item);

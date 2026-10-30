@@ -9,6 +9,7 @@ export type StoredPublicationJob = {
   userId: string;
   organizationId: string;
   draft: PublicationDraft;
+  addedSubjectIds?: readonly string[];
   markdownImport?: boolean;
   idempotencyKey: string;
 };

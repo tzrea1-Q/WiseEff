@@ -364,7 +364,7 @@ export function createParameterRuntimeActions({
           });
           dispatch({
             type: "ADD_NOTIFICATION",
-            message: `批量参数导入完成：新增 ${applied.summary.added} 项，更新 ${applied.summary.updated} 项，冲突 ${applied.summary.conflict} 项`
+            message: `项目值批量导入完成：新增 ${applied.summary.added} 项，更新 ${applied.summary.updated} 项，冲突 ${applied.summary.conflict} 项`
           });
           return undefined;
         } catch (error) {
