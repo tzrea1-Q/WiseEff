@@ -14,7 +14,9 @@ import type {
   bindingHistoryListResponseSchema,
   catalogAcceptProposalRequestSchema,
   catalogCreateProposalRequestSchema,
-  catalogCreatePublicationCandidateRequestSchema,
+  catalogTypedPublicationCandidateRequestSchema,
+  catalogMarkdownImportRequestSchema,
+  catalogMarkdownImportResponseSchema,
   catalogBindingExportResponseSchema,
   catalogBindingDraftDtoSchema,
   catalogBatchValueChangeRequestResponseSchema,
@@ -129,8 +131,10 @@ export type CatalogProposalListResponse = z.infer<typeof catalogProposalListResp
 export type CatalogProposalResponse = z.infer<typeof catalogProposalResponseSchema>;
 export type CatalogCreateProposalRequest = z.infer<typeof catalogCreateProposalRequestSchema>;
 export type CatalogCreatePublicationCandidateRequest = z.infer<
-  typeof catalogCreatePublicationCandidateRequestSchema
+  typeof catalogTypedPublicationCandidateRequestSchema
 >;
+export type CatalogMarkdownImportRequest = z.infer<typeof catalogMarkdownImportRequestSchema>;
+export type CatalogMarkdownImportResponse = z.infer<typeof catalogMarkdownImportResponseSchema>;
 export type CatalogPublishPublicationCandidateRequest = z.infer<
   typeof catalogPublishPublicationCandidateRequestSchema
 >;

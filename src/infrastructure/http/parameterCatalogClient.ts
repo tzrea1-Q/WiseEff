@@ -15,6 +15,7 @@ import {
   catalogCreateNodeEnablementDraftRequestSchema,
   catalogCreateProposalRequestSchema,
   catalogCreatePublicationCandidateRequestSchema,
+  catalogMarkdownImportResponseSchema,
   catalogCreateReplacementRequestSchema,
   catalogContinueReplacementRequestSchema,
   catalogReplacementListResponseSchema,
@@ -91,6 +92,7 @@ import {
   type ParameterCatalogCanonicalRouteId
 } from "@wiseeff/dto-schemas";
 import type {
+  CatalogMarkdownImportRequest,
   CatalogContinueReplacementRequest,
   CatalogDeleteDefinitionRequest,
   CatalogCreateReplacementRequest,
@@ -637,6 +639,11 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
           context
         }
       ),
+    previewMarkdownImport: (
+      body: CatalogMarkdownImportRequest,
+      context: Pick<CatalogWriteContext, "catalogReleaseId">
+    ) => request("POST", canonical("catalog.createPublicationCandidate"), catalogMarkdownImportResponseSchema,
+      "CatalogPublicationPreviewResponse", { body: catalogCreatePublicationCandidateRequestSchema.parse(body), context }),
     getPublicationCandidate: (candidateId: string) =>
       request(
         "GET",

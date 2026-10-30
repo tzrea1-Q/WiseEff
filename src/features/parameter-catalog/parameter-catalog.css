@@ -754,8 +754,12 @@ button.parameter-catalog__tree-toggle:hover {
 
 /* The pending-work dialog holds the review queue table, so it needs more room
    than the default governance dialog width. */
-.confirm-dialog.parameter-catalog__pending-dialog {
+.confirm-dialog.parameter-catalog__pending-dialog,
+.confirm-dialog.parameter-catalog-import-dialog {
   width: min(960px, calc(100vw - 48px));
+}
+
+.confirm-dialog.parameter-catalog__pending-dialog {
   max-height: min(720px, calc(100vh - 96px));
 }
 
@@ -1275,6 +1279,59 @@ button.parameter-catalog__tree-toggle:hover {
 .parameter-catalog-publication-dialog {
   width: min(40rem, calc(100vw - var(--space-8)));
   max-height: min(88vh, 52rem);
+}
+
+.parameter-catalog-import-dialog__table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  overflow-wrap: anywhere;
+}
+
+.parameter-catalog-import-dialog__table caption {
+  text-align: left;
+}
+
+.parameter-catalog-import-dialog__table col:nth-child(1) { width: 20%; }
+.parameter-catalog-import-dialog__table col:nth-child(2) { width: 18%; }
+.parameter-catalog-import-dialog__table col:nth-child(3) { width: 16%; }
+.parameter-catalog-import-dialog__table col:nth-child(4) { width: 5.5rem; }
+
+.parameter-catalog-import-dialog__results {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.parameter-catalog-import-dialog__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.parameter-catalog-import-dialog__file-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.parameter-catalog-import-dialog__file-actions input[hidden] {
+  display: none;
+}
+
+.parameter-catalog-import-dialog .parameter-catalog-publication-dialog__form textarea {
+  height: 20rem;
+  field-sizing: fixed;
+  font-family: var(--font-mono);
+}
+
+.parameter-catalog-import-dialog .confirm-dialog__scroll {
+  padding-right: var(--space-4);
 }
 
 .parameter-catalog-publication-dialog .confirm-dialog__scroll {

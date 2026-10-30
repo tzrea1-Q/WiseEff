@@ -15,6 +15,7 @@ import type {
 
 export type ArtifactSourceKind =
   | "typed-changeset"
+  | "markdown-import"
   | "vendor-yaml"
   | "repository-bundle"
   | "adopted-preexisting";

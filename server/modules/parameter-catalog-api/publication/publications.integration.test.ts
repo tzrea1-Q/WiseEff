@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -8,9 +9,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAgentInvocation, createUserInvocation } from "../../auth/trustedInvocation";
 import {
   CATALOG_SYNCHRONIZER_ROLE,
+  CATALOG_PUBLICATION_COORDINATOR_ROLE,
   quoteIdent,
 } from "../../catalog-kernel/security/catalogRoleManifest";
 import { integerContent } from "../../catalog-publication/builder/predecessorHarness";
+import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
+import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
+import { runPublicationManagerOnce } from "../../catalog-publication/jobs/manager";
+import { getReceiptByJobId } from "../../catalog-publication/persistence/store";
+import { withPublicationCoordinator } from "../../catalog-publication/coordinator";
 import {
   enablePublicationPolicy,
   persistHandBuiltCandidate,
@@ -18,6 +25,7 @@ import {
   authorPermissions,
   PUBLISHER,
   AUTHOR,
+  userActor,
   asCoordinator,
 } from "../../catalog-publication/authorization/testHarness";
 import { withProductionLogin } from "../../catalog-publication/persistence/integrationHarness";
@@ -26,9 +34,11 @@ import {
   persistPredecessorArtifact,
   connect,
 } from "../../catalog-kernel/install/publicationTestHarness";
-import { CATALOG_RELEASE_HEADER } from "../../contracts/dtoSchemas/parameterCatalog";
+import { CATALOG_RELEASE_HEADER, catalogMarkdownImportResponseSchema, catalogPublicationJobResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
+import { PublicationJobId } from "../../parameter-catalog-contract/index";
 import {
   createPostgresDatabase,
+  createDatabase,
   createSavepointDatabase,
   getRootPostgresPool,
   type RootDatabase,
@@ -170,6 +180,112 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     await client?.end().catch(() => undefined);
     await db?.close().catch(() => undefined);
     await database?.drop();
+  });
+
+  it("plans Markdown on the server, preserves evidence, and refuses invalid or unauthorized requests", async () => {
+    const document = "# Driver `acme,power`\n## `import_a` 导入 A\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n";
+    const markdownImport = { document, fileName: "defs.md" };
+    const post = (body: unknown) => request("POST", "/api/v2/catalog/publication-candidates", {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body,
+    });
+    authenticateAs(publisherScope());
+    expect((await post({ markdownImport, changeSet: changeSetFor("ambiguous") })).status).toBe(400);
+    const before = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
+    const invalid = await post({ markdownImport: { ...markdownImport, document: document.replace("integer", "enum") } });
+    expect(invalid.status).toBe(200);
+    expect(invalid.body).toMatchObject({ item: { candidate: null, entries: [{ outcome: "error" }] } });
+    expect(catalogMarkdownImportResponseSchema.parse(invalid.body).item.entries[0]?.diagnostics)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ field: "类型", line: 5 })]));
+    const after = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
+    expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+    const created = await post({ markdownImport });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ item: { candidate: { riskClass: "low" }, entries: [{
+      outcome: "create", selector: "acme,power", propertyKey: "import_a", displayName: "导入 A",
+    }] } });
+    const highRisk = await post({ markdownImport: { ...markdownImport,
+      document: document.replace("# Driver `acme,power`", "# Driver `acme,new`\nnature: physical-device · cardinality: multiple") } });
+    expect(highRisk.status).toBe(201);
+    expect(highRisk.body).toMatchObject({ item: { candidate: { riskClass: "high", impactSummary: { addedSubjectCount: 1 } } } });
+    for (const kind of ["NodeType", "ConfigurationSchema"]) {
+      const response = await post({ markdownImport: { ...markdownImport,
+        document: document.replace("Driver `acme,power`", `${kind} \`new-subject\``) } });
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({ item: { candidate: { riskClass: "high", impactSummary: { addedSubjectCount: 1 } } } });
+    }
+    const id = (created.body as { item: { candidate: { id: string } } }).item.candidate.id;
+    const artifacts = await asCoordinator(client, () => client.query<{ source_kind: string; toolchain: Record<string, unknown> }>(
+      `select a.source_kind, a.toolchain from catalog_publication.release_artifacts a join catalog_publication.candidates c on c.artifact_id = a.id where c.id = $1`, [id],
+    ));
+    expect(artifacts.rows[0]).toMatchObject({ source_kind: "markdown-import", toolchain: { markdownImport: {
+      fileName: "defs.md", sha256: `sha256:${createHash("sha256").update(document).digest("hex")}`, parserVersion: "markdown-import/v1",
+    } } });
+    const publisher = publisherScope();
+    authenticateAs({ ...publisher, permissions: ["catalog:publish"] });
+    expect((await post({ markdownImport })).status).toBe(403);
+    const auth = makeTestAuthContext({ userId: AUTHOR, organizationId: ORG, permissions: [...authorPermissions], roleId: "admin" });
+    authenticateAs({ principalId: AUTHOR, organizationId: ORG, actorKind: "agent", permissions: auth.permissions,
+      trustedActor: createAgentInvocation(auth, { sessionId: "import-session", toolCallId: "import-tool", approval: { required: true, approvalId: "import-approval" } }) });
+    expect((await post({ markdownImport })).status).toBe(403);
+    expect((await request("POST", `/api/v2/catalog/publication-candidates/${id}/publish`, {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { idempotencyKey: "agent-import-publish" },
+    })).status).toBe(403);
+  });
+
+  it("reports all-skip and conflict without freezing a Candidate", async () => {
+    authenticateAs(publisherScope());
+    const document = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n| 单位 | mA |\n| 最小值 | 0 |\n\nMaximum accepted input current.";
+    const post = (text: string) => request("POST", "/api/v2/catalog/publication-candidates", {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { markdownImport: { document: text, fileName: "repeat.md" } },
+    });
+    const before = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
+    const skipped = await post(document);
+    expect(skipped.status).toBe(200);
+    expect(catalogMarkdownImportResponseSchema.parse(skipped.body).item).toMatchObject({ candidate: null, noChange: true, entries: [{ outcome: "skip" }] });
+    const conflict = await post(document.replace("Input current limit", "Changed"));
+    expect(conflict.status).toBe(200);
+    expect(catalogMarkdownImportResponseSchema.parse(conflict.body).item).toMatchObject({ candidate: null, noChange: false, entries: [{ outcome: "conflict" }] });
+    const after = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
+    expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+  });
+
+  it("accepts 128 changes on the preview route and rejects 129", async () => {
+    authenticateAs(publisherScope());
+    const changes = Array.from({ length: 129 }, (_, i) => changeSetFor(`cap_${i}`)[0]);
+    const post = (body: unknown) => request("POST", "/api/v2/catalog/publication-candidates", { headers: { [CATALOG_RELEASE_HEADER]: pinId }, body });
+    const accepted = await post({ changeSet: changes.slice(0, 128) });
+    expect(accepted.status).toBe(201);
+    expect(accepted.body).toMatchObject({ item: { impactSummary: { addedDefinitionCount: 128 } } });
+    expect((await post({ changeSet: changes })).status).toBe(400);
+  });
+
+  it("freezes an import with the restricted publication coordinator role", async () => {
+    await withProductionLogin(client, database.url, "mdcoord", async (login) => {
+      await login.query(`set role catalog_publication_coordinator_role`);
+      const identity = await login.query<{ current_user: string; superuser: boolean }>(`select current_user, (select rolsuper from pg_roles where rolname = session_user) as superuser`);
+      expect(identity.rows[0]).toEqual({ current_user: CATALOG_PUBLICATION_COORDINATOR_ROLE, superuser: false });
+      const restrictedDb = createDatabase(asQueryable(login));
+      const ports: CatalogPublicationPorts = {
+        authenticate: async () => ({ ok: true, scope: publisherScope() }),
+        currentRelease: async () => {
+          const pointer = await readCurrentCatalogPointer(pool);
+          return pointer.kind === "installed" ? { id: pointer.current.id, digest: pointer.current.digest } : null;
+        },
+        ...bindCatalogPublicationCommands({ db: restrictedDb, pool }),
+      };
+      const server = await listenCatalogPublicationHttpServer(ports);
+      try {
+        const response = await fetch(`${server.baseUrl}/api/v2/catalog/publication-candidates`, {
+          method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: pinId },
+          body: JSON.stringify({ markdownImport: { fileName: "role.md", document: "# Driver `acme,power`\n## `role_import` 定义\n| 字段 | 值 |\n| --- | --- |\n| 类型 | boolean |" } }),
+        });
+        expect(response.status).toBe(201);
+        expect(catalogMarkdownImportResponseSchema.parse(await response.json()).item.candidate).not.toBeNull();
+      } finally {
+        await server.close();
+        await login.query(`reset role`);
+      }
+    }, CATALOG_PUBLICATION_COORDINATOR_ROLE);
   });
 
   it("T04.a/d publishes twice with the same scope+key+digest as one job", async () => {
@@ -435,3 +551,75 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     });
   });
 });
+
+it.each([false, true])("publishes a three-definition Markdown import (new subject: %s) through the manager and records an activation receipt", async (newSubject) => {
+  const database = await createEphemeralTestDatabase("mdimport");
+  const db = createPostgresDatabase(database.url);
+  const pool = getRootPostgresPool(db)!;
+  const client = await connect(database.url);
+  let close = async () => {};
+  try {
+    const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(client, predecessor);
+    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    let currentRelease = { id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest };
+    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
+    const ports: CatalogPublicationPorts = {
+      authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId: ORG, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
+      currentRelease: async () => currentRelease,
+      ...bindCatalogPublicationCommands({ db, pool }),
+    };
+    const server = await listenCatalogPublicationHttpServer(ports);
+    close = server.close;
+    const post = async (path: string, body: unknown, pin = predecessor.compiled.release.id) => {
+      const response = await fetch(`${server.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: pin }, body: JSON.stringify(body) });
+      return { status: response.status, body: await response.json() };
+    };
+    const document = `# Driver \`${newSubject ? "acme,new" : "acme,power"}\`\n${newSubject ? "nature: physical-device · cardinality: multiple\n" : ""}${["a", "b", "c"].map((key) => `## \`batch_${key}\` 参数 ${key}\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`).join("\n")}`;
+    const preview = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "three.md" } });
+    expect(preview.status).toBe(201);
+    const plan = catalogMarkdownImportResponseSchema.parse(preview.body).item;
+    expect(plan.entries).toHaveLength(3);
+    expect(plan.candidate).not.toBeNull();
+    expect(plan.candidate?.riskClass).toBe(newSubject ? "high" : "low");
+    const candidateId = plan.candidate!.id;
+    const published = await post(`/api/v2/catalog/publication-candidates/${candidateId}/publish`, { idempotencyKey: "md-three" });
+    expect(published.status).toBe(201);
+    const jobId = catalogPublicationJobResponseSchema.parse(published.body).item.id;
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "markdown-test" })).toBe("claimed");
+    const receipt = await withPublicationCoordinator(db, (tx) => getReceiptByJobId(tx, PublicationJobId(jobId)));
+    expect(receipt.ok).toBe(true);
+    const pointer = await readCurrentCatalogPointer(pool);
+    if (pointer.kind !== "installed") throw new Error("publication did not install a release");
+    const before = await asCoordinator(client, () => client.query<{ n: string }>(
+      `select count(*)::text as n from catalog_publication.candidates`,
+    ));
+    const stale = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "three.md" } });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ error: { details: { reason: "candidate-stale" } } });
+    currentRelease = pointer.current;
+    const repeat = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "three.md" } }, currentRelease.id);
+    expect(repeat.status).toBe(200);
+    expect(catalogMarkdownImportResponseSchema.parse(repeat.body).item).toMatchObject({
+      candidate: null, noChange: true, entries: [{ outcome: "skip" }, { outcome: "skip" }, { outcome: "skip" }],
+    });
+    const after = await asCoordinator(client, () => client.query<{ n: string }>(
+      `select count(*)::text as n from catalog_publication.candidates`,
+    ));
+    expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+    const definitions = await client.query<{ property_key: string }>(`select d.property_key from parameter_catalog.parameter_definitions d
+      join parameter_catalog.catalog_release_definition_heads h on h.definition_id = d.id
+      join parameter_catalog.catalog_state s on s.current_catalog_release_id = h.release_id
+      where d.property_key in ('batch_a', 'batch_b', 'batch_c') order by d.property_key`);
+    expect(definitions.rows.map((row) => row.property_key)).toEqual(["batch_a", "batch_b", "batch_c"]);
+    if (newSubject) {
+      const subject = await client.query<{ n: string }>(`select count(*)::text as n from parameter_catalog.catalog_subjects where canonical_key = 'acme,new'`);
+      expect(subject.rows[0]?.n).toBe("1");
+    }
+  } finally {
+    await close();
+    await client.end();
+    await db.close();
+    await database.drop();
+  }
+}, 120_000);

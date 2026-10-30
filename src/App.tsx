@@ -1388,7 +1388,7 @@ function AppShell({
 
   return runtimeMode === "api" ? (
     <XiaozePageContext.Provider value={xiaozePageContext}>
-      <XiaozeProvider enableInspector={enableXiaozeInspector} userId={state.currentUserId} organizationId={operatingOrganizationId}>{appShell}</XiaozeProvider>
+      <XiaozeProvider enableInspector={enableXiaozeInspector} userId={state.currentUserId} organizationId={operatingOrganizationId} homeOrganizationId={organizationId} permissions={apiAuthPermissions}>{appShell}</XiaozeProvider>
     </XiaozePageContext.Provider>
   ) : (
     appShell

@@ -14385,7 +14385,7 @@
     "/api/v2/catalog/publication-candidates": {
       "post": {
         "operationId": "catalog.createPublicationCandidate",
-        "summary": "Build and freeze a complete successor publication candidate from a typed ChangeSet",
+        "summary": "Preview a typed ChangeSet or Markdown definition import",
         "tags": [
           "catalog"
         ],
@@ -14411,12 +14411,22 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMarkdownImportResponse"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Successful response.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CatalogPublicationCandidateResponse"
+                  "$ref": "#/components/schemas/CatalogPublicationPreviewResponse"
                 }
               }
             },
@@ -87520,493 +87530,993 @@
         "x-wiseeff-schema": "CatalogRejectProposalRequest"
       },
       "CatalogCreatePublicationCandidateRequest": {
-        "type": "object",
-        "properties": {
-          "changeSet": {
-            "type": "array",
-            "items": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "enum": [
-                        "create-subject"
-                      ]
-                    },
-                    "kind": {
-                      "type": "string",
-                      "enum": [
-                        "driver",
-                        "node-type",
-                        "configuration-schema"
-                      ]
-                    },
-                    "canonicalKey": {
-                      "type": "string"
-                    },
-                    "selector": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "changeSet": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
                       "type": "object",
                       "properties": {
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "create-subject"
+                          ]
+                        },
                         "kind": {
                           "type": "string",
                           "enum": [
-                            "driver-compatible",
-                            "node-type-name",
-                            "configuration-schema-id"
+                            "driver",
+                            "node-type",
+                            "configuration-schema"
                           ]
                         },
-                        "value": {
+                        "canonicalKey": {
                           "type": "string"
+                        },
+                        "selector": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "driver-compatible",
+                                "node-type-name",
+                                "configuration-schema-id"
+                              ]
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "nature": {
+                          "type": "string",
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "cardinality": {
+                          "type": "string",
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
                         }
                       },
                       "required": [
+                        "op",
                         "kind",
-                        "value"
+                        "canonicalKey",
+                        "selector"
                       ],
                       "additionalProperties": false
                     },
-                    "nature": {
-                      "type": "string",
-                      "enum": [
-                        "physical-device",
-                        "logical-service"
-                      ]
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "create-definition"
+                          ]
+                        },
+                        "subjectId": {
+                          "type": "string"
+                        },
+                        "propertyKey": {
+                          "type": "string"
+                        },
+                        "lifecycle": {
+                          "type": "string",
+                          "enum": [
+                            "active"
+                          ]
+                        },
+                        "content": {
+                          "type": "object",
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "documentation": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "unit": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "valueSchema": {
+                              "type": "object"
+                            },
+                            "examples": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "object"
+                              }
+                            }
+                          },
+                          "required": [
+                            "displayName",
+                            "documentation",
+                            "valueSchema"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "subjectId",
+                        "propertyKey",
+                        "content"
+                      ],
+                      "additionalProperties": false
                     },
-                    "cardinality": {
-                      "type": "string",
-                      "enum": [
-                        "multiple",
-                        "singleton-per-project"
-                      ]
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "create-subject-with-definitions"
+                          ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "driver",
+                            "node-type"
+                          ]
+                        },
+                        "canonicalKey": {
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "driver-compatible",
+                                "node-type-name"
+                              ]
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "nature": {
+                          "type": "string",
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "cardinality": {
+                          "type": "string",
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        },
+                        "definitions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "propertyKey": {
+                                "type": "string"
+                              },
+                              "content": {
+                                "type": "object",
+                                "properties": {
+                                  "displayName": {
+                                    "type": "string"
+                                  },
+                                  "documentation": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "unit": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "valueSchema": {
+                                    "type": "object"
+                                  },
+                                  "examples": {
+                                    "type": [
+                                      "array",
+                                      "null"
+                                    ],
+                                    "items": {
+                                      "type": "object"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "displayName",
+                                  "documentation",
+                                  "valueSchema"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "propertyKey",
+                              "content"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "kind",
+                        "canonicalKey",
+                        "selector",
+                        "definitions"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "revise-definition"
+                          ]
+                        },
+                        "definitionId": {
+                          "type": "string"
+                        },
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "documentation",
+                            "semantic"
+                          ]
+                        },
+                        "content": {
+                          "type": "object",
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "documentation": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "unit": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "valueSchema": {
+                              "type": "object"
+                            },
+                            "examples": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "object"
+                              }
+                            }
+                          },
+                          "required": [
+                            "displayName",
+                            "documentation",
+                            "valueSchema"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "definitionId",
+                        "class",
+                        "content"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "retire-definition"
+                          ]
+                        },
+                        "definitionId": {
+                          "type": "string"
+                        },
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "documentation",
+                            "semantic"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "object",
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "documentation": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "unit": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "valueSchema": {
+                              "type": "object"
+                            },
+                            "examples": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "object"
+                              }
+                            }
+                          },
+                          "required": [
+                            "displayName",
+                            "documentation",
+                            "valueSchema"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "definitionId",
+                        "content"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "restore-definition"
+                          ]
+                        },
+                        "definitionId": {
+                          "type": "string"
+                        },
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "documentation",
+                            "semantic"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "object",
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "documentation": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "unit": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "valueSchema": {
+                              "type": "object"
+                            },
+                            "examples": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "object"
+                              }
+                            }
+                          },
+                          "required": [
+                            "displayName",
+                            "documentation",
+                            "valueSchema"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "definitionId",
+                        "content"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "proposalId": {
+                "type": "string"
+              },
+              "proposalRevisionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "changeSet"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "markdownImport": {
+                "type": "object",
+                "properties": {
+                  "document": {
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "document",
+                  "fileName"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "markdownImport"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-wiseeff-schema": "CatalogCreatePublicationCandidateRequest"
+      },
+      "CatalogPublicationPreviewResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "item": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "expectedBaseReleaseId": {
+                    "type": "string"
+                  },
+                  "expectedBaseReleaseDigest": {
+                    "type": "string"
+                  },
+                  "riskClass": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "high"
+                    ]
+                  },
+                  "impactSummary": {
+                    "type": "object",
+                    "properties": {
+                      "addedDefinitionCount": {
+                        "type": "number"
+                      },
+                      "changedDefinitionCount": {
+                        "type": "number"
+                      },
+                      "addedSubjectCount": {
+                        "type": "number"
+                      },
+                      "addedSubjectIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "addedDefinitionCount",
+                      "changedDefinitionCount",
+                      "addedSubjectCount"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "capabilityContract": {
+                    "type": "object",
+                    "properties": {
+                      "revision": {
+                        "type": "string"
+                      },
+                      "allowListId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "revision",
+                      "allowListId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "id",
+                  "expectedBaseReleaseId",
+                  "expectedBaseReleaseDigest",
+                  "riskClass",
+                  "impactSummary",
+                  "capabilityContract"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "item"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "item": {
+                "type": "object",
+                "properties": {
+                  "candidate": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "expectedBaseReleaseId": {
+                        "type": "string"
+                      },
+                      "expectedBaseReleaseDigest": {
+                        "type": "string"
+                      },
+                      "riskClass": {
+                        "type": "string",
+                        "enum": [
+                          "low",
+                          "high"
+                        ]
+                      },
+                      "impactSummary": {
+                        "type": "object",
+                        "properties": {
+                          "addedDefinitionCount": {
+                            "type": "number"
+                          },
+                          "changedDefinitionCount": {
+                            "type": "number"
+                          },
+                          "addedSubjectCount": {
+                            "type": "number"
+                          },
+                          "addedSubjectIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "addedDefinitionCount",
+                          "changedDefinitionCount",
+                          "addedSubjectCount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "capabilityContract": {
+                        "type": "object",
+                        "properties": {
+                          "revision": {
+                            "type": "string"
+                          },
+                          "allowListId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "revision",
+                          "allowListId"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "expectedBaseReleaseId",
+                      "expectedBaseReleaseDigest",
+                      "riskClass",
+                      "impactSummary",
+                      "capabilityContract"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "noChange": {
+                    "type": "boolean"
+                  },
+                  "entries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "subjectHeading": {
+                          "type": "string"
+                        },
+                        "definitionHeading": {
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "string"
+                        },
+                        "propertyKey": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "type": "string",
+                          "enum": [
+                            "create",
+                            "skip",
+                            "conflict",
+                            "error"
+                          ]
+                        },
+                        "diagnostics": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "subjectHeading": {
+                                "type": "string"
+                              },
+                              "definitionHeading": {
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "subjectHeading",
+                              "definitionHeading",
+                              "field",
+                              "message",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "subjectHeading",
+                        "definitionHeading",
+                        "selector",
+                        "propertyKey",
+                        "displayName",
+                        "outcome",
+                        "diagnostics"
+                      ],
+                      "additionalProperties": false
                     }
                   },
-                  "required": [
-                    "op",
-                    "kind",
-                    "canonicalKey",
-                    "selector"
-                  ],
-                  "additionalProperties": false
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "fileName": {
+                        "type": "string"
+                      },
+                      "sha256": {
+                        "type": "string"
+                      },
+                      "parserVersion": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileName",
+                      "sha256",
+                      "parserVersion"
+                    ],
+                    "additionalProperties": false
+                  }
                 },
-                {
+                "required": [
+                  "candidate",
+                  "noChange",
+                  "entries",
+                  "source"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "item"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-wiseeff-schema": "CatalogPublicationPreviewResponse"
+      },
+      "CatalogMarkdownImportResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "candidate": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "expectedBaseReleaseId": {
+                    "type": "string"
+                  },
+                  "expectedBaseReleaseDigest": {
+                    "type": "string"
+                  },
+                  "riskClass": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "high"
+                    ]
+                  },
+                  "impactSummary": {
+                    "type": "object",
+                    "properties": {
+                      "addedDefinitionCount": {
+                        "type": "number"
+                      },
+                      "changedDefinitionCount": {
+                        "type": "number"
+                      },
+                      "addedSubjectCount": {
+                        "type": "number"
+                      },
+                      "addedSubjectIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "addedDefinitionCount",
+                      "changedDefinitionCount",
+                      "addedSubjectCount"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "capabilityContract": {
+                    "type": "object",
+                    "properties": {
+                      "revision": {
+                        "type": "string"
+                      },
+                      "allowListId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "revision",
+                      "allowListId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "id",
+                  "expectedBaseReleaseId",
+                  "expectedBaseReleaseDigest",
+                  "riskClass",
+                  "impactSummary",
+                  "capabilityContract"
+                ],
+                "additionalProperties": false
+              },
+              "noChange": {
+                "type": "boolean"
+              },
+              "entries": {
+                "type": "array",
+                "items": {
                   "type": "object",
                   "properties": {
-                    "op": {
-                      "type": "string",
-                      "enum": [
-                        "create-definition"
-                      ]
+                    "subjectHeading": {
+                      "type": "string"
                     },
-                    "subjectId": {
+                    "definitionHeading": {
+                      "type": "string"
+                    },
+                    "selector": {
                       "type": "string"
                     },
                     "propertyKey": {
                       "type": "string"
                     },
-                    "lifecycle": {
-                      "type": "string",
-                      "enum": [
-                        "active"
-                      ]
-                    },
-                    "content": {
-                      "type": "object",
-                      "properties": {
-                        "displayName": {
-                          "type": "string"
-                        },
-                        "documentation": {
-                          "type": "string"
-                        },
-                        "description": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "unit": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "valueSchema": {
-                          "type": "object"
-                        },
-                        "examples": {
-                          "type": [
-                            "array",
-                            "null"
-                          ],
-                          "items": {
-                            "type": "object"
-                          }
-                        }
-                      },
-                      "required": [
-                        "displayName",
-                        "documentation",
-                        "valueSchema"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "subjectId",
-                    "propertyKey",
-                    "content"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "enum": [
-                        "create-subject-with-definitions"
-                      ]
-                    },
-                    "kind": {
-                      "type": "string",
-                      "enum": [
-                        "driver",
-                        "node-type"
-                      ]
-                    },
-                    "canonicalKey": {
+                    "displayName": {
                       "type": "string"
                     },
-                    "selector": {
-                      "type": "object",
-                      "properties": {
-                        "kind": {
-                          "type": "string",
-                          "enum": [
-                            "driver-compatible",
-                            "node-type-name"
-                          ]
-                        },
-                        "value": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "nature": {
+                    "outcome": {
                       "type": "string",
                       "enum": [
-                        "physical-device",
-                        "logical-service"
+                        "create",
+                        "skip",
+                        "conflict",
+                        "error"
                       ]
                     },
-                    "cardinality": {
-                      "type": "string",
-                      "enum": [
-                        "multiple",
-                        "singleton-per-project"
-                      ]
-                    },
-                    "definitions": {
+                    "diagnostics": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "propertyKey": {
+                          "subjectHeading": {
                             "type": "string"
                           },
-                          "content": {
-                            "type": "object",
-                            "properties": {
-                              "displayName": {
-                                "type": "string"
-                              },
-                              "documentation": {
-                                "type": "string"
-                              },
-                              "description": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ]
-                              },
-                              "unit": {
-                                "type": [
-                                  "string",
-                                  "null"
-                                ]
-                              },
-                              "valueSchema": {
-                                "type": "object"
-                              },
-                              "examples": {
-                                "type": [
-                                  "array",
-                                  "null"
-                                ],
-                                "items": {
-                                  "type": "object"
-                                }
-                              }
-                            },
-                            "required": [
-                              "displayName",
-                              "documentation",
-                              "valueSchema"
-                            ],
-                            "additionalProperties": false
+                          "definitionHeading": {
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "line": {
+                            "type": "number"
                           }
                         },
                         "required": [
-                          "propertyKey",
-                          "content"
+                          "subjectHeading",
+                          "definitionHeading",
+                          "field",
+                          "message",
+                          "line"
                         ],
                         "additionalProperties": false
                       }
                     }
                   },
                   "required": [
-                    "op",
-                    "kind",
-                    "canonicalKey",
+                    "subjectHeading",
+                    "definitionHeading",
                     "selector",
-                    "definitions"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "enum": [
-                        "revise-definition"
-                      ]
-                    },
-                    "definitionId": {
-                      "type": "string"
-                    },
-                    "class": {
-                      "type": "string",
-                      "enum": [
-                        "documentation",
-                        "semantic"
-                      ]
-                    },
-                    "content": {
-                      "type": "object",
-                      "properties": {
-                        "displayName": {
-                          "type": "string"
-                        },
-                        "documentation": {
-                          "type": "string"
-                        },
-                        "description": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "unit": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "valueSchema": {
-                          "type": "object"
-                        },
-                        "examples": {
-                          "type": [
-                            "array",
-                            "null"
-                          ],
-                          "items": {
-                            "type": "object"
-                          }
-                        }
-                      },
-                      "required": [
-                        "displayName",
-                        "documentation",
-                        "valueSchema"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "definitionId",
-                    "class",
-                    "content"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "enum": [
-                        "retire-definition"
-                      ]
-                    },
-                    "definitionId": {
-                      "type": "string"
-                    },
-                    "class": {
-                      "type": "string",
-                      "enum": [
-                        "documentation",
-                        "semantic"
-                      ]
-                    },
-                    "reason": {
-                      "type": "string"
-                    },
-                    "content": {
-                      "type": "object",
-                      "properties": {
-                        "displayName": {
-                          "type": "string"
-                        },
-                        "documentation": {
-                          "type": "string"
-                        },
-                        "description": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "unit": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "valueSchema": {
-                          "type": "object"
-                        },
-                        "examples": {
-                          "type": [
-                            "array",
-                            "null"
-                          ],
-                          "items": {
-                            "type": "object"
-                          }
-                        }
-                      },
-                      "required": [
-                        "displayName",
-                        "documentation",
-                        "valueSchema"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "definitionId",
-                    "content"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "enum": [
-                        "restore-definition"
-                      ]
-                    },
-                    "definitionId": {
-                      "type": "string"
-                    },
-                    "class": {
-                      "type": "string",
-                      "enum": [
-                        "documentation",
-                        "semantic"
-                      ]
-                    },
-                    "reason": {
-                      "type": "string"
-                    },
-                    "content": {
-                      "type": "object",
-                      "properties": {
-                        "displayName": {
-                          "type": "string"
-                        },
-                        "documentation": {
-                          "type": "string"
-                        },
-                        "description": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "unit": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "valueSchema": {
-                          "type": "object"
-                        },
-                        "examples": {
-                          "type": [
-                            "array",
-                            "null"
-                          ],
-                          "items": {
-                            "type": "object"
-                          }
-                        }
-                      },
-                      "required": [
-                        "displayName",
-                        "documentation",
-                        "valueSchema"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "definitionId",
-                    "content"
+                    "propertyKey",
+                    "displayName",
+                    "outcome",
+                    "diagnostics"
                   ],
                   "additionalProperties": false
                 }
-              ]
-            }
-          },
-          "proposalId": {
-            "type": "string"
-          },
-          "proposalRevisionId": {
-            "type": "string"
+              },
+              "source": {
+                "type": "object",
+                "properties": {
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "parserVersion": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "fileName",
+                  "sha256",
+                  "parserVersion"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "candidate",
+              "noChange",
+              "entries",
+              "source"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
-          "changeSet"
+          "item"
         ],
         "additionalProperties": false,
-        "x-wiseeff-schema": "CatalogCreatePublicationCandidateRequest"
+        "x-wiseeff-schema": "CatalogMarkdownImportResponse"
       },
       "CatalogPublicationCandidateResponse": {
         "type": "object",

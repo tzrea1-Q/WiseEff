@@ -153,12 +153,21 @@ async function dispatch(
       permissions: scope.permissions,
       actorKind: scope.actorKind,
       catalogReleaseId: pin.pin.id,
-      changeSet: parsed.data.changeSet,
-      proposalId: parsed.data.proposalId,
-      proposalRevisionId: parsed.data.proposalRevisionId,
+      ...("markdownImport" in parsed.data
+        ? { markdownImport: parsed.data.markdownImport }
+        : { changeSet: parsed.data.changeSet, proposalId: parsed.data.proposalId, proposalRevisionId: parsed.data.proposalRevisionId }),
     });
     if (!result.ok) {
       return mapPublicationFailure(result.error, request.requestId);
+    }
+    if ("candidate" in result.value) {
+      const value = result.value;
+      return catalogPublicationOk({
+        status: value.candidate ? 201 : 200,
+        body: itemEnvelope({ ...value, candidate: value.candidate ? mapPublicationCandidate(value.candidate) : null }),
+        requestId: request.requestId,
+        catalogReleaseId: pin.pin.id,
+      });
     }
     return catalogPublicationOk({
       status: 201,

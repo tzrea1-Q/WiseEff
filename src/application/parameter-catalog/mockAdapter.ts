@@ -1,7 +1,7 @@
 import {
   catalogAcceptProposalRequestSchema,
   catalogCreateProposalRequestSchema,
-  catalogCreatePublicationCandidateRequestSchema,
+  catalogTypedPublicationCandidateRequestSchema,
   catalogLegacyIdentifierTypeSchema,
   catalogPublishPublicationCandidateRequestSchema,
   catalogRegisterSubjectRequestSchema,
@@ -444,7 +444,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async createPublicationCandidate(body, context) {
       assertPublicationWrite(store, context);
-      const parsed = catalogCreatePublicationCandidateRequestSchema.parse(body);
+      const parsed = catalogTypedPublicationCandidateRequestSchema.parse(body);
       const addedSubjects = parsed.changeSet.filter((change) => change.op === "create-subject-with-definitions" || change.op === "create-subject");
       const revised = parsed.changeSet.filter((change) => change.op === "revise-definition");
       const semantic = revised.some((change) => change.op === "revise-definition" && change.class === "semantic");
@@ -480,6 +480,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       };
       store.candidates.set(candidate.id, candidate);
       return { item: clone(candidate) };
+    },
+    async previewMarkdownImport() {
+      throw new Error("模拟模式不支持导入预览，请使用 API 模式。");
     },
     async getPublicationCandidate(candidateId) {
       assertReadyForRead(store);

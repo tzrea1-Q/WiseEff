@@ -637,7 +637,8 @@ export function publicationFieldError(error: unknown): { input: keyof Publicatio
 }
 
 export function publicationApprovalCopy(riskClass: CatalogPublicationCandidateResponse["item"]["riskClass"], actor?: CatalogActorKind): string {
-  if (actor === "org-admin") return "组织管理员可核对当前影响后确认发布。";
+  if (actor === "org-admin") return riskClass === "high"
+    ? "高风险：组织管理员可自行批准，请仔细核对影响。" : "组织管理员可核对当前影响后确认发布。";
   return riskClass === "high" ? publicationCopy.highRiskApproval : publicationCopy.lowRiskApproval;
 }
 

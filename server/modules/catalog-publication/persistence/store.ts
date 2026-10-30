@@ -69,6 +69,7 @@ const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 
 const SOURCE_KINDS = new Set<ArtifactSourceKind>([
   "typed-changeset",
+  "markdown-import",
   "vendor-yaml",
   "repository-bundle",
   "adopted-preexisting",

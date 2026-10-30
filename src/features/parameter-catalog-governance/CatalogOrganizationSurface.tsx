@@ -12,6 +12,7 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import { CatalogPage } from "@/features/parameter-catalog";
+import { onDefinitionImportHandoff, takeDefinitionImportHandoff } from "@/features/agent/definitionImportHandoff";
 
 import { CatalogHistoryBody } from "../parameter-catalog/CatalogPage";
 import { DefinitionEditorBody } from "./DefinitionEditorBody";
@@ -19,6 +20,7 @@ import { DefinitionLifecycleDialog, type DefinitionLifecycleIntent } from "./Def
 
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import { PublicationDialog } from "./PublicationDialog";
+import { DefinitionImportDialog } from "./DefinitionImportDialog";
 import {
   publicationSurfaceAllowsAuthoring,
   publicationSurfaceAllowsPublishing,
@@ -38,9 +40,11 @@ import { ReviewQueue } from "./ReviewQueue";
 import type { CatalogDefinitionResponse, CatalogDefinitionErasureListResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
+import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
+  runtimeMode?: WiseEffRuntimeMode;
   governance: ParameterCatalogGovernanceRepository;
   actor?: CatalogActorKind;
   roleId?: string;
@@ -58,6 +62,7 @@ export type CatalogOrganizationSurfaceProps = {
 
 export function CatalogOrganizationSurface({
   catalog,
+  runtimeMode,
   governance,
   actor: actorProp,
   roleId,
@@ -101,6 +106,10 @@ export function CatalogOrganizationSurface({
   const reviewQueueRequested = new URLSearchParams(search).get("review") === "open";
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importDocument, setImportDocument] = useState<string | undefined>();
+  const [handoffEpoch, setHandoffEpoch] = useState(0);
+  useEffect(() => onDefinitionImportHandoff(() => setHandoffEpoch((value) => value + 1)), []);
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
   const [pendingWorkOpen, setPendingWorkOpen] = useState(Boolean(anchor.reviewItemId) || reviewQueueRequested);
@@ -122,6 +131,13 @@ export function CatalogOrganizationSurface({
     ownerState: CatalogDomainState;
   } | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
+  const canImportDefinitions = Boolean(actor !== "agent" && sessionPermissions?.includes("catalog:author")
+    && publicationSurfaceAllowsAuthoring(publicationSurface) && domainState && organizationId && catalogReleaseId);
+  useEffect(() => {
+    if (importOpen || !canImportDefinitions || !organizationId) return;
+    const document = takeDefinitionImportHandoff(organizationId, currentPersonId);
+    if (document !== undefined) { setImportDocument(document); setImportOpen(true); }
+  }, [handoffEpoch, importOpen, canImportDefinitions, organizationId, currentPersonId]);
   useEffect(() => { setReviewCount(undefined); }, [organizationId, catalogReleaseId]);
 
   useEffect(() => {
@@ -321,6 +337,7 @@ export function CatalogOrganizationSurface({
         onAnchorChange={onAnchorChange}
         onDomainStateChange={setDomainState}
         onAction={handleAction}
+        onImportDefinitions={canImportDefinitions ? () => { setImportDocument(undefined); setImportOpen(true); } : undefined}
         onOpenPendingWork={reviewQueueAllowed ? () => setPendingWorkOpen(true) : undefined}
         onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
         onDefinitionDeleted={() => setCleanupEpoch(value => value + 1)}
@@ -492,6 +509,12 @@ export function CatalogOrganizationSurface({
           }}
         />
       ) : null}
+      {catalogReleaseId && domainState && organizationId && importOpen ? <DefinitionImportDialog key={`markdown-import-${organizationId}-${currentPersonId}`}
+        open initialDocument={importDocument} runtimeMode={runtimeMode} actor={actor} sessionPermissions={sessionPermissions} domainState={domainState} catalog={catalog} governance={governance} moduleRegistry={moduleRegistry}
+        catalogReleaseId={catalogReleaseId} currentPersonId={currentPersonId} organizationId={organizationId}
+        publicationSurface={publicationSurface} createIdempotencyKey={createGovernanceIdempotencyKey}
+        onCompleted={() => setSurfaceEpoch((value) => value + 1)} onRefreshEvidence={refreshCurrentCatalog}
+        onOpenChange={setImportOpen} /> : null}
       {catalogReleaseId &&
       domainState &&
       organizationId &&

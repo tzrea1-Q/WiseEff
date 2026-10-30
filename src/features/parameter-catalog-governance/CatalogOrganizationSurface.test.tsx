@@ -22,6 +22,7 @@ vi.mock("@/features/parameter-catalog", () => ({
     return <>
       <button onClick={() => setOpen(true)}>打开定义编辑器</button>
       <button onClick={() => props.onAction?.("preview-publication")}>新增定义</button>
+      {props.onImportDefinitions ? <button onClick={props.onImportDefinitions}>批量导入定义</button> : null}
       <button onClick={props.onEditorClosed}>刷新目录</button>
       {open && props.renderDefinitionEditor?.(activeDefinition, {
         domainState: deriveCatalogDomainState({ document: readyCatalogDocument }),
@@ -67,6 +68,16 @@ async function readSubjectOptions() {
 }
 
 describe("CatalogOrganizationSurface editor subject collection", () => {
+  it("shows Definition import only to a session with catalog:author", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const props = { catalog: ports.catalog, governance: ports.governance, actor: "user" as const,
+      search: "", onAnchorChange: vi.fn(), currentPersonId: "person-admin", organizationId: CATALOG_ORGANIZATION_ID };
+    const view = render(<CatalogOrganizationSurface {...props} sessionPermissions={["catalog:publish"]} />);
+    await waitFor(() => expect(ports.catalog.getPublicationSurface).toBeDefined());
+    expect(screen.queryByRole("button", { name: "批量导入定义" })).not.toBeInTheDocument();
+    view.rerender(<CatalogOrganizationSurface {...props} sessionPermissions={["catalog:author", "catalog:publish"]} />);
+    expect(await screen.findByRole("button", { name: "批量导入定义" })).toBeVisible();
+  });
   it("advances the pinned catalog after creating a definition in a new release", async () => {
     const user = userEvent.setup();
     const { catalog, governance } = createMockCatalogPorts({ scenario: "ready", publicationOutcome: "active" });

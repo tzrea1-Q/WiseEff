@@ -17,6 +17,13 @@ function baseResult(overrides: Partial<EvalRunResult> = {}): EvalRunResult {
 }
 
 describe("eval expectations", () => {
+  it("requires a frontend handoff containing the prepared document", () => {
+    const expectation: EvalExpectation = { type: "expectsFrontendHandoff", name: "openDefinitionImport", documentIncludes: ["## `current` 电流"] };
+    expect(evaluateExpectation(expectation, baseResult())).toMatchObject({ pass: false });
+    expect(evaluateExpectation(expectation, baseResult({ frontendToolCalls: [
+      { name: "openDefinitionImport", args: { document: "## `current` 电流" } }
+    ] }))).toMatchObject({ pass: true });
+  });
   it("matches tool call order", () => {
     const result = baseResult({ toolCallOrder: ["perception.getProjectOverview"] });
     expect(

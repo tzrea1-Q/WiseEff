@@ -1,7 +1,7 @@
 import { SelectControl } from "@/components/common/SelectControl";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { SharedDtsiRecognitionReference } from "@wiseeff/dto-schemas";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
@@ -12,28 +12,21 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { listAllCanonicalPages } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
 import type {
-  CatalogPublicationCandidateResponse,
-  CatalogPublicationJobResponse,
   CatalogSubjectResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 import { catalogSubjectTypeLabel } from "@/features/parameter-catalog/catalogPresentation";
-import { WiseEffApiError } from "@/infrastructure/http/apiClient";
-import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
 import "@/features/parameter-catalog/parameter-catalog.css";
 
 import { createGovernanceIdempotencyKey } from "./governanceState";
-import {
-  clearStoredPublicationJob,
-  readStoredPublicationJob,
-  writeStoredPublicationJob
-} from "./publicationJobStorage";
+import { clearStoredPublicationJob } from "./publicationJobStorage";
+import { usePublicationFlow } from "./usePublicationFlow";
+import { PublicationConfirmation } from "./PublicationConfirmation";
 import { publicationSurfaceAdvisory, type PublicationSurfaceItem } from "./publicationSurface";
 import {
   buildPublicationChangeSet,
   definitionContentOf,
   canExecutePublicationAction,
   canSavePublicationDraft,
-  createPublicationSubmitGate,
   emptyPublicationDraft,
   parsePublicationExamples,
   fingerprintPublicationDraft,
@@ -54,12 +47,10 @@ import {
   publicationSupportedValueTypes,
   type PublicationDraft,
   type PublicationSubjectKind,
-  type PublicationSubmitGate,
   type PublicationValueType
 } from "./publicationState";
 
 type SubjectItem = CatalogSubjectResponse["item"];
-type ConfirmKind = "preview" | "publish";
 type FollowupStatus = "idle" | "failed" | "succeeded";
 
 export type PublicationDialogProps = {
@@ -118,9 +109,14 @@ export function PublicationDialog({
   const canPublish =
     surfaceAllowsPublishing &&
     canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions);
-  const gateRef = useRef<PublicationSubmitGate>(createPublicationSubmitGate());
-  const pollRef = useRef<number | null>(null);
-  const completedRef = useRef(false);
+  const flow = usePublicationFlow({
+    catalog, catalogReleaseId, currentPersonId, organizationId,
+    createIdempotencyKey, onCompleted, onRefreshEvidence,
+  });
+  const {
+    candidate, candidateVerified, previewFingerprint, job, pending, setPending,
+    failure, setFailure, confirm, setConfirm, gateRef, pollJob,
+  } = flow;
   const formId = useId();
   const initialDraft = (): PublicationDraft => ({ ...emptyPublicationDraft(), mode: intent, subjectId: initialSubjectId,
     ...(intent === "create-subject" ? { nature: "", cardinality: "", selectorValue: sourcePrefill?.compatible ?? "" } : {}) });
@@ -131,17 +127,9 @@ export function PublicationDialog({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [proposalId, setProposalId] = useState<string | null>(null);
-  const [candidate, setCandidate] = useState<CatalogPublicationCandidateResponse["item"] | null>(null);
-  const [candidateVerified, setCandidateVerified] = useState(false);
-  const [previewFingerprint, setPreviewFingerprint] = useState<string | null>(null);
-  const [job, setJob] = useState<CatalogPublicationJobResponse["item"] | null>(null);
-  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<{ input: keyof PublicationDraft; message: string } | null>(
     null
   );
-  const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
   const [leaveConfirm, setLeaveConfirm] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
 
@@ -196,88 +184,24 @@ export function PublicationDialog({
     setFailure(null);
     setFieldError(null);
   };
-
-  const stopPolling = () => {
-    if (pollRef.current !== null) {
-      window.clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
-
-  const applyJob = (next: CatalogPublicationJobResponse["item"]) => {
-    setJob(next);
-    if (!publicationJobIsPending(next.status) || publicationSuccessKind(next)) {
-      stopPolling();
-      if (publicationSuccessKind(next) && !completedRef.current) {
-        completedRef.current = true;
-        clearStoredPublicationJob();
-        onCompleted?.();
-        // Activation advances the current Catalog release. A collection reload
-        // without refreshing the host's URL pin would still show the old release.
-        void Promise.resolve()
-          .then(() => onRefreshEvidence?.())
-          .catch((error: unknown) => setFailure(publicationFailureCopy(error)));
-      }
-    }
-  };
-
-  const pollJob = async (jobId: string) => {
-    try {
-      const response = await catalog.getPublication(jobId);
-      applyJob(response.item);
-    } catch (error) {
-      setFailure(publicationFailureCopy(error));
-    }
-  };
-
-  const startPolling = (jobId: string) => {
-    stopPolling();
-    void pollJob(jobId);
-    pollRef.current = window.setInterval(() => {
-      void pollJob(jobId);
-    }, 1000);
-  };
-
   useEffect(() => {
     if (!open) {
-      stopPolling();
+      flow.stopPolling();
       return undefined;
     }
-    gateRef.current = createPublicationSubmitGate();
-    completedRef.current = false;
-    setFailure(null);
     setFieldError(null);
-    setConfirm(null);
-    setPending(false);
-    setCandidateVerified(false);
     setProposalId(null);
     setDraftSaved(false);
     setFollowup("idle");
-    const stored = readStoredPublicationJob({ userId: currentPersonId, organizationId });
+    const stored = flow.restore(false, (record) =>
+      fingerprintPublicationDraft({ ...emptyPublicationDraft(), ...record.draft }));
     if (stored) {
       const restoredDraft = { ...emptyPublicationDraft(), ...stored.draft };
       setDraft(restoredDraft);
-      setCandidate({
-        id: stored.candidateId, expectedBaseReleaseId: stored.catalogReleaseId,
-        expectedBaseReleaseDigest: "", riskClass: "low",
-        impactSummary: { addedDefinitionCount: 1, changedDefinitionCount: 0, addedSubjectCount: 0 },
-        capabilityContract: { revision: "", allowListId: "" }
-      });
-      setJob({
-        id: stored.jobId, candidateId: stored.candidateId, status: "queued", attemptCount: 0,
-        effective: false, isCurrent: false, currentness: null, failure: null
-      });
-      setPreviewFingerprint(fingerprintPublicationDraft(restoredDraft));
-      setIdempotencyKey(stored.idempotencyKey);
-      startPolling(stored.jobId);
     } else {
       setDraft(initialDraft());
-      setCandidate(null);
-      setPreviewFingerprint(null);
-      setJob(null);
-      setIdempotencyKey(null);
     }
-    return stopPolling;
+    return flow.stopPolling;
   }, [open, catalog, currentPersonId, organizationId, intent, initialSubjectId, sourcePrefill]);
 
   useEffect(() => {
@@ -322,25 +246,8 @@ export function PublicationDialog({
   };
 
   const captureError = (error: unknown) => {
-    const reason = error instanceof WiseEffApiError ? catalogFailureReason(error) : null;
     setFieldError(publicationFieldError(error));
-    if (reason === "needs-rebase") {
-      setFailure(null);
-      setJob((current) => ({
-        id: current?.id ?? "",
-        candidateId: current?.candidateId || candidate?.id || "",
-        status: "needs-rebase",
-        attemptCount: current?.attemptCount ?? 0,
-        effective: false,
-        isCurrent: false,
-        currentness: null,
-        failure: { class: "candidate", reason: "needs-rebase" }
-      }));
-      return;
-    }
-    setFailure(reason === "release-drift"
-      ? "目录已更新，请更新发布状态后重新预览。已填写内容会保留。"
-      : publicationFailureCopy(error));
+    flow.captureError(error);
   };
 
   const validateExamples = () => {
@@ -419,33 +326,15 @@ export function PublicationDialog({
     if (!fieldsComplete) {
       return;
     }
-    if (!validateExamples() || !gateRef.current.begin()) {
-      return;
-    }
-    setPending(true);
-    try {
+    if (!validateExamples()) return;
+    await flow.preview(async () => {
       const created = await catalog.createPublicationCandidate(
-        {
-          changeSet: buildPublicationChangeSet(draft),
-          ...(proposalId ? { proposalId } : {})
-        },
-        { catalogReleaseId }
+        { changeSet: buildPublicationChangeSet(draft), ...(proposalId ? { proposalId } : {}) },
+        { catalogReleaseId },
       );
-      setCandidate(created.item);
-      completedRef.current = false;
-      setCandidateVerified(true);
-      setPreviewFingerprint(fingerprintPublicationDraft(draft));
-      setJob(null);
-      setIdempotencyKey(null);
-      setFailure(null);
       setFieldError(null);
-    } catch (error) {
-      captureError(error);
-    } finally {
-      gateRef.current.finish();
-      setPending(false);
-      setConfirm(null);
-    }
+      return created.item;
+    }, fingerprintPublicationDraft(draft), captureError);
   };
 
   const runPublish = async () => {
@@ -462,39 +351,7 @@ export function PublicationDialog({
     ) {
       return;
     }
-    if (!gateRef.current.begin()) {
-      return;
-    }
-    setPending(true);
-    const key = idempotencyKey ?? (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
-    setIdempotencyKey(key);
-    try {
-      const published = await catalog.publishPublicationCandidate(
-        candidate.id,
-        { idempotencyKey: key },
-        { catalogReleaseId }
-      );
-      writeStoredPublicationJob({
-        jobId: published.item.id,
-        candidateId: candidate.id,
-        catalogReleaseId,
-        userId: currentPersonId,
-        organizationId,
-        draft,
-        idempotencyKey: key
-      });
-      applyJob(published.item);
-      if (publicationJobIsPending(published.item.status)) {
-        startPolling(published.item.id);
-      }
-      setFailure(null);
-    } catch (error) {
-      captureError(error);
-    } finally {
-      gateRef.current.finish();
-      setPending(false);
-      setConfirm(null);
-    }
+    await flow.publish(draft, false, captureError);
   };
 
   const runRegistrationFollowup = async () => {
@@ -836,15 +693,8 @@ export function PublicationDialog({
               {draft.mode === "revise-definition" && job && !publicationJobIsPending(job.status) ? (
                 <button type="button" className="button primary sm" onClick={() => {
                   clearStoredPublicationJob();
-                  stopPolling();
-                  completedRef.current = false;
+                  flow.reset();
                   setDraft(emptyPublicationDraft());
-                  setCandidate(null);
-                  setCandidateVerified(false);
-                  setPreviewFingerprint(null);
-                  setJob(null);
-                  setIdempotencyKey(null);
-                  setFailure(null);
                 }}>结束跟踪并开始新增</button>
               ) : null}
               {canSaveDraft && !catalogSucceeded && draft.mode !== "revise-definition" ? (
@@ -931,25 +781,9 @@ export function PublicationDialog({
           </>
         )}
       </ModalDialog>
-      <ConfirmDialog
-        open={confirm !== null && targetAllowed && (confirm === "publish" ? canPublish : canPreview)}
-        title={confirm === "publish" ? publicationCopy.confirmPublishTitle : publicationCopy.confirmPreviewTitle}
-        description={
-          <p>{confirm === "publish" ? publicationApprovalCopy(candidate?.riskClass ?? "high", actor) : "将按当前内容生成发布预览。"}</p>
-        }
-        confirmLabel={confirm === "publish" ? publicationCopy.confirmPublish : publicationCopy.confirmPreview}
-        pending={pending}
-        pendingLabel={publicationCopy.processing}
-        acknowledgement={confirm === "publish" ? publicationCopy.publishAck : publicationCopy.previewAck}
-        onConfirm={() => {
-          if (confirm === "publish") {
-            void runPublish();
-            return;
-          }
-          void runPreview();
-        }}
-        onCancel={() => setConfirm(null)}
-      />
+      <PublicationConfirmation confirm={confirm} allowed={targetAllowed && (confirm === "publish" ? canPublish : canPreview)}
+        risk={candidate?.riskClass ?? "high"} actor={actor} pending={pending}
+        onPreview={() => void runPreview()} onPublish={() => void runPublish()} onCancel={() => setConfirm(null)} />
       <ConfirmDialog
         open={leaveConfirm}
         title="离开未保存的编写"

@@ -3,6 +3,7 @@ import type { AgentToolResult } from "../../types";
 import { createXiaozeCheckpointer } from "../checkpointer";
 import { createPlanningAgent, type PlanningApprovalResolver } from "../planningGraph";
 import { XIAOZE_PROMPT_VERSION } from "../xiaozePrompt";
+import { createRunEventSink } from "../runEventSink";
 import { evaluateAllExpectations, evaluateExpectation, type EvalExpectation, type EvalRunResult } from "./expectations";
 import {
   buildModelFromScript,
@@ -34,6 +35,7 @@ export type EvalReport = {
 export async function runScenario(scenario: EvalScenario): Promise<ScenarioEvalResult> {
   const toolCallOrder: string[] = [];
   const executedMutatingTools: string[] = [];
+  const sink = createRunEventSink();
 
   const runTool = async (name: string, _payload: Record<string, unknown>): Promise<AgentToolResult> => {
     toolCallOrder.push(name);
@@ -78,6 +80,7 @@ export async function runScenario(scenario: EvalScenario): Promise<ScenarioEvalR
     message: scenario.userMessage,
     context: scenario.context,
     threadId: scenario.threadId,
+    sink,
     requestContext: {
       auth: EVAL_AUTH,
       requestId: `eval-${scenario.threadId}`,
@@ -99,10 +102,15 @@ export async function runScenario(scenario: EvalScenario): Promise<ScenarioEvalR
     });
   }
 
+  const events = await sink.drain();
+  const frontendToolCalls = events.flatMap((event) => event.type === "tool_call" && scenario.tools?.some(
+    (tool) => tool.frontend && tool.name === event.toolName
+  ) ? [{ name: event.toolName, args: event.args }] : []);
   const runResult: EvalRunResult = {
     answer: graphResult.text,
     reasoning: graphResult.reasoning,
     toolCallOrder,
+    frontendToolCalls,
     executedMutatingTools,
     interrupt: graphResult.interrupt ? { toolName: graphResult.interrupt.toolName } : undefined,
     citations: graphResult.citations ?? []

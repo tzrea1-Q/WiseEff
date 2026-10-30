@@ -20,6 +20,7 @@ import {
   emptyPublicationDraft,
   fingerprintPublicationDraft,
   publicationCopy,
+  publicationApprovalCopy,
   publicationFailureCopy,
   publicationFieldError,
   publicationJobIsPending,
@@ -32,6 +33,10 @@ import {
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
 
 describe("publication operator state", () => {
+  it("describes high-risk approval for the current actor", () => {
+    expect(publicationApprovalCopy("high", "org-admin")).toBe("高风险：组织管理员可自行批准，请仔细核对影响。");
+    expect(publicationApprovalCopy("high", "user")).toBe("高风险：必须由另一位具备高风险复核权限的人员批准。");
+  });
   it("does not treat org-admin as an author without session permission", () => {
     expect(canExecutePublicationAction("org-admin", "preview-publication", ready)).toBe(false);
     expect(canExecutePublicationAction("org-admin", "preview-publication", ready, ["catalog:author"])).toBe(

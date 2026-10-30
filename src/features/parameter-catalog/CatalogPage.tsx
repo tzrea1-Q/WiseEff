@@ -151,6 +151,7 @@ export type CatalogPageProps = {
    */
   definitionPublishingAllowed?: boolean;
   definitionAuthoringAllowed?: boolean;
+  onImportDefinitions?: () => void;
   definitionDeletionAllowed?: boolean;
   definitionAuthoringDisabledReason?: string;
   layoutMode?: CatalogLayoutMode;
@@ -245,6 +246,7 @@ export function CatalogPage({
   onDefinitionCommand,
   definitionPublishingAllowed = false,
   definitionAuthoringAllowed = false,
+  onImportDefinitions,
   definitionDeletionAllowed = false,
   definitionAuthoringDisabledReason = catalogAuthoringAccessHint,
   layoutMode: layoutOverride,
@@ -939,8 +941,9 @@ export function CatalogPage({
               onChange={(event) => toggleRetiredSubjects(event.target.checked)} />
             包含已停用和退役主体
           </label>
-          {actions.length > 0 || onOpenPendingWork ? (
+          {actions.length > 0 || onOpenPendingWork || onImportDefinitions ? (
             <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
+              {onImportDefinitions ? <button type="button" className="button subtle sm" onClick={onImportDefinitions}>批量导入定义</button> : null}
               {onOpenPendingWork ? (
                 <button
                   type="button"
