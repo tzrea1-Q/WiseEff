@@ -42,7 +42,7 @@ describe("useXiaozeFrontendTools", () => {
     const pushState = vi.spyOn(window.history, "pushState").mockImplementation(() => undefined);
     const fetchSpy = vi.spyOn(window, "fetch");
     const notify = vi.fn();
-    const { rerender } = renderHook(({ permissions }) => useXiaozeFrontendTools("target-b", permissions, "user-b", notify),
+    const { rerender } = renderHook(({ permissions }) => useXiaozeFrontendTools({ organizationId: "target-b", permissions, userId: "user-b", notify }),
       { initialProps: { permissions: [] as string[] } });
     expect(await registeredTools.openDefinitionImport({ document: "# Driver `acme,x`" })).toEqual(
       expect.objectContaining({ message: expect.stringContaining("catalog:author") }));
@@ -57,7 +57,7 @@ describe("useXiaozeFrontendTools", () => {
 
   it("uses the home organization without adding a scope query", async () => {
     const pushState = vi.spyOn(window.history, "pushState").mockImplementation(() => undefined);
-    renderHook(() => useXiaozeFrontendTools(undefined, ["catalog:author"], "user-home", undefined, "org-home"));
+    renderHook(() => useXiaozeFrontendTools({ permissions: ["catalog:author"], userId: "user-home", homeOrganizationId: "org-home" }));
     await registeredTools.openDefinitionImport({ document: "文档" });
     expect(pushState).toHaveBeenCalledWith(null, "", "/parameter-admin/specs");
   });
@@ -65,7 +65,7 @@ describe("useXiaozeFrontendTools", () => {
   it("keeps business navigation in the confirmed target and leaves platform configuration global", async () => {
     const pushState = vi.spyOn(window.history, "pushState").mockImplementation(() => undefined);
     vi.spyOn(window, "dispatchEvent").mockImplementation(() => true);
-    renderHook(() => useXiaozeFrontendTools("target-b"));
+    renderHook(() => useXiaozeFrontendTools({ organizationId: "target-b" }));
     await registeredTools.navigateTo?.({ path: "/knowledge?entryId=entry-b&organizationId=untrusted" });
     expect(pushState).toHaveBeenLastCalledWith(null, "", "/knowledge?entryId=entry-b&organizationId=target-b");
     await registeredTools.navigateTo?.({ path: "/settings/llm" });

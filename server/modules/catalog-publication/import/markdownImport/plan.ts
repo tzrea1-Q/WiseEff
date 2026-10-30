@@ -10,6 +10,11 @@ import { diagnostic, type ImportDiagnostic, type ImportEntry, type SyntaxDiagnos
 
 const publicDiagnostic = ({ subjectHeading, definitionHeading, field, message, line }: SyntaxDiagnostic)
   : ImportDiagnostic => ({ subjectHeading, definitionHeading, field, message, line });
+const MAX_IMPORT_DEFINITIONS = 128;
+const documentError = (issue: ImportDiagnostic): ImportEntry => ({
+  subjectHeading: "", definitionHeading: "", selector: "", propertyKey: "", displayName: "",
+  outcome: "error", diagnostics: [issue],
+});
 
 /** Plan one document against an immutable Catalog snapshot without side effects. */
 export function planMarkdownImport(document: string, fileName: string, snapshot: CatalogReleaseNode) {
@@ -19,16 +24,18 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
     parserVersion: "markdown-import/v1",
   };
   const syntax = parseMarkdown(document);
+  const definitionCount = syntax.subjects.reduce((count, subject) => count + subject.definitions.length, 0);
+  if (definitionCount > MAX_IMPORT_DEFINITIONS) {
+    return { entries: [documentError({ subjectHeading: "", definitionHeading: "", field: "文档", line: 1,
+      message: `最多导入 ${MAX_IMPORT_DEFINITIONS} 条定义（本文档 ${definitionCount} 条），请按主体拆分文档。` })],
+    changeSet: null, noChange: false, source };
+  }
   const entries: ImportEntry[] = [];
   const changes: CatalogChange[] = [];
   const seen = new Set<string>();
   const newSubjects = new Map<string, ReturnType<typeof resolveSubject>>();
-  let definitionCount = 0;
   for (const issue of syntax.diagnostics.filter((item) => item.subjectLine === undefined)) {
-    entries.push({
-      subjectHeading: "", definitionHeading: "", selector: "", propertyKey: "", displayName: "",
-      outcome: "error", diagnostics: [publicDiagnostic(issue)],
-    });
+    entries.push(documentError(publicDiagnostic(issue)));
   }
   for (const section of syntax.subjects) {
     const resolved = resolveSubject(section, snapshot);
@@ -54,18 +61,12 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       continue;
     }
     for (const definition of section.definitions) {
-      definitionCount += 1;
       const content = buildContent(section, definition);
       const diagnostics = [
         ...sectionDiagnostics.map((item) => ({ ...item, definitionHeading: definition.heading })),
         ...syntax.diagnostics.filter((item) => item.definitionLine === definition.line).map(publicDiagnostic),
         ...content.diagnostics,
       ];
-      if (definitionCount === 129) {
-        diagnostics.push(diagnostic(
-          section, definition, "文档", "最多导入 128 条定义，请按主体拆分文档。", definition.line,
-        ));
-      }
       const naturalKey = `${resolved.subject?.content.id ?? `${section.kind}:${section.selector}`}\0${definition.propertyKey}`;
       const duplicate = seen.has(naturalKey);
       seen.add(naturalKey);
@@ -90,11 +91,8 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
     }
   }
   if (!entries.length) {
-    entries.push({
-      subjectHeading: "", definitionHeading: "", selector: "", propertyKey: "", displayName: "", outcome: "error",
-      diagnostics: [{ subjectHeading: "", definitionHeading: "", field: "文档",
-        message: "文档中没有有效的定义标题。", line: 1 }],
-    });
+    entries.push(documentError({ subjectHeading: "", definitionHeading: "", field: "文档",
+      message: "文档中没有有效的定义标题。", line: 1 }));
   }
   for (const entry of entries) entry.diagnostics.sort((a, b) => a.line - b.line);
   const ready = entries.every((entry) => entry.outcome === "create" || entry.outcome === "skip");

@@ -1,9 +1,19 @@
 import { isDeepStrictEqual } from "node:util";
 
-import type { CatalogReleaseNode, CatalogReleaseSubjectDocument } from "../../../catalog-kernel/compiler/types";
+import type {
+  CatalogReleaseDefinitionDocument, CatalogReleaseNode, CatalogReleaseSubjectDocument,
+} from "../../../catalog-kernel/compiler/types";
 import { parseCanonicalPropertyKey } from "../../../parameter-catalog-contract/index";
 import type { SupportedDefinitionContent } from "../../builder/types";
 import { diagnostic, type Definition, type ImportDiagnostic, type ImportEntry, type Subject } from "./types";
+
+const comparableContent = (
+  content: SupportedDefinitionContent | CatalogReleaseDefinitionDocument["content"]["revision"],
+) => ({
+  displayName: content.displayName, documentation: content.documentation,
+  description: content.description ?? null, unit: content.unit ?? null,
+  valueSchema: content.valueSchema, examples: content.examples ?? null,
+});
 
 /** Classification owns existing and duplicate keys, so later outcome policy has one seam. */
 export function classifyEntry(input: {
@@ -31,20 +41,17 @@ export function classifyEntry(input: {
   if (existing?.kind === "definition") {
     const revision = existing.content.revision;
     const content = input.entry.content;
-    if (revision.lifecycle === "active" && content && isDeepStrictEqual({
-      displayName: revision.displayName, documentation: revision.documentation,
-      description: revision.description, unit: revision.unit, valueSchema: revision.valueSchema, examples: revision.examples,
-    }, {
-      displayName: content.displayName, documentation: content.documentation,
-      description: content.description, unit: content.unit, valueSchema: content.valueSchema, examples: content.examples,
-    })) return { outcome: diagnostics.length ? "error" : "skip", diagnostics };
+    if (revision.lifecycle === "active" && content
+      && isDeepStrictEqual(comparableContent(revision), comparableContent(content))) {
+      return { outcome: diagnostics.length ? "error" : "skip", diagnostics };
+    }
     if (content || revision.lifecycle === "retired") {
       const hasErrors = diagnostics.length > 0;
       diagnostics.push(diagnostic(
         section, definition, "属性键", revision.lifecycle === "retired"
           ? "定义已退役，请使用现有恢复流程。" : "目录中已有不同内容或非活跃的定义，请使用现有定义管理入口。", definition.line,
       ));
-      return { outcome: hasErrors ? "error" : "conflict", diagnostics };
+      return { outcome: hasErrors && revision.lifecycle !== "retired" ? "error" : "conflict", diagnostics };
     }
   }
   return { outcome: diagnostics.length ? "error" : "create", diagnostics };

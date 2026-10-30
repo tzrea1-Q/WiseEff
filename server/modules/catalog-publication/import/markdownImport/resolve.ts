@@ -1,8 +1,13 @@
 import type { CatalogReleaseNode, CatalogReleaseSubjectDocument } from "../../../catalog-kernel/compiler/types";
 import type { CatalogChange, SupportedDefinitionContent } from "../../builder/types";
 import { parseCanonicalCompatibleSelector, parseCanonicalConfigurationSchemaId, parseCanonicalNodeName } from "../../../parameter-catalog-contract/index";
-import { diagnostic, type ImportDiagnostic, type Subject } from "./types";
+import { diagnostic, type ImportDiagnostic, type Subject, type SubjectKind } from "./types";
 
+const SELECTOR_KIND = {
+  driver: "driver-compatible", "node-type": "node-type-name", "configuration-schema": "configuration-schema-id",
+} as const satisfies Record<SubjectKind, string>;
+
+/** Resolve the subject and validate any declared facts against the snapshot. */
 export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): {
   subject: CatalogReleaseSubjectDocument | undefined;
   diagnostics: ImportDiagnostic[];
@@ -11,15 +16,14 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
   cardinality?: "multiple" | "singleton-per-project";
 } {
   const diagnostics: ImportDiagnostic[] = [];
-  const selectorKind = section.kind === "driver" ? "driver-compatible"
-    : section.kind === "node-type" ? "node-type-name" : "configuration-schema-id";
+  const selectorKind = section.kind ? SELECTOR_KIND[section.kind] : undefined;
   const alias = snapshot.documents.find((item) => item.kind === "alias"
     && item.content.selectorKind === selectorKind
     && item.content.normalizedSelector === section.selector
     && item.content.lifecycle === "active");
   const subject = snapshot.documents.find((item): item is CatalogReleaseSubjectDocument =>
     item.kind === "subject" && item.content.kind === section.kind
-    && (item.content.selector.value === section.selector
+    && ((item.content.selector.kind === selectorKind && item.content.selector.value === section.selector)
       || (alias?.kind === "alias" && item.content.id === alias.content.subjectId)));
 
   if (subject?.content.lifecycle === "retired") {
@@ -45,8 +49,8 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
     } else {
       nature = match[1] as "physical-device" | "logical-service";
       cardinality = match[2] as "multiple" | "singleton-per-project";
-      if (subject?.content.kind === "driver" && "nature" in subject.content.subtype && (subject.content.subtype.nature !== nature
-      || subject.content.subtype.cardinality.kind !== cardinality)) {
+      if (subject?.content.kind === "driver" && (!("nature" in subject.content.subtype)
+        || subject.content.subtype.nature !== nature || subject.content.subtype.cardinality.kind !== cardinality)) {
         diagnostics.push(diagnostic(section, null, "主体", "主体性质或基数与目录不一致。", metadata.line));
       }
     }
@@ -67,7 +71,7 @@ export function subjectChanges(
     if (!section.kind || !definitions.length) return [];
     const kind = section.kind;
     return [{ op: "create-subject-with-definitions", kind, canonicalKey: `${kind}:${section.selector}`,
-      selector: { kind: kind === "driver" ? "driver-compatible" : kind === "node-type" ? "node-type-name" : "configuration-schema-id", value: section.selector },
+      selector: { kind: SELECTOR_KIND[kind], value: section.selector },
       ...(kind === "driver" && nature && cardinality ? { nature, cardinality } : {}), definitions }];
   }
   const subjectId = resolved.subject.content.id;

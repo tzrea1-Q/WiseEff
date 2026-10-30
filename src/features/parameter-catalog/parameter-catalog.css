@@ -754,8 +754,12 @@ button.parameter-catalog__tree-toggle:hover {
 
 /* The pending-work dialog holds the review queue table, so it needs more room
    than the default governance dialog width. */
-.confirm-dialog.parameter-catalog__pending-dialog {
+.confirm-dialog.parameter-catalog__pending-dialog,
+.confirm-dialog.parameter-catalog-import-dialog {
   width: min(960px, calc(100vw - 48px));
+}
+
+.confirm-dialog.parameter-catalog__pending-dialog {
   max-height: min(720px, calc(100vh - 96px));
 }
 
@@ -1277,10 +1281,6 @@ button.parameter-catalog__tree-toggle:hover {
   max-height: min(88vh, 52rem);
 }
 
-.governance-confirm-dialog.parameter-catalog-import-dialog {
-  width: min(960px, calc(100vw - 48px));
-}
-
 .parameter-catalog-import-dialog__table {
   width: 100%;
   min-width: 0;
@@ -1327,7 +1327,11 @@ button.parameter-catalog__tree-toggle:hover {
 .parameter-catalog-import-dialog .parameter-catalog-publication-dialog__form textarea {
   height: 20rem;
   field-sizing: fixed;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
+}
+
+.parameter-catalog-import-dialog .confirm-dialog__scroll {
+  padding-right: var(--space-4);
 }
 
 .parameter-catalog-publication-dialog .confirm-dialog__scroll {

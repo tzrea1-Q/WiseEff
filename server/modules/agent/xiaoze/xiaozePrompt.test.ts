@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { XIAOZE_PROMPT_VERSION, XIAOZE_SYSTEM_PROMPT } from "./xiaozePrompt";
-import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/features/parameter-catalog-governance/definitionImportTemplate";
+import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 
 describe("xiaozePrompt", () => {
   it("exports a versioned system prompt", () => {

@@ -18,7 +18,13 @@ function navigateToPath(path: string) {
  * `prefillParameterValue` tool wrote to a registry no page consumed, so the
  * agent claimed "已预填" while the UI never changed — it has been removed.
  */
-export function useXiaozeFrontendTools(organizationId?: string, permissions?: readonly string[] | null, userId?: string, notify?: (message: string) => void, homeOrganizationId?: string) {
+export function useXiaozeFrontendTools({ organizationId, permissions, userId, notify, homeOrganizationId }: {
+  organizationId?: string;
+  permissions?: readonly string[] | null;
+  userId?: string;
+  notify?: (message: string) => void;
+  homeOrganizationId?: string;
+} = {}) {
   useFrontendTool({
     name: "navigateTo",
     description: "Navigate the user to a WiseEff page path without performing any write.",

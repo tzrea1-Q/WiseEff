@@ -131,12 +131,13 @@ export function CatalogOrganizationSurface({
     ownerState: CatalogDomainState;
   } | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
+  const canImportDefinitions = Boolean(actor !== "agent" && sessionPermissions?.includes("catalog:author")
+    && publicationSurfaceAllowsAuthoring(publicationSurface) && domainState && organizationId && catalogReleaseId);
   useEffect(() => {
-    if (importOpen || actor === "agent" || !sessionPermissions?.includes("catalog:author") ||
-      !publicationSurfaceAllowsAuthoring(publicationSurface) || !domainState || !organizationId || !catalogReleaseId) return;
+    if (importOpen || !canImportDefinitions || !organizationId) return;
     const document = takeDefinitionImportHandoff(organizationId, currentPersonId);
     if (document !== undefined) { setImportDocument(document); setImportOpen(true); }
-  }, [handoffEpoch, importOpen, actor, sessionPermissions, publicationSurface, domainState, organizationId, catalogReleaseId, currentPersonId]);
+  }, [handoffEpoch, importOpen, canImportDefinitions, organizationId, currentPersonId]);
   useEffect(() => { setReviewCount(undefined); }, [organizationId, catalogReleaseId]);
 
   useEffect(() => {
@@ -336,7 +337,7 @@ export function CatalogOrganizationSurface({
         onAnchorChange={onAnchorChange}
         onDomainStateChange={setDomainState}
         onAction={handleAction}
-        onImportDefinitions={actor !== "agent" && sessionPermissions?.includes("catalog:author") && publicationSurfaceAllowsAuthoring(publicationSurface) && domainState && organizationId && catalogReleaseId ? () => { setImportDocument(undefined); setImportOpen(true); } : undefined}
+        onImportDefinitions={canImportDefinitions ? () => { setImportDocument(undefined); setImportOpen(true); } : undefined}
         onOpenPendingWork={reviewQueueAllowed ? () => setPendingWorkOpen(true) : undefined}
         onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
         onDefinitionDeleted={() => setCleanupEpoch(value => value + 1)}

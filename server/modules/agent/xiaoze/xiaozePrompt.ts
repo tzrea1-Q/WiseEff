@@ -1,4 +1,4 @@
-import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/features/parameter-catalog-governance/definitionImportTemplate";
+import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 
 export const XIAOZE_PROMPT_VERSION = "2026-10-30.1";
 

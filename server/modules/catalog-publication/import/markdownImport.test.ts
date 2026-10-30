@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { firstAcmePredecessor } from "../builder/predecessorHarness";
 import { planMarkdownImport } from "./markdownImport";
-import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/features/parameter-catalog-governance/definitionImportTemplate";
+import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 import { buildCreateDefinitionChangeSet, emptyPublicationDraft } from "../../../../src/features/parameter-catalog-governance/publicationState";
 
 const document = `# Driver \`acme,power\`
@@ -84,6 +84,10 @@ describe("Definition import planner", () => {
       ? { ...existing, content: { ...existing.content, revision: { ...existing.content.revision, lifecycle: "retired" as const } } } : item) };
     const retired = planMarkdownImport(changed, "d.md", retiredSnapshot);
     expect(retired.entries[0]).toMatchObject({ outcome: "conflict", diagnostics: [expect.objectContaining({ message: expect.stringContaining("恢复") })] });
+    const invalidRetired = planMarkdownImport(changed.replace("integer", "unknown"), "d.md", retiredSnapshot);
+    expect(invalidRetired.entries[0]).toMatchObject({ outcome: "conflict", diagnostics: expect.arrayContaining([
+      expect.objectContaining({ field: "类型" }), expect.objectContaining({ message: expect.stringContaining("恢复") }),
+    ]) });
   });
 
   it.each([
@@ -166,9 +170,25 @@ describe("Definition import planner", () => {
     const many = `# Driver \`acme,power\`\n${Array.from({ length: 129 }, (_, i) => `## \`import-${i}\` 名称\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |`).join("\n")}`;
     const oversized = planMarkdownImport(many, "d.md", snapshot);
     expect(oversized.changeSet).toBeNull();
-    expect(oversized.entries[128]?.diagnostics).toEqual(expect.arrayContaining([
-      expect.objectContaining({ field: "文档", message: expect.stringContaining("按主体拆分") }),
-    ]));
+    expect(oversized.entries).toHaveLength(1);
+    expect(oversized.entries[0]).toMatchObject({ outcome: "error", subjectHeading: "", diagnostics: [
+      expect.objectContaining({ field: "文档", message: "最多导入 128 条定义（本文档 129 条），请按主体拆分文档。" }),
+    ] });
+  });
+
+  it("unescapes GFM pipes in field values", () => {
+    const plan = planMarkdownImport(document.replace("输入电流限制", "输入\\|电流"), "d.md", firstAcmePredecessor().first);
+    expect(plan.changeSet?.[0]).toMatchObject({ content: { description: "输入|电流" } });
+  });
+
+  it("reports declared driver facts when the existing subject lacks them", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const missingFacts = { ...snapshot, documents: snapshot.documents.map((item) =>
+      item.kind === "subject" && item.content.id === "csub_acme_power"
+        ? { ...item, content: { ...item.content, subtype: {} } } : item) } as typeof snapshot;
+    const input = document.replace("# Driver `acme,power`", "# Driver `acme,power`\nnature: physical-device · cardinality: multiple");
+    expect(planMarkdownImport(input, "d.md", missingFacts).entries[0]).toMatchObject({ outcome: "error",
+      diagnostics: expect.arrayContaining([expect.objectContaining({ message: "主体性质或基数与目录不一致。" })]) });
   });
 
   it("counts definitions, not document-level diagnostics, against the 128-definition limit", () => {
@@ -285,7 +305,7 @@ ${"文".repeat(8193)}
       "显示名", "正文", "类型", "最少项数", "最多项数", "单位", "简述", "默认值", "枚举", "正则", "示例",
     ]));
     expect(diagnostics.find((item) => item.field === "单位")?.message).toBe("单位须为 1 至 32 个字符，且不能包含控制字符。");
-    expect(diagnostics.find((item) => item.field === "默认值")?.message).toContain("契约");
+    expect(diagnostics.find((item) => item.field === "默认值")?.message).toBe("暂不支持该字段；如需说明，请写入定义正文。");
     expect(plan.entries[1]!.diagnostics.map((item) => item.field)).toContain("类型说明");
   });
 

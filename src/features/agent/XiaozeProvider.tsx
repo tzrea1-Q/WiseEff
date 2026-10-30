@@ -66,7 +66,8 @@ export type XiaozeProviderProps = {
 
 function XiaozeRuntimeTools({ organizationId, homeOrganizationId, userId, permissions }: Pick<XiaozeProviderProps, "organizationId" | "homeOrganizationId" | "userId" | "permissions">) {
   const { toast } = useToast();
-  useXiaozeFrontendTools(organizationId, permissions, userId, (message) => toast({ tone: "info", message }), homeOrganizationId);
+  useXiaozeFrontendTools({ organizationId, permissions, userId,
+    notify: (message) => toast({ tone: "info", message }), homeOrganizationId });
   return <XiaozeApprovalCard />;
 }
 

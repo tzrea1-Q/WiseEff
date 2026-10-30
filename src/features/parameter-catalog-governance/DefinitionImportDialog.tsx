@@ -25,7 +25,7 @@ import {
 import { usePublicationFlow } from "./usePublicationFlow";
 import { canExecuteGovernanceAction } from "./governanceState";
 import { RegistrationDialog, type RegistrationModuleOption } from "./RegistrationDialog";
-import { DEFINITION_IMPORT_TEMPLATE } from "./definitionImportTemplate";
+import { DEFINITION_IMPORT_TEMPLATE } from "@/domain/parameter-catalog/definitionImportTemplate";
 
 export type DefinitionImportDialogProps = {
   open: boolean;
@@ -64,6 +64,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const [subjectEpoch, setSubjectEpoch] = useState(0);
   const [registering, setRegistering] = useState<string | null>(null);
   const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const [registeredNames, setRegisteredNames] = useState<string[]>([]);
   const [registrationTarget, setRegistrationTarget] = useState<{
     subject: CatalogSubjectResponse["item"];
     modules: RegistrationModuleOption[];
@@ -98,6 +99,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setEntries(null);
     setNoChange(false);
     setErrorsOnly(false);
+    setRegisteredNames([]);
     return flow.stopPolling;
   }, [open, catalog, props.currentPersonId, props.organizationId]);
 
@@ -213,7 +215,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
       {({ titleId, descriptionId }) => <>
         <h2 id={titleId}>批量导入定义</h2>
         <div className="confirm-dialog__scroll"><div id={descriptionId} className="governance-confirm-dialog__body">
-          <p>粘贴或上传 Markdown 文档；可引用已有主体或新建主体，支持 integer、number、string、boolean。</p>
+          <p>粘贴或上传 Markdown 文档，格式见模板；可引用已有主体或新建主体。</p>
           {unavailable ? <p role="status">{unavailable}</p> : null}
           {advisory ? <p role="status" data-tone={advisory.tone}>{advisory.message}</p> : null}
           {status ? <p role="status" aria-label="发布任务状态" data-publication-status={job?.status}
@@ -222,6 +224,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
           {failure ? <p role="alert" className="governance-confirm-dialog__error">{failure}</p> : null}
           {succeeded && subjectError ? <p role="alert">新主体的登记状态加载失败，发布仍已生效。<button type="button"
             className="button subtle sm" onClick={() => setSubjectEpoch((value) => value + 1)}>重试加载</button></p> : null}
+          {registeredNames.map((name) => <p role="status" key={name}>已登记 {name}</p>)}
           {succeeded && newSubjects.length > 0 ? <section aria-label="待登记的新主体">
             <p>以下新主体尚未在本组织登记。登记是独立操作，不影响已生效的发布。</p>
             <ul>{newSubjects.map((subject) => <li key={subject.id}>{subject.canonicalName}{" "}
@@ -316,7 +319,11 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
       subjectImpact={{ activeDefinitionCount: registrationTarget.subject.definitionCounts.active, bindingCount: null, projectCount: null }}
       createIdempotencyKey={props.createIdempotencyKey} onOpenChange={(next) => { if (!next) setRegistrationTarget(null); }}
       onRefreshEvidence={() => loadRegistrationTarget(registrationTarget.subject)}
-      onCompleted={() => { setNewSubjects((items) => items.filter((item) => item.id !== registrationTarget.subject.id)); props.onCompleted?.(); }} /> : null}
+      onCompleted={() => {
+        setRegisteredNames((names) => [...names, registrationTarget.subject.canonicalName]);
+        setNewSubjects((items) => items.filter((item) => item.id !== registrationTarget.subject.id));
+        props.onCompleted?.();
+      }} /> : null}
     <PublicationConfirmation confirm={confirm} allowed={confirm === "publish" ? canPublish : canPreview}
       risk={candidate?.riskClass ?? "high"} actor={actor} pending={pending}
       onPreview={() => void runPreview()} onPublish={() => void runPublish()} onCancel={() => setConfirm(null)} />

@@ -562,16 +562,17 @@ it.each([false, true])("publishes a three-definition Markdown import (new subjec
     const predecessor = await bootstrapFirstAcme(pool);
     await persistPredecessorArtifact(client, predecessor);
     await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    let currentRelease = { id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest };
     const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
     const ports: CatalogPublicationPorts = {
       authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId: ORG, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
-      currentRelease: async () => ({ id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest }),
+      currentRelease: async () => currentRelease,
       ...bindCatalogPublicationCommands({ db, pool }),
     };
     const server = await listenCatalogPublicationHttpServer(ports);
     close = server.close;
-    const post = async (path: string, body: unknown) => {
-      const response = await fetch(`${server.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: predecessor.compiled.release.id }, body: JSON.stringify(body) });
+    const post = async (path: string, body: unknown, pin = predecessor.compiled.release.id) => {
+      const response = await fetch(`${server.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: pin }, body: JSON.stringify(body) });
       return { status: response.status, body: await response.json() };
     };
     const document = `# Driver \`${newSubject ? "acme,new" : "acme,power"}\`\n${newSubject ? "nature: physical-device · cardinality: multiple\n" : ""}${["a", "b", "c"].map((key) => `## \`batch_${key}\` 参数 ${key}\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`).join("\n")}`;
@@ -588,6 +589,24 @@ it.each([false, true])("publishes a three-definition Markdown import (new subjec
     expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "markdown-test" })).toBe("claimed");
     const receipt = await withPublicationCoordinator(db, (tx) => getReceiptByJobId(tx, PublicationJobId(jobId)));
     expect(receipt.ok).toBe(true);
+    const pointer = await readCurrentCatalogPointer(pool);
+    if (pointer.kind !== "installed") throw new Error("publication did not install a release");
+    const before = await asCoordinator(client, () => client.query<{ n: string }>(
+      `select count(*)::text as n from catalog_publication.candidates`,
+    ));
+    const stale = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "three.md" } });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ error: { details: { reason: "candidate-stale" } } });
+    currentRelease = pointer.current;
+    const repeat = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "three.md" } }, currentRelease.id);
+    expect(repeat.status).toBe(200);
+    expect(catalogMarkdownImportResponseSchema.parse(repeat.body).item).toMatchObject({
+      candidate: null, noChange: true, entries: [{ outcome: "skip" }, { outcome: "skip" }, { outcome: "skip" }],
+    });
+    const after = await asCoordinator(client, () => client.query<{ n: string }>(
+      `select count(*)::text as n from catalog_publication.candidates`,
+    ));
+    expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
     const definitions = await client.query<{ property_key: string }>(`select d.property_key from parameter_catalog.parameter_definitions d
       join parameter_catalog.catalog_release_definition_heads h on h.definition_id = d.id
       join parameter_catalog.catalog_state s on s.current_catalog_release_id = h.release_id

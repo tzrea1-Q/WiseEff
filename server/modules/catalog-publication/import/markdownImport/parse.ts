@@ -99,7 +99,7 @@ export function parseMarkdown(document: string): SyntaxTree {
       beginBody(text, line);
       continue;
     }
-    const cells = /^\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|\s*$/u.exec(text.trim());
+    const cells = /^\|\s*((?:\\.|[^|\\])*?)\s*\|\s*((?:\\.|[^|\\])*?)\s*\|\s*$/u.exec(text.trim());
     if (!cells) {
       problem("字段表", "字段表格式无效。", line);
       continue;
@@ -111,7 +111,8 @@ export function parseMarkdown(document: string): SyntaxTree {
       if (/^:?-{3,}:?$/u.test(name) && /^:?-{3,}:?$/u.test(value)) state = "rows";
       else problem("字段表", "请按模板填写字段表头。", line);
     } else {
-      definition.fields.push({ name, value, line });
+      definition.fields.push({ name,
+        value: value.replace(/\\\\|\\\|/gu, (escape) => escape === "\\|" ? "|" : escape), line });
     }
   }
   finish();

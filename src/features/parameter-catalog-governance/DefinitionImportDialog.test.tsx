@@ -99,6 +99,7 @@ it("lists unregistered new subjects after activation and keeps publication succe
   await user.click(within(dialog).getByRole("button", { name: "继续确认" }));
   await confirm("确认登记");
   await waitFor(() => expect(screen.queryByRole("button", { name: "登记 acme,new" })).not.toBeInTheDocument());
+  expect(screen.getByText("已登记 acme,new")).toBeVisible();
   expect(ports.governance.createRegistration).toHaveBeenCalledTimes(2);
   expect(vi.mocked(ports.governance.createRegistration).mock.calls.map((call) => call[2].idempotencyKey)).toEqual(["pub-key", "pub-key"]);
 });

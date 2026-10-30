@@ -5,6 +5,7 @@ import { diagnostic, type Definition, type Field, type ImportDiagnostic, type Su
 
 const ALLOWED_FIELDS = new Set(["类型", "类型说明", "单位", "最小值", "最大值", "最少项数", "最多项数", "示例", "简述"]);
 
+/** Build supported definition content and locate field validation errors. */
 export function buildContent(section: Subject, definition: Definition): {
   content: SupportedDefinitionContent | null;
   diagnostics: ImportDiagnostic[];
@@ -16,7 +17,7 @@ export function buildContent(section: Subject, definition: Definition): {
   };
   for (const field of definition.fields) {
     if (!ALLOWED_FIELDS.has(field.name)) {
-      problem(field.name, "定义契约不支持此字段，不能通过导入添加或强制执行。", field.line);
+      problem(field.name, "暂不支持该字段；如需说明，请写入定义正文。", field.line);
       continue;
     }
     const values = fields.get(field.name) ?? [];

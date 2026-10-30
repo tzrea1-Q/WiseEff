@@ -1,5 +1,4 @@
 export const DEFINITION_IMPORT_TEMPLATE = `# Driver \`vendor,existing-driver\`
-nature: physical-device · cardinality: multiple
 
 ## \`current-limit\` 电流限制
 | 字段 | 值 |
@@ -54,5 +53,13 @@ nature: physical-device · cardinality: multiple
 | 类型说明 | mixed |
 | 示例 | {"value":1} |
 
-数组和 mixed 的示例使用 JSON；每行一个示例，最多 8 行。数组的项数限制作用于最外层，数值边界作用于最内层的数值类型，最多嵌套 4 层。
+数组和 mixed 的示例使用 JSON；每行一个示例，最多 8 行。数组的项数限制作用于最外层，数值边界作用于最内层的数值类型，最多嵌套 4 层。字段值中的竖线请写为 \\|。
+
+# Driver \`vendor,new-driver\`
+nature: physical-device · cardinality: multiple
+
+## \`new-property\` 新主体参数
+| 字段 | 值 |
+| --- | --- |
+| 类型 | string |
 `;
