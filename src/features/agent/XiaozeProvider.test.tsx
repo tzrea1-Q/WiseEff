@@ -15,6 +15,8 @@ vi.mock("./XiaozePopupOpenPolicy", () => ({
   XiaozePopupOpenPolicy: () => null
 }));
 
+vi.mock("@/components/common/toast/ToastProvider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+
 vi.mock("@copilotkit/react-core/v2", () => ({
   CopilotKit: ({
     children,

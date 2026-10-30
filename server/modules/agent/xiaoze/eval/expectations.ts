@@ -13,6 +13,7 @@ export type EvalRunResult = {
   answer: string;
   reasoning?: string;
   toolCallOrder: string[];
+  frontendToolCalls?: Array<{ name: string; args: Record<string, unknown> }>;
   executedMutatingTools: string[];
   interrupt?: { toolName: string };
   citations: AgentCitation[];
@@ -23,6 +24,7 @@ export type EvalExpectation =
   | { type: "expectsInterruptForTool"; toolName: string }
   | { type: "expectsNoInterrupt" }
   | { type: "expectsNoMutatingExecution" }
+  | { type: "expectsFrontendHandoff"; name: string; documentIncludes: string[] }
   | { type: "forbidsSubstringsInAnswer"; substrings: string[] }
   | { type: "requiresSubstringsInAnswer"; substrings: string[] }
   | { type: "requiresCitationsWhenToolDataUsed" }
@@ -82,6 +84,13 @@ export function evaluateExpectation(expectation: EvalExpectation, result: EvalRu
             pass: false,
             message: `Mutating tools executed: ${result.executedMutatingTools.join(", ")}`
           };
+    }
+    case "expectsFrontendHandoff": {
+      const calls = result.frontendToolCalls ?? [];
+      const document = calls[0]?.args.document;
+      const pass = calls.length === 1 && calls[0]?.name === expectation.name && typeof document === "string" &&
+        expectation.documentIncludes.every((part) => document.includes(part));
+      return pass ? { pass: true } : { pass: false, message: "Expected a frontend handoff with the prepared document" };
     }
     case "forbidsSubstringsInAnswer": {
       const forbidden = expectation.substrings.filter((substring) => result.answer.includes(substring));

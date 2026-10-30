@@ -4,6 +4,7 @@ import type { PerceptionAgentContext, PerceptionModelToolCall, PerceptionToolDes
 import type { PlanningResumeDecision } from "../planningGraph";
 import { fakeModelSequence, toolCall } from "../testing/fakeModel";
 import type { EvalExpectation } from "./expectations";
+import { DEFINITION_IMPORT_FRONTEND_TOOL } from "../toolCatalog";
 
 export type ToolBehavior =
   | {
@@ -59,6 +60,27 @@ const parameterCitation: AgentCitation = {
 };
 
 export const EVAL_SCENARIOS: EvalScenario[] = [
+  {
+    name: "definition-import-handoff",
+    category: "definition-import",
+    userMessage: "请整理 acme,charger 物理设备（多实例）的电流限制：整数，单位 uA，示例 3000000，并打开导入。",
+    context: {},
+    threadId: "eval-definition-import",
+    modelScript: [
+      { toolCalls: [toolCall("openDefinitionImport", { document: "# Driver `acme,charger`\nnature: physical-device · cardinality: multiple\n\n## `current-limit` 电流限制\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n| 单位 | uA |\n| 示例 | 3000000 |" })] },
+      { content: "已请求移交文档，请检查后自行预览和发布。" }
+    ],
+    tools: [...STANDARD_TOOL_LIST, DEFINITION_IMPORT_FRONTEND_TOOL],
+    toolBehaviors: {},
+    expectations: [
+      { type: "expectsToolCallOrder", tools: [] },
+      { type: "expectsFrontendHandoff", name: "openDefinitionImport", documentIncludes: ["# Driver `acme,charger`", "## `current-limit` 电流限制", "| 类型 | integer |", "| 单位 | uA |", "| 示例 | 3000000 |"] },
+      { type: "expectsNoInterrupt" },
+      { type: "expectsNoMutatingExecution" },
+      { type: "mustNotClaimWriteWithoutApproval" },
+      { type: "requiresSubstringsInAnswer", substrings: ["预览", "发布"] }
+    ]
+  },
   {
     name: "intent-read-routing",
     category: "intent-to-read-routing",

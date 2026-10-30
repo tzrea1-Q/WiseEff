@@ -2,8 +2,25 @@ import { describe, expect, it } from "vitest";
 import { evaluateExpectation } from "./expectations";
 import { runAllEvals, runMetaChecks, runScenario } from "./runEval";
 import { EVAL_SCENARIOS, META_HALLUCINATED_WRITE_RESULT } from "./scenarios";
+import { firstAcmePredecessor } from "../../../catalog-publication/builder/predecessorHarness";
+import { planMarkdownImport } from "../../../catalog-publication/import/markdownImport";
 
 describe("xiaoze behavior eval harness", () => {
+  it("prepares a definition import document and hands it to the frontend without a write", async () => {
+    const scenario = EVAL_SCENARIOS.find((candidate) => candidate.name === "definition-import-handoff");
+    expect(scenario).toBeDefined();
+    const result = await runScenario(scenario!);
+    expect(result.pass, JSON.stringify(result.expectations)).toBe(true);
+    expect(result.runResult.frontendToolCalls).toEqual([expect.objectContaining({
+      name: "openDefinitionImport", args: { document: expect.stringContaining("## `current-limit` 电流限制") }
+    })]);
+    const document = result.runResult.frontendToolCalls?.[0]?.args.document;
+    expect(typeof document).toBe("string");
+    expect(planMarkdownImport(document as string, "粘贴.md", firstAcmePredecessor().first).entries.map((entry) => entry.outcome)).toEqual(["create"]);
+    expect(result.runResult.toolCallOrder).toEqual([]);
+    expect(result.runResult.executedMutatingTools).toEqual([]);
+    expect(result.runResult.interrupt).toBeUndefined();
+  });
   it("runs all golden scenarios with zero failures", async () => {
     const report = await runAllEvals();
     const failed = report.scenarios.filter((scenario) => !scenario.pass);

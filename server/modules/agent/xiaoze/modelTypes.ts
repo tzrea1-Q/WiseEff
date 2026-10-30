@@ -15,6 +15,7 @@ export type PerceptionToolDescriptor = {
   description: string;
   schema: Record<string, unknown>;
   requiresApproval?: boolean;
+  frontend?: boolean;
 };
 
 export type PerceptionAgentContext = {

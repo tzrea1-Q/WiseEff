@@ -268,6 +268,16 @@ export function createPlanningAgent(options: {
 
     for (const call of response.toolCalls) {
       const toolDefinition = options.listTools().find((tool) => tool.name === call.name);
+      if (toolDefinition?.frontend) {
+        if (typeof call.args.document !== "string" || !call.args.document.trim() || call.args.document.length > 1_048_576 || Object.keys(call.args).length !== 1) {
+          messages.push({ role: "tool", tool_call_id: call.id, content: "文档为空或超出长度限制，未移交。" });
+          continue;
+        }
+        pushSink(config, { type: "tool_call", toolCallId: call.id, toolName: call.name, args: call.args });
+        messages.push({ role: "tool", tool_call_id: call.id,
+          content: "前端交接请求已发送；是否打开取决于权限和目录状态，预览和发布由人完成。" });
+        continue;
+      }
       if (toolDefinition?.requiresApproval) {
         pendingMutating = call;
         pendingMutatingToolCallId = createToolCallId();

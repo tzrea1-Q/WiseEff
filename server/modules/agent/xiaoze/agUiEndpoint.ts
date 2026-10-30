@@ -25,7 +25,7 @@ import { formatApprovalExecutionFailure } from "./approvalExecutionFailure";
 import { createPlanningAgent } from "./planningGraph";
 import { registerAgentCheckpointNamespace } from "./checkpointOwnership";
 import { runXiaozeSuggest } from "./suggest";
-import { buildXiaozePlanningToolDescriptors, getXiaozeToolLabel, toOpenAiToolDefinitions } from "./toolCatalog";
+import { buildXiaozePlanningToolDescriptors, DEFINITION_IMPORT_FRONTEND_TOOL, getXiaozeToolLabel, toOpenAiToolDefinitions } from "./toolCatalog";
 import { isXiaozeDeterministicMode } from "./runtimeMode";
 import { createRunEventSink, serializeTurnSteps, type RunEventSink } from "./runEventSink";
 import {
@@ -487,7 +487,7 @@ export function createXiaozeAgentFactory(options: {
   // Read tools (perception + knowledge) bind before approval-gated action tools.
   const readTools = registry.list().filter((tool) => !tool.requiresApproval);
   const actionTools = registry.list().filter((tool) => tool.requiresApproval);
-  const planningToolDescriptors = buildXiaozePlanningToolDescriptors([...readTools, ...actionTools]);
+  const planningToolDescriptors = [...buildXiaozePlanningToolDescriptors([...readTools, ...actionTools]), DEFINITION_IMPORT_FRONTEND_TOOL];
   const modelFactory = options.modelFactory ?? createProductionModel;
   const checkpointer = options.checkpointer ?? resolveXiaozeCheckpointerFromEnv(options.env);
   const executionOrchestrator = options.orchestrator;
