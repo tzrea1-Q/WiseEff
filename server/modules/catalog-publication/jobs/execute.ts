@@ -135,6 +135,7 @@ export function impactFactsFromAllocation(allocation: JsonObject): ImpactFacts |
   }
   if (
     facts.sourceKind !== "typed-changeset" &&
+    facts.sourceKind !== "markdown-import" &&
     facts.sourceKind !== "vendor-yaml" &&
     facts.sourceKind !== "repository-bundle" &&
     facts.sourceKind !== "adopted-preexisting"

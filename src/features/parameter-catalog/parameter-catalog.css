@@ -1277,6 +1277,59 @@ button.parameter-catalog__tree-toggle:hover {
   max-height: min(88vh, 52rem);
 }
 
+.governance-confirm-dialog.parameter-catalog-import-dialog {
+  width: min(960px, calc(100vw - 48px));
+}
+
+.parameter-catalog-import-dialog__table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  overflow-wrap: anywhere;
+}
+
+.parameter-catalog-import-dialog__table caption {
+  text-align: left;
+}
+
+.parameter-catalog-import-dialog__table col:nth-child(1) { width: 20%; }
+.parameter-catalog-import-dialog__table col:nth-child(2) { width: 18%; }
+.parameter-catalog-import-dialog__table col:nth-child(3) { width: 16%; }
+.parameter-catalog-import-dialog__table col:nth-child(4) { width: 5.5rem; }
+
+.parameter-catalog-import-dialog__results {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.parameter-catalog-import-dialog__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.parameter-catalog-import-dialog__file-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.parameter-catalog-import-dialog__file-actions input[hidden] {
+  display: none;
+}
+
+.parameter-catalog-import-dialog .parameter-catalog-publication-dialog__form textarea {
+  height: 20rem;
+  field-sizing: fixed;
+  font-family: var(--font-mono, monospace);
+}
+
 .parameter-catalog-publication-dialog .confirm-dialog__scroll {
   max-height: min(64vh, 36rem);
   overflow: auto;

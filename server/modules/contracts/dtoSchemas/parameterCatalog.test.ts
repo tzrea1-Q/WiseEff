@@ -14,6 +14,7 @@ import {
   catalogApiFailureReasons,
   catalogCreateBindingDraftRequestSchema,
   catalogCreatePublicationCandidateRequestSchema,
+  catalogTypedPublicationCandidateRequestSchema,
   catalogSupportedDefinitionContentSchema,
   catalogDefinitionDtoSchema,
   catalogDocumentResponseSchema,
@@ -276,7 +277,7 @@ describe("S8-CON threat matrix", () => {
 
   it("accepts M2 create-subject and revise-definition on the frozen candidate request", () => {
     expect(
-      catalogCreatePublicationCandidateRequestSchema.parse({
+      catalogTypedPublicationCandidateRequestSchema.parse({
         changeSet: [
           {
             op: "create-subject-with-definitions",
@@ -323,6 +324,14 @@ describe("S8-CON threat matrix", () => {
         ]
       }).success
     ).toBe(false);
+  });
+
+  it("accepts up to 128 publication changes", () => {
+    const change = { op: "create-definition", subjectId: "csub_acme_power", propertyKey: "current", content: {
+      displayName: "电流", documentation: "", valueSchema: { type: "integer" },
+    } };
+    expect(catalogCreatePublicationCandidateRequestSchema.safeParse({ changeSet: Array(128).fill(change) }).success).toBe(true);
+    expect(catalogCreatePublicationCandidateRequestSchema.safeParse({ changeSet: Array(129).fill(change) }).success).toBe(false);
   });
 
   it("fails closed when a canonical client method is missing for a catalog route", () => {

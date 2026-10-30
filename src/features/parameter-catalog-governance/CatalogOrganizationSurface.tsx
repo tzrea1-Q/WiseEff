@@ -19,6 +19,7 @@ import { DefinitionLifecycleDialog, type DefinitionLifecycleIntent } from "./Def
 
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import { PublicationDialog } from "./PublicationDialog";
+import { DefinitionImportDialog } from "./DefinitionImportDialog";
 import {
   publicationSurfaceAllowsAuthoring,
   publicationSurfaceAllowsPublishing,
@@ -38,9 +39,11 @@ import { ReviewQueue } from "./ReviewQueue";
 import type { CatalogDefinitionResponse, CatalogDefinitionErasureListResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
+import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
+  runtimeMode?: WiseEffRuntimeMode;
   governance: ParameterCatalogGovernanceRepository;
   actor?: CatalogActorKind;
   roleId?: string;
@@ -58,6 +61,7 @@ export type CatalogOrganizationSurfaceProps = {
 
 export function CatalogOrganizationSurface({
   catalog,
+  runtimeMode,
   governance,
   actor: actorProp,
   roleId,
@@ -101,6 +105,7 @@ export function CatalogOrganizationSurface({
   const reviewQueueRequested = new URLSearchParams(search).get("review") === "open";
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
   const [pendingWorkOpen, setPendingWorkOpen] = useState(Boolean(anchor.reviewItemId) || reviewQueueRequested);
@@ -321,6 +326,7 @@ export function CatalogOrganizationSurface({
         onAnchorChange={onAnchorChange}
         onDomainStateChange={setDomainState}
         onAction={handleAction}
+        onImportDefinitions={actor !== "agent" && sessionPermissions?.includes("catalog:author") && publicationSurfaceAllowsAuthoring(publicationSurface) && domainState && organizationId && catalogReleaseId ? () => setImportOpen(true) : undefined}
         onOpenPendingWork={reviewQueueAllowed ? () => setPendingWorkOpen(true) : undefined}
         onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
         onDefinitionDeleted={() => setCleanupEpoch(value => value + 1)}
@@ -492,6 +498,12 @@ export function CatalogOrganizationSurface({
           }}
         />
       ) : null}
+      {catalogReleaseId && domainState && organizationId && importOpen ? <DefinitionImportDialog key={`markdown-import-${organizationId}-${currentPersonId}`}
+        open runtimeMode={runtimeMode} actor={actor} sessionPermissions={sessionPermissions} domainState={domainState} catalog={catalog}
+        catalogReleaseId={catalogReleaseId} currentPersonId={currentPersonId} organizationId={organizationId}
+        publicationSurface={publicationSurface} createIdempotencyKey={createGovernanceIdempotencyKey}
+        onCompleted={() => setSurfaceEpoch((value) => value + 1)} onRefreshEvidence={refreshCurrentCatalog}
+        onOpenChange={setImportOpen} /> : null}
       {catalogReleaseId &&
       domainState &&
       organizationId &&

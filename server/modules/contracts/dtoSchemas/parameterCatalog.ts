@@ -809,11 +809,17 @@ export const catalogChangeSchema = z.union([
   catalogRestoreDefinitionChangeSchema
 ]);
 
-export const catalogCreatePublicationCandidateRequestSchema = catalogObject({
-  changeSet: z.array(catalogChangeSchema).min(1).max(32),
+export const catalogTypedPublicationCandidateRequestSchema = catalogObject({
+  changeSet: z.array(catalogChangeSchema).min(1).max(128),
   proposalId: z.string().optional(),
   proposalRevisionId: z.string().optional()
 });
+export const catalogMarkdownImportRequestSchema = catalogObject({
+  markdownImport: catalogObject({ document: z.string().max(1_048_576), fileName: z.string().min(1).max(255) })
+});
+export const catalogCreatePublicationCandidateRequestSchema = z.union([
+  catalogTypedPublicationCandidateRequestSchema, catalogMarkdownImportRequestSchema
+]);
 
 export const catalogPublishPublicationCandidateRequestSchema = catalogObject({
   idempotencyKey: z.string().min(1)
@@ -1458,6 +1464,22 @@ export const catalogProposalResponseSchema = itemEnvelopeSchema(catalogProposalD
 export const catalogPublicationCandidateResponseSchema = itemEnvelopeSchema(
   catalogPublicationCandidateDtoSchema
 ).superRefine(rejectLegacySpecKeys);
+export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObject({
+  candidate: catalogPublicationCandidateDtoSchema.nullable(),
+  entries: z.array(catalogObject({
+    subjectHeading: z.string(), definitionHeading: z.string(),
+    selector: z.string(), propertyKey: z.string(), displayName: z.string(),
+    outcome: z.enum(["create", "skip", "conflict", "error"]),
+    diagnostics: z.array(catalogObject({
+      subjectHeading: z.string(), definitionHeading: z.string(), field: z.string(), message: z.string(),
+      line: z.number().int().positive()
+    }))
+  })),
+  source: catalogObject({ fileName: z.string(), sha256: z.string(), parserVersion: z.string() })
+}));
+export const catalogPublicationPreviewResponseSchema = z.union([
+  catalogPublicationCandidateResponseSchema, catalogMarkdownImportResponseSchema
+]);
 export const catalogPublicationJobResponseSchema = itemEnvelopeSchema(
   catalogPublicationJobDtoSchema
 ).superRefine(rejectLegacySpecKeys);
@@ -1666,6 +1688,8 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogRejectProposalRequest: catalogRejectProposalRequestSchema,
   CatalogCreatePublicationCandidateRequest: catalogCreatePublicationCandidateRequestSchema,
   CatalogPublicationCandidateResponse: catalogPublicationCandidateResponseSchema,
+  CatalogMarkdownImportResponse: catalogMarkdownImportResponseSchema,
+  CatalogPublicationPreviewResponse: catalogPublicationPreviewResponseSchema,
   CatalogPublishPublicationCandidateRequest: catalogPublishPublicationCandidateRequestSchema,
   CatalogPublicationJobResponse: catalogPublicationJobResponseSchema,
   CatalogPublicationJobListResponse: catalogPublicationJobListResponseSchema,
@@ -2581,11 +2605,12 @@ export const parameterCatalogSchemaRegistry = {
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   },
   "catalog.createPublicationCandidate": {
-    summary: "Build and freeze a complete successor publication candidate from a typed ChangeSet",
+    summary: "Preview a typed ChangeSet or Markdown definition import",
     tags: ["catalog"],
     requestBody: "CatalogCreatePublicationCandidateRequest",
-    responseBody: "CatalogPublicationCandidateResponse",
+    responseBody: "CatalogPublicationPreviewResponse",
     successStatus: 201,
+    additionalSuccessResponses: { "200": "CatalogMarkdownImportResponse" },
     additionalResponses: catalogPublicationWriteErrors,
     requestParameters: [catalogReleaseRequestHeader],
     successHeaders: [catalogReleaseResponseHeader]

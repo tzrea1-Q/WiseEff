@@ -315,6 +315,20 @@ describe("parameter catalog client contract", () => {
     });
   });
 
+  it("posts a Markdown import and parses the located plan with no candidate", async () => {
+    const result = { item: { candidate: null, source: { fileName: "defs.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [{
+      subjectHeading: "# Driver `x,y`", definitionHeading: "## `key` 名称", outcome: "error",
+      selector: "x,y", propertyKey: "key", displayName: "名称",
+      diagnostics: [{ subjectHeading: "# Driver `x,y`", definitionHeading: "## `key` 名称", field: "类型", message: "类型无效。", line: 5 }],
+    }] } };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(result));
+    const repository = createApiParameterCatalogRepository(createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock }));
+    expect(await repository.previewMarkdownImport!({ markdownImport: { document: "输入", fileName: "defs.md" } }, { catalogReleaseId: "crel_01K42" })).toEqual(result);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ markdownImport: { document: "输入", fileName: "defs.md" } });
+    expect((init.headers as Record<string, string>)["X-WiseEff-Catalog-Release"]).toBe("crel_01K42");
+  });
+
   it("publishes with idempotencyKey in the body and reads job currentness", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       jsonResponse({

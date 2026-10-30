@@ -2,6 +2,7 @@ import type { CatalogReleasePin } from "../../parameter-catalog-contract/index";
 import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
 import type { BackendPermission } from "../../auth/types";
 import type { catalogPublicationCommandByRouteId } from "./mapping";
+import type { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
 
 export type CatalogPublicationRouteId = keyof typeof catalogPublicationCommandByRouteId;
 
@@ -92,7 +93,8 @@ export type PreviewPublicationCommand = {
   readonly permissions: readonly BackendPermission[];
   readonly actorKind: TrustedPublicationActorKind;
   readonly catalogReleaseId: string;
-  readonly changeSet: unknown;
+  readonly changeSet?: unknown;
+  readonly markdownImport?: { readonly document: string; readonly fileName: string };
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
 };
@@ -127,7 +129,7 @@ export type CatalogPublicationPorts = {
   readonly currentRelease: () => Promise<CatalogReleasePin | null>;
   readonly previewCandidate: (
     command: PreviewPublicationCommand,
-  ) => Promise<{ ok: true; value: PublicationCandidateView } | { ok: false; error: CatalogPublicationFailure }>;
+  ) => Promise<{ ok: true; value: PublicationCandidateView | { candidate: PublicationCandidateView | null; entries: ReturnType<typeof planMarkdownImport>["entries"]; source: { fileName: string; sha256: string; parserVersion: string } } } | { ok: false; error: CatalogPublicationFailure }>;
   readonly getCandidate: (input: {
     readonly candidateId: string;
     readonly organizationId: string;

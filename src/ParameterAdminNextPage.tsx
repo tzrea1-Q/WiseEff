@@ -173,6 +173,7 @@ export function ParameterAdminNextPage({
   const renderCatalogLibrary = (taskContent?: ReactNode) =>
     runtime?.parameterCatalogRepository && runtime.parameterCatalogGovernanceRepository ? (
       <CatalogOrganizationSurface
+        runtimeMode={runtimeMode}
         taskContent={taskContent}
         catalog={runtime.parameterCatalogRepository}
         governance={runtime.parameterCatalogGovernanceRepository}

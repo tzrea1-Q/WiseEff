@@ -14,6 +14,7 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "listDefinitionTimeline",
   "getLegacyIdentifier",
   "createPublicationCandidate",
+  "previewMarkdownImport",
   "getPublicationCandidate",
   "publishPublicationCandidate",
   "getPublication",

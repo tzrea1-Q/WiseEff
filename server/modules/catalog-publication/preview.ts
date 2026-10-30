@@ -365,6 +365,7 @@ export async function previewPublicationCandidate(input: {
   readonly authorOrganizationId: string;
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
+  readonly markdownSource?: { readonly fileName: string; readonly sha256: string; readonly parserVersion: string };
 }): Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
   const artifact = await getArtifactByDigest(input.db, input.predecessorDigest);
   if (!artifact.ok) {
@@ -445,7 +446,8 @@ export async function previewPublicationCandidate(input: {
     return { ok: false, error: { kind: "invalid-input", reason: "noop-revise" } };
   }
 
-  const facts = publicationImpactFacts(input.authorPrincipalId, input.changeSet, built.value.impact);
+  const facts = { ...publicationImpactFacts(input.authorPrincipalId, input.changeSet, built.value.impact),
+    ...(input.markdownSource ? { sourceKind: "markdown-import" as const } : {}) };
   const classified = classifyImpact(facts);
   if (!classified.ok) {
     return {
@@ -473,7 +475,7 @@ export async function previewPublicationCandidate(input: {
           }),
       },
     },
-    built.value.artifact,
+    input.markdownSource ? { ...built.value.artifact, sourceKind: "markdown-import", toolchain: { ...built.value.artifact.toolchain, markdownImport: input.markdownSource } } : built.value.artifact,
     built.value.candidate,
   );
   if ("ok" in persisted) {

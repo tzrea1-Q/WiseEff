@@ -12,8 +12,11 @@ import { withPublicationCoordinator } from "../../catalog-publication/coordinato
 import { enqueuePublicationJob } from "../../catalog-publication/enqueue";
 import { impactFactsFromAllocation } from "../../catalog-publication/jobs/execute";
 import { parsePublicationChangeSet, previewPublicationCandidate } from "../../catalog-publication/preview";
+import { parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
+import { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
 import {
   getCandidate,
+  getArtifactByDigest,
   getJob,
   getReceiptByJobId,
   listJobs,
@@ -215,6 +218,9 @@ export function bindCatalogPublicationCommands(input: {
   const { db, pool } = input;
   return {
     async previewCandidate(command) {
+      if (command.markdownImport && !command.permissions.includes("catalog:author")) {
+        return { ok: false, error: { kind: "forbidden", reason: "publication-capability-missing" } };
+      }
       if (
         !command.permissions.includes("catalog:author") &&
         !command.permissions.includes("catalog:publish")
@@ -224,14 +230,22 @@ export function bindCatalogPublicationCommands(input: {
           error: { kind: "forbidden", reason: "publication-capability-missing" },
         };
       }
-      const parsed = parsePublicationChangeSet(command.changeSet);
-      if ("error" in parsed) {
-        return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
-      }
       const pointer = pool ? await readCurrentCatalogPointer(pool) : { kind: "absent" as const };
       if (pointer.kind !== "installed" || pointer.current.id !== command.catalogReleaseId) {
         return { ok: false, error: { kind: "reason", reason: "candidate-stale" } };
       }
+      let plan: ReturnType<typeof planMarkdownImport> | undefined;
+      if (command.markdownImport) {
+        const artifact = await getArtifactByDigest(db, pointer.current.digest);
+        if (!artifact.ok) return { ok: false, error: { kind: "reason", reason: "artifact-missing" } };
+        const bundle = parseBundleBytes(artifact.value.artifactBytes);
+        const snapshot = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
+        if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
+        plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot);
+        if (!plan.changeSet) return { ok: true, value: { candidate: null, entries: plan.entries, source: plan.source } };
+      }
+      const parsed = plan?.changeSet ?? parsePublicationChangeSet(command.changeSet);
+      if ("error" in parsed) return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
       const previewed = await previewPublicationCandidate({
         db,
         predecessorDigest: pointer.current.digest,
@@ -240,22 +254,21 @@ export function bindCatalogPublicationCommands(input: {
         authorOrganizationId: command.organizationId,
         proposalId: command.proposalId,
         proposalRevisionId: command.proposalRevisionId,
+        markdownSource: plan?.source,
       });
       if (!previewed.ok) {
         return { ok: false, error: mapPreviewError(previewed.error.kind) };
       }
-      return {
-        ok: true,
-        value: {
-          id: previewed.value.candidate.id,
-          expectedBaseReleaseId: previewed.value.candidate.expectedBaseReleaseId,
-          expectedBaseReleaseDigest: previewed.value.candidate.expectedBaseReleaseDigest,
-          riskClass: previewed.value.riskClass,
-          impactSummary: previewed.value.impactSummary,
-          capabilityContract: capabilityOf(previewed.value.candidate),
-          authorOrganizationId: command.organizationId,
-        },
+      const candidate = {
+        id: previewed.value.candidate.id,
+        expectedBaseReleaseId: previewed.value.candidate.expectedBaseReleaseId,
+        expectedBaseReleaseDigest: previewed.value.candidate.expectedBaseReleaseDigest,
+        riskClass: previewed.value.riskClass,
+        impactSummary: previewed.value.impactSummary,
+        capabilityContract: capabilityOf(previewed.value.candidate),
+        authorOrganizationId: command.organizationId,
       };
+      return { ok: true, value: plan ? { candidate, entries: plan.entries, source: plan.source } : candidate };
     },
     async getCandidate(query) {
       let candidateId: ReturnType<typeof CatalogCandidateId>;
