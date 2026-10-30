@@ -21,6 +21,8 @@ import { DefinitionLifecycleDialog, type DefinitionLifecycleIntent } from "./Def
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import { PublicationDialog } from "./PublicationDialog";
 import { DefinitionImportDialog } from "./DefinitionImportDialog";
+import { BatchRegistrationTable, type BatchRegistrationEntry } from "./BatchRegistrationTable";
+import { onBatchRegistrationHandoff, takeBatchRegistrationHandoff } from "./batchRegistrationHandoff";
 import {
   publicationSurfaceAllowsAuthoring,
   publicationSurfaceAllowsPublishing,
@@ -102,6 +104,16 @@ export function CatalogOrganizationSurface({
     : sessionRoles?.some((role) => role.roleId === "platform-admin" && role.projectId === null) ? "platform-admin"
       : sessionRoles?.some((role) => role.roleId === "admin" && role.projectId === null) ? "org-admin" : "user";
   const reviewQueueAllowed = catalogActionsForSession({ actor: reviewActor, permissions: sessionPermissions }).includes("resolve-review-item");
+  const registrationAllowed = actor !== "agent" && catalogActionsForSession({ actor: reviewActor, permissions: sessionPermissions }).includes("register-subject");
+  const [batchEntry, setBatchEntry] = useState<BatchRegistrationEntry | null>(null);
+  const [batchEpoch, setBatchEpoch] = useState(0);
+  const [batchHandoffEpoch, setBatchHandoffEpoch] = useState(0);
+  useEffect(() => onBatchRegistrationHandoff(() => setBatchHandoffEpoch((value) => value + 1)), []);
+  useEffect(() => {
+    if (!registrationAllowed || !organizationId) return;
+    const handoff = takeBatchRegistrationHandoff(organizationId, currentPersonId);
+    if (handoff) { setBatchEntry(handoff); setBatchEpoch((value) => value + 1); }
+  }, [batchHandoffEpoch, registrationAllowed, organizationId, currentPersonId]);
   const anchor = parseCatalogUrlAnchor(search);
   const reviewQueueRequested = new URLSearchParams(search).get("review") === "open";
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);
@@ -252,6 +264,7 @@ export function CatalogOrganizationSurface({
     onAnchorChange(buildCatalogHref({ ...parseCatalogUrlAnchor(search),
       catalogReleaseId: latest.item.catalogReleaseId, cursor: null }), "replace");
     setSurfaceEpoch((value) => value + 1);
+    return latest.item.catalogReleaseId;
   }, [catalog, search, onAnchorChange]);
   const dismissReview = () => {
     if (reviewEditorActive) {
@@ -338,6 +351,7 @@ export function CatalogOrganizationSurface({
         onDomainStateChange={setDomainState}
         onAction={handleAction}
         onImportDefinitions={canImportDefinitions ? () => { setImportDocument(undefined); setImportOpen(true); } : undefined}
+        onOpenUnregisteredSubjects={registrationAllowed && organizationId && catalogReleaseId ? () => { setBatchEntry({}); setBatchEpoch((value) => value + 1); } : undefined}
         onOpenPendingWork={reviewQueueAllowed ? () => setPendingWorkOpen(true) : undefined}
         onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
         onDefinitionDeleted={() => setCleanupEpoch(value => value + 1)}
@@ -385,7 +399,7 @@ export function CatalogOrganizationSurface({
             // Refresh the release anchor after activation, keeping the result
             // panel mounted while subsequent reads use the applied revision.
             onCompleted={() => undefined}
-            onRefreshEvidence={refreshCurrentCatalog}
+            onRefreshEvidence={async () => { await refreshCurrentCatalog(); }}
             authoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
             publishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
             onRequestHistory={history.onRequestHistory}
@@ -411,6 +425,10 @@ export function CatalogOrganizationSurface({
             : undefined
         }
       />
+      {batchEntry && organizationId && catalogReleaseId ? <BatchRegistrationTable key={batchEpoch} repository={governance}
+        organizationId={organizationId} catalogReleaseId={catalogReleaseId} initial={batchEntry}
+        onCompleted={() => setSurfaceEpoch((value) => value + 1)} onRefreshEvidence={refreshCurrentCatalog}
+        onClose={() => setBatchEntry(null)} /> : null}
       {reviewQueueAllowed && domainState && catalogReleaseId && organizationId ? (
         <ModalDialog
           open={pendingWorkOpen}
@@ -513,7 +531,7 @@ export function CatalogOrganizationSurface({
         open initialDocument={importDocument} runtimeMode={runtimeMode} actor={actor} sessionPermissions={sessionPermissions} domainState={domainState} catalog={catalog} governance={governance} moduleRegistry={moduleRegistry}
         catalogReleaseId={catalogReleaseId} currentPersonId={currentPersonId} organizationId={organizationId}
         publicationSurface={publicationSurface} createIdempotencyKey={createGovernanceIdempotencyKey}
-        onCompleted={() => setSurfaceEpoch((value) => value + 1)} onRefreshEvidence={refreshCurrentCatalog}
+        onCompleted={() => setSurfaceEpoch((value) => value + 1)} onRefreshEvidence={async () => { await refreshCurrentCatalog(); }}
         onOpenChange={setImportOpen} /> : null}
       {catalogReleaseId &&
       domainState &&
@@ -533,7 +551,7 @@ export function CatalogOrganizationSurface({
           publicationSurface={publicationSurface}
           createIdempotencyKey={createGovernanceIdempotencyKey}
           onCompleted={() => setSurfaceEpoch((value) => value + 1)}
-          onRefreshEvidence={refreshCurrentCatalog}
+          onRefreshEvidence={async () => { await refreshCurrentCatalog(); }}
           onOpenChange={(open) => {
             if (!open) {
               setAction(null);

@@ -47,6 +47,8 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
 ] as const;
 
 export const PARAMETER_CATALOG_GOVERNANCE_REPOSITORY_METHODS = [
+  "listUnregisteredSubjects",
+  "createBatchRegistration",
   "listRegistrations",
   "createRegistration",
   "getRegistration",

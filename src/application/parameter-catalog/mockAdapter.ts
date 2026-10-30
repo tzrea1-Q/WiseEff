@@ -701,6 +701,8 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
   };
 
   const governance: ParameterCatalogGovernanceRepository = {
+    async listUnregisteredSubjects() { throw new Error("模拟模式不支持批量登记，请使用 API 模式。"); },
+    async createBatchRegistration() { throw new Error("模拟模式不支持批量登记，请使用 API 模式。"); },
     async listDriverCompatibleDiscovery() {
       return { status: "unavailable", reason: "catalog-unavailable" };
     },

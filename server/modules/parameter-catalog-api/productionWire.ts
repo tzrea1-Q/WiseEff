@@ -55,7 +55,9 @@ import {
   catalogRegistrationDtoSchema,
 } from "../contracts/dtoSchemas/parameterCatalog";
 
-import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
+import { registerCatalogBatchRegistrationRoutes, registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
+import { listUnregisteredSubjects } from "./governance/unregistered";
+import { executeBatchRegistration } from "../parameter-governance/registration/batch";
 import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
 import { registerDefinitionDeletionRoutes } from "./definitionDeletion/routes";
 import type { DefinitionArchiveStores } from "./definitionDeletion/archives";
@@ -480,7 +482,8 @@ const authenticateGovernance =
     const organizationDetail = matched?.id === "catalog.getRegistration";
     if (matched && (organizationDetail || [
       "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
-      "catalog.createRegistration", "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement"
+      "catalog.createRegistration", "catalog.createBatchRegistration", "catalog.listUnregisteredSubjects",
+      "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement"
     ].includes(matched.id))) {
       const targetId = matched.params.organizationId;
       if (!targetId || (request.query.organizationId !== undefined && request.query.organizationId !== targetId) ||
@@ -760,6 +763,8 @@ const createGovernancePorts = (
 
   return {
     authenticate: authenticateGovernance(resolveAuth, pool),
+    listUnregisteredSubjects: pool ? (organizationId, releaseId, source) => listUnregisteredSubjects(pool, organizationId, releaseId, source) : undefined,
+    executeBatchRegistration: pool ? (input) => executeBatchRegistration(pool, input) : undefined,
     currentRelease: async () => {
       if (!pool) {
         return null;
@@ -985,6 +990,7 @@ export const registerParameterCatalogApi = (
     router,
     createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),
   );
+  registerCatalogBatchRegistrationRoutes(router, createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore));
   registerCatalogDriverCompatibleDiscoveryRoute(router, {
     db: options.db, objectStore: options.objectStore, resolveAuth: options.resolveAuth,
     resolveInvocation: async (request) => {

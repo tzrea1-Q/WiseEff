@@ -18,11 +18,27 @@ import {
   catalogRegistrationListResponseSchema,
   catalogReviewResolutionResponseSchema,
 } from "../../contracts/dtoSchemas/parameterCatalog";
-import { CatalogSubjectId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
+import { CatalogSubjectId, SubjectRegistrationId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
 import { createEvidenceIngest } from "../../parameter-governance/evidence/index";
 import type { IngestEvidenceCommand } from "../../parameter-governance/evidence/types";
 import { executeProposal } from "../../parameter-governance/proposals/index";
 import { executeRegistration } from "../../parameter-governance/registration/index";
+import { createAgentInvocation, createUserInvocation } from "../../auth/trustedInvocation";
+import { executeBatchRegistration } from "../../parameter-governance/registration/batch";
+import { makeTestAuthContext } from "../../../testing/authContext";
+import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
+import { bootstrapFirstAcme, persistPredecessorArtifact, connect, PUBLISHER, publisherPermissions, userActor } from "../../catalog-kernel/install/publicationTestHarness";
+import { enablePublicationPolicy, authorPermissions } from "../../catalog-publication/authorization/testHarness";
+import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
+import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
+import { runPublicationManagerOnce } from "../../catalog-publication/jobs/manager";
+import { listenCatalogPublicationHttpServer } from "../publication/http";
+import { bindCatalogPublicationCommands } from "../publication/ports";
+import { catalogMarkdownImportResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
+import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../catalog-publication/runtime/provisionRuntimeLogins";
+import { compileVendorCatalogSuccessor } from "../../../../scripts/compile-vendor-catalog-release";
+import { createRouter } from "../../../shared/http/router";
+import { registerParameterCatalogApi } from "../productionWire";
 import { createGovernanceCatalogQueries } from "../../parameter-governance/queries/index";
 import { resolveReviewItem } from "../../parameter-governance/resolveReviewItem/index";
 import { createReviewQueueReader } from "../../parameter-governance/review/index";
@@ -36,6 +52,7 @@ import {
 import { listenCatalogGovernanceHttpServer } from "./http";
 import { bindCatalogGovernanceCommands, bindGovernanceCatalogQueryPorts, emptyGovernanceQueryPorts } from "./ports";
 import type { CatalogGovernancePorts, TrustedGovernanceScope } from "./types";
+import { listUnregisteredSubjects } from "./unregistered";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -93,6 +110,8 @@ const compileOrThrow = (bundle: CatalogReleaseBundle) => {
 describe("S8-GOV HTTP against real PostgreSQL", () => {
   let database: EphemeralTestDatabase;
   let pool: pg.Pool;
+  let apiPool: pg.Pool;
+  let runtimeToken = "";
   let pin: CatalogReleasePin;
   let baseUrl = "";
   let close: () => Promise<void> = async () => undefined;
@@ -123,14 +142,30 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("s8gov");
     pool = new pg.Pool({ connectionString: database.url, max: 4 });
-    const first = compileOrThrow(firstReleaseBundle());
+    const base = firstReleaseBundle();
+    const release = structuredClone(base.releases[0]!) as Parameters<typeof refreshAuthoritativeSource>[0];
+    const subject = release.documents.find((document) => document.kind === "subject");
+    if (!subject || subject.kind !== "subject") throw new Error("missing fixture subject");
+    for (const suffix of ["second", "third"]) {
+      const extra = structuredClone(subject);
+      extra.content.id = `csub_batch_${suffix}`;
+      extra.content.canonicalKey = `driver:acme,${suffix}`;
+      extra.content.selector.value = `acme,${suffix}`;
+      release.documents.push(extra);
+    }
+    refreshAuthoritativeSource(release);
+    const bundle = { ...base, releases: [release] };
+    const first = compileOrThrow(bundle);
     const installed = await installPublishedRelease(pool, {
       mode: "bootstrap",
-      source: jsonCatalogReleaseSource(firstReleaseBundle()),
+      source: jsonCatalogReleaseSource(bundle),
       expectedTargetDigest: first.aggregateDigest,
     });
     expect(installed.ok).toBe(true);
     pin = { id: first.release.id, digest: first.release.digest };
+    runtimeToken = `batch${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    const runtime = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken: runtimeToken });
+    apiPool = new pg.Pool({ connectionString: runtime.apiUrl, max: 4 });
     await pool.query(`insert into public.organizations (id, name) values ($1, 'S8 GOV')`, [ORG_ID]);
     await pool.query(
       `insert into public.attribution_subjects (
@@ -165,6 +200,8 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     const ports: CatalogGovernancePorts = {
       authenticate: async () => ({ ok: true, scope }),
       currentRelease: async () => pin,
+      listUnregisteredSubjects: (organizationId, releaseId, source) => listUnregisteredSubjects(apiPool, organizationId, releaseId, source),
+      executeBatchRegistration: (input) => executeBatchRegistration(apiPool, input),
       ...bindCatalogGovernanceCommands({
         executeRegistration: (command) => executeRegistration(pool, command),
         resolveReviewItem: (command) => resolveReviewItem(pool, command),
@@ -181,8 +218,197 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
 
   afterAll(async () => {
     await close();
+    await apiPool?.end();
+    if (runtimeToken) await dropLabRuntimeLogins(database.url, runtimeToken);
     await pool?.end();
     await database?.drop();
+  });
+
+  it("lists current unregistered subjects and filters bootstrap subjects from organization publications", async () => {
+    const all = await request("GET", `/api/v2/organizations/${ORG_ID}/unregistered-subjects?source=all`);
+    expect(all.status, JSON.stringify(all.body)).toBe(200);
+    expect(all.body).toMatchObject({ catalogReleaseId: pin.id, items: expect.arrayContaining([expect.objectContaining({ id: SUBJECT_ID, kind: "driver" })]) });
+    const own = await request("GET", `/api/v2/organizations/${ORG_ID}/unregistered-subjects?source=organization`);
+    expect(own.status).toBe(200);
+    expect((own.body as { items: Array<{ id: string }> }).items.map((item) => item.id)).not.toContain(SUBJECT_ID);
+  });
+
+  it("rejects a batch above 128 rows before writing any registrations", async () => {
+    const result = await request("POST", `/api/v2/organizations/${ORG_ID}/subject-registrations/batch`, {
+      headers: {
+        [CATALOG_RELEASE_HEADER]: pin.id,
+        [CATALOG_IDEMPOTENCY_HEADER]: `batch:${randomUUID()}`,
+      },
+      body: {
+        rows: Array.from({ length: 129 }, () => ({
+          subjectId: SUBJECT_ID,
+          target: { type: "existing-module", moduleId: MODULE_ID },
+        })),
+      },
+    });
+    expect(result.status).toBe(400);
+    expect(JSON.stringify(result.body)).toContain("128");
+    const stored = await pool.query<{ count: string }>(
+      `select count(*)::text as count from parameter_catalog.organization_subject_registrations where organization_id = $1`,
+      [ORG_ID],
+    );
+    expect(stored.rows[0]?.count).toBe("0");
+  });
+
+  it("rolls back a bad batch and registers under the unclassified root with a trusted audit", async () => {
+    const organizationId = "org-batch-http";
+    const userId = "user-batch-http";
+    await pool.query("insert into public.organizations (id, name) values ($1, 'Batch')", [organizationId]);
+    await pool.query("insert into public.users (id, organization_id, name, title, is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await pool.query("insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin) values ($1,$2,'未分类',$1,1,'unclassified','auto')", ["batch-root", organizationId]);
+    await pool.query("insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin) values ('batch-category',$1,'电源分类','batch-category',1,'business','curated')", [organizationId]);
+    await pool.query("insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key) values ('batch-used-attr',$1,'driver-registration','重名','curated','batch-used')", [organizationId]);
+    await pool.query("insert into public.parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin, attribution_subject_id) values ('batch-used',$1,'batch-category','重名','batch-category/batch-used',2,'driver-group','curated','batch-used-attr')", [organizationId]);
+    const previous = scope;
+    scope = { ...scope, organizationId, principalId: userId, trustedActor: createUserInvocation(makeTestAuthContext({ organizationId, userId })) };
+    try {
+      const headers = { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: `batch:${randomUUID()}` };
+      const valid = { subjectId: SUBJECT_ID, target: { type: "unclassified", name: "电源" } };
+      const failed = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
+        headers, body: { rows: [valid, { subjectId: "csub_missing", target: { type: "unclassified", name: "未知" } },
+          { subjectId: "csub_batch_second", target: { type: "new-module", parentModuleId: "missing", name: "名称" } }] },
+      });
+      expect(failed.status, JSON.stringify(failed.body)).toBe(409);
+      expect(failed.body).toMatchObject({ error: { details: { rows: expect.arrayContaining([expect.objectContaining({ index: 1 }), expect.objectContaining({ index: 2 })]) } } });
+      expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id = $1", [organizationId])).rowCount).toBe(0);
+      expect((await pool.query("select id from public.parameter_modules where parent_id = $1", ["batch-root"])).rowCount).toBe(0);
+      for (const target of [{ type: "new-module", parentModuleId: "missing", name: "名称" }, { type: "new-module", parentModuleId: "batch-category", name: "重名" }]) {
+        const invalid = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
+          headers: { ...headers, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [valid, { subjectId: "csub_batch_second", target }] },
+        });
+        expect(invalid.status, JSON.stringify(invalid.body)).toBe(409);
+        expect(invalid.body).toMatchObject({ error: { details: { rows: [expect.objectContaining({ index: 1, message: expect.any(String) })] } } });
+        if (target.parentModuleId === "batch-category") expect(invalid.body).toMatchObject({ error: { details: { rows: [{ message: "同一分类下已有同名模块。" }] } } });
+        expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organizationId])).rowCount).toBe(0);
+      }
+      const stale = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
+        headers: { ...headers, [CATALOG_RELEASE_HEADER]: "crel_stale" }, body: { rows: [valid] },
+      });
+      expect(stale.status).toBe(409);
+      expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organizationId])).rowCount).toBe(0);
+      const successfulRows = [valid, { subjectId: "csub_batch_second", target: { type: "unclassified", name: "第二个" } }];
+      const success = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, { headers, body: { rows: successfulRows } });
+      expect(success.status, JSON.stringify(success.body)).toBe(201);
+      const batchId = (success.body as { batchId: string }).batchId;
+      const replay = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, { headers, body: { rows: successfulRows } });
+      expect(replay.status, JSON.stringify(replay.body)).toBe(201);
+      expect((replay.body as { batchId: string }).batchId).toBe(batchId);
+      const stored = await pool.query<{ name: string; parent_id: string; kind: string }>(
+        `select module.name, module.parent_id, module.kind from parameter_catalog.subject_placements placement
+         join public.parameter_modules module on module.id = placement.module_id where placement.organization_id = $1`, [organizationId]);
+      expect(stored.rows).toEqual(expect.arrayContaining([{ name: "电源", parent_id: "batch-root", kind: "driver-group" }, { name: "第二个", parent_id: "batch-root", kind: "driver-group" }]));
+      const audits = await pool.query<{ batch_id: string }>("select metadata->>'batchId' as batch_id from public.audit_events where organization_id = $1 and action = 'registration-register'", [organizationId]);
+      expect(audits.rows).toEqual([{ batch_id: batchId }, { batch_id: batchId }]);
+      const registrationId = (success.body as { items: Array<{ id: string }> }).items[1]!.id;
+      const retired = await executeRegistration(pool, { kind: "retire", organizationId, registrationId: SubjectRegistrationId(registrationId),
+        expectedRelease: pin, idempotencyKey: "retire-batch-fixture", context: { actorKind: "org-admin", principalId: userId }, reason: "retired fixture" });
+      expect(retired.ok).toBe(true);
+      const remaining = await request("GET", `/api/v2/organizations/${organizationId}/unregistered-subjects?source=all`);
+      expect((remaining.body as { items: Array<{ id: string }> }).items.map((item) => item.id)).toEqual(["csub_batch_third"]);
+      expect((remaining.body as { items: Array<{ availableModuleIds: string[] }> }).items[0]?.availableModuleIds).toContain("batch-used");
+      const existing = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
+        headers: { ...headers, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() },
+        body: { rows: [{ subjectId: "csub_batch_third", target: { type: "existing-module", moduleId: "batch-used" } }] },
+      });
+      expect(existing.status, JSON.stringify(existing.body)).toBe(201);
+    } finally { scope = previous; }
+  });
+
+  it("rejects the entire batch when a subject was auto-registered or its target became occupied", async () => {
+    const organizationId = "org-batch-race";
+    const userId = "user-batch-race";
+    await pool.query("insert into public.organizations (id, name) values ($1, 'Race')", [organizationId]);
+    await pool.query("insert into public.users (id, organization_id, name, title, is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await pool.query("insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin) values ('race-root',$1,'未分类','race-root',1,'unclassified','auto')", [organizationId]);
+    await pool.query("insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key) values ('race-attr',$1,'driver-registration','Occupied','curated','race')", [organizationId]);
+    await pool.query("insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id) values ('race-module',$1,'Occupied','race-module',1,'driver-group','curated','race-attr')", [organizationId]);
+    const previous = scope;
+    scope = { ...scope, organizationId, principalId: userId, trustedActor: createUserInvocation(makeTestAuthContext({ organizationId, userId })) };
+    try {
+      const before = await request("GET", `/api/v2/organizations/${organizationId}/unregistered-subjects?source=all`);
+      expect((before.body as { items: Array<{ id: string }> }).items.map((item) => item.id)).toContain("csub_batch_second");
+      const auto = await executeRegistration(pool, { kind: "register", organizationId, subjectId: CatalogSubjectId("csub_batch_second"), subjectKind: "driver", expectedRelease: pin,
+        placement: { mode: "use-default" }, destinationModuleId: "race-module", method: "automatic", proof: {}, idempotencyKey: "auto-race", context: { actorKind: "trusted-system", principalId: "ingest" } });
+      expect(auto.ok).toBe(true);
+      const good = { subjectId: SUBJECT_ID, target: { type: "unclassified", name: "有效行" } };
+      for (const bad of [
+        { subjectId: "csub_batch_second", target: { type: "existing-module", moduleId: "race-module" } },
+        { subjectId: "csub_batch_third", target: { type: "existing-module", moduleId: "race-module" } },
+      ]) {
+        const result = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
+          headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [good, bad] },
+        });
+        expect(result.status, JSON.stringify(result.body)).toBe(409);
+        expect(result.body).toMatchObject({ error: { details: { rows: [expect.objectContaining({ index: 1 })] } } });
+        expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organizationId])).rowCount).toBe(1);
+        expect((await pool.query("select id from public.parameter_modules where parent_id='race-root'", [])).rowCount).toBe(0);
+      }
+      const after = await request("GET", `/api/v2/organizations/${organizationId}/unregistered-subjects?source=all`);
+      expect((after.body as { items: Array<{ id: string }> }).items.map((item) => item.id)).not.toContain("csub_batch_second");
+      const cross = await request("GET", `/api/v2/organizations/${ORG_ID}/unregistered-subjects?source=all`);
+      expect(cross.status).toBe(404);
+      const adminScope = scope;
+      for (const deniedScope of [
+        { ...adminScope, actorKind: "agent" as const },
+        { ...adminScope, canMutateOrganization: false },
+        { ...adminScope, trustedActor: createAgentInvocation(makeTestAuthContext({ organizationId, userId }), { sessionId: "session", toolCallId: "tool", approval: { required: false } }) },
+      ]) {
+        scope = deniedScope;
+        const denied = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
+          headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [good] },
+        });
+        expect(denied.status).toBe(403);
+      }
+      scope = adminScope;
+      const wrongOrg = await request("POST", `/api/v2/organizations/${ORG_ID}/subject-registrations/batch`, {
+        headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [good] },
+      });
+      expect(wrongOrg.status).toBe(403);
+      await pool.query("insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin) values ('race-category',$1,'电源','race-category',1,'business','curated')", [organizationId]);
+      await pool.query("insert into public.attribution_subjects (id,organization_id,subject_kind,display_name,origin,source_key) values ('race-free-attr',$1,'driver-registration','Free','curated','race-free')", [organizationId]);
+      await pool.query("insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin,attribution_subject_id) values ('race-free',$1,'Free','race-free',1,'driver-group','curated','race-free-attr')", [organizationId]);
+      const success = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
+        headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [
+          { subjectId: SUBJECT_ID, target: { type: "new-module", parentModuleId: "race-category", name: "新模块" } },
+          { subjectId: "csub_batch_third", target: { type: "existing-module", moduleId: "race-free" } },
+        ] },
+      });
+      expect(success.status, JSON.stringify(success.body)).toBe(201);
+      const destinations = await pool.query<{ subject_id: string; module_id: string; parent_id: string | null }>(
+        `select registration.subject_id, placement.module_id, module.parent_id from parameter_catalog.organization_subject_registrations registration
+         join parameter_catalog.subject_placements placement on placement.registration_id=registration.id
+         join public.parameter_modules module on module.id=placement.module_id where registration.organization_id=$1`, [organizationId]);
+      expect(destinations.rows).toEqual(expect.arrayContaining([
+        expect.objectContaining({ subject_id: SUBJECT_ID, parent_id: "race-category" }),
+        expect.objectContaining({ subject_id: "csub_batch_third", module_id: "race-free" }),
+      ]));
+    } finally { scope = previous; }
+  });
+
+  it("uses the same persisted organization-admin authority as single registration in the production router", async () => {
+    const organizationId = "org-batch-authority";
+    const principalId = "user-batch-authority";
+    await pool.query("insert into public.organizations (id,name) values ($1,'Authority')", [organizationId]);
+    await pool.query("insert into public.users (id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [principalId, organizationId]);
+    let auth = makeTestAuthContext({ userId: principalId, organizationId, roles: [{ roleId: "admin", projectId: "project-only" }] });
+    const db = createPostgresDatabase(database.url);
+    try {
+      const router = createRouter();
+      registerParameterCatalogApi(router, { db, resolveAuth: () => auth });
+      const send = () => router.handle({ method: "POST", path: `/api/v2/organizations/${organizationId}/subject-registrations/batch`, params: {}, query: {},
+        headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: "authority" }, requestId: "authority-request",
+        body: { rows: Array.from({ length: 129 }, () => ({ subjectId: SUBJECT_ID, target: { type: "unclassified", name: "名称" } })) } });
+      expect((await send()).status).toBe(403);
+      auth = makeTestAuthContext({ userId: principalId, organizationId });
+      expect((await send()).status).toBe(403);
+      await pool.query("insert into public.user_role_bindings (id,user_id,organization_id,project_id,role_id) values ('batch-authority-binding',$1,$2,null,'admin')", [principalId, organizationId]);
+      expect((await send()).status).toBe(400);
+    } finally { await db.close(); }
   });
 
   it("registers a subject through HTTP and writes one Registration/Placement pair", async () => {
@@ -344,6 +570,109 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     expect(result.headers.get(CATALOG_RELEASE_HEADER)).toBe(pin.id);
   });
 });
+
+it("attributes an introduced subject to the Candidate author's organization after real publication", async () => {
+  const database = await createEphemeralTestDatabase("batchorigin");
+  const db = createPostgresDatabase(database.url);
+  const pool = getRootPostgresPool(db)!;
+  const client = await connect(database.url);
+  let closePublication = async () => {};
+  let closeGovernance = async () => {};
+  try {
+    const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(client, predecessor);
+    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    const organizationId = "org-batch-origin";
+    await pool.query("insert into public.organizations (id, name) values ($1,'Origin'),('org-batch-other','Other')", [organizationId]);
+    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
+    const publication = await listenCatalogPublicationHttpServer({
+      authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
+      currentRelease: async () => ({ id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest }),
+      ...bindCatalogPublicationCommands({ db, pool }),
+    });
+    closePublication = publication.close;
+    const post = async (path: string, body: unknown) => {
+      const response = await fetch(`${publication.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: predecessor.compiled.release.id }, body: JSON.stringify(body) });
+      return { status: response.status, body: await response.json() };
+    };
+    const document = "# Driver `acme,batch-origin`\nnature: physical-device · cardinality: multiple\n## `batch_origin` 参数\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |";
+    const preview = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "origin.md" } });
+    expect(preview.status, JSON.stringify(preview.body)).toBe(201);
+    const candidateId = catalogMarkdownImportResponseSchema.parse(preview.body).item.candidate!.id;
+    const published = await post(`/api/v2/catalog/publication-candidates/${candidateId}/publish`, { idempotencyKey: "batch-origin" });
+    expect(published.status, JSON.stringify(published.body)).toBe(201);
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "batch-origin" })).toBe("claimed");
+    const pointer = await readCurrentCatalogPointer(pool);
+    if (pointer.kind !== "installed") throw new Error("publication did not install a release");
+    const pin = { id: pointer.current.id, digest: pointer.current.digest };
+    let scope: TrustedGovernanceScope = { principalId: PUBLISHER, organizationId, actorKind: "org-admin", canReadGovernance: true,
+      canMutateOrganization: true, canReviewProposals: false, defaultDestinationModuleId: "", defaultSubjectKind: "driver" };
+    const reader = createReviewQueueReader(pool);
+    const governance = await listenCatalogGovernanceHttpServer({
+      authenticate: async () => ({ ok: true, scope }), currentRelease: async () => pin,
+      listUnregisteredSubjects: (org, release, source) => listUnregisteredSubjects(pool, org, release, source),
+      ...bindCatalogGovernanceCommands({ executeRegistration: (command) => executeRegistration(pool, command),
+        resolveReviewItem: (command) => resolveReviewItem(pool, command), executeProposal: (command) => executeProposal(pool, command),
+        listReviewQueue: (query) => reader.list(query), getReviewItem: (query) => reader.get(query) }), ...emptyGovernanceQueryPorts,
+    });
+    closeGovernance = governance.close;
+    const read = async (org: string, source: string) => {
+      const response = await fetch(`${governance.baseUrl}/api/v2/organizations/${org}/unregistered-subjects?source=${source}`);
+      expect(response.status).toBe(200);
+      return await response.json() as { items: Array<{ canonicalName: string }> };
+    };
+    expect((await read(organizationId, "organization")).items.map((item) => item.canonicalName)).toEqual(["acme,batch-origin"]);
+    expect((await read(organizationId, "all")).items.map((item) => item.canonicalName)).toContain("acme,power");
+    scope = { ...scope, organizationId: "org-batch-other" };
+    expect((await read("org-batch-other", "organization")).items).toEqual([]);
+    expect((await read("org-batch-other", "all")).items.map((item) => item.canonicalName)).toContain("acme,batch-origin");
+  } finally {
+    await closeGovernance(); await closePublication(); await client.end(); await db.close(); await database.drop();
+  }
+}, 120_000);
+
+it("excludes retired current-release membership and rejects it when submitted", async () => {
+  const database = await createEphemeralTestDatabase("batchretired");
+  const pool = new pg.Pool({ connectionString: database.url });
+  let close = async () => {};
+  try {
+    const vendor = compileVendorCatalogSuccessor();
+    const firstBundle = firstReleaseBundle();
+    const first = compileOrThrow(firstBundle);
+    const bootstrap = await installPublishedRelease(pool, { mode: "bootstrap", source: jsonCatalogReleaseSource(firstBundle), expectedTargetDigest: first.aggregateDigest });
+    expect(bootstrap.ok).toBe(true);
+    const installed = await installPublishedRelease(pool, { mode: "advance", source: jsonCatalogReleaseSource(vendor.bundle),
+      expectedCurrent: { id: first.release.id, digest: first.release.digest }, expectedTargetDigest: vendor.compiled.aggregateDigest });
+    expect(installed.ok, JSON.stringify(installed)).toBe(true);
+    const pin = { id: vendor.compiled.release.id, digest: vendor.compiled.release.digest };
+    const organizationId = "org-batch-retired";
+    const principalId = "user-batch-retired";
+    await pool.query("insert into public.organizations (id,name) values ($1,'Retired')", [organizationId]);
+    await pool.query("insert into public.users (id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [principalId, organizationId]);
+    await pool.query("insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin) values ('retired-root',$1,'未分类','retired-root',1,'unclassified','auto')", [organizationId]);
+    const reader = createReviewQueueReader(pool);
+    const server = await listenCatalogGovernanceHttpServer({
+      authenticate: async () => ({ ok: true, scope: { principalId, organizationId, actorKind: "org-admin", canReadGovernance: true,
+        canMutateOrganization: true, canReviewProposals: false, defaultDestinationModuleId: "", defaultSubjectKind: "driver",
+        trustedActor: createUserInvocation(makeTestAuthContext({ userId: principalId, organizationId })) } }),
+      currentRelease: async () => pin, listUnregisteredSubjects: (org, release, source) => listUnregisteredSubjects(pool, org, release, source),
+      executeBatchRegistration: (input) => executeBatchRegistration(pool, input),
+      ...bindCatalogGovernanceCommands({ executeRegistration: (command) => executeRegistration(pool, command), resolveReviewItem: (command) => resolveReviewItem(pool, command),
+        executeProposal: (command) => executeProposal(pool, command), listReviewQueue: (query) => reader.list(query), getReviewItem: (query) => reader.get(query) }),
+      ...emptyGovernanceQueryPorts,
+    });
+    close = server.close;
+    const list = await fetch(`${server.baseUrl}/api/v2/organizations/${organizationId}/unregistered-subjects?source=all`);
+    expect(list.status).toBe(200);
+    expect(((await list.json()) as { items: Array<{ id: string }> }).items.map((item) => item.id)).not.toContain(SUBJECT_ID);
+    const write = await fetch(`${server.baseUrl}/api/v2/organizations/${organizationId}/subject-registrations/batch`, { method: "POST",
+      headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: "retired" },
+      body: JSON.stringify({ rows: [{ subjectId: SUBJECT_ID, target: { type: "unclassified", name: "退役" } }] }) });
+    expect(write.status).toBe(409);
+    expect(await write.json()).toMatchObject({ error: { details: { rows: [expect.objectContaining({ index: 0, message: "主体在当前目录中未生效。" })] } } });
+    expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organizationId])).rowCount).toBe(0);
+  } finally { await close(); await pool.end(); await database.drop(); }
+}, 120_000);
 
 describe("registration pagination through public HTTP and real PostgreSQL", () => {
   let database: EphemeralTestDatabase;

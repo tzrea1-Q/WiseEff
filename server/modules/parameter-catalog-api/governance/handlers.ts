@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { decodeCatalogCursor, encodeCatalogCursor, fingerprintCatalogQuery } from "../../catalog-kernel/runtime/cursors";
 import {
   catalogAcceptProposalRequestSchema,
+  catalogBatchRegistrationRequestSchema,
   catalogContinueReplacementRequestSchema,
   catalogCreateProposalRequestSchema,
   catalogCreateReplacementRequestSchema,
@@ -48,6 +49,8 @@ import type { ProposalCommand } from "../../parameter-governance/proposals/comma
 import type { ProposalFailure } from "../../parameter-governance/proposals/failures";
 import {
   catalogDefinitionReplacementCommandByRouteId,
+  catalogBatchRegistrationCommandByRouteId,
+  catalogBatchRegistrationRoutes,
   catalogDefinitionReplacementIfMatchRouteIds,
   catalogDefinitionReplacementRoutes,
   catalogDefinitionReplacementWriteRouteIds,
@@ -116,10 +119,22 @@ const ifMatchRequired = new Set<string>([
 const writeRoutes = new Set<string>([
   ...catalogGovernanceWriteRouteIds,
   ...catalogDefinitionReplacementWriteRouteIds,
+  "catalog.createBatchRegistration",
 ]);
 const reviewReasonSet = new Set<string>(reviewReasons);
 
-const allGovernanceRoutes = [...catalogGovernanceRoutes, ...catalogDefinitionReplacementRoutes];
+const allGovernanceRoutes = [...catalogGovernanceRoutes, ...catalogDefinitionReplacementRoutes, ...catalogBatchRegistrationRoutes];
+
+function localizeBatchError(response: CatalogGovernanceResponse): CatalogGovernanceResponse {
+  const body = response.body as { error?: { details?: { reason?: string }; [key: string]: unknown } };
+  if (!body.error) return response;
+  const reason = body.error.details?.reason;
+  const message = reason === "release-drift" ? "目录版本已变化，请刷新后重试。"
+    : response.status === 401 ? "请先登录。" : response.status === 403 ? "没有权限执行此操作。"
+      : response.status === 404 ? "未找到该组织。" : response.status === 503 ? "目录暂不可用，请稍后重试。"
+        : response.status === 409 ? "请求已变化，请刷新后重试。" : "请求格式无效，请检查后重试。";
+  return { ...response, body: { ...body, error: { ...body.error, message } } };
+}
 
 const catalogGovernanceRouteTable = allGovernanceRoutes
   .map((route) => {
@@ -174,6 +189,9 @@ export function matchCatalogGovernanceRoute(
 }
 
 function asCommandName(id: CatalogGovernanceRouteId): CatalogGovernanceCommandName {
+  if (id in catalogBatchRegistrationCommandByRouteId) {
+    return catalogBatchRegistrationCommandByRouteId[id as keyof typeof catalogBatchRegistrationCommandByRouteId];
+  }
   if (id in catalogGovernanceCommandByRouteId) {
     return catalogGovernanceCommandByRouteId[id as keyof typeof catalogGovernanceCommandByRouteId];
   }
@@ -1574,16 +1592,46 @@ export async function handleCatalogGovernance(
   }
   const headerError = requireWriteHeaders(request, matched.id);
   if (headerError) {
-    return headerError;
+    return matched.id === "catalog.createBatchRegistration" ? localizeBatchError(headerError) : headerError;
   }
   const auth = await ports.authenticate(request);
   if (!auth.ok) {
-    return auth.status === 401 ? unauthenticated(request.requestId) : forbidden(request.requestId);
+    const response = auth.status === 401 ? unauthenticated(request.requestId) : forbidden(request.requestId);
+    return matched.id in catalogBatchRegistrationCommandByRouteId ? localizeBatchError(response) : response;
   }
   const scopedRequest = { ...request, params: { ...request.params, ...matched.params } };
   void asCommandName(matched.id);
   try {
   switch (matched.id) {
+    case "catalog.createBatchRegistration": {
+      const denied = authorizeOrganizationWrite(auth.scope, scopedRequest);
+      if (denied) return localizeBatchError(denied);
+      const parsed = catalogBatchRegistrationRequestSchema.safeParse(request.body);
+      if (!parsed.success) return catalogGovernanceError({ status: 400, code: "VALIDATION_FAILED", message: "请求格式无效，批量登记须包含 1 至 128 行。", requestId: request.requestId });
+      const pin = await requirePin(ports, request, { requireHeader: true });
+      if (!pin.ok) return localizeBatchError(pin.response);
+      const context = registrationContext(auth.scope, request.requestId);
+      if (!context || !context.invocation || auth.scope.trustedActor?.initiator !== "user") return localizeBatchError(forbidden(request.requestId));
+      if (!ports.executeBatchRegistration) return localizeBatchError(catalogNotReady(request.requestId));
+      const result = await ports.executeBatchRegistration({ organizationId: scopedRequest.params.organizationId!, rows: parsed.data.rows,
+        expectedRelease: pin.pin, idempotencyKey: idempotencyKeyHeader(request.headers)!, actorKind: context.actorKind,
+        principalId: context.principalId, invocation: context.invocation, requestId: request.requestId });
+      if (!result.ok) return catalogGovernanceError({ status: 409, code: "CONFLICT", message: "批量登记未完成，请检查各行后重新确认。", requestId: request.requestId, details: { rows: result.error } });
+      return catalogGovernanceOk({ status: 201, body: { batchId: result.batchId,
+        items: result.items.map((item) => mapRegistrationResult(item, placementFromResult(item))) }, requestId: request.requestId, catalogReleaseId: pin.pin.id });
+    }
+    case "catalog.listUnregisteredSubjects": {
+      const denied = authorizeRead(auth.scope, scopedRequest);
+      if (denied) return localizeBatchError(denied);
+      if (scopedRequest.params.organizationId !== auth.scope.organizationId) return localizeBatchError(forbidden(request.requestId));
+      const source = queryValue(request.query, "source") ?? "organization";
+      if (source !== "organization" && source !== "all") return localizeBatchError(validationFailed(request.requestId, "source"));
+      const pin = await requirePin(ports, request, { requireHeader: false });
+      if (!pin.ok) return localizeBatchError(pin.response);
+      if (!ports.listUnregisteredSubjects) return localizeBatchError(catalogNotReady(request.requestId));
+      const body = await ports.listUnregisteredSubjects(scopedRequest.params.organizationId!, pin.pin.id, source);
+      return catalogGovernanceOk({ status: 200, body, requestId: request.requestId, catalogReleaseId: pin.pin.id });
+    }
     case "catalog.listRegistrations":
       return await handleListRegistrations(ports, auth.scope, scopedRequest);
     case "catalog.createRegistration":

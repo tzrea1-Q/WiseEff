@@ -1,4 +1,7 @@
 import type {
+  CatalogBatchRegistrationRequest,
+  CatalogBatchRegistrationResponse,
+  CatalogUnregisteredSubjectsResponse,
   CatalogAcceptProposalRequest,
   CatalogCreateProposalRequest,
   CatalogListQuery,
@@ -63,6 +66,8 @@ export type CatalogConditionalWriteContext = CatalogIdempotentWriteContext & {
 
 /** SubjectGovernance + ReviewQueue + DefinitionProposal. Closed canonical governance seam. */
 export interface ParameterCatalogGovernanceRepository {
+  listUnregisteredSubjects?(organizationId: string, source: "organization" | "all", catalogReleaseId: string): Promise<CatalogUnregisteredSubjectsResponse>;
+  createBatchRegistration?(organizationId: string, body: CatalogBatchRegistrationRequest, context: CatalogIdempotentWriteContext): Promise<CatalogBatchRegistrationResponse>;
   listRegistrations(
     organizationId: string,
     query?: CatalogListQuery

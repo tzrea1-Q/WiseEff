@@ -1,6 +1,9 @@
 import type { ZodTypeAny, z } from "zod";
 
 import {
+  catalogBatchRegistrationRequestSchema,
+  catalogBatchRegistrationResponseSchema,
+  catalogUnregisteredSubjectsResponseSchema,
   catalogDefinitionErasureListResponseSchema,
   catalogDefinitionDeletionPreviewResponseSchema,
   catalogDeleteDefinitionRequestSchema,
@@ -92,6 +95,7 @@ import {
   type ParameterCatalogCanonicalRouteId
 } from "@wiseeff/dto-schemas";
 import type {
+  CatalogBatchRegistrationRequest,
   CatalogMarkdownImportRequest,
   CatalogContinueReplacementRequest,
   CatalogDeleteDefinitionRequest,
@@ -306,6 +310,12 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
   }
 
   const client = {
+    listUnregisteredSubjects: (organizationId: string, source: "organization" | "all", catalogReleaseId: string) =>
+      request("GET", `${canonical("catalog.listUnregisteredSubjects", { organizationId })}?source=${source}`,
+        catalogUnregisteredSubjectsResponseSchema, "CatalogUnregisteredSubjectsResponse", { context: { catalogReleaseId } }),
+    createBatchRegistration: (organizationId: string, body: CatalogBatchRegistrationRequest, context: CatalogWriteContext) =>
+      request("POST", canonical("catalog.createBatchRegistration", { organizationId }), catalogBatchRegistrationResponseSchema,
+        "CatalogBatchRegistrationResponse", { body: catalogBatchRegistrationRequestSchema.parse(body), context }),
     getCatalog: (query?: CatalogListQuery) =>
       request(
         "GET",
@@ -1009,6 +1019,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.getDefinitionRevision": "getDefinitionRevision",
     "catalog.listDefinitionTimeline": "listDefinitionTimeline",
     "catalog.listRegistrations": "listRegistrations",
+    "catalog.listUnregisteredSubjects": "listUnregisteredSubjects",
+    "catalog.createBatchRegistration": "createBatchRegistration",
     "catalog.createRegistration": "createRegistration",
     "catalog.getRegistration": "getRegistration",
     "catalog.retireRegistration": "retireRegistration",

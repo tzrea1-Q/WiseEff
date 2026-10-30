@@ -39,9 +39,18 @@ export const catalogDefinitionReplacementCommandByRouteId = {
   "catalog.continueDefinitionReplacement": "continueDefinitionReplacement",
 } as const;
 
+export const catalogBatchRegistrationCommandByRouteId = {
+  "catalog.listUnregisteredSubjects": "listUnregisteredSubjects",
+  "catalog.createBatchRegistration": "executeBatchRegistration",
+} as const;
+export const catalogBatchRegistrationRoutes = parameterCatalogCanonicalRoutes.filter(
+  (route) => route.id in catalogBatchRegistrationCommandByRouteId,
+);
+
 export type CatalogGovernanceCommandName =
   | (typeof catalogGovernanceCommandByRouteId)[keyof typeof catalogGovernanceCommandByRouteId]
-  | (typeof catalogDefinitionReplacementCommandByRouteId)[keyof typeof catalogDefinitionReplacementCommandByRouteId];
+  | (typeof catalogDefinitionReplacementCommandByRouteId)[keyof typeof catalogDefinitionReplacementCommandByRouteId]
+  | (typeof catalogBatchRegistrationCommandByRouteId)[keyof typeof catalogBatchRegistrationCommandByRouteId];
 
 const GOVERNANCE_GATES = new Set(["PCAT-API-04", "PCAT-API-05", "PCAT-API-06"]);
 const DEFINITION_REPLACEMENT_GATES = new Set(["PCAT-API-13"]);

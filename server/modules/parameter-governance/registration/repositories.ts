@@ -68,7 +68,7 @@ export const createRegistrationDestination = async (
   if (!choice) return null;
   const parent = await client.query<{ id: string; path: string; depth: number }>(
     `select id, path, depth from public.parameter_modules
-     where organization_id = $1 and id = $2 and kind = 'business' for update`,
+     where organization_id = $1 and id = $2 and (kind = 'business' or (kind = 'unclassified' and parent_id is null)) for update`,
     [command.organizationId, choice.parentModuleId],
   );
   const business = parent.rows[0];

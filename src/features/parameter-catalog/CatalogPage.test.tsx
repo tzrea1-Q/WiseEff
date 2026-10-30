@@ -1105,7 +1105,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
 
   it("lets an administrator select the first published, unregistered subject from the list", async () => {
     renderCatalog({ actor: "org-admin", scenario: "unregistered" });
-    await userEvent.click(await screen.findByRole("button", { name: "展开 未登记主体" }));
+    await userEvent.click(await screen.findByRole("button", { name: "展开 待登记主体" }));
     const subjectLeaves = await screen.findAllByRole("button", { name: /^选择主体 / });
     await userEvent.click(subjectLeaves[0]!);
     await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "unregistered"));
