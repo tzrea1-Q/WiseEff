@@ -88211,6 +88211,9 @@
                     ],
                     "additionalProperties": false
                   },
+                  "noChange": {
+                    "type": "boolean"
+                  },
                   "entries": {
                     "type": "array",
                     "items": {
@@ -88307,6 +88310,7 @@
                 },
                 "required": [
                   "candidate",
+                  "noChange",
                   "entries",
                   "source"
                 ],
@@ -88401,6 +88405,9 @@
                   "capabilityContract"
                 ],
                 "additionalProperties": false
+              },
+              "noChange": {
+                "type": "boolean"
               },
               "entries": {
                 "type": "array",
@@ -88498,6 +88505,7 @@
             },
             "required": [
               "candidate",
+              "noChange",
               "entries",
               "source"
             ],

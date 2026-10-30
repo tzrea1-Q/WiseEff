@@ -55,7 +55,7 @@ it("previews pasted text, publishes and tracks the existing publication job", as
         op: "create-definition", subjectId: CATALOG_SUBJECT_ID, propertyKey: "batch_one",
         content: { displayName: "电流", documentation: "", valueSchema: { type: "integer" } },
       }] }, { catalogReleaseId: CATALOG_RELEASE_ID });
-      return { item: { candidate: response.item, source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" },
+      return { item: { candidate: response.item, noChange: false, source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" },
         entries: [{ subjectHeading: "# Driver `acme,power`", definitionHeading: "## `batch_one` 电流",
           selector: "acme,power", propertyKey: "batch_one", displayName: "电流",
           outcome: "create", diagnostics: [] }] } };
@@ -84,7 +84,7 @@ it("previews pasted text, publishes and tracks the existing publication job", as
 });
 
 it("uploads Markdown and shows the line of each diagnostic", async () => {
-  const preview = vi.fn(async () => ({ item: { candidate: null,
+  const preview = vi.fn(async () => ({ item: { candidate: null, noChange: false,
     source: { fileName: "bad.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [{
       subjectHeading: "# Driver `acme,power`", definitionHeading: "## `bad` 错误", outcome: "error" as const,
       selector: "acme,power", propertyKey: "bad", displayName: "错误参数",
@@ -115,7 +115,7 @@ it("uploads Markdown and shows the line of each diagnostic", async () => {
 
 it("summarizes outcomes and filters errors and conflicts without losing the counts", async () => {
   renderImport({ prepare: (ports) => {
-    ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null,
+    ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null, noChange: false,
       source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" },
       entries: (["create", "error", "skip", "conflict"] as const).map((outcome) => ({
         subjectHeading: "# Driver `acme,power`", definitionHeading: `## \`${outcome}\` 名称`,
@@ -128,8 +128,11 @@ it("summarizes outcomes and filters errors and conflicts without losing the coun
   expect(await screen.findByText("新建 1 · 错误 1 · 跳过 1 · 冲突 1")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "仅显示错误与冲突" }));
   expect(screen.queryByText("create")).not.toBeInTheDocument();
+  expect(screen.queryByText("skip")).not.toBeInTheDocument();
   expect(screen.getByText("error")).toBeVisible();
   expect(screen.getByText("conflict")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "仅显示错误与冲突" }));
+  expect(screen.getByText("skip")).toBeVisible();
 });
 
 it("keeps the document on rebase and invalidates a preview after editing", async () => {
@@ -141,7 +144,7 @@ it("keeps the document on rebase and invalidates a preview after editing", async
         op: "create-definition", subjectId: CATALOG_SUBJECT_ID, propertyKey: `batch_${requests.length}`,
         content: { displayName: "电流", documentation: "", valueSchema: { type: "integer" } },
       }] }, context);
-      return { item: { candidate: response.item, source: { fileName: markdownImport.fileName,
+      return { item: { candidate: response.item, noChange: false, source: { fileName: markdownImport.fileName,
         sha256: "sha256:test", parserVersion: "v1" }, entries: [] } };
     };
   } });
@@ -159,7 +162,7 @@ it("keeps the document on rebase and invalidates a preview after editing", async
 
 it("shows a no-change result without offering publication", async () => {
   renderImport({ prepare: (ports) => {
-    ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null,
+    ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null, noChange: true,
       source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [{
         subjectHeading: "# Driver `acme,power`", definitionHeading: "## `key` 参数",
         selector: "acme,power", propertyKey: "key", displayName: "参数",

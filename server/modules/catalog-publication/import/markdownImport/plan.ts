@@ -83,5 +83,6 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
   }
   for (const entry of entries) entry.diagnostics.sort((a, b) => a.line - b.line);
   const ready = entries.every((entry) => entry.outcome === "create" || entry.outcome === "skip");
-  return { entries, changeSet: ready && changes.length > 0 ? changes : null, source };
+  return { entries, changeSet: ready && changes.length > 0 ? changes : null,
+    noChange: entries.length > 0 && entries.every((entry) => entry.outcome === "skip"), source };
 }

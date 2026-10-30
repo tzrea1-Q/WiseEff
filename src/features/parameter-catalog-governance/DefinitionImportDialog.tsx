@@ -60,6 +60,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<CatalogMarkdownImportResponse["item"]["entries"] | null>(null);
+  const [noChange, setNoChange] = useState(false);
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [leaveConfirm, setLeaveConfirm] = useState(false);
   const unavailable = props.runtimeMode === "mock" || !catalog.previewMarkdownImport
@@ -88,6 +89,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setFileName("粘贴.md");
     setUploadedFileName(null);
     setEntries(null);
+    setNoChange(false);
     setErrorsOnly(false);
     return flow.stopPolling;
   }, [open, catalog, props.currentPersonId, props.organizationId]);
@@ -107,6 +109,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const updateDocument = (nextDocument: string, nextFileName: string) => {
     flow.reset();
     setEntries(null);
+    setNoChange(false);
     setErrorsOnly(false);
     setDocument(nextDocument);
     setFileName(nextFileName);
@@ -118,6 +121,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         { markdownImport: { document, fileName } }, { catalogReleaseId },
       );
       setEntries(result.item.entries);
+      setNoChange(result.item.noChange);
       setErrorsOnly(false);
       return result.item.candidate;
     }, JSON.stringify([document, fileName]), flow.captureError);
@@ -186,7 +190,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
                   ? <button type="button" className="button subtle sm" aria-pressed={errorsOnly}
                     onClick={() => setErrorsOnly((value) => !value)}>仅显示错误与冲突</button> : null}
               </div>
-              {!candidate && entries.length > 0 && entries.every((entry) => entry.outcome === "skip")
+              {noChange
                 ? <p role="status">没有需要发布的变更。</p> : null}
               <table className="definition-editor__table parameter-catalog-import-dialog__table">
                 <caption>导入结果</caption><colgroup><col /><col /><col /><col /><col /></colgroup><thead><tr>
