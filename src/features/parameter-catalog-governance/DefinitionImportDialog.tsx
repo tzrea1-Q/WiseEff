@@ -160,6 +160,9 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   entries?.forEach((entry) => { counts[entry.outcome] += 1; });
   const summary = [...(counts.create ? [`新建 ${counts.create}`] : []), ...(counts.error ? [`错误 ${counts.error}`] : []),
     ...(counts.skip ? [`跳过 ${counts.skip}`] : []), ...(counts.conflict ? [`冲突 ${counts.conflict}`] : [])].join(" · ");
+  const placementWarnings = placementHints?.flatMap((hint) => hint.warnings.map((warning) => ({
+    selector: hint.selector, line: hint.line, warning,
+  }))) ?? [];
 
   return <>
     <ModalDialog open={open} onDismiss={pending ? undefined : close}
@@ -180,12 +183,12 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
             className="button subtle sm" onClick={() => setSubjectEpoch((value) => value + 1)}>重试加载</button></p> : null}
           {succeeded && newSubjects.length > 0 ? <section aria-label="待登记的新主体">
             <p>以下新主体尚未在本组织登记。登记是独立操作，不影响已生效的发布。</p>
-            <ul>{newSubjects.map((subject) => <li key={subject.id}>{subject.canonicalName}</li>)}</ul>
+            <ul className="list-disc space-y-1 pl-4 text-sm">{newSubjects.map((subject) => <li key={subject.id}>{subject.canonicalName}</li>)}</ul>
             {canExecuteGovernanceAction(actor, "register-subject", domainState, sessionPermissions)
               ? <button type="button" className="button subtle sm" onClick={() => {
                 openBatchRegistration({ organizationId: props.organizationId, userId: props.currentPersonId,
                   subjectIds: newSubjects.map((subject) => subject.id), hints: Object.fromEntries(newSubjects.flatMap((subject) => {
-                    const hint = placementHints?.find((item) => `${item.kind}:${item.selector}` === subject.canonicalName && item.kind === subject.type);
+                    const hint = placementHints?.find((item) => item.selector === subject.canonicalName && item.kind === subject.type);
                     return hint ? [[subject.id, { categoryPath: hint.categoryPath, moduleName: hint.moduleName }]] : [];
                   })) });
                 props.onOpenChange(false);
@@ -216,7 +219,11 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
             </label>
           </div> : null}
             {entries ? <div className="parameter-catalog-import-dialog__results">
-              {placementHints?.flatMap((hint) => hint.warnings.map((warning, index) => <p role="status" key={`${hint.selector}-${hint.line}-${index}`}>{hint.selector} · 第 {hint.line} 行：{warning}</p>))}
+              {placementWarnings.length ? <section className="definition-editor__banner" data-tone="warning" aria-label="登记提示（不影响发布）">
+                <strong>登记提示（不影响发布）</strong>
+                <ul className="list-disc space-y-1 pl-4">{placementWarnings.map((item, index) =>
+                  <li key={`${item.selector}-${item.line}-${index}`}>{item.selector} · 第 {item.line} 行：{item.warning}</li>)}</ul>
+              </section> : null}
               <div className="parameter-catalog-import-dialog__summary">
                 {summary ? <p>{summary}</p> : null}
                 {counts.error > 0 || counts.conflict > 0

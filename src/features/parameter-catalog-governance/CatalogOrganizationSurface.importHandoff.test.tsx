@@ -52,12 +52,13 @@ it("hands newly published subjects and placement hints to batch registration", a
         displayName: "参数", documentation: "", valueSchema: { type: "integer" },
       } }] }] }, context);
     return { item: { candidate: result.item, noChange: false, entries: [], source: { fileName: "d.md", sha256: "sha256:test", parserVersion: "v1" },
-      placementHints: [{ kind: "driver", selector: "acme,new", categoryPath: "电源", moduleName: "充电芯片", line: 2, warnings: [] }] } };
+      placementHints: [{ kind: "driver", selector: "acme,new", categoryPath: "Power / Charging", moduleName: "演示充电芯片A", line: 2, warnings: [] }] } };
   };
-  vi.spyOn(ports.catalog, "getSubject").mockImplementation(async (id) => ({ item: { ...unregisteredSubject, id, canonicalName: "driver:acme,new", registration: { status: "unregistered" } } }));
-  vi.spyOn(ports.governance, "listUnregisteredSubjects").mockResolvedValue({ catalogReleaseId: CATALOG_RELEASE_ID,
-    items: [{ id: "csub_new_1", kind: "driver", canonicalName: "driver:acme,new", availableModuleIds: [] }],
-    modules: [{ id: "category", name: "电源", parentId: null, kind: "business", occupied: false }] });
+  vi.spyOn(ports.catalog, "getSubject").mockImplementation(async (id) => ({ item: { ...unregisteredSubject, id, canonicalName: "acme,new", registration: { status: "unregistered" } } }));
+  const listUnregisteredSubjects = vi.spyOn(ports.governance, "listUnregisteredSubjects").mockResolvedValue({ catalogReleaseId: CATALOG_RELEASE_ID,
+    items: [{ id: "csub_new_1", kind: "driver", canonicalName: "acme,new", availableModuleIds: [] }],
+    modules: [{ id: "power", name: "Power", parentId: null, kind: "business", occupied: false },
+      { id: "charging", name: "Charging", parentId: "power", kind: "business", occupied: false }] });
   render(<CatalogOrganizationSurface {...ports} runtimeMode="api" actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish", "catalog:register"]}
     search="" organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="admin" onAnchorChange={vi.fn()} />);
   const user = userEvent.setup();
@@ -69,7 +70,13 @@ it("hands newly published subjects and placement hints to batch registration", a
   const confirmation = await screen.findByRole("dialog", { name: /确认/ });
   await user.click(within(confirmation).getByRole("checkbox"));
   await user.click(within(confirmation).getByRole("button", { name: "确认发布" }));
-  await user.click(await screen.findByRole("button", { name: "前往批量登记" }));
-  expect(await screen.findByLabelText("driver:acme,new 的模块名称")).toHaveValue("充电芯片");
-  expect(screen.getByRole("checkbox", { name: "选择 driver:acme,new" })).toBeChecked();
+  const subjectSection = await screen.findByRole("region", { name: "待登记的新主体" });
+  expect(within(subjectSection).getByRole("list")).toHaveClass("list-disc");
+  expect(within(subjectSection).getByRole("list")).toHaveTextContent("acme,new");
+  await user.click(within(subjectSection).getByRole("button", { name: "前往批量登记" }));
+  expect(await screen.findByLabelText("acme,new 的模块名称")).toHaveValue("演示充电芯片A");
+  expect(screen.getByRole("combobox", { name: "acme,new 的业务分类" })).toHaveAttribute("data-value", "category:charging");
+  expect(screen.getByRole("checkbox", { name: "选择 acme,new" })).toBeChecked();
+  expect(screen.getByRole("combobox", { name: "来源" })).toHaveAttribute("data-value", "organization");
+  expect(listUnregisteredSubjects).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID, "organization", CATALOG_RELEASE_ID);
 });

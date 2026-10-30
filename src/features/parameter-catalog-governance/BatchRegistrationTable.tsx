@@ -38,7 +38,7 @@ function pathFor(module: Module, modules: Module[]): string {
 export function BatchRegistrationTable({ repository, organizationId, catalogReleaseId, initial, onCompleted, onRefreshEvidence, onClose }: Props) {
   const rowPrefix = useId();
   const [release, setRelease] = useState(catalogReleaseId);
-  const [source, setSource] = useState<"organization" | "all">(initial?.subjectIds?.length ? "all" : "organization");
+  const [source, setSource] = useState<"organization" | "all">("organization");
   const [rows, setRows] = useState<Row[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
   const [bulkCategory, setBulkCategory] = useState("");
@@ -52,6 +52,7 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
   const [editedSubjects, setEditedSubjects] = useState<ReadonlySet<string>>(() => new Set());
   const generation = useRef(0);
   const entry = useRef(initial);
+  const checkInitialSource = useRef(Boolean(initial?.subjectIds?.length));
   const submitGate = useRef(false);
   const requestKey = useRef<{ fingerprint: string; key: string } | null>(null);
   const load = useCallback(async () => {
@@ -62,6 +63,13 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
       const data = await repository.listUnregisteredSubjects(organizationId, source, release);
       if (current !== generation.current) return;
       if (data.catalogReleaseId !== release) throw new Error("目录版本已变化。");
+      if (source === "organization" && checkInitialSource.current) {
+        checkInitialSource.current = false;
+        if (entry.current?.subjectIds?.some((id) => !data.items.some((subject) => subject.id === id))) {
+          setSource("all");
+          return;
+        }
+      }
       const categories = data.modules.filter((module) => module.kind === "business");
       setModules(data.modules);
       setBulkCategory((current) => current === "unclassified" || categories.some((category) => `category:${category.id}` === current) ? current : "");
@@ -170,7 +178,7 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
   }
   const content = (descriptionId?: string) => <>
     <div id={descriptionId} className="confirm-dialog__scroll"><section aria-label="待登记主体">
-    <div className="flex flex-nowrap items-end gap-2"><label>来源<SelectControl ariaLabel="来源" value={source} onValueChange={(value) => { setEvidenceFresh(false); setRows([]); setSource(value); }} options={[
+    <div className="flex flex-nowrap items-end gap-2"><label>来源<SelectControl ariaLabel="来源" value={source} onValueChange={(value) => { checkInitialSource.current = false; setEvidenceFresh(false); setRows([]); setSource(value); }} options={[
       { value: "organization", label: "本组织发布引入" }, { value: "all", label: "全部 Catalog 主体" }]} /></label>
     <button type="button" className="button subtle" onClick={() => void refresh()} disabled={loading || pending}>重新读取</button></div>
     {loading ? <p>正在读取待登记主体…</p> : null}

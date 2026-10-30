@@ -270,7 +270,7 @@ it("keeps the document on rebase and invalidates a preview after editing", async
 it("shows non-blocking placement warnings alongside a no-change result", async () => {
   renderImport({ prepare: (ports) => {
     ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null, noChange: true,
-      placementHints: [{ kind: "driver", selector: "acme,power", categoryPath: "不存在", line: 2, warnings: ["业务分类不存在。"] }],
+      placementHints: [{ kind: "driver", selector: "acme,power", categoryPath: "不存在", line: 2, warnings: ["业务分类不存在。", "同一分类下已有同名模块。"] }],
       source: { fileName: "粘贴.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [{
         subjectHeading: "# Driver `acme,power`", definitionHeading: "## `key` 参数",
         selector: "acme,power", propertyKey: "key", displayName: "参数",
@@ -281,7 +281,10 @@ it("shows non-blocking placement warnings alongside a no-change result", async (
   await user.type(screen.getByLabelText("Markdown 文档"), "文档内容");
   await user.click(screen.getByRole("button", { name: "解析并预览" }));
   expect(await screen.findByText("没有需要发布的变更。")).toBeVisible();
-  expect(screen.getByText("acme,power · 第 2 行：业务分类不存在。")).toBeVisible();
+  const notice = screen.getByRole("region", { name: "登记提示（不影响发布）" });
+  expect(notice).toHaveAttribute("data-tone", "warning");
+  expect(within(notice).getByRole("list")).toHaveTextContent("acme,power · 第 2 行：业务分类不存在。");
+  expect(within(notice).getAllByRole("listitem")).toHaveLength(2);
   expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
 });
 

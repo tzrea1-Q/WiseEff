@@ -314,11 +314,32 @@ it("preserves handoff selection on both sources and displays the existing subjec
   expect(screen.getByText(/vendor,a/).closest("td")).toHaveTextContent("驱动");
   expect(screen.getByText(/node-b/).closest("td")).toHaveTextContent("节点类型");
   expect(screen.getByText(/schema-c/).closest("td")).toHaveTextContent("配置模型");
-  await selectControlOption(screen.getByRole("combobox", { name: "来源" }), "organization");
+  await selectControlOption(screen.getByRole("combobox", { name: "来源" }), "all");
   await waitFor(() => expect(listUnregisteredSubjects).toHaveBeenCalledTimes(2));
   expect(screen.getByRole("checkbox", { name: "选择 vendor,a" })).not.toBeChecked();
   expect(screen.getByRole("checkbox", { name: "选择 node-b" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "选择 schema-c" })).not.toBeChecked();
+});
+
+it("falls back to all subjects when the organization source lacks a preselected subject", async () => {
+  const items = [
+    { id: "csub_a", kind: "driver" as const, canonicalName: "vendor,a", availableModuleIds: [] },
+    { id: "csub_b", kind: "driver" as const, canonicalName: "vendor,b", availableModuleIds: [] },
+  ];
+  const listUnregisteredSubjects = vi.fn(async (_organizationId: string, source: "organization" | "all") => ({
+    catalogReleaseId: "release-1", items: source === "organization" ? items.slice(0, 1) : items, modules: [],
+  }));
+  render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration: vi.fn() }} organizationId="org"
+    catalogReleaseId="release-1" initial={{ subjectIds: ["csub_a", "csub_b"], hints: { csub_b: { moduleName: "充电" } } }} />);
+  expect(await screen.findByRole("checkbox", { name: "选择 vendor,b" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "选择 vendor,a" })).toBeChecked();
+  expect(screen.getByLabelText("vendor,b 的模块名称")).toHaveValue("充电");
+  expect(listUnregisteredSubjects.mock.calls.map((call) => call[1])).toEqual(["organization", "all"]);
+  expect(screen.getByRole("combobox", { name: "来源" })).toHaveAttribute("data-value", "all");
+  await selectControlOption(screen.getByRole("combobox", { name: "来源" }), "organization");
+  await waitFor(() => expect(listUnregisteredSubjects).toHaveBeenCalledTimes(3));
+  expect(screen.getByRole("combobox", { name: "来源" })).toHaveAttribute("data-value", "organization");
+  expect(screen.queryByRole("checkbox", { name: "选择 vendor,b" })).not.toBeInTheDocument();
 });
 
 it("retains the remaining checked and unchecked rows after a rejected batch is refreshed", async () => {
