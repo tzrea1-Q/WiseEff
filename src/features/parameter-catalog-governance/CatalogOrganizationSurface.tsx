@@ -499,7 +499,7 @@ export function CatalogOrganizationSurface({
         />
       ) : null}
       {catalogReleaseId && domainState && organizationId && importOpen ? <DefinitionImportDialog key={`markdown-import-${organizationId}-${currentPersonId}`}
-        open runtimeMode={runtimeMode} actor={actor} sessionPermissions={sessionPermissions} domainState={domainState} catalog={catalog} governance={governance}
+        open runtimeMode={runtimeMode} actor={actor} sessionPermissions={sessionPermissions} domainState={domainState} catalog={catalog} governance={governance} moduleRegistry={moduleRegistry}
         catalogReleaseId={catalogReleaseId} currentPersonId={currentPersonId} organizationId={organizationId}
         publicationSurface={publicationSurface} createIdempotencyKey={createGovernanceIdempotencyKey}
         onCompleted={() => setSurfaceEpoch((value) => value + 1)} onRefreshEvidence={refreshCurrentCatalog}
