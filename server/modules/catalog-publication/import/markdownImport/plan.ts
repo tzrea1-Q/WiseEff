@@ -22,6 +22,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
   const entries: ImportEntry[] = [];
   const changes: CatalogChange[] = [];
   const seen = new Set<string>();
+  const newSubjects = new Map<string, ReturnType<typeof resolveSubject>>();
   let definitionCount = 0;
   for (const issue of syntax.diagnostics.filter((item) => item.subjectLine === undefined)) {
     entries.push({
@@ -31,6 +32,13 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
   }
   for (const section of syntax.subjects) {
     const resolved = resolveSubject(section, snapshot);
+    if (!resolved.subject && section.kind) {
+      const previous = newSubjects.get(section.selector);
+      if (previous && (previous.section.kind !== section.kind || previous.nature !== resolved.nature
+        || previous.cardinality !== resolved.cardinality)) {
+        resolved.diagnostics.push(diagnostic(section, null, "主体", "文档中主体的类型、性质或基数不一致。", section.line));
+      } else if (!previous) newSubjects.set(section.selector, resolved);
+    }
     const creations: { propertyKey: string; content: SupportedDefinitionContent }[] = [];
     const sectionDiagnostics = [
       ...syntax.diagnostics.filter((item) => item.subjectLine === section.line && item.definitionLine === undefined)
@@ -58,7 +66,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
           section, definition, "文档", "最多导入 128 条定义，请按主体拆分文档。", definition.line,
         ));
       }
-      const naturalKey = `${resolved.subject?.content.id ?? section.heading}\0${definition.propertyKey}`;
+      const naturalKey = `${resolved.subject?.content.id ?? `${section.kind}:${section.selector}`}\0${definition.propertyKey}`;
       const duplicate = seen.has(naturalKey);
       seen.add(naturalKey);
       const classified = classifyEntry({
@@ -72,7 +80,14 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
         creations.push({ propertyKey: definition.propertyKey, content: content.content });
       }
     }
-    changes.push(...subjectChanges(resolved, creations));
+    for (const change of subjectChanges(resolved, creations)) {
+      const previous = change.op === "create-subject-with-definitions"
+        ? changes.find((item) => item.op === "create-subject-with-definitions" && item.canonicalKey === change.canonicalKey)
+        : undefined;
+      if (previous?.op === "create-subject-with-definitions" && change.op === "create-subject-with-definitions") {
+        changes[changes.indexOf(previous)] = { ...previous, definitions: [...previous.definitions, ...change.definitions] };
+      } else changes.push(change);
+    }
   }
   if (!entries.length) {
     entries.push({

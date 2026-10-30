@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import {
   CATALOG_AUTHOR_PERSON_ID, CATALOG_ORGANIZATION_ID, CATALOG_RELEASE_ID, CATALOG_SUBJECT_ID,
-  catalogPublicationJob, readyCatalogDocument,
+  catalogPublicationCandidate, catalogPublicationJob, readyCatalogDocument, registeredSubject, unregisteredSubject,
 } from "@/application/parameter-catalog/fixtures";
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
@@ -25,6 +25,7 @@ function renderImport(options: {
   render(<DefinitionImportDialog open runtimeMode={options.runtimeMode ?? "api"}
     actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
     domainState={deriveCatalogDomainState({ document: readyCatalogDocument })} catalog={ports.catalog}
+    governance={ports.governance}
     catalogReleaseId={CATALOG_RELEASE_ID} currentPersonId={CATALOG_AUTHOR_PERSON_ID}
     organizationId={CATALOG_ORGANIZATION_ID} publicationSurface={{ publicationEnabled: true,
       lowRiskSingleActorPublish: false, policyRevision: 1, frozen: false, adopted: true,
@@ -33,6 +34,37 @@ function renderImport(options: {
     createIdempotencyKey={() => "pub-key"} onOpenChange={vi.fn()} onCompleted={completed} />);
   return { ports, completed };
 }
+
+it("lists unregistered new subjects after activation and keeps publication success on registration failure", async () => {
+  const { ports } = renderImport({ prepare: (ports) => {
+    ports.catalog.previewMarkdownImport = async (_, context) => {
+      const response = await ports.catalog.createPublicationCandidate({ changeSet: [{ op: "create-subject-with-definitions",
+        kind: "driver", canonicalKey: "driver:acme,new", selector: { kind: "driver-compatible", value: "acme,new" },
+        nature: "physical-device", cardinality: "multiple", definitions: [{ propertyKey: "one", content: {
+          displayName: "参数", documentation: "", valueSchema: { type: "integer" },
+        } }] }] }, context);
+      return { item: { candidate: response.item, source: { fileName: "d.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [] } };
+    };
+    vi.spyOn(ports.catalog, "getSubject").mockImplementation(async (id) => ({ item: {
+      ...unregisteredSubject, id, canonicalName: "acme,new", registration: { status: "unregistered" },
+    } }));
+    vi.spyOn(ports.governance, "createRegistration").mockRejectedValueOnce(new Error("registration failed"));
+  } });
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText("Markdown 文档"), "文档内容");
+  await user.click(screen.getByRole("button", { name: "解析并预览" }));
+  expect(await screen.findByLabelText("发布预览")).toHaveTextContent("风险高");
+  await user.click(screen.getByRole("button", { name: "发布到目录" }));
+  await confirm("确认发布");
+  await user.click(await screen.findByRole("button", { name: "登记 acme,new" }));
+  expect(await screen.findByText(/登记失败/)).toBeVisible();
+  expect(screen.getByRole("status", { name: "发布任务状态" })).toHaveTextContent("生效");
+  expect(ports.governance.createRegistration).toHaveBeenCalledTimes(1);
+  await user.click(screen.getByRole("button", { name: "登记 acme,new" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "登记 acme,new" })).not.toBeInTheDocument());
+  expect(ports.governance.createRegistration).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(ports.governance.createRegistration).mock.calls.map((call) => call[2].idempotencyKey)).toEqual(["pub-key", "pub-key"]);
+});
 
 async function confirm(label: string) {
   const user = userEvent.setup();
@@ -185,8 +217,17 @@ it("restores a stored import job and tracks activation without storing the docum
     vi.spyOn(ports.catalog, "getPublication").mockResolvedValue({ item: {
       ...catalogPublicationJob, status: "active", effective: true, isCurrent: true, currentness: "active",
     } });
+    vi.spyOn(ports.catalog, "getPublicationCandidate").mockResolvedValue({ item: {
+      ...catalogPublicationCandidate, impactSummary: { addedDefinitionCount: 2, changedDefinitionCount: 0,
+        addedSubjectCount: 2, addedSubjectIds: ["new", "registered"] },
+    } });
+    vi.spyOn(ports.catalog, "getSubject").mockImplementation(async (id) => ({ item: id === "new"
+      ? { ...unregisteredSubject, id, canonicalName: "acme,new" }
+      : { ...registeredSubject, id, canonicalName: "acme,registered" } }));
   } });
   await waitFor(() => expect(completed).toHaveBeenCalledTimes(1));
   expect(screen.getByRole("status", { name: "发布任务状态" })).toHaveTextContent("生效");
   expect(window.localStorage.getItem(PUBLICATION_JOB_STORAGE_KEY)).toBeNull();
+  expect(await screen.findByRole("button", { name: "登记 acme,new" })).toBeVisible();
+  expect(screen.queryByText("acme,registered")).not.toBeInTheDocument();
 });

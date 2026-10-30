@@ -203,6 +203,16 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     expect(created.body).toMatchObject({ item: { candidate: { riskClass: "low" }, entries: [{
       outcome: "create", selector: "acme,power", propertyKey: "import_a", displayName: "导入 A",
     }] } });
+    const highRisk = await post({ markdownImport: { ...markdownImport,
+      document: document.replace("# Driver `acme,power`", "# Driver `acme,new`\nnature: physical-device · cardinality: multiple") } });
+    expect(highRisk.status).toBe(201);
+    expect(highRisk.body).toMatchObject({ item: { candidate: { riskClass: "high", impactSummary: { addedSubjectCount: 1 } } } });
+    for (const kind of ["NodeType", "ConfigurationSchema"]) {
+      const response = await post({ markdownImport: { ...markdownImport,
+        document: document.replace("Driver `acme,power`", `${kind} \`new-subject\``) } });
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({ item: { candidate: { riskClass: "high", impactSummary: { addedSubjectCount: 1 } } } });
+    }
     const id = (created.body as { item: { candidate: { id: string } } }).item.candidate.id;
     const artifacts = await asCoordinator(client, () => client.query<{ source_kind: string; toolchain: Record<string, unknown> }>(
       `select a.source_kind, a.toolchain from catalog_publication.release_artifacts a join catalog_publication.candidates c on c.artifact_id = a.id where c.id = $1`, [id],
@@ -525,7 +535,7 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
   });
 });
 
-it("publishes a three-definition Markdown import through the manager and records an activation receipt", async () => {
+it.each([false, true])("publishes a three-definition Markdown import (new subject: %s) through the manager and records an activation receipt", async (newSubject) => {
   const database = await createEphemeralTestDatabase("mdimport");
   const db = createPostgresDatabase(database.url);
   const pool = getRootPostgresPool(db)!;
@@ -547,12 +557,13 @@ it("publishes a three-definition Markdown import through the manager and records
       const response = await fetch(`${server.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: predecessor.compiled.release.id }, body: JSON.stringify(body) });
       return { status: response.status, body: await response.json() };
     };
-    const document = `# Driver \`acme,power\`\n${["a", "b", "c"].map((key) => `## \`batch_${key}\` 参数 ${key}\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`).join("\n")}`;
+    const document = `# Driver \`${newSubject ? "acme,new" : "acme,power"}\`\n${newSubject ? "nature: physical-device · cardinality: multiple\n" : ""}${["a", "b", "c"].map((key) => `## \`batch_${key}\` 参数 ${key}\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`).join("\n")}`;
     const preview = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "three.md" } });
     expect(preview.status).toBe(201);
     const plan = catalogMarkdownImportResponseSchema.parse(preview.body).item;
     expect(plan.entries).toHaveLength(3);
     expect(plan.candidate).not.toBeNull();
+    expect(plan.candidate?.riskClass).toBe(newSubject ? "high" : "low");
     const candidateId = plan.candidate!.id;
     const published = await post(`/api/v2/catalog/publication-candidates/${candidateId}/publish`, { idempotencyKey: "md-three" });
     expect(published.status).toBe(201);
@@ -565,6 +576,10 @@ it("publishes a three-definition Markdown import through the manager and records
       join parameter_catalog.catalog_state s on s.current_catalog_release_id = h.release_id
       where d.property_key in ('batch_a', 'batch_b', 'batch_c') order by d.property_key`);
     expect(definitions.rows.map((row) => row.property_key)).toEqual(["batch_a", "batch_b", "batch_c"]);
+    if (newSubject) {
+      const subject = await client.query<{ n: string }>(`select count(*)::text as n from parameter_catalog.catalog_subjects where canonical_key = 'acme,new'`);
+      expect(subject.rows[0]?.n).toBe("1");
+    }
   } finally {
     await close();
     await client.end();

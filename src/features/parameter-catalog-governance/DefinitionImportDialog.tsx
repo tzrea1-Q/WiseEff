@@ -3,10 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import type { CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Textarea } from "@/components/ui/textarea";
-import type { CatalogMarkdownImportResponse } from "@/infrastructure/http/parameterCatalogDtos";
+import type { CatalogMarkdownImportResponse, CatalogSubjectResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import "@/features/parameter-catalog/parameter-catalog.css";
 
@@ -18,6 +19,7 @@ import {
   publicationStatusCopy, publicationSuccessKind,
 } from "./publicationState";
 import { usePublicationFlow } from "./usePublicationFlow";
+import { canExecuteGovernanceAction, createGovernanceIdempotencyKey } from "./governanceState";
 
 const TEMPLATE = `# Driver \`vendor,existing-driver\`
 
@@ -32,6 +34,14 @@ const TEMPLATE = `# Driver \`vendor,existing-driver\`
 | 简述 | 电流限制 |
 
 在此填写定义的 Markdown 说明。
+
+# Driver \`vendor,new-driver\`
+nature: physical-device · cardinality: multiple
+
+## \`enabled\` 是否启用
+| 字段 | 值 |
+| --- | --- |
+| 类型 | boolean |
 `;
 
 export type DefinitionImportDialogProps = {
@@ -41,6 +51,7 @@ export type DefinitionImportDialogProps = {
   sessionPermissions?: readonly string[] | null;
   domainState: CatalogDomainState;
   catalog: ParameterCatalogRepository;
+  governance: ParameterCatalogGovernanceRepository;
   catalogReleaseId: string;
   currentPersonId: string;
   organizationId: string;
@@ -62,6 +73,13 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const [entries, setEntries] = useState<CatalogMarkdownImportResponse["item"]["entries"] | null>(null);
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [leaveConfirm, setLeaveConfirm] = useState(false);
+  const [newSubjects, setNewSubjects] = useState<CatalogSubjectResponse["item"][]>([]);
+  const [subjectError, setSubjectError] = useState(false);
+  const [subjectEpoch, setSubjectEpoch] = useState(0);
+  const [registering, setRegistering] = useState<string | null>(null);
+  const [registrationFailed, setRegistrationFailed] = useState<string | null>(null);
+  const registrationGate = useRef(false);
+  const registrationKeys = useRef(new Map<string, string>());
   const unavailable = props.runtimeMode === "mock" || !catalog.previewMarkdownImport
     ? "模拟模式不支持导入预览，请使用 API 模式。" : null;
   const canPreview = !unavailable && props.publicationSurface?.authoringAllowed === true
@@ -98,6 +116,46 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [open, dirty]);
+
+  useEffect(() => {
+    if (!open || !succeeded || !candidate) return undefined;
+    let cancelled = false;
+    setSubjectError(false);
+    void (async () => {
+      try {
+        const resolved = flow.candidateVerified ? candidate : (await catalog.getPublicationCandidate(candidate.id)).item;
+        const subjects = await Promise.all((resolved.impactSummary.addedSubjectIds ?? [])
+          .map(async (id) => (await catalog.getSubject(id)).item));
+        if (!cancelled) setNewSubjects(subjects.filter((subject) => subject.registration.status === "unregistered"));
+      } catch {
+        if (!cancelled) setSubjectError(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, succeeded, candidate, flow.candidateVerified, catalog, subjectEpoch]);
+
+  const registerSubject = async (subject: CatalogSubjectResponse["item"]) => {
+    if (registrationGate.current) return;
+    registrationGate.current = true;
+    setRegistering(subject.id);
+    setRegistrationFailed(null);
+    const idempotencyKey = registrationKeys.current.get(subject.id)
+      ?? (props.createIdempotencyKey ?? createGovernanceIdempotencyKey)();
+    registrationKeys.current.set(subject.id, idempotencyKey);
+    try {
+      await props.governance.createRegistration(props.organizationId, {
+        subjectId: subject.id, placement: { mode: "use-default" }, reason: "目录发布后登记",
+      }, { catalogReleaseId: subject.membership.catalogReleaseId,
+        idempotencyKey });
+      setNewSubjects((items) => items.filter((item) => item.id !== subject.id));
+      props.onCompleted?.();
+    } catch {
+      setRegistrationFailed(subject.id);
+    } finally {
+      registrationGate.current = false;
+      setRegistering(null);
+    }
+  };
 
   const close = () => {
     if (dirty && !leaveConfirm) { setLeaveConfirm(true); return; }
@@ -148,13 +206,24 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
       {({ titleId, descriptionId }) => <>
         <h2 id={titleId}>批量导入定义</h2>
         <div className="confirm-dialog__scroll"><div id={descriptionId} className="governance-confirm-dialog__body">
-          <p>粘贴或上传 Markdown 文档；主体须已存在，支持 integer、number、string、boolean。</p>
+          <p>粘贴或上传 Markdown 文档；可引用已有主体或新建主体，支持 integer、number、string、boolean。</p>
           {unavailable ? <p role="status">{unavailable}</p> : null}
           {advisory ? <p role="status" data-tone={advisory.tone}>{advisory.message}</p> : null}
           {status ? <p role="status" aria-label="发布任务状态" data-publication-status={job?.status}
             data-tone={status.tone}>{succeeded === "active" && entries && status.tone === "success"
               ? `已发布 ${counts.create} 条定义，目录已生效。` : status.message}</p> : null}
           {failure ? <p role="alert" className="governance-confirm-dialog__error">{failure}</p> : null}
+          {succeeded && subjectError ? <p role="alert">新主体的登记状态加载失败，发布仍已生效。<button type="button"
+            className="button subtle sm" onClick={() => setSubjectEpoch((value) => value + 1)}>重试加载</button></p> : null}
+          {succeeded && newSubjects.length > 0 ? <section aria-label="待登记的新主体">
+            <p>以下新主体尚未在本组织登记。登记是独立操作，不影响已生效的发布。</p>
+            <ul>{newSubjects.map((subject) => <li key={subject.id}>{subject.canonicalName}{" "}
+              {canExecuteGovernanceAction(actor, "register-subject", domainState, sessionPermissions)
+                ? <button type="button" className="button subtle sm" disabled={registering !== null}
+                  onClick={() => void registerSubject(subject)}>登记 {subject.canonicalName}</button> : null}
+              {registrationFailed === subject.id ? <span role="alert">登记失败，请重试；发布仍已生效。</span> : null}
+            </li>)}</ul>
+          </section> : null}
           {canPreview && !succeeded ? <div className="parameter-catalog-publication-dialog__form">
             <div className="parameter-catalog-import-dialog__file-actions">
               <button type="button" className="button subtle sm" disabled={inputDisabled}

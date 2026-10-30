@@ -23,6 +23,34 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("creates subjects with their definitions and checks driver facts", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const fresh = document.replace("acme,power", "acme,new").replace("\n\n##", "\nnature: physical-device · cardinality: multiple\n\n##");
+    const plan = planMarkdownImport(fresh, "new.md", snapshot);
+    expect(plan.changeSet).toEqual([expect.objectContaining({ op: "create-subject-with-definitions",
+      kind: "driver", canonicalKey: "driver:acme,new", selector: { kind: "driver-compatible", value: "acme,new" },
+      nature: "physical-device", cardinality: "multiple", definitions: expect.arrayContaining([
+        expect.objectContaining({ propertyKey: "import-one" }), expect.objectContaining({ propertyKey: "import-two" }),
+      ]) })]);
+    expect(planMarkdownImport(document.replace("acme,power", "acme,new"), "new.md", snapshot).changeSet).toBeNull();
+    expect(planMarkdownImport(document.replace("# Driver `acme,power`", "# Driver `acme,power`\nnature: physical-device · cardinality: multiple"), "d.md", snapshot).changeSet).not.toBeNull();
+    expect(planMarkdownImport(document.replace("# Driver `acme,power`", "# Driver `acme,power`\nnature: physical-device · cardinality: singleton-per-project"), "d.md", snapshot).changeSet).toBeNull();
+    expect(planMarkdownImport(document.replace("# Driver `acme,power`", "# Driver `acme,power`\nnature: logical-service · cardinality: multiple"), "d.md", snapshot).changeSet).toBeNull();
+    for (const kind of ["NodeType", "ConfigurationSchema"]) {
+      expect(planMarkdownImport(document.replace("Driver `acme,power`", `${kind} \`new-subject\``), "d.md", snapshot).changeSet?.[0]).toMatchObject({ op: "create-subject-with-definitions", definitions: expect.any(Array) });
+    }
+  });
+
+  it("combines repeated new-subject sections and rejects inconsistent facts or duplicate keys", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const section = (key: string, nature = "physical-device") => `# Driver \`acme,new\`\nnature: ${nature} · cardinality: multiple\n## \`${key}\` 参数\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |\n`;
+    expect(planMarkdownImport(section("a") + section("b"), "d.md", snapshot).changeSet).toMatchObject([
+      { op: "create-subject-with-definitions", definitions: [{ propertyKey: "a" }, { propertyKey: "b" }] },
+    ]);
+    expect(planMarkdownImport(section("a") + section("b", "logical-service"), "d.md", snapshot).changeSet).toBeNull();
+    expect(planMarkdownImport(section("a") + section("a").replace("`acme,new`", "`acme,new`  "), "d.md", snapshot).changeSet).toBeNull();
+    expect(planMarkdownImport(section("a").replace("Driver `acme,new`", "NodeType `acme,power`"), "d.md", snapshot).changeSet).toBeNull();
+  });
   it("plans a deterministic batch against the snapshot", () => {
     const snapshot = firstAcmePredecessor().first;
     const plan = planMarkdownImport(document, "definitions.md", snapshot);
