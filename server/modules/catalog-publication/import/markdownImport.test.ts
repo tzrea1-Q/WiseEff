@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { firstAcmePredecessor } from "../builder/predecessorHarness";
 import { planMarkdownImport } from "./markdownImport";
+import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/features/parameter-catalog-governance/definitionImportTemplate";
+import { buildCreateDefinitionChangeSet, emptyPublicationDraft } from "../../../../src/features/parameter-catalog-governance/publicationState";
 
 const document = `# Driver \`acme,power\`
 
@@ -120,12 +122,12 @@ describe("Definition import planner", () => {
     const diagnostics = planMarkdownImport(input, "bad.md", firstAcmePredecessor().first).entries[0]!.diagnostics;
     expect(diagnostics.map((item) => item.line)).toEqual([1, 5, 6, 8]);
     expect(diagnostics.filter((item) => item.field === "类型")).toEqual([
-      expect.objectContaining({ message: "仅支持 integer、number、string、boolean。", line: 5 }),
+      expect.objectContaining({ field: "类型", line: 5 }),
     ]);
   });
 
   it("reports located format, unsupported field and type errors together", () => {
-    const plan = planMarkdownImport(document.replace("| 类型 | integer |", "| 类型 | array<string> |\n| 默认值 | 1 |").replace("| 类型 | string |", "| 类型 string |"), "bad.md", firstAcmePredecessor().first);
+    const plan = planMarkdownImport(document.replace("| 类型 | integer |", "| 类型 | array<invalid> |\n| 默认值 | 1 |").replace("| 类型 | string |", "| 类型 string |"), "bad.md", firstAcmePredecessor().first);
     expect(plan.changeSet).toBeNull();
     expect(plan.entries).toHaveLength(2);
     expect(plan.entries.every((entry) => entry.outcome === "error")).toBe(true);
@@ -217,5 +219,124 @@ describe("Definition import planner", () => {
     const input = `# Driver \`acme,power\`\n## \`scalar\` 参数\n| 字段 | 值 |\n| --- | --- |\n| 类型 | ${type} |\n| 示例 | ${example} |`;
     const plan = planMarkdownImport(input, "d.md", firstAcmePredecessor().first);
     expect(plan.changeSet?.[0]).toMatchObject({ content: { valueSchema: { type }, examples: [expected] } });
+  });
+
+  it("plans the downloadable template with all supported types", () => {
+    const first = firstAcmePredecessor().first;
+    const snapshot = { ...first, documents: first.documents.map((item) => item.kind === "subject" && item.content.id === "csub_acme_power"
+      ? { ...item, content: { ...item.content, selector: { ...item.content.selector, value: "vendor,existing-driver" } } } : item) };
+    const plan = planMarkdownImport(DEFINITION_IMPORT_TEMPLATE, "template.md", snapshot);
+    expect(plan.entries.every((entry) => entry.outcome === "create")).toBe(true);
+    expect(plan.changeSet).not.toBeNull();
+  });
+
+  it("builds nested arrays, mixed and null schemas and parses their examples", () => {
+    const input = `# Driver \`acme,power\`
+## \`nested\` 嵌套数组
+| 字段 | 值 |
+| --- | --- |
+| 类型 | array<array<integer>> |
+| 最少项数 | 1 |
+| 最多项数 | 2 |
+| 示例 | [[1,2]] |
+## \`mixed\` 混合
+| 字段 | 值 |
+| --- | --- |
+| 类型 | mixed |
+| 类型说明 | mixed |
+| 示例 | {"x":1} |
+## \`empty\` 空值
+| 字段 | 值 |
+| --- | --- |
+| 类型 | null |
+| 示例 | null |`;
+    const plan = planMarkdownImport(input, "d.md", firstAcmePredecessor().first);
+    expect(plan.changeSet).toMatchObject([
+      { content: { valueSchema: { type: "array", minItems: 1, maxItems: 2, items: { type: "array", items: { type: "integer" } } }, examples: [[[1, 2]]] } },
+      { content: { valueSchema: { description: "mixed" }, examples: [{ x: 1 }] } },
+      { content: { valueSchema: { type: "null" }, examples: [null] } },
+    ]);
+  });
+
+  it("reports content limits and unsupported fields at their rows", () => {
+    const input = `# Driver \`acme,power\`
+## \`bad\` ${"名".repeat(129)}
+| 字段 | 值 |
+| --- | --- |
+| 类型 | array<array<array<array<array<string>>>>> |
+| 最少项数 | 4097 |
+| 最多项数 | -1 |
+| 单位 | ${"u".repeat(33)} |
+| 简述 | ${"述".repeat(513)} |
+| 默认值 | 1 |
+| 枚举 | a |
+| 正则 | .* |
+${Array.from({ length: 9 }, () => "| 示例 | [] |").join("\n")}
+
+${"文".repeat(8193)}
+## \`mixed-bad\` 混合
+| 字段 | 值 |
+| --- | --- |
+| 类型 | mixed |`;
+    const plan = planMarkdownImport(input, "d.md", firstAcmePredecessor().first);
+    const diagnostics = plan.entries[0]!.diagnostics;
+    expect(plan.changeSet).toBeNull();
+    expect(diagnostics.map((item) => item.field)).toEqual(expect.arrayContaining([
+      "显示名", "正文", "类型", "最少项数", "最多项数", "单位", "简述", "默认值", "枚举", "正则", "示例",
+    ]));
+    expect(diagnostics.find((item) => item.field === "单位")?.message).toBe("单位须为 1 至 32 个字符，且不能包含控制字符。");
+    expect(diagnostics.find((item) => item.field === "默认值")?.message).toContain("契约");
+    expect(plan.entries[1]!.diagnostics.map((item) => item.field)).toContain("类型说明");
+  });
+
+  it.each(["-1", "4097", "1.5"])("rejects invalid array item count %s", (bound) => {
+    const input = `# Driver \`acme,power\`\n## \`array\` 数组\n| 字段 | 值 |\n| --- | --- |\n| 类型 | array<string> |\n| 最多项数 | ${bound} |`;
+    expect(planMarkdownImport(input, "d.md", firstAcmePredecessor().first).entries[0]!.diagnostics)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ field: "最多项数" })]));
+  });
+
+  it.each(["Hz", "%", "u".repeat(32)])("accepts Builder-supported unit %s", (unit) => {
+    const input = `# Driver \`acme,power\`\n## \`unit\` 单位\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n| 单位 | ${unit} |`;
+    expect(planMarkdownImport(input, "d.md", firstAcmePredecessor().first).changeSet?.[0])
+      .toMatchObject({ content: { unit } });
+  });
+
+  it.each(["", "u\u007f"])("reports the Builder rule for an invalid unit", (unit) => {
+    const input = `# Driver \`acme,power\`\n## \`unit\` 单位\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n| 单位 | ${unit} |`;
+    expect(planMarkdownImport(input, "d.md", firstAcmePredecessor().first).entries[0]!.diagnostics)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ field: "单位", line: 6, message: "单位须为 1 至 32 个字符，且不能包含控制字符。" })]));
+  });
+
+  it("rejects non-finite JSON numbers inside mixed examples", () => {
+    const input = `# Driver \`acme,power\`\n## \`mixed-number\` 混合\n| 字段 | 值 |\n| --- | --- |\n| 类型 | mixed |\n| 类型说明 | mixed |\n| 示例 | {"value":1e999} |`;
+    expect(planMarkdownImport(input, "d.md", firstAcmePredecessor().first).entries[0]!.diagnostics)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ field: "示例" })]));
+  });
+
+  it("accepts the depth, item-count and example limits and nested mixed", () => {
+    const input = `# Driver \`acme,power\`\n## \`limits\` 上限\n| 字段 | 值 |\n| --- | --- |\n| 类型 | array<array<array<array<mixed>>>> |\n| 类型说明 | mixed |\n| 最少项数 | 0 |\n| 最多项数 | 4096 |\n${Array.from({ length: 8 }, () => "| 示例 | [] |").join("\n")}`;
+    const plan = planMarkdownImport(input, "d.md", firstAcmePredecessor().first);
+    expect(plan.entries[0]?.outcome).toBe("create");
+    expect(plan.changeSet?.[0]).toMatchObject({ content: { valueSchema: { type: "array", minItems: 0, maxItems: 4096,
+      items: { type: "array", items: { type: "array", items: { type: "array", items: { description: "mixed" } } } } }, examples: Array.from({ length: 8 }, () => []) } });
+  });
+
+  it.each([["array<string>", "string-list"], ["mixed", "mixed"], ["null", "empty"]] as const)(
+    "matches the single-definition editor schema for %s", (type, valueType) => {
+      const input = `# Driver \`acme,power\`\n## \`comparison\` 名称\n| 字段 | 值 |\n| --- | --- |\n| 类型 | ${type} |${type === "mixed" ? "\n| 类型说明 | mixed |" : ""}`;
+      const plan = planMarkdownImport(input, "d.md", firstAcmePredecessor().first);
+      const editor = buildCreateDefinitionChangeSet({ ...emptyPublicationDraft(), mode: "create-definition", subjectId: "csub_acme_power", propertyKey: "comparison", displayName: "名称", valueType });
+      const change = editor[0];
+      if (!change || change.op !== "create-definition") throw new Error("expected definition change");
+      expect(plan.changeSet?.[0]).toMatchObject({ content: { valueSchema: change.content.valueSchema } });
+    },
+  );
+
+  it("matches the editor's nonnegative integer array schema", () => {
+    const input = `# Driver \`acme,power\`\n## \`comparison\` 名称\n| 字段 | 值 |\n| --- | --- |\n| 类型 | array<integer> |\n| 最小值 | 0 |`;
+    const plan = planMarkdownImport(input, "d.md", firstAcmePredecessor().first);
+    const change = buildCreateDefinitionChangeSet({ ...emptyPublicationDraft(), mode: "create-definition", subjectId: "csub_acme_power", propertyKey: "comparison", displayName: "名称", valueType: "u32-array" })[0];
+    if (!change || change.op !== "create-definition") throw new Error("expected definition change");
+    expect(plan.changeSet?.[0]).toMatchObject({ content: { valueSchema: change.content.valueSchema } });
   });
 });

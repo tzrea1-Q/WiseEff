@@ -191,7 +191,7 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     authenticateAs(publisherScope());
     expect((await post({ markdownImport, changeSet: changeSetFor("ambiguous") })).status).toBe(400);
     const before = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
-    const invalid = await post({ markdownImport: { ...markdownImport, document: document.replace("integer", "array<string>") } });
+    const invalid = await post({ markdownImport: { ...markdownImport, document: document.replace("integer", "enum") } });
     expect(invalid.status).toBe(200);
     expect(invalid.body).toMatchObject({ item: { candidate: null, entries: [{ outcome: "error" }] } });
     expect(catalogMarkdownImportResponseSchema.parse(invalid.body).item.entries[0]?.diagnostics)
