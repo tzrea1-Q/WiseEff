@@ -55,11 +55,11 @@ export function OrganizationBulkImportPanel({
     <button
       type="button"
       className="button primary"
-      aria-label="打开批量参数导入"
+      aria-label="打开项目值批量导入"
       onClick={() => setOpen(true)}
     >
       <Upload size={16} aria-hidden="true" />
-      批量参数导入
+      项目值批量导入
     </button>
   );
 
@@ -68,7 +68,7 @@ export function OrganizationBulkImportPanel({
   return (
     <>
       {!topBarContext ? (
-        <div className="param-admin-org-actions" role="region" aria-label="批量参数导入">
+        <div className="param-admin-org-actions" role="region" aria-label="项目值批量导入">
           {importButton}
         </div>
       ) : null}

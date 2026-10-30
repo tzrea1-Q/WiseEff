@@ -51,7 +51,6 @@ import {
 } from "./publicationState";
 
 type SubjectItem = CatalogSubjectResponse["item"];
-type FollowupStatus = "idle" | "failed" | "succeeded";
 
 export type PublicationDialogProps = {
   open: boolean;
@@ -59,6 +58,7 @@ export type PublicationDialogProps = {
   initialSubjectId?: string;
   sourcePrefill?: { compatible: string; label: string; href: string; reference: SharedDtsiRecognitionReference };
   onAddDefinition?: (subjectId: string) => void;
+  onBatchRegistration?: (subjectId: string) => void;
   actor: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
   domainState: CatalogDomainState;
@@ -80,6 +80,7 @@ export function PublicationDialog({
   initialSubjectId = "",
   sourcePrefill,
   onAddDefinition,
+  onBatchRegistration,
   actor,
   sessionPermissions,
   domainState,
@@ -123,7 +124,6 @@ export function PublicationDialog({
   const [draft, setDraft] = useState<PublicationDraft>(initialDraft);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
   const [subjectReadEpoch, setSubjectReadEpoch] = useState(0);
-  const [followup, setFollowup] = useState<FollowupStatus>("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [proposalId, setProposalId] = useState<string | null>(null);
@@ -192,7 +192,6 @@ export function PublicationDialog({
     setFieldError(null);
     setProposalId(null);
     setDraftSaved(false);
-    setFollowup("idle");
     const stored = flow.restore(false, (record) =>
       fingerprintPublicationDraft({ ...emptyPublicationDraft(), ...record.draft }));
     if (stored) {
@@ -352,38 +351,6 @@ export function PublicationDialog({
       return;
     }
     await flow.publish(draft, false, captureError);
-  };
-
-  const runRegistrationFollowup = async () => {
-    const subjectId = candidate?.impactSummary.addedSubjectIds?.[0];
-    if (!subjectId || pending || !job || !publicationSuccessKind(job)) {
-      return;
-    }
-    if (!gateRef.current.begin()) {
-      return;
-    }
-    setPending(true);
-    try {
-      await governance.createRegistration(
-        organizationId,
-        {
-          subjectId,
-          placement: { mode: "use-default" },
-          reason: draft.reason.trim() || "目录发布后登记"
-        },
-        {
-          catalogReleaseId,
-          idempotencyKey: (createIdempotencyKey ?? createGovernanceIdempotencyKey)()
-        }
-      );
-      setFollowup("succeeded");
-      setFailure(null);
-    } catch {
-      setFollowup("failed");
-    } finally {
-      gateRef.current.finish();
-      setPending(false);
-    }
   };
 
   const status = job ? publicationStatusCopy(job) : null;
@@ -679,13 +646,7 @@ export function PublicationDialog({
                   <p>{publicationCopy.catalogNotAdopted}</p>
                 ) : null}
                 {catalogSucceeded && addedSubjectId ? (
-                  <p data-registration-followup={followup}>
-                    {followup === "failed"
-                      ? publicationCopy.registerFollowupFailed
-                      : followup === "succeeded"
-                        ? publicationCopy.registerFollowupSuccess
-                        : publicationCopy.registerFollowupHint}
-                  </p>
+                  <p>{publicationCopy.registerFollowupHint}</p>
                 ) : null}
               </div>
             </div>
@@ -740,14 +701,14 @@ export function PublicationDialog({
               ) : null}
               {catalogSucceeded && addedSubjectId && onAddDefinition ? <button type="button" className="button primary sm"
                 onClick={() => onAddDefinition(addedSubjectId)}>新增参数定义</button> : null}
-              {catalogSucceeded && addedSubjectId && followup !== "succeeded" ? (
+              {catalogSucceeded && addedSubjectId && onBatchRegistration ? (
                 <button
                   type="button"
                   className="button sm"
                   disabled={pending}
-                  onClick={() => void runRegistrationFollowup()}
+                  onClick={() => onBatchRegistration(addedSubjectId)}
                 >
-                  {followup === "failed" ? publicationCopy.registerFollowupRetry : publicationCopy.registerFollowup}
+                  前往批量登记
                 </button>
               ) : null}
               {job && publicationJobIsPending(job.status) ? (

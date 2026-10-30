@@ -219,7 +219,7 @@ describe("createParameterRuntimeActions", () => {
     });
     expect(dispatch).toHaveBeenCalledWith({
       type: "ADD_NOTIFICATION",
-      message: "批量参数导入完成：新增 2 项，更新 1 项，冲突 0 项"
+      message: "项目值批量导入完成：新增 2 项，更新 1 项，冲突 0 项"
     });
   });
 

@@ -19,6 +19,7 @@ import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry
 import type { CatalogListQuery } from "@/infrastructure/http/parameterCatalogDtos";
 import { catalogApiFailure } from "@/application/parameter-catalog/errors";
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
+import { takeBatchRegistrationHandoff } from "@/features/parameter-catalog-governance/batchRegistrationHandoff";
 
 import { CanonicalSubjectPlacementPanel } from "./CanonicalSubjectPlacementPanel";
 
@@ -255,6 +256,36 @@ function createPorts() {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it("hands the newly published subject to the Catalog batch registration view", async () => {
+    const ports = createPorts();
+    const publication = createMockCatalogPorts({ publicationOutcome: "active" });
+    const navigate = vi.fn();
+    const register = vi.spyOn(publication.governance, "createRegistration");
+    render(<CanonicalSubjectPlacementPanel {...ports} catalog={{ ...publication.catalog, ...ports.catalog }}
+      governance={{ ...publication.governance, ...ports.governance }} organizationId={CATALOG_ORGANIZATION_ID}
+      currentPersonId="batch-user" actor="org-admin" canAdmin sessionPermissions={["catalog:author", "catalog:publish"]} onNavigate={navigate} />);
+    const user = userEvent.setup();
+    const create = await screen.findByRole("button", { name: "新增主体" });
+    await waitFor(() => expect(create).toBeEnabled());
+    await user.click(create);
+    await user.type(await screen.findByLabelText("compatible 标识"), "acme,batch-handoff");
+    await selectControlOption(screen.getByLabelText("驱动性质"), "physical-device");
+    await selectControlOption(screen.getByLabelText("实例基数"), "multiple");
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    let confirmation = await screen.findByRole("dialog", { name: /确认/ });
+    await user.click(within(confirmation).getByRole("checkbox"));
+    await user.click(within(confirmation).getByRole("button", { name: "确认预览" }));
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    confirmation = await screen.findByRole("dialog", { name: /确认/ });
+    await user.click(within(confirmation).getByRole("checkbox"));
+    await user.click(within(confirmation).getByRole("button", { name: "确认发布" }));
+    await user.click(await screen.findByRole("button", { name: "前往批量登记" }));
+    expect(navigate).toHaveBeenLastCalledWith(expect.stringContaining("/parameter-admin/specs"));
+    expect(takeBatchRegistrationHandoff(CATALOG_ORGANIZATION_ID, "batch-user")).toEqual({ subjectIds: ["csub_new_1"], hints: undefined });
+    expect(register).not.toHaveBeenCalled();
+    expect(ports.createRegistration).not.toHaveBeenCalled();
+  });
+
   it("owns standalone subject creation and offers a real definition action for a zero-definition subject", async () => {
     const ports = createPorts();
     const navigate = vi.fn();
