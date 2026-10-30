@@ -85785,14 +85785,33 @@
                         "subjectId": {
                           "type": "string"
                         },
-                        "message": {
-                          "type": "string"
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "category-missing",
+                            "name-invalid",
+                            "name-taken",
+                            "module-occupied",
+                            "already-registered",
+                            "subject-inactive",
+                            "release-drift",
+                            "conflict"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "enum": [
+                            "category",
+                            "name",
+                            "subject"
+                          ]
                         }
                       },
                       "required": [
                         "index",
                         "subjectId",
-                        "message"
+                        "code",
+                        "field"
                       ],
                       "additionalProperties": false
                     }

@@ -645,7 +645,7 @@ export function PublicationDialog({
                 {candidate && !previewStale && draft.mode === "revise-definition" && draft.reviseClass === "semantic" ? (
                   <p>{publicationCopy.catalogNotAdopted}</p>
                 ) : null}
-                {catalogSucceeded && addedSubjectId ? (
+                {catalogSucceeded && addedSubjectId && !onBatchRegistration ? (
                   <p>{publicationCopy.registerFollowupHint}</p>
                 ) : null}
               </div>
@@ -708,7 +708,7 @@ export function PublicationDialog({
                   disabled={pending}
                   onClick={() => onBatchRegistration(addedSubjectId)}
                 >
-                  前往批量登记
+                  {publicationCopy.batchRegistration}
                 </button>
               ) : null}
               {job && publicationJobIsPending(job.status) ? (

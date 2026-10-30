@@ -4,6 +4,8 @@ import type { BackendPermission } from "../../auth/types";
 import type { catalogPublicationCommandByRouteId } from "./mapping";
 import type { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
 
+export type PlacementHintWithWarnings = ReturnType<typeof planMarkdownImport>["placementHints"][number] & { warnings: string[] };
+
 export type CatalogPublicationRouteId = keyof typeof catalogPublicationCommandByRouteId;
 
 export type CatalogPublicationRequest = {
@@ -129,7 +131,7 @@ export type CatalogPublicationPorts = {
   readonly currentRelease: () => Promise<CatalogReleasePin | null>;
   readonly previewCandidate: (
     command: PreviewPublicationCommand,
-  ) => Promise<{ ok: true; value: PublicationCandidateView | { candidate: PublicationCandidateView | null; noChange: boolean; entries: ReturnType<typeof planMarkdownImport>["entries"]; source: { fileName: string; sha256: string; parserVersion: string }; placementHints: (ReturnType<typeof planMarkdownImport>["placementHints"][number] & { warnings: string[] })[] } } | { ok: false; error: CatalogPublicationFailure }>;
+  ) => Promise<{ ok: true; value: PublicationCandidateView | { candidate: PublicationCandidateView | null; noChange: boolean; entries: ReturnType<typeof planMarkdownImport>["entries"]; source: { fileName: string; sha256: string; parserVersion: string }; placementHints: PlacementHintWithWarnings[] } } | { ok: false; error: CatalogPublicationFailure }>;
   readonly getCandidate: (input: {
     readonly candidateId: string;
     readonly organizationId: string;

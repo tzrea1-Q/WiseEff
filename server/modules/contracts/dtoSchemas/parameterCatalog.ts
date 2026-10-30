@@ -429,11 +429,11 @@ export const catalogRegisterSubjectRequestSchema = catalogObject({
 
 export const catalogBatchRegistrationRequestSchema = catalogObject({
   rows: z.array(catalogObject({
-    subjectId: z.string(),
+    subjectId: z.string().trim().min(1),
     target: z.union([
-      catalogObject({ type: z.literal("existing-module"), moduleId: z.string() }),
-      catalogObject({ type: z.literal("new-module"), parentModuleId: z.string(), name: z.string() }),
-      catalogObject({ type: z.literal("unclassified"), name: z.string() })
+      catalogObject({ type: z.literal("existing-module"), moduleId: z.string().trim().min(1) }),
+      catalogObject({ type: z.literal("new-module"), parentModuleId: z.string().trim().min(1), name: z.string().trim().min(1).max(120).regex(/^[^\u0000-\u001f\u007f-\u009f]+$/u) }),
+      catalogObject({ type: z.literal("unclassified"), name: z.string().trim().min(1).max(120).regex(/^[^\u0000-\u001f\u007f-\u009f]+$/u) })
     ])
   })).min(1).max(128)
 });
@@ -442,7 +442,7 @@ export const catalogBatchRegistrationResponseSchema = catalogObject({
 });
 export const catalogBatchRegistrationFailureResponseSchema = z.object({
   error: z.object({ code: z.string(), message: z.string(), requestId: z.string(),
-    details: z.object({ retryable: z.boolean(), rows: z.array(z.object({ index: z.number().int().nonnegative(), subjectId: z.string(), message: z.string() })).optional() }).passthrough() })
+    details: z.object({ retryable: z.boolean(), rows: z.array(z.object({ index: z.number().int().nonnegative(), subjectId: z.string(), code: z.enum(["category-missing", "name-invalid", "name-taken", "module-occupied", "already-registered", "subject-inactive", "release-drift", "conflict"]), field: z.enum(["category", "name", "subject"]) })).optional() }).passthrough() })
 });
 export const catalogUnregisteredSubjectsResponseSchema = catalogObject({
   catalogReleaseId: z.string(),

@@ -132,6 +132,7 @@ export const publicationCopy = {
   fallbackImpact: "新驱动可能改变节点类型回退匹配。",
   neverLowCreate: "新增主体不能按低风险发布。",
   registerFollowupHint: "如需在本组织使用，请单独登记主体。",
+  batchRegistration: "前往批量登记",
   authorRequired: "当前会话没有目录编写权限。",
   sharedScope: "该主体全部实例共享。新增正式定义不会自动变更组织登记或放置。",
   subjectKind: "主体类型",

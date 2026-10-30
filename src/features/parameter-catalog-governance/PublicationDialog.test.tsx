@@ -566,6 +566,7 @@ describe("PublicationDialog", () => {
     await user.click(await screen.findByRole("button", { name: "发布到目录" }));
     await confirm("确认发布");
     expect(await screen.findByText(/目录发布已生效/)).toBeVisible();
+    expect(screen.queryByText("如需在本组织使用，请单独登记主体。")).not.toBeInTheDocument();
     expect(register).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "前往批量登记" }));
     expect(onBatchRegistration).toHaveBeenCalledWith("csub_new_1");

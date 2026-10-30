@@ -23,7 +23,7 @@ import { createEvidenceIngest } from "../../parameter-governance/evidence/index"
 import type { IngestEvidenceCommand } from "../../parameter-governance/evidence/types";
 import { executeProposal } from "../../parameter-governance/proposals/index";
 import { executeRegistration } from "../../parameter-governance/registration/index";
-import { createAgentInvocation, createUserInvocation } from "../../auth/trustedInvocation";
+import { createAgentInvocation, createUserInvocation, TrustedInvocationContextError } from "../../auth/trustedInvocation";
 import { executeBatchRegistration } from "../../parameter-governance/registration/batch";
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
@@ -52,7 +52,7 @@ import {
 import { listenCatalogGovernanceHttpServer } from "./http";
 import { bindCatalogGovernanceCommands, bindGovernanceCatalogQueryPorts, emptyGovernanceQueryPorts } from "./ports";
 import type { CatalogGovernancePorts, TrustedGovernanceScope } from "./types";
-import { listUnregisteredSubjects } from "./unregistered";
+import { listUnregisteredSubjects } from "../../parameter-governance/registration/readRepository";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -255,6 +255,48 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     expect(stored.rows[0]?.count).toBe("0");
   });
 
+  it("rejects malformed batch identifiers and names at the route boundary", async () => {
+    const targets = [
+      { subjectId: " ", target: { type: "unclassified", name: "valid" } },
+      { subjectId: SUBJECT_ID, target: { type: "existing-module", moduleId: " " } },
+      { subjectId: SUBJECT_ID, target: { type: "new-module", parentModuleId: " ", name: "valid" } },
+      ...[" ", "x".repeat(121), "x\u0001y"].map((name) => ({ subjectId: SUBJECT_ID, target: { type: "unclassified", name } })),
+    ];
+    for (const row of targets) {
+      const result = await request("POST", `/api/v2/organizations/${ORG_ID}/subject-registrations/batch`, {
+        headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [row] },
+      });
+      expect(result.status).toBe(400);
+    }
+  });
+
+  it("rejects an untrusted batch invocation before opening the transaction", async () => {
+    const invocation = createUserInvocation(makeTestAuthContext({ userId: "real-user", organizationId: ORG_ID }));
+    await expect(executeBatchRegistration(pool, { organizationId: ORG_ID, rows: [], expectedRelease: pin,
+      idempotencyKey: "untrusted", actorKind: "org-admin", principalId: "another-user", invocation, requestId: "request" }))
+      .rejects.toBeInstanceOf(TrustedInvocationContextError);
+  });
+
+  it("registers a new module under the explicit unclassified root through the single route", async () => {
+    const organizationId = "org-single-root";
+    const principalId = "user-single-root";
+    await pool.query("insert into public.organizations (id, name) values ($1, 'Single root')", [organizationId]);
+    await pool.query("insert into public.users (id, organization_id, name, title, is_active) values ($1,$2,'Admin','Admin',true)", [principalId, organizationId]);
+    await pool.query("insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin) values ('single-root',$1,'未分类','single-root',1,'unclassified','auto')", [organizationId]);
+    const previous = scope;
+    scope = { ...scope, organizationId, principalId, actorKind: "org-admin", canMutateOrganization: true,
+      trustedActor: createUserInvocation(makeTestAuthContext({ userId: principalId, organizationId })) };
+    try {
+      const result = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations`, {
+        headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() },
+        body: { subjectId: SUBJECT_ID, placement: { mode: "use-default" }, newDestination: { parentModuleId: "single-root", name: "New module" } },
+      });
+      expect(result.status, JSON.stringify(result.body)).toBe(201);
+      const stored = await pool.query("select id from public.parameter_modules where organization_id=$1 and parent_id='single-root' and name='New module'", [organizationId]);
+      expect(stored.rowCount).toBe(1);
+    } finally { scope = previous; }
+  });
+
   it("rolls back a bad batch and registers under the unclassified root with a trusted audit", async () => {
     const organizationId = "org-batch-http";
     const userId = "user-batch-http";
@@ -268,13 +310,13 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     scope = { ...scope, organizationId, principalId: userId, trustedActor: createUserInvocation(makeTestAuthContext({ organizationId, userId })) };
     try {
       const headers = { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: `batch:${randomUUID()}` };
-      const valid = { subjectId: SUBJECT_ID, target: { type: "unclassified", name: "电源" } };
+      const valid = { subjectId: SUBJECT_ID, target: { type: "unclassified", name: " 电源 " } };
       const failed = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
         headers, body: { rows: [valid, { subjectId: "csub_missing", target: { type: "unclassified", name: "未知" } },
           { subjectId: "csub_batch_second", target: { type: "new-module", parentModuleId: "missing", name: "名称" } }] },
       });
       expect(failed.status, JSON.stringify(failed.body)).toBe(409);
-      expect(failed.body).toMatchObject({ error: { details: { rows: expect.arrayContaining([expect.objectContaining({ index: 1 }), expect.objectContaining({ index: 2 })]) } } });
+      expect(failed.body).toMatchObject({ error: { details: { rows: expect.arrayContaining([expect.objectContaining({ index: 1, code: "subject-inactive", field: "subject" }), expect.objectContaining({ index: 2, code: "category-missing", field: "category" })]) } } });
       expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id = $1", [organizationId])).rowCount).toBe(0);
       expect((await pool.query("select id from public.parameter_modules where parent_id = $1", ["batch-root"])).rowCount).toBe(0);
       for (const target of [{ type: "new-module", parentModuleId: "missing", name: "名称" }, { type: "new-module", parentModuleId: "batch-category", name: "重名" }]) {
@@ -282,8 +324,8 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
           headers: { ...headers, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [valid, { subjectId: "csub_batch_second", target }] },
         });
         expect(invalid.status, JSON.stringify(invalid.body)).toBe(409);
-        expect(invalid.body).toMatchObject({ error: { details: { rows: [expect.objectContaining({ index: 1, message: expect.any(String) })] } } });
-        if (target.parentModuleId === "batch-category") expect(invalid.body).toMatchObject({ error: { details: { rows: [{ message: "同一分类下已有同名模块。" }] } } });
+        expect(invalid.body).toMatchObject({ error: { details: { rows: [expect.objectContaining({ index: 1, code: expect.any(String), field: expect.any(String) })] } } });
+        if (target.parentModuleId === "batch-category") expect(invalid.body).toMatchObject({ error: { details: { rows: [{ code: "name-taken", field: "name" }] } } });
         expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organizationId])).rowCount).toBe(0);
       }
       const stale = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
@@ -294,6 +336,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
       const successfulRows = [valid, { subjectId: "csub_batch_second", target: { type: "unclassified", name: "第二个" } }];
       const success = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, { headers, body: { rows: successfulRows } });
       expect(success.status, JSON.stringify(success.body)).toBe(201);
+      expect((await pool.query("select id from public.parameter_modules where organization_id=$1 and parent_id='batch-root' and name='电源'", [organizationId])).rowCount).toBe(1);
       const batchId = (success.body as { batchId: string }).batchId;
       const replay = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, { headers, body: { rows: successfulRows } });
       expect(replay.status, JSON.stringify(replay.body)).toBe(201);
@@ -669,7 +712,7 @@ it("excludes retired current-release membership and rejects it when submitted", 
       headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: "retired" },
       body: JSON.stringify({ rows: [{ subjectId: SUBJECT_ID, target: { type: "unclassified", name: "退役" } }] }) });
     expect(write.status).toBe(409);
-    expect(await write.json()).toMatchObject({ error: { details: { rows: [expect.objectContaining({ index: 0, message: "主体在当前目录中未生效。" })] } } });
+    expect(await write.json()).toMatchObject({ error: { details: { rows: [expect.objectContaining({ index: 0, code: "subject-inactive", field: "subject" })] } } });
     expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organizationId])).rowCount).toBe(0);
   } finally { await close(); await pool.end(); await database.drop(); }
 }, 120_000);

@@ -8,6 +8,7 @@ import {
   type CatalogDomainState
 } from "@/application/parameter-catalog";
 import { buildCatalogHref, parseCatalogUrlAnchor } from "@/application/parameter-catalog/urlAnchor";
+import { mayRegisterInOrganization } from "@/application/parameter-catalog/authority";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
@@ -104,7 +105,7 @@ export function CatalogOrganizationSurface({
     : sessionRoles?.some((role) => role.roleId === "platform-admin" && role.projectId === null) ? "platform-admin"
       : sessionRoles?.some((role) => role.roleId === "admin" && role.projectId === null) ? "org-admin" : "user";
   const reviewQueueAllowed = catalogActionsForSession({ actor: reviewActor, permissions: sessionPermissions }).includes("resolve-review-item");
-  const registrationAllowed = actor !== "agent" && catalogActionsForSession({ actor: reviewActor, permissions: sessionPermissions }).includes("register-subject");
+  const registrationAllowed = mayRegisterInOrganization(actor, sessionPermissions, undefined, reviewActor);
   const [batchEntry, setBatchEntry] = useState<BatchRegistrationEntry | null>(null);
   const [batchEpoch, setBatchEpoch] = useState(0);
   const [batchHandoffEpoch, setBatchHandoffEpoch] = useState(0);

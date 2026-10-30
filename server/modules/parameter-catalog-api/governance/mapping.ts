@@ -46,6 +46,7 @@ export const catalogBatchRegistrationCommandByRouteId = {
 export const catalogBatchRegistrationRoutes = parameterCatalogCanonicalRoutes.filter(
   (route) => route.id in catalogBatchRegistrationCommandByRouteId,
 );
+export const catalogBatchRegistrationWriteRouteIds = catalogBatchRegistrationRoutes.filter((route) => route.method !== "GET").map((route) => route.id);
 
 export type CatalogGovernanceCommandName =
   | (typeof catalogGovernanceCommandByRouteId)[keyof typeof catalogGovernanceCommandByRouteId]

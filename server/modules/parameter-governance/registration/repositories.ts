@@ -4,6 +4,9 @@ import type { RegistrationCommand, RegisterSubjectCommand } from "./command";
 import { registrationCommandFamily } from "./command";
 import type { RegistrationMethod, RegistrationResult } from "./result";
 
+export const moduleKindForSubject = (kind: RegisterSubjectCommand["subjectKind"]): string =>
+  kind === "driver" ? "driver-group" : kind === "node-type" ? "node-type" : "business";
+
 export type RegistrationWriterClient = {
   query: pg.PoolClient["query"];
 };
@@ -73,7 +76,7 @@ export const createRegistrationDestination = async (
   );
   const business = parent.rows[0];
   if (!business) return null;
-  const kind = command.subjectKind === "driver" ? "driver-group" : command.subjectKind === "node-type" ? "node-type" : "business";
+  const kind = moduleKindForSubject(command.subjectKind);
   const attributionId = kind === "business" ? null : `asub:canonical:${command.destinationModuleId}`;
   if (attributionId) {
     // The retained module constraint requires this compatibility projection;

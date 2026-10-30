@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
+import { mayRegisterInOrganization, type CatalogActorKind } from "@/application/parameter-catalog/authority";
 import type { CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
@@ -20,7 +20,6 @@ import {
   publicationStatusCopy, publicationSuccessKind,
 } from "./publicationState";
 import { usePublicationFlow } from "./usePublicationFlow";
-import { canExecuteGovernanceAction } from "./governanceState";
 import { openBatchRegistration } from "./batchRegistrationHandoff";
 import { DEFINITION_IMPORT_TEMPLATE } from "@/domain/parameter-catalog/definitionImportTemplate";
 
@@ -184,7 +183,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
           {succeeded && newSubjects.length > 0 ? <section aria-label="待登记的新主体">
             <p>以下新主体尚未在本组织登记。登记是独立操作，不影响已生效的发布。</p>
             <ul className="list-disc space-y-1 pl-4 text-sm">{newSubjects.map((subject) => <li key={subject.id}>{subject.canonicalName}</li>)}</ul>
-            {canExecuteGovernanceAction(actor, "register-subject", domainState, sessionPermissions)
+            {mayRegisterInOrganization(actor, sessionPermissions, domainState)
               ? <button type="button" className="button subtle sm" onClick={() => {
                 openBatchRegistration({ organizationId: props.organizationId, userId: props.currentPersonId,
                   subjectIds: newSubjects.map((subject) => subject.id), hints: Object.fromEntries(newSubjects.flatMap((subject) => {

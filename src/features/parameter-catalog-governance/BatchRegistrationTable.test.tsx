@@ -21,6 +21,10 @@ it("edits selected rows together, switches to a free module, and excludes and re
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects: vi.fn().mockResolvedValue({ catalogReleaseId: "release-1", items, modules }), createBatchRegistration }} organizationId="org" catalogReleaseId="release-1" />);
   const user = userEvent.setup();
   await screen.findByRole("checkbox", { name: "选择 driver-a" });
+  expect(screen.getByRole("checkbox", { name: "全选" })).toBeChecked();
+  await user.click(screen.getByRole("checkbox", { name: "全选" }));
+  expect(screen.getByRole("button", { name: "继续确认（3）" })).toBeEnabled();
+  await user.click(screen.getByRole("checkbox", { name: "全选" }));
   await user.click(screen.getByRole("checkbox", { name: "选择 node-c" }));
   await selectControlOption(screen.getByRole("combobox", { name: "批量业务分类" }), "category:cat");
   await user.click(screen.getByRole("button", { name: "设置业务分类" }));
@@ -33,11 +37,12 @@ it("edits selected rows together, switches to a free module, and excludes and re
   await user.click(target);
   expect(screen.queryByRole("option", { name: /占用驱动/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole("option", { name: /空闲驱动/ }));
-  await user.click(screen.getByRole("checkbox", { name: "选择 driver-b" }));
+  await user.click(within(screen.getByRole("row", { name: /driver-b/ })).getByRole("button", { name: "移出本批" }));
+  await user.click(within(screen.getByRole("row", { name: /node-c/ })).getByRole("button", { name: "移出本批" }));
   await user.click(screen.getByRole("button", { name: "继续确认（1）" }));
   expect(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByText("登记 1 个主体，新建 1 个模块。")).toBeInTheDocument();
   await user.click(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByRole("button", { name: "取消" }));
-  await user.click(screen.getByRole("checkbox", { name: "选择 driver-b" }));
+  await user.click(within(screen.getByRole("row", { name: /driver-b/ })).getByRole("button", { name: "加入本批" }));
   await user.click(screen.getByRole("button", { name: "继续确认（2）" }));
   const dialog = screen.getByRole("dialog", { name: "确认批量登记" });
   expect(within(dialog).getByText("登记 2 个主体，新建 1 个模块。")).toBeInTheDocument();
@@ -55,7 +60,7 @@ it("keeps remaining edits and shows row rejections until evidence is reread", as
   ];
   const data = { catalogReleaseId: "release-1", items, modules: [] };
   const listUnregisteredSubjects = vi.fn().mockResolvedValueOnce(data).mockResolvedValueOnce({ ...data, items: items.slice(1) });
-  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, message: "主体已登记，请刷新。" }, { index: 1, message: "目标不可用。" }] }, "request"));
+  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, code: "already-registered", field: "subject" }, { index: 1, code: "module-occupied", field: "subject" }] }, "request"));
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration }} organizationId="org" catalogReleaseId="release-1" />);
   const user = userEvent.setup();
   await screen.findByRole("checkbox", { name: "选择 driver-a" });
@@ -65,7 +70,7 @@ it("keeps remaining edits and shows row rejections until evidence is reread", as
   await user.click(screen.getByRole("button", { name: "继续确认（2）" }));
   await user.click(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByRole("button", { name: "确认登记" }));
   expect(await screen.findByText("主体已登记，请刷新。")).toBeInTheDocument();
-  expect(screen.getByText("目标不可用。").closest("tr")).toHaveTextContent("driver-b");
+  expect(screen.getByText("目标模块已被占用。").closest("tr")).toHaveTextContent("driver-b");
   await user.click(screen.getByRole("button", { name: "重新读取" }));
   await waitFor(() => expect(screen.queryByText(/driver-a ·/)).not.toBeInTheDocument());
   expect(screen.getByRole("textbox", { name: "driver-b 的模块名称" })).toHaveValue("driver-b-编辑");
@@ -92,10 +97,10 @@ it("prevents two re-added rows from targeting the same existing module", async (
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects: vi.fn().mockResolvedValue({ catalogReleaseId: "release-1", items, modules }), createBatchRegistration: vi.fn() }} organizationId="org" catalogReleaseId="release-1" />);
   const user = userEvent.setup();
   await screen.findByRole("checkbox", { name: "选择 a" });
-  await user.click(screen.getByRole("checkbox", { name: "选择 a" }));
+  await user.click(within(screen.getByRole("row", { name: /a ·/ })).getByRole("button", { name: "移出本批" }));
   await selectControlOption(screen.getByRole("combobox", { name: "a 的登记目标" }), "free");
   await selectControlOption(screen.getByRole("combobox", { name: "b 的登记目标" }), "free");
-  await user.click(screen.getByRole("checkbox", { name: "选择 a" }));
+  await user.click(within(screen.getByRole("row", { name: /a ·/ })).getByRole("button", { name: "加入本批" }));
   await user.click(screen.getByRole("button", { name: "继续确认（2）" }));
   expect(screen.getAllByText("同一模块不能用于多个主体。")).toHaveLength(2);
   expect(screen.queryByRole("dialog", { name: "确认批量登记" })).not.toBeInTheDocument();
@@ -176,6 +181,7 @@ it.each([true, false])("after success retains the guard only for edited rows sti
   const user = userEvent.setup();
   await screen.findByRole("checkbox", { name: "选择 node-b" });
   await user.click(screen.getByRole("checkbox", { name: "选择 node-b" }));
+  await user.click(within(screen.getByRole("row", { name: /node-b/ })).getByRole("button", { name: "移出本批" }));
   await selectControlOption(screen.getByRole("combobox", { name: "vendor,a 的业务分类" }), "unclassified");
   await user.click(screen.getByRole("button", { name: "继续确认（1）" }));
   await user.click(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByRole("button", { name: "确认登记" }));
@@ -212,6 +218,7 @@ it("defaults selection by source and preserves remaining selections after a succ
   expect((screen.getByRole("checkbox", { name: "选择 node-b" }) as HTMLInputElement).checked).toBe(false);
   expect(screen.getByRole("button", { name: "继续确认（0）" })).toBeDisabled();
   await user.click(screen.getByRole("checkbox", { name: "选择 vendor,a" }));
+  await user.click(within(screen.getByRole("row", { name: /vendor,a/ })).getByRole("button", { name: "加入本批" }));
   await selectControlOption(screen.getByRole("combobox", { name: "vendor,a 的业务分类" }), "unclassified");
   await user.click(screen.getByRole("button", { name: /继续确认/ }));
   await user.click(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByRole("button", { name: "确认登记" }));
@@ -227,7 +234,7 @@ it("places category and name errors beneath their controls and links them access
   const data = { catalogReleaseId: "release-1", items: [{ id: "csub_a", kind: "driver" as const, canonicalName: "vendor,a", availableModuleIds: [] }],
     modules: [{ id: "root", name: "未分类", parentId: null, kind: "unclassified", occupied: false }] };
   const listUnregisteredSubjects = vi.fn().mockResolvedValue(data);
-  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, message: "同一分类下已有同名模块。" }] }, "request"));
+  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, code: "name-taken", field: "name" }] }, "request"));
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration }} organizationId="org" catalogReleaseId="release-1" />);
   const user = userEvent.setup();
   const category = await screen.findByRole("combobox", { name: "vendor,a 的业务分类" });
@@ -258,7 +265,7 @@ it("places category and name errors beneath their controls and links them access
 it("links a server category failure to the category control", async () => {
   const data = { catalogReleaseId: "release-1", items: [{ id: "csub_a", kind: "driver" as const, canonicalName: "vendor,a", availableModuleIds: [] }], modules: [] };
   const repository = { listUnregisteredSubjects: vi.fn().mockResolvedValue(data),
-    createBatchRegistration: vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, message: "业务分类不存在或不可用。" }] }, "request")) };
+    createBatchRegistration: vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, code: "category-missing", field: "category" }] }, "request")) };
   render(<BatchRegistrationTable repository={repository} organizationId="org" catalogReleaseId="release-1" />);
   const user = userEvent.setup();
   const category = await screen.findByRole("combobox", { name: "vendor,a 的业务分类" });
@@ -277,7 +284,7 @@ it("shows source-specific empty states inside the table and puts the disabled co
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration: vi.fn() }} organizationId="org" catalogReleaseId="release-1" onClose={onClose} />);
   const empty = await screen.findByText("本组织发布引入的主体都已登记。可切换来源查看全部 Catalog 主体。");
   expect(empty.tagName).toBe("TD");
-  expect(empty).toHaveAttribute("colspan", "5");
+  expect(empty).toHaveAttribute("colspan", "6");
   const confirm = screen.getByRole("button", { name: "继续确认（0）" });
   expect(confirm).toBeDisabled();
   const close = screen.getByRole("button", { name: "关闭" });
@@ -348,11 +355,12 @@ it("retains the remaining checked and unchecked rows after a rejected batch is r
     { id: "csub_b", kind: "node-type" as const, canonicalName: "node-b", availableModuleIds: [] },
   ];
   const listUnregisteredSubjects = vi.fn().mockResolvedValue({ catalogReleaseId: "release-1", items, modules: [] });
-  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, message: "主体已登记，请刷新。" }] }, "request"));
+  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, code: "already-registered", field: "subject" }] }, "request"));
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration }} organizationId="org" catalogReleaseId="release-1" />);
   const user = userEvent.setup();
   await screen.findByRole("checkbox", { name: "选择 node-b" });
   await user.click(screen.getByRole("checkbox", { name: "选择 node-b" }));
+  await user.click(within(screen.getByRole("row", { name: /node-b/ })).getByRole("button", { name: "移出本批" }));
   await selectControlOption(screen.getByRole("combobox", { name: "vendor,a 的业务分类" }), "unclassified");
   await user.click(screen.getByRole("button", { name: /继续确认/ }));
   await user.click(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByRole("button", { name: "确认登记" }));
@@ -413,7 +421,7 @@ it("refreshes the release pin before retrying after the catalog changes", async 
   await selectControlOption(screen.getByRole("combobox", { name: "vendor,a 的业务分类" }), "unclassified");
   await user.click(screen.getByRole("button", { name: "继续确认（1）" }));
   await user.click(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByRole("button", { name: "确认登记" }));
-  expect(await screen.findByText("目录版本已变化，请刷新后重试。")).toBeTruthy();
+  expect(await screen.findByText("目录发布已变化，请刷新后重新确认。")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "重新读取" }));
   await waitFor(() => expect(listUnregisteredSubjects).toHaveBeenLastCalledWith("org", "organization", "release-2"));
 });
@@ -422,7 +430,7 @@ it("shows the server row failure and requires fresh evidence before retry", asyn
   const response = { catalogReleaseId: "release-1", items: [{ id: "csub_a", kind: "driver" as const, canonicalName: "vendor,a", availableModuleIds: [] }],
     modules: [{ id: "root", name: "未分类", parentId: null, kind: "unclassified", occupied: false }] };
   const listUnregisteredSubjects = vi.fn().mockResolvedValueOnce(response).mockResolvedValueOnce({ ...response, items: [] });
-  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, message: "主体已登记，请刷新。" }] }, "request"));
+  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, code: "already-registered", field: "subject" }] }, "request"));
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration }} organizationId="org" catalogReleaseId="release-1" />);
   const user = userEvent.setup();
   await screen.findByDisplayValue("vendor,a");
