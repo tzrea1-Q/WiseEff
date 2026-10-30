@@ -18,21 +18,7 @@ import {
   publicationStatusCopy, publicationSuccessKind,
 } from "./publicationState";
 import { usePublicationFlow } from "./usePublicationFlow";
-
-const TEMPLATE = `# Driver \`vendor,existing-driver\`
-
-## \`current-limit\` 电流限制
-| 字段 | 值 |
-| --- | --- |
-| 类型 | integer |
-| 单位 | uA |
-| 最小值 | 0 |
-| 最大值 | 5000000 |
-| 示例 | 3000000 |
-| 简述 | 电流限制 |
-
-在此填写定义的 Markdown 说明。
-`;
+import { DEFINITION_IMPORT_TEMPLATE } from "./definitionImportTemplate";
 
 export type DefinitionImportDialogProps = {
   open: boolean;
@@ -172,7 +158,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
               }} />
               {uploadedFileName ? <span>{uploadedFileName}</span> : null}
               <a className="link-button" download="定义导入模板.md"
-                href={`data:text/markdown;charset=utf-8,${encodeURIComponent(TEMPLATE)}`}>下载模板</a>
+                href={`data:text/markdown;charset=utf-8,${encodeURIComponent(DEFINITION_IMPORT_TEMPLATE)}`}>下载模板</a>
             </div>
             <label>Markdown 文档
               <Textarea aria-label="Markdown 文档" rows={14} value={document} disabled={inputDisabled}
