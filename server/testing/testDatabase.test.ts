@@ -644,7 +644,7 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
     }
   });
 
-  it("keeps real fresh execution and the empty upgrade path distinct from a complete clone", async () => {
+  it("keeps real fresh execution and the empty upgrade path distinct from a complete clone", async () => withTestClusterRoleCatalogLock(async () => {
     let cloneReceipts: unknown[] = [];
     let cloneOrganizations: unknown[] = [];
     let cloneAcl: unknown[] = [];
@@ -719,7 +719,7 @@ describe.skipIf(!databaseAvailable)("explicit migrated template fixtures", () =>
       expect(await acl(db)).toEqual(cloneAcl);
       expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(cloneSchema);
     });
-  });
+  }), 300_000);
 
   it("gives two complete fixtures separate committed business state", async () => {
     await withTempDatabase({ prefix: "tplfirst", migrate: "template" }, async ({ db: first, connectionString: firstUrl }) => {

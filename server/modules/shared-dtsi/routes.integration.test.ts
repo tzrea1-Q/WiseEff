@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPostgresDatabase } from "../../shared/database/client";
 import { createEphemeralTestDatabase, withTestClusterRoleCatalogLock } from "../../testing/testDatabase";
+import { withAdminClient } from "../../testing/tempDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
@@ -39,19 +40,6 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     requestJson<T>(server(actor), `/api/v2/shared-dtsi${path}`, {
       method, ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
-  beforeAll(async () => {
-    lane = await createEphemeralTestDatabase("shared-dtsi-t01");
-    db = createPostgresDatabase(lane.url);
-    await db.query("insert into organizations(id,name) values ('org-shared-dtsi','Shared source'),('org-other-dtsi','Other')");
-    await db.query("insert into users(id,organization_id,name,title,is_active) values ('user-shared-dtsi','org-shared-dtsi','Source author','Admin',true)");
-    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-dtsi-role','user-shared-dtsi','org-shared-dtsi','admin')");
-    const logins = await provisionPublicationRuntimeLogins(lane.url, { mode: "lab", runToken: token });
-    api = createPostgresDatabase(logins.apiUrl);
-    expect((await api.query<{ rolsuper: boolean; rolinherit: boolean }>("select rolsuper,rolinherit from pg_roles where rolname=current_user")).rows[0])
-      .toEqual({ rolsuper: false, rolinherit: false });
-  }, 120_000);
-  afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); });
-
   it("lists the member count of the current published version or, without one, the draft within its organization", async () => withTestClusterRoleCatalogLock(async () => {
     const lane = await createEphemeralTestDatabase("shared-dtsi-count");
     const db = createPostgresDatabase(lane.url);
@@ -181,7 +169,68 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       await cleanup(() => lane.drop());
     }
     if (failures.length) throw new AggregateError(failures,"Shared DTSI count test or cleanup failed");
-  }), 120_000);
+  }), 180_000);
+
+  describe("draft and publication workflows", () => {
+  let releaseFixture: (() => void) | undefined;
+  let fixtureLease: Promise<void> | undefined;
+  beforeAll(async () => {
+    lane = await createEphemeralTestDatabase("shared-dtsi-t01");
+    db = createPostgresDatabase(lane.url);
+    await db.query("insert into organizations(id,name) values ('org-shared-dtsi','Shared source'),('org-other-dtsi','Other')");
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ('user-shared-dtsi','org-shared-dtsi','Source author','Admin',true)");
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-dtsi-role','user-shared-dtsi','org-shared-dtsi','admin')");
+  }, 180_000);
+  afterAll(async () => {
+    const failures: unknown[] = [];
+    try { await db?.close(); } catch (error) { failures.push(error); }
+    try { await lane?.drop(); } catch (error) { failures.push(error); }
+    if (failures.length) throw new AggregateError(failures, "Shared DTSI database cleanup failed");
+  }, 120_000);
+
+  beforeEach(async () => {
+    let ready!: () => void;
+    let rejectReady!: (error: unknown) => void;
+    const initialized = new Promise<void>((resolve, reject) => { ready = resolve; rejectReady = reject; });
+    const untilTeardown = new Promise<void>((resolve) => { releaseFixture = resolve; });
+    // The lab LOGIN roles are cluster-wide and migrations inspect them, so keep
+    // the lease from provisioning through teardown, not only during role DDL.
+    fixtureLease = withTestClusterRoleCatalogLock(async () => {
+      const failures: unknown[] = [];
+      try {
+        const logins = await provisionPublicationRuntimeLogins(lane.url, { mode: "lab", runToken: token });
+        api = createPostgresDatabase(logins.apiUrl);
+        expect((await api.query<{ rolsuper: boolean; rolinherit: boolean }>("select rolsuper,rolinherit from pg_roles where rolname=current_user")).rows[0])
+          .toEqual({ rolsuper: false, rolinherit: false });
+        ready();
+        await untilTeardown;
+      } catch (error) {
+        failures.push(error);
+      } finally {
+        const cleanup = async (step: () => Promise<unknown>) => { try { await step(); } catch (error) { failures.push(error); } };
+        await cleanup(async () => api?.close());
+        await cleanup(async () => { if (lane) {
+          const result = await dropLabRuntimeLogins(lane.url, token);
+          if (result.failed.length) throw new Error(`Failed to remove ${result.failed.length} test role(s)`);
+        } });
+      }
+      if (failures.length) throw new AggregateError(failures, "Shared DTSI fixture setup or cleanup failed");
+    });
+    void fixtureLease.catch(rejectReady);
+    await initialized;
+  }, 180_000);
+  afterEach(async () => { releaseFixture?.(); await fixtureLease; }, 120_000);
+
+  it("holds the cluster role lease while the API login exists", async () => {
+    await withAdminClient(async (observer) => {
+      const result = await observer.query<{ acquired: boolean }>("select pg_try_advisory_lock($1) as acquired", [4_201_659]);
+      try {
+        expect(result.rows[0]?.acquired).toBe(false);
+      } finally {
+        if (result.rows[0]?.acquired) await observer.query("select pg_advisory_unlock($1)", [4_201_659]);
+      }
+    });
+  });
 
   it("creates, reopens, updates and discards an exact source draft with stable member identity", async () => {
     const created = await call("", "POST", { name: "Battery common", sourceName: "battery.dtsi", content: source });
@@ -1071,5 +1120,5 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await publicationCall<{item:Version}>(`/${first.resourceId}/versions/${first.id}`)).body.item).toEqual(first);
     expect((await publicationCall<{item:Version}>(`/${first.resourceId}/versions/${second.id}`)).body.item.members.find(member=>member.sourceName==="main.dtsi")!.content).toBe(original);
   },120_000);
-
+  });
 });
