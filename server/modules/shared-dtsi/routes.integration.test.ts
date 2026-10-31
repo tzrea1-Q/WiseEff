@@ -279,6 +279,26 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await call(`/${draft.resourceId}`)).body.item).toEqual(draft);
   });
 
+  it("attributes a located dependency failure to its authorized immutable member", async () => {
+    const dependency=(await call("","POST",{name:"Located dependency",sourceName:"shared.dtsi",content:"/ { same: dependency {}; };",changeDescription:"First version"})).body.item;
+    const preview=await publicationCall<{item:{id:string}}>(`/${dependency.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+    expect(preview.status,preview.bodyText).toBe(201);
+    const released=await publicationCall<{item:{id:string;members:{id:string}[]}}>(`/${dependency.resourceId}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:"diagnostic-dependency"});
+    expect(released.status,released.bodyText).toBe(201);
+    const consumer=(await call("","POST",{name:"Located consumer",sourceName:"consumer.dtsi",content:"/ { same: own {}; };",changeDescription:"Test conflict",
+      dependencies:[{resourceId:dependency.resourceId,versionId:released.body.item.id,mountPath:"vendor"}]})).body.item;
+    const result=await publicationCall<{error:{details:{diagnostics:{sourceName:string;line:number;source:{resourceId:string;versionId:string;memberId:string}}[]}}}>(`/${consumer.resourceId}/publication-preview`,"POST",{expectedRevision:1});
+    expect(result.status,result.bodyText).toBe(400);
+    expect(result.body.error.details.diagnostics).toEqual([expect.objectContaining({sourceName:"vendor/shared.dtsi",line:1,
+      source:{resourceId:dependency.resourceId,versionId:released.body.item.id,memberId:released.body.item.members[0]!.id}})]);
+    await db.query("insert into public.users(id,organization_id,name,title,is_active) values ('other-diagnostic-admin','org-other-dtsi','Other admin','Admin',true)");
+    await db.query("insert into public.user_role_bindings(id,user_id,organization_id,role_id) values ('other-diagnostic-role','other-diagnostic-admin','org-other-dtsi','admin')");
+    const other=makeTestAuthContext({organizationId:"org-other-dtsi",userId:"other-diagnostic-admin"});
+    const denied=await publicationCall(`/${consumer.resourceId}/publication-preview`,"POST",{expectedRevision:1},other);
+    expect(denied.status).toBe(404);
+    expect(denied.bodyText).not.toContain(dependency.resourceId);
+  });
+
   it("freezes declared include roots and external defines without flattening original header directories", async () => {
     const members = [{ sourceName: "lib/common.dtsi", content: '#include <dt-bindings/power.h>\n/ { battery {\n#if ENABLED\n limit = <POWER_LIMIT>;\n#else\n limit = <99>;\n#endif\n}; };\n' },
       { sourceName: "include/dt-bindings/power.h", content: "#define POWER_LIMIT 37\n" }];

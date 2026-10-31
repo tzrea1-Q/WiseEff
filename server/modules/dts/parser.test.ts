@@ -10,6 +10,10 @@ const fixturePath = join(
 );
 
 describe("parseDts", () => {
+  it("rejects an assignment without a value while accepting a boolean property", () => {
+    expect(() => parseDts('/ { node { status = ; }; };')).toThrow(/at \d+/);
+    expect(() => parseDts('/ { node { enabled; }; };')).not.toThrow();
+  });
   it("parses node forms: name@addr, label:name, &label, and root /", () => {
     const doc = parseDts(`
 /dts-v1/;
