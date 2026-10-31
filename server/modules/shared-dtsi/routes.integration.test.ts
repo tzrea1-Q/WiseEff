@@ -89,16 +89,17 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect(list.status, list.bodyText).toBe(200);
     const result = sharedDtsiListSchema.parse(list.body);
     const legacy = await requestJson<{items:unknown[];total:number}>(server(),"/api/v2/shared-dtsi?q=CountTarget");
-    const legacySummary = sharedDtsiResourceSummarySchema.omit({memberCount:true});
+    const legacySummary = sharedDtsiResourceSummarySchema.omit({memberCount:true,memberCountScope:true});
     expect(legacy.status,legacy.bodyText).toBe(200);
     expect(legacy.body.items.every(item=>legacySummary.safeParse(item).success)).toBe(true);
     expect(legacy.body.items.every(item=>!("memberCount" in (item as object)))).toBe(true);
+    expect(legacy.body.items.every(item=>!("memberCountScope" in (item as object)))).toBe(true);
     expect(sharedDtsiListSchema.parse(legacy.body).items.every(item=>!("memberCount" in item))).toBe(true);
     expect(result.total).toBe(3);
     expect(result.items).toEqual(expect.arrayContaining([
-      expect.objectContaining({ resourceId: single.resourceId, sourceName: "one.dtsi", memberCount: 1 }),
-      expect.objectContaining({ resourceId: multiple.resourceId, sourceName: "draft/a.dtsi", memberCount: 3 }),
-      expect.objectContaining({ resourceId: versioned.resourceId, sourceName: "published/a.dtsi", memberCount: 2 })
+      expect.objectContaining({ resourceId: single.resourceId, sourceName: "one.dtsi", memberCount: 1, memberCountScope:"draft" }),
+      expect.objectContaining({ resourceId: multiple.resourceId, sourceName: "draft/a.dtsi", memberCount: 3, memberCountScope:"draft" }),
+      expect.objectContaining({ resourceId: versioned.resourceId, sourceName: "published/a.dtsi", memberCount: 2, memberCountScope:"published" })
     ]));
     expect(sharedDtsiListSchema.parse((await publicationCall<unknown>("?limit=100")).body).items)
       .toContainEqual(expect.objectContaining({resourceId:multiple.resourceId,memberCount:3}));
@@ -109,13 +110,15 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect(new Set(paged.map(page => page.items[0]!.resourceId))).toEqual(new Set([single.resourceId, multiple.resourceId, versioned.resourceId]));
     for (const query of ["draft-only.dtsi", "vendor,count-evidence"]) {
       const search = sharedDtsiListSchema.parse((await publicationCall<unknown>(`?q=${encodeURIComponent(query)}`)).body);
-      expect(search.items).toEqual([expect.objectContaining({ resourceId: versioned.resourceId, sourceName: "published/a.dtsi", memberCount: 2 })]);
+      expect(search.items).toEqual([expect.objectContaining({ resourceId: versioned.resourceId, sourceName: "published/a.dtsi", memberCount: 2,memberCountScope:"published" })]);
     }
     const detail = await publicationCall<unknown>(`/${versioned.resourceId}/detail`);
     const detailItem = sharedDtsiResourceDetailSchema.parse((detail.body as {item:unknown}).item);
-    expect(detailItem).not.toHaveProperty("memberCount");
+    expect(detailItem).not.toHaveProperty("memberCount");expect(detailItem).not.toHaveProperty("memberCountScope");
     expect(sharedDtsiResourceDetailSchema.safeParse({...detailItem,memberCount:2}).success).toBe(false);
+    expect(sharedDtsiResourceDetailSchema.safeParse({...detailItem,memberCountScope:"draft"}).success).toBe(false);
     expect(sharedDtsiResourceSummarySchema.safeParse({...result.items[0],memberCount:-1}).success).toBe(false);
+    expect(sharedDtsiResourceSummarySchema.safeParse({...result.items[0],memberCountScope:"unknown"}).success).toBe(false);
     expect(sharedDtsiResourceSummarySchema.safeParse({...result.items[0],memberCount:undefined}).success).toBe(true);
     await db.query("insert into users(id,organization_id,name,title,is_active) values ('count-other-admin','org-other-dtsi','Other author','Admin',true)");
     await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('count-other-role','count-other-admin','org-other-dtsi','admin')");
@@ -123,7 +126,7 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     const otherDraft = await call("", "POST", { name: "CountTarget other organization", sourceName: "other.dtsi", content: source }, other);
     expect(otherDraft.status, otherDraft.bodyText).toBe(201);
     const otherList = await publicationCall<unknown>("?q=CountTarget", "GET", undefined, other);
-    expect(sharedDtsiListSchema.parse(otherList.body)).toMatchObject({ total: 1, items: [{resourceId:otherDraft.body.item.resourceId,memberCount:1}] });
+    expect(sharedDtsiListSchema.parse(otherList.body)).toMatchObject({ total: 1, items: [{resourceId:otherDraft.body.item.resourceId,memberCount:1,memberCountScope:"draft"}] });
     expect(sharedDtsiListSchema.parse((await publicationCall<unknown>("?q=CountTarget")).body).total).toBe(3);
     expect((await publicationCall(`/${single.resourceId}/lifecycle`, "POST", { state: "retired", expectedLifecycleRevision: 1, idempotencyKey: "count-retire" })).status).toBe(200);
     expect(sharedDtsiListSchema.parse((await publicationCall<unknown>("?q=CountTarget%20single")).body).items[0]).toMatchObject({ state: "retired", memberCount: 1 });
@@ -150,11 +153,20 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     // Simulate a legacy empty revision without mutating immutable published members.
     const emptyVersionId = randomUUID();
     await db.query(`insert into public.shared_dtsi_revisions(id,resource_id,organization_id,version,name,draft_revision,change_description,manifest,digest,created_by_user_id)
-      select $2,resource_id,organization_id,version+1,name,draft_revision,change_description,manifest,digest,created_by_user_id
+      select $2,resource_id,organization_id,version+1,name,draft_revision,change_description,manifest - 'compatibleSelectors',digest,created_by_user_id
       from public.shared_dtsi_revisions where id=$1`, [secondPublished.body.item.id, emptyVersionId]);
     expect((await db.query<{count:string}>("select count(*) from public.shared_dtsi_revision_members where revision_id=$1",[emptyVersionId])).rows[0]!.count).toBe("0");
     expect(sharedDtsiListSchema.parse((await publicationCall<unknown>("?q=CountTarget%20published")).body).items[0])
-      .toMatchObject({currentVersion:{id:emptyVersionId,version:3},sourceName:"draft/recovery.dtsi",memberCount:1});
+      .toMatchObject({currentVersion:{id:emptyVersionId,version:3},sourceName:"draft/recovery.dtsi",memberCount:1,memberCountScope:"draft"});
+    expect((await call(`/${versioned.resourceId}/draft`,"DELETE",{expectedRevision:2})).status).toBe(200);
+    const emptyList=await publicationCall<unknown>("?limit=100");expect(emptyList.status,emptyList.bodyText).toBe(200);
+    expect(sharedDtsiListSchema.parse(emptyList.body).items).toContainEqual(expect.objectContaining({resourceId:versioned.resourceId,sourceName:"",memberCount:0,memberCountScope:null}));
+    const legacyEmpty=await requestJson<{items:unknown[]}>(server(),"/api/v2/shared-dtsi?limit=100");
+    expect(legacyEmpty.status,legacyEmpty.bodyText).toBe(200);
+    const legacyRow=legacyEmpty.body.items.find(item=>(item as {resourceId:string}).resourceId===versioned.resourceId);
+    expect(legacySummary.parse(legacyRow)).toMatchObject({resourceId:versioned.resourceId,sourceName:""});
+    expect((await publicationCall<unknown>("?q=absent-count-resource")).status).toBe(200);
+    expect((await requestJson(server(),"/api/v2/shared-dtsi?q=absent-count-resource")).status).toBe(200);
     } catch (error) {
       failures.push(error);
     } finally {

@@ -68,7 +68,8 @@ export async function listSharedDtsiResources(db: Database, auth: AuthContext, i
           let selectors=manifest.compatibleSelectors??cache.get(key);
           if(!selectors) {
             const version=await getSharedDtsiVersion(db,auth,row.resourceId,row.currentVersion.id);
-            selectors=(await preparePublishedSharedDtsiSource(db,auth,version)).manifest.compatibleSelectors??[];
+            selectors=!version.members.length && !version.manifest.dependencies?.length ? []
+              : (await preparePublishedSharedDtsiSource(db,auth,version)).manifest.compatibleSelectors??[];
             if(selectors.reduce((bytes,value)=>bytes+Buffer.byteLength(value),0)<=262_144){if(cache.size>=32)cache.delete(cache.keys().next().value!);cache.set(key,selectors);}
           }
           if(selectors.some(compatible=>compatible.toLowerCase().includes(needle))){matches.push(row);continue;}
@@ -93,10 +94,12 @@ export async function listSharedDtsiResources(db: Database, auth: AuthContext, i
     or exists(select 1 from public.shared_dtsi_draft_members m where m.draft_id=d.id and position(lower($2) in lower(m.source_name))>0)
     or exists(select 1 from public.shared_dtsi_revision_members m where m.revision_id=v.id and position(lower($2) in lower(m.source_name))>0))`;
   const memberCountColumn = input.includeMemberCount === "1" ? `coalesce((select count(*)::integer from public.shared_dtsi_revision_members m where m.revision_id=v.id and m.organization_id=r.organization_id group by m.revision_id),
-      (select count(*)::integer from public.shared_dtsi_draft_members m where m.draft_id=d.id and m.organization_id=r.organization_id group by m.draft_id), 0) as "memberCount",` : "";
+      (select count(*)::integer from public.shared_dtsi_draft_members m where m.draft_id=d.id and m.organization_id=r.organization_id group by m.draft_id), 0) as "memberCount",
+      case when exists(select 1 from public.shared_dtsi_revision_members m where m.revision_id=v.id and m.organization_id=r.organization_id) then 'published'
+        when exists(select 1 from public.shared_dtsi_draft_members m where m.draft_id=d.id and m.organization_id=r.organization_id) then 'draft' else null end as "memberCountScope",` : "";
   const rows = (await db.query<Omit<SharedDtsiResourceSummary,"updatedAt"> & {updatedAt:Date}>(`select r.id as "resourceId",r.name,r.state,r.lifecycle_revision as "lifecycleRevision",r.updated_at as "updatedAt",d.revision as "draftRevision",
     coalesce((select min(m.source_name) from public.shared_dtsi_revision_members m where m.revision_id=v.id),
-      (select min(m.source_name) from public.shared_dtsi_draft_members m where m.draft_id=d.id)) as "sourceName",
+      (select min(m.source_name) from public.shared_dtsi_draft_members m where m.draft_id=d.id), '') as "sourceName",
     ${memberCountColumn}
     case when v.id is null then null else jsonb_build_object('id',v.id,'resourceId',v.resource_id,'version',v.version,'name',v.name,
       'changeDescription',v.change_description,'digest',v.digest,'createdAt',v.created_at,'createdByUserId',v.created_by_user_id) end as "currentVersion" ${tables}${filter}

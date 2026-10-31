@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import { test } from "./helpers/catalogFixtureRuntime";
 import { catalogJson, catalogScreenshot, dismissXiaozeHint, signInCatalogActor } from "./helpers/catalogBrowser";
 
-test("inspects a ZIP before saving and preserves edited source until replacement is confirmed",async({page,catalogAcceptanceRuntime})=>{
+test("inspects a ZIP before saving and preserves edited source until replacement is confirmed",async({page,catalogAcceptanceRuntime},testInfo)=>{
   void catalogAcceptanceRuntime;
   await page.setViewportSize({width:1440,height:900});
   await signInCatalogActor(page,"org-admin","/parameter-admin/sources");
@@ -29,10 +29,31 @@ test("inspects a ZIP before saving and preserves edited source until replacement
   const draft=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}`);
   expect(draft.status).toBe(200);
   await page.getByRole("button",{name:"返回资源列表",exact:true}).click();
+  await expect(page.getByRole("row").filter({has:page.getByRole("button",{name:resourceName,exact:true})})).toContainText("草稿 · lib/new.dtsi");
   await page.getByRole("button",{name:resourceName,exact:true}).click();
   await expect(page.getByLabel("文件路径",{exact:true})).toHaveValue("lib/new.dtsi");
   await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("new");
   expect((draft.body as {item:{members:unknown[]}}).item.members).toEqual([expect.objectContaining({sourceName:"lib/new.dtsi",content:'/ { new {}; };\n'})]);
+  const longPath=`folder/${"a".repeat(180)}.dtsi`,longName=`Long list source ${Date.now()}`;
+  expect((await catalogJson(page.request,"POST","/api/v2/shared-dtsi",{data:{name:longName,sourceName:longPath,content:"/ {};"}})).status).toBe(201);
+  await page.getByRole("button",{name:"返回资源列表",exact:true}).click();
+  const search=page.getByRole("searchbox",{name:"搜索共享 DTSI",exact:true});
+  for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+    await page.setViewportSize(viewport);
+    expect(await search.evaluate(input=>{const style=getComputedStyle(input),canvas=document.createElement("canvas"),context=canvas.getContext("2d")!;context.font=style.font;return context.measureText((input as HTMLInputElement).placeholder).width<=input.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);})).toBe(true);
+    await search.fill(longName);
+    const row=page.getByRole("row").filter({has:page.getByRole("button",{name:longName,exact:true})});
+    await expect(row.getByText(`草稿 · ${longPath}`,{exact:true})).toBeVisible();
+    expect(await page.locator(".data-table-scroll").evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await catalogScreenshot(page,testInfo,`shared-dtsi-long-list-${viewport.width}`);
+    await search.clear();
+  }
+  const filters=page.locator(".admin-list-page__filters");
+  await filters.evaluate(element=>{element.style.width="240px";});
+  expect(await search.evaluate(input=>input.parentElement!.getBoundingClientRect().right<=input.parentElement!.parentElement!.getBoundingClientRect().right+1)).toBe(true);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await filters.evaluate(element=>{element.style.removeProperty("width");});
 });
 import { selectControlOption } from "./helpers/selectControl";
 
@@ -204,6 +225,9 @@ test("imports a relative ZIP library, repairs missing dependencies and publishes
   await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toHaveAttribute("aria-readonly","true");
   await page.setViewportSize({width:1440,height:900});
   await catalogScreenshot(page,testInfo,"shared-dtsi-multifile-published-1440");
+  await page.getByRole("button",{name:"返回资源列表",exact:true}).click();
+  const listed=page.getByRole("row").filter({has:page.getByRole("button",{name:"battery-library",exact:true})});
+  await expect(listed).toContainText("已发布 · 3 个文件");await expect(listed).not.toContainText("library/main.dtsi");
   expect(pageErrors).toEqual([]);expect(serverErrors).toEqual([]);
 });
 

@@ -1,5 +1,7 @@
 .shared-dtsi-page { min-width: 0; padding: var(--space-4); }
 .shared-dtsi-page h1 { margin: 0; color: var(--text); font-size: var(--text-xl); font-weight: 600; }
+.shared-dtsi-list-search { width: min(100%, calc(var(--space-10) * 8)); }
+.shared-dtsi-list-file { display: block; white-space: normal; overflow-wrap: anywhere; }
 .main-content:has(.shared-dtsi-page--editor) { overflow: hidden; padding-bottom: var(--page-gutter); }
 .main-content:has(.shared-dtsi-page--editor) > .page-content { height: 100%; min-height: 0; }
 .param-admin-shell:has(> .shared-dtsi-page--editor) { height: 100%; min-height: 0; }

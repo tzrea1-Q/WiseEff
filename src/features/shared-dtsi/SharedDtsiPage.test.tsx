@@ -66,6 +66,27 @@ function setup(options: { writable?: boolean; existingDraft?: boolean; saveError
 }
 
 describe("shared DTSI draft authoring", () => {
+  it("represents multi-file resources without presenting the first path as the whole resource", async () => {
+    const timestamp="2026-10-25T00:00:00Z",resourceId="33333333-3333-4333-8333-333333333333";
+    const version={id:"44444444-4444-4444-8444-444444444444",resourceId,version:2,name:"Published",changeDescription:"Published",digest:"sha256:fixed",createdAt:timestamp,createdByUserId:"author"};
+    const base={resourceId,name:"Resource",updatedAt:timestamp,state:"active",lifecycleRevision:1,draftRevision:1,currentVersion:null};
+    const rows=[{...base,name:"Single",sourceName:"one.dtsi",memberCount:1,memberCountScope:"draft"},
+      {...base,resourceId:"55555555-5555-4555-8555-555555555555",name:"Multiple",sourceName:"first.dtsi",memberCount:3,memberCountScope:"published",currentVersion:version},
+      {...base,resourceId:"66666666-6666-4666-8666-666666666666",name:"Unknown",sourceName:"unknown.dtsi"},
+      {...base,resourceId:"77777777-7777-4777-8777-777777777777",name:"Empty",sourceName:"",memberCount:0,memberCountScope:null},
+      {...base,resourceId:"88888888-8888-4888-8888-888888888888",name:"Fallback",sourceName:"draft.dtsi",memberCount:1,memberCountScope:"draft",currentVersion:version},
+      {...base,resourceId:"99999999-9999-4999-8999-999999999999",name:"Count without scope",sourceName:"incomplete.dtsi",memberCount:3}];
+    const fetchImpl=vi.fn(async(_url:string | URL | Request)=>new Response(JSON.stringify({items:rows,total:rows.length})));
+    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite search="" onNavigate={()=>{}}/>);
+    const row=(name:string)=>screen.getByRole("button",{name}).closest("tr")!;
+    await screen.findByRole("button",{name:"Single"});
+    expect(within(row("Single")).getByText("草稿 · one.dtsi")).toBeVisible();
+    expect(within(row("Multiple")).getByText("已发布 · 3 个文件")).toBeVisible();expect(within(row("Multiple")).queryByText("first.dtsi")).not.toBeInTheDocument();
+    expect(within(row("Multiple")).getByText("v2 · 有草稿")).toBeVisible();
+    expect(within(row("Fallback")).getByText("草稿 · draft.dtsi")).toBeVisible();
+    expect(within(row("Unknown")).getByText("文件信息不可用")).toBeVisible();expect(within(row("Count without scope")).getByText("文件信息不可用")).toBeVisible();expect(within(row("Empty")).getByText("暂无文件")).toBeVisible();
+    expect(new URL(String(fetchImpl.mock.calls[0]![0]),"http://localhost").searchParams.get("includeMemberCount")).toBe("1");
+  });
   it("saves a new resource and checks the exact reloaded draft before showing preview", async () => {
     const user=userEvent.setup();const {fetchImpl}=setup();
     await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));

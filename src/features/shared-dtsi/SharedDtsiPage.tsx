@@ -479,13 +479,15 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   if (!client) return <section className="shared-dtsi-page"><h1>共享 DTSI</h1><p role="status">共享 DTSI 需要 API 模式和有效登录。</p></section>;
   if (!selected) return <div className="shared-dtsi-page"><AdminListPage label="共享 DTSI" headerContent={<h1>共享 DTSI</h1>}
     headerActions={canWrite ? <Button onClick={() => void navigate("new")}>导入资源</Button> : null}
-    filterBar={<SearchField ariaLabel="搜索共享 DTSI" value={query} onValueChange={value => { setQuery(value); setPage(1); }} placeholder="搜索名称、路径或已验证 compatible 标识" />}
+    filterBar={<SearchField className="shared-dtsi-list-search" ariaLabel="搜索共享 DTSI" value={query} onValueChange={value => { setQuery(value); setPage(1); }} placeholder="搜索名称、路径或已验证 compatible 标识" />}
     emptyState={{ title: query ? "没有匹配的资源" : "尚无共享 DTSI", message: query ? "请调整搜索条件。" : "导入公共源码后，可在这里保存草稿并发布共享版本。" }}
     tableState={busyLoading ? <SectionSkeleton label="正在加载共享 DTSI" /> : error ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : undefined}
     table={{ rows, rowKey: row => row.resourceId, pageSize: 20, page: 1, fluid: true,
       columns: [
         { key: "name", header: "资源名称", render: row => <Button variant="link" onClick={() => void navigate(row.resourceId)}>{row.name}</Button> },
-        { key: "sourceName", header: "文件路径", render: row => <span title={row.sourceName}>{row.sourceName}</span> },
+        { key: "sourceName", header: "资源文件", render: row => row.memberCountScope===null && row.memberCount===0 ? "暂无文件"
+          : row.memberCountScope && row.memberCount ? <span className="shared-dtsi-list-file" title={row.memberCount===1?row.sourceName:undefined}>{row.memberCountScope==="published"?"已发布":"草稿"} · {row.memberCount===1?row.sourceName:`${row.memberCount} 个文件`}</span>
+          : "文件信息不可用" },
         { key: "state", header: "当前版本", render: row => `${row.state==="retired"?"已停用 · ":""}${row.currentVersion ? `v${row.currentVersion.version}${row.draftRevision ? " · 有草稿" : ""}` : "草稿"}` },
         { key: "updatedAt", header: "最后修改", render: row => formatAbsolute(row.updatedAt) }
       ] }} />

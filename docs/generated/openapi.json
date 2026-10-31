@@ -180,7 +180,7 @@
             "name": "includeMemberCount",
             "in": "query",
             "required": false,
-            "description": "Set to 1 to include each resource's current source member count.",
+            "description": "Set to 1 to include the source member count and its published or draft scope.",
             "schema": {
               "type": "string",
               "enum": [
@@ -29352,6 +29352,16 @@
                 },
                 "memberCount": {
                   "type": "number"
+                },
+                "memberCountScope": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "published",
+                    "draft"
+                  ]
                 },
                 "draftRevision": {
                   "type": [
