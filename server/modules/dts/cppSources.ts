@@ -27,7 +27,11 @@ function stripCppComments(text: string) {
 
 export type DtsPreprocessingFailureCode = "preprocess-input" | "preprocess-limit" | "preprocess-origin" | "preprocess-failed" | "preprocess-unavailable" | "preprocess-stale" | "preprocess-busy" | "path-escape";
 export class DtsPreprocessingError extends Error {
-  constructor(public readonly code: DtsPreprocessingFailureCode, message: string, public readonly fileName: string, public readonly offset = 0) { super(message); }
+  public readonly offset: number;
+  public readonly hasSourceOffset: boolean;
+  constructor(public readonly code: DtsPreprocessingFailureCode, message: string, public readonly fileName: string, offset?: number) {
+    super(message); this.offset = offset ?? 0; this.hasSourceOffset = offset !== undefined;
+  }
 }
 export type DtsPreprocessingReceipt = {
   schemaVersion: "dts-cpp/v1";
@@ -104,7 +108,8 @@ function checkedInputs(input: DtsConfigSetInput) {
     if (/\b__(?:DATE|TIME|TIMESTAMP|FILE|BASE_FILE|COUNTER|INCLUDE_LEVEL)__\b|\b__has_(?:include|embed|builtin|feature|extension|attribute)\b|\b_Pragma\b|##/u.test(tokens) || tokens.includes(PREFIX))
       throw new DtsPreprocessingError("preprocess-input", `构建宏 ${name} 包含未冻结时间、环境探测或编译器指令；请修改构建设置。`, input.entryFile);
   }
-  const fail = (name: string, line: number, message: string): never => {
+  const fail = (name: string, line: number | undefined, message: string): never => {
+    if (line === undefined) throw new DtsPreprocessingError("preprocess-input", `${name}：${message} 请在原始源码中修正后重新预览。`, name);
     const offset = input.files.get(name)!.content.split("\n").slice(0, line - 1).reduce((size, value) => size + value.length + 1, 0);
     throw new DtsPreprocessingError("preprocess-input", `${name}:${line}：${message} 请在原始源码中修正后重新预览。`, name, offset);
   };
@@ -130,9 +135,9 @@ function checkedInputs(input: DtsConfigSetInput) {
   for (const [name, file] of input.files) {
     if (!safePath(name)) throw new DtsPreprocessingError("path-escape", "预处理文件必须使用清单内的相对路径。", name);
     total += Buffer.byteLength(file.content);
-    if (total > MAX_BYTES || Buffer.byteLength(file.content) > 2 * 1024 * 1024) fail(name, 1, "预处理原始输入超过文件 2 MiB / 清单 16 MiB 上限。");
-    if (Buffer.from(file.content).toString("utf8") !== file.content) fail(name, 1, "源码不是完整 UTF-8 文本。");
-    if (file.content.includes(PREFIX) || file.content.includes("??") || file.content.includes("%:") || file.content.includes("\0")) fail(name, 1, "源码含不支持的预处理保留标记、替代指令字符或空字符。");
+    if (total > MAX_BYTES || Buffer.byteLength(file.content) > 2 * 1024 * 1024) fail(name, undefined, "预处理原始输入超过文件 2 MiB / 清单 16 MiB 上限。");
+    if (Buffer.from(file.content).toString("utf8") !== file.content) fail(name, undefined, "源码不是完整 UTF-8 文本。");
+    if (file.content.includes(PREFIX) || file.content.includes("??") || file.content.includes("%:") || file.content.includes("\0")) fail(name, undefined, "源码含不支持的预处理保留标记、替代指令字符或空字符。");
     const clean = stripCppComments(file.content.replace(/\r\n/gu, "\n").replace(/^\uFEFF/u, " "));
     // Spliced directives are checked as one logical line, including dead conditional branches.
     const lines = clean.split("\n"), originalLines = file.content.replace(/^\uFEFF/u, " ").split("\n");
@@ -175,11 +180,11 @@ function checkedInputs(input: DtsConfigSetInput) {
   }
   const depths = new Map<string, number>();
   const visit = (name: string, stack: string[]): number => {
-    if (stack.includes(name) || stack.length >= 16) fail(name, 1, "include 循环或嵌套超过 16 层。");
+    if (stack.includes(name) || stack.length >= 16) fail(name, undefined, "include 循环或嵌套超过 16 层。");
     const known = depths.get(name); if (known !== undefined) return known;
     let depth = 1;
     for (const target of edges.get(name) ?? []) depth = Math.max(depth, 1 + visit(target, [...stack, name]));
-    if (depth > 16) fail(name, 1, "include 嵌套超过 16 层。");
+    if (depth > 16) fail(name, undefined, "include 嵌套超过 16 层。");
     depths.set(name, depth); return depth;
   };
   for (const name of input.files.keys()) visit(name, []);
