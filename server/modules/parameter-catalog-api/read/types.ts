@@ -192,6 +192,7 @@ export type CatalogReadPorts = {
   readonly usage: UsageProjectionPort;
   readonly timeline: TimelineComposerPort;
   readonly authenticate: (request: CatalogReadRequest) => Promise<CatalogReadAuthResult>;
+  readonly loadRevisionExportSnapshot?: (pin: CatalogReleasePin) => Promise<import("../../catalog-kernel/compiler/types").CatalogReleaseNode | null>;
 };
 
 export type LoadedCatalogSnapshot = CurrentCatalogSnapshot | PinnedCatalogSnapshot;

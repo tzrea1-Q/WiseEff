@@ -17,6 +17,11 @@ import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
 import { runPublicationManagerOnce } from "../../catalog-publication/jobs/manager";
 import { getReceiptByJobId } from "../../catalog-publication/persistence/store";
+import { getArtifactByDigest } from "../../catalog-publication/persistence/store";
+import { parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
+import { createCatalogReadHttpServer } from "../read/http";
+import { kernelOnlyTimelineComposer, unregisteredProjection, zeroUsageProjection } from "../read/ports";
+import { requestJson } from "../../../test/testClient";
 import { withPublicationCoordinator } from "../../catalog-publication/coordinator";
 import {
   enablePublicationPolicy,
@@ -736,7 +741,7 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
       where h.release_id = $1 and h.definition_id = 'pdef_acme_power_iin_max'`, [pointer.current.id]);
     expect(head.rows[0]).toMatchObject({ revision_number: "2", content: { displayName: "Input current limit", description: "新说明",
       documentation: "Maximum accepted input current.", unit: "mA", valueSchema: { type: "integer", minimum: 0 } } });
-    const created = await client.query<{ property_key: string }>(`select d.property_key from parameter_catalog.catalog_release_definition_heads h
+    const created = await client.query<{ id: string; property_key: string }>(`select d.id, d.property_key from parameter_catalog.catalog_release_definition_heads h
       join parameter_catalog.parameter_definitions d on d.id = h.definition_id
       where h.release_id = $1 and d.property_key = 'mixed_new'`, [pointer.current.id]);
     expect(created.rows).toHaveLength(1);
@@ -764,6 +769,37 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
     const retiredPointer = await readCurrentCatalogPointer(pool);
     if (retiredPointer.kind !== "installed") throw new Error("retirement did not install a release");
     pin = retiredPointer.current;
+    const runtime = createCatalogKernel(pool);
+    const loaded = await runtime.loadCurrentCatalog(pin);
+    if (!loaded.ok) throw new Error("retired catalog did not load");
+    const readPorts = {
+      runtime,
+      readiness: {
+        current: async () => ({ status: "ready" as const, document: { pin, snapshotKind: "current" as const,
+          releaseSequence: 4, publishedAt: "2026-09-12T00:00:00Z", materializedAt: "2026-09-12T00:00:00Z",
+          materializationFingerprint: loaded.value.materializationFingerprint } }),
+        named: async () => ({ status: "ready" as const, document: { pin, snapshotKind: "current" as const,
+          releaseSequence: 4, publishedAt: "2026-09-12T00:00:00Z", materializedAt: "2026-09-12T00:00:00Z",
+          materializationFingerprint: loaded.value.materializationFingerprint } }),
+      },
+      registration: unregisteredProjection, usage: zeroUsageProjection, timeline: kernelOnlyTimelineComposer,
+      authenticate: async () => ({ ok: true as const, scope: { principalId: PUBLISHER, organizationId: ORG,
+        actorKind: "org-admin" as const, canReadCatalog: true, canRegister: true, projectScope: { kind: "all" as const },
+        subjects: { kind: "all" as const }, definitions: { kind: "all" as const } } }),
+      loadRevisionExportSnapshot: async () => {
+        const artifact = await getArtifactByDigest(db, pin.digest);
+        if (!artifact.ok) return null;
+        const bundle = parseBundleBytes(artifact.value.artifactBytes);
+        return bundle.ok ? targetReleaseOf(bundle.bundle) ?? null : null;
+      },
+    };
+    const exported = await requestJson<{ item: { document: string; skipped: { id: string; reason: string }[] } }>(createCatalogReadHttpServer(readPorts),
+      `/api/v2/catalog/revision-document?catalogReleaseId=${pin.id}&definitionId=${created.rows[0]!.id}&definitionId=pdef_acme_power_iin_max`);
+    expect(exported.status).toBe(200);
+    expect(exported.body.item.skipped).toEqual([{ id: "pdef_acme_power_iin_max", reason: "retired" }]);
+    const unchanged = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document: exported.body.item.document, fileName: "export.md" } });
+    expect(catalogMarkdownImportResponseSchema.parse(unchanged.body).item).toMatchObject({ candidate: null, noChange: true,
+      entries: [{ outcome: "skip", diagnostics: [expect.objectContaining({ message: "无变化。" })] }] });
     const retiredImport = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "retired.md" } });
     expect(retiredImport.body).toMatchObject({ item: { candidate: null, entries: [
       { outcome: "conflict", diagnostics: expect.arrayContaining([expect.objectContaining({ line: 2, message: "定义已退役，请先在目录列表中恢复。" })]) },

@@ -112,7 +112,8 @@ export function parseMarkdown(document: string): SyntaxTree {
       else problem("字段表", "请按模板填写字段表头。", line);
     } else {
       definition.fields.push({ name,
-        value: value.replace(/\\\\|\\\|/gu, (escape) => escape === "\\|" ? "|" : escape), line });
+        value: value === "\\-" ? "-" : value.replace(/\\\\|\\\|/gu, (escape) => escape.slice(1)),
+        ...(value === "\\-" ? { literalDash: true } : {}), line });
     }
   }
   finish();

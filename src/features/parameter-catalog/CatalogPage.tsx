@@ -42,6 +42,7 @@ import type {
   CatalogDocumentResponse,
   CatalogListQuery,
   CatalogReviewItemListResponse,
+  CatalogRevisionDocumentResponse,
   CatalogSubjectListResponse,
   CatalogSubjectResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
@@ -89,6 +90,10 @@ import {
 import "./parameter-catalog.css";
 
 type DefinitionItem = CatalogDefinitionResponse["item"];
+const exportSkipLabels: Record<CatalogRevisionDocumentResponse["item"]["skipped"][number]["reason"], string> = {
+  retired: "已退役", deprecated: "已弃用", "not-visible": "不可见", unknown: "不存在",
+  "documentation-not-expressible": "说明无法在文档中表达", "not-round-trippable": "内容无法无损导入",
+};
 type SubjectItem = CatalogSubjectResponse["item"];
 type RevisionItem = CatalogDefinitionRevisionResponse["item"];
 type TimelineItem = CatalogDefinitionTimelineResponse["items"][number];
@@ -297,9 +302,11 @@ export function CatalogPage({
   const [deletingDefinition, setDeletingDefinition] = useState<DefinitionItem | null>(null);
   const [selectedDefinitions, setSelectedDefinitions] = useState<DefinitionItem[]>([]);
   const [selectionError, setSelectionError] = useState("");
+  const [exportPending, setExportPending] = useState(false);
+  const [exportSkipped, setExportSkipped] = useState<CatalogRevisionDocumentResponse["item"]["skipped"]>([]);
   const [selectingSubject, setSelectingSubject] = useState(false);
   const selectionGeneration = useRef(0);
-  useEffect(() => { setSelectedDefinitions([]); setSelectionError(""); }, [organizationId, refreshEpoch, snapshot?.document.item.catalogReleaseId]);
+  useEffect(() => { setSelectedDefinitions([]); setSelectionError(""); setExportSkipped([]); }, [organizationId, refreshEpoch, snapshot?.document.item.catalogReleaseId]);
   useEffect(() => {
     setSelectingSubject(false);
     return () => { selectionGeneration.current += 1; };
@@ -1076,6 +1083,24 @@ export function CatalogPage({
               <button type="button" className="button subtle sm"
                 disabled={inFlight || selectingSubject || selectedDefinitions.length === 0 || selectedDefinitions.length > 128 || !selectedDefinitions.every((item) => item.lifecycle === "retired" && ownerWritable(item))}
                 onClick={() => onBatchDefinitionCommand("restore-definition", selectedDefinitions, workspaceState)}>恢复所选（{selectedDefinitions.length}）</button>
+              <button type="button" className="button subtle sm"
+                disabled={inFlight || selectingSubject || exportPending || !release || selectedDefinitions.length > 128 || !selectedDefinitions.some((item) => item.lifecycle === "active")}
+                onClick={() => {
+                  if (!release || !repository.exportRevisionDocument) return;
+                  const generation = selectionGeneration.current;
+                  setExportPending(true); setSelectionError(""); setExportSkipped([]);
+                  void repository.exportRevisionDocument(selectedDefinitions.map((item) => item.id), { catalogReleaseId: release.catalogReleaseId })
+                    .then(({ item }) => {
+                      if (generation !== selectionGeneration.current) return;
+                      setExportSkipped(item.skipped);
+                      const url = URL.createObjectURL(new Blob([item.document], { type: "text/markdown;charset=utf-8" }));
+                      const link = document.createElement("a"); link.href = url; link.download = "catalog-revisions.md"; link.click();
+                      URL.revokeObjectURL(url);
+                    }).catch((error: unknown) => { if (generation === selectionGeneration.current) setSelectionError(error instanceof Error && error.message === "模拟模式不支持，请使用 API 模式。"
+                      ? error.message : "导出修订文档失败，请重试。"); })
+                    .finally(() => setExportPending(false));
+                }}>导出为修订文档</button>
+              {exportSkipped.length ? <span role="status">已跳过：{exportSkipped.map(({ id, reason }) => `${id}（${exportSkipLabels[reason]}）`).join("、")}</span> : null}
               {selectedDefinitions.length > 128 ? <span role="status">每批最多选择 128 个定义。</span>
                 : selectedDefinitions.length > 0 && !selectedDefinitions.every((item) => item.lifecycle === selectedDefinitions[0]?.lifecycle)
                   ? <span role="status">所选定义状态不同，请选择相同状态的定义。</span> : null}

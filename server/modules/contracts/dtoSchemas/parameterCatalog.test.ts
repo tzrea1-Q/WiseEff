@@ -344,7 +344,7 @@ describe("S8-CON threat matrix", () => {
   });
 
   it("closes the nine Kernel read routes without a silent hole", () => {
-    expect(Object.keys(parameterCatalogKernelReadByRouteId)).toHaveLength(9);
+    expect(Object.keys(parameterCatalogKernelReadByRouteId)).toHaveLength(10);
     expect(new Set(Object.values(parameterCatalogKernelReadByRouteId))).toEqual(
       new Set(catalogKernelReadOperations)
     );

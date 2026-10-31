@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { allocationFor, firstAcmePredecessor, frozenPageIdentity } from "../builder/predecessorHarness";
 import { buildCompleteSuccessor } from "../builder/completeSuccessor";
-import { planMarkdownImport } from "./markdownImport";
+import { planMarkdownImport, serializeMarkdownRevision } from "./markdownImport";
 import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 import { buildCreateDefinitionChangeSet, emptyPublicationDraft } from "../../../../src/features/parameter-catalog-governance/publicationState";
 
@@ -26,6 +26,45 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("round trips exported revision documents without changes", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const original = snapshot.documents.find((item) => item.kind === "definition");
+    if (!original || original.kind !== "definition") throw new Error("fixture missing");
+    const numeric = { ...original, content: { ...original.content, revision: { ...original.content.revision,
+      valueSchema: { type: "array", minItems: 1, maxItems: 3, items: { type: "array", minItems: 1, maxItems: 2, items: { type: "integer", minimum: 0, maximum: 10 } } },
+      examples: [[[1, 2]]], description: "输入 \\ 路径 | 输出", documentation: "第一段。\n\n第二段。" } } };
+    const mixed = { ...original, content: { ...original.content, id: "pdef_mixed", propertyKey: "mixed",
+      revision: { ...original.content.revision, displayName: "混合", valueSchema: { type: "array", items: { description: "整数或字符串" } }, examples: [[1, "a"]] } } };
+    const input = { ...snapshot, documents: [...snapshot.documents.filter((item) => item !== original), numeric, mixed] };
+    const markdown = serializeMarkdownRevision(input, [numeric.content.id, mixed.content.id]);
+    expect(markdown).toContain("# Driver `acme,power`");
+    expect(markdown).toContain("| 操作 | 修订 |");
+    expect(markdown).toContain("输入 \\\\ 路径 \\| 输出");
+    const plan = planMarkdownImport(markdown, "revision.md", input);
+    expect(plan.entries.map((entry) => entry.outcome)).toEqual(["skip", "skip"]);
+    expect(plan.entries.every((entry) => entry.diagnostics.some((issue) => issue.message === "无变化。"))).toBe(true);
+    expect(plan.changeSet).toBeNull();
+    expect(plan.noChange).toBe(true);
+  });
+  it("round trips literal dashes and distinguishes them from clearing fields", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const input = { ...snapshot, documents: snapshot.documents.map((item) => item.kind === "definition"
+      ? { ...item, content: { ...item.content, revision: { ...item.content.revision, unit: "-", description: "-", documentation: "-",
+        valueSchema: { type: "string" }, examples: ["-"] } } } : item) };
+    const markdown = serializeMarkdownRevision(input, ["pdef_acme_power_iin_max"]);
+    expect(markdown).toContain("| 单位 | \\- |");
+    expect(markdown).toContain("| 简述 | \\- |");
+    expect(markdown).toContain("| 示例 | \\- |");
+    expect(markdown).toContain("| 说明 | \\- |");
+    expect(planMarkdownImport(markdown, "revision.md", input)).toMatchObject({ noChange: true, changeSet: null,
+      entries: [{ outcome: "skip" }] });
+    const cleared = planMarkdownImport(markdown.replace("| 单位 | \\- |", "| 单位 | - |"), "revision.md", input);
+    expect(cleared.changeSet).toMatchObject([{ op: "revise-definition", content: { unit: null } }]);
+    const clearedDocumentation = planMarkdownImport(markdown.replace("| 说明 | \\- |", "| 说明 | - |"), "revision.md", input);
+    expect(clearedDocumentation.changeSet).toMatchObject([{ op: "revise-definition", content: { documentation: "" } }]);
+    const literal = planMarkdownImport("# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 单位 | \\- |", "revision.md", snapshot);
+    expect(literal.changeSet).toMatchObject([{ op: "revise-definition", content: { unit: "-" } }]);
+  });
   it("plans deterministic partial revisions with the builder's content class", () => {
     const snapshot = firstAcmePredecessor().first;
     const revision = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 最大值 | 3000 |";

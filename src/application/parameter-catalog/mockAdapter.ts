@@ -484,6 +484,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     async previewMarkdownImport() {
       throw new Error("模拟模式不支持导入预览，请使用 API 模式。");
     },
+    async exportRevisionDocument() {
+      throw new Error("模拟模式不支持，请使用 API 模式。");
+    },
     async getPublicationCandidate(candidateId) {
       assertReadyForRead(store);
       const candidate = store.candidates.get(candidateId);

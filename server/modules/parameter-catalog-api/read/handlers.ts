@@ -3,8 +3,12 @@ import type {
   CatalogSnapshot,
   CurrentCatalogSnapshot,
 } from "../../catalog-kernel/interface";
+import { planMarkdownImport, serializeMarkdownRevision } from "../../catalog-publication/import/markdownImport";
+import { parseMarkdown } from "../../catalog-publication/import/markdownImport/parse";
+import type { z } from "zod";
 import {
   CATALOG_RELEASE_HEADER,
+  catalogRevisionDocumentResponseSchema,
   parameterCatalogCanonicalRoutes,
   parameterCatalogKernelReadByRouteId,
 } from "../../contracts/dtoSchemas/parameterCatalog";
@@ -50,6 +54,7 @@ import {
   mergeIdSelection,
   parseCatalogListQuery,
   queryValue,
+  queryArray,
   requestCarriesLegacySpecIdentity,
   searchValue,
   stripSpoofHeaders,
@@ -297,6 +302,44 @@ async function handleGetCatalog(
     return catalogNotReady(requestId);
   }
   return catalogReadOk({ item: mapCatalogDocument(snapshot, facts) }, snapshot.release.id, requestId);
+}
+
+async function handleRevisionExport(snapshot: CatalogSnapshot, ports: CatalogReadPorts, scope: TrustedCatalogScope,
+  request: CatalogReadRequest): Promise<CatalogReadResponse> {
+  const ids = queryArray(request.query, "definitionId");
+  if (!queryValue(request.query, "catalogReleaseId") || !ids?.length || ids.length > 128 || ids.some((id) => !id.trim())) {
+    return validationFailed(request.requestId, "definitionId");
+  }
+  const source = await ports.loadRevisionExportSnapshot?.(observedPin(snapshot));
+  if (!source || source.manifest.release.id !== snapshot.release.id) return catalogNotReady(request.requestId);
+  const allowed: string[] = [];
+  const skipped: z.infer<typeof catalogRevisionDocumentResponseSchema>["item"]["skipped"] = [];
+  // ponytail: at most 128 full-snapshot checks; index the snapshot if large releases make export slow.
+  for (const id of ids) {
+    if (hiddenId(scope.definitions, id)) { skipped.push({ id, reason: "not-visible" }); continue; }
+    const result = snapshot.getDefinitionById(ParameterDefinitionId(id));
+    if (result.status === "unknown" || result.status === "not-published") { skipped.push({ id, reason: "unknown" }); continue; }
+    if (hiddenId(scope.subjects, result.definition.subjectId)) { skipped.push({ id, reason: "not-visible" }); continue; }
+    if (result.status === "retired" || result.definition.selectedRevision.content.lifecycle === "retired") {
+      skipped.push({ id, reason: "retired" }); continue;
+    }
+    if (result.definition.selectedRevision.content.lifecycle === "deprecated") { skipped.push({ id, reason: "deprecated" }); continue; }
+    const sourceDefinition = source.documents.find((item) => item.kind === "definition" && item.content.id === id);
+    if (!sourceDefinition || sourceDefinition.kind !== "definition") return catalogNotReady(request.requestId);
+    const block = serializeMarkdownRevision(source, [id]);
+    const syntax = parseMarkdown(`# Driver \`export,check\`\n## \`value\` 名称\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |\n\n${sourceDefinition.content.revision.documentation}`);
+    if (syntax.subjects.length !== 1 || syntax.subjects[0]?.definitions.length !== 1
+      || syntax.subjects[0]?.definitions[0]?.documentation !== sourceDefinition.content.revision.documentation) {
+      skipped.push({ id, reason: "documentation-not-expressible" }); continue;
+    }
+    const plan = planMarkdownImport(block, "export.md", source);
+    if (!plan.noChange || plan.entries.length !== 1 || plan.entries[0]?.outcome !== "skip") {
+      skipped.push({ id, reason: "not-round-trippable" }); continue;
+    }
+    allowed.push(id);
+  }
+  const document = serializeMarkdownRevision(source, allowed);
+  return catalogReadOk({ item: { document, skipped } }, snapshot.release.id, request.requestId);
 }
 
 async function handleListSubjects(
@@ -773,6 +816,8 @@ export async function handleCatalogRead(
     switch (matched.id) {
       case "catalog.get":
         return await handleGetCatalog(snapshot, facts.facts, request.requestId);
+      case "catalog.exportRevisionDocument":
+        return await handleRevisionExport(snapshot, ports, auth.scope, scopedRequest);
       case "catalog.listSubjects":
         return await handleListSubjects(snapshot, ports, auth.scope, scopedRequest);
       case "catalog.getSubject":

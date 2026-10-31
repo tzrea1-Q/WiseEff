@@ -13,7 +13,7 @@ export type SyntaxDiagnostic = ImportDiagnostic & {
   definitionLine?: number;
 };
 
-export type Field = { name: string; value: string; line: number };
+export type Field = { name: string; value: string; line: number; literalDash?: boolean };
 export type Definition = {
   heading: string;
   line: number;

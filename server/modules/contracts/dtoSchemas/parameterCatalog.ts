@@ -1408,6 +1408,11 @@ export const catalogDocumentResponseSchema = z.union([
   itemEnvelopeSchema(catalogDocumentDtoSchema),
   catalogObject({ item: z.null(), publicationState: z.literal("unpublished") }),
 ]).superRefine(rejectLegacySpecKeys);
+export const catalogRevisionDocumentResponseSchema = itemEnvelopeSchema(catalogObject({
+  document: z.string(), skipped: z.array(catalogObject({ id: z.string(), reason: z.enum([
+    "retired", "deprecated", "not-visible", "unknown", "documentation-not-expressible", "not-round-trippable"
+  ]) }))
+}));
 export const catalogSubjectListResponseSchema = catalogItemsEnvelopeSchema(catalogSubjectDtoSchema);
 export const catalogSubjectResponseSchema = itemEnvelopeSchema(catalogSubjectDtoSchema).superRefine(
   rejectLegacySpecKeys
@@ -1688,6 +1693,7 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogLegacySpecResponse: catalogLegacySpecResponseSchema,
   CatalogProposalUnavailableResponse: catalogProposalUnavailableResponseSchema,
   CatalogDocumentResponse: catalogDocumentResponseSchema,
+  CatalogRevisionDocumentResponse: catalogRevisionDocumentResponseSchema,
   CatalogSubjectListResponse: catalogSubjectListResponseSchema,
   CatalogSubjectResponse: catalogSubjectResponseSchema,
   CatalogDefinitionListResponse: catalogDefinitionListResponseSchema,
@@ -1815,6 +1821,7 @@ const pageQueryParameters = [
 
 export const parameterCatalogCanonicalRoutes = [
   { id: "catalog.get", method: "GET", path: "/api/v2/catalog", module: "catalog", stability: "mvp" },
+  { id: "catalog.exportRevisionDocument", method: "GET", path: "/api/v2/catalog/revision-document", module: "catalog", stability: "mvp" },
   { id: "catalog.listSubjects", method: "GET", path: "/api/v2/catalog/subjects", module: "catalog", stability: "mvp" },
   {
     id: "catalog.getSubject",
@@ -2113,6 +2120,7 @@ export const parameterCatalogRouteGates: Record<
   readonly PcatApiGate[]
 > = {
   "catalog.get": ["PCAT-API-01", "PCAT-API-11"],
+  "catalog.exportRevisionDocument": ["PCAT-API-02", "PCAT-API-11"],
   "catalog.listSubjects": ["PCAT-API-02", "PCAT-API-11"],
   "catalog.getSubject": ["PCAT-API-02", "PCAT-API-11"],
   "catalog.listSubjectDefinitions": ["PCAT-API-02", "PCAT-API-11"],
@@ -2159,6 +2167,7 @@ export const parameterCatalogRouteGates: Record<
 
 export const parameterCatalogKernelReadByRouteId = {
   "catalog.get": "loadCurrentCatalog",
+  "catalog.exportRevisionDocument": "getDefinitionById",
   "catalog.listSubjects": "listSubjects",
   "catalog.getSubject": "getSubject",
   "catalog.listSubjectDefinitions": "listDefinitions",
@@ -2171,6 +2180,7 @@ export const parameterCatalogKernelReadByRouteId = {
 
 export const parameterCatalogClientMethodByRouteId = {
   "catalog.get": "getCatalog",
+  "catalog.exportRevisionDocument": "exportRevisionDocument",
   "catalog.listSubjects": "listSubjects",
   "catalog.getSubject": "getSubject",
   "catalog.listSubjectDefinitions": "listSubjectDefinitions",
@@ -2357,6 +2367,13 @@ export const parameterCatalogSchemaRegistry = {
     responseBody: "CatalogDocumentResponse",
     additionalResponses: catalogReadErrors,
     requestParameters: [{ name: "catalogReleaseId", in: "query" }],
+    successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.exportRevisionDocument": {
+    summary: "Export visible definitions as a Markdown revision document",
+    tags: ["catalog"], responseBody: "CatalogRevisionDocumentResponse", additionalResponses: catalogReadErrors,
+    requestParameters: [{ name: "catalogReleaseId", in: "query", required: true },
+      { name: "definitionId", in: "query", required: true, description: "Repeat for up to 128 definition IDs." }],
     successHeaders: [catalogReleaseResponseHeader]
   },
   "catalog.listSubjects": {

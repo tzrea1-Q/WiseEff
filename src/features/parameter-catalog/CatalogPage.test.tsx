@@ -219,6 +219,33 @@ function renderCatalog(
 
 // These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
 describe("CatalogPage", { timeout: 15_000 }, () => {
+  it("exports the selected active definitions and reports skipped IDs", async () => {
+    const user = userEvent.setup();
+    const repository = lifecycleInventory();
+    const exportRevisionDocument = vi.fn().mockResolvedValue({ item: { document: "# Driver `acme,power`", skipped: [
+      { id: "pdef_retired", reason: "retired" }, { id: "pdef_doc", reason: "documentation-not-expressible" },
+      { id: "pdef_other", reason: "not-round-trippable" },
+    ] } });
+    Object.assign(repository, { exportRevisionDocument });
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    try {
+      renderCatalog({ repository, definitionPublishingAllowed: true, onBatchDefinitionCommand: vi.fn() });
+      await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+      await user.click(screen.getByRole("button", { name: "导出为修订文档" }));
+      expect(exportRevisionDocument).toHaveBeenCalledWith([activeDefinition.id], { catalogReleaseId: CATALOG_RELEASE_ID });
+      expect(await screen.findByText(/pdef_retired（已退役）/)).toBeVisible();
+      expect(screen.getByText(/pdef_doc（说明无法在文档中表达）/)).toBeVisible();
+      expect(screen.getByText(/pdef_other（内容无法无损导入）/)).toBeVisible();
+      expect(click).toHaveBeenCalled();
+    } finally {
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+      click.mockRestore();
+    }
+  });
+
   it("selects definitions, selects all of a subject, and gates batch actions by lifecycle", async () => {
     const user = userEvent.setup();
     const repository = lifecycleInventory();
@@ -234,16 +261,26 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(screen.getByText("已选 1 项")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "退役所选（1）" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "恢复所选（1）" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "导出为修订文档" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "选中该主体下全部定义" }));
     expect(await screen.findByText(/所选定义状态不同/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "退役所选（2）" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "恢复所选（2）" })).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+    expect(screen.getByRole("button", { name: "导出为修订文档" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "恢复所选（1）" }));
     expect(onBatchDefinitionCommand).toHaveBeenCalledWith("restore-definition", [second], expect.anything());
     await user.click(screen.getByRole("button", { name: "清除选择" }));
     expect(screen.queryByRole("group", { name: "批量定义操作" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "选中该主体下全部定义" })).toBeEnabled();
+  });
+
+  it("explains that export is unavailable in mock mode", async () => {
+    const user = userEvent.setup();
+    renderCatalog({ repository: lifecycleInventory(), definitionPublishingAllowed: true, onBatchDefinitionCommand: vi.fn() });
+    await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+    await user.click(screen.getByRole("button", { name: "导出为修订文档" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("模拟模式不支持，请使用 API 模式。");
   });
 
   it("hides batch controls without governance authority", async () => {
