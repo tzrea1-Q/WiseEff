@@ -57,7 +57,7 @@ describe("shared DTSI draft authoring", () => {
     expect(screen.queryByLabelText("DTSI 源码")).not.toBeInTheDocument();
     const file = new File(["/ { battery {}; };\n"], "battery.dtsi");
     Object.defineProperty(file, "arrayBuffer", {value: async () => new TextEncoder().encode("/ { battery {}; };\n").buffer});
-    await user.upload(document.querySelector('input[type="file"]')!, file);
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!, file);
     expect(await screen.findByLabelText("DTSI 源码")).toHaveTextContent("battery");
     expect(screen.getByLabelText("资源名称")).toHaveValue("battery");
   });
@@ -67,11 +67,11 @@ describe("shared DTSI draft authoring", () => {
     await screen.findByRole("button",{name:"选择文件"});
     const sourceFile=new File(["old"],"old.dtsi");
     Object.defineProperty(sourceFile,"arrayBuffer",{value:async()=>new TextEncoder().encode("/ { old {}; };").buffer});
-    await user.upload(document.querySelector('input[type="file"]')!,sourceFile);
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,sourceFile);
     expect(await screen.findByLabelText("DTSI 源码")).toHaveTextContent("old");
     const archive=new File(["zip"],"new.zip",{type:"application/zip"});
     Object.defineProperty(archive,"arrayBuffer",{value:async()=>new TextEncoder().encode("zip").buffer});
-    await user.upload(document.querySelector('input[type="file"]')!,archive);
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,archive);
     const confirm=await screen.findByRole("dialog",{name:"替换全部源码？"});
     await user.click(within(confirm).getByRole("button",{name:"替换源码"}));
     expect(await screen.findByLabelText("DTSI 源码")).toHaveTextContent("new");
@@ -90,13 +90,13 @@ describe("shared DTSI draft authoring", () => {
     Object.defineProperty(sourceFile,"webkitRelativePath",{value:"library/common.dtsi"});
     Object.defineProperty(sourceFile,"arrayBuffer",{value:async()=>new TextEncoder().encode("/ { original {}; };").buffer});
     Object.defineProperty(readme,"webkitRelativePath",{value:"library/README.md"});
-    await user.upload(document.querySelectorAll('input[type="file"]')[1]!,[sourceFile,readme]);
+    await user.upload(document.querySelectorAll<HTMLInputElement>('input[type="file"]')[1]!,[sourceFile,readme]);
     expect(await screen.findByLabelText("DTSI 源码")).toHaveTextContent("original");
     expect(screen.getByLabelText("资源名称")).toHaveValue("library");
     expect(screen.getByText("已忽略 1 个非源码文件")).toBeVisible();
     const other=new File(["other"],"other.dtsi");
     Object.defineProperty(other,"arrayBuffer",{value:async()=>new TextEncoder().encode("/ { replacement {}; };").buffer});
-    await user.upload(document.querySelector('input[type="file"]')!,other);
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,other);
     await user.click(within(await screen.findByRole("dialog",{name:"替换全部源码？"})).getByRole("button",{name:"取消"}));
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("original");
     expect(screen.getByLabelText("文件路径")).toHaveValue("library/common.dtsi");
@@ -164,7 +164,7 @@ describe("shared DTSI draft authoring", () => {
     const files=[new File(['/include/ "parts/node.dtsi"\n'],"main.dtsi"),new File(['/ { node {}; };\n'],"node.dtsi"),new File(["#define VALUE 42\n"],"constants.h")];
     files.forEach((file,index)=>{Object.defineProperty(file,"webkitRelativePath",{value:["lib/main.dtsi","lib/parts/node.dtsi","headers/constants.h"][index]});
       Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode([ '/include/ "parts/node.dtsi"\n','/ { node {}; };\n',"#define VALUE 42\n"][index]!).buffer});});
-    await user.upload(document.querySelector('input[type="file"]')!,files);
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,files);
     await user.click(await screen.findByRole("button",{name:"headers/constants.h"}));
     expect(screen.getByLabelText("文件路径")).toHaveValue("headers/constants.h");
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("#define VALUE 42");
@@ -219,7 +219,7 @@ describe("shared DTSI draft authoring", () => {
     let finish!: (value:ArrayBuffer)=>void;
     const file=new File(["ignored"],"old-source.dtsi",{type:"text/plain"});
     Object.defineProperty(file,"arrayBuffer",{value:()=>new Promise<ArrayBuffer>(resolve=>{finish=resolve;})});
-    await user.upload(document.querySelector('input[type="file"]')!,file);
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,file);
     await user.click(screen.getByRole("button",{name:"返回资源列表"}));
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
     await user.click(await screen.findByRole("button",{name:"新建源码"}));
