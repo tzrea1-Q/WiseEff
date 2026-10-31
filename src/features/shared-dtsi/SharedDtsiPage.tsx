@@ -317,7 +317,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   if (busyLoading) return <section className="shared-dtsi-page"><SectionSkeleton label="正在加载共享 DTSI" /></section>;
 
   if (selected === "new" && !sourceReady) return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="导入共享 DTSI">
-    <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" onClick={()=>void navigate("")}><ArrowLeft aria-hidden="true" />返回资源列表</Button><h1>导入共享 DTSI</h1></div></header>
+    <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={()=>void navigate("")}><ArrowLeft aria-hidden="true" />返回</Button><h1>导入共享 DTSI</h1></div></header>
     <p className="shared-dtsi-hint">导入可供项目复用的源码，发布后可在项目配置中引用。</p>
     <div className="shared-dtsi-actions">{importControls}<Button variant="outline" onClick={()=>setSourceReady(true)}>新建源码</Button></div>
     <p className="shared-dtsi-hint">支持 .dts、.dtsi、.h、.hpp 和 ZIP；最多 128 个文件，单文件 2 MiB、源码共 16 MiB，ZIP 最大 8 MiB。</p>
@@ -342,7 +342,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   </section>;
 
   if (published || tab === "versions" || tab === "usages") return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="共享 DTSI 版本" aria-busy={pending}>
-    <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" onClick={() => void navigate("")} disabled={pending}><ArrowLeft aria-hidden="true" />返回资源列表</Button>
+    <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={() => void navigate("")} disabled={pending}><ArrowLeft aria-hidden="true" />返回</Button>
       <h1>{published?.name ?? detail?.name ?? "共享 DTSI"}</h1>
       {projectReturnPath ? <a href={projectReturnPath} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(projectReturnPath); } }}>返回项目节点</a> : null}</div>
       {canWrite && detail?.state!=="retired" && detail?.currentVersion ? <Button disabled={pending} onClick={() => detail.draftRevision ? void navigate(selected,{version:"draft",tab:"source"})
@@ -411,7 +411,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   </section>;
 
   return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="共享 DTSI 草稿" aria-busy={pending}>
-    <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" onClick={() => void navigate("")} disabled={pending}><ArrowLeft aria-hidden="true" />返回资源列表</Button>
+    <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={() => void navigate("")} disabled={pending}><ArrowLeft aria-hidden="true" />返回</Button>
       <h1>{draft?.name ?? (selected === "new" ? "导入共享 DTSI" : "共享 DTSI")}{draft ? <span className="shared-dtsi-draft-label">草稿</span> : null}</h1>
       {detail?.currentVersion ? <Button variant="ghost" disabled={pending} onClick={()=>void navigate(selected,{version:detail.currentVersion!.id,tab:"source"})}>查看已发布版本</Button> : null}</div>
       <div className="shared-dtsi-actions">{draft && canWrite ? <Button variant="outline" disabled={pending || conflict} onClick={() => setDiscardOpen(true)}>丢弃草稿</Button> : null}
