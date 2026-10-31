@@ -93,8 +93,8 @@ test("publishes original header macros and recovers an unfrozen-input diagnostic
   const archive=new JSZip();archive.file("cpp-common.dtsi",source);archive.file("include/dt-bindings/power.h",`${header}#define VOLATILE __TIME__\n`);
   await page.locator('input[type="file"]').first().setInputFiles({name:"cpp-common.zip",mimeType:"application/zip",buffer:await archive.generateAsync({type:"nodebuffer"})});
   await page.getByText("构建设置",{exact:true}).click();
-  await page.getByLabel("Include 搜索目录",{exact:true}).fill("include");
-  await page.getByLabel("构建宏",{exact:true}).fill("ENABLED=1");
+  await page.getByLabel("头文件搜索目录",{exact:true}).fill("include");
+  await page.getByLabel("预处理宏",{exact:true}).fill("ENABLED=1");
   await page.getByLabel("变更说明", { exact: true }).fill("固定原始头文件与宏输入。");
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
   await expect(page.getByText("草稿已保存", { exact: true })).toBeVisible();

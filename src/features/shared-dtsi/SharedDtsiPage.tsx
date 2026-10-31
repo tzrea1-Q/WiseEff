@@ -43,18 +43,18 @@ const buildTexts = (input: SharedDtsiDraftInput["buildInputs"]) => ({ paths: inp
 function buildInputsFromText(paths: string, macros: string): SharedDtsiDraftInput["buildInputs"] {
   const entries = macros.split("\n").filter(line => line.trim()).map(line => {
     const at = line.indexOf("=");
-    if (at < 1) throw new WiseEffApiError("VALIDATION_FAILED", "构建宏每行填写 NAME=value。", {}, "");
+    if (at < 1) throw new WiseEffApiError("VALIDATION_FAILED", "预处理宏每行填写 NAME=value。", {}, "");
     return [line.slice(0, at).trim(), line.slice(at + 1).trim()] as const;
   });
-  if (new Set(entries.map(([name]) => name)).size !== entries.length) throw new WiseEffApiError("VALIDATION_FAILED", "构建宏名称重复，请保留一个明确的值。", {}, "");
+  if (new Set(entries.map(([name]) => name)).size !== entries.length) throw new WiseEffApiError("VALIDATION_FAILED", "预处理宏名称重复，请保留一个明确的值。", {}, "");
   const parsed = dtsBuildInputsSchema.safeParse({ includeSearchPaths: paths.split("\n").map(path => path.trim()).filter(Boolean), defines: Object.fromEntries(entries) });
   if (!parsed.success) throw new WiseEffApiError("VALIDATION_FAILED", parsed.error.issues[0]?.message ?? "构建设置无效。", {}, "");
   return parsed.data.includeSearchPaths.length || Object.keys(parsed.data.defines).length ? parsed.data : undefined;
 }
 const fixedBuildInputs = (input: SharedDtsiVersion["manifest"]["buildInputs"]) => input.includeSearchPaths.length || Object.keys(input.defines ?? {}).length
   ? <details className="shared-dtsi-build-inputs"><summary>构建设置</summary><dl className="shared-dtsi-metadata">
-    {input.includeSearchPaths.length ? <div><dt>Include 搜索目录</dt><dd>{input.includeSearchPaths.join("\n")}</dd></div> : null}
-    {Object.keys(input.defines ?? {}).length ? <div><dt>构建宏</dt><dd>{buildTexts({ includeSearchPaths: [], defines: input.defines ?? {} }).defines}</dd></div> : null}
+    {input.includeSearchPaths.length ? <div><dt>头文件搜索目录</dt><dd>{input.includeSearchPaths.join("\n")}</dd></div> : null}
+    {Object.keys(input.defines ?? {}).length ? <div><dt>预处理宏</dt><dd>{buildTexts({ includeSearchPaths: [], defines: input.defines ?? {} }).defines}</dd></div> : null}
   </dl></details> : null;
 
 export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,canProposeSource=false,canReviewSource=false,search, organizationId, onNavigate }: Props) {
@@ -421,10 +421,9 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
         {draft && canWrite && detail?.state!=="retired" ? <Button aria-describedby={!form.changeDescription.trim()?"shared-publication-hint":undefined} disabled={pending || conflict || !form.changeDescription.trim()} onClick={()=>void preparePublication()}>预览发布</Button> : null}</div>
     </header>
     <div className="shared-dtsi-resource-body">
-    {lifecycleControls}
+    <div className="shared-dtsi-status-line">{lifecycleControls}{saved === selected ? <p role="status">草稿已保存</p> : null}</div>
     {loading ? <SectionSkeleton label="正在加载共享 DTSI 草稿" /> : error && !draft && selected !== "new" ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : <>
       {error ? <div className="shared-dtsi-error" role="alert"><p>{error}</p>{conflict ? <Button variant="outline" onClick={() => setReloadOpen(true)}>重新载入</Button> : null}</div> : null}
-      {saved === selected ? <p role="status">草稿已保存</p> : null}
       {draft?.sourceEvidence ? <p className="shared-dtsi-hint">已复制所选私有源码及依赖。本组织有查看权限的用户可读取草稿与发布版本；来源项目配置保持不变。</p> : null}
       <div className="shared-dtsi-fields">
         <label>资源名称<Input aria-label="资源名称" value={form.name} maxLength={160} readOnly={!canWrite} disabled={pending} onChange={event => { nameTouched.current=true; edits.current+=1; setForm({ ...form, name: event.target.value }); setSaved(null); }} /></label>
@@ -434,22 +433,22 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
       </div>
       {importing?<div role="status">正在检查文件… <Button variant="ghost" onClick={()=>{importSequence.current++;setImporting(false);}}>取消</Button></div>:null}
       {ignoredFiles.length?<details className="shared-dtsi-ignored"><summary>已忽略 {ignoredFiles.length} 个非源码文件</summary><ul>{ignoredFiles.map(name=><li key={name}>{name}：不支持的文件类型</li>)}</ul></details>:null}
+      <label className="shared-dtsi-change-description"><span>变更说明{draft && canWrite && !form.changeDescription.trim() ? <span id="shared-publication-hint" className="shared-dtsi-hint">发布前请填写变更说明。</span> : null}</span><Textarea aria-label="变更说明" aria-describedby={draft && canWrite && !form.changeDescription.trim() ? "shared-publication-hint" : undefined} value={form.changeDescription} maxLength={1000} rows={2}
+        placeholder="说明此共享版本的变更" readOnly={!canWrite} disabled={pending} onChange={event=>{edits.current+=1;setForm({...form,changeDescription:event.target.value});setSaved(null);}} /></label>
+      <div className="shared-dtsi-editing-panels"><div className="shared-dtsi-settings">
       {canWrite?<SharedDtsiDependencies client={client} value={form.dependencies??[]} resourceId={draft?.resourceId} disabled={pending}
         sourceHref={(resourceId,versionId)=>path(resourceId,{version:versionId,tab:"source"})}
         onChange={dependencies=>{edits.current+=1;setForm(current=>({...current,dependencies}));setPreview(null);setSaved(null);}} />:null}
-      <label className="shared-dtsi-change-description">变更说明<Textarea aria-label="变更说明" value={form.changeDescription} maxLength={1000} rows={2}
-        placeholder="说明此共享版本的变更" readOnly={!canWrite} disabled={pending} onChange={event=>{edits.current+=1;setForm({...form,changeDescription:event.target.value});setSaved(null);}} /></label>
       <details className="shared-dtsi-build-inputs"><summary>构建设置</summary><div className="shared-dtsi-fields">
-        <label>Include 搜索目录<Textarea aria-label="Include 搜索目录" rows={2} value={buildText.paths} placeholder="每行一个资源内目录，例如 include" readOnly={!canWrite} disabled={pending}
+        <label>头文件搜索目录<Textarea aria-label="头文件搜索目录" rows={2} value={buildText.paths} placeholder="每行一个资源内目录，例如 include" readOnly={!canWrite} disabled={pending}
           onChange={event => { edits.current += 1; setBuildText({ ...buildText, paths: event.target.value }); setSaved(null); setPreview(null); }} /></label>
-        <label>构建宏<Textarea aria-label="构建宏" rows={2} value={buildText.defines} placeholder="每行 NAME=value，例如 ENABLED=1" readOnly={!canWrite} disabled={pending}
+        <label>预处理宏<Textarea aria-label="预处理宏" rows={2} value={buildText.defines} placeholder="每行 NAME=value，例如 ENABLED=1" readOnly={!canWrite} disabled={pending}
           onChange={event => { edits.current += 1; setBuildText({ ...buildText, defines: event.target.value }); setSaved(null); setPreview(null); }} /></label>
-      </div></details>
-      {draft && canWrite && !form.changeDescription.trim() ? <p id="shared-publication-hint" className="shared-dtsi-hint">发布前请填写变更说明。</p> : null}
+      </div></details></div>
       {form.archive?<p role="status">{form.archive.name} · 保存草稿后展开文件并检查路径。</p>:<div className="shared-dtsi-workspace">{memberNavigation(sourceMembers(form),selectMember)}
       <div className="shared-dtsi-source"><WorkbenchDtsEditor ref={editor} sessionKey={sessionKey} text={form.content} baseText={draft?.members[memberIndex]?.content??""} resetKey={reloadEditor}
         ariaLabel="DTSI 源码" readOnly={!canWrite || pending} onDirtyChange={meta => { if (editorVersion===editorEpoch.current && meta.sessionKey === sessionKey && isCurrent(scope)) { if(meta.generation>0) edits.current+=1; setEditorDirty(meta.dirty); if (meta.dirty) setSaved(null); } }}
-        onChange={snapshot => { if (editorVersion===editorEpoch.current && snapshot.sessionKey === sessionKey && isCurrent(scope)) setForm(current => withContent(current,memberIndex,snapshot.text)); }} onSave={() => void save()} /></div></div>}
+        onChange={snapshot => { if (editorVersion===editorEpoch.current && snapshot.sessionKey === sessionKey && isCurrent(scope)) setForm(current => withContent(current,memberIndex,snapshot.text)); }} onSave={() => void save()} /></div></div>}</div>
     </>}
     </div>
     <SettingsLeaveGuard dirty={dirty && !leaving} saving={pending} description="离开将放弃本页未保存的修改，已保存的草稿不会受到影响。" />

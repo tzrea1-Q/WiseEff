@@ -175,6 +175,27 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "eligible",
+            "in": "query",
+            "required": false,
+            "description": "Set to 1 to return only active resources with published versions before pagination.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "exclude",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated resource UUIDs to exclude before pagination, up to 33.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
