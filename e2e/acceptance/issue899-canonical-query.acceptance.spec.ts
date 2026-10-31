@@ -289,14 +289,20 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
       await withPgClient(async client => {
         expect((await client.query(`update users set is_active=false where id=$1 returning id`, [acceptanceCast.liuMin.userId])).rowCount).toBe(1);
       });
+      const latestDefinitionPath = `/api/v2/catalog/definitions/${definitionId}`;
+      const latestDefinitionFailure = { method: "GET", path: latestDefinitionPath, status: 403, exact: true };
       try {
         for (const query of ["history", "compare"]) expectedApiFailures.push({ method: "GET", path: `/api/v2/projects/${projectId}/bindings/${bindingId}/${query}`, status: 403 });
         const definitionPath = `/api/v2/catalog/definitions/${definitionId}/revisions/${effectiveRevisionId}`;
         expectedApiFailures.push({ method: "GET", path: definitionPath, status: 403 });
+        expectedApiFailures.push(latestDefinitionFailure);
         const deniedDefinition = page.waitForResponse(response => response.request().method() === "GET"
           && new URL(response.url()).pathname === definitionPath);
+        const deniedLatestDefinition = page.waitForResponse(response => response.request().method() === "GET"
+          && new URL(response.url()).pathname === latestDefinitionPath);
         await view.click();
         expect((await deniedDefinition).status()).toBe(403);
+        expect((await deniedLatestDefinition).status()).toBe(403);
         const detail = page.getByRole("dialog", { name: /参数详情/ });
         for (const name of ["变更历史", "跨项目对比"]) {
           await detail.getByRole("tab", { name, exact: true }).click();
@@ -307,7 +313,11 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
         await page.screenshot({ path: info.outputPath("query-forbidden.png"), animations: "disabled" });
       } finally {
         await withPgClient(client => client.query("update users set is_active=true where id=$1", [acceptanceCast.liuMin.userId]));
+        const failureIndex = expectedApiFailures.indexOf(latestDefinitionFailure);
+        if (failureIndex >= 0) expectedApiFailures.splice(failureIndex, 1);
       }
+      const recoveredDefinition = await request.get(apiRoute(latestDefinitionPath), { headers: authHeadersForRole("software-user") });
+      expect(recoveredDefinition.status(), await recoveredDefinition.text()).toBe(200);
       const recoveredDetail = page.getByRole("dialog", { name: /参数详情/ });
       for (const [name, retry] of [["变更历史", "重试历史"], ["跨项目对比", "重试对比"]]) {
         await recoveredDetail.getByRole("tab", { name, exact: true }).click();

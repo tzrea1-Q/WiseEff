@@ -15,6 +15,7 @@ function setup(options: { writable?: boolean; saveError?: boolean;dependency?:bo
   let state="active",lifecycleRevision=1;
   const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
     const method = init?.method ?? "GET";
+    if (method === "POST" && String(_url).endsWith("/import-preview")) return new Response(JSON.stringify({item:{members:[{sourceName:"lib/new.dtsi",content:"/ { new {}; };"}],ignored:["README.md"]}}));
     if(method==="POST"&&String(_url).endsWith("/lifecycle")){
       state=JSON.parse(init!.body as string).state;lifecycleRevision++;
       return new Response(JSON.stringify({item:{resourceId,state,lifecycleRevision,updatedAt:"2026-10-25T00:00:00Z"}}));
@@ -47,9 +48,63 @@ function setup(options: { writable?: boolean; saveError?: boolean;dependency?:bo
 }
 
 describe("shared DTSI draft authoring", () => {
+  it("starts with a clear import choice and shows selected files before saving", async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(await screen.findByRole("button", {name:"导入资源"}));
+    expect(await screen.findByRole("button", {name:"选择文件"})).toBeVisible();
+    expect(screen.getByRole("button", {name:"新建源码"})).toBeVisible();
+    expect(screen.queryByLabelText("DTSI 源码")).not.toBeInTheDocument();
+    const file = new File(["/ { battery {}; };\n"], "battery.dtsi");
+    Object.defineProperty(file, "arrayBuffer", {value: async () => new TextEncoder().encode("/ { battery {}; };\n").buffer});
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!, file);
+    expect(await screen.findByLabelText("DTSI 源码")).toHaveTextContent("battery");
+    expect(screen.getByLabelText("资源名称")).toHaveValue("battery");
+  });
+  it("confirms replacement and keeps inspected ZIP members instead of the old editor contents", async () => {
+    const user=userEvent.setup(); const {fetchImpl}=setup();
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await screen.findByRole("button",{name:"选择文件"});
+    const sourceFile=new File(["old"],"old.dtsi");
+    Object.defineProperty(sourceFile,"arrayBuffer",{value:async()=>new TextEncoder().encode("/ { old {}; };").buffer});
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,sourceFile);
+    expect(await screen.findByLabelText("DTSI 源码")).toHaveTextContent("old");
+    const archive=new File(["zip"],"new.zip",{type:"application/zip"});
+    Object.defineProperty(archive,"arrayBuffer",{value:async()=>new TextEncoder().encode("zip").buffer});
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,archive);
+    const confirm=await screen.findByRole("dialog",{name:"替换全部源码？"});
+    await user.click(within(confirm).getByRole("button",{name:"替换源码"}));
+    expect(await screen.findByLabelText("DTSI 源码")).toHaveTextContent("new");
+    expect(screen.getByLabelText("资源名称")).toHaveValue("old");
+    expect(screen.getByText("已忽略 1 个非源码文件")).toBeVisible();
+    await user.click(screen.getByRole("button",{name:"保存草稿"}));
+    const request=fetchImpl.mock.calls.find(([url,init])=>init?.method==="POST" && String(url).endsWith("/shared-dtsi"))!;
+    expect(JSON.parse(request[1]!.body as string)).toMatchObject({members:[{sourceName:"lib/new.dtsi",content:"/ { new {}; };"}]});
+    expect(JSON.parse(request[1]!.body as string)).not.toHaveProperty("archive");
+  });
+  it("imports a directory with auxiliary files and preserves the existing source when replacement is cancelled", async () => {
+    const user=userEvent.setup();setup();
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await screen.findByRole("button",{name:"选择目录"});
+    const sourceFile=new File(["source"],"common.dtsi"),readme=new File(["notes"],"README.md");
+    Object.defineProperty(sourceFile,"webkitRelativePath",{value:"library/common.dtsi"});
+    Object.defineProperty(sourceFile,"arrayBuffer",{value:async()=>new TextEncoder().encode("/ { original {}; };").buffer});
+    Object.defineProperty(readme,"webkitRelativePath",{value:"library/README.md"});
+    await user.upload(document.querySelectorAll<HTMLInputElement>('input[type="file"]')[1]!,[sourceFile,readme]);
+    expect(await screen.findByLabelText("DTSI 源码")).toHaveTextContent("original");
+    expect(screen.getByLabelText("资源名称")).toHaveValue("library");
+    expect(screen.getByText("已忽略 1 个非源码文件")).toBeVisible();
+    const other=new File(["other"],"other.dtsi");
+    Object.defineProperty(other,"arrayBuffer",{value:async()=>new TextEncoder().encode("/ { replacement {}; };").buffer});
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,other);
+    await user.click(within(await screen.findByRole("dialog",{name:"替换全部源码？"})).getByRole("button",{name:"取消"}));
+    expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("original");
+    expect(screen.getByLabelText("文件路径")).toHaveValue("library/common.dtsi");
+  });
   it("can restore an unpublished retired resource without losing its editable draft",async()=>{
     const user=userEvent.setup();setup();
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await user.click(await screen.findByRole("button",{name:"新建源码"}));
     await user.type(await screen.findByLabelText("资源名称"),"Recoverable draft");
     await user.click(screen.getByRole("button",{name:"保存草稿"}));await screen.findByText("草稿已保存",{exact:true});
     await user.click(screen.getByRole("button",{name:"停用资源"}));
@@ -65,6 +120,7 @@ describe("shared DTSI draft authoring", () => {
     const user = userEvent.setup();
     const { fetchImpl } = setup();
     await user.click(await screen.findByRole("button", { name: "导入资源" }));
+    await user.click(await screen.findByRole("button",{name:"新建源码"}));
     await user.type(await screen.findByLabelText("资源名称"), "Original engineering");
     await user.click(screen.getByText("构建设置", { exact: true }));
     await user.type(screen.getByLabelText("Include 搜索目录"), "include");
@@ -84,6 +140,7 @@ describe("shared DTSI draft authoring", () => {
   it("reveals fixed dependencies only when requested and retains them in draft saves",async()=>{
     const user=userEvent.setup();const {fetchImpl}=setup({dependency:true});
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await user.click(await screen.findByRole("button",{name:"新建源码"}));
     await user.type(await screen.findByLabelText("资源名称"),"Complete resource");
     await user.click(screen.getByText("固定资源依赖（按需）"));
     await screen.findByText("尚未选择固定资源依赖。");
@@ -104,12 +161,19 @@ describe("shared DTSI draft authoring", () => {
     const user=userEvent.setup();
     const {fetchImpl}=setup();
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
-    await screen.findByLabelText("资源名称");
+    await screen.findByRole("button",{name:"选择文件"});
     const files=[new File(['/include/ "parts/node.dtsi"\n'],"main.dtsi"),new File(['/ { node {}; };\n'],"node.dtsi"),new File(["#define VALUE 42\n"],"constants.h")];
     files.forEach((file,index)=>{Object.defineProperty(file,"webkitRelativePath",{value:["lib/main.dtsi","lib/parts/node.dtsi","headers/constants.h"][index]});
       Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode([ '/include/ "parts/node.dtsi"\n','/ { node {}; };\n',"#define VALUE 42\n"][index]!).buffer});});
-    await user.upload(document.querySelector('input[type="file"]')!,files);
-    await user.click(await screen.findByRole("button",{name:"headers/constants.h"}));
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,files);
+    const first=await screen.findByRole("button",{name:"lib/main.dtsi"});
+    const target=screen.getByRole("button",{name:"headers/constants.h"});
+    expect(first).toHaveAttribute("aria-current","true");
+    expect(first).toHaveAttribute("data-variant","outline");
+    expect(target).toHaveAttribute("data-variant","outline");
+    target.focus(); await user.keyboard("{Enter}");
+    expect(target).toHaveAttribute("aria-current","true");
+    expect(first).not.toHaveAttribute("aria-current");
     expect(screen.getByLabelText("文件路径")).toHaveValue("headers/constants.h");
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("#define VALUE 42");
     await user.type(screen.getByLabelText("文件路径"),"pp");
@@ -126,6 +190,7 @@ describe("shared DTSI draft authoring", () => {
     const user = userEvent.setup();
     setup({ saveError: true });
     await user.click(await screen.findByRole("button", { name: "导入资源" }));
+    await user.click(await screen.findByRole("button",{name:"新建源码"}));
     await user.type(await screen.findByLabelText("资源名称"), "Battery common");
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
@@ -159,13 +224,14 @@ describe("shared DTSI draft authoring", () => {
     const user=userEvent.setup();
     setup();
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
-    await screen.findByLabelText("资源名称");
+    await screen.findByRole("button",{name:"选择文件"});
     let finish!: (value:ArrayBuffer)=>void;
     const file=new File(["ignored"],"old-source.dtsi",{type:"text/plain"});
     Object.defineProperty(file,"arrayBuffer",{value:()=>new Promise<ArrayBuffer>(resolve=>{finish=resolve;})});
-    await user.upload(document.querySelector('input[type="file"]')!,file);
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,file);
     await user.click(screen.getByRole("button",{name:"返回资源列表"}));
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await user.click(await screen.findByRole("button",{name:"新建源码"}));
     await user.type(await screen.findByLabelText("资源名称"),"New current draft");
     await act(async()=>{finish(new TextEncoder().encode('/ { old { status = "disabled"; }; };').buffer);});
     expect(screen.getByLabelText("资源名称")).toHaveValue("New current draft");

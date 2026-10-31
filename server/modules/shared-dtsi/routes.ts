@@ -4,9 +4,9 @@ import type { AuthContext } from "../auth/types";
 import { z } from "zod";
 import { ApiError } from "../../shared/http/errors";
 import { createUserInvocation } from "../auth/trustedInvocation";
-import { importSharedDtsiInput } from "./import";
+import { importSharedDtsiInput, inspectSharedDtsiArchive } from "./import";
 import { parameterInvocation, parameterRequestAccess } from "../parameters/operatingScope";
-import { sharedDtsiDraftInputSchema, sharedDtsiDraftUpdateSchema, sharedDtsiDraftDiscardSchema,
+import { sharedDtsiArchiveInputSchema, sharedDtsiDraftInputSchema, sharedDtsiDraftUpdateSchema, sharedDtsiDraftDiscardSchema,
   sharedDtsiPreviewRequestSchema, sharedDtsiPublishRequestSchema, sharedDtsiNewVersionDraftSchema } from "../contracts/dtoSchemas/sharedDtsi";
 import { createSharedDtsiDraft, discardSharedDtsiDraft, getSharedDtsiDraft, listSharedDtsiResources, saveSharedDtsiDraft, requireWrite } from "./service";
 import { createSharedDtsiVersionDraft, getSharedDtsiResourceDetail, getSharedDtsiVersion, listSharedDtsiVersions,
@@ -50,6 +50,13 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
     const { db, auth, context } = await access(request);
     requireWrite(auth,context);
     return { status: 201, body: { item: await createSharedDtsiDraft(db, auth, await importSharedDtsiInput(parse(sharedDtsiDraftInputSchema, request.body)), context) } };
+  });
+  router.post("/api/v2/shared-dtsi/import-preview", async request => {
+    const {auth,context}=await access(request);
+    requireWrite(auth,context);
+    const {archive}=parse(sharedDtsiArchiveInputSchema,request.body);
+    const result=await inspectSharedDtsiArchive(parse(sharedDtsiDraftInputSchema,{name:"导入预览",archive}));
+    return {status:200,body:{item:{members:result.input.members,ignored:result.ignored}}};
   });
   router.get("/api/v2/shared-dtsi/:resourceId", async request => {
     const { db, auth } = await access(request);

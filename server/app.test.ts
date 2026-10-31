@@ -415,6 +415,13 @@ afterEach(() => {
 });
 
 describe("WiseEff API", () => {
+  it("bounds ZIP inspection before reading its JSON body while admitting an 8 MiB archive", () => {
+    const limit=resolveRouteBodyLimit({method:"POST",path:"/api/v2/shared-dtsi/import-preview"});
+    expect(Number.isFinite(limit)).toBe(true);
+    const body=JSON.stringify({name:"preview",archive:{name:"sources.zip",contentBase64:Buffer.alloc(8*1024*1024).toString("base64")}});
+    expect(Buffer.byteLength(body)).toBeLessThan(limit);
+    expect(limit).toBeLessThan(12*1024*1024);
+  });
   it("bounds only the exact manual sync preparation POST and admits a 2 MiB source envelope", async () => {
     const path = "/api/v1/projects/project-1/parameter-files/file-1/source-manual-sync/prepare";
     expect(resolveRouteBodyLimit({ method: "POST", path }))

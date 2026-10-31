@@ -78,6 +78,12 @@ describe("browser acceptance diagnostics", () => {
     });
   });
 
+  it("matches an exact expected path without allowing child endpoints", () => {
+    const rule = { method: "GET", path: "/api/v2/catalog/definitions/example", status: 403, exact: true };
+    expect(classifyBrowserIssue({ type: "response", url: `http://127.0.0.1:8787${rule.path}`, method: "GET", status: 403 }, [rule]).action).toBe("ignore");
+    expect(classifyBrowserIssue({ type: "response", url: `http://127.0.0.1:8787${rule.path}/other`, method: "GET", status: 403 }, [rule]).action).toBe("fail");
+  });
+
   it("fails page errors and console errors", () => {
     expect(classifyBrowserIssue({ type: "pageerror", message: "TypeError: failed" }).action).toBe("fail");
     expect(classifyBrowserIssue({ type: "console", message: "Failed to load resource", level: "error" }).action).toBe(

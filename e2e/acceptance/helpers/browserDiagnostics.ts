@@ -10,6 +10,7 @@ export type ExpectedApiFailure = {
   method: string;
   path: string;
   status: number;
+  exact?: boolean;
 };
 
 export type BrowserDiagnosticsOptions = {
@@ -128,7 +129,7 @@ function isExpectedApiFailure(issue: Extract<BrowserIssue, { type: "response" }>
     (rule) =>
       rule.status === issue.status &&
       rule.method.toUpperCase() === method &&
-      (rule.path === path || path.startsWith(rule.path.endsWith("/") ? rule.path : `${rule.path}/`))
+      (rule.path === path || (!rule.exact && path.startsWith(rule.path.endsWith("/") ? rule.path : `${rule.path}/`)))
   );
 }
 
