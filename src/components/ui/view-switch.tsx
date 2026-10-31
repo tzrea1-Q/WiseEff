@@ -15,7 +15,7 @@ type ViewSwitchProps = {
   value: string;
   onValueChange: (value: string) => void;
 } & (
-  | { variant: "section" | "toggle"; items: ViewSwitchItem[] }
+  | { variant: "section" | "toggle" | "toggle-outline"; items: ViewSwitchItem[] }
   | { variant: "tabs"; items: (ViewSwitchItem & { id: string; panelId: string })[] }
 );
 
@@ -47,9 +47,9 @@ function handleSectionRovingFocus(event: KeyboardEvent<HTMLButtonElement>) {
 }
 
 export function ViewSwitch({ variant, ariaLabel, value, onValueChange, items }: ViewSwitchProps) {
-  if (variant === "toggle") {
+  if (variant === "toggle" || variant === "toggle-outline") {
     return (
-      <RadioGroup.Root className="view-switch view-switch--toggle" aria-label={ariaLabel}
+      <RadioGroup.Root className={`view-switch view-switch--toggle${variant === "toggle-outline" ? " view-switch--toggle-outline" : ""}`} aria-label={ariaLabel}
         value={value} onValueChange={onValueChange}>
         {items.map((item) => (
           <RadioGroup.Item key={item.value} value={item.value} className="view-switch__item" disabled={item.disabled}
