@@ -57,8 +57,8 @@ export const sharedDtsiVersionSchema = sharedDtsiVersionSummarySchema.extend({ m
   members: z.array(z.object({ id, sourceName: z.string(), content: z.string(), checksum: z.string(), sizeBytes: z.number().int().nonnegative() }).strict()).min(1) });
 export const sharedDtsiResourceSummarySchema = z.object({ resourceId: id, name: z.string(), updatedAt: z.string(),
   state:z.enum(["active","retired"]).default("active"), lifecycleRevision:z.number().int().positive().default(1),
-  sourceName: z.string(), draftRevision: z.number().int().positive().nullable(), currentVersion: sharedDtsiVersionSummarySchema.nullable() }).strict();
-export const sharedDtsiResourceDetailSchema = sharedDtsiResourceSummarySchema.omit({ sourceName: true });
+  sourceName: z.string(), memberCount: z.number().int().nonnegative(), draftRevision: z.number().int().positive().nullable(), currentVersion: sharedDtsiVersionSummarySchema.nullable() }).strict();
+export const sharedDtsiResourceDetailSchema = sharedDtsiResourceSummarySchema.omit({ sourceName: true, memberCount: true });
 export const sharedDtsiVersionsSchema = z.object({items:z.array(sharedDtsiVersionSummarySchema),total:z.number().int().nonnegative()}).strict();
 export const sharedDtsiRecognitionSchema = z.object({resourceId:id,versionId:id,catalogReleaseId:z.string().nullable(),items:z.array(z.object({
   nodeLocator:z.string(),unresolved:z.boolean(),labels:z.array(z.string()),

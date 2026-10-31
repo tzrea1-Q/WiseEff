@@ -49,7 +49,7 @@ function setup(options: { writable?: boolean; existingDraft?: boolean; saveError
     if (method === "GET" && String(_url).includes(`${resourceId}/detail`)) return new Response(JSON.stringify({item:{resourceId,name:item?.name,
       updatedAt:"2026-10-25T00:00:00Z",state,lifecycleRevision,draftRevision:item?.revision,currentVersion:null}}));
     if (method === "GET" && String(_url).includes(resourceId)) {if(item && options.onDraftGet)item=await options.onDraftGet(item);return new Response(JSON.stringify({ item }));}
-    return new Response(JSON.stringify({ items: options.dependency?[{resourceId:dependencyId,name:"Common clocks",updatedAt:version.createdAt,sourceName:"clock.dtsi",draftRevision:null,currentVersion:version}]:item ? [{ resourceId,name:item.name,updatedAt:item.updatedAt,sourceName:"common.dtsi",draftRevision:item.revision,currentVersion:null }] : [], total: options.dependency||item ? 1 : 0 }));
+    return new Response(JSON.stringify({ items: options.dependency?[{resourceId:dependencyId,name:"Common clocks",updatedAt:version.createdAt,sourceName:"clock.dtsi",memberCount:1,draftRevision:null,currentVersion:version}]:item ? [{ resourceId,name:item.name,updatedAt:item.updatedAt,sourceName:"common.dtsi",memberCount:(item.members as unknown[]).length,draftRevision:item.revision,currentVersion:null }] : [], total: options.dependency||item ? 1 : 0 }));
   });
   const api = createApiClient({ baseUrl: "", fetchImpl });
   let changeWritable:(value:boolean)=>void=()=>{};

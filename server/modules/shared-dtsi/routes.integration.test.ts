@@ -52,6 +52,100 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
   }, 120_000);
   afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); });
 
+  it("lists the member count of the current published version or, without one, the draft within its organization", async () => {
+    const lane = await createEphemeralTestDatabase("shared-dtsi-count");
+    const db = createPostgresDatabase(lane.url);
+    const token = `shared_dtsi_count_${process.pid}`;
+    let api: ReturnType<typeof createPostgresDatabase> | undefined;
+    try {
+    await db.query("insert into organizations(id,name) values ('org-shared-dtsi','Shared source'),('org-other-dtsi','Other')");
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ('user-shared-dtsi','org-shared-dtsi','Source author','Admin',true)");
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-dtsi-role','user-shared-dtsi','org-shared-dtsi','admin')");
+    const logins = await provisionPublicationRuntimeLogins(lane.url, { mode: "lab", runToken: token });
+    api = createPostgresDatabase(logins.apiUrl);
+    const server = (actor = auth) => { const router=createRouter();registerSharedDtsiRoutes(router,{db:api!,getCurrentAuthContext:()=>actor});return createHttpServer(router); };
+    const call = (path:string, method="GET", body?:unknown, actor=auth) => requestJson<{item:Draft;items:Draft[];error:{code:string}}>(server(actor),`/api/v2/shared-dtsi${path}`,{method,...(body===undefined?{}:{body:JSON.stringify(body)})});
+    const publicationCall = <T>(path:string, method="GET", body?:unknown, actor=auth) => requestJson<T>(server(actor),`/api/v2/shared-dtsi${path}`,{method,...(body===undefined?{}:{body:JSON.stringify(body)})});
+    const { sharedDtsiListSchema, sharedDtsiResourceDetailSchema, sharedDtsiResourceSummarySchema } = await import("../contracts/dtoSchemas/sharedDtsi");
+    const single = (await call("", "POST", { name: "CountTarget single", sourceName: "one.dtsi", content: source })).body.item;
+    const multiple = (await call("", "POST", { name: "CountTarget draft", members: [
+      { sourceName: "draft/a.dtsi", content: "/ { a {}; };" }, { sourceName: "draft/b.dtsi", content: "/ { b {}; };" }, { sourceName: "draft/value.h", content: "#define VALUE 1\n" }
+    ] })).body.item;
+    const versioned = (await call("", "POST", { name: "CountTarget published", changeDescription: "Initial", members: [
+      { sourceName: "published/a.dtsi", content: '/ { a { compatible = "vendor,count-evidence"; }; };' }, { sourceName: "published/b.dtsi", content: "/ { b {}; };" }
+    ] })).body.item;
+    const preview = await publicationCall<{item:{id:string}}>(`/${versioned.resourceId}/publication-preview`, "POST", { expectedRevision: 1 });
+    expect(preview.status, preview.bodyText).toBe(201);
+    const published = await publicationCall<{item:{id:string}}>(`/${versioned.resourceId}/publications`, "POST", { previewId: preview.body.item.id, idempotencyKey: "count-publish" });
+    expect(published.status, published.bodyText).toBe(201);
+    const next = await call(`/${versioned.resourceId}/draft`, "POST", { baseVersionId: published.body.item.id });
+    expect(next.status, next.bodyText).toBe(201);
+    const saved = await call(`/${versioned.resourceId}/draft`, "PUT", { name: "CountTarget published", expectedRevision: 1, members: [
+      { id: next.body.item.members[0]!.id, sourceName: "draft-only.dtsi", content: "/ { local {}; };" }
+    ] });
+    expect(saved.status, saved.bodyText).toBe(200);
+    const list = await publicationCall<unknown>("?q=CountTarget");
+    expect(list.status, list.bodyText).toBe(200);
+    const result = sharedDtsiListSchema.parse(list.body);
+    expect(result.total).toBe(3);
+    expect(result.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceId: single.resourceId, sourceName: "one.dtsi", memberCount: 1 }),
+      expect.objectContaining({ resourceId: multiple.resourceId, sourceName: "draft/a.dtsi", memberCount: 3 }),
+      expect.objectContaining({ resourceId: versioned.resourceId, sourceName: "published/a.dtsi", memberCount: 2 })
+    ]));
+    const pages = await Promise.all([0, 1, 2].map(offset => publicationCall<unknown>(`?q=CountTarget&offset=${offset}&limit=1`)));
+    const paged = pages.map(page => sharedDtsiListSchema.parse(page.body));
+    expect(paged.every(page => page.total === 3 && page.items.length === 1)).toBe(true);
+    expect(new Set(paged.map(page => page.items[0]!.resourceId))).toEqual(new Set([single.resourceId, multiple.resourceId, versioned.resourceId]));
+    for (const query of ["draft-only.dtsi", "vendor,count-evidence"]) {
+      const search = sharedDtsiListSchema.parse((await publicationCall<unknown>(`?q=${encodeURIComponent(query)}`)).body);
+      expect(search.items).toEqual([expect.objectContaining({ resourceId: versioned.resourceId, sourceName: "published/a.dtsi", memberCount: 2 })]);
+    }
+    const detail = await publicationCall<unknown>(`/${versioned.resourceId}/detail`);
+    const detailItem = sharedDtsiResourceDetailSchema.parse((detail.body as {item:unknown}).item);
+    expect(detailItem).not.toHaveProperty("memberCount");
+    expect(sharedDtsiResourceDetailSchema.safeParse({...detailItem,memberCount:2}).success).toBe(false);
+    expect(sharedDtsiResourceSummarySchema.safeParse({...result.items[0],memberCount:-1}).success).toBe(false);
+    expect(sharedDtsiResourceSummarySchema.safeParse({...result.items[0],memberCount:undefined}).success).toBe(false);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ('count-other-admin','org-other-dtsi','Other author','Admin',true)");
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('count-other-role','count-other-admin','org-other-dtsi','admin')");
+    const other = makeTestAuthContext({ organizationId: "org-other-dtsi", userId: "count-other-admin" });
+    const otherDraft = await call("", "POST", { name: "CountTarget other organization", sourceName: "other.dtsi", content: source }, other);
+    expect(otherDraft.status, otherDraft.bodyText).toBe(201);
+    const otherList = await publicationCall<unknown>("?q=CountTarget", "GET", undefined, other);
+    expect(sharedDtsiListSchema.parse(otherList.body)).toMatchObject({ total: 1, items: [{resourceId:otherDraft.body.item.resourceId,memberCount:1}] });
+    expect(sharedDtsiListSchema.parse((await publicationCall<unknown>("?q=CountTarget")).body).total).toBe(3);
+    expect((await publicationCall(`/${single.resourceId}/lifecycle`, "POST", { state: "retired", expectedLifecycleRevision: 1, idempotencyKey: "count-retire" })).status).toBe(200);
+    expect(sharedDtsiListSchema.parse((await publicationCall<unknown>("?q=CountTarget%20single")).body).items[0]).toMatchObject({ state: "retired", memberCount: 1 });
+    expect((await call(`/${single.resourceId}/draft`, "DELETE", { expectedRevision: 1 })).status).toBe(200);
+    expect((await call(`/${versioned.resourceId}/draft`, "DELETE", { expectedRevision: 2 })).status).toBe(200);
+    const afterDiscard = sharedDtsiListSchema.parse((await publicationCall<unknown>("?q=CountTarget")).body);
+    expect(afterDiscard.total).toBe(2);
+    expect(afterDiscard.items).toContainEqual(expect.objectContaining({ resourceId: versioned.resourceId, memberCount: 2 }));
+    const secondDraft = await call(`/${versioned.resourceId}/draft`, "POST", {baseVersionId:published.body.item.id});
+    expect(secondDraft.status, secondDraft.bodyText).toBe(201);
+    const secondSaved = await call(`/${versioned.resourceId}/draft`, "PUT", {name:"CountTarget published",expectedRevision:1,changeDescription:"Second",members:[
+      ...secondDraft.body.item.members,{sourceName:"published/c.dtsi",content:"/ { c {}; };"}
+    ]});
+    expect(secondSaved.status, secondSaved.bodyText).toBe(200);
+    const secondPreview = await publicationCall<{item:{id:string}}>(`/${versioned.resourceId}/publication-preview`, "POST", {expectedRevision:2});
+    expect(secondPreview.status, secondPreview.bodyText).toBe(201);
+    const secondPublished = await publicationCall<{item:{id:string}}>(`/${versioned.resourceId}/publications`, "POST", {previewId:secondPreview.body.item.id,idempotencyKey:"count-publish-second"});
+    expect(secondPublished.status, secondPublished.bodyText).toBe(201);
+    const thirdDraft = await call(`/${versioned.resourceId}/draft`, "POST", {baseVersionId:secondPublished.body.item.id});
+    expect(thirdDraft.status, thirdDraft.bodyText).toBe(201);
+    const thirdSaved = await call(`/${versioned.resourceId}/draft`, "PUT", {name:"CountTarget published",expectedRevision:1,members:[thirdDraft.body.item.members[0]]});
+    expect(thirdSaved.status, thirdSaved.bodyText).toBe(200);
+    expect(sharedDtsiListSchema.parse((await publicationCall<unknown>("?q=CountTarget%20published")).body).items[0]).toMatchObject({sourceName:"published/a.dtsi",memberCount:3});
+    } finally {
+      await api?.close();
+      const cleanup = await dropLabRuntimeLogins(lane.url, token);
+      await db.close();
+      await lane.drop();
+      expect(cleanup.failed).toEqual([]);
+    }
+  }, 120_000);
+
   it("creates, reopens, updates and discards an exact source draft with stable member identity", async () => {
     const created = await call("", "POST", { name: "Battery common", sourceName: "battery.dtsi", content: source });
     expect(created.status, created.bodyText).toBe(201);
@@ -894,4 +988,5 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await publicationCall<{item:Version}>(`/${first.resourceId}/versions/${first.id}`)).body.item).toEqual(first);
     expect((await publicationCall<{item:Version}>(`/${first.resourceId}/versions/${second.id}`)).body.item.members.find(member=>member.sourceName==="main.dtsi")!.content).toBe(original);
   },120_000);
+
 });
