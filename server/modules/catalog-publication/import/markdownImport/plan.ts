@@ -66,12 +66,16 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       continue;
     }
     for (const definition of section.definitions) {
-      const content = buildContent(section, definition);
+      const revise = definition.fields.some((field) => field.name === "操作" && field.value === "修订");
+      const existing = revise && resolved.subject ? snapshot.documents.find((item) => item.kind === "definition"
+        && item.content.subjectId === resolved.subject!.content.id && item.content.propertyKey === definition.propertyKey) : undefined;
+      const content = buildContent(section, definition, existing?.kind === "definition" ? existing.content.revision : undefined);
       const diagnostics = [
         ...sectionDiagnostics.map((item) => ({ ...item, definitionHeading: definition.heading })),
         ...syntax.diagnostics.filter((item) => item.definitionLine === definition.line).map(publicDiagnostic),
         ...content.diagnostics,
       ];
+      if (revise && !existing) diagnostics.push(diagnostic(section, definition, "操作", "修订的定义不存在。", definition.line));
       const naturalKey = `${resolved.subject?.content.id ?? `${section.kind}:${section.selector}`}\0${definition.propertyKey}`;
       const duplicate = seen.has(naturalKey);
       seen.add(naturalKey);
@@ -84,6 +88,9 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
         ...classified });
       if (classified.outcome === "create" && content.content) {
         creations.push({ propertyKey: definition.propertyKey, content: content.content });
+      }
+      if (classified.outcome === "revise" && content.content && existing?.kind === "definition" && classified.revisionClass) {
+        changes.push({ op: "revise-definition", definitionId: existing.content.id, class: classified.revisionClass, content: content.content });
       }
     }
     for (const change of subjectChanges(resolved, creations)) {
@@ -100,7 +107,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       message: "文档中没有有效的定义标题。", line: 1 }));
   }
   for (const entry of entries) entry.diagnostics.sort((a, b) => a.line - b.line);
-  const ready = entries.every((entry) => entry.outcome === "create" || entry.outcome === "skip");
+  const ready = entries.every((entry) => entry.outcome === "create" || entry.outcome === "revise" || entry.outcome === "skip");
   return { entries, changeSet: ready && changes.length > 0 ? changes : null,
     noChange: entries.length > 0 && entries.every((entry) => entry.outcome === "skip"), source, placementHints };
 }

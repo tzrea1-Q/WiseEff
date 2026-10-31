@@ -88827,10 +88827,41 @@
                           "type": "string",
                           "enum": [
                             "create",
+                            "revise",
                             "skip",
                             "conflict",
                             "error"
                           ]
+                        },
+                        "revisionClass": {
+                          "type": "string",
+                          "enum": [
+                            "documentation",
+                            "semantic"
+                          ]
+                        },
+                        "diffs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "oldValue": {
+                                "type": "object"
+                              },
+                              "newValue": {
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "oldValue",
+                              "newValue"
+                            ],
+                            "additionalProperties": false
+                          }
                         },
                         "diagnostics": {
                           "type": "array",
@@ -89062,10 +89093,41 @@
                       "type": "string",
                       "enum": [
                         "create",
+                        "revise",
                         "skip",
                         "conflict",
                         "error"
                       ]
+                    },
+                    "revisionClass": {
+                      "type": "string",
+                      "enum": [
+                        "documentation",
+                        "semantic"
+                      ]
+                    },
+                    "diffs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "oldValue": {
+                            "type": "object"
+                          },
+                          "newValue": {
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "oldValue",
+                          "newValue"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "diagnostics": {
                       "type": "array",

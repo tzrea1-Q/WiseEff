@@ -26,6 +26,19 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("plans deterministic partial revisions with the builder's content class", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const revision = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 最大值 | 3000 |";
+    const plan = planMarkdownImport(revision, "d.md", snapshot);
+    expect(plan.entries[0]).toMatchObject({ outcome: "revise", revisionClass: "semantic",
+      diffs: [expect.objectContaining({ field: "最大值", oldValue: null, newValue: 3000 })] });
+    expect(plan.changeSet).toEqual(planMarkdownImport(revision, "d.md", snapshot).changeSet);
+    expect(plan.changeSet).toMatchObject([{ op: "revise-definition", class: "semantic", content: {
+      unit: "mA", documentation: "Maximum accepted input current.", valueSchema: { type: "integer", minimum: 0, maximum: 3000 },
+    } }]);
+    const documentation = revision.replace("| 最大值 | 3000 |", "| 简述 | 新说明 |");
+    expect(planMarkdownImport(documentation, "d.md", snapshot).entries[0]).toMatchObject({ outcome: "revise", revisionClass: "documentation" });
+  });
   it("builds identical artifact bytes and candidate content with or without placement hints", async () => {
     const predecessor = firstAcmePredecessor();
     const plain = planMarkdownImport(document, "d.md", predecessor.first);

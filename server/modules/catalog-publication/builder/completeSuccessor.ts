@@ -238,7 +238,7 @@ const subjectDocuments = (
     (document): document is CatalogReleaseSubjectDocument => document.kind === "subject",
   );
 
-const contentClassOf = (
+export const contentClassOf = (
   previous: CatalogReleaseDefinitionDocument["content"]["revision"],
   next: CatalogReleaseDefinitionDocument["content"]["revision"],
 ): "documentation" | "semantic" => {
@@ -516,7 +516,7 @@ const applyCreateDefinition = (
   return buildDefinitionDocument(subject, parsed.value, content.value, allocation);
 };
 
-const revisedDefinitionContent = (
+export const revisedDefinitionContent = (
   current: CatalogReleaseDefinitionDocument["content"]["revision"],
   content: SupportedDefinitionContent,
 ) => {

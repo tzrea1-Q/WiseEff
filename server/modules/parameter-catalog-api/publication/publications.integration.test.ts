@@ -605,6 +605,53 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
   });
 });
 
+it("previews and publishes a partial Markdown revision as the new complete head", async () => {
+  const database = await createEphemeralTestDatabase("mdrev");
+  const db = createPostgresDatabase(database.url);
+  const pool = getRootPostgresPool(db)!;
+  const client = await connect(database.url);
+  let close = async () => {};
+  try {
+    const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(client, predecessor);
+    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
+    const ports: CatalogPublicationPorts = {
+      authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId: ORG, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
+      currentRelease: async () => ({ id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest }),
+      ...bindCatalogPublicationCommands({ db, pool }),
+    };
+    const server = await listenCatalogPublicationHttpServer(ports);
+    close = server.close;
+    const post = async (path: string, body: unknown) => {
+      const response = await fetch(`${server.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: predecessor.compiled.release.id }, body: JSON.stringify(body) });
+      return { status: response.status, body: await response.json() };
+    };
+    const document = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 简述 | 新说明 |";
+    const preview = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "revision.md" } });
+    expect(preview.status).toBe(201);
+    const plan = catalogMarkdownImportResponseSchema.parse(preview.body).item;
+    expect(plan.entries[0]).toMatchObject({ outcome: "revise", revisionClass: "documentation",
+      diffs: [{ field: "简述", oldValue: null, newValue: "新说明" }] });
+    const published = await post(`/api/v2/catalog/publication-candidates/${plan.candidate!.id}/publish`, { idempotencyKey: "md-revision" });
+    expect(published.status).toBe(201);
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "markdown-revision-test" })).toBe("claimed");
+    const pointer = await readCurrentCatalogPointer(pool);
+    if (pointer.kind !== "installed") throw new Error("publication did not install a release");
+    expect(pointer.current.id).not.toBe(predecessor.compiled.release.id);
+    const head = await client.query<{ content: Record<string, unknown>; revision_number: string }>(`select r.content, r.revision_number from parameter_catalog.catalog_release_definition_heads h
+      join parameter_catalog.definition_revisions r on r.id = h.revision_id
+      where h.release_id = $1 and h.definition_id = 'pdef_acme_power_iin_max'`, [pointer.current.id]);
+    expect(head.rows[0]).toMatchObject({ revision_number: "2", content: { displayName: "Input current limit", description: "新说明",
+      documentation: "Maximum accepted input current.", unit: "mA", valueSchema: { type: "integer", minimum: 0 } } });
+  } finally {
+    await close();
+    await client.end();
+    await db.close();
+    await database.drop();
+  }
+}, 120_000);
+
 it.each([false, true])("publishes a three-definition Markdown import (new subject: %s) through the manager and records an activation receipt", async (newSubject) => {
   const database = await createEphemeralTestDatabase("mdimport");
   const db = createPostgresDatabase(database.url);
