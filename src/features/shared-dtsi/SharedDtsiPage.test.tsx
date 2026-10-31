@@ -161,6 +161,7 @@ describe("shared DTSI draft authoring", () => {
     const user=userEvent.setup();
     const {fetchImpl}=setup();
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await screen.findByRole("button",{name:"选择文件"});
     const files=[new File(['/include/ "parts/node.dtsi"\n'],"main.dtsi"),new File(['/ { node {}; };\n'],"node.dtsi"),new File(["#define VALUE 42\n"],"constants.h")];
     files.forEach((file,index)=>{Object.defineProperty(file,"webkitRelativePath",{value:["lib/main.dtsi","lib/parts/node.dtsi","headers/constants.h"][index]});
       Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode([ '/include/ "parts/node.dtsi"\n','/ { node {}; };\n',"#define VALUE 42\n"][index]!).buffer});});
@@ -223,6 +224,7 @@ describe("shared DTSI draft authoring", () => {
     const user=userEvent.setup();
     setup();
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await screen.findByRole("button",{name:"选择文件"});
     let finish!: (value:ArrayBuffer)=>void;
     const file=new File(["ignored"],"old-source.dtsi",{type:"text/plain"});
     Object.defineProperty(file,"arrayBuffer",{value:()=>new Promise<ArrayBuffer>(resolve=>{finish=resolve;})});
