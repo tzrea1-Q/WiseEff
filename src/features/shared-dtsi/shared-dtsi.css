@@ -7,6 +7,9 @@
 .shared-dtsi-page--editor > [role="tabpanel"]:not([hidden]) { flex: 1; min-width: 0; min-height: 0; overflow: auto; }
 .shared-dtsi-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-width: 0; }
 .shared-dtsi-header > div { min-width: 0; }
+.shared-dtsi-header--resource { flex-wrap: wrap; }
+.shared-dtsi-heading { display: flex; flex: 1 1 calc(var(--space-10) * 10); flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.shared-dtsi-heading h1 { flex: 1 1 calc(var(--space-10) * 3); min-width: 0; }
 .shared-dtsi-page--editor > .shared-dtsi-header { position: sticky; top: 0; z-index: var(--z-sticky); background: var(--surface); padding-block: var(--space-2); }
 .shared-dtsi-header h1 { overflow-wrap: anywhere; }
 .shared-dtsi-header [data-variant="ghost"] { color: var(--text-secondary); }
