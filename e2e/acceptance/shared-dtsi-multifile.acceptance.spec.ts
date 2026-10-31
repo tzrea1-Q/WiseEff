@@ -21,11 +21,17 @@ test("inspects a ZIP before saving and preserves edited source until replacement
   await confirmation.getByRole("button",{name:"替换源码",exact:true}).click();
   await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("new");
   await expect(page.getByText("已忽略 1 个非源码文件")).toBeVisible();
+  const resourceName=`Import reopen ${Date.now()}`;
+  await page.getByLabel("资源名称",{exact:true}).fill(resourceName);
   await page.getByRole("button",{name:"保存草稿",exact:true}).click();
   await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
   const resourceId=new URL(page.url()).searchParams.get("resource")!;
   const draft=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}`);
   expect(draft.status).toBe(200);
+  await page.getByRole("button",{name:"返回资源列表",exact:true}).click();
+  await page.getByRole("button",{name:resourceName,exact:true}).click();
+  await expect(page.getByLabel("文件路径",{exact:true})).toHaveValue("lib/new.dtsi");
+  await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("new");
   expect((draft.body as {item:{members:unknown[]}}).item.members).toEqual([expect.objectContaining({sourceName:"lib/new.dtsi",content:'/ { new {}; };\n'})]);
 });
 import { selectControlOption } from "./helpers/selectControl";
