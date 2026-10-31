@@ -25,7 +25,7 @@ async function fixture() {
   const db=createDatabase({query:async<Row>(sql:string,values:unknown[]=[])=>{
     expect(sql).toMatch(/^select /);
     const result=sql.startsWith("select count(*)")?[{count:"1"}]
-      :sql.startsWith("select r.id as")?[{resourceId,name:draft.name,updatedAt:new Date(draft.updatedAt),sourceName:"shared.dtsi",draftRevision:null,
+      :sql.startsWith("select r.id as")?[{resourceId,name:draft.name,updatedAt:new Date(draft.updatedAt),sourceName:"shared.dtsi",...(sql.includes('as "memberCount"')?{memberCount:1}:{}),draftRevision:null,
         currentVersion:{...rows[0]!,createdAt:draft.updatedAt}}]
       :sql.startsWith("select source_name as")?[]
       :sql.includes("from public.shared_dtsi_revisions")?rows.filter(row=>row.id===values[0])

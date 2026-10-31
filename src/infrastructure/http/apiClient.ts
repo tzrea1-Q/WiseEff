@@ -5,7 +5,8 @@ export class WiseEffApiError extends Error {
     public readonly code: string,
     message: string,
     public readonly details: Record<string, unknown>,
-    public readonly requestId: string
+    public readonly requestId: string,
+    public readonly status?: number
   ) {
     super(message);
     this.name = "WiseEffApiError";
@@ -58,7 +59,7 @@ export function createApiClient({ baseUrl, authorization, getAuthorization, onAu
 
     if (!response.ok) {
       const error = body?.error ?? {};
-      throw new WiseEffApiError(error.code ?? "INTERNAL_ERROR", error.message ?? "Request failed.", error.details ?? {}, error.requestId ?? "");
+      throw new WiseEffApiError(error.code ?? "INTERNAL_ERROR", error.message ?? "Request failed.", error.details ?? {}, error.requestId ?? "", response.status);
     }
 
     return body as T;
@@ -73,7 +74,7 @@ export function createApiClient({ baseUrl, authorization, getAuthorization, onAu
     if (!response.ok) {
       const body = await parseJson(response);
       const error = body?.error ?? {};
-      throw new WiseEffApiError(error.code ?? "INTERNAL_ERROR", error.message ?? "Request failed.", error.details ?? {}, error.requestId ?? "");
+      throw new WiseEffApiError(error.code ?? "INTERNAL_ERROR", error.message ?? "Request failed.", error.details ?? {}, error.requestId ?? "", response.status);
     }
 
     return response;

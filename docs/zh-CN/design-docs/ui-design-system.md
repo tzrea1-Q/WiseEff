@@ -32,7 +32,7 @@
 | 表格 | `src/components/admin/DataTable.tsx` | 标准列表外壳:分页、`aria-sort`、键盘行导航、筛选空态、集成 `ColumnFilter` |
 | 列筛选 | `src/components/ColumnFilter.tsx` | 规格:[表格列多选筛选 UX](ux-table-column-filter.md) |
 | 搜索框 | `src/components/common/SearchField.tsx` | 唯一搜索输入外观；过滤在 `src/lib/search/` 的 Profile 中，不在输入组件里 |
-| 视图切换 | `src/components/ui/view-switch.tsx` + `view-switch.css` | 三种令牌化样式：`section` 章节导航（40px / full 圆角 / 14px，选中 `--nav-selected`）、`tabs` 内容标签页（32px / md 圆角 / 13px，选中 `--accent-soft`）、`toggle` 单选选项（28px / sm 圆角 / 12px，选中 `--surface`） |
+| 视图切换 | `src/components/ui/view-switch.tsx` + `view-switch.css` | 三种令牌化样式：`section` 章节导航（40px / full 圆角 / 14px，选中 `--nav-selected`）、`tabs` 内容标签页（32px / md 圆角 / 13px，选中 `--accent-soft`）、`toggle` 单选选项（28px / sm 圆角 / 12px，选中 `--surface`）。`toggle-outline` 保留单选的尺寸与行为，增加可见选项边框，选中时使用 `--accent-soft` 填色。 |
 | Bridge 安装步骤条 | `src/components/LocalDeviceBridgeWizard.tsx` + `src/styles.css` 中的 `.local-device-bridge-wizard__steps` | 有序的安装/连接进度，不是标签页或视图切换；独立的令牌化步骤样式是共享切换契约的例外 |
 | 加载/空/错误 | `src/components/common/SectionState.tsx`(认证启动期另有 `AppShellSkeleton`) | 骨架 + 空态 + 可重试错误三件套;parameter-home 转为 re-export 同一组件 |
 | 局部令牌派生 | `src/features/parameter-home/parameter-home.css` | 用 `color-mix()` 从全局令牌派生局部语义色,不发明新字面量 |

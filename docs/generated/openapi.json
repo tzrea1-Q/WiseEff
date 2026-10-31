@@ -196,6 +196,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "includeMemberCount",
+            "in": "query",
+            "required": false,
+            "description": "Set to 1 to include the source member count and its published or draft scope.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
           }
         ],
         "responses": {
@@ -29358,6 +29370,19 @@
                 },
                 "sourceName": {
                   "type": "string"
+                },
+                "memberCount": {
+                  "type": "number"
+                },
+                "memberCountScope": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "published",
+                    "draft"
+                  ]
                 },
                 "draftRevision": {
                   "type": [

@@ -3,12 +3,14 @@ import type { SharedDtsiLifecycleInput, SharedDtsiResourceDetail } from "@wiseef
 import type { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { RowActionMenu } from "@/components/common/RowActionMenu";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { presentError } from "@/infrastructure/http/presentError";
 
-export function SharedDtsiLifecycle({ client, resource, canWrite, pending, onPending, onChanged }: {
+export function SharedDtsiLifecycle({ client, resource, canWrite, pending, onPending, onChanged, onDiscard, discardDisabled }: {
   client: ReturnType<typeof createSharedDtsiClient>; resource: SharedDtsiResourceDetail; canWrite: boolean; pending: boolean;
   onPending: (value: boolean) => void; onChanged: (resource: SharedDtsiResourceDetail) => void;
+  onDiscard?: () => void; discardDisabled?: boolean;
 }) {
   const [request,setRequest]=useState<SharedDtsiLifecycleInput|null>(null),[error,setError]=useState("");
   const [stale,setStale]=useState(false),[restored,setRestored]=useState(false);
@@ -33,9 +35,12 @@ export function SharedDtsiLifecycle({ client, resource, canWrite, pending, onPen
   return <>
     {retired?<p role="status">资源已停用 · 既有固定引用与历史版本可继续读取，不能新增直接或传递引用。</p>:null}
     {!retired&&restored?<p role="status">资源已恢复，可再次建立新引用。</p>:null}
-    {canWrite?<div className="shared-dtsi-version-actions"><Button variant="outline" disabled={pending} onClick={()=>{
-      setError("");setStale(false);setRestored(false);setRequest({state:retired?"active":"retired",expectedLifecycleRevision:resource.lifecycleRevision,idempotencyKey:crypto.randomUUID()});
-    }}>{label}</Button></div>:null}
+    {canWrite?<RowActionMenu label="资源操作" triggerLabel="资源更多操作" items={[
+      ...(onDiscard?[{id:"discard",label:"丢弃草稿",destructive:true as const,disabled:pending || discardDisabled,onRequestConfirmation:onDiscard}]:[]),
+      {id:"lifecycle",label,destructive:true as const,disabled:pending,onRequestConfirmation:()=>{
+        setError("");setStale(false);setRestored(false);setRequest({state:retired?"active":"retired",expectedLifecycleRevision:resource.lifecycleRevision,idempotencyKey:crypto.randomUUID()});
+      }}
+    ]}/>:null}
     <ConfirmDialog open={Boolean(request)} title={`${label}？`} description={retired
       ?"恢复后可再次新增直接和传递引用，沿用同一资源身份及已发布版本。"
       :"停用后不能新增直接或传递引用，也不能用于新的共享发布。既有项目固定引用、历史导出及合法快照恢复会保留。此操作不移除 Catalog 组织登记，也不禁用项目节点。"}

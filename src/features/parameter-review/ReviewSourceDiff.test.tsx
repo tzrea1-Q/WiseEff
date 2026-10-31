@@ -8,6 +8,22 @@ vi.mock("@/components/project-configuration-workbench/WorkbenchDtsEditor", () =>
 }));
 
 describe("frozen source comparison", () => {
+  it("distinguishes an absent source from an empty file for added and removed files", () => {
+    const view = render(<ReviewSourceDiff before="" after={'new;\n'} beforeMissing />);
+    let changes = screen.getByRole("region", { name: "固定源修改片段" });
+    expect(within(changes).getAllByText("新增行")).toHaveLength(1);
+    expect(within(changes).queryByText("上下文")).not.toBeInTheDocument();
+    view.rerender(<ReviewSourceDiff before={'old;\n'} after="" afterMissing />);
+    changes = screen.getByRole("region", { name: "固定源修改片段" });
+    expect(within(changes).getAllByText("删除行")).toHaveLength(1);
+    expect(within(changes).queryByText("上下文")).not.toBeInTheDocument();
+    view.rerender(<ReviewSourceDiff before="" after="" beforeMissing />);
+    expect(screen.getByText("新增空文件。")).toBeVisible();
+    view.rerender(<ReviewSourceDiff before="" after="" afterMissing />);
+    expect(screen.getByText("已移除空文件。")).toBeVisible();
+    view.rerender(<ReviewSourceDiff before="" after="" />);
+    expect(screen.getByText("源文件内容没有变化。")).toBeVisible();
+  });
   it("uses the readonly viewport editor for large source reviews and keeps complete snapshots", async () => {
     const before = `${"// unchanged\n".repeat(8_000)}old;\n`;
     const after = before.replace("old;", "new;");

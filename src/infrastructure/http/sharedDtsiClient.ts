@@ -11,7 +11,7 @@ export function createSharedDtsiClient(api: ApiClient) {
       return sharedDtsiImportPreviewSchema.parse(result.item);
     },
     async list(input: { q?: string; offset?: number; limit?: number; eligible?: "1"; exclude?: string } = {}) {
-      const query = new URLSearchParams();
+      const query = new URLSearchParams({includeMemberCount:"1"});
       for (const [key, value] of Object.entries(input)) if (value !== undefined) query.set(key, String(value));
       return sharedDtsiListSchema.parse(await api.get(`${base}?${query}`));
     },

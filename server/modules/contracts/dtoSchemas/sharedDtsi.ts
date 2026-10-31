@@ -57,8 +57,8 @@ export const sharedDtsiVersionSchema = sharedDtsiVersionSummarySchema.extend({ m
   members: z.array(z.object({ id, sourceName: z.string(), content: z.string(), checksum: z.string(), sizeBytes: z.number().int().nonnegative() }).strict()).min(1) });
 export const sharedDtsiResourceSummarySchema = z.object({ resourceId: id, name: z.string(), updatedAt: z.string(),
   state:z.enum(["active","retired"]).default("active"), lifecycleRevision:z.number().int().positive().default(1),
-  sourceName: z.string(), draftRevision: z.number().int().positive().nullable(), currentVersion: sharedDtsiVersionSummarySchema.nullable() }).strict();
-export const sharedDtsiResourceDetailSchema = sharedDtsiResourceSummarySchema.omit({ sourceName: true });
+  sourceName: z.string(), memberCount: z.number().int().nonnegative().optional(), memberCountScope:z.enum(["published","draft"]).nullable().optional(), draftRevision: z.number().int().positive().nullable(), currentVersion: sharedDtsiVersionSummarySchema.nullable() }).strict();
+export const sharedDtsiResourceDetailSchema = sharedDtsiResourceSummarySchema.omit({ sourceName: true, memberCount: true, memberCountScope:true });
 export const sharedDtsiVersionsSchema = z.object({items:z.array(sharedDtsiVersionSummarySchema),total:z.number().int().nonnegative()}).strict();
 export const sharedDtsiRecognitionSchema = z.object({resourceId:id,versionId:id,catalogReleaseId:z.string().nullable(),items:z.array(z.object({
   nodeLocator:z.string(),unresolved:z.boolean(),labels:z.array(z.string()),
@@ -153,7 +153,8 @@ export const sharedDtsiSchemaRegistry = {
   "sharedDtsi.list": { summary: "List Organization shared DTSI resources", tags, responseBody: "SharedDtsiListResponse",
     requestParameters: [{ name: "q", in: "query" as const }, { name: "offset", in: "query" as const }, { name: "limit", in: "query" as const },
       { name: "eligible", in: "query" as const, description: "Set to 1 to return only active resources with published versions before pagination.", schema: {type:"string" as const,enum:["1"]} },
-      { name: "exclude", in: "query" as const, description: "Comma-separated resource UUIDs to exclude before pagination, up to 33.", schema: {type:"string" as const} }] },
+      { name: "exclude", in: "query" as const, description: "Comma-separated resource UUIDs to exclude before pagination, up to 33.", schema: {type:"string" as const} },
+      { name: "includeMemberCount", in: "query" as const, description: "Set to 1 to include the source member count and its published or draft scope.", schema: {type:"string" as const,enum:["1"]} }] },
   "sharedDtsi.create": { summary: "Create a shared DTSI resource draft", tags, requestBody: "SharedDtsiDraftRequest", responseBody: "SharedDtsiDraftResponse", successStatus: 201 as const },
   "sharedDtsi.get": { summary: "Read the current shared DTSI draft", tags, responseBody: "SharedDtsiDraftResponse" },
   "sharedDtsi.save": { summary: "Save a shared DTSI draft with revision comparison", tags, requestBody: "SharedDtsiDraftUpdateRequest", responseBody: "SharedDtsiDraftResponse" },

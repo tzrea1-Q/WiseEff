@@ -166,14 +166,14 @@ test("#1431 retains source recognition loading, retry and empty states and a scr
   await expect(page.getByLabel("资源名称",{exact:true})).toHaveValue("紧凑窗口完整编辑器");
   await page.getByText("构建设置",{exact:true}).click();
   await page.getByText("引用其他共享资源",{exact:true}).click();
-  await page.getByRole("button",{name:"预览发布",exact:true}).click();
+  await page.getByRole("button",{name:"准备发布",exact:true}).click();await page.getByRole("button",{name:"检查并预览",exact:true}).click();
   await expect(page.getByRole("alert")).toContainText("冻结");
   await page.setViewportSize({width:1280,height:800});
   await assertNoPageOverflow(page);await catalogScreenshot(page,testInfo,"shared-draft-error-before-scroll-1280");
   const editor=page.getByLabel("DTSI 源码",{exact:true});
   await editor.scrollIntoViewIfNeeded();
   await expect(editor).toBeInViewport({ratio:0.9});
-  await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeInViewport({ratio:1});
+  await expect(page.getByRole("button",{name:"检查并预览",exact:true})).toBeInViewport({ratio:1});
   const body=page.locator(".shared-dtsi-resource-body");
   expect(await body.evaluate(node=>node.scrollTop>0 && node.scrollHeight>node.clientHeight)).toBe(true);
   await body.evaluate(node=>{node.scrollTop=node.scrollHeight;});

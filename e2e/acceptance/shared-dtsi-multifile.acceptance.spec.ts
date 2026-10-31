@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import { test, catalogAppUrl } from "./helpers/catalogFixtureRuntime";
 import { catalogJson, catalogScreenshot, dismissXiaozeHint, signInCatalogActor } from "./helpers/catalogBrowser";
 
-test("inspects a ZIP before saving and preserves edited source until replacement is confirmed",async({page,catalogAcceptanceRuntime})=>{
+test("inspects a ZIP before saving and preserves edited source until replacement is confirmed",async({page,catalogAcceptanceRuntime},testInfo)=>{
   void catalogAcceptanceRuntime;
   await page.setViewportSize({width:1440,height:900});
   await signInCatalogActor(page,"org-admin","/parameter-admin/sources");
@@ -29,10 +29,31 @@ test("inspects a ZIP before saving and preserves edited source until replacement
   const draft=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}`);
   expect(draft.status).toBe(200);
   await page.getByRole("button",{name:"返回资源列表",exact:true}).click();
+  await expect(page.getByRole("row").filter({has:page.getByRole("button",{name:resourceName,exact:true})})).toContainText("草稿 · lib/new.dtsi");
   await page.getByRole("button",{name:resourceName,exact:true}).click();
   await expect(page.getByLabel("文件路径",{exact:true})).toHaveValue("lib/new.dtsi");
   await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("new");
   expect((draft.body as {item:{members:unknown[]}}).item.members).toEqual([expect.objectContaining({sourceName:"lib/new.dtsi",content:'/ { new {}; };\n'})]);
+  const longPath=`folder/${"a".repeat(180)}.dtsi`,longName=`Long list source ${Date.now()}`;
+  expect((await catalogJson(page.request,"POST","/api/v2/shared-dtsi",{data:{name:longName,sourceName:longPath,content:"/ {};"}})).status).toBe(201);
+  await page.getByRole("button",{name:"返回资源列表",exact:true}).click();
+  const search=page.getByRole("searchbox",{name:"搜索共享 DTSI",exact:true});
+  for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+    await page.setViewportSize(viewport);
+    expect(await search.evaluate(input=>{const style=getComputedStyle(input),canvas=document.createElement("canvas"),context=canvas.getContext("2d")!;context.font=style.font;return context.measureText((input as HTMLInputElement).placeholder).width<=input.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);})).toBe(true);
+    await search.fill(longName);
+    const row=page.getByRole("row").filter({has:page.getByRole("button",{name:longName,exact:true})});
+    await expect(row.getByText(`草稿 · ${longPath}`,{exact:true})).toBeVisible();
+    expect(await page.locator(".data-table-scroll").evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await catalogScreenshot(page,testInfo,`shared-dtsi-long-list-${viewport.width}`);
+    await search.clear();
+  }
+  const filters=page.locator(".admin-list-page__filters");
+  await filters.evaluate(element=>{element.style.width="240px";});
+  expect(await search.evaluate(input=>input.parentElement!.getBoundingClientRect().right<=input.parentElement!.parentElement!.getBoundingClientRect().right+1)).toBe(true);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await filters.evaluate(element=>{element.style.removeProperty("width");});
 });
 
 test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.env.TEST_DATABASE_URL});
@@ -44,7 +65,7 @@ test("safely adds, renames and removes draft members while retaining editor cont
   await page.locator('input[type="file"]').first().setInputFiles({name:"main.dtsi",mimeType:"text/plain",buffer:Buffer.from("/ { main {}; };\n")});
   const editor=page.getByLabel("DTSI 源码",{exact:true});
   await editor.click();await page.keyboard.press("ControlOrMeta+End");await page.keyboard.insertText("// unsaved\n");
-  await page.getByLabel("变更说明",{exact:true}).fill("整理共享源码文件。");
+  await page.getByRole("button",{name:"准备发布",exact:true}).click();await page.getByLabel("版本说明",{exact:true}).fill("整理共享源码文件。");
   const add=page.locator('input[aria-label="添加源码文件"]');
   const partSource=`/ {\n${Array.from({length:30},(_,index)=>`  line-${index};\n`).join("")}};\n`;
   await add.setInputFiles({name:"part.dtsi",mimeType:"text/plain",buffer:Buffer.from(partSource)});
@@ -54,13 +75,14 @@ test("safely adds, renames and removes draft members while retaining editor cont
   await add.setInputFiles({name:"main.dtsi",mimeType:"text/plain",buffer:Buffer.from("replacement")});
   let conflict=page.getByRole("dialog",{name:"替换重名文件？",exact:true});
   await expect(conflict).toContainText("main.dtsi");await conflict.getByRole("button",{name:"取消",exact:true}).click();
-  await expect(editor).toContainText("unsaved");await expect(page.getByLabel("变更说明",{exact:true})).toHaveValue("整理共享源码文件。");
+  await expect(editor).toContainText("unsaved");await expect(page.getByLabel("版本说明",{exact:true})).toHaveValue("整理共享源码文件。");
   const mainSource='/include/ "part.dtsi"\n/ { replaced {}; };\n';
   await add.setInputFiles({name:"main.dtsi",mimeType:"text/plain",buffer:Buffer.from(mainSource)});
   conflict=page.getByRole("dialog",{name:"替换重名文件？",exact:true});await conflict.getByRole("button",{name:"替换重名文件",exact:true}).click();
   await expect(editor).toContainText("replaced");
   await files.getByRole("button",{name:"part.dtsi",exact:true}).focus();await page.keyboard.press("Enter");
   await page.getByRole("button",{name:"保存草稿",exact:true}).click();await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"返回编辑",exact:true}).click();
   const resourceId=new URL(page.url()).searchParams.get("resource")!;
   const beforeRename=(await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}`)).body as {item:{members:{id:string;sourceName:string;content:string}[]}};
   const originalMemberId=beforeRename.item.members.find(member=>member.sourceName==="part.dtsi")!.id;
@@ -69,7 +91,7 @@ test("safely adds, renames and removes draft members while retaining editor cont
     await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     // The line budget is measured after scrolling the normal collapsed-settings workspace to the editor.
     await editor.scrollIntoViewIfNeeded();
-    const previewAction=page.getByRole("button",{name:"预览发布",exact:true});
+    const previewAction=page.getByRole("button",{name:"准备发布",exact:true});
     await expect(previewAction).toBeInViewport({ratio:1});
     expect(await previewAction.evaluate(element=>{const rect=element.getBoundingClientRect(),hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);return hit===element || element.contains(hit);})).toBe(true);
     const font=await page.locator(".cm-editor").evaluate(element=>({size:getComputedStyle(element).fontSize,token:getComputedStyle(element).getPropertyValue("--text-sm").trim()}));
@@ -95,7 +117,7 @@ test("safely adds, renames and removes draft members while retaining editor cont
   await page.getByRole("button",{name:"移除当前文件",exact:true}).click();await page.getByRole("dialog",{name:"移除文件？"}).getByRole("button",{name:"移除文件",exact:true}).click();
   await page.getByRole("button",{name:"移除当前文件",exact:true}).click();await page.getByRole("dialog",{name:"移除文件？"}).getByRole("button",{name:"移除文件",exact:true}).click();
   await expect(page.getByText("暂无源码文件，请添加文件或新建源码。",{exact:true})).toBeVisible();
-  await expect(page.getByRole("button",{name:"保存草稿",exact:true})).toBeDisabled();await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeDisabled();
+  await expect(page.getByRole("button",{name:"保存草稿",exact:true})).toBeDisabled();await expect(page.getByRole("button",{name:"准备发布",exact:true})).toBeDisabled();
 });
 test("locates a long source path without losing edits in another member",async({page,catalogAcceptanceRuntime},testInfo)=>{
   void catalogAcceptanceRuntime;
@@ -114,10 +136,10 @@ test("locates a long source path without losing edits in another member",async({
   await expect(page.locator(".shared-dtsi-title")).not.toHaveAttribute("tabindex","0");
   const longName="长".repeat(160);
   await page.getByLabel("资源名称",{exact:true}).fill(longName);
-  await page.getByLabel("变更说明",{exact:true}).fill("检查长路径定位");
+  await page.getByRole("button",{name:"准备发布",exact:true}).click();await page.getByLabel("版本说明",{exact:true}).fill("检查长路径定位");
   await page.getByRole("button",{name:"保存草稿",exact:true}).click();
   await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
-  await page.getByRole("button",{name:"预览发布",exact:true}).click();
+  await page.getByRole("button",{name:"检查并预览",exact:true}).click();
   const alert=page.getByRole("alert");
   await expect(alert).toContainText("缺少依赖文件 missing.dtsi");
   const locate=alert.getByRole("button",{name:`定位源码：${longPath}:1:1`,exact:true});
@@ -125,7 +147,7 @@ test("locates a long source path without losing edits in another member",async({
   await files.getByRole("button",{name:"library/other.dtsi",exact:true}).click();
   const editor=page.getByLabel("DTSI 源码",{exact:true});
   await editor.click();await page.keyboard.press("ControlOrMeta+End");await page.keyboard.insertText("// unsaved local edit");
-  await page.getByLabel("变更说明",{exact:true}).fill("未保存的说明");
+  await page.getByLabel("版本说明",{exact:true}).fill("未保存的说明");
   for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
     await page.setViewportSize(viewport);
     const title=page.locator(".shared-dtsi-heading h1"),titleText=title.locator(".shared-dtsi-title");
@@ -164,7 +186,7 @@ test("locates a long source path without losing edits in another member",async({
     await files.getByRole("button",{name:"library/other.dtsi",exact:true}).click();
     await expect(editor).toContainText("original");
     await expect(editor).toContainText("unsaved local edit");
-    await expect(page.getByLabel("变更说明",{exact:true})).toHaveValue("未保存的说明");
+    await expect(page.getByLabel("版本说明",{exact:true})).toHaveValue("未保存的说明");
   }
   expect(pageErrors).toEqual([]);expect(serverErrors).toEqual([]);
 });
@@ -219,13 +241,13 @@ test("imports a relative ZIP library, repairs missing dependencies and publishes
   expect(Math.abs(archiveBox!.y-settingsBox!.y)).toBeLessThan(24);
   expect(archiveBox!.x).toBeGreaterThanOrEqual(settingsBox!.x+settingsBox!.width);
   await page.getByText("构建设置",{exact:true}).click();
-  await page.getByLabel("变更说明",{exact:true}).fill("保留完整源码与目录，供项目引用。");
+  await page.getByRole("button",{name:"准备发布",exact:true}).click();await page.getByLabel("版本说明",{exact:true}).fill("保留完整源码与目录，供项目引用。");
   await page.getByRole("button",{name:"保存草稿",exact:true}).click();
   await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
   const resourceId=new URL(page.url()).searchParams.get("resource")!;
   const files=page.getByRole("navigation",{name:"资源文件",exact:true});
   await files.getByRole("button",{name:"library/main.dtsi",exact:true}).click();
-  await page.getByRole("button",{name:"预览发布",exact:true}).click();
+  await page.getByRole("button",{name:"检查并预览",exact:true}).click();
   await expect(page.getByRole("alert")).toContainText("library/main.dtsi:1:1");
   await expect(page.getByRole("alert")).toContainText("missing.dtsi");
   await page.getByText("构建设置",{exact:true}).click();
@@ -247,9 +269,12 @@ test("imports a relative ZIP library, repairs missing dependencies and publishes
     });
     const lineHeight=await editor.locator(".cm-line").first().evaluate(node=>parseFloat(getComputedStyle(node).lineHeight));
     expect(visible/lineHeight).toBeGreaterThanOrEqual(viewport.lines);
+    await expect(page.getByLabel("版本说明",{exact:true})).toBeInViewport({ratio:1});
+    await expect(page.getByRole("button",{name:"检查并预览",exact:true})).toBeInViewport({ratio:1});
     await expect(page.getByLabel("文件路径",{exact:true})).toBeInViewport({ratio:1});
     await expect(page.getByRole("button",{name:"移除当前文件",exact:true})).toBeInViewport({ratio:1});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await catalogScreenshot(page,testInfo,`shared-dtsi-error-preparation-${viewport.width}`);
   }
   await page.setViewportSize({width:1440,height:900});
   await catalogScreenshot(page,testInfo,"shared-dtsi-multifile-missing-1440");
@@ -265,10 +290,11 @@ test("imports a relative ZIP library, repairs missing dependencies and publishes
   await page.getByLabel("文件路径",{exact:true}).fill("library/parts/missing.dtsi");
   await files.getByRole("button",{name:"library/main.dtsi",exact:true}).focus();
   await page.keyboard.press("Enter");
-  await page.getByRole("button",{name:"预览发布",exact:true}).click();
-  await expect(page.getByRole("heading",{name:"发布 battery-library",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"检查并预览",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"发布预览",exact:true})).toBeVisible();
+  await expect(page.getByRole("region",{name:"发布摘要",exact:true}).getByText("battery-library",{exact:true})).toBeVisible();
   await expect(page.getByText("project_host",{exact:true})).toBeVisible();
-  await page.getByRole("combobox",{name:"比较文件",exact:true}).click();await page.getByRole("option",{name:"新增 → include/constants.h",exact:true}).click();
+  await page.getByRole("combobox",{name:"比较文件",exact:true}).click();await page.getByRole("option",{name:"新增 include/constants.h",exact:true}).click();
   await expect(page.getByRole("region",{name:"共享原始源码修改片段",exact:true})).toContainText("#define VOLTAGE 42");
   await page.setViewportSize({width:1280,height:800});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -287,6 +313,9 @@ test("imports a relative ZIP library, repairs missing dependencies and publishes
   await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toHaveAttribute("aria-readonly","true");
   await page.setViewportSize({width:1440,height:900});
   await catalogScreenshot(page,testInfo,"shared-dtsi-multifile-published-1440");
+  await page.getByRole("button",{name:"返回资源列表",exact:true}).click();
+  const listed=page.getByRole("row").filter({has:page.getByRole("button",{name:"battery-library",exact:true})});
+  await expect(listed).toContainText("已发布 · 3 个文件");await expect(listed).not.toContainText("library/main.dtsi");
   expect(pageErrors).toEqual([]);expect(serverErrors).toEqual([]);
 });
 
@@ -296,9 +325,9 @@ test("keeps long diagnostics readable and file actions reachable",async({page,ca
   await page.getByRole("button",{name:"导入资源",exact:true}).click();
   const missing=`${"long".repeat(32)}.dtsi`;
   await page.locator('input[type="file"]').first().setInputFiles({name:"long-error.dtsi",mimeType:"text/plain",buffer:Buffer.from(`/include/ "${missing}"\n/ {};\n`)});
-  await page.getByLabel("变更说明",{exact:true}).fill("验证长路径错误。");
+  await page.getByRole("button",{name:"准备发布",exact:true}).click();await page.getByLabel("版本说明",{exact:true}).fill("验证长路径错误。");
   await page.getByRole("button",{name:"保存草稿",exact:true}).click();await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
-  await page.getByRole("button",{name:"预览发布",exact:true}).click();
+  await page.getByRole("button",{name:"检查并预览",exact:true}).click();
   const error=page.getByRole("alert");await expect(error).toContainText(missing);
   await page.getByText("构建设置",{exact:true}).click();
   for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
@@ -338,8 +367,10 @@ test("selects a fixed cross-resource dependency in the full resource editor and 
   await page.getByLabel("资源名称",{exact:true}).fill(`Platform ${Date.now()}`);
   await page.getByRole("button",{name:"保存草稿",exact:true}).click();
   await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
-  await expect(page.getByLabel("变更说明",{exact:true})).toHaveAccessibleDescription("发布前请填写变更说明。");
-  await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeDisabled();
+  await expect(page.getByLabel("版本说明",{exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"准备发布",exact:true}).click();await page.getByRole("button",{name:"检查并预览",exact:true}).click();
+  await expect(page.getByLabel("版本说明",{exact:true})).toHaveAccessibleDescription("请填写版本说明。");
+  await page.getByRole("button",{name:"返回编辑",exact:true}).click();
   await page.getByText("引用其他共享资源",{exact:true}).click();
   await page.getByRole("button",{name:"选择共享资源",exact:true}).focus();await page.keyboard.press("Enter");
   await page.getByLabel("搜索共享资源",{exact:true}).focus();await page.keyboard.type(name);
@@ -372,7 +403,7 @@ test("selects a fixed cross-resource dependency in the full resource editor and 
   await page.getByText("构建设置",{exact:true}).click();
   await page.getByLabel("头文件搜索目录",{exact:true}).fill("vendor");
   await page.getByLabel("预处理宏",{exact:true}).fill("ENABLED=1");
-  await page.getByLabel("变更说明",{exact:true}).fill("#1417 reviewed fixed cross-resource closure");
+  await page.getByRole("button",{name:"准备发布",exact:true}).click();await page.getByLabel("版本说明",{exact:true}).fill("#1417 reviewed fixed cross-resource closure");
   await page.getByRole("button",{name:"保存草稿",exact:true}).click();
   await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();const resourceId=new URL(page.url()).searchParams.get("resource")!;
   await page.reload();
@@ -383,12 +414,13 @@ test("selects a fixed cross-resource dependency in the full resource editor and 
   await expect(page.getByLabel("头文件搜索目录",{exact:true})).toHaveValue("vendor");
   await expect(page.getByLabel("预处理宏",{exact:true})).toHaveValue("ENABLED=1");
   await page.getByText("构建设置",{exact:true}).click();
+  await page.getByRole("button",{name:"准备发布",exact:true}).click();
   for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
     await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-    await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeInViewport({ratio:1});
+    await expect(page.getByRole("button",{name:"检查并预览",exact:true})).toBeInViewport({ratio:1});
     await catalogScreenshot(page,testInfo,`shared-dependency-editor-${viewport.width}`);
   }
-  await page.getByRole("button",{name:"预览发布",exact:true}).click();
+  await page.getByRole("button",{name:"检查并预览",exact:true}).click();
   await page.getByText("完整固定依赖（1）",{exact:true}).click();
   const closure=page.locator("details").filter({has:page.getByText("完整固定依赖（1）",{exact:true})});
   const pin=closure.getByRole("listitem").filter({hasText:name});

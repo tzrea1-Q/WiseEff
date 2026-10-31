@@ -22,7 +22,7 @@ test("preserves multifile edits after a real revision conflict and rejects a rea
   await expect(page.getByLabel("资源名称",{exact:true})).toHaveValue("Conflict multifile");
   await editor.click();await page.keyboard.press("ControlOrMeta+End");await page.keyboard.insertText("// local main\n");
   await files.getByRole("button",{name:"part.dtsi",exact:true}).click();await editor.click();await page.keyboard.press("ControlOrMeta+End");await page.keyboard.insertText("// local part\n");
-  await page.getByLabel("变更说明",{exact:true}).fill("本地未保存说明");
+  await page.getByRole("button",{name:"准备发布",exact:true}).click();await page.getByLabel("版本说明",{exact:true}).fill("本地未保存说明");
   await page.getByText("构建设置",{exact:true}).click();await page.getByLabel("预处理宏",{exact:true}).fill("ENABLED=2");
   await page.getByLabel("头文件搜索目录",{exact:true}).fill("local/include");
   await expect(page.locator(".shared-dtsi-dependencies > summary").getByText("Conflict dependency · 版本 1 · vendor",{exact:true})).toBeVisible();
@@ -33,7 +33,7 @@ test("preserves multifile edits after a real revision conflict and rejects a rea
   await expect(page.getByRole("alert")).toContainText("草稿已被更新");
   await page.getByRole("button",{name:"重新载入",exact:true}).click();await page.getByRole("dialog",{name:"重新载入草稿？"}).getByRole("button",{name:"继续编辑",exact:true}).click();
   await expect(editor).toContainText("local part");await files.getByRole("button",{name:"main.dtsi",exact:true}).click();await expect(editor).toContainText("local main");
-  await expect(page.getByLabel("变更说明",{exact:true})).toHaveValue("本地未保存说明");
+  await expect(page.getByLabel("版本说明",{exact:true})).toHaveValue("本地未保存说明");
   await expect(page.getByLabel("预处理宏",{exact:true})).toHaveValue("ENABLED=2");await expect(page.getByLabel("头文件搜索目录",{exact:true})).toHaveValue("local/include");
   await expect(page.locator(".shared-dtsi-dependencies > summary").getByText("Conflict dependency · 版本 1 · vendor",{exact:true})).toBeVisible();
   const reader=await page.context().newPage();
@@ -41,7 +41,7 @@ test("preserves multifile edits after a real revision conflict and rejects a rea
     await signInCatalogActor(reader,"guest",`/parameter-admin/sources?resource=${draft.resourceId}`);await dismissXiaozeHint(reader);
     await expect(reader.getByLabel("文件路径",{exact:true})).toHaveAttribute("readonly","");
     await expect(reader.getByLabel("DTSI 源码",{exact:true})).toHaveAttribute("aria-readonly","true");
-    for(const name of ["添加文件","添加目录","替换源码","替换为目录","新建源码","移除当前文件","保存草稿","预览发布"])await expect(reader.getByRole("button",{name,exact:true})).toHaveCount(0);
+    for(const name of ["添加文件","添加目录","替换源码","替换为目录","新建源码","移除当前文件","保存草稿","准备发布","资源更多操作"])await expect(reader.getByRole("button",{name,exact:true})).toHaveCount(0);
     await expect(reader.locator('input[type="file"]')).toHaveCount(0);
     const rejected=await catalogJson(reader.request,"PUT",`/api/v2/shared-dtsi/${draft.resourceId}/draft`,{actor:"guest",data:{name:"Unauthorized",members:draft.members,changeDescription:"",expectedRevision:draft.revision+1}});
     expect(rejected.status).toBe(403);
@@ -82,7 +82,7 @@ test("imports and edits a shared DTSI draft, keeps stale input, and discards wit
   const leave = page.getByRole("dialog", { name: "重新载入草稿？" });
   await leave.getByRole("button", { name: "重新载入", exact: true }).click();
   await expect(page.getByLabel("资源名称")).toHaveValue("Concurrent administrator draft");
-  await page.getByRole("button", { name: "丢弃草稿", exact: true }).click();
+  await page.getByRole("button", { name: "资源更多操作", exact: true }).click();await page.getByRole("menuitem", { name: "丢弃草稿", exact: true }).click();
   const discard = page.getByRole("dialog", { name: "丢弃共享 DTSI 草稿？" });
   await discard.getByRole("button", { name: "丢弃草稿", exact: true }).focus();
   await page.keyboard.press("Enter");

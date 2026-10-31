@@ -18,7 +18,7 @@ it("converts an explicitly selected private source through the shared chooser an
   const client={upload:vi.fn(),preview:vi.fn(async()=>preview),apply:vi.fn().mockRejectedValue(new Error("来源已变化"))};
   render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]}
     conversionSource={{configRevisionId:"original",fileId:"private",fileVersionId:"private-v1",sourceName:file.sourceName}}
-    client={client} sharedClient={{list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:file.sourceName,draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:{id:versionId,resourceId,version:1,name:"Power",changeDescription:"Private source",digest:"fixed",createdAt:"today",createdByUserId:"admin"}}],total:1})),versions:vi.fn(async()=>({items:[{id:versionId,resourceId,version:1,name:"Power",changeDescription:"Private source",digest:"fixed",createdAt:"today",createdByUserId:"admin"}],total:1}))}}
+    client={client} sharedClient={{list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:file.sourceName,memberCount:1,draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:{id:versionId,resourceId,version:1,name:"Power",changeDescription:"Private source",digest:"fixed",createdAt:"today",createdByUserId:"admin"}}],total:1})),versions:vi.fn(async()=>({items:[{id:versionId,resourceId,version:1,name:"Power",changeDescription:"Private source",digest:"fixed",createdAt:"today",createdByUserId:"admin"}],total:1}))}}
     onDismiss={vi.fn()} onApplied={vi.fn()}/>);
   expect(screen.getByRole("dialog")).toHaveAccessibleName("转换为共享引用");
   expect(screen.getByText("文件用途、顺序和项目根入口保持原样。")).toBeVisible();
@@ -135,7 +135,7 @@ it("requires an explicit published version and clears its proof when the version
   const user = userEvent.setup(), resourceId = "11111111-1111-4111-8111-111111111111", versionId = "22222222-2222-4222-8222-222222222222";
   const summary = { id: versionId, resourceId, version: 1, name: "Shared limits", changeDescription: "Initial limits", digest: "sha256:fixed", createdAt: "2026-10-24", createdByUserId: "author" };
   const sharedClient = {
-    list: vi.fn(async () => ({ items: [{ resourceId, name: "Shared limits", updatedAt: "2026-10-24", sourceName: "limits.dtsi",state:"active" as const,lifecycleRevision:1, draftRevision: null, currentVersion: summary }], total: 1 })),
+    list: vi.fn(async () => ({ items: [{ resourceId, name: "Shared limits", updatedAt: "2026-10-24", sourceName: "limits.dtsi",memberCount:1,state:"active" as const,lifecycleRevision:1, draftRevision: null, currentVersion: summary }], total: 1 })),
     versions: vi.fn(async () => ({ items: [summary, { ...summary, id: "33333333-3333-4333-8333-333333333333", version: 2 }], total: 2 }))
   };
   const bodies: Array<Record<string, unknown>> = [];
