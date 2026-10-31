@@ -12,6 +12,7 @@ import { SearchField } from "@/components/common/SearchField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { TabPanel } from "@/components/ui/tab-panel";
 import { WorkbenchDtsEditor, type WorkbenchDtsEditorHandle, type WorkbenchDtsEditorSessions } from "@/components/project-configuration-workbench/WorkbenchDtsEditor";
@@ -44,19 +45,32 @@ const buildTexts = (input: SharedDtsiDraftInput["buildInputs"]) => ({ paths: inp
 function buildInputsFromText(paths: string, macros: string): SharedDtsiDraftInput["buildInputs"] {
   const entries = macros.split("\n").filter(line => line.trim()).map(line => {
     const at = line.indexOf("=");
-    if (at < 1) throw new WiseEffApiError("VALIDATION_FAILED", "构建宏每行填写 NAME=value。", {field:"defines"}, "");
+    if (at < 1) throw new WiseEffApiError("VALIDATION_FAILED", "预处理宏每行填写 NAME=value。", {field:"defines"}, "");
     return [line.slice(0, at).trim(), line.slice(at + 1).trim()] as const;
   });
-  if (new Set(entries.map(([name]) => name)).size !== entries.length) throw new WiseEffApiError("VALIDATION_FAILED", "构建宏名称重复，请保留一个明确的值。", {field:"defines"}, "");
+  if (new Set(entries.map(([name]) => name)).size !== entries.length) throw new WiseEffApiError("VALIDATION_FAILED", "预处理宏名称重复，请保留一个明确的值。", {field:"defines"}, "");
   const parsed = dtsBuildInputsSchema.safeParse({ includeSearchPaths: paths.split("\n").map(path => path.trim()).filter(Boolean), defines: Object.fromEntries(entries) });
   if (!parsed.success) throw new WiseEffApiError("VALIDATION_FAILED", parsed.error.issues[0]?.message ?? "构建设置无效。", {issues:parsed.error.issues}, "");
   return parsed.data.includeSearchPaths.length || Object.keys(parsed.data.defines).length ? parsed.data : undefined;
 }
 const fixedBuildInputs = (input: SharedDtsiVersion["manifest"]["buildInputs"]) => input.includeSearchPaths.length || Object.keys(input.defines ?? {}).length
   ? <details className="shared-dtsi-build-inputs"><summary>构建设置</summary><dl className="shared-dtsi-metadata">
-    {input.includeSearchPaths.length ? <div><dt>Include 搜索目录</dt><dd>{input.includeSearchPaths.join("\n")}</dd></div> : null}
-    {Object.keys(input.defines ?? {}).length ? <div><dt>构建宏</dt><dd>{buildTexts({ includeSearchPaths: [], defines: input.defines ?? {} }).defines}</dd></div> : null}
+    {input.includeSearchPaths.length ? <div><dt>头文件搜索目录</dt><dd>{input.includeSearchPaths.join("\n")}</dd></div> : null}
+    {Object.keys(input.defines ?? {}).length ? <div><dt>预处理宏</dt><dd>{buildTexts({ includeSearchPaths: [], defines: input.defines ?? {} }).defines}</dd></div> : null}
   </dl></details> : null;
+
+function SharedDtsiTitle({name,draft=false}:{name:string;draft?:boolean}) {
+  const ref=useRef<HTMLSpanElement>(null),[truncated,setTruncated]=useState(false);
+  useEffect(()=>{
+    const element=ref.current;if(!element)return;
+    const update=()=>setTruncated(element.scrollWidth>element.clientWidth);
+    if(typeof ResizeObserver==="undefined") {const frame=requestAnimationFrame(update);window.addEventListener("resize",update);return()=>{cancelAnimationFrame(frame);window.removeEventListener("resize",update);};}
+    const observer=new ResizeObserver(update);observer.observe(element);return()=>observer.disconnect();
+  },[name]);
+  return <h1><TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild>
+    <span ref={ref} className="shared-dtsi-title" tabIndex={truncated?0:undefined /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- A truncated title must expose its tooltip to keyboard users. */}>{name}</span>
+  </TooltipTrigger>{truncated?<TooltipContent className="shared-dtsi-title-tooltip" side="bottom" align="start">{name}</TooltipContent>:null}</Tooltip></TooltipProvider>{draft?<span className="shared-dtsi-draft-label">草稿</span>:null}</h1>;
+}
 
 export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,canProposeSource=false,canReviewSource=false,search, organizationId, onNavigate }: Props) {
   const client = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : null, [apiClient]);
@@ -533,7 +547,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
 
   if (published || tab === "versions" || tab === "usages") return <section className="shared-dtsi-page shared-dtsi-page--editor shared-dtsi-page--resource" aria-label="共享 DTSI 版本" aria-busy={pending}>
     <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={() => void navigate("")} disabled={pending || creatingHere}><ArrowLeft aria-hidden="true" />返回</Button>
-      <h1>{published?.name ?? detail?.name ?? "共享 DTSI"}</h1>
+      <SharedDtsiTitle name={published?.name ?? detail?.name ?? "共享 DTSI"} />
       {projectReturnPath ? <a href={projectReturnPath} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(projectReturnPath); } }}>返回项目节点</a> : null}</div>
       {lifecycleControls}{canWrite && detail?.state!=="retired" && detail?.currentVersion ? <Button disabled={pending} onClick={() => detail.draftRevision ? void navigate(selected,{version:"draft",tab:"source"})
         : published && published.id!==detail.currentVersion!.id ? void navigate(selected,{version:detail.currentVersion!.id,tab:"source"}) : void createVersionDraft()}>
@@ -604,7 +618,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
 
   return <section className="shared-dtsi-page shared-dtsi-page--editor shared-dtsi-page--resource" aria-label="共享 DTSI 草稿" aria-busy={pending || creatingHere}>
     <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={() => void navigate("")} disabled={pending || creatingHere}><ArrowLeft aria-hidden="true" />返回</Button>
-      <h1>{draft?.name ?? (selected === "new" ? "导入共享 DTSI" : "共享 DTSI")}{draft ? <span className="shared-dtsi-draft-label">草稿</span> : null}</h1>
+      <SharedDtsiTitle name={draft?.name ?? (selected === "new" ? "导入共享 DTSI" : "共享 DTSI")} draft={Boolean(draft)} />
       {detail?.currentVersion ? <Button variant="ghost" disabled={pending} onClick={()=>void navigate(selected,{version:detail.currentVersion!.id,tab:"source"})}>查看已发布版本</Button> : null}</div>
       <div className="shared-dtsi-actions">{saved === selected ? <span role="status">草稿已保存</span> : null}{!canWrite && creatingHere?<span role="status">正在保存草稿，请稍候。</span>:null}{lifecycleControls}
         {canWrite && (draft || selected==="new") ? <Button variant="outline" disabled={pending || creatingHere || uncertainCreate || !dirty || conflict || !form.name.trim() || !members.length || invalidMembers || missingSource} onClick={() => void save()}>{operation==="saving" || creatingHere ? "保存中…" : "保存草稿"}</Button> : null}
@@ -612,11 +626,11 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     </header>
     <div className="shared-dtsi-resource-body">
     {loading ? <SectionSkeleton label="正在加载共享 DTSI 草稿" /> : error && !draft && selected !== "new" ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : <>
-      {uncertainCreate?<div className="shared-dtsi-error" role="alert"><p>保存结果未确认。请先核对资源列表；本页输入会保留。</p><a href={path("")} target="_blank" rel="noreferrer">在新窗口核对资源列表</a>{canWrite?<Button variant="outline" size="sm" onClick={()=>{setUncertainCreate(false);setError("");}}>已核对，可重试</Button>:null}</div>:error && !["name", "sourceName", "defines", "includeSearchPaths", "changeDescription"].some(field => fieldError(field)) ? <div className="shared-dtsi-error" role="alert">{diagnostic && diagnosticIndex >= 0
+      <div className="shared-dtsi-status-line">{uncertainCreate?<div className="shared-dtsi-error" role="alert"><p>保存结果未确认。请先核对资源列表；本页输入会保留。</p><a href={path("")} target="_blank" rel="noreferrer">在新窗口核对资源列表</a>{canWrite?<Button variant="outline" size="sm" onClick={()=>{setUncertainCreate(false);setError("");}}>已核对，可重试</Button>:null}</div>:error && !["name", "sourceName", "defines", "includeSearchPaths", "changeDescription"].some(field => fieldError(field)) ? <div className="shared-dtsi-error" role="alert">{diagnostic && diagnosticIndex >= 0
         ? <><p>{diagnostic.message}</p><Button variant="outline" size="sm" className="shared-dtsi-error__location" onClick={() => { if (diagnosticIndex !== memberIndex) selectMember(diagnosticIndex); setDiagnosticTarget({index:diagnosticIndex,line:diagnostic.line,column:diagnostic.column}); }}>定位源码：{diagnostic.sourceName}:{diagnostic.line}:{diagnostic.column}</Button></>
         : diagnostic && diagnosticHref ? <><p>{diagnostic.message}</p><a className="shared-dtsi-error__location" href={diagnosticHref} target="_blank" rel="noreferrer">查看源码：{diagnostic.sourceName}:{diagnostic.line}:{diagnostic.column}（新窗口）</a></>
         : issueMemberIndex >= 0 && sourceMembers(form)[issueMemberIndex] ? <><p>{issue?.message}</p><Button variant="outline" size="sm" className="shared-dtsi-error__location" onClick={() => { if (issueMemberIndex !== memberIndex) selectMember(issueMemberIndex); setPathTarget(issueMemberIndex); }}>定位文件路径：{sourceMembers(form)[issueMemberIndex]!.sourceName}</Button></>
-        : <p>{error}</p>}{conflict ? <Button variant="outline" onClick={() => setReloadOpen(true)}>重新载入</Button> : null}</div> : null}
+        : <p>{error}</p>}{conflict ? <Button variant="outline" onClick={() => setReloadOpen(true)}>重新载入</Button> : null}</div> : null}</div>
       {postSaveChanged?<p role="status">{selected==="new"?"草稿已创建，请核对后继续。":"草稿在保存后已更新，已载入最新版本。"}</p>:null}
       {draft?.sourceEvidence ? <p className="shared-dtsi-hint">已复制所选私有源码及依赖。本组织有查看权限的用户可读取草稿与发布版本；来源项目配置保持不变。</p> : null}
       {preparing ? <section className="shared-dtsi-preparation" aria-labelledby="shared-dtsi-preparation-title"><div className="shared-dtsi-preparation-heading"><h2 id="shared-dtsi-preparation-title">发布准备</h2><Button variant="outline" size="sm" disabled={pending} onClick={()=>{setPreparing(false);setDescriptionMissing(false);previewButton.current?.focus();}}>返回编辑</Button></div><label className="shared-dtsi-change-description">版本说明<Textarea ref={descriptionInput} aria-label="版本说明" aria-invalid={Boolean(descriptionMissing || fieldError("changeDescription"))} aria-describedby={descriptionMissing || fieldError("changeDescription") ? "shared-description-error" : undefined} value={form.changeDescription} maxLength={1000} rows={2}
@@ -627,15 +641,17 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
       </div>
       {importing?<div role="status">正在检查文件… <Button variant="ghost" onClick={()=>{importSequence.current++;setImporting(false);}}>取消</Button></div>:null}
       {ignoredFiles.length?<details className="shared-dtsi-ignored"><summary>已忽略 {ignoredFiles.length} 个非源码文件</summary><ul>{ignoredFiles.map(name=><li key={name}>{name}：不支持的文件类型</li>)}</ul></details>:null}
+      <div className="shared-dtsi-editing-panels"><div className="shared-dtsi-settings">
       {canWrite?<SharedDtsiDependencies client={client} value={form.dependencies??[]} resourceId={draft?.resourceId} disabled={pending}
         sourceHref={(resourceId,versionId)=>path(resourceId,{version:versionId,tab:"source"})}
         onChange={dependencies=>{edits.current+=1;setForm(current=>({...current,dependencies}));setPreview(null);setSaved(null);}} />:null}
       <details className="shared-dtsi-build-inputs" open={fieldError("defines") || fieldError("includeSearchPaths") ? true : undefined}><summary>构建设置</summary><div className="shared-dtsi-fields">
-        <label>Include 搜索目录<Textarea aria-label="Include 搜索目录" aria-invalid={Boolean(fieldError("includeSearchPaths"))} aria-describedby={fieldError("includeSearchPaths") ? "shared-search-path-error" : undefined} rows={2} value={buildText.paths} placeholder="每行一个资源内目录，例如 include" readOnly={!canWrite} disabled={pending}
+        <label>头文件搜索目录<Textarea aria-label="头文件搜索目录" aria-invalid={Boolean(fieldError("includeSearchPaths"))} aria-describedby={fieldError("includeSearchPaths") ? "shared-search-path-error" : undefined} rows={2} value={buildText.paths} placeholder="每行一个资源内目录，例如 include" readOnly={!canWrite} disabled={pending}
           onChange={event => { edits.current += 1; setBuildText({ ...buildText, paths: event.target.value }); setSaved(null); setPreview(null); }} />{fieldError("includeSearchPaths") ? <span id="shared-search-path-error" role="alert">{fieldError("includeSearchPaths")}</span> : null}</label>
-        <label>构建宏<Textarea aria-label="构建宏" aria-invalid={Boolean(fieldError("defines"))} aria-describedby={fieldError("defines") ? "shared-macro-error" : undefined} rows={2} value={buildText.defines} placeholder="每行 NAME=value，例如 ENABLED=1" readOnly={!canWrite} disabled={pending}
+        <label>预处理宏<Textarea aria-label="预处理宏" aria-invalid={Boolean(fieldError("defines"))} aria-describedby={fieldError("defines") ? "shared-macro-error" : undefined} rows={2} value={buildText.defines} placeholder="每行 NAME=value，例如 ENABLED=1" readOnly={!canWrite} disabled={pending}
           onChange={event => { edits.current += 1; setBuildText({ ...buildText, defines: event.target.value }); setSaved(null); setPreview(null); }} />{fieldError("defines") ? <span id="shared-macro-error" role="alert">{fieldError("defines")}</span> : null}</label>
-      </div></details>
+      </div></details></div>
+      <div className="shared-dtsi-editor-column">
       {missingSource?<p className="shared-dtsi-error" role="status">请至少保留一个 .dts 或 .dtsi 文件。</p>:null}
       {members.length?<div className="shared-dtsi-fields"><label>文件路径<Input ref={sourcePath} aria-label="文件路径" aria-invalid={Boolean(memberPathError(memberIndex) || fieldError("sourceName"))} aria-describedby={memberPathError(memberIndex) || fieldError("sourceName")?"shared-member-path-error":undefined} value={form.sourceName} maxLength={240} readOnly={!canWrite} disabled={pending} onChange={event => { edits.current+=1;
           setForm({ ...form, sourceName: event.target.value,...(form.members?{members:form.members.map((member,index)=>index===memberIndex?{...member,sourceName:event.target.value}:member)}:{}) }); setSaved(null); }} />{memberPathError(memberIndex) || fieldError("sourceName")?<span id="shared-member-path-error" role="alert">{memberPathError(memberIndex) || fieldError("sourceName")}</span>:null}</label>
@@ -648,7 +664,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
           const previous = form.members?.[memberIndex], next = current.members?.[memberIndex];
           if (current.archive || current.sourceName !== form.sourceName || (previous?.id ? previous.id !== next?.id : previous?.sourceName !== next?.sourceName)) return current;
           return withContent(current,memberIndex,snapshot.text);
-        }); }} onSave={() => void save()} /></div></div>}
+        }); }} onSave={() => void save()} /></div></div>}</div></div>
     </>}
     </div>
     <SettingsLeaveGuard dirty={(localDirty || creatingHere) && !leaving} saving={pending || creatingHere} description={uncertainCreate?"保存结果未确认，资源可能已创建。离开后请先核对资源列表；本页未保存的输入将丢失。":"离开将放弃本页未保存的修改，已保存的草稿不会受到影响。"} />

@@ -112,6 +112,10 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       const search = sharedDtsiListSchema.parse((await publicationCall<unknown>(`?q=${encodeURIComponent(query)}`)).body);
       expect(search.items).toEqual([expect.objectContaining({ resourceId: versioned.resourceId, sourceName: "published/a.dtsi", memberCount: 2,memberCountScope:"published" })]);
     }
+    const eligible=sharedDtsiListSchema.parse((await publicationCall<unknown>("?q=CountTarget&eligible=1&limit=1")).body);
+    expect(eligible).toMatchObject({total:1,items:[{resourceId:versioned.resourceId,memberCount:2,memberCountScope:"published"}]});
+    const excluded=sharedDtsiListSchema.parse((await publicationCall<unknown>(`?q=CountTarget&eligible=1&exclude=${versioned.resourceId}&limit=1`)).body);
+    expect(excluded).toEqual({items:[],total:0});
     const detail = await publicationCall<unknown>(`/${versioned.resourceId}/detail`);
     const detailItem = sharedDtsiResourceDetailSchema.parse((detail.body as {item:unknown}).item);
     expect(detailItem).not.toHaveProperty("memberCount");expect(detailItem).not.toHaveProperty("memberCountScope");
@@ -193,6 +197,52 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
       members: [{ id: draft.members[0]!.id, sourceName: "inc/battery.dtsi", content }] });
     expect((await call(`/${draft.resourceId}/draft`, "DELETE", { expectedRevision: 2 })).status).toBe(200);
     expect((await call(`/${draft.resourceId}`)).status).toBe(404);
+  });
+
+  it("filters eligible references before pagination within the authorized organization", async () => {
+    const name="Picker scope", ids:string[]=[];
+    for(let index=0;index<23;index++) {
+      const created=await call("","POST",{name:`${name} ${index}`,sourceName:"picker.dtsi",content:source,changeDescription:"Picker"});
+      expect(created.status,created.bodyText).toBe(201);ids.push(created.body.item.resourceId);
+    }
+    type List={items:{resourceId:string}[];total:number};
+    const list=(query:string,actor=auth)=>publicationCall<List>(`?eligible=1&q=Picker%20scope&${query}`,"GET",undefined,actor);
+    expect((await list("limit=20")).body).toEqual({items:[],total:0});
+    for(const id of ids.slice(0,2)) {
+      const preview=await publicationCall<{item:{id:string}}>(`/${id}/publication-preview`,"POST",{expectedRevision:1});
+      expect(preview.status,preview.bodyText).toBe(201);
+      const published=await publicationCall(`/${id}/publications`,"POST",{previewId:preview.body.item.id,idempotencyKey:`picker-${id}`});
+      expect(published.status,published.bodyText).toBe(201);
+    }
+    await db.query("update public.shared_dtsi_resources set updated_at=updated_at+interval '24 hours' where id=any($1::text[])",[ids.slice(2)]);
+    try {
+      const unfiltered=await publicationCall<List>("?q=Picker%20scope&limit=20");
+      expect(unfiltered.body.items).toHaveLength(20);
+      expect(unfiltered.body.items.every(item=>!ids.slice(0,2).includes(item.resourceId))).toBe(true);
+      const first=await list("limit=1&offset=0"),second=await list("limit=1&offset=1");
+      expect(first.status).toBe(200);expect(first.body.total).toBe(2);expect(second.body.total).toBe(2);
+      expect(new Set([...first.body.items,...second.body.items].map(item=>item.resourceId))).toEqual(new Set(ids.slice(0,2)));
+      expect((await publicationCall<List>("?eligible=1&limit=100")).body).toMatchObject({total:2,items:expect.arrayContaining(ids.slice(0,2).map(resourceId=>expect.objectContaining({resourceId})))});
+      const unfilteredFirst=await publicationCall<List>("?eligible=1&limit=1&offset=0"),unfilteredSecond=await publicationCall<List>("?eligible=1&limit=1&offset=1");
+      expect(unfilteredFirst.body.total).toBe(2);expect(unfilteredSecond.body.total).toBe(2);
+      expect(new Set([...unfilteredFirst.body.items,...unfilteredSecond.body.items].map(item=>item.resourceId))).toEqual(new Set(ids.slice(0,2)));
+    } finally {
+      await db.query("update public.shared_dtsi_resources set updated_at=updated_at-interval '24 hours' where id=any($1::text[])",[ids.slice(2)]);
+    }
+    expect((await list(`limit=20&exclude=${ids[0]}`)).body).toEqual({items:[expect.objectContaining({resourceId:ids[1]})],total:1});
+    expect((await list(`limit=20&exclude=${ids.slice(0,2).join(",")}`)).body).toEqual({items:[],total:0});
+    expect((await list(`limit=20&exclude=${Array(33).fill(ids[0]).join(",")}`)).status).toBe(200);
+    expect((await list(`limit=20&exclude=${Array(34).fill(ids[0]).join(",")}`)).status).toBe(400);
+    expect((await list("limit=20&exclude=invalid")).status).toBe(400);
+    expect((await publicationCall<List>("?eligible=true")).status).toBe(400);
+    const retired=await publicationCall(`/${ids[1]}/lifecycle`,"POST",{state:"retired",expectedLifecycleRevision:1,idempotencyKey:"picker-retire"});
+    expect(retired.status,retired.bodyText).toBe(200);
+    expect((await list("limit=20")).body).toEqual({items:[expect.objectContaining({resourceId:ids[0]})],total:1});
+    const other=makeTestAuthContext({organizationId:"org-other-dtsi",userId:"user-other-dtsi"});
+    expect((await list("limit=20",other)).body).toEqual({items:[],total:0});
+    const forbidden={...auth,roles:[],permissions:[]};
+    expect((await list("limit=20",forbidden)).status).toBe(403);
+    expect((await publicationCall<List>("?q=Picker%20scope&limit=100")).body.total).toBe(23);
   });
 
   it("compares the exact published base with pending original files and ordered semantic changes before publication",async()=>{
