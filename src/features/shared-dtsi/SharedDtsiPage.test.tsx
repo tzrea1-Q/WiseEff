@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { createApiClient } from "@/infrastructure/http/apiClient";
+import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import { SharedDtsiPage } from "./SharedDtsiPage";
 
 beforeAll(() => {
   Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
   Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 });
-function setup(options: { writable?: boolean; existingDraft?: boolean; saveError?: boolean;dependency?:boolean;beforeCreate?:()=>Promise<void>;onDraftGet?:(item:Record<string,unknown>)=>Promise<Record<string,unknown>>; reorderOnSave?:boolean; previewError?: {code:string;message:string;details:Record<string,unknown>}; createError?: {code:string;message:string;details:Record<string,unknown>} } = {}) {
+function setup(options: { writable?: boolean; existingDraft?: boolean; saveError?: boolean;dependency?:boolean;beforeCreate?:()=>Promise<void>;beforePreview?:()=>Promise<void>;onOrganizationLayout?:()=>void;onDraftGet?:(item:Record<string,unknown>)=>Promise<Record<string,unknown>>; reorderOnSave?:boolean; previewError?: {code:string;message:string;details:Record<string,unknown>}; createError?: {code:string;message:string;details:Record<string,unknown>};createStatus?:number } = {}) {
   const resourceId = "33333333-3333-4333-8333-333333333333";
   let item: Record<string, unknown> | null = options.existingDraft ? {id:"11111111-1111-4111-8111-111111111111",resourceId,name:"Existing draft",revision:1,updatedAt:"2026-10-25T00:00:00Z",changeDescription:"Existing change",members:[{id:"22222222-2222-4222-8222-000000000000",sourceName:"existing.dtsi",content:"/ { existing {}; };"}]} : null;
   let state="active",lifecycleRevision=1;
@@ -28,7 +29,13 @@ function setup(options: { writable?: boolean; existingDraft?: boolean; saveError
     if(options.dependency&&String(_url).includes(`${dependencyId}/detail`))return new Response(JSON.stringify({item:{resourceId:dependencyId,name:"Common clocks",updatedAt:version.createdAt,draftRevision:null,currentVersion:version}}));
     if (method === "POST" && String(_url).endsWith("/publication-preview") && options.previewError)
       return new Response(JSON.stringify({error: options.previewError}),{status:409});
-    if (method === "POST" && options.createError) return new Response(JSON.stringify({error:options.createError}),{status:400});
+    if (method === "POST" && String(_url).endsWith("/publication-preview") && item) {
+      if(options.beforePreview)await options.beforePreview();
+      const member=(item.members as {id:string;sourceName:string;content:string}[])[0]!;
+      const manifest={schemaVersion:"shared-dtsi/v1",members:[{id:member.id,sourceName:member.sourceName,checksum:"sha256:source",sizeBytes:member.content.length,role:"include"}],externalReferences:[]};
+      return new Response(JSON.stringify({item:{id:"55555555-5555-4555-8555-555555555555",resourceId,draftRevision:item.revision,name:item.name,changeDescription:item.changeDescription,manifest,digest:"sha256:source",createdAt:"2026-10-25T00:00:00Z",baseVersionId:null,comparison:{before:null,sources:[{resourceId,resourceName:item.name,memberId:member.id,before:null,after:{sourceName:member.sourceName,content:member.content}}],buildInputs:{before:{includeSearchPaths:[],defines:{}},after:{includeSearchPaths:[],defines:{}}},dependencies:{before:[],after:[]},semantic:{scope:"ordered-fragment-declarations",before:"",after:member.content,externalReferences:[]}}}}));
+    }
+    if (method === "POST" && options.createError) {if(options.beforeCreate)await options.beforeCreate();return new Response(JSON.stringify({error:options.createError}),{status:options.createStatus??400});}
     if (method === "POST") {
       const input = JSON.parse(init!.body as string);
       item = { id: "11111111-1111-4111-8111-111111111111", resourceId, name: input.name, changeDescription:input.changeDescription, revision: 1, updatedAt: "2026-10-25T00:00:00Z",
@@ -45,15 +52,238 @@ function setup(options: { writable?: boolean; existingDraft?: boolean; saveError
     return new Response(JSON.stringify({ items: options.dependency?[{resourceId:dependencyId,name:"Common clocks",updatedAt:version.createdAt,sourceName:"clock.dtsi",draftRevision:null,currentVersion:version}]:item ? [{ resourceId,name:item.name,updatedAt:item.updatedAt,sourceName:"common.dtsi",draftRevision:item.revision,currentVersion:null }] : [], total: options.dependency||item ? 1 : 0 }));
   });
   const api = createApiClient({ baseUrl: "", fetchImpl });
+  let changeWritable:(value:boolean)=>void=()=>{};
+  let changeOrganization:(value:string)=>void=()=>{};
   function Harness() {
     const [search, setSearch] = useState(options.existingDraft ? `?resource=${resourceId}` : "");
-    return <SharedDtsiPage apiClient={api} canWrite={options.writable ?? true} search={search}
+    const [writable,setWritable]=useState(options.writable ?? true);changeWritable=setWritable;
+    const [organization,setOrganization]=useState("org-a");changeOrganization=setOrganization;
+    useLayoutEffect(()=>{if(organization==="org-b")options.onOrganizationLayout?.();},[organization]);
+    return <SharedDtsiPage apiClient={api} canWrite={writable} organizationId={organization} search={search}
       onNavigate={path => setSearch(new URL(path, "http://localhost").search)} />;
   }
-  return { ...render(<Harness />), fetchImpl };
+  return { ...render(<Harness />), fetchImpl,changeWritable:(value:boolean)=>changeWritable(value),changeOrganization:(value:string)=>changeOrganization(value) };
 }
 
 describe("shared DTSI draft authoring", () => {
+  it("saves a new resource and checks the exact reloaded draft before showing preview", async () => {
+    const user=userEvent.setup();const {fetchImpl}=setup();
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"New resource");await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"First version");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(await screen.findByRole("heading",{name:"发布预览"})).toBeVisible();
+    const calls=fetchImpl.mock.calls;const create=calls.findIndex(([url,init])=>init?.method==="POST" && String(url).endsWith("/shared-dtsi"));
+    const read=calls.findIndex(([url,init],index)=>index>create && (!init?.method || init.method==="GET") && String(url).endsWith("/33333333-3333-4333-8333-333333333333"));
+    const check=calls.findIndex(([url,init])=>init?.method==="POST" && String(url).endsWith("/33333333-3333-4333-8333-333333333333/publication-preview"));
+    expect(create).toBeGreaterThanOrEqual(0);expect(read).toBeGreaterThan(create);expect(check).toBeGreaterThan(read);
+    expect(JSON.parse(calls[check]![1]!.body as string)).toEqual({expectedRevision:1});
+  });
+  it("retains the selected member and editor session when the first saved draft reload fails", async () => {
+    let reads=0;const user=userEvent.setup();const {fetchImpl}=setup({onDraftGet:async item=>{if(++reads===1)throw new TypeError("Failed to fetch");return item;}});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await screen.findByRole("button",{name:"选择文件"});
+    const files=["main.dtsi","part.dtsi"].map(name=>{const file=new File([name],name);Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode(name).buffer});return file;});
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,files);await user.click(await screen.findByRole("button",{name:"part.dtsi"}));
+    const editor=EditorView.findFromDOM(document.querySelector(".cm-editor") as HTMLElement)!;
+    act(()=>editor.dispatch({selection:{anchor:3}}));editor.scrollDOM.scrollTop=31;editor.scrollDOM.scrollLeft=19;
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明"),"First version");
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("请求失败");expect(screen.getByLabelText("文件路径")).toHaveValue("part.dtsi");
+    expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("part.dtsi");expect(screen.getByLabelText("版本说明")).toHaveValue("First version");
+    expect(fetchImpl.mock.calls.some(([url,init])=>init?.method==="POST" && String(url).endsWith("/publication-preview"))).toBe(false);
+    await user.click(screen.getByRole("button",{name:"重新载入"}));await user.click(within(screen.getByRole("dialog",{name:"重新载入草稿？"})).getByRole("button",{name:"重新载入"}));
+    expect(await screen.findByLabelText("文件路径")).toHaveValue("part.dtsi");
+    const restored=EditorView.findFromDOM(document.querySelector(".cm-editor") as HTMLElement)!;
+    expect(restored.state.selection.main.anchor).toBe(3);expect(restored.scrollDOM.scrollTop).toBe(31);expect(restored.scrollDOM.scrollLeft).toBe(19);
+    expect(fetchImpl.mock.calls.some(([url,init])=>init?.method==="POST" && String(url).endsWith("/publication-preview"))).toBe(false);
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));expect(await screen.findByRole("heading",{name:"发布预览"})).toBeVisible();
+  });
+  it("does not automatically check a changed draft when retrying a failed first reload", async () => {
+    let reads=0;const user=userEvent.setup();const {fetchImpl}=setup({onDraftGet:async item=>{if(++reads===1)throw new TypeError("Failed to fetch");return {...item,revision:2,members:(item.members as {id:string;sourceName:string;content:string}[]).map(member=>({...member,content:"server changed"}))};}});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Changed remotely");await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"First version");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    await user.click(await screen.findByRole("button",{name:"重新载入"}));await user.click(within(screen.getByRole("dialog",{name:"重新载入草稿？"})).getByRole("button",{name:"重新载入"}));
+    expect(await screen.findByText("草稿在保存后已更新，已载入最新版本。")).toBeVisible();
+    expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("server changed");
+    expect(fetchImpl.mock.calls.some(([url,init])=>init?.method==="POST" && String(url).endsWith("/publication-preview"))).toBe(false);
+  });
+  it.each(["success","failure"])("keeps the selected member when permission changes during the first draft reload (%s)", async mode => {
+    let release!:()=>void,reads=0;const gate=new Promise<void>(resolve=>{release=resolve;});
+    const user=userEvent.setup();const {fetchImpl,changeWritable}=setup({onDraftGet:async item=>{const read=++reads;await gate;if(mode==="failure" && read<=2)throw new TypeError("Failed to fetch");return item;}});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await screen.findByRole("button",{name:"选择文件"});
+    const files=["main.dtsi","part.dtsi"].map(name=>{const file=new File([name],name);Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode(name).buffer});return file;});
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,files);await user.click(await screen.findByRole("button",{name:"part.dtsi"}));
+    const editor=EditorView.findFromDOM(document.querySelector(".cm-editor") as HTMLElement)!;act(()=>editor.dispatch({selection:{anchor:3}}));
+    await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"First version");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    await waitFor(()=>expect(fetchImpl.mock.calls.some(([url,init])=>(!init?.method || init.method==="GET") && String(url).endsWith("/33333333-3333-4333-8333-333333333333"))).toBe(true));
+    act(()=>changeWritable(false));await waitFor(()=>expect(reads).toBe(2));await act(async()=>release());
+    expect(await screen.findByLabelText("文件路径")).toHaveValue("part.dtsi");
+    expect(screen.getByLabelText("DTSI 源码")).toHaveAttribute("aria-readonly","true");
+    expect(EditorView.findFromDOM(document.querySelector(".cm-editor") as HTMLElement)!.state.selection.main.anchor).toBe(3);
+    expect(fetchImpl.mock.calls.some(([url,init])=>init?.method==="POST" && String(url).endsWith("/publication-preview"))).toBe(false);
+    if(mode==="failure"){
+      expect(screen.getByRole("alert")).toHaveTextContent("请求失败");await user.click(screen.getByRole("button",{name:"重新载入"}));
+      await user.click(within(screen.getByRole("dialog",{name:"重新载入草稿？"})).getByRole("button",{name:"重新载入"}));
+      expect(await screen.findByLabelText("文件路径")).toHaveValue("part.dtsi");
+      expect(EditorView.findFromDOM(document.querySelector(".cm-editor") as HTMLElement)!.state.selection.main.anchor).toBe(3);
+      expect(fetchImpl.mock.calls.some(([url,init])=>init?.method==="POST" && String(url).endsWith("/publication-preview"))).toBe(false);
+    }
+  });
+  it.each(["revision", "identity"])("does not automatically check when the created draft changes its %s before reload", async mode => {
+    const user=userEvent.setup();const {fetchImpl}=setup({onDraftGet:async item=>({...item,...(mode==="revision"?{revision:2}:{id:"77777777-7777-4777-8777-777777777777"})})});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Concurrent resource");await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"First version");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(await screen.findByText("草稿在保存后已更新，已载入最新版本。")).toBeVisible();
+    expect(screen.queryByRole("heading",{name:"发布预览"})).not.toBeInTheDocument();
+    expect(fetchImpl.mock.calls.some(([url,init])=>init?.method==="POST" && String(url).endsWith("/publication-preview"))).toBe(false);
+    expect(screen.getByLabelText("版本说明")).toHaveValue("First version");
+  });
+  it("does not continue publication if write permission changes while creating a draft", async () => {
+    let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+    const user=userEvent.setup();const {fetchImpl,changeWritable}=setup({beforeCreate:()=>gate});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Permission change");await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"First version");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(screen.getByRole("button",{name:"正在保存…"})).toBeDisabled();
+    act(()=>changeWritable(false));
+    expect(screen.queryByRole("heading",{name:"发布预览"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button",{name:"准备发布"})).not.toBeInTheDocument();
+    expect(screen.getByLabelText("资源名称")).toHaveValue("Permission change");
+    expect(screen.getByLabelText("DTSI 源码")).toHaveAttribute("aria-readonly","true");
+    expect(screen.getByLabelText("版本说明")).toHaveValue("First version");expect(screen.getByLabelText("版本说明")).toHaveAttribute("readonly");
+    expect(screen.getByText("正在保存草稿，请稍候。")).toBeVisible();
+    expect(screen.getByRole("button",{name:"返回资源列表"})).toBeDisabled();expect(requestSettingsLeave()).toBe(false);
+    act(()=>changeWritable(true));
+    expect(screen.getByRole("button",{name:"正在保存…"})).toBeDisabled();
+    await act(async()=>release());
+    expect(fetchImpl.mock.calls.some(([url,init])=>init?.method==="POST" && String(url).endsWith("/publication-preview"))).toBe(false);
+    expect(screen.getByLabelText("版本说明")).toHaveValue("First version");
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(await screen.findByRole("heading",{name:"发布预览"})).toBeVisible();
+    expect(fetchImpl.mock.calls.filter(([url,init])=>init?.method==="POST" && String(url).endsWith("/shared-dtsi"))).toHaveLength(1);
+  });
+  it("protects unsaved edits after write permission is removed", async () => {
+    const user=userEvent.setup();const {changeWritable}=setup({existingDraft:true});
+    await user.type(await screen.findByLabelText("资源名称")," local");
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明")," local");
+    act(()=>changeWritable(false));expect(screen.getByLabelText("版本说明")).toHaveValue("Existing change local");expect(screen.getByLabelText("版本说明")).toHaveAttribute("readonly");await user.click(screen.getByRole("button",{name:"返回资源列表"}));
+    const dialog=await screen.findByRole("dialog",{name:"放弃未保存的更改？"});
+    await user.click(within(dialog).getByRole("button",{name:"继续编辑"}));
+    expect(screen.getByLabelText("资源名称")).toHaveValue("Existing draft local");
+    await user.click(screen.getByRole("button",{name:"返回资源列表"}));
+    await user.click(within(await screen.findByRole("dialog",{name:"放弃未保存的更改？"})).getByRole("button",{name:"放弃并离开"}));
+    expect(await screen.findByRole("heading",{name:"共享 DTSI"})).toBeVisible();
+  });
+  it("shows a definite create failure after losing write permission and preserves the input", async () => {
+    let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+    const user=userEvent.setup();const {changeWritable}=setup({beforeCreate:()=>gate,createError:{code:"FORBIDDEN",message:"不允许创建草稿。",details:{}},createStatus:403});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Retained input");await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"Draft details");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    act(()=>changeWritable(false));expect(requestSettingsLeave()).toBe(false);await act(async()=>release());
+    expect(await screen.findByRole("alert")).toHaveTextContent("不允许创建草稿");
+    expect(screen.getByLabelText("资源名称")).toHaveValue("Retained input");
+    act(()=>changeWritable(true));
+    expect(screen.getByLabelText("版本说明")).toHaveValue("Draft details");expect(screen.getByRole("button",{name:"检查并预览"})).toBeEnabled();
+  });
+  it("treats a lost create response as uncertain and preserves its source for review", async () => {
+    const user=userEvent.setup();const {fetchImpl}=setup({beforeCreate:async()=>{throw new TypeError("Failed to fetch");}});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Network uncertainty");await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"Retained description");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("保存结果未确认");
+    expect(screen.getByRole("button",{name:"检查并预览"})).toBeDisabled();expect(screen.getByLabelText("版本说明")).toHaveValue("Retained description");
+    expect(screen.getByLabelText("DTSI 源码")).toBeVisible();expect(fetchImpl.mock.calls.filter(([url,init])=>init?.method==="POST" && String(url).endsWith("/shared-dtsi"))).toHaveLength(1);
+    await user.click(screen.getByRole("button",{name:"返回资源列表"}));
+    let leave=await screen.findByRole("dialog",{name:"放弃未保存的更改？"});
+    expect(leave).toHaveTextContent("资源可能已创建");expect(leave).toHaveTextContent("离开后请先核对资源列表");
+    await user.click(within(leave).getByRole("button",{name:"继续编辑"}));expect(screen.getByLabelText("版本说明")).toHaveValue("Retained description");
+    await user.click(screen.getByRole("button",{name:"返回资源列表"}));leave=await screen.findByRole("dialog",{name:"放弃未保存的更改？"});
+    await user.click(within(leave).getByRole("button",{name:"放弃并离开"}));await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    expect(await screen.findByRole("button",{name:"选择文件"})).toBeVisible();
+  });
+  it("does not disclose a late create failure after an organization change", async () => {
+    let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});const inLayout=vi.fn(()=>release());
+    const user=userEvent.setup();const {changeOrganization}=setup({beforeCreate:()=>gate,onOrganizationLayout:inLayout,createError:{code:"FORBIDDEN",message:"旧组织创建失败。",details:{}},createStatus:403});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Old organization input");await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"Old organization description");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    act(()=>changeOrganization("org-b"));expect(inLayout).toHaveBeenCalledOnce();await act(async()=>{await gate;});
+    expect(screen.queryByText("旧组织创建失败。")).not.toBeInTheDocument();expect(screen.queryByDisplayValue("Old organization input")).not.toBeInTheDocument();
+    act(()=>changeOrganization("org-a"));expect(screen.queryByText("旧组织创建失败。")).not.toBeInTheDocument();
+  });
+  it.each([{code:"INTERNAL_ERROR",status:500},{code:"UPSTREAM_ERROR",status:502},{code:"VALIDATION_FAILED",status:500}])("keeps input and requires verification before retrying an uncertain $status create", async ({code,status}) => {
+    const user=userEvent.setup();const {fetchImpl}=setup({createStatus:status,createError:{code,message:"服务不可用",details:{}}});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Uncertain resource");await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"First version");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("保存结果未确认");
+    expect(screen.getByRole("link",{name:"在新窗口核对资源列表"})).toHaveAttribute("target","_blank");
+    expect(screen.getByRole("button",{name:"检查并预览"})).toBeDisabled();
+    expect(screen.getByLabelText("资源名称")).toHaveValue("Uncertain resource");expect(screen.getByLabelText("版本说明")).toHaveValue("First version");
+    expect(fetchImpl.mock.calls.filter(([url,init])=>init?.method==="POST" && String(url).endsWith("/shared-dtsi"))).toHaveLength(1);
+    await user.click(screen.getByRole("button",{name:"已核对，可重试"}));expect(screen.getByRole("button",{name:"检查并预览"})).toBeEnabled();
+  });
+  it.each([{code:"VALIDATION_FAILED",status:400},{code:"UNAUTHENTICATED",status:401}])("allows a direct retry after a definite $status rejection", async ({code,status}) => {
+    const user=userEvent.setup();setup({createStatus:status,createError:{code,message:"文件校验失败。",details:{}}});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Invalid draft");await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"Draft details");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("文件校验失败。");
+    expect(screen.getByRole("button",{name:"检查并预览"})).toBeEnabled();expect(screen.queryByRole("link",{name:"在新窗口核对资源列表"})).not.toBeInTheDocument();
+  });
+  it("lets the author remove a retired dependency after a rejected first create", async () => {
+    const user=userEvent.setup();setup({dependency:true,createStatus:409,createError:{code:"CONFLICT",message:"依赖资源已停用。",details:{reason:"shared-resource-retired"}}});
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"Retired dependency");await user.click(screen.getByText("固定资源依赖（按需）"));
+    await user.click(await screen.findByRole("combobox",{name:"依赖资源"}));await user.click(await screen.findByRole("option",{name:"Common clocks"}));
+    await user.click(await screen.findByRole("combobox",{name:"依赖固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 3 · Fixed clock source"}));
+    await user.click(screen.getByRole("button",{name:"添加固定依赖"}));await user.click(screen.getByRole("button",{name:"准备发布"}));
+    await user.type(screen.getByLabelText("版本说明"),"Retained details");await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("依赖资源已停用");expect(screen.queryByRole("button",{name:"重新载入"})).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button",{name:"移除依赖 1"}));expect(screen.getByRole("button",{name:"检查并预览"})).toBeEnabled();
+    expect(screen.getByLabelText("版本说明")).toHaveValue("Retained details");
+  });
+  it("checks the saved revision once and keeps the check visibly pending", async () => {
+    let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+    const user=userEvent.setup();const {fetchImpl}=setup({existingDraft:true,beforePreview:()=>gate});
+    await user.click(await screen.findByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明")," updated");
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(await screen.findByRole("button",{name:"正在检查…"})).toBeDisabled();
+    expect(screen.getByLabelText("DTSI 源码")).toHaveAttribute("aria-readonly","true");
+    expect(fetchImpl.mock.calls.filter(([url,init])=>init?.method==="POST" && String(url).endsWith("/publication-preview"))).toHaveLength(1);
+    await act(async()=>release());expect(await screen.findByRole("heading",{name:"发布预览"})).toBeVisible();
+    const check=fetchImpl.mock.calls.find(([url,init])=>init?.method==="POST" && String(url).endsWith("/publication-preview"))!;
+    expect(JSON.parse(check[1]!.body as string)).toEqual({expectedRevision:2});
+  });
+  it("groups resource actions under more and returns focus after cancelling discard", async () => {
+    const user=userEvent.setup();setup({existingDraft:true});
+    await screen.findByLabelText("资源名称");
+    const more=screen.getByRole("button",{name:"资源更多操作"});
+    expect(screen.queryByRole("button",{name:"丢弃草稿"})).not.toBeInTheDocument();
+    await user.click(more);await user.click(screen.getByRole("menuitem",{name:"丢弃草稿"}));
+    const dialog=screen.getByRole("dialog",{name:"丢弃共享 DTSI 草稿？"});await user.click(within(dialog).getByRole("button",{name:"取消"}));
+    expect(more).toHaveFocus();
+    await user.click(more);expect(screen.getByRole("menuitem",{name:"停用资源"})).toBeVisible();
+  });
+  it("lets a new resource prepare publication without saving first and requires a version description only there", async () => {
+    const user=userEvent.setup();const {fetchImpl}=setup();
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));
+    await user.click(await screen.findByRole("button",{name:"新建源码"}));
+    await user.type(await screen.findByLabelText("资源名称"),"New resource");
+    expect(screen.queryByLabelText("版本说明")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button",{name:"准备发布"}));
+    expect(screen.getByLabelText("版本说明")).toHaveValue("");
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
+    expect(screen.getByText("请填写版本说明。")).toBeVisible();
+    expect(fetchImpl.mock.calls.some(([url,init])=>init?.method==="POST" && String(url).endsWith("/publication-preview"))).toBe(false);
+    await user.click(screen.getByRole("button",{name:"返回编辑"}));
+    expect(screen.queryByLabelText("版本说明")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("资源名称")).toHaveValue("New resource");
+    expect(screen.getByRole("button",{name:"保存草稿"})).toBeEnabled();
+  });
   it("blocks unsafe relative paths and canonically equivalent duplicate paths",async()=>{
     const user=userEvent.setup();setup();
     await user.click(await screen.findByRole("button",{name:"导入资源"}));await screen.findByRole("button",{name:"选择文件"});
@@ -185,12 +415,12 @@ describe("shared DTSI draft authoring", () => {
     await user.click(await screen.findByRole("button",{name:"导入资源"}));await screen.findByRole("button",{name:"选择文件"});
     const files=["main.dtsi","part.dtsi"].map(name=>{const file=new File([name],name);Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode(name).buffer});return file;});
     await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,files);
-    await user.type(await screen.findByLabelText("变更说明"),"保存后验证空态");
+    await user.click(await screen.findByRole("button",{name:"准备发布"}));await user.type(await screen.findByLabelText("版本说明"),"保存后验证空态");
     await user.click(screen.getByRole("button",{name:"保存草稿"}));await screen.findByText("草稿已保存");
     const input=await screen.findByLabelText("文件路径");await user.clear(input);await user.type(input,"part.dtsi");
     expect(input).toHaveAttribute("aria-invalid","true");expect(screen.getAllByText("文件路径已存在。")).toHaveLength(2);
     expect(screen.getByRole("button",{name:"保存草稿"})).toBeDisabled();
-    expect(screen.getByRole("button",{name:"预览发布"})).toBeDisabled();
+    expect(screen.getByRole("button",{name:"检查并预览"})).toBeDisabled();
     await user.clear(input);await user.type(input,"renamed.dtsi");
     expect(input).not.toHaveAttribute("aria-invalid","true");expect(screen.getByRole("button",{name:"保存草稿"})).toBeEnabled();
   });
@@ -200,7 +430,7 @@ describe("shared DTSI draft authoring", () => {
     await screen.findByRole("button",{name:"选择文件"});
     const files=["main.dtsi","part.dtsi"].map(name=>{const file=new File([name],name);Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode(name).buffer});return file;});
     await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,files);
-    await user.type(await screen.findByLabelText("变更说明"),"保存后验证空态");
+    await user.click(await screen.findByRole("button",{name:"准备发布"}));await user.type(await screen.findByLabelText("版本说明"),"保存后验证空态");
     await user.click(screen.getByRole("button",{name:"保存草稿"}));await screen.findByText("草稿已保存");
     await user.click(await screen.findByRole("button",{name:"part.dtsi"}));
     await user.click(screen.getByRole("button",{name:"移除当前文件"}));
@@ -215,7 +445,7 @@ describe("shared DTSI draft authoring", () => {
     expect(screen.getByText("暂无源码文件，请添加文件或新建源码。" )).toBeVisible();
     expect(screen.queryByLabelText("DTSI 源码")).not.toBeInTheDocument();
     expect(screen.getByRole("button",{name:"保存草稿"})).toBeDisabled();
-    expect(screen.getByRole("button",{name:"预览发布"})).toBeDisabled();
+    expect(screen.getByRole("button",{name:"检查并预览"})).toBeDisabled();
   });
   it("requires confirmation before replacing matching paths during add", async () => {
     const user=userEvent.setup();setup({dependency:true});
@@ -226,7 +456,7 @@ describe("shared DTSI draft authoring", () => {
     await screen.findByLabelText("DTSI 源码");
     await user.click(screen.getByLabelText("DTSI 源码"));await user.keyboard("{End} unsaved");
     await user.clear(screen.getByLabelText("资源名称"));await user.type(screen.getByLabelText("资源名称"),"Keep name");
-    await user.type(screen.getByLabelText("变更说明"),"Keep description");
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明"),"Keep description");
     await user.click(screen.getByText("固定资源依赖（按需）"));
     await user.click(await screen.findByRole("combobox",{name:"依赖资源"}));await user.click(await screen.findByRole("option",{name:"Common clocks"}));
     await user.click(await screen.findByRole("combobox",{name:"依赖固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 3 · Fixed clock source"}));
@@ -238,7 +468,7 @@ describe("shared DTSI draft authoring", () => {
     await user.click(within(dialog).getByRole("button",{name:"取消"}));
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("original");
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("unsaved");
-    expect(screen.getByLabelText("资源名称")).toHaveValue("Keep name");expect(screen.getByLabelText("变更说明")).toHaveValue("Keep description");
+    expect(screen.getByLabelText("资源名称")).toHaveValue("Keep name");expect(screen.getByLabelText("版本说明")).toHaveValue("Keep description");
     expect(screen.getByText("Common clocks · 版本 3 · 资源根目录")).toBeVisible();
     await user.upload(add,make("/ { replacement {}; };"));
     dialog=await screen.findByRole("dialog",{name:"替换重名文件？"});
@@ -323,14 +553,14 @@ describe("shared DTSI draft authoring", () => {
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
     await user.click(await screen.findByRole("button",{name:"新建源码"}));
     await user.type(await screen.findByLabelText("资源名称"),"Busy resource");
-    await user.type(screen.getByLabelText("变更说明"),"首次发布");
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明"),"首次发布");
     await user.click(screen.getByRole("button",{name:"保存草稿"}));
     await screen.findByText("草稿已保存");
-    await user.click(screen.getByRole("button",{name:"预览发布"}));
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
     expect(await screen.findByRole("alert")).toHaveTextContent("预处理正忙");
     expect(screen.queryByRole("button",{name:"重新载入"})).not.toBeInTheDocument();
     expect(screen.getByRole("button",{name:"重试检查"})).toBeEnabled();
-    expect(screen.getByLabelText("变更说明")).toHaveValue("首次发布");
+    expect(screen.getByLabelText("版本说明")).toHaveValue("首次发布");
     await user.click(screen.getByRole("button",{name:"重试检查"}));
     await screen.findByText("预处理正忙，请稍后重试。");
     expect(fetchImpl.mock.calls.filter(([url]) => String(url).endsWith("/publication-preview"))).toHaveLength(2);
@@ -345,10 +575,10 @@ describe("shared DTSI draft authoring", () => {
     files.forEach((file,index)=>Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode(index?'/include/ "missing.dtsi"\n':"/ {};").buffer}));
     await user.upload(document.querySelector('input[type="file"]')!,files);
     await screen.findByRole("button",{name:"part.dtsi"});
-    await user.type(screen.getByLabelText("变更说明"),"首次发布");
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明"),"首次发布");
     await user.click(screen.getByRole("button",{name:"保存草稿"}));
     await screen.findByText("草稿已保存");
-    await user.click(screen.getByRole("button",{name:"预览发布"}));
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
     const alert=await screen.findByRole("alert");
     expect(within(alert).getByText(`缺少依赖文件 ${missing}。`)).toBeVisible();
     expect(screen.getByText("草稿已保存")).toBeVisible();
@@ -359,7 +589,7 @@ describe("shared DTSI draft authoring", () => {
     expect(screen.getByLabelText("文件路径")).toHaveValue("part.dtsi");
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent('missing.dtsi');
     expect(screen.getByLabelText("DTSI 源码")).toHaveFocus();
-    expect(screen.getByLabelText("变更说明")).toHaveValue("首次发布");
+    expect(screen.getByLabelText("版本说明")).toHaveValue("首次发布");
   });
   it("links a verified dependency diagnostic to the exact published member and line", async () => {
     const user=userEvent.setup();
@@ -369,10 +599,10 @@ describe("shared DTSI draft authoring", () => {
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
     await user.click(await screen.findByRole("button",{name:"新建源码"}));
     await user.type(await screen.findByLabelText("资源名称"),"Resource");
-    await user.type(screen.getByLabelText("变更说明"),"首次发布");
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明"),"首次发布");
     await user.click(screen.getByRole("button",{name:"保存草稿"}));
     await screen.findByText("草稿已保存");
-    await user.click(screen.getByRole("button",{name:"预览发布"}));
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
     const alert=await screen.findByRole("alert");
     expect(within(alert).getByText("预处理错误。")).toBeVisible();
     const link=within(alert).getByRole("link",{name:`查看源码：${sourceName}:2:1（新窗口）`});
@@ -386,10 +616,10 @@ describe("shared DTSI draft authoring", () => {
     await user.click(await screen.findByRole("button",{name:"导入资源"}));
     await user.click(await screen.findByRole("button",{name:"新建源码"}));
     await user.type(await screen.findByLabelText("资源名称"),"Resource");
-    await user.type(screen.getByLabelText("变更说明"),"首次发布");
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明"),"首次发布");
     await user.click(screen.getByRole("button",{name:"保存草稿"}));
     await screen.findByText("草稿已保存");
-    await user.click(screen.getByRole("button",{name:"预览发布"}));
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
     expect(await screen.findByRole("alert")).toHaveTextContent("vendor/defs.h:2:1");
     expect(screen.queryByRole("link",{name:/vendor\/defs\.h/})).not.toBeInTheDocument();
   });
@@ -402,15 +632,15 @@ describe("shared DTSI draft authoring", () => {
     files.forEach(file=>Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode("/ {};").buffer}));
     await user.upload(document.querySelector('input[type="file"]')!,files);
     await screen.findByRole("button",{name:"part.dtsi"});
-    await user.type(screen.getByLabelText("变更说明"),"首次发布");
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明"),"首次发布");
     await user.click(screen.getByRole("button",{name:"保存草稿"}));
     await screen.findByText("草稿已保存");
     await user.click(screen.getByRole("button",{name:"part.dtsi"}));
-    await user.type(screen.getByLabelText("变更说明")," 更新");
-    await user.click(screen.getByRole("button",{name:"预览发布"}));
+    await user.type(screen.getByLabelText("版本说明")," 更新");
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
     expect(await screen.findByRole("alert")).toHaveTextContent("预处理正忙");
     expect(screen.getByLabelText("文件路径")).toHaveValue("part.dtsi");
-    expect(screen.getByLabelText("变更说明")).toHaveValue("首次发布 更新");
+    expect(screen.getByLabelText("版本说明")).toHaveValue("首次发布 更新");
   });
   it("does not write an old editor snapshot into a different file when a save reorders members", async () => {
     const user=userEvent.setup(); setup({reorderOnSave:true});
@@ -423,7 +653,7 @@ describe("shared DTSI draft authoring", () => {
     await user.click(screen.getByRole("button",{name:"保存草稿"}));
     await screen.findByText("草稿已保存");
     await user.click(screen.getByRole("button",{name:"part.dtsi"}));
-    await user.type(screen.getByLabelText("变更说明"),"edited");
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明"),"edited");
     await user.click(screen.getByRole("button",{name:"保存草稿"}));
     await screen.findByText("草稿已保存");
     expect(screen.getByLabelText("文件路径")).toHaveValue("part.dtsi");
@@ -468,14 +698,14 @@ describe("shared DTSI draft authoring", () => {
     await user.click(await screen.findByRole("button",{name:"新建源码"}));
     await user.type(await screen.findByLabelText("资源名称"),"Recoverable draft");
     await user.click(screen.getByRole("button",{name:"保存草稿"}));await screen.findByText("草稿已保存",{exact:true});
-    await user.click(screen.getByRole("button",{name:"停用资源"}));
+    await user.click(screen.getByRole("button",{name:"资源更多操作"}));await user.click(screen.getByRole("menuitem",{name:"停用资源"}));
     await user.click(within(screen.getByRole("dialog",{name:"停用资源？"})).getByRole("button",{name:"停用资源"}));
     await screen.findByText(/^资源已停用/);expect(screen.getByLabelText("资源名称")).toHaveValue("Recoverable draft");
-    expect(screen.queryByRole("button",{name:"预览发布"})).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button",{name:"恢复资源"}));
+    expect(screen.queryByRole("button",{name:"准备发布"})).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button",{name:"资源更多操作"}));await user.click(screen.getByRole("menuitem",{name:"恢复资源"}));
     await user.click(within(screen.getByRole("dialog",{name:"恢复资源？"})).getByRole("button",{name:"恢复资源"}));
     await screen.findByText("资源已恢复，可再次建立新引用。",{exact:true});
-    expect(screen.getByLabelText("资源名称")).toHaveValue("Recoverable draft");expect(screen.getByRole("button",{name:"预览发布"})).toBeVisible();
+    expect(screen.getByLabelText("资源名称")).toHaveValue("Recoverable draft");expect(screen.getByRole("button",{name:"准备发布"})).toBeVisible();
   });
   it("retains declared search roots and external macros and guards settings-only unsaved changes", async () => {
     const user = userEvent.setup();
@@ -564,7 +794,7 @@ describe("shared DTSI draft authoring", () => {
     await user.click(screen.getByLabelText("DTSI 源码"));await user.keyboard("{End} // local-main");
     await user.click(screen.getByRole("button",{name:"part.dtsi"}));
     await user.click(screen.getByLabelText("DTSI 源码"));await user.keyboard("{End} // local-part");
-    await user.type(screen.getByLabelText("变更说明"),"Local description");
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明"),"Local description");
     await user.type(screen.getByLabelText("资源名称"), " changed");
     const event = new Event("beforeunload", { cancelable: true });
     act(() => { window.dispatchEvent(event); });
@@ -573,7 +803,7 @@ describe("shared DTSI draft authoring", () => {
     await screen.findByRole("dialog", { name: "放弃未保存的更改？" });
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(screen.getByLabelText("资源名称")).toHaveValue("Battery common changed");
-    expect(screen.getByLabelText("变更说明")).toHaveValue("Local description");
+    expect(screen.getByLabelText("版本说明")).toHaveValue("Local description");
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("local-part");
     await user.click(screen.getByRole("button",{name:"main.dtsi"}));
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("local-main");
@@ -583,14 +813,14 @@ describe("shared DTSI draft authoring", () => {
     await screen.findByRole("alert");
     expect(screen.getByLabelText("资源名称")).toHaveValue("Battery common changed");
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("local-part");
-    expect(screen.getByLabelText("变更说明")).toHaveValue("Local description");
+    expect(screen.getByLabelText("版本说明")).toHaveValue("Local description");
     expect(screen.getByRole("button", { name: "重新载入" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "丢弃草稿" })).toBeDisabled();
+    await user.click(screen.getByRole("button",{name:"资源更多操作"}));expect(screen.getByRole("menuitem",{name:"丢弃草稿"})).toHaveAttribute("aria-disabled","true");await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "重新载入" }));
     await screen.findByRole("dialog", { name: "重新载入草稿？" });
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(screen.getByLabelText("资源名称")).toHaveValue("Battery common changed");
-    expect(screen.getByLabelText("变更说明")).toHaveValue("Local description");
+    expect(screen.getByLabelText("版本说明")).toHaveValue("Local description");
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("local-part");
     await user.click(screen.getByRole("button",{name:"main.dtsi"}));
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("local-main");
@@ -608,11 +838,12 @@ describe("shared DTSI draft authoring", () => {
     const {fetchImpl}=setup({writable:false,existingDraft:true});
     expect(await screen.findByLabelText("资源名称")).toHaveValue("Existing draft");
     expect(screen.getByLabelText("资源名称")).toHaveAttribute("readonly");
-    expect(screen.getByLabelText("变更说明")).toHaveAttribute("readonly");
+    expect(screen.queryByLabelText("版本说明")).not.toBeInTheDocument();
     expect(screen.getByLabelText("DTSI 源码")).toHaveAttribute("aria-readonly","true");
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("existing");
     expect(screen.queryByRole("button",{name:"保存草稿"})).not.toBeInTheDocument();
-    expect(screen.queryByRole("button",{name:"预览发布"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button",{name:"准备发布"})).not.toBeInTheDocument();
+    const unload=new Event("beforeunload",{cancelable:true});window.dispatchEvent(unload);expect(unload.defaultPrevented).toBe(false);
     expect(fetchImpl.mock.calls.every(([,init])=>!init?.method || init.method === "GET")).toBe(true);
   });
 
@@ -620,13 +851,13 @@ describe("shared DTSI draft authoring", () => {
     const user=userEvent.setup();
     setup({existingDraft:true,previewError:{code:"CONFLICT",message:"草稿已被更新，请重新载入后核对。",details:{}}});
     await user.type(await screen.findByLabelText("资源名称")," local");
-    await user.type(screen.getByLabelText("变更说明")," local");
-    await user.click(screen.getByRole("button",{name:"预览发布"}));
+    await user.click(screen.getByRole("button",{name:"准备发布"}));await user.type(screen.getByLabelText("版本说明")," local");
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
     expect(await screen.findByRole("alert")).toHaveTextContent("草稿已被更新");
     expect(screen.getByLabelText("资源名称")).toHaveValue("Existing draft local");
-    expect(screen.getByLabelText("变更说明")).toHaveValue("Existing change local");
+    expect(screen.getByLabelText("版本说明")).toHaveValue("Existing change local");
     expect(screen.getByRole("button",{name:"重新载入"})).toBeVisible();
-    expect(screen.getByRole("button",{name:"丢弃草稿"})).toBeDisabled();
+    await user.click(screen.getByRole("button",{name:"资源更多操作"}));expect(screen.getByRole("menuitem",{name:"丢弃草稿"})).toHaveAttribute("aria-disabled","true");
   });
 
   it("ignores a file read that finishes after leaving and opening another draft", async () => {
@@ -692,7 +923,7 @@ describe("shared DTSI draft authoring", () => {
     function Harness(){const[search,setSearch]=useState(`?resource=${resourceId}`);return <SharedDtsiPage apiClient={api} canWrite search={search} onNavigate={path=>setSearch(new URL(path,"http://localhost").search)}/>;}
     render(<Harness/>);
     expect(await screen.findByRole("button",{name:"返回资源列表"})).toHaveAttribute("data-variant","outline");
-    await user.click(await screen.findByRole("button",{name:"预览发布"}));
+    await user.click(await screen.findByRole("button",{name:"准备发布"}));await user.click(screen.getByRole("button",{name:"检查并预览"}));
     expect(screen.getByRole("heading",{name:"发布预览"})).toBeVisible();
     expect(screen.getByText("已检查源码及共享资源依赖；未验证项目编译、设备树 Schema 或硬件。")).toBeVisible();
     expect(screen.getByText("本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。")).toBeVisible();
@@ -701,9 +932,9 @@ describe("shared DTSI draft authoring", () => {
     expect(screen.getByText("新增 battery.dtsi")).toBeVisible();
     screen.getByRole("button",{name:"返回编辑"}).focus();
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("button",{name:"预览发布"})).toHaveFocus();
-    expect(screen.getByLabelText("变更说明")).toHaveValue("首次共享版本");
-    await user.click(screen.getByRole("button",{name:"预览发布"}));
+    expect(screen.getByRole("button",{name:"检查并预览"})).toHaveFocus();
+    expect(screen.getByLabelText("版本说明")).toHaveValue("首次共享版本");
+    await user.click(screen.getByRole("button",{name:"检查并预览"}));
     await user.click(screen.getByRole("radio",{name:"语义声明"}));
     expect(within(screen.getByRole("region",{name:"有序语义声明修改片段"})).queryByText("删除行")).not.toBeInTheDocument();
     expect(screen.getByLabelText("有序语义声明变更后")).toHaveTextContent("battery");
@@ -715,8 +946,8 @@ describe("shared DTSI draft authoring", () => {
     await user.click(screen.getByRole("tab",{name:"版本"}));
     await user.click(await screen.findByRole("button",{name:"v1"}));
     await user.click(await screen.findByRole("button",{name:"创建新版本"}));
-    await screen.findByLabelText("变更说明");
-    await user.click(screen.getByRole("button",{name:"丢弃草稿"}));
+    await screen.findByLabelText("资源名称");
+    await user.click(screen.getByRole("button",{name:"资源更多操作"}));await user.click(screen.getByRole("menuitem",{name:"丢弃草稿"}));
     const dialog=await screen.findByRole("dialog",{name:"丢弃共享 DTSI 草稿？"});
     expect(dialog).toHaveTextContent("已发布版本和历史会保留");
     await user.click(within(dialog).getByRole("button",{name:"丢弃草稿"}));

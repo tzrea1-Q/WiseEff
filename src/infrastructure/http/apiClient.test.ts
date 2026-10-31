@@ -194,8 +194,14 @@ describe("createApiClient", () => {
       details: {},
       message: "Admin access required.",
       name: WiseEffApiError.name,
-      requestId: "req-1"
+      requestId: "req-1",
+      status: 403
     });
+  });
+
+  it("preserves HTTP status on raw API failures", async () => {
+    const client=createApiClient({baseUrl:"",fetchImpl:async()=>new Response(JSON.stringify({error:{code:"INTERNAL_ERROR"}}),{status:503})});
+    await expect(client.raw("/api/v1/example",{method:"GET"})).rejects.toMatchObject({code:"INTERNAL_ERROR",status:503});
   });
 
   it("falls back to the documented internal error envelope shape", async () => {

@@ -19,6 +19,9 @@
 .shared-dtsi-page--editor > .shared-dtsi-preview-header { position: static; background: transparent; padding-block: var(--space-2); }
 .shared-dtsi-preview-heading { display: flex; align-items: center; gap: var(--space-3); }
 .shared-dtsi-preview-heading h1 { white-space: nowrap; }
+.shared-dtsi-preparation { display: grid; gap: var(--space-3); min-width: 0; padding: var(--space-4); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.shared-dtsi-preparation-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.shared-dtsi-preparation-heading h2 { margin: 0; font-size: var(--text-md); font-weight: 600; }
 .shared-dtsi-preview-overview { display: grid; gap: var(--space-3); min-width: 0; padding: var(--space-4); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
 .shared-dtsi-preview-overview h2 { margin: 0; font-size: var(--text-md); font-weight: 600; }
 .shared-dtsi-preview-summary { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--space-8); min-width: 0; }

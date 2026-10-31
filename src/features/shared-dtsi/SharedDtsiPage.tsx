@@ -38,6 +38,7 @@ const withContent = (input:SharedDtsiDraftInput,index:number,content:string):Sha
   ...(input.members?{members:input.members.map((member,at)=>at===index?{...member,content}:member)}:{})});
 const comparable = (input:SharedDtsiDraftInput) => JSON.stringify({name:input.name,changeDescription:input.changeDescription,members:sourceMembers(input),archive:input.archive,dependencies:input.dependencies??[],buildInputs:input.buildInputs});
 const message = (error: unknown) => error instanceof WiseEffApiError ? error.message : "请求失败，请重试。";
+const staleDraft = (error: unknown) => error instanceof WiseEffApiError && error.code === "CONFLICT" && !["preprocess-busy", "shared-resource-retired"].includes(String(error.details.reason));
 const buildTexts = (input: SharedDtsiDraftInput["buildInputs"]) => ({ paths: input?.includeSearchPaths.join("\n") ?? "",
   defines: Object.entries(input?.defines ?? {}).map(([name, value]) => `${name}=${value}`).join("\n") });
 function buildInputsFromText(paths: string, macros: string): SharedDtsiDraftInput["buildInputs"] {
@@ -74,6 +75,8 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const active = useRef<Scope>({ key: scopeKey, client, pending: false });
   if (active.current.key !== scopeKey || active.current.client !== client) active.current = { key: scopeKey, client, pending: false };
   const scope = active.current;
+  const visibleContext=useRef({client,organizationId,search});
+  visibleContext.current={client,organizationId,search};
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const isCurrent = useCallback((operation: Scope) => mounted.current && active.current === operation, []);
@@ -93,6 +96,9 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const [usages,setUsages]=useState<SharedDtsiUsages|null>(null),[usagePage,setUsagePage]=useState(1);
   useEffect(()=>{setHistoryPage(1);setUsagePage(1);setChosenVersions([]);setComparing(false);},[selected,organizationId,client,canWrite]);
   const [preview, setPreview] = useState<{ scope: Scope; data: SharedDtsiPublicationPreview; key: string } | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [descriptionMissing, setDescriptionMissing] = useState(false);
+  const [uncertainCreate, setUncertainCreate] = useState(false);
   const [form, setForm] = useState(empty);
   const [buildText, setBuildText] = useState(buildTexts(undefined));
   const [memberIndex,setMemberIndex]=useState(0);
@@ -109,6 +115,9 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const [editorDirty, setEditorDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
+  const [operation, setOperation] = useState<"saving" | "checking" | "publishing" | null>(null);
+  const [creating, setCreating] = useState<{client:typeof client;organizationId:typeof organizationId;search:string}|null>(null);
+  const creationRef=useRef<typeof creating>(null);
   const [error, setError] = useState("");
   const [previewFailure, setPreviewFailure] = useState<WiseEffApiError | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -121,8 +130,9 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const editor = useRef<WorkbenchDtsEditorHandle>(null);
   const editorSessions=useRef<WorkbenchDtsEditorSessions>(new Map());
   const memberKeys=useRef<string[]>([crypto.randomUUID()]);
-  const resume=useRef<{resourceId:string;revision:number;members:{id:string;content:string;key:string}[];activeId:string}|null>(null);
+  const resume=useRef<{resourceId:string;draftId:string;revision:number;savedDraft:SharedDtsiDraft;members:{id:string;content:string;key:string}[];activeId:string;client:typeof client;organizationId:typeof organizationId;canWrite:boolean;preview?:boolean}|null>(null);
   const previewButton = useRef<HTMLButtonElement>(null);
+  const descriptionInput = useRef<HTMLTextAreaElement>(null);
   const restorePreviewFocus = useRef(false);
   const upload = useRef<HTMLInputElement>(null);
   const directoryUpload = useRef<HTMLInputElement>(null);
@@ -133,6 +143,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const importSequence = useRef(0);
   const nameTouched = useRef(false);
   const editorEpoch = useRef(0);
+  const loadedContext=useRef<{client:typeof client;organizationId:typeof organizationId;search:string;canWrite:boolean}|null>(null);
   const base = draft ? draftInput(draft) : empty;
   const members=sourceMembers(form);
   const memberPathError=(index:number)=>{
@@ -145,9 +156,13 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const missingSource=members.length>0 && !members.some(member=>/\.dtsi?$/u.test(member.sourceName));
   const atMemberLimit=members.length>=sharedDtsiImportLimits.maxFiles;
   const newFileError=!sharedDtsiDraftInputSchema.shape.sourceName.safeParse(newFilePath).success?"请输入有效的资源内源码路径。":members.some(member=>member.sourceName.normalize("NFC")===newFilePath.normalize("NFC"))?"文件路径已存在。":"";
-  const dirty = Boolean(selected) && canWrite && !published && tab === "source" && (editorDirty || comparable(form) !== comparable(base)
+  const localDirty = Boolean(selected) && !published && tab === "source" && (editorDirty || comparable(form) !== comparable(base)
     || JSON.stringify(buildText) !== JSON.stringify(buildTexts(base.buildInputs)));
-  const busyLoading = loading || loadedScope !== scope;
+  const dirty = canWrite && localDirty;
+  const creatingHere=Boolean(creating && creating.client===client && creating.organizationId===organizationId && creating.search===search);
+  const permissionTransition=Boolean(!loading && loadedContext.current && loadedContext.current.client===client && loadedContext.current.organizationId===organizationId
+    && loadedContext.current.search===search && loadedContext.current.canWrite!==canWrite);
+  const busyLoading = loading || loadedScope !== scope && !permissionTransition;
   const currentPreview = preview?.scope === scope ? preview : null;
   useEffect(() => {
     if (!currentPreview && restorePreviewFocus.current) {
@@ -155,6 +170,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
       previewButton.current?.focus();
     }
   }, [currentPreview]);
+  useEffect(()=>{if(preparing)descriptionInput.current?.focus();},[preparing]);
   const sessionKey = memberKeys.current[memberIndex] ?? "shared-dtsi-empty";
   const path = useCallback((resourceId: string, options?: { version?: string; tab?: string }) => {
     const params = new URLSearchParams(search);
@@ -166,14 +182,23 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     return `/parameter-admin/sources${params.size ? `?${params}` : ""}`;
   }, [search, selected,selectedVersion]);
   const leave = (resourceId: string, options?: { version?: string; tab?: string }) => { flushSync(() => setLeaving(true)); onNavigate(path(resourceId, options)); };
-  const navigate = async (resourceId: string, options?: { version?: string; tab?: string }) => { if (!scope.pending && await requestSettingsLeave() && isCurrent(scope)) leave(resourceId, options); };
+  const navigate = async (resourceId: string, options?: { version?: string; tab?: string }) => { if (!scope.pending && !creatingHere && await requestSettingsLeave() && isCurrent(scope)) leave(resourceId, options); };
 
   useEffect(() => {
     let cancelled = false;
-    const carry=resume.current?.resourceId===selected?resume.current:null;
-    resume.current=null;
-    if(!carry){editorSessions.current.clear();memberKeys.current=[crypto.randomUUID()];}
-    setError(""); setPreviewFailure(null); setConflict(false);setPostSaveChanged(false); setEditorDirty(false); setDraft(null); setPublished(null); setDetail(null); setPreview(null); setLeaving(false); setPending(false); setMemberIndex(0);
+    let carryLoaded = false;
+    if(creationRef.current && (creationRef.current.client!==client || creationRef.current.organizationId!==organizationId || creationRef.current.search!==search)){creationRef.current=null;setCreating(null);}
+    if(resume.current && loadedContext.current?.client===client && loadedContext.current.organizationId===organizationId && loadedContext.current.search===search && loadedContext.current.canWrite!==canWrite)resume.current.preview=false;
+    loadedContext.current={client,organizationId,search,canWrite};
+    if(permissionTransition){
+      const snapshot=editor.current?.flush();if(snapshot?.sessionKey===sessionKey)setForm(current=>withContent(current,memberIndex,snapshot.text));
+      setPreview(null);setPending(false);setOperation(null);setLoadedScope(scope);
+      return () => {cancelled=true;};
+    }
+    const carry=resume.current?.resourceId===selected && resume.current.client===client && resume.current.organizationId===organizationId && tab==="source" && (!selectedVersion || selectedVersion==="draft")?resume.current:null;
+    if(!carry)resume.current=null;
+    if(!carry){editorSessions.current.clear();memberKeys.current=[crypto.randomUUID()];setPreparing(false);setDescriptionMissing(false);setUncertainCreate(false);}
+    setError(""); setPreviewFailure(null); setConflict(false);setPostSaveChanged(false); setEditorDirty(false); setDraft(null); setPublished(null); setDetail(null); setPreview(null); setLeaving(false); setPending(false);setOperation(null); setMemberIndex(0);
     setSourceReady(selected !== "new"); setImporting(false); setIgnoredFiles([]); setReplacement(null); setAddition(null);setRemoveOpen(false);setNewFileOpen(false);nameTouched.current=false; setEditorVersion(++editorEpoch.current);
     if (!client) { setLoading(false); setLoadedScope(scope); return; }
     if (selected === "new") { setForm(empty); setBuildText(buildTexts(undefined)); setLoading(false); setLoadedScope(scope); return; }
@@ -192,8 +217,20 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
         if (!cancelled && isCurrent(scope)) {
           const index=carry?Math.max(0,result.members.findIndex(member=>member.id===carry.activeId)):0;
           memberKeys.current=result.members.map(member=>{const old=carry?.members.find(value=>value.id===member.id && value.content===member.content);return old?.key??crypto.randomUUID();});
-          if(carry){for(const old of carry.members)if(!memberKeys.current.includes(old.key))editorSessions.current.delete(old.key);if(carry.revision!==result.revision){setSaved(null);setPostSaveChanged(true);}}
+          if(carry){for(const old of carry.members)if(!memberKeys.current.includes(old.key))editorSessions.current.delete(old.key);if(carry.draftId!==result.id || carry.revision!==result.revision || metadata.draftRevision!==result.revision){setSaved(null);setPostSaveChanged(true);}}
           setDraft(result);setForm({...draftInput(result),sourceName:result.members[index]!.sourceName,content:result.members[index]!.content});setMemberIndex(index);setBuildText(buildTexts(result.buildInputs));
+          if(carry?.preview && metadata.state==="retired")setError("资源已停用，请恢复后重新检查。");
+          if(carry?.preview && canWrite && carry.canWrite===canWrite && metadata.state!=="retired" && carry.resourceId===result.resourceId && carry.draftId===result.id && carry.revision===result.revision && metadata.draftRevision===result.revision){
+            scope.pending=true;setPending(true);setOperation("checking");
+            try {
+              const checked=await client.preview(result.resourceId,result.revision);
+              if(!cancelled && isCurrent(scope)){
+                if(checked.resourceId!==result.resourceId || checked.draftRevision!==result.revision)throw new Error("检查结果已失效，请重新检查。");
+                setPreview({scope,data:checked,key:crypto.randomUUID()});
+              }
+            } catch(cause){if(!cancelled && isCurrent(scope)){setError(message(cause));setPreviewFailure(cause instanceof WiseEffApiError?cause:null);setConflict(staleDraft(cause));}}
+            finally{scope.pending=false;if(!cancelled && isCurrent(scope)){setPending(false);setOperation(null);}}
+          }
         }
       } else if (metadata.currentVersion) {
         const result = await client.version(selected, selectedVersion && selectedVersion !== "draft" ? selectedVersion : metadata.currentVersion.id);
@@ -202,10 +239,15 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
           setPublished(result);
         }
       } else throw new Error("资源没有可读取的源码。");
+      carryLoaded=true;
     }) : client.list({ q: query, offset: (page - 1) * 20, limit: 20 }).then(result => {
       if (!cancelled && isCurrent(scope)) { setRows(result.items); setTotal(result.total); }
-    })).catch(cause => { if (!cancelled && isCurrent(scope)) setError(message(cause)); })
-      .finally(() => { if (!cancelled && isCurrent(scope)) { setLoading(false); setLoadedScope(scope); } });
+    })).catch(cause => { if (!cancelled && isCurrent(scope)) {setError(message(cause));if(carry){
+      resume.current={...carry,preview:false};const index=Math.max(0,carry.savedDraft.members.findIndex(member=>member.id===carry.activeId));
+      memberKeys.current=carry.savedDraft.members.map(member=>carry.members.find(old=>old.id===member.id)!.key);
+      setDraft(carry.savedDraft);setForm({...draftInput(carry.savedDraft),sourceName:carry.savedDraft.members[index]!.sourceName,content:carry.savedDraft.members[index]!.content});setMemberIndex(index);setBuildText(buildTexts(carry.savedDraft.buildInputs));setConflict(true);
+    }} })
+      .finally(() => { if (!cancelled && isCurrent(scope)) {if(carryLoaded && resume.current===carry)resume.current=null; setLoading(false); setLoadedScope(scope); } });
     return () => { cancelled = true; };
   }, [client, selected, selectedVersion, tab, query, page, historyPage,usagePage, reload, scope, isCurrent]);
 
@@ -214,50 +256,73 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     const input = { ...withContent(form,memberIndex,editor.current?.flush()?.text ?? form.content), buildInputs: buildInputsFromText(buildText.paths, buildText.defines) };
     const submitted=sourceMembers(input),keys=memberKeys.current,activeKey=keys[memberIndex];
     setForm(input);
-    const result = draft ? await client.save(draft.resourceId, { ...input, expectedRevision: draft.revision }) : await client.create(input);
+    let result:SharedDtsiDraft,creation:typeof creating=null;
+    if(draft)result=await client.save(draft.resourceId, { ...input, expectedRevision: draft.revision });
+    else {
+      creation={client,organizationId,search};creationRef.current=creation;setCreating(creation);
+      try{result=await client.create(input);}catch(error){
+        if(creationRef.current===creation){
+          creationRef.current=null;
+          if(mounted.current){setCreating(null);if(visibleContext.current.client===client && visibleContext.current.organizationId===organizationId && visibleContext.current.search===search){
+            setUncertainCreate(!(error instanceof WiseEffApiError && error.status!==undefined && error.status>=400 && error.status<500 && ["VALIDATION_FAILED","FORBIDDEN","UNAUTHENTICATED","CONFLICT"].includes(error.code)));
+            if(!isCurrent(operation)){setError(message(error));setPreviewFailure(error instanceof WiseEffApiError?error:null);}}}
+        }
+        throw error;
+      }
+    }
     if (isCurrent(operation)) {
       const nextKeys=result.members.map(member=>{const index=submitted.findIndex(old=>old.id ? old.id===member.id : old.sourceName===member.sourceName);return keys[index]??crypto.randomUUID();});
       const index=Math.max(0,nextKeys.indexOf(activeKey!));memberKeys.current=nextKeys;
-      if(selected==="new")resume.current={resourceId:result.resourceId,revision:result.revision,members:result.members.map((member,at)=>({id:member.id,content:member.content,key:nextKeys[at]!})),activeId:result.members[index]!.id};
+      if(selected==="new")resume.current={resourceId:result.resourceId,draftId:result.id,revision:result.revision,savedDraft:result,members:result.members.map((member,at)=>({id:member.id,content:member.content,key:nextKeys[at]!})),activeId:result.members[index]!.id,client,organizationId,canWrite};
       setDraft(result);setForm({...draftInput(result),sourceName:result.members[index]!.sourceName,content:result.members[index]!.content});setBuildText(buildTexts(result.buildInputs));setMemberIndex(index);setEditorDirty(false);setSaved(result.resourceId);
+    } else if(creation && creationRef.current===creation && selected==="new" && mounted.current && visibleContext.current.client===client && visibleContext.current.organizationId===organizationId && visibleContext.current.search===search){
+      const ids=new Map(result.members.map(member=>{const index=submitted.findIndex(old=>old.id?old.id===member.id:old.sourceName===member.sourceName);return [keys[index],member.id] as const;}));
+      setDraft(result);setForm(current=>({...current,members:sourceMembers(current).map((member,index)=>({...member,...(ids.get(memberKeys.current[index])?{id:ids.get(memberKeys.current[index])}: {})}))}));
+      setPostSaveChanged(true);
     }
+    if(creation && creationRef.current===creation){creationRef.current=null;if(mounted.current)setCreating(null);}
     return result;
   };
   const save = async () => {
-    if (!client || scope.pending || busyLoading || !canWrite || !dirty || conflict || published || !members.length || invalidMembers || missingSource || (!draft && selected!=="new")) return;
-    importSequence.current+=1;setImporting(false);scope.pending = true; setPending(true); setError(""); setPreviewFailure(null); setSaved(null);setPostSaveChanged(false); setPreview(null);
+    if (!client || scope.pending || creatingHere || uncertainCreate || busyLoading || !canWrite || !dirty || conflict || published || !members.length || invalidMembers || missingSource || (!draft && selected!=="new")) return;
+    importSequence.current+=1;setImporting(false);scope.pending = true; setPending(true);setOperation("saving"); setError(""); setPreviewFailure(null); setSaved(null);setPostSaveChanged(false); setPreview(null);
     try {
       const result = await persist(scope);
       if (isCurrent(scope) && selected === "new") leave(result.resourceId);
     } catch (cause) {
-      if (isCurrent(scope)) { setError(message(cause)); setPreviewFailure(cause instanceof WiseEffApiError ? cause : null); setConflict(cause instanceof WiseEffApiError && cause.code === "CONFLICT"); }
-    } finally { scope.pending = false; if (isCurrent(scope)) setPending(false); }
+      if (isCurrent(scope)) { setError(message(cause)); setPreviewFailure(cause instanceof WiseEffApiError ? cause : null); setConflict(staleDraft(cause)); }
+    } finally { scope.pending = false; if (isCurrent(scope)){setPending(false);setOperation(null);} }
   };
   const preparePublication = async () => {
-    if (!client || !draft || scope.pending || busyLoading || !canWrite || conflict || !form.changeDescription.trim() || !members.length || invalidMembers || missingSource) return;
-    importSequence.current+=1;setImporting(false);scope.pending = true; setPending(true); setError(""); setPreviewFailure(null); setPreview(null);
+    if (!client || (!draft && selected!=="new") || scope.pending || creatingHere || uncertainCreate || busyLoading || !canWrite || conflict || !form.changeDescription.trim() || !members.length || invalidMembers || missingSource) return;
+    importSequence.current+=1;setImporting(false);scope.pending = true; setPending(true);setOperation(dirty || !draft?"saving":"checking"); setError(""); setPreviewFailure(null); setPreview(null);
     try {
-      const current = dirty ? await persist(scope) : draft;
+      const current = dirty || !draft ? await persist(scope) : draft;
       if (!isCurrent(scope)) return;
+      if(selected==="new") {
+        if(!resume.current){const keys=memberKeys.current;const active=members[memberIndex]?.id;resume.current={resourceId:current.resourceId,draftId:current.id,revision:current.revision,savedDraft:current,members:current.members.map(member=>({id:member.id,content:member.content,key:keys[members.findIndex(value=>value.id===member.id)]??crypto.randomUUID()})),activeId:active??current.members[0]!.id,client,organizationId,canWrite};}
+        resume.current.preview=true;leave(current.resourceId);return;
+      }
+      setOperation("checking");
       const result = await client.preview(current.resourceId, current.revision);
-      if (isCurrent(scope)) setPreview({ scope, data: result, key: crypto.randomUUID() });
+      if (isCurrent(scope)) {if(result.resourceId!==current.resourceId || result.draftRevision!==current.revision)throw new Error("检查结果已失效，请重新检查。");setPreview({ scope, data: result, key: crypto.randomUUID() });}
     } catch (cause) {
       if (isCurrent(scope)) { setError(message(cause)); setPreviewFailure(cause instanceof WiseEffApiError ? cause : null);
-        setConflict(cause instanceof WiseEffApiError && cause.code === "CONFLICT" && cause.details.reason !== "preprocess-busy"); }
-    } finally { scope.pending = false; if (isCurrent(scope)) setPending(false); }
+        setConflict(staleDraft(cause)); }
+    } finally { scope.pending = false; if (isCurrent(scope)){setPending(false);setOperation(null);} }
   };
   const publish = async () => {
     if (!client || !currentPreview || !canWrite || scope.pending || busyLoading) return;
-    scope.pending = true; setPending(true); setError("");
+    scope.pending = true; setPending(true);setOperation("publishing"); setError("");
     try {
       const result = await client.publish(selected, currentPreview.data.id, currentPreview.key);
       if (isCurrent(scope)) { setPreview(null); leave(selected, { version: result.id, tab: "source" }); }
     } catch (cause) {
       if (isCurrent(scope)) {
         setError(message(cause));
-        if (cause instanceof WiseEffApiError && cause.code === "CONFLICT") { setPreview(null); setConflict(true); }
+        if (cause instanceof WiseEffApiError && cause.code === "CONFLICT") { setPreview(null); setConflict(staleDraft(cause)); }
       }
-    } finally { scope.pending = false; if (isCurrent(scope)) setPending(false); }
+    } finally { scope.pending = false; if (isCurrent(scope)){setPending(false);setOperation(null);} }
   };
   const createVersionDraft = async () => {
     if (!client || !detail?.currentVersion || !canWrite || scope.pending || busyLoading) return;
@@ -429,8 +494,9 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   </div>;
 
   const lifecycleControls=client&&detail?<SharedDtsiLifecycle key={scopeKey} client={client} resource={detail} canWrite={canWrite} pending={pending}
-    onPending={value=>{scope.pending=value;if(isCurrent(scope))setPending(value);}} onChanged={value=>{if(isCurrent(scope))setDetail(value);}} />:null;
-  if (busyLoading) return <section className="shared-dtsi-page"><SectionSkeleton label="正在加载共享 DTSI" /></section>;
+    onPending={value=>{scope.pending=value;if(isCurrent(scope))setPending(value);}} onChanged={value=>{if(isCurrent(scope))setDetail(value);}}
+    onDiscard={draft?()=>setDiscardOpen(true):undefined} discardDisabled={conflict} />:null;
+  if (busyLoading) return <section className="shared-dtsi-page"><SectionSkeleton label={operation==="checking"?"正在检查源码与依赖":"正在加载共享 DTSI"} /></section>;
 
   if (selected === "new" && !sourceReady) return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="导入共享 DTSI">
     <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={()=>void navigate("")}><ArrowLeft aria-hidden="true" />返回</Button><h1>导入共享 DTSI</h1></div></header>
@@ -464,15 +530,14 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   </section>;
 
   if (published || tab === "versions" || tab === "usages") return <section className="shared-dtsi-page shared-dtsi-page--editor shared-dtsi-page--resource" aria-label="共享 DTSI 版本" aria-busy={pending}>
-    <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={() => void navigate("")} disabled={pending}><ArrowLeft aria-hidden="true" />返回</Button>
+    <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={() => void navigate("")} disabled={pending || creatingHere}><ArrowLeft aria-hidden="true" />返回</Button>
       <h1>{published?.name ?? detail?.name ?? "共享 DTSI"}</h1>
       {projectReturnPath ? <a href={projectReturnPath} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(projectReturnPath); } }}>返回项目节点</a> : null}</div>
-      {canWrite && detail?.state!=="retired" && detail?.currentVersion ? <Button disabled={pending} onClick={() => detail.draftRevision ? void navigate(selected,{version:"draft",tab:"source"})
+      {lifecycleControls}{canWrite && detail?.state!=="retired" && detail?.currentVersion ? <Button disabled={pending} onClick={() => detail.draftRevision ? void navigate(selected,{version:"draft",tab:"source"})
         : published && published.id!==detail.currentVersion!.id ? void navigate(selected,{version:detail.currentVersion!.id,tab:"source"}) : void createVersionDraft()}>
         {detail.draftRevision ? "继续编辑草稿" : published && published.id!==detail.currentVersion.id ? "查看最新版本" : "创建新版本"}</Button> : null}</header>
     <div className="shared-dtsi-resource-body">
     {error ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : null}
-    {lifecycleControls}
     <ViewSwitch variant="tabs" ariaLabel="共享资源详情" value={tab} onValueChange={value => void navigate(selected,{tab:value})}
       items={[{value:"source",label:"源码",id:"shared-source-tab",panelId:"shared-source-panel"},
         {value:"recognition",label:"来源识别",id:"shared-recognition-tab",panelId:"shared-recognition-panel"},
@@ -535,24 +600,25 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     </div>
   </section>;
 
-  return <section className="shared-dtsi-page shared-dtsi-page--editor shared-dtsi-page--resource" aria-label="共享 DTSI 草稿" aria-busy={pending}>
-    <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={() => void navigate("")} disabled={pending}><ArrowLeft aria-hidden="true" />返回</Button>
+  return <section className="shared-dtsi-page shared-dtsi-page--editor shared-dtsi-page--resource" aria-label="共享 DTSI 草稿" aria-busy={pending || creatingHere}>
+    <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={() => void navigate("")} disabled={pending || creatingHere}><ArrowLeft aria-hidden="true" />返回</Button>
       <h1>{draft?.name ?? (selected === "new" ? "导入共享 DTSI" : "共享 DTSI")}{draft ? <span className="shared-dtsi-draft-label">草稿</span> : null}</h1>
       {detail?.currentVersion ? <Button variant="ghost" disabled={pending} onClick={()=>void navigate(selected,{version:detail.currentVersion!.id,tab:"source"})}>查看已发布版本</Button> : null}</div>
-      <div className="shared-dtsi-actions">{saved === selected ? <span role="status">草稿已保存</span> : null}{draft && canWrite ? <Button variant="outline" disabled={pending || conflict} onClick={() => setDiscardOpen(true)}>丢弃草稿</Button> : null}
-        {canWrite && (draft || selected==="new") ? <Button variant={draft?"outline":"default"} disabled={pending || !dirty || conflict || !form.name.trim() || !members.length || invalidMembers || missingSource} onClick={() => void save()}>{pending ? "保存中…" : "保存草稿"}</Button> : null}
-        {draft && canWrite && detail?.state!=="retired" ? <Button ref={previewButton} aria-describedby={!form.changeDescription.trim()?"shared-publication-hint":undefined} disabled={pending || conflict || !form.changeDescription.trim() || !members.length || invalidMembers || missingSource} onClick={()=>void preparePublication()}>{previewFailure?.details.reason === "preprocess-busy" ? "重试检查" : "预览发布"}</Button> : null}</div>
+      <div className="shared-dtsi-actions">{saved === selected ? <span role="status">草稿已保存</span> : null}{!canWrite && creatingHere?<span role="status">正在保存草稿，请稍候。</span>:null}{lifecycleControls}
+        {canWrite && (draft || selected==="new") ? <Button variant="outline" disabled={pending || creatingHere || uncertainCreate || !dirty || conflict || !form.name.trim() || !members.length || invalidMembers || missingSource} onClick={() => void save()}>{operation==="saving" || creatingHere ? "保存中…" : "保存草稿"}</Button> : null}
+        {canWrite && (draft || selected==="new") && detail?.state!=="retired" ? <Button ref={previewButton} disabled={pending || creatingHere || uncertainCreate || conflict || !members.length || invalidMembers || missingSource} onClick={()=>{if(!preparing){setPreparing(true);return;}if(!form.changeDescription.trim()){setDescriptionMissing(true);descriptionInput.current?.focus();return;}void preparePublication();}}>{operation==="saving" || creatingHere?"正在保存…":operation==="checking"?"正在检查…":preparing ? previewFailure?.details.reason === "preprocess-busy" ? "重试检查" : "检查并预览" : "准备发布"}</Button> : null}</div>
     </header>
     <div className="shared-dtsi-resource-body">
-    {lifecycleControls}
     {loading ? <SectionSkeleton label="正在加载共享 DTSI 草稿" /> : error && !draft && selected !== "new" ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : <>
-      {error && !["name", "sourceName", "defines", "includeSearchPaths", "changeDescription"].some(field => fieldError(field)) ? <div className="shared-dtsi-error" role="alert">{diagnostic && diagnosticIndex >= 0
+      {uncertainCreate?<div className="shared-dtsi-error" role="alert"><p>保存结果未确认。请先核对资源列表；本页输入会保留。</p><a href={path("")} target="_blank" rel="noreferrer">在新窗口核对资源列表</a>{canWrite?<Button variant="outline" size="sm" onClick={()=>{setUncertainCreate(false);setError("");}}>已核对，可重试</Button>:null}</div>:error && !["name", "sourceName", "defines", "includeSearchPaths", "changeDescription"].some(field => fieldError(field)) ? <div className="shared-dtsi-error" role="alert">{diagnostic && diagnosticIndex >= 0
         ? <><p>{diagnostic.message}</p><Button variant="outline" size="sm" className="shared-dtsi-error__location" onClick={() => { if (diagnosticIndex !== memberIndex) selectMember(diagnosticIndex); setDiagnosticTarget({index:diagnosticIndex,line:diagnostic.line,column:diagnostic.column}); }}>定位源码：{diagnostic.sourceName}:{diagnostic.line}:{diagnostic.column}</Button></>
         : diagnostic && diagnosticHref ? <><p>{diagnostic.message}</p><a className="shared-dtsi-error__location" href={diagnosticHref} target="_blank" rel="noreferrer">查看源码：{diagnostic.sourceName}:{diagnostic.line}:{diagnostic.column}（新窗口）</a></>
         : issueMemberIndex >= 0 && sourceMembers(form)[issueMemberIndex] ? <><p>{issue?.message}</p><Button variant="outline" size="sm" className="shared-dtsi-error__location" onClick={() => { if (issueMemberIndex !== memberIndex) selectMember(issueMemberIndex); setPathTarget(issueMemberIndex); }}>定位文件路径：{sourceMembers(form)[issueMemberIndex]!.sourceName}</Button></>
         : <p>{error}</p>}{conflict ? <Button variant="outline" onClick={() => setReloadOpen(true)}>重新载入</Button> : null}</div> : null}
-      {postSaveChanged?<p role="status">草稿在保存后已更新，已载入最新版本。</p>:null}
+      {postSaveChanged?<p role="status">{selected==="new"?"草稿已创建，请核对后继续。":"草稿在保存后已更新，已载入最新版本。"}</p>:null}
       {draft?.sourceEvidence ? <p className="shared-dtsi-hint">已复制所选私有源码及依赖。本组织有查看权限的用户可读取草稿与发布版本；来源项目配置保持不变。</p> : null}
+      {preparing ? <section className="shared-dtsi-preparation" aria-labelledby="shared-dtsi-preparation-title"><div className="shared-dtsi-preparation-heading"><h2 id="shared-dtsi-preparation-title">发布准备</h2><Button variant="outline" size="sm" disabled={pending} onClick={()=>{setPreparing(false);setDescriptionMissing(false);previewButton.current?.focus();}}>返回编辑</Button></div><label className="shared-dtsi-change-description">版本说明<Textarea ref={descriptionInput} aria-label="版本说明" aria-invalid={Boolean(descriptionMissing || fieldError("changeDescription"))} aria-describedby={descriptionMissing || fieldError("changeDescription") ? "shared-description-error" : undefined} value={form.changeDescription} maxLength={1000} rows={2}
+        placeholder="说明此共享版本的变更" readOnly={!canWrite} disabled={pending} onChange={event=>{edits.current+=1;setForm({...form,changeDescription:event.target.value});setDescriptionMissing(false);setSaved(null);}} />{descriptionMissing || fieldError("changeDescription") ? <span id="shared-description-error" role="alert">{descriptionMissing ? "请填写版本说明。" : fieldError("changeDescription")}</span> : null}</label></section> : null}
       <div className="shared-dtsi-fields">
         <label>资源名称<Input aria-label="资源名称" aria-invalid={Boolean(fieldError("name"))} aria-describedby={fieldError("name") ? "shared-name-error" : undefined} value={form.name} maxLength={160} readOnly={!canWrite} disabled={pending} onChange={event => { nameTouched.current=true; edits.current+=1; setForm({ ...form, name: event.target.value }); setSaved(null); }} />{fieldError("name") ? <span id="shared-name-error" role="alert">{fieldError("name")}</span> : null}</label>
         {canWrite ? importControls : null}
@@ -562,15 +628,12 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
       {canWrite?<SharedDtsiDependencies client={client} value={form.dependencies??[]} resourceId={draft?.resourceId} disabled={pending}
         sourceHref={(resourceId,versionId)=>path(resourceId,{version:versionId,tab:"source"})}
         onChange={dependencies=>{edits.current+=1;setForm(current=>({...current,dependencies}));setPreview(null);setSaved(null);}} />:null}
-      <label className="shared-dtsi-change-description">变更说明<Textarea aria-label="变更说明" aria-invalid={Boolean(fieldError("changeDescription"))} aria-describedby={fieldError("changeDescription") ? "shared-description-error" : undefined} value={form.changeDescription} maxLength={1000} rows={2}
-        placeholder="说明此共享版本的变更" readOnly={!canWrite} disabled={pending} onChange={event=>{edits.current+=1;setForm({...form,changeDescription:event.target.value});setSaved(null);}} />{fieldError("changeDescription") ? <span id="shared-description-error" role="alert">{fieldError("changeDescription")}</span> : null}</label>
       <details className="shared-dtsi-build-inputs" open={fieldError("defines") || fieldError("includeSearchPaths") ? true : undefined}><summary>构建设置</summary><div className="shared-dtsi-fields">
         <label>Include 搜索目录<Textarea aria-label="Include 搜索目录" aria-invalid={Boolean(fieldError("includeSearchPaths"))} aria-describedby={fieldError("includeSearchPaths") ? "shared-search-path-error" : undefined} rows={2} value={buildText.paths} placeholder="每行一个资源内目录，例如 include" readOnly={!canWrite} disabled={pending}
           onChange={event => { edits.current += 1; setBuildText({ ...buildText, paths: event.target.value }); setSaved(null); setPreview(null); }} />{fieldError("includeSearchPaths") ? <span id="shared-search-path-error" role="alert">{fieldError("includeSearchPaths")}</span> : null}</label>
         <label>构建宏<Textarea aria-label="构建宏" aria-invalid={Boolean(fieldError("defines"))} aria-describedby={fieldError("defines") ? "shared-macro-error" : undefined} rows={2} value={buildText.defines} placeholder="每行 NAME=value，例如 ENABLED=1" readOnly={!canWrite} disabled={pending}
           onChange={event => { edits.current += 1; setBuildText({ ...buildText, defines: event.target.value }); setSaved(null); setPreview(null); }} />{fieldError("defines") ? <span id="shared-macro-error" role="alert">{fieldError("defines")}</span> : null}</label>
       </div></details>
-      {draft && canWrite && !form.changeDescription.trim() ? <p id="shared-publication-hint" className="shared-dtsi-hint">发布前请填写变更说明。</p> : null}
       {missingSource?<p className="shared-dtsi-error" role="status">请至少保留一个 .dts 或 .dtsi 文件。</p>:null}
       {members.length?<div className="shared-dtsi-fields"><label>文件路径<Input ref={sourcePath} aria-label="文件路径" aria-invalid={Boolean(memberPathError(memberIndex) || fieldError("sourceName"))} aria-describedby={memberPathError(memberIndex) || fieldError("sourceName")?"shared-member-path-error":undefined} value={form.sourceName} maxLength={240} readOnly={!canWrite} disabled={pending} onChange={event => { edits.current+=1;
           setForm({ ...form, sourceName: event.target.value,...(form.members?{members:form.members.map((member,index)=>index===memberIndex?{...member,sourceName:event.target.value}:member)}:{}) }); setSaved(null); }} />{memberPathError(memberIndex) || fieldError("sourceName")?<span id="shared-member-path-error" role="alert">{memberPathError(memberIndex) || fieldError("sourceName")}</span>:null}</label>
@@ -586,7 +649,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
         }); }} onSave={() => void save()} /></div></div>}
     </>}
     </div>
-    <SettingsLeaveGuard dirty={dirty && !leaving} saving={pending} description="离开将放弃本页未保存的修改，已保存的草稿不会受到影响。" />
+    <SettingsLeaveGuard dirty={(localDirty || creatingHere) && !leaving} saving={pending || creatingHere} description={uncertainCreate?"保存结果未确认，资源可能已创建。离开后请先核对资源列表；本页未保存的输入将丢失。":"离开将放弃本页未保存的修改，已保存的草稿不会受到影响。"} />
     <ConfirmDialog open={newFileOpen} title="新建源码" description="输入资源内相对路径。" extra={<label>文件路径<Input aria-label="文件路径" value={newFilePath} onChange={event=>setNewFilePath(event.target.value)} aria-invalid={Boolean(newFilePath && newFileError)} />{newFilePath && newFileError?<span role="alert">{newFileError}</span>:null}</label>} confirmLabel="创建文件" confirmDisabled={Boolean(newFileError) || atMemberLimit} onCancel={()=>setNewFileOpen(false)} onConfirm={createMember} />
     <ConfirmDialog open={removeOpen} title="移除文件？" description={`将从当前草稿中移除 ${form.sourceName}。`} confirmLabel="移除文件" onCancel={()=>setRemoveOpen(false)} onConfirm={removeMember} />
     <ConfirmDialog open={Boolean(addition)} title="替换重名文件？" description={`以下文件路径已存在，将替换其源码：${addition?.members.filter(member=>sourceMembers(form).some(old=>old.sourceName.normalize("NFC")===member.sourceName.normalize("NFC"))).map(member=>member.sourceName).join("、")??""}。其他文件会保留。`}
