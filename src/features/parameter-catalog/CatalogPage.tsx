@@ -1053,7 +1053,7 @@ export function CatalogPage({
                   : `共 ${totalCount} 项 · 第 ${cursorTrail.length + 1} 页`}
               </p>
             </header>
-            {definitionPublishingAllowed && onBatchDefinitionCommand ? <div className="parameter-catalog__actions" role="group" aria-label="批量定义操作">
+            {definitionPublishingAllowed && onBatchDefinitionCommand ? <>
               {anchor.subjectId && release ? <button type="button" className="button subtle sm" disabled={selectingSubject}
                 onClick={() => {
                   const generation = selectionGeneration.current;
@@ -1067,17 +1067,21 @@ export function CatalogPage({
                   }).catch(() => { if (generation === selectionGeneration.current) setSelectionError("无法读取该主体的全部定义，请重试。"); })
                     .finally(() => { if (generation === selectionGeneration.current) setSelectingSubject(false); });
                 }}>选中该主体下全部定义</button> : null}
-              <button type="button" className="button subtle sm"
+              {selectedDefinitions.length > 0 ? <div className="parameter-catalog__actions" role="group" aria-label="批量定义操作">
+              <span>已选 {selectedDefinitions.length} 项</span>
+              <button type="button" className="button ghost sm" onClick={() => setSelectedDefinitions([])}>清除选择</button>
+              <button type="button" className="button primary sm"
                 disabled={inFlight || selectingSubject || selectedDefinitions.length === 0 || selectedDefinitions.length > 128 || !selectedDefinitions.every((item) => item.lifecycle === "active" && ownerWritable(item))}
-                onClick={() => onBatchDefinitionCommand("retire-definition", selectedDefinitions, workspaceState)}>弃用所选（{selectedDefinitions.length}）</button>
+                onClick={() => onBatchDefinitionCommand("retire-definition", selectedDefinitions, workspaceState)}>退役所选（{selectedDefinitions.length}）</button>
               <button type="button" className="button subtle sm"
                 disabled={inFlight || selectingSubject || selectedDefinitions.length === 0 || selectedDefinitions.length > 128 || !selectedDefinitions.every((item) => item.lifecycle === "retired" && ownerWritable(item))}
                 onClick={() => onBatchDefinitionCommand("restore-definition", selectedDefinitions, workspaceState)}>恢复所选（{selectedDefinitions.length}）</button>
               {selectedDefinitions.length > 128 ? <span role="status">每批最多选择 128 个定义。</span>
                 : selectedDefinitions.length > 0 && !selectedDefinitions.every((item) => item.lifecycle === selectedDefinitions[0]?.lifecycle)
                   ? <span role="status">所选定义状态不同，请选择相同状态的定义。</span> : null}
+              </div> : null}
               {selectionError ? <span role="alert">{selectionError}</span> : null}
-            </div> : null}
+            </> : null}
             {showListEmptyState ? (
               <div data-catalog-empty={pageEmptyReason}>
                 <SectionEmpty message={catalogEmptyMessage(pageEmptyReason)} />
@@ -1099,11 +1103,11 @@ export function CatalogPage({
                     onClick={() => setDeletingDefinition(row)}>彻底删除</button> : null}
                   {!compactList && definitionPublishingAllowed && onDefinitionCommand && !inFlight && error === undefined && ownerWritable(row) ? (
                     <button type="button" className="button subtle sm"
-                      aria-label={`${row.lifecycle === "retired" ? "恢复" : "弃用"} ${row.propertyKey}`}
+                      aria-label={`${row.lifecycle === "retired" ? "恢复" : "退役"} ${row.propertyKey}`}
                       data-catalog-row-action={row.lifecycle === "retired" ? "restore-definition" : "retire-definition"}
                       onClick={() => onDefinitionCommand(row.lifecycle === "retired" ? "restore-definition" : "retire-definition", row,
                         deriveCatalogDomainState({ document: snapshot?.document, subject: subjectsById.get(row.subject.id), inFlight, error }))}>
-                      {row.lifecycle === "retired" ? "恢复" : "弃用"}
+                      {row.lifecycle === "retired" ? "恢复" : "退役"}
                     </button>) : null}
                 </span>}
                 emptyState={filterEmptyReason ? <div data-catalog-empty={filterEmptyReason}>

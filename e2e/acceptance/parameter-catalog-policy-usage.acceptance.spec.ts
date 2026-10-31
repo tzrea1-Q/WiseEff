@@ -92,7 +92,7 @@ test("shows unavailable Policy usage through real API details and lifecycle conf
   const table = region.getByRole("table", { name: "参数定义列表" });
   const definition = definitions.find((item) => item.propertyKey === "iin_max")!;
   expect(definition).toBeDefined();
-  const row = table.getByRole("row").filter({ has: page.getByRole("button", { name: "弃用 iin_max", exact: true }) });
+  const row = table.getByRole("row").filter({ has: page.getByRole("button", { name: "退役 iin_max", exact: true }) });
   await row.getByRole("button", { name: /^编辑 /u }).click();
   const editor = page.getByRole("dialog");
   await editor.getByText("更多信息", { exact: true }).click();
@@ -103,7 +103,7 @@ test("shows unavailable Policy usage through real API details and lifecycle conf
   await catalogScreenshot(page, testInfo, "policy-usage-editor");
   await editor.getByRole("button", { name: /关闭/ }).click();
 
-  await row.getByRole("button", { name: /^弃用 /u }).click();
+  await row.getByRole("button", { name: /^退役 /u }).click();
   const lifecycle = page.getByRole("dialog");
   await expect(lifecycle).toContainText("策略使用量暂不可用");
   await lifecycle.getByLabel("原因").fill("Issue 815 unavailable usage verification");
@@ -146,11 +146,11 @@ test("shows unavailable Policy usage through real API details and lifecycle conf
     body: JSON.stringify({ status: preview.status(), request: submitted, response: candidate, storedRevision: revised.content.revision }, null, 2),
     contentType: "application/json",
   });
-  const confirmation = page.getByRole("dialog", { name: "确认弃用" });
+  const confirmation = page.getByRole("dialog", { name: "确认退役" });
   await expect(confirmation).toBeVisible();
   await expect(confirmation).toContainText("策略使用量暂不可用");
   await expect(confirmation).not.toContainText(/策略 (?:0|null)/u);
-  await expect(confirmation.getByRole("button", { name: "确认弃用" })).toBeEnabled();
+  await expect(confirmation.getByRole("button", { name: "确认退役" })).toBeEnabled();
   await page.waitForFunction(() =>
     document.getAnimations().every((animation) => {
       const iterations = animation.effect?.getComputedTiming().iterations;

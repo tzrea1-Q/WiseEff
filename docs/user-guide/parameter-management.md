@@ -91,7 +91,7 @@ In definition management, read the value type, unit and limits before editing. R
 
 ### Batch retire or restore definitions
 
-In API mode, Catalog governors can select definition rows or select every definition under the current subject. Select up to 128 definitions with the same lifecycle, then choose retire or restore. Mixed states must be separated into different batches. Review the current Organization's usage totals and each definition, optionally enter one shared reason, and preview the changes. Confirm the Candidate through the existing authorization and publication flow. The batch succeeds or fails together; existing identities, historical revisions and pinned project references remain.
+In API mode, Catalog governors can select definition rows or select every definition under the current subject. Select up to 128 definitions with the same lifecycle, then choose **Retire selected** or **Restore selected**. Mixed states must be separated into different batches. Review the current Organization's usage totals and each definition, optionally enter one shared reason, and preview the changes. Confirm the Candidate through the existing authorization and publication flow. After activation, choose **Done** to load the current release. The batch succeeds or fails together; existing identities, historical revisions and pinned project references remain.
 
 The examples field accepts a complete DTS property statement, a DTS value, or a JSON example array. DTS examples may include `/* ... */` and `// ...` comments, including after the final semicolon. Comments outside strings are ignored when converting the example; quoted content such as `"7|8"`, `"3^1"`, `"0xa"`, or `"http://host"` remains unchanged.
 

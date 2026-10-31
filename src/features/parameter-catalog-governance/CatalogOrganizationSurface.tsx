@@ -580,8 +580,7 @@ export function CatalogOrganizationSurface({
           definitions={lifecycle.definitions}
           runtimeMode={runtimeMode}
           createIdempotencyKey={createGovernanceIdempotencyKey}
-          onCompleted={() => setSurfaceEpoch((value) => value + 1)}
-          onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+          onRefreshEvidence={async () => { await refreshCurrentCatalog(); }}
           onOpenChange={(open) => {
             if (!open) {
               setLifecycle(null);

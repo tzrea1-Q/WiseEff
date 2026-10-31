@@ -228,16 +228,22 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     const onBatchDefinitionCommand = vi.fn();
     renderCatalog({ repository, search: `?subjectId=${registeredSubject.id}`, definitionPublishingAllowed: true,
       onBatchDefinitionCommand });
+    await screen.findByRole("button", { name: "选中该主体下全部定义" });
+    expect(screen.queryByRole("group", { name: "批量定义操作" })).not.toBeInTheDocument();
     await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
-    expect(screen.getByRole("button", { name: "弃用所选（1）" })).toBeEnabled();
+    expect(screen.getByText("已选 1 项")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退役所选（1）" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "恢复所选（1）" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "选中该主体下全部定义" }));
     expect(await screen.findByText(/所选定义状态不同/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "弃用所选（2）" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "退役所选（2）" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "恢复所选（2）" })).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
     await user.click(screen.getByRole("button", { name: "恢复所选（1）" }));
     expect(onBatchDefinitionCommand).toHaveBeenCalledWith("restore-definition", [second], expect.anything());
+    await user.click(screen.getByRole("button", { name: "清除选择" }));
+    expect(screen.queryByRole("group", { name: "批量定义操作" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选中该主体下全部定义" })).toBeEnabled();
   });
 
   it("hides batch controls without governance authority", async () => {
@@ -261,7 +267,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` });
     await user.click(screen.getByRole("button", { name: "选中该主体下全部定义" }));
     expect(await screen.findByText("每批最多选择 128 个定义。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "弃用所选（129）" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "退役所选（129）" })).toBeDisabled();
   });
   it("keeps definitions visible and highlights unset module attribution", async () => {
     const repository = createMockParameterCatalogRepository({ scenario: "ready" });
@@ -381,7 +387,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(await screen.findByRole("button", { name: "查看 historical-key" })).toBeVisible();
     expect(await screen.findByRole("button", { name: `编辑 ${activeDefinition.propertyKey}` })).toBeVisible();
     expect(screen.queryByRole("button", { name: "编辑 historical-key" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "弃用 historical-key" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "退役 historical-key" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看 historical-key" })
       .closest(layoutMode === "desktop" ? "tr" : ".parameter-catalog__card-row")).toHaveTextContent("主体已退役");
   });
@@ -402,7 +408,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(screen.getByRole("button", { name: "查看 retired-key" })).toBeVisible();
     expect(await screen.findByRole("button", { name: "恢复 retired-key" })).toBeVisible();
     expect(screen.getByRole("button", { name: "查看 registration-key" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "弃用 registration-key" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "退役 registration-key" })).not.toBeInTheDocument();
   });
 
   it("identifies the retired subject without marking the entire catalog release retired", async () => {
