@@ -11,14 +11,47 @@
 .shared-dtsi-header > div { min-width: 0; }
 .shared-dtsi-header--resource { flex-wrap: wrap; }
 .shared-dtsi-heading { display: flex; flex: 1 1 calc(var(--space-10) * 10); flex-wrap: wrap; align-items: center; gap: var(--space-3); }
-.shared-dtsi-heading h1 { flex: 1 1 calc(var(--space-10) * 4); min-width: 0; }
+.shared-dtsi-heading h1 { display: flex; flex: 1 1 calc(var(--space-10) * 4); align-items: baseline; min-width: 0; }
+.shared-dtsi-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shared-dtsi-title-tooltip { overflow-wrap: anywhere; white-space: normal; }
 .shared-dtsi-page--editor > .shared-dtsi-header { position: sticky; top: 0; z-index: var(--z-sticky); background: var(--surface); padding-block: var(--space-2); }
 .shared-dtsi-page--editor > .shared-dtsi-header--resource { position: static; flex-shrink: 0; background: transparent; }
 .shared-dtsi-header h1 { overflow-wrap: anywhere; }
 .shared-dtsi-header [data-variant="ghost"] { color: var(--text-secondary); }
 .shared-dtsi-actions, .shared-dtsi-pagination { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.shared-dtsi-status-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.shared-dtsi-status-line .shared-dtsi-error { display: flex; flex: 1 1 0; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
+.shared-dtsi-status-line .shared-dtsi-error p { min-width: 0; overflow-wrap: anywhere; }
+.shared-dtsi-status-line:empty { display: none; }
+.shared-dtsi-status-line p, .shared-dtsi-status-line .shared-dtsi-version-actions { margin: 0; }
 .shared-dtsi-fields { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
 .shared-dtsi-fields label { display: grid; flex: 1; min-width: 0; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); }
+.shared-dtsi-resource-picker { display: grid; gap: var(--space-2); min-width: 0; color: var(--text-secondary); }
+.shared-dtsi-resource-picker > button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.shared-dtsi-resource-menu { z-index: var(--z-dropdown); width: min(calc(var(--space-10) * 9), 90vw); max-height: var(--radix-popover-content-available-height); overflow-y: auto; padding: var(--space-3); border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-2); }
+.shared-dtsi-resource-options { display: grid; max-height: calc(var(--space-10) * 5); overflow-y: auto; }
+.shared-dtsi-resource-options button { height: auto; min-width: 0; justify-content: start; white-space: normal; text-align: start; overflow-wrap: anywhere; }
+.shared-dtsi-resource-menu p { color: var(--text-secondary); }
+.shared-dtsi-resource-pagination { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.shared-dtsi-reference-path { min-width: 0; }
+.shared-dtsi-reference-path summary { cursor: pointer; color: var(--text-secondary); }
+.shared-dtsi-reference-path[open] summary { margin-bottom: var(--space-2); }
+.shared-dtsi-reference-path label span { overflow-wrap: anywhere; }
+.shared-dtsi-editing-panels { display: flex; flex: 1 0 auto; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.shared-dtsi-editor-column { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.shared-dtsi-settings { display: grid; align-content: start; gap: var(--space-3); min-width: 0; }
+.shared-dtsi-editing-panels:has(> .shared-dtsi-settings details[open]) { display: grid; grid-template-columns: minmax(0, calc(var(--space-10) * 7)) minmax(0, 1fr); align-items: start; }
+.shared-dtsi-editing-panels:has(> .shared-dtsi-settings details[open]) > .shared-dtsi-settings { max-height: calc(var(--space-10) * 6); overflow-y: auto; }
+.shared-dtsi-dependencies .shared-dtsi-fields { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: var(--space-2); }
+.shared-dtsi-dependency-summary { display: block; margin-inline-start: var(--space-3); overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.shared-dtsi-dependencies .shared-dtsi-fields > button { justify-self: start; }
+.shared-dtsi-dependencies > ul { display: grid; gap: var(--space-3); list-style: none; padding: 0; margin-block: var(--space-3); }
+.shared-dtsi-dependencies > ul > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-width: 0; }
+.shared-dtsi-dependencies > ul > li > span { flex: 1 1 100%; overflow-wrap: anywhere; }
+.shared-dtsi-dependencies > ul > li > a { white-space: nowrap; color: var(--accent); text-decoration: underline; text-underline-offset: var(--space-1); }
+@media (max-width: 1100px) {
+  .shared-dtsi-editing-panels:has(> .shared-dtsi-settings details[open]) { grid-template-columns: minmax(0, 1fr); }
+}
 .shared-dtsi-source { display: flex; flex: 1; min-width: 0; height: calc(var(--space-10) * 10); min-height: calc(var(--space-10) * 8); overflow: hidden; border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); }
 .shared-dtsi-error { color: var(--danger); overflow-wrap: anywhere; }
 .shared-dtsi-error p { margin: 0 0 var(--space-2); }
@@ -27,6 +60,7 @@ button.shared-dtsi-error__location { padding-block: var(--space-1); }
 a.shared-dtsi-error__location { display: inline-block; text-decoration: underline; text-underline-offset: var(--space-1); }
 .shared-dtsi-pagination { justify-content: end; padding-block: var(--space-3); color: var(--text-secondary); }
 .shared-dtsi-change-description { display: grid; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); }
+.shared-dtsi-change-description .shared-dtsi-hint { margin-inline-start: var(--space-3); }
 .shared-dtsi-change-description textarea { resize: vertical; }
 .shared-dtsi-build-inputs summary { cursor: pointer; color: var(--text-secondary); }
 .shared-dtsi-build-inputs[open] summary { margin-block-end: var(--space-3); }
@@ -36,7 +70,7 @@ a.shared-dtsi-error__location { display: inline-block; text-decoration: underlin
 .shared-dtsi-metadata dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .shared-dtsi-published-panel:not([hidden]) { display: flex; flex: 1; flex-direction: column; gap: var(--space-4); min-width: 0; min-height: 0; }
 .shared-dtsi-description { white-space: pre-wrap; overflow-wrap: anywhere; }
-.shared-dtsi-draft-label { margin-inline-start: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); font-weight: 400; }
+.shared-dtsi-draft-label { flex-shrink: 0; margin-inline-start: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); font-weight: 400; }
 .shared-dtsi-hint { margin: 0; color: var(--text-secondary); font-size: var(--text-base); }
 .shared-dtsi-ignored { overflow-wrap: anywhere; }
 .shared-dtsi-workspace { display: flex; flex: 1 0 auto; min-width: 0; min-height: calc(var(--space-10) * 8); gap: var(--space-3); }

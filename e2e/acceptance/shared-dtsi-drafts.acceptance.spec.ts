@@ -23,9 +23,9 @@ test("preserves multifile edits after a real revision conflict and rejects a rea
   await editor.click();await page.keyboard.press("ControlOrMeta+End");await page.keyboard.insertText("// local main\n");
   await files.getByRole("button",{name:"part.dtsi",exact:true}).click();await editor.click();await page.keyboard.press("ControlOrMeta+End");await page.keyboard.insertText("// local part\n");
   await page.getByLabel("变更说明",{exact:true}).fill("本地未保存说明");
-  await page.getByText("构建设置",{exact:true}).click();await page.getByLabel("构建宏",{exact:true}).fill("ENABLED=2");
-  await page.getByLabel("Include 搜索目录",{exact:true}).fill("local/include");
-  await expect(page.getByText("Conflict dependency · 版本 1 · vendor",{exact:true})).toBeVisible();
+  await page.getByText("构建设置",{exact:true}).click();await page.getByLabel("预处理宏",{exact:true}).fill("ENABLED=2");
+  await page.getByLabel("头文件搜索目录",{exact:true}).fill("local/include");
+  await expect(page.locator(".shared-dtsi-dependencies > summary").getByText("Conflict dependency · 版本 1 · vendor",{exact:true})).toBeVisible();
   const concurrent=await catalogJson(page.request,"PUT",`/api/v2/shared-dtsi/${draft.resourceId}/draft`,{data:{name:"Concurrent change",members:draft.members,changeDescription:"服务器版本",dependencies,buildInputs:{includeSearchPaths:["include"],defines:{ENABLED:"1"}},expectedRevision:draft.revision}});
   expect(concurrent.status).toBe(200);
   const save=page.waitForResponse(response=>response.request().method()==="PUT"&&new URL(response.url()).pathname===`/api/v2/shared-dtsi/${draft.resourceId}/draft`);
@@ -34,8 +34,8 @@ test("preserves multifile edits after a real revision conflict and rejects a rea
   await page.getByRole("button",{name:"重新载入",exact:true}).click();await page.getByRole("dialog",{name:"重新载入草稿？"}).getByRole("button",{name:"继续编辑",exact:true}).click();
   await expect(editor).toContainText("local part");await files.getByRole("button",{name:"main.dtsi",exact:true}).click();await expect(editor).toContainText("local main");
   await expect(page.getByLabel("变更说明",{exact:true})).toHaveValue("本地未保存说明");
-  await expect(page.getByLabel("构建宏",{exact:true})).toHaveValue("ENABLED=2");await expect(page.getByLabel("Include 搜索目录",{exact:true})).toHaveValue("local/include");
-  await expect(page.getByText("Conflict dependency · 版本 1 · vendor",{exact:true})).toBeVisible();
+  await expect(page.getByLabel("预处理宏",{exact:true})).toHaveValue("ENABLED=2");await expect(page.getByLabel("头文件搜索目录",{exact:true})).toHaveValue("local/include");
+  await expect(page.locator(".shared-dtsi-dependencies > summary").getByText("Conflict dependency · 版本 1 · vendor",{exact:true})).toBeVisible();
   const reader=await page.context().newPage();
   try{
     await signInCatalogActor(reader,"guest",`/parameter-admin/sources?resource=${draft.resourceId}`);await dismissXiaozeHint(reader);
