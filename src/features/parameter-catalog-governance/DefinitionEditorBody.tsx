@@ -550,7 +550,7 @@ export function DefinitionEditorBody({
       if (current.status === "completed" && current.retirementEvidence?.authoritative &&
         current.retirementEvidence.scope === "platform" && current.retirementEvidence.remainingCurrentReferenceCount === 0) {
         onRetireDefinition();
-      } else setError("旧定义已有当前项目引用，暂不能从纠错结果中弃用；请先核对并迁移实际项目。当前输入已保留。");
+      } else setError("旧定义已有当前项目引用，暂不能从纠错结果中退役；请先核对并迁移实际项目。当前输入已保留。");
     } catch (caught) { setError(failureText(caught)); }
     finally { setPending(false); }
   };
@@ -1013,7 +1013,7 @@ export function DefinitionEditorBody({
             <div className="definition-editor__card-header">
               <h3 className="definition-editor__card-title">纠错执行结果</h3>
               <span className="definition-editor__card-desc">{preview?.impact.selectedProjectCount === 0
-                ? "替代身份已发布，旧定义保持有效；纠错不会自动弃用或删除旧定义。"
+                ? "替代身份已发布，旧定义保持有效；纠错不会自动退役或删除旧定义。"
                 : "身份替换已生效，受影响项目引用迁移汇总"}</span>
             </div>
             {preview?.impact.selectedProjectCount === 0 ? <dl className="parameter-catalog__dl">
@@ -1050,7 +1050,7 @@ export function DefinitionEditorBody({
                 replacement.retirementEvidence?.authoritative && replacement.retirementEvidence.scope === "platform" &&
                 replacement.retirementEvidence.remainingCurrentReferenceCount === 0 ? (
                   <button type="button" className="button subtle" disabled={!canPublish || pending} onClick={() => void retireOldDefinition()}>
-                    单独弃用旧定义
+                    单独退役旧定义
                   </button>
                 ) : null}
               {onClose ? (
@@ -1119,7 +1119,7 @@ export function DefinitionEditorBody({
                 preview.impact.selectedProjectCount === 0
                   ? "全平台当前引用为 0，无需迁移项目；发布时将重新检查。"
                   : `迁移 ${preview.impact.compatibleProjectCount} 个项目，${preview.impact.blockedProjectCount} 个项目会被阻止并保留待续。`,
-                "旧身份与旧取值不会被重写；迁移不会自动弃用旧定义。"
+                "旧身份与旧取值不会被重写；迁移不会自动退役旧定义。"
               ].join("\n")
             : ""
         }

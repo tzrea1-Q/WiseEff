@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
-import { catalogStateFromFailure, type CatalogDomainState } from "@/application/parameter-catalog/states";
+import type { CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -15,6 +15,9 @@ import type {
 import { canExecutePublicationAction, publicationStatusCopy } from "./publicationState";
 import { createGovernanceIdempotencyKey, createGovernanceSubmitGate } from "./governanceState";
 import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
+import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { catalogErrorCopy } from "@/features/parameter-catalog/copy";
+import { catalogLifecycleLabel } from "@/features/parameter-catalog/catalogPresentation";
 
 export type DefinitionLifecycleIntent = "retire-definition" | "restore-definition";
 
@@ -27,6 +30,8 @@ export type DefinitionLifecycleDialogProps = {
   catalog: ParameterCatalogRepository;
   catalogReleaseId: string;
   definition: CatalogDefinitionResponse["item"];
+  definitions?: CatalogDefinitionResponse["item"][];
+  runtimeMode?: WiseEffRuntimeMode;
   createIdempotencyKey?: () => string;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
@@ -35,16 +40,16 @@ export type DefinitionLifecycleDialogProps = {
 
 const copy = {
   "retire-definition": {
-    title: "弃用参数定义",
-    action: "确认弃用",
+    title: "退役参数定义",
+    action: "确认退役",
     explanation:
-      "弃用会把共享定义置为已退役：保留稳定身份、历史修订与已固定的项目引用，但阻止新的匹配与使用。",
+      "退役会把共享定义置为已退役：保留稳定身份、历史修订与已固定的项目引用，但阻止新的匹配与使用。",
     impact: "共享目录中的其他组织将无法再为该身份建立新的匹配或引用。"
   },
   "restore-definition": {
     title: "恢复参数定义",
     action: "确认恢复",
-    explanation: "恢复会以同一身份与属性键重新发布 active 修订；历史修订保持不变。",
+    explanation: "恢复会以同一身份与属性键重新发布生效修订；历史修订保持不变。",
     impact: "共享目录中的其他组织可以再次为该身份建立新的匹配与引用。"
   }
 } as const;
@@ -85,6 +90,8 @@ export function DefinitionLifecycleDialog({
   catalog,
   catalogReleaseId,
   definition,
+  definitions,
+  runtimeMode,
   createIdempotencyKey,
   onOpenChange,
   onCompleted,
@@ -108,6 +115,10 @@ export function DefinitionLifecycleDialog({
     sessionPermissions
   );
   const contentText = copy[intent];
+  const batch = definitions !== undefined;
+  const targets = definitions ?? [definition];
+  const policyUnavailable = targets.some((item) => item.usageSummary.policyCount === null);
+  const usage = `本组织使用量：${policyUnavailable ? "策略使用量暂不可用" : `策略 ${targets.reduce((sum, item) => sum + (item.usageSummary.policyCount ?? 0), 0)}`} · 项目 ${targets.reduce((sum, item) => sum + item.usageSummary.projectCount, 0)} · 当前值 ${targets.reduce((sum, item) => sum + item.usageSummary.currentValueCount, 0)}`;
 
   const stopPolling = () => {
     if (pollRef.current !== null) {
@@ -140,9 +151,6 @@ export function DefinitionLifecycleDialog({
       setJob(response.item);
       if (!jobIsPending(response.item.status)) {
         stopPolling();
-        if (response.item.currentness !== null) {
-          void onRefreshEvidence?.();
-        }
       }
     } catch (error) {
       stopPolling();
@@ -152,32 +160,29 @@ export function DefinitionLifecycleDialog({
 
   const startPolling = (jobId: string) => {
     stopPolling();
-    void pollJob(jobId);
     pollRef.current = window.setInterval(() => void pollJob(jobId), 1000);
+    void pollJob(jobId);
   };
 
   const captureCandidate = async () => {
     if (!allowed || pending) {
       return;
     }
-    if (!reason.trim()) {
+    if (!batch && !reason.trim()) {
       setFieldError("请填写原因，用于审计。");
       return;
     }
-    const content = lifecycleContentOf(definition);
     setPending(true);
     try {
       const created = await catalog.createPublicationCandidate(
         {
-          changeSet: [
-            {
+          changeSet: targets.map((target) => ({
               op: intent,
-              definitionId: definition.id,
+              definitionId: target.id,
               class: "semantic",
               ...(reason.trim() ? { reason: reason.trim() } : {}),
-              content
-            }
-          ] as never
+              content: lifecycleContentOf(target)
+            })) as never
         },
         { catalogReleaseId }
       );
@@ -209,10 +214,7 @@ export function DefinitionLifecycleDialog({
       setConfirmOpen(false);
       if (jobIsPending(published.item.status)) {
         startPolling(published.item.id);
-      } else {
-        void onRefreshEvidence?.();
       }
-      onCompleted?.();
     } catch (error) {
       setFailure(publicationFailureText(error));
       setConfirmOpen(false);
@@ -221,25 +223,42 @@ export function DefinitionLifecycleDialog({
     }
   };
 
-  const status = job ? jobStatusText(job) : null;
+  const effective = Boolean(job?.effective && job.currentness);
+  const status = job ? jobStatusText(job, targets.length, intent) : null;
+  const close = async () => {
+    if (pending) return;
+    if (effective) {
+      setPending(true);
+      try {
+        await onRefreshEvidence?.();
+        onCompleted?.();
+      } catch (error) {
+        setFailure(publicationFailureText(error));
+        setPending(false);
+        return;
+      }
+      setPending(false);
+    }
+    onOpenChange(false);
+  };
 
   return (
     <>
       <ModalDialog
         open={open}
-        onDismiss={pending ? undefined : () => onOpenChange(false)}
+        onDismiss={pending ? undefined : () => void close()}
         className="confirm-dialog governance-confirm-dialog definition-lifecycle-dialog"
         initialFocusRef={undefined}
       >
-        <h2>{contentText.title}</h2>
+        <h2>{batch ? `${intent === "retire-definition" ? "退役" : "恢复"} ${targets.length} 个参数定义` : contentText.title}</h2>
         <p>{contentText.explanation}</p>
-        <dl className="parameter-catalog__dl">
+        {batch ? <><p>{usage}</p><ul>{targets.map((item) => <li key={item.id}>{item.propertyKey} · {item.subject.canonicalName}</li>)}</ul></> : <dl className="parameter-catalog__dl">
           <dt>属性键</dt>
           <dd>{definition.propertyKey}</dd>
           <dt>主体</dt>
           <dd>{definition.subject.canonicalName}</dd>
           <dt>当前生命周期</dt>
-          <dd>{definition.lifecycle}</dd>
+          <dd>{catalogLifecycleLabel(definition.lifecycle)}</dd>
           <dt>当前修订</dt>
           <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
           <dt>共享影响</dt>
@@ -249,16 +268,17 @@ export function DefinitionLifecycleDialog({
               : `策略 ${definition.usageSummary.policyCount}`}
             {` · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}`}
           </dd>
-        </dl>
+        </dl>}
         <p role="note">{contentText.impact}</p>
         <label>
-          <span>原因</span>
+          <span>原因{batch ? "（可选）" : ""}</span>
           <textarea
             value={reason}
             aria-label="原因"
             onChange={(event) => setReason(event.target.value)}
           />
         </label>
+        {batch && runtimeMode === "mock" ? <p role="status">模拟模式不支持，请使用 API 模式。</p> : null}
         {fieldError ? (
           <p role="alert" data-preserve-input="true">
             {fieldError}
@@ -275,25 +295,25 @@ export function DefinitionLifecycleDialog({
           </p>
         ) : null}
         <div className="dialog-actions">
-          <button type="button" className="button ghost" onClick={() => onOpenChange(false)} disabled={pending}>
+          {!effective ? <button type="button" className="button ghost" onClick={() => void close()} disabled={pending}>
             取消
-          </button>
+          </button> : null}
           <button
             type="button"
             className="button primary"
             data-lifecycle-action={intent}
-            disabled={!allowed || pending || !reason.trim()}
+            disabled={effective ? pending : !allowed || pending || Boolean(job && jobIsPending(job.status)) || (!batch && !reason.trim()) || (batch && (runtimeMode === "mock" || targets.length === 0 || targets.length > 128))}
             title={allowed ? undefined : "当前会话缺少发布能力或目录不可写。"}
-            onClick={() => void captureCandidate()}
+            onClick={() => void (effective ? close() : captureCandidate())}
           >
-            {pending && !candidate ? "正在预演…" : "预演影响"}
+            {effective ? "完成" : pending && !candidate ? "正在预演…" : "预演影响"}
           </button>
         </div>
       </ModalDialog>
       <ConfirmDialog
         open={confirmOpen}
-        title={`确认${intent === "retire-definition" ? "弃用" : "恢复"}`}
-        description={impactSummary(candidate, definition, intent)}
+        title={`确认${intent === "retire-definition" ? "退役" : "恢复"}`}
+        description={batch ? `将${intent === "retire-definition" ? "退役" : "恢复"} ${targets.length} 个定义。${usage}。` : impactSummary(candidate, definition, intent)}
         confirmLabel={contentText.action}
         pending={pending}
         pendingLabel="正在发布…"
@@ -313,21 +333,21 @@ function impactSummary(
   const changed = candidate?.impactSummary.changedDefinitionCount ?? 0;
   const added = candidate?.impactSummary.addedDefinitionCount ?? 0;
   return [
-    `将发布 1 个修订用于${intent === "retire-definition" ? "弃用" : "恢复"} ${definition.propertyKey}。`,
+    `将发布 1 个修订用于${intent === "retire-definition" ? "退役" : "恢复"} ${definition.propertyKey}。`,
     `变更定义 ${changed} · 新增定义 ${added}。`,
     `共享目录影响：${definition.usageSummary.policyCount === null ? "策略使用量暂不可用" : `策略 ${definition.usageSummary.policyCount}`} · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}。`,
     "已固定历史引用的项目不会自动改动。"
   ].join("\n");
 }
 
-function jobStatusText(job: CatalogPublicationJobResponse["item"]): string {
-  if (job.maintenanceRewrites?.length) {
-    return publicationStatusCopy(job).message;
-  }
+function jobStatusText(job: CatalogPublicationJobResponse["item"], count: number, intent: DefinitionLifecycleIntent): string {
   if (job.effective && job.currentness) {
     return job.currentness === "active"
-      ? "已生效：当前目录已包含该修订。"
+      ? `已生效：${count} 个定义已${intent === "retire-definition" ? "退役" : "恢复"}。`
       : "已激活，但已被更晚的目录发布取代。";
+  }
+  if (job.maintenanceRewrites?.length) {
+    return publicationStatusCopy(job).message;
   }
   if (job.status === "needs-rebase") {
     return "目录已推进，需要重新预演后再发布。";
@@ -347,14 +367,11 @@ function jobStatusText(job: CatalogPublicationJobResponse["item"]): string {
 function publicationFailureText(error: unknown): string {
   // Only a typed catalog failure can name a reason; anything else (a transport
   // failure, for example) must still produce readable copy instead of throwing.
-  let reason: string;
+  let reason: ReturnType<typeof catalogFailureReason>;
   try {
     reason = catalogFailureReason(error as never);
   } catch {
     reason = "unknown";
   }
-  const state = catalogStateFromFailure(error);
-  return reason === "unknown"
-    ? `操作失败（${state.kind}）。请刷新证据后重试，输入已保留。`
-    : `操作失败（${reason}）。请刷新证据后重试，输入已保留。`;
+  return `${catalogErrorCopy(reason)} 输入已保留。`;
 }

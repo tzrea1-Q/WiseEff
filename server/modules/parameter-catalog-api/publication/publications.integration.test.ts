@@ -34,7 +34,7 @@ import {
   persistPredecessorArtifact,
   connect,
 } from "../../catalog-kernel/install/publicationTestHarness";
-import { CATALOG_RELEASE_HEADER, catalogMarkdownImportResponseSchema, catalogPublicationJobResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
+import { CATALOG_RELEASE_HEADER, catalogMarkdownImportResponseSchema, catalogPublicationCandidateResponseSchema, catalogPublicationJobResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, PublicationJobId } from "../../parameter-catalog-contract/index";
 import { createCatalogKernel } from "../../catalog-kernel/interface";
 import { createRegistrationService } from "../../parameter-governance/registration";
@@ -853,6 +853,67 @@ it.each([false, true])("publishes a three-definition Markdown import (new subjec
       const subject = await client.query<{ n: string }>(`select count(*)::text as n from parameter_catalog.catalog_subjects where canonical_key = 'acme,new'`);
       expect(subject.rows[0]?.n).toBe("1");
     }
+  } finally {
+    await close();
+    await client.end();
+    await db.close();
+    await database.drop();
+  }
+}, 120_000);
+
+it("publishes batch retire and restore atomically and rejects a batch with a failing row", async () => {
+  const database = await createEphemeralTestDatabase("batchlife");
+  const db = createPostgresDatabase(database.url);
+  const pool = getRootPostgresPool(db)!;
+  const client = await connect(database.url);
+  let close = async () => {};
+  try {
+    const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(client, predecessor);
+    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    let currentRelease = { id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest };
+    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
+    const server = await listenCatalogPublicationHttpServer({
+      authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId: ORG, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
+      currentRelease: async () => currentRelease,
+      ...bindCatalogPublicationCommands({ db, pool })
+    });
+    close = server.close;
+    const post = async (path: string, body: unknown) => {
+      const response = await fetch(`${server.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: currentRelease.id }, body: JSON.stringify(body) });
+      return { status: response.status, body: await response.json() };
+    };
+    const publish = async (changeSet: unknown[], key: string) => {
+      const candidate = await post("/api/v2/catalog/publication-candidates", { changeSet });
+      expect(candidate.status).toBe(201);
+      const candidateId = catalogPublicationCandidateResponseSchema.parse(candidate.body).item.id;
+      const result = await post(`/api/v2/catalog/publication-candidates/${candidateId}/publish`, { idempotencyKey: key });
+      expect(result.status).toBe(201);
+      expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "batch-lifecycle-test" })).toBe("claimed");
+      const pointer = await readCurrentCatalogPointer(pool);
+      if (pointer.kind !== "installed") throw new Error("publication did not install a release");
+      currentRelease = pointer.current;
+    };
+    const keys = ["lifecycle_a", "lifecycle_b", "lifecycle_c"];
+    await publish(keys.flatMap(changeSetFor), "lifecycle-create");
+    const read = () => client.query<{ id: string; property_key: string; lifecycle: string }>(
+      `select d.id, d.property_key, r.content->>'lifecycle' as lifecycle from parameter_catalog.parameter_definitions d
+       join parameter_catalog.catalog_release_definition_heads h on h.definition_id = d.id
+       join parameter_catalog.catalog_state s on s.current_catalog_release_id = h.release_id
+       join parameter_catalog.definition_revisions r on r.id = h.revision_id
+       where d.property_key in ('lifecycle_a', 'lifecycle_b', 'lifecycle_c') order by d.property_key`);
+    const definitions = (await read()).rows;
+    expect(definitions).toHaveLength(3);
+    const changes = (op: "retire-definition" | "restore-definition") => definitions.map((d) => ({
+      op, definitionId: d.id, class: "semantic", content: integerContent(`Input ${d.property_key}`, `Documentation for ${d.property_key}.`)
+    }));
+    const rejected = await post("/api/v2/catalog/publication-candidates", { changeSet: [...changes("retire-definition").slice(0, 2), { ...changes("retire-definition")[2], definitionId: "pdef_missing" }] });
+    expect(rejected.status).toBeGreaterThanOrEqual(400);
+    expect((await read()).rows.map((row) => row.lifecycle)).toEqual(["active", "active", "active"]);
+    await publish(changes("retire-definition"), "lifecycle-retire");
+    expect((await read()).rows.map((row) => row.lifecycle)).toEqual(["retired", "retired", "retired"]);
+    await publish(changes("restore-definition"), "lifecycle-restore");
+    expect((await read()).rows.map((row) => row.lifecycle)).toEqual(["active", "active", "active"]);
   } finally {
     await close();
     await client.end();

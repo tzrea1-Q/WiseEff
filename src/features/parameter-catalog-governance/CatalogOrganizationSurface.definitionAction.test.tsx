@@ -1,9 +1,9 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { activeDefinition, registeredSubject, retiredSubject, CATALOG_ORGANIZATION_ID, CATALOG_RELEASE_ID } from "@/application/parameter-catalog/fixtures";
+import { activeDefinition, catalogPublicationJob, registeredSubject, retiredSubject, CATALOG_ORGANIZATION_ID, CATALOG_RELEASE_ID } from "@/application/parameter-catalog/fixtures";
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import { CatalogOrganizationSurface } from "./CatalogOrganizationSurface";
 import { publicationSurfaceCopy, type PublicationSurfaceItem } from "./publicationSurface";
@@ -27,6 +27,58 @@ function renderSurface(authoringAllowed: boolean, surfaceOverrides: Partial<Publ
 }
 
 describe("Catalog definition action capability", () => {
+  it.each([false, true])("returns to the current release after lifecycle activation (batch: %s)", async (batch) => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const originalCatalog = ports.catalog.getCatalog;
+    const originalList = ports.catalog.listDefinitions;
+    const originalSubjects = ports.catalog.listSubjects;
+    let activated = false;
+    const currentId = "crel_new_lifecycle";
+    vi.spyOn(ports.catalog, "getCatalog").mockImplementation(async (query) => {
+      const response = await originalCatalog();
+      return activated && (!query?.catalogReleaseId || query.catalogReleaseId === currentId) && response.item
+        ? { item: { ...response.item, catalogReleaseId: currentId } } : response;
+    });
+    vi.spyOn(ports.catalog, "listSubjects").mockImplementation(async (query) => {
+      const response = await originalSubjects(query?.catalogReleaseId === currentId
+        ? { ...query, catalogReleaseId: CATALOG_RELEASE_ID } : query);
+      return query?.catalogReleaseId === currentId ? { ...response, catalogReleaseId: currentId } : response;
+    });
+    vi.spyOn(ports.catalog, "listDefinitions").mockImplementation(async (query) => {
+      const response = await originalList();
+      return query?.catalogReleaseId === currentId ? { ...response, catalogReleaseId: currentId,
+        items: response.items.map((item) => ({ ...item, lifecycle: "retired" as const })) } : response;
+    });
+    vi.spyOn(ports.catalog, "publishPublicationCandidate").mockImplementation(async () => {
+      activated = true;
+      return { item: { ...catalogPublicationJob, status: "active", effective: true, isCurrent: true, currentness: "active" } };
+    });
+    const hrefs: string[] = [];
+    function Harness() {
+      const [search, setSearch] = useState(`?catalogReleaseId=${CATALOG_RELEASE_ID}`);
+      return <CatalogOrganizationSurface {...ports} actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
+        organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="catalog-reader" search={search}
+        onAnchorChange={(href) => { hrefs.push(href); setSearch(new URL(href, window.location.origin).search); }} />;
+    }
+    render(<Harness />);
+    if (batch) {
+      await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+      await user.click(screen.getByRole("button", { name: "退役所选（1）" }));
+    } else {
+      await user.click(await screen.findByRole("button", { name: `退役 ${activeDefinition.propertyKey}` }));
+      await user.type(screen.getByLabelText("原因"), "退役原因");
+    }
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    const confirm = await screen.findByRole("dialog", { name: "确认退役" });
+    await user.click(within(confirm).getByRole("button", { name: "确认退役" }));
+    await screen.findByText("已生效：1 个定义已退役。");
+    await user.click(screen.getByRole("button", { name: "完成" }));
+    await waitFor(() => expect(hrefs.some((href) => href.includes(`catalogReleaseId=${currentId}`))).toBe(true));
+    await waitFor(() => expect(ports.catalog.listDefinitions).toHaveBeenCalledWith(expect.objectContaining({ catalogReleaseId: currentId })));
+    expect(await screen.findByRole("button", { name: `恢复 ${activeDefinition.propertyKey}` })).toBeVisible();
+    expect(screen.queryByRole("group", { name: "批量定义操作" })).not.toBeInTheDocument();
+  });
   it("edits an active detail owner independently of the retired subject selected in the list", async () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const historical = { ...retiredSubject, id: "csub_historical" };
