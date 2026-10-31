@@ -71,16 +71,21 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       const revise = isRevisionEntry(definition);
       const existing = resolved.subject ? snapshot.documents.find((item) => item.kind === "definition"
         && item.content.subjectId === resolved.subject!.content.id && item.content.propertyKey === definition.propertyKey) : undefined;
-      const content = buildContent(section, definition, revise && existing?.kind === "definition" ? existing.content.revision : undefined);
-      const diagnostics = [
-        ...sectionDiagnostics.map((item) => ({ ...item, definitionHeading: definition.heading })),
-        ...syntax.diagnostics.filter((item) => item.definitionLine === definition.line).map(publicDiagnostic),
-        ...content.diagnostics,
-      ];
-      if (revise && !existing) diagnostics.push(diagnostic(section, definition, "操作", "修订的定义不存在。", definition.line));
       const naturalKey = `${resolved.subject?.content.id ?? `${section.kind}:${section.selector}`}\0${definition.propertyKey}`;
       const duplicate = seen.has(naturalKey);
       seen.add(naturalKey);
+      const diagnostics = [
+        ...sectionDiagnostics.map((item) => ({ ...item, definitionHeading: definition.heading })),
+        ...syntax.diagnostics.filter((item) => item.definitionLine === definition.line).map(publicDiagnostic),
+      ];
+      if (revise && !existing) {
+        entries.push({ subjectHeading: section.heading, definitionHeading: definition.heading,
+          selector: section.selector, propertyKey: definition.propertyKey, displayName: definition.displayName,
+          outcome: "error", diagnostics: [...diagnostics, diagnostic(section, definition, "操作", "修订的定义不存在。", definition.line)] });
+        continue;
+      }
+      const content = buildContent(section, definition, revise && existing?.kind === "definition" ? existing.content.revision : undefined);
+      diagnostics.push(...content.diagnostics);
       const classified = classifyEntry({
         entry: { section, definition, subject: resolved.subject, content: content.content, duplicate, diagnostics },
         snapshot,

@@ -26,6 +26,35 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("reports only the missing target when a revision omits its type", () => {
+    const input = "# Driver `acme,power`\n\n## `no_such_key` 不存在\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 单位 | V |";
+    const plan = planMarkdownImport(input, "revision.md", firstAcmePredecessor().first);
+    expect(plan.entries).toHaveLength(1);
+    expect(plan.entries[0]).toMatchObject({ outcome: "error" });
+    expect(plan.entries[0]?.diagnostics).toEqual([{
+      subjectHeading: "# Driver `acme,power`", definitionHeading: "## `no_such_key` 不存在",
+      field: "操作", message: "修订的定义不存在。", line: 3,
+    }]);
+    expect(plan.changeSet).toBeNull();
+  });
+  it("retains subject diagnostics when a revision target is missing", () => {
+    const input = "# Driver `acme,power`\nnature: logical-service · cardinality: multiple\n## `no_such_key` 不存在\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 单位 | V |";
+    const plan = planMarkdownImport(input, "revision.md", firstAcmePredecessor().first);
+    expect(plan.entries[0]).toMatchObject({ outcome: "error" });
+    expect(plan.entries[0]?.diagnostics).toEqual([
+      expect.objectContaining({ field: "主体", line: 2, message: "主体性质或基数与目录不一致。" }),
+      expect.objectContaining({ field: "操作", line: 3, message: "修订的定义不存在。" }),
+    ]);
+  });
+  it("retains definition syntax diagnostics when a revision target is missing", () => {
+    const input = "# Driver `acme,power`\n## `no_such_key` 不存在\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 错误的表格行 |\n| 单位 | V |";
+    const plan = planMarkdownImport(input, "revision.md", firstAcmePredecessor().first);
+    expect(plan.entries[0]).toMatchObject({ outcome: "error" });
+    expect(plan.entries[0]?.diagnostics).toEqual([
+      expect.objectContaining({ field: "操作", line: 2, message: "修订的定义不存在。" }),
+      expect.objectContaining({ field: "字段表", line: 6, message: "字段表格式无效。" }),
+    ]);
+  });
   it.each([ ["retired", "定义已退役，请先在目录列表中恢复。"], ["deprecated", "仅可修订现行定义。"] ] as const)("rejects revision of a %s definition", (lifecycle, message) => {
     const snapshot = firstAcmePredecessor().first;
     const input = { ...snapshot, documents: snapshot.documents.map((item) => item.kind === "definition"
