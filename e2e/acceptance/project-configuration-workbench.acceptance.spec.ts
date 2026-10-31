@@ -3520,15 +3520,16 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(page.getByRole("button",{name:"v1",exact:true})).toBeVisible();
     await expect(page.getByRole("button",{name:"比较所选版本",exact:true})).toHaveCount(0);
     await page.getByRole("button",{name:"创建新版本",exact:true}).click();
-    await expect(page.getByLabel("变更说明",{exact:true})).toHaveValue("");
+    await page.getByRole("button",{name:"准备发布",exact:true}).click();
+    await expect(page.getByLabel("版本说明",{exact:true})).toHaveValue("");
     const draftResponse=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}`),{headers:adminHeaders()});
     const draft=(await draftResponse.json()).item as import("../../server/modules/contracts/dtoSchemas/sharedDtsi").SharedDtsiDraft;
     expect(draft.members.map(({id,sourceName,content:source})=>({id,sourceName,content:source}))).toEqual(first.members.map(({id,sourceName,content:source})=>({id,sourceName,content:source})));
     expect(draft.dependencies).toEqual(first.manifest.dependencies);
     const changed=content.replace("SharedOriginal","SharedSuccessor");
     await page.getByLabel("DTSI 源码",{exact:true}).fill(changed);
-    await page.getByLabel("变更说明",{exact:true}).fill("Shared successor; projects remain pinned");
-    await page.getByRole("button",{name:"预览发布",exact:true}).click();
+    await page.getByLabel("版本说明",{exact:true}).fill("Shared successor; projects remain pinned");
+    await page.getByRole("button",{name:"检查并预览",exact:true}).click();
     await expect(page.getByText("本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。",{exact:true})).toBeVisible();
     await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
     await expect(page.getByText("v2 · 已发布，只读",{exact:true})).toBeVisible();
@@ -3992,13 +3993,14 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(page.getByText("已复制所选私有源码及依赖。本组织有查看权限的用户可读取草稿与发布版本；来源项目配置保持不变。",{exact:true})).toBeVisible();
     await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("PrivateShared");
     await page.getByLabel("资源名称",{exact:true}).fill(`Private board ${randomUUID()}`);
-    await page.getByLabel("变更说明",{exact:true}).fill("#1428 publish an independent frozen private source");
+    await page.getByRole("button",{name:"准备发布",exact:true}).click();
+    await page.getByLabel("版本说明",{exact:true}).fill("#1428 publish an independent frozen private source");
     for(const viewport of [{width:1440,height:900},{width:1280,height:800}]) {
       await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-      await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeInViewport({ratio:1});
+      await expect(page.getByRole("button",{name:"检查并预览",exact:true})).toBeInViewport({ratio:1});
       const path=testInfo.outputPath(`private-shared-draft-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Private shared draft ${viewport.width}`,{path,contentType:"image/png"});
     }
-    await page.getByRole("button",{name:"预览发布",exact:true}).click();
+    await page.getByRole("button",{name:"检查并预览",exact:true}).click();
     await expect(page.getByRole("region",{name:"共享原始源码修改片段",exact:true})).toContainText("PrivateShared");
     await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
     await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
@@ -4027,8 +4029,9 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await page.getByRole("menuitem",{name:"创建共享资源",exact:true}).focus();await page.keyboard.press("Enter");
     await expect(page.getByRole("region",{name:"共享 DTSI 草稿",exact:true})).toBeVisible();
     const resourceId=new URL(page.url()).searchParams.get("resource")!,name=`Conversion source ${randomUUID()}`;
-    await page.getByLabel("资源名称",{exact:true}).fill(name);await page.getByLabel("变更说明",{exact:true}).fill("#1429 publish the original source without converting it");
-    await page.getByRole("button",{name:"预览发布",exact:true}).click();await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
+    await page.getByLabel("资源名称",{exact:true}).fill(name);await page.getByRole("button",{name:"准备发布",exact:true}).click();
+    await page.getByLabel("版本说明",{exact:true}).fill("#1429 publish the original source without converting it");
+    await page.getByRole("button",{name:"检查并预览",exact:true}).click();await page.getByRole("button",{name:"发布版本",exact:true}).focus();await page.keyboard.press("Enter");
     await expect(page.getByText("v1 · 已发布，只读",{exact:true})).toBeVisible();
     const detail=(await(await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/detail`),{headers:adminHeaders()})).json()).item;
     const versionId=detail.currentVersion.id as string;
