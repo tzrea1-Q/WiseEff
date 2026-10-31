@@ -91,7 +91,8 @@ describe("S8-READ HTTP against a real catalog snapshot", () => {
       usage: zeroUsageProjection,
       timeline: kernelOnlyTimelineComposer,
       authenticate: async () => ({ ok: true, scope }),
-      loadRevisionExportSnapshot: async (pin) => pin.id === pins.previous.id ? firstAcmePredecessor().first : null,
+      loadRevisionExportSnapshot: async (pin) => pin.id === pins.current.id ? { ...firstAcmePredecessor().first,
+        manifest: { ...firstAcmePredecessor().first.manifest, release: { ...firstAcmePredecessor().first.manifest.release, id: pins.current.id } } } : null,
     };
   }, 60_000);
 
@@ -100,12 +101,12 @@ describe("S8-READ HTTP against a real catalog snapshot", () => {
     await database?.close();
   });
 
-  it("exports only visible active definitions for the pinned release", async () => {
+  it("exports only visible active definitions for the current release and refuses a historical pin", async () => {
     const active = "pdef_acme_power_iin_max";
     const hidden = "pdef_acme_power_iin_min";
     const request = (readPorts: CatalogReadPorts) => requestJson<{ item: { document: string; skipped: { id: string; reason: string }[] } }>(
       createCatalogReadHttpServer(readPorts),
-      `/api/v2/catalog/revision-document?catalogReleaseId=${previousReleaseId}&definitionId=${active}&definitionId=${hidden}&definitionId=unknown`,
+      `/api/v2/catalog/revision-document?catalogReleaseId=${releaseId}&definitionId=${active}&definitionId=${hidden}&definitionId=unknown`,
     );
     const limited: CatalogReadPorts = { ...ports, authenticate: async () => ({ ok: true, scope: { ...scope,
       definitions: { kind: "only", ids: [ParameterDefinitionId(active)], fingerprint: "limited" } } }) };
@@ -114,6 +115,10 @@ describe("S8-READ HTTP against a real catalog snapshot", () => {
     expect(exported.body.item.document).toContain("## `iin_max`");
     expect(exported.body.item.document).not.toContain("## `iin_min`");
     expect(exported.body.item.skipped).toEqual([{ id: hidden, reason: "not-visible" }, { id: "unknown", reason: "not-visible" }]);
+    const stale = await requestJson(createCatalogReadHttpServer(ports),
+      `/api/v2/catalog/revision-document?catalogReleaseId=${previousReleaseId}&definitionId=${active}`);
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ error: { details: { reason: "release-drift" } } });
     const forbidden = await request({ ...ports, authenticate: async () => ({ ok: true, scope: { ...scope, canReadCatalog: false } }) });
     expect(forbidden.status).toBe(403);
     const agent = await request({ ...limited, authenticate: async () => ({ ok: true, scope: { ...scope, actorKind: "agent",
@@ -121,7 +126,7 @@ describe("S8-READ HTTP against a real catalog snapshot", () => {
     expect(agent.status).toBe(200);
     expect(agent.body.item).toEqual(exported.body.item);
     const tooMany = await requestJson(createCatalogReadHttpServer(ports),
-      `/api/v2/catalog/revision-document?catalogReleaseId=${previousReleaseId}&${Array.from({ length: 129 }, () => `definitionId=${active}`).join("&")}`);
+      `/api/v2/catalog/revision-document?catalogReleaseId=${releaseId}&${Array.from({ length: 129 }, () => `definitionId=${active}`).join("&")}`);
     expect(tooMany.status).toBe(400);
     const drift = await requestJson(createCatalogReadHttpServer(ports),
       `/api/v2/catalog/revision-document?catalogReleaseId=${previousReleaseId}&definitionId=${active}`,
@@ -137,12 +142,12 @@ describe("S8-READ HTTP against a real catalog snapshot", () => {
       [{ documentation: "第一段\n\n## 文档标题" }, "documentation-not-expressible"],
       [{ description: "第一行\n第二行" }, "not-round-trippable"],
     ] as const) {
-      const changed = { ...source, documents: source.documents.map((item) => item === definition
+      const changed = { ...source, manifest: { ...source.manifest, release: { ...source.manifest.release, id: releaseId } }, documents: source.documents.map((item) => item === definition
         ? { ...definition, content: { ...definition.content, revision: { ...definition.content.revision, ...revision } } } : item) };
       const readPorts = { ...ports, loadRevisionExportSnapshot: async () => changed };
       const response = await requestJson<{ item: { document: string; skipped: { id: string; reason: string }[] } }>(
         createCatalogReadHttpServer(readPorts),
-        `/api/v2/catalog/revision-document?catalogReleaseId=${previousReleaseId}&definitionId=${definition.content.id}`,
+        `/api/v2/catalog/revision-document?catalogReleaseId=${releaseId}&definitionId=${definition.content.id}`,
       );
       expect(response.status).toBe(200);
       expect(response.body.item.document).not.toContain("## `iin_max`");

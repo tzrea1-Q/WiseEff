@@ -18,6 +18,8 @@ import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClie
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { catalogErrorCopy } from "@/features/parameter-catalog/copy";
 import { catalogLifecycleLabel } from "@/features/parameter-catalog/catalogPresentation";
+import { DEFINITION_BATCH_LIMIT, MOCK_DEFINITION_BATCH_UNSUPPORTED } from "@/application/parameter-catalog/definitionBatch";
+import { formatUsageSummary } from "./formatUsageSummary";
 
 export type DefinitionLifecycleIntent = "retire-definition" | "restore-definition";
 
@@ -29,8 +31,8 @@ export type DefinitionLifecycleDialogProps = {
   domainState: CatalogDomainState;
   catalog: ParameterCatalogRepository;
   catalogReleaseId: string;
-  definition: CatalogDefinitionResponse["item"];
-  definitions?: CatalogDefinitionResponse["item"][];
+  mode: "single" | "batch";
+  definitions: CatalogDefinitionResponse["item"][];
   runtimeMode?: WiseEffRuntimeMode;
   createIdempotencyKey?: () => string;
   onOpenChange: (open: boolean) => void;
@@ -40,6 +42,7 @@ export type DefinitionLifecycleDialogProps = {
 
 const copy = {
   "retire-definition": {
+    verb: "退役",
     title: "退役参数定义",
     action: "确认退役",
     explanation:
@@ -47,6 +50,7 @@ const copy = {
     impact: "共享目录中的其他组织将无法再为该身份建立新的匹配或引用。"
   },
   "restore-definition": {
+    verb: "恢复",
     title: "恢复参数定义",
     action: "确认恢复",
     explanation: "恢复会以同一身份与属性键重新发布生效修订；历史修订保持不变。",
@@ -89,7 +93,7 @@ export function DefinitionLifecycleDialog({
   domainState,
   catalog,
   catalogReleaseId,
-  definition,
+  mode,
   definitions,
   runtimeMode,
   createIdempotencyKey,
@@ -115,10 +119,11 @@ export function DefinitionLifecycleDialog({
     sessionPermissions
   );
   const contentText = copy[intent];
-  const batch = definitions !== undefined;
-  const targets = definitions ?? [definition];
+  const batch = mode === "batch";
+  const targets = definitions;
+  const definition = targets[0]!;
   const policyUnavailable = targets.some((item) => item.usageSummary.policyCount === null);
-  const usage = `本组织使用量：${policyUnavailable ? "策略使用量暂不可用" : `策略 ${targets.reduce((sum, item) => sum + (item.usageSummary.policyCount ?? 0), 0)}`} · 项目 ${targets.reduce((sum, item) => sum + item.usageSummary.projectCount, 0)} · 当前值 ${targets.reduce((sum, item) => sum + item.usageSummary.currentValueCount, 0)}`;
+  const usage = `本组织使用量：${formatUsageSummary({ policyCount: policyUnavailable ? null : targets.reduce((sum, item) => sum + (item.usageSummary.policyCount ?? 0), 0), projectCount: targets.reduce((sum, item) => sum + item.usageSummary.projectCount, 0), currentValueCount: targets.reduce((sum, item) => sum + item.usageSummary.currentValueCount, 0) })}`;
 
   const stopPolling = () => {
     if (pollRef.current !== null) {
@@ -250,7 +255,7 @@ export function DefinitionLifecycleDialog({
         className="confirm-dialog governance-confirm-dialog definition-lifecycle-dialog"
         initialFocusRef={undefined}
       >
-        <h2>{batch ? `${intent === "retire-definition" ? "退役" : "恢复"} ${targets.length} 个参数定义` : contentText.title}</h2>
+        <h2>{batch ? `${contentText.verb} ${targets.length} 个参数定义` : contentText.title}</h2>
         <p>{contentText.explanation}</p>
         {batch ? <><p>{usage}</p><ul>{targets.map((item) => <li key={item.id}>{item.propertyKey} · {item.subject.canonicalName}</li>)}</ul></> : <dl className="parameter-catalog__dl">
           <dt>属性键</dt>
@@ -263,10 +268,7 @@ export function DefinitionLifecycleDialog({
           <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
           <dt>共享影响</dt>
           <dd>
-            {definition.usageSummary.policyCount === null
-              ? "策略使用量暂不可用"
-              : `策略 ${definition.usageSummary.policyCount}`}
-            {` · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}`}
+            {formatUsageSummary(definition.usageSummary)}
           </dd>
         </dl>}
         <p role="note">{contentText.impact}</p>
@@ -278,7 +280,7 @@ export function DefinitionLifecycleDialog({
             onChange={(event) => setReason(event.target.value)}
           />
         </label>
-        {batch && runtimeMode === "mock" ? <p role="status">模拟模式不支持，请使用 API 模式。</p> : null}
+        {batch && runtimeMode === "mock" ? <p role="status">{MOCK_DEFINITION_BATCH_UNSUPPORTED}</p> : null}
         {fieldError ? (
           <p role="alert" data-preserve-input="true">
             {fieldError}
@@ -302,7 +304,7 @@ export function DefinitionLifecycleDialog({
             type="button"
             className="button primary"
             data-lifecycle-action={intent}
-            disabled={effective ? pending : !allowed || pending || Boolean(job && jobIsPending(job.status)) || (!batch && !reason.trim()) || (batch && (runtimeMode === "mock" || targets.length === 0 || targets.length > 128))}
+            disabled={effective ? pending : !allowed || pending || Boolean(job && jobIsPending(job.status)) || (!batch && !reason.trim()) || (batch && (runtimeMode === "mock" || targets.length === 0 || targets.length > DEFINITION_BATCH_LIMIT))}
             title={allowed ? undefined : "当前会话缺少发布能力或目录不可写。"}
             onClick={() => void (effective ? close() : captureCandidate())}
           >
@@ -312,8 +314,8 @@ export function DefinitionLifecycleDialog({
       </ModalDialog>
       <ConfirmDialog
         open={confirmOpen}
-        title={`确认${intent === "retire-definition" ? "退役" : "恢复"}`}
-        description={batch ? `将${intent === "retire-definition" ? "退役" : "恢复"} ${targets.length} 个定义。${usage}。` : impactSummary(candidate, definition, intent)}
+        title={contentText.action}
+        description={batch ? `将${contentText.verb} ${targets.length} 个定义。${usage}。` : impactSummary(candidate, definition, intent)}
         confirmLabel={contentText.action}
         pending={pending}
         pendingLabel="正在发布…"
@@ -333,9 +335,9 @@ function impactSummary(
   const changed = candidate?.impactSummary.changedDefinitionCount ?? 0;
   const added = candidate?.impactSummary.addedDefinitionCount ?? 0;
   return [
-    `将发布 1 个修订用于${intent === "retire-definition" ? "退役" : "恢复"} ${definition.propertyKey}。`,
+    `将发布 1 个修订用于${copy[intent].verb} ${definition.propertyKey}。`,
     `变更定义 ${changed} · 新增定义 ${added}。`,
-    `共享目录影响：${definition.usageSummary.policyCount === null ? "策略使用量暂不可用" : `策略 ${definition.usageSummary.policyCount}`} · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}。`,
+    `共享目录影响：${formatUsageSummary(definition.usageSummary)}。`,
     "已固定历史引用的项目不会自动改动。"
   ].join("\n");
 }
@@ -343,7 +345,7 @@ function impactSummary(
 function jobStatusText(job: CatalogPublicationJobResponse["item"], count: number, intent: DefinitionLifecycleIntent): string {
   if (job.effective && job.currentness) {
     return job.currentness === "active"
-      ? `已生效：${count} 个定义已${intent === "retire-definition" ? "退役" : "恢复"}。`
+      ? `已生效：${count} 个定义已${copy[intent].verb}。`
       : "已激活，但已被更晚的目录发布取代。";
   }
   if (job.maintenanceRewrites?.length) {

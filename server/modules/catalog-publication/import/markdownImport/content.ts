@@ -3,13 +3,16 @@ import type { CatalogReleaseDefinitionDocument } from "../../../catalog-kernel/c
 import { CATALOG_CAPABILITY_ALLOW_LIST, validateSupportedDefinitionContent } from "../../builder/capabilities";
 import { MAX_DEFINITION_UNIT_CHARS, type SupportedDefinitionContent, type SupportedValueSchema } from "../../builder/types";
 import { diagnostic, type Definition, type Field, type ImportDiagnostic, type Subject } from "./types";
-import { unwrapArraySchema } from "./schema";
+import { formatValueType, unwrapArraySchema } from "./schema";
 
 export const IMPORT_FIELDS = {
   operation: "操作", type: "类型", typeDescription: "类型说明", unit: "单位", minimum: "最小值", maximum: "最大值",
   minItems: "最少项数", maxItems: "最多项数", example: "示例", description: "简述", documentation: "说明",
 } as const;
 const ALLOWED_FIELDS = new Set<string>(Object.values(IMPORT_FIELDS));
+
+export const isRevisionEntry = (definition: Definition) =>
+  definition.fields.some((field) => field.name === IMPORT_FIELDS.operation && field.value === "修订");
 
 /** Build supported definition content and locate field validation errors. */
 export function buildContent(section: Subject, definition: Definition, current?: CatalogReleaseDefinitionDocument["content"]["revision"]): {
@@ -40,7 +43,7 @@ export function buildContent(section: Subject, definition: Definition, current?:
   }
   const { arrays: currentArrays, item: currentItem } = unwrapArraySchema(current ? structuredClone(current.valueSchema) as Record<string, unknown> : {});
   const currentDepth = currentArrays.length;
-  const currentType = current ? `${"array<".repeat(currentDepth)}${currentItem.type ?? "mixed"}${">".repeat(currentDepth)}` : "";
+  const currentType = current ? formatValueType(current.valueSchema as Record<string, unknown>) : "";
   const type = first("类型")?.value ?? currentType;
   let itemType = type;
   let depth = 0;

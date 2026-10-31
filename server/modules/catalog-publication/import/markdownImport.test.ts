@@ -26,6 +26,14 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it.each([ ["retired", "定义已退役，请先在目录列表中恢复。"], ["deprecated", "仅可修订现行定义。"] ] as const)("rejects revision of a %s definition", (lifecycle, message) => {
+    const snapshot = firstAcmePredecessor().first;
+    const input = { ...snapshot, documents: snapshot.documents.map((item) => item.kind === "definition"
+      ? { ...item, content: { ...item.content, revision: { ...item.content.revision, lifecycle } } } : item) };
+    const plan = planMarkdownImport("# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 说明 | 新说明 |", "revision.md", input);
+    expect(plan.entries[0]).toMatchObject({ outcome: "conflict", diagnostics: expect.arrayContaining([expect.objectContaining({ message })]) });
+    expect(plan.entries[0]?.diagnostics.some((issue) => issue.message.includes("如要修订"))).toBe(false);
+  });
   it("round trips exported revision documents without changes", () => {
     const snapshot = firstAcmePredecessor().first;
     const original = snapshot.documents.find((item) => item.kind === "definition");
@@ -36,7 +44,7 @@ describe("Definition import planner", () => {
     const mixed = { ...original, content: { ...original.content, id: "pdef_mixed", propertyKey: "mixed",
       revision: { ...original.content.revision, displayName: "混合", valueSchema: { type: "array", items: { description: "整数或字符串" } }, examples: [[1, "a"]] } } };
     const input = { ...snapshot, documents: [...snapshot.documents.filter((item) => item !== original), numeric, mixed] };
-    const markdown = serializeMarkdownRevision(input, [numeric.content.id, mixed.content.id]);
+    const { document: markdown } = serializeMarkdownRevision(input, [numeric.content.id, mixed.content.id]);
     expect(markdown).toContain("# Driver `acme,power`");
     expect(markdown).toContain("| 操作 | 修订 |");
     expect(markdown).toContain("输入 \\\\ 路径 \\| 输出");
@@ -51,7 +59,7 @@ describe("Definition import planner", () => {
     const input = { ...snapshot, documents: snapshot.documents.map((item) => item.kind === "definition"
       ? { ...item, content: { ...item.content, revision: { ...item.content.revision, unit: "-", description: "-", documentation: "-",
         valueSchema: { type: "string" }, examples: ["-"] } } } : item) };
-    const markdown = serializeMarkdownRevision(input, ["pdef_acme_power_iin_max"]);
+    const { document: markdown } = serializeMarkdownRevision(input, ["pdef_acme_power_iin_max"]);
     expect(markdown).toContain("| 单位 | \\- |");
     expect(markdown).toContain("| 简述 | \\- |");
     expect(markdown).toContain("| 示例 | \\- |");
@@ -77,6 +85,18 @@ describe("Definition import planner", () => {
     } }]);
     const documentation = revision.replace("| 最大值 | 3000 |", "| 简述 | 新说明 |");
     expect(planMarkdownImport(documentation, "d.md", snapshot).entries[0]).toMatchObject({ outcome: "revise", revisionClass: "documentation" });
+  });
+  it("keeps each entry's resolved definition, operation and tightening facts", () => {
+    const base = firstAcmePredecessor().first;
+    const original = base.documents.find((item) => item.kind === "definition");
+    if (!original || original.kind !== "definition") throw new Error("fixture missing");
+    const snapshot = { ...base, documents: [...base.documents, { ...original, content: { ...original.content, id: "pdef_other", propertyKey: "other" } }] };
+    const input = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 最小值 | 1 |\n## `other` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 单位 | A |";
+    const plan = planMarkdownImport(input, "batch.md", snapshot);
+    expect(plan.entries).toMatchObject([
+      { definitionId: "pdef_acme_power_iin_max", operationIndex: 0, tightensExistingContract: true },
+      { definitionId: "pdef_other", operationIndex: 1, tightensExistingContract: false },
+    ]);
   });
   it("builds identical artifact bytes and candidate content with or without placement hints", async () => {
     const predecessor = firstAcmePredecessor();

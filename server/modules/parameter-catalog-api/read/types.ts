@@ -6,6 +6,7 @@ import type {
   PropertyKey,
 } from "../../catalog-kernel/interface";
 import type { parameterCatalogKernelReadByRouteId } from "../../contracts/dtoSchemas/parameterCatalog";
+import type { CatalogReleaseNode } from "../../catalog-kernel/compiler/types";
 import type { UsageProjectScope } from "../../parameter-bindings/usage";
 import type {
   CatalogCursor,
@@ -192,7 +193,7 @@ export type CatalogReadPorts = {
   readonly usage: UsageProjectionPort;
   readonly timeline: TimelineComposerPort;
   readonly authenticate: (request: CatalogReadRequest) => Promise<CatalogReadAuthResult>;
-  readonly loadRevisionExportSnapshot?: (pin: CatalogReleasePin) => Promise<import("../../catalog-kernel/compiler/types").CatalogReleaseNode | null>;
+  readonly loadRevisionExportSnapshot?: (pin: CatalogReleasePin) => Promise<CatalogReleaseNode | null>;
 };
 
 export type LoadedCatalogSnapshot = CurrentCatalogSnapshot | PinnedCatalogSnapshot;

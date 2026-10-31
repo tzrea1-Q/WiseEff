@@ -257,7 +257,7 @@ export const contentClassOf = (
   return previousSemantic === nextSemantic ? "documentation" : "semantic";
 };
 
-const tighterConstraint = (
+export const tighterConstraint = (
   previous: CatalogReleaseDefinitionDocument["content"]["revision"]["valueSchema"],
   next: CatalogReleaseDefinitionDocument["content"]["revision"]["valueSchema"],
 ): boolean => {

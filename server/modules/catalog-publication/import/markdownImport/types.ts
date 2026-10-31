@@ -39,6 +39,9 @@ export type ImportEntry = {
   selector: string;
   propertyKey: string;
   displayName: string;
+  definitionId?: string;
+  operationIndex?: number;
+  tightensExistingContract?: boolean;
   outcome: "create" | "revise" | "skip" | "conflict" | "error";
   revisionClass?: "documentation" | "semantic";
   riskClass?: "low" | "high";

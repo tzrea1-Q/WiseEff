@@ -282,7 +282,7 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     expect((await post(`${base}\n| 最小值 | - |\n| 说明 | - |`)).body).toMatchObject({ item: { entries: [
       { outcome: "revise", diffs: expect.arrayContaining([
         expect.objectContaining({ field: "最小值", oldValue: 0, newValue: null }),
-        expect.objectContaining({ field: "正文", oldValue: "Maximum accepted input current.", newValue: "" }),
+        expect.objectContaining({ field: "说明", oldValue: "Maximum accepted input current.", newValue: "" }),
       ]) },
     ] } });
     expect((await post(`${base}\n| 说明 | - |\n\nNew documentation.`)).body).toMatchObject({ item: { candidate: null, entries: [

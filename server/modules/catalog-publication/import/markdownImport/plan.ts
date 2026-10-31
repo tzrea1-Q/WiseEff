@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 
 import type { CatalogReleaseNode } from "../../../catalog-kernel/compiler/types";
 import type { CatalogChange, SupportedDefinitionContent } from "../../builder/types";
+import { tighterConstraint } from "../../builder/completeSuccessor";
 import { classifyEntry } from "./classify";
-import { buildContent } from "./content";
+import { buildContent, isRevisionEntry } from "./content";
 import { parseMarkdown } from "./parse";
 import { resolveSubject, subjectChanges } from "./resolve";
 import { diagnostic, type ImportDiagnostic, type ImportEntry, type SyntaxDiagnostic } from "./types";
@@ -52,6 +53,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       } else if (!previous) newSubjects.set(section.selector, resolved);
     }
     const creations: { propertyKey: string; content: SupportedDefinitionContent }[] = [];
+    const createdEntries: ImportEntry[] = [];
     const sectionDiagnostics = [
       ...syntax.diagnostics.filter((item) => item.subjectLine === section.line && item.definitionLine === undefined)
         .map(publicDiagnostic),
@@ -66,10 +68,10 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       continue;
     }
     for (const definition of section.definitions) {
-      const revise = definition.fields.some((field) => field.name === "操作" && field.value === "修订");
-      const existing = revise && resolved.subject ? snapshot.documents.find((item) => item.kind === "definition"
+      const revise = isRevisionEntry(definition);
+      const existing = resolved.subject ? snapshot.documents.find((item) => item.kind === "definition"
         && item.content.subjectId === resolved.subject!.content.id && item.content.propertyKey === definition.propertyKey) : undefined;
-      const content = buildContent(section, definition, existing?.kind === "definition" ? existing.content.revision : undefined);
+      const content = buildContent(section, definition, revise && existing?.kind === "definition" ? existing.content.revision : undefined);
       const diagnostics = [
         ...sectionDiagnostics.map((item) => ({ ...item, definitionHeading: definition.heading })),
         ...syntax.diagnostics.filter((item) => item.definitionLine === definition.line).map(publicDiagnostic),
@@ -83,13 +85,17 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
         entry: { section, definition, subject: resolved.subject, content: content.content, duplicate, diagnostics },
         snapshot,
       });
-      entries.push({ subjectHeading: section.heading, definitionHeading: definition.heading,
+      const entry: ImportEntry = { subjectHeading: section.heading, definitionHeading: definition.heading,
         selector: section.selector, propertyKey: definition.propertyKey, displayName: definition.displayName,
-        ...classified });
+        ...(existing?.kind === "definition" ? { definitionId: existing.content.id } : {}), ...classified };
+      entries.push(entry);
       if (classified.outcome === "create" && content.content) {
         creations.push({ propertyKey: definition.propertyKey, content: content.content });
+        createdEntries.push(entry);
       }
       if (classified.outcome === "revise" && content.content && existing?.kind === "definition" && classified.revisionClass) {
+        entry.operationIndex = changes.length;
+        entry.tightensExistingContract = tighterConstraint(existing.content.revision.valueSchema, content.content.valueSchema);
         changes.push({ op: "revise-definition", definitionId: existing.content.id, class: classified.revisionClass, content: content.content });
       }
     }
@@ -97,9 +103,15 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       const previous = change.op === "create-subject-with-definitions"
         ? changes.find((item) => item.op === "create-subject-with-definitions" && item.canonicalKey === change.canonicalKey)
         : undefined;
+      const operationIndex = previous ? changes.indexOf(previous) : changes.length;
       if (previous?.op === "create-subject-with-definitions" && change.op === "create-subject-with-definitions") {
-        changes[changes.indexOf(previous)] = { ...previous, definitions: [...previous.definitions, ...change.definitions] };
+        changes[operationIndex] = { ...previous, definitions: [...previous.definitions, ...change.definitions] };
       } else changes.push(change);
+      for (const entry of createdEntries) {
+        if (change.op === "create-subject-with-definitions" || (change.op === "create-definition" && change.propertyKey === entry.propertyKey)) {
+          entry.operationIndex = operationIndex;
+        }
+      }
     }
   }
   if (!entries.length) {

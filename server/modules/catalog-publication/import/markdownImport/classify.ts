@@ -7,7 +7,8 @@ import { parseCanonicalPropertyKey } from "../../../parameter-catalog-contract/i
 import type { SupportedDefinitionContent } from "../../builder/types";
 import { contentClassOf, revisedDefinitionContent } from "../../builder/completeSuccessor";
 import { diagnostic, type Definition, type ImportDiagnostic, type ImportEntry, type Subject } from "./types";
-import { unwrapArraySchema } from "./schema";
+import { formatValueType, unwrapArraySchema } from "./schema";
+import { IMPORT_FIELDS as F, isRevisionEntry } from "./content";
 
 const comparableContent = (
   content: SupportedDefinitionContent | CatalogReleaseDefinitionDocument["content"]["revision"],
@@ -30,6 +31,7 @@ export function classifyEntry(input: {
   snapshot: CatalogReleaseNode;
 }): Pick<ImportEntry, "outcome" | "diagnostics" | "revisionClass" | "diffs"> {
   const { section, definition, subject, duplicate } = input.entry;
+  const revise = isRevisionEntry(definition);
   const diagnostics = [...input.entry.diagnostics];
   if (!parseCanonicalPropertyKey(definition.propertyKey).ok) {
     diagnostics.push(diagnostic(section, definition, "属性键", "属性键格式无效。", definition.line));
@@ -45,23 +47,22 @@ export function classifyEntry(input: {
     const content = input.entry.content;
     if (revision.lifecycle === "active" && content
       && isDeepStrictEqual(comparableContent(revision), comparableContent(content))) {
-      if (!diagnostics.length && definition.fields.some((field) => field.name === "操作" && field.value === "修订")) {
+      if (!diagnostics.length && revise) {
         diagnostics.push(diagnostic(section, definition, "操作", "无变化。", definition.line));
         return { outcome: "skip", diagnostics };
       }
       return { outcome: diagnostics.length ? "error" : "skip", diagnostics };
     }
-    if (definition.fields.some((field) => field.name === "操作" && field.value === "修订")
+    if (revise
       && revision.lifecycle === "active" && content && !diagnostics.length) {
       const next = revisedDefinitionContent(revision, content);
       const fields = (value: CatalogReleaseDefinitionDocument["content"]["revision"]) => {
         const schema = value.valueSchema as Record<string, unknown>;
-        const { item, arrays } = unwrapArraySchema(schema);
-        const depth = arrays.length;
-        return { "显示名": value.displayName, "正文": value.documentation, "简述": value.description ?? null,
-          "单位": value.unit ?? null, "类型": `${"array<".repeat(depth)}${item.type ?? "mixed"}${">".repeat(depth)}`,
-          "类型说明": item.description ?? null, "最小值": item.minimum ?? null, "最大值": item.maximum ?? null,
-          "最少项数": schema.minItems ?? null, "最多项数": schema.maxItems ?? null, "示例": value.examples ?? null };
+        const { item } = unwrapArraySchema(schema);
+        return { "显示名": value.displayName, [F.documentation]: value.documentation, [F.description]: value.description ?? null,
+          [F.unit]: value.unit ?? null, [F.type]: formatValueType(schema),
+          [F.typeDescription]: item.description ?? null, [F.minimum]: item.minimum ?? null, [F.maximum]: item.maximum ?? null,
+          [F.minItems]: schema.minItems ?? null, [F.maxItems]: schema.maxItems ?? null, [F.example]: value.examples ?? null };
       };
       const oldFields = fields(revision);
       const newFields = fields(next);
@@ -70,13 +71,15 @@ export function classifyEntry(input: {
         .map((field) => ({ field, oldValue: oldFields[field], newValue: newFields[field] }));
       return { outcome: "revise", diagnostics, revisionClass: contentClassOf(revision, next), diffs };
     }
-    if (content || revision.lifecycle === "retired") {
+    if (content || revision.lifecycle !== "active") {
       const hasErrors = diagnostics.length > 0;
+      if (hasErrors && revise && revision.lifecycle === "active") return { outcome: "error", diagnostics };
       diagnostics.push(diagnostic(
         section, definition, "属性键", revision.lifecycle === "retired"
-          ? "定义已退役，请先在目录列表中恢复。" : "目录中已有不同内容的定义；如要修订，请加 `操作：修订`。", definition.line,
+          ? "定义已退役，请先在目录列表中恢复。" : revise
+            ? "仅可修订现行定义。" : "目录中已有不同内容的定义；如要修订，请加 `操作：修订`。", definition.line,
       ));
-      return { outcome: hasErrors && revision.lifecycle !== "retired" ? "error" : "conflict", diagnostics };
+      return { outcome: hasErrors && revision.lifecycle === "active" ? "error" : "conflict", diagnostics };
     }
   }
   return { outcome: diagnostics.length ? "error" : "create", diagnostics };

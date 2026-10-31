@@ -3,8 +3,8 @@ import type {
   CatalogSnapshot,
   CurrentCatalogSnapshot,
 } from "../../catalog-kernel/interface";
-import { planMarkdownImport, serializeMarkdownRevision } from "../../catalog-publication/import/markdownImport";
-import { parseMarkdown } from "../../catalog-publication/import/markdownImport/parse";
+import { serializeMarkdownRevision } from "../../catalog-publication/import/markdownImport";
+import { CATALOG_CAPABILITY_ALLOW_LIST } from "../../catalog-publication/builder/capabilities";
 import type { z } from "zod";
 import {
   CATALOG_RELEASE_HEADER,
@@ -307,14 +307,18 @@ async function handleGetCatalog(
 async function handleRevisionExport(snapshot: CatalogSnapshot, ports: CatalogReadPorts, scope: TrustedCatalogScope,
   request: CatalogReadRequest): Promise<CatalogReadResponse> {
   const ids = queryArray(request.query, "definitionId");
-  if (!queryValue(request.query, "catalogReleaseId") || !ids?.length || ids.length > 128 || ids.some((id) => !id.trim())) {
+  if (!queryValue(request.query, "catalogReleaseId") || !ids?.length || ids.length > CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxChangeSetOps || ids.some((id) => !id.trim())) {
     return validationFailed(request.requestId, "definitionId");
+  }
+  const current = await ports.readiness.current();
+  if (current.status !== "ready") return catalogNotReady(request.requestId);
+  if (current.document.pin.id !== snapshot.release.id || current.document.pin.digest !== snapshot.release.digest) {
+    return releaseDrift(request.requestId, snapshot.release.id, current.document.pin.id);
   }
   const source = await ports.loadRevisionExportSnapshot?.(observedPin(snapshot));
   if (!source || source.manifest.release.id !== snapshot.release.id) return catalogNotReady(request.requestId);
   const allowed: string[] = [];
   const skipped: z.infer<typeof catalogRevisionDocumentResponseSchema>["item"]["skipped"] = [];
-  // ponytail: at most 128 full-snapshot checks; index the snapshot if large releases make export slow.
   for (const id of ids) {
     if (hiddenId(scope.definitions, id)) { skipped.push({ id, reason: "not-visible" }); continue; }
     const result = snapshot.getDefinitionById(ParameterDefinitionId(id));
@@ -326,20 +330,12 @@ async function handleRevisionExport(snapshot: CatalogSnapshot, ports: CatalogRea
     if (result.definition.selectedRevision.content.lifecycle === "deprecated") { skipped.push({ id, reason: "deprecated" }); continue; }
     const sourceDefinition = source.documents.find((item) => item.kind === "definition" && item.content.id === id);
     if (!sourceDefinition || sourceDefinition.kind !== "definition") return catalogNotReady(request.requestId);
-    const block = serializeMarkdownRevision(source, [id]);
-    const syntax = parseMarkdown(`# Driver \`export,check\`\n## \`value\` 名称\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |\n\n${sourceDefinition.content.revision.documentation}`);
-    if (syntax.subjects.length !== 1 || syntax.subjects[0]?.definitions.length !== 1
-      || syntax.subjects[0]?.definitions[0]?.documentation !== sourceDefinition.content.revision.documentation) {
-      skipped.push({ id, reason: "documentation-not-expressible" }); continue;
-    }
-    const plan = planMarkdownImport(block, "export.md", source);
-    if (!plan.noChange || plan.entries.length !== 1 || plan.entries[0]?.outcome !== "skip") {
-      skipped.push({ id, reason: "not-round-trippable" }); continue;
-    }
     allowed.push(id);
   }
-  const document = serializeMarkdownRevision(source, allowed);
-  return catalogReadOk({ item: { document, skipped } }, snapshot.release.id, request.requestId);
+  const serialized = serializeMarkdownRevision(source, allowed);
+  skipped.push(...serialized.skipped.map(({ definitionId, reason }) => ({ id: definitionId, reason })));
+  skipped.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+  return catalogReadOk({ item: { document: serialized.document, skipped } }, snapshot.release.id, request.requestId);
 }
 
 async function handleListSubjects(

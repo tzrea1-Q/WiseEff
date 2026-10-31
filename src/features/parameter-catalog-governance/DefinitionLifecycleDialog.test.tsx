@@ -33,10 +33,11 @@ function renderDialog(
       domainState={domainState}
       catalog={ports.catalog}
       catalogReleaseId={CATALOG_RELEASE_ID}
-      definition={{
+      mode="single"
+      definitions={[{
         ...definition,
         lifecycle: intent === "restore-definition" ? "retired" : "active"
-      }}
+      }]}
       createIdempotencyKey={() => "idem-847-lifecycle"}
       onOpenChange={vi.fn()}
       onCompleted={onCompleted}
@@ -65,7 +66,7 @@ describe("DefinitionLifecycleDialog", () => {
     const definitions = batch ? [activeDefinition, { ...activeDefinition, id: "second", propertyKey: "second-key" }] : undefined;
     render(<DefinitionLifecycleDialog open intent={intent} actor="org-admin"
       sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
-      catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition} definitions={definitions}
+      catalogReleaseId={CATALOG_RELEASE_ID} mode={batch ? "batch" : "single"} definitions={definitions ?? [activeDefinition]}
       onRefreshEvidence={refresh} onOpenChange={close} />);
     if (!batch) await user.type(screen.getByLabelText("原因"), "退役原因");
     await user.click(screen.getByRole("button", { name: "预演影响" }));
@@ -88,7 +89,7 @@ describe("DefinitionLifecycleDialog", () => {
     const close = vi.fn();
     render(<DefinitionLifecycleDialog open intent="retire-definition" actor="org-admin"
       sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
-      catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition} definitions={[activeDefinition]}
+      catalogReleaseId={CATALOG_RELEASE_ID} mode="batch" definitions={[activeDefinition]}
       onRefreshEvidence={async () => { throw new Error("unavailable"); }} onOpenChange={close} />);
     await user.click(screen.getByRole("button", { name: "预演影响" }));
     const confirm = await screen.findByRole("dialog", { name: "确认退役" });
@@ -107,7 +108,7 @@ describe("DefinitionLifecycleDialog", () => {
     const second = { ...activeDefinition, id: "second", propertyKey: "second-key", usageSummary: { policyCount: 2, projectCount: 3, currentValueCount: 4 } };
     render(<DefinitionLifecycleDialog open intent="retire-definition" actor="org-admin"
       sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState}
-      catalog={ports.catalog} catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition}
+      catalog={ports.catalog} catalogReleaseId={CATALOG_RELEASE_ID} mode="batch"
       definitions={[activeDefinition, second]} onOpenChange={vi.fn()} />);
     expect(screen.getByRole("heading", { name: "退役 2 个参数定义" })).toBeInTheDocument();
     expect(screen.getByText(/策略使用量暂不可用/)).toBeInTheDocument();
@@ -132,13 +133,13 @@ describe("DefinitionLifecycleDialog", () => {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const view = render(<DefinitionLifecycleDialog open intent="restore-definition" actor="org-admin"
       sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
-      catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition} definitions={[activeDefinition]}
+      catalogReleaseId={CATALOG_RELEASE_ID} mode="batch" definitions={[activeDefinition]}
       runtimeMode="mock" onOpenChange={vi.fn()} />);
     expect(screen.getByText("模拟模式不支持，请使用 API 模式。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "预演影响" })).toBeDisabled();
     view.rerender(<DefinitionLifecycleDialog open intent="restore-definition" actor="org-admin"
       sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
-      catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition} definitions={[activeDefinition]}
+      catalogReleaseId={CATALOG_RELEASE_ID} mode="batch" definitions={[activeDefinition]}
       runtimeMode="api" onOpenChange={vi.fn()} />);
     expect(screen.getByRole("button", { name: "预演影响" })).toBeEnabled();
   });

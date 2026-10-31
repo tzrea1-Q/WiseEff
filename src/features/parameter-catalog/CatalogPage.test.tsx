@@ -31,6 +31,7 @@ import type { CatalogListQuery, CatalogSubjectListResponse } from "@/infrastruct
 import { CatalogPage } from "./CatalogPage";
 import type { CatalogLayoutMode } from "./catalogLayout";
 import { catalogEmptyMessages } from "./copy";
+import { catalogApiFailure } from "@/application/parameter-catalog/errors";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import type { CatalogModule } from "./catalogModuleScope";
 
@@ -281,6 +282,28 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
     await user.click(screen.getByRole("button", { name: "导出为修订文档" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("模拟模式不支持，请使用 API 模式。");
+  });
+
+  it("asks the user to refresh when the export release has changed", async () => {
+    const user = userEvent.setup();
+    const repository = lifecycleInventory();
+    vi.spyOn(repository, "exportRevisionDocument").mockRejectedValue(catalogApiFailure("release-drift"));
+    renderCatalog({ repository, definitionPublishingAllowed: true, onBatchDefinitionCommand: vi.fn() });
+    await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+    await user.click(screen.getByRole("button", { name: "导出为修订文档" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("目录发布已变化，请刷新后重新确认。");
+  });
+
+  it("explains why a selected definition is not writable", async () => {
+    const user = userEvent.setup();
+    const repository = lifecycleInventory();
+    const blocked = { ...activeDefinition, registration: { status: "retired" as const, id: "registration-retired" } };
+    vi.spyOn(repository, "listSubjectDefinitions").mockResolvedValue({ items: [blocked], totalCount: 1,
+      hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    renderCatalog({ repository, search: `?subjectId=${registeredSubject.id}`, definitionPublishingAllowed: true, onBatchDefinitionCommand: vi.fn() });
+    await user.click(await screen.findByRole("button", { name: "选中该主体下全部定义" }));
+    expect(await screen.findByText("所选定义中有当前不可写的项。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "退役所选（1）" })).toBeDisabled();
   });
 
   it("hides batch controls without governance authority", async () => {

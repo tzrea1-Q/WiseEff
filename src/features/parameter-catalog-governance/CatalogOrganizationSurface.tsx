@@ -140,8 +140,8 @@ export function CatalogOrganizationSurface({
   }, [definitionCreationRequested, publicationSurface?.authoringAllowed, domainState]);
   const [lifecycle, setLifecycle] = useState<{
     intent: DefinitionLifecycleIntent;
-    definition: CatalogDefinitionResponse["item"];
-    definitions?: CatalogDefinitionResponse["item"][];
+    mode: "single" | "batch";
+    definitions: CatalogDefinitionResponse["item"][];
     ownerState: CatalogDomainState;
   } | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
@@ -373,12 +373,12 @@ export function CatalogOrganizationSurface({
           // Identity correction now lives inside the definition's own 编辑 dialog
           // (renderDefinitionEditor below); the row only offers that one action.
           if (command === "correct-identity") return;
-          setLifecycle({ intent: command, definition, ownerState });
+          setLifecycle({ intent: command, mode: "single", definitions: [definition], ownerState });
         }}
         onBatchDefinitionCommand={actor !== "agent" && sessionPermissions?.includes("catalog:author") && sessionPermissions.includes("catalog:publish")
           ? (intent, definitions, ownerState) => {
             const definition = definitions[0];
-            if (definition) setLifecycle({ intent, definition, definitions, ownerState });
+            if (definition) setLifecycle({ intent, mode: "batch", definitions, ownerState });
           } : undefined}
         renderDefinitionEditor={
           domainState
@@ -413,7 +413,7 @@ export function CatalogOrganizationSurface({
             onClose={history.onClose}
             onRetireDefinition={() => {
               history.onClose?.();
-              setLifecycle({ intent: "retire-definition", definition, ownerState: history.domainState });
+              setLifecycle({ intent: "retire-definition", mode: "single", definitions: [definition], ownerState: history.domainState });
             }}
             history={
               <CatalogHistoryBody
@@ -576,7 +576,7 @@ export function CatalogOrganizationSurface({
           domainState={lifecycle.ownerState}
           catalog={catalog}
           catalogReleaseId={catalogReleaseId}
-          definition={lifecycle.definition}
+          mode={lifecycle.mode}
           definitions={lifecycle.definitions}
           runtimeMode={runtimeMode}
           createIdempotencyKey={createGovernanceIdempotencyKey}

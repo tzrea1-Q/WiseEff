@@ -17,8 +17,7 @@ import { impactFactsFromAllocation } from "../../catalog-publication/jobs/execut
 import { parsePublicationChangeSet, previewPublicationCandidate } from "../../catalog-publication/preview";
 import { parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
 import { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
-import { parseMarkdown } from "../../catalog-publication/import/markdownImport/parse";
-import { resolveSubject } from "../../catalog-publication/import/markdownImport/resolve";
+
 import { modulePath, readPlacementHintEvidence } from "../../parameter-governance/registration/readRepository";
 import {
   getCandidate,
@@ -41,6 +40,16 @@ import type {
   PublicationJobView,
   PublicationSurfaceView,
 } from "./types";
+
+function publicImportEntries(entries: ReturnType<typeof planMarkdownImport>["entries"]) {
+  return entries.map((entry) => {
+    const result = { ...entry };
+    delete result.definitionId;
+    delete result.operationIndex;
+    delete result.tightensExistingContract;
+    return result;
+  });
+}
 
 const authorOrganizationIdOf = (candidate: PublicationCandidateRecord): string | null => {
   const value = candidate.identityAllocation.authorOrganizationId;
@@ -242,7 +251,6 @@ export function bindCatalogPublicationCommands(input: {
         return { ok: false, error: { kind: "reason", reason: "candidate-stale" } };
       }
       let plan: ReturnType<typeof planMarkdownImport> | undefined;
-      let entryChangeIndexes: number[] = [];
       let placementHints: PlacementHintWithWarnings[] = [];
       if (command.markdownImport) {
         const artifact = await getArtifactByDigest(db, pointer.current.digest);
@@ -251,24 +259,9 @@ export function bindCatalogPublicationCommands(input: {
         const snapshot = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
         plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot);
-        const subjects = new Map(parseMarkdown(command.markdownImport.document).subjects.map((section) =>
-          [section.heading, resolveSubject(section, snapshot).subject]));
-        const definitionFor = (entry: ReturnType<typeof planMarkdownImport>["entries"][number]) => {
-          const subject = subjects.get(entry.subjectHeading);
-          return snapshot.documents.find((item) => item.kind === "definition" && item.content.subjectId === subject?.content.id && item.content.propertyKey === entry.propertyKey);
-        };
-        entryChangeIndexes = plan.entries.map((entry) => {
-          const definition = definitionFor(entry);
-          const subject = subjects.get(entry.subjectHeading);
-          return plan!.changeSet?.findIndex((change) =>
-            (change.op === "revise-definition" && entry.outcome === "revise" && change.definitionId === definition?.content.id)
-            || (change.op === "create-definition" && entry.outcome === "create" && change.subjectId === subject?.content.id && change.propertyKey === entry.propertyKey)
-            || (change.op === "create-subject-with-definitions" && entry.outcome === "create" && change.selector.value === entry.selector && change.definitions.some((item) => item.propertyKey === entry.propertyKey))) ?? -1;
-        });
         const semanticIds = plan.entries.flatMap((entry) => {
-          if (entry.outcome !== "revise" || entry.revisionClass !== "semantic") return [];
-          const definition = definitionFor(entry);
-          return definition?.kind === "definition" ? [ParameterDefinitionId(definition.content.id)] : [];
+          if (entry.outcome !== "revise" || entry.revisionClass !== "semantic" || !entry.definitionId) return [];
+          return [ParameterDefinitionId(entry.definitionId)];
         });
         const usage = pool && semanticIds.length ? await createUsageProjectionFromQueries(createUsageQueries(pool)).summarizeMany({
           organizationId: command.organizationId, principalId: command.principalId,
@@ -276,8 +269,7 @@ export function bindCatalogPublicationCommands(input: {
         }) : new Map();
         plan.entries = plan.entries.map((entry) => {
           if (entry.outcome !== "revise" || entry.revisionClass !== "semantic") return entry;
-          const definition = definitionFor(entry);
-          const summary = definition?.kind === "definition" ? usage.get(ParameterDefinitionId(definition.content.id)) : undefined;
+          const summary = entry.definitionId ? usage.get(ParameterDefinitionId(entry.definitionId)) : undefined;
           return { ...entry, ...(summary ? { usageSummary: summary } : {}) };
         });
         if (plan.placementHints.length && pool) {
@@ -297,7 +289,7 @@ export function bindCatalogPublicationCommands(input: {
             return { ...hint, warnings };
           });
         }
-        if (!plan.changeSet) return { ok: true, value: { candidate: null, noChange: plan.noChange, entries: plan.entries, source: plan.source, placementHints } };
+        if (!plan.changeSet) return { ok: true, value: { candidate: null, noChange: plan.noChange, entries: publicImportEntries(plan.entries), source: plan.source, placementHints } };
       }
       const parsed = plan?.changeSet ?? parsePublicationChangeSet(command.changeSet);
       if ("error" in parsed) return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
@@ -316,15 +308,15 @@ export function bindCatalogPublicationCommands(input: {
       }
       if (plan?.changeSet) {
         const facts = previewed.value.impactFacts;
-        plan.entries = plan.entries.map((entry, index) => {
+        plan.entries = plan.entries.map((entry) => {
           if (entry.outcome !== "create" && entry.outcome !== "revise") return entry;
-          const operation = facts.operations[entryChangeIndexes[index] ?? -1];
+          const operation = facts.operations[entry.operationIndex ?? -1];
           if (!operation) return entry;
           const semantic = operation.op === "revise-definition" && operation.class === "semantic";
           const newSubject = operation.op === "create-subject-with-definitions";
           const classified = classifyImpact({ ...facts, operations: [operation], introducesNewSubject: newSubject,
             changesSelector: newSubject && facts.changesSelector, changesAlias: false, changesFallback: false,
-            tightensExistingContract: semantic && facts.tightensExistingContract, changesUnitOrSemantic: semantic,
+            tightensExistingContract: semantic && Boolean(entry.tightensExistingContract), changesUnitOrSemantic: semantic,
             retiresIdentity: false });
           return { ...entry, ...(classified.ok ? { riskClass: classified.value } : {}) };
         });
@@ -338,7 +330,7 @@ export function bindCatalogPublicationCommands(input: {
         capabilityContract: capabilityOf(previewed.value.candidate),
         authorOrganizationId: command.organizationId,
       };
-      return { ok: true, value: plan ? { candidate, noChange: plan.noChange, entries: plan.entries, source: plan.source, placementHints } : candidate };
+      return { ok: true, value: plan ? { candidate, noChange: plan.noChange, entries: publicImportEntries(plan.entries), source: plan.source, placementHints } : candidate };
     },
     async getCandidate(query) {
       let candidateId: ReturnType<typeof CatalogCandidateId>;

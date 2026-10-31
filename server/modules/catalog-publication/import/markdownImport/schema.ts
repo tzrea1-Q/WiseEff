@@ -7,3 +7,8 @@ export function unwrapArraySchema(schema: Record<string, unknown>) {
   }
   return { arrays, item };
 }
+
+export function formatValueType(schema: Record<string, unknown>): string {
+  const { arrays, item } = unwrapArraySchema(schema);
+  return `${"array<".repeat(arrays.length)}${item.type ?? "mixed"}${">".repeat(arrays.length)}`;
+}
