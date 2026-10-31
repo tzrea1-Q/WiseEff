@@ -175,6 +175,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "includeMemberCount",
+            "in": "query",
+            "required": false,
+            "description": "Set to 1 to include each resource's current source member count.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
           }
         ],
         "responses": {
@@ -29337,6 +29349,9 @@
                 },
                 "sourceName": {
                   "type": "string"
+                },
+                "memberCount": {
+                  "type": "number"
                 },
                 "draftRevision": {
                   "type": [

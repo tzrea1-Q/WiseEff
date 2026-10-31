@@ -57,7 +57,7 @@ export const sharedDtsiVersionSchema = sharedDtsiVersionSummarySchema.extend({ m
   members: z.array(z.object({ id, sourceName: z.string(), content: z.string(), checksum: z.string(), sizeBytes: z.number().int().nonnegative() }).strict()).min(1) });
 export const sharedDtsiResourceSummarySchema = z.object({ resourceId: id, name: z.string(), updatedAt: z.string(),
   state:z.enum(["active","retired"]).default("active"), lifecycleRevision:z.number().int().positive().default(1),
-  sourceName: z.string(), memberCount: z.number().int().nonnegative(), draftRevision: z.number().int().positive().nullable(), currentVersion: sharedDtsiVersionSummarySchema.nullable() }).strict();
+  sourceName: z.string(), memberCount: z.number().int().nonnegative().optional(), draftRevision: z.number().int().positive().nullable(), currentVersion: sharedDtsiVersionSummarySchema.nullable() }).strict();
 export const sharedDtsiResourceDetailSchema = sharedDtsiResourceSummarySchema.omit({ sourceName: true, memberCount: true });
 export const sharedDtsiVersionsSchema = z.object({items:z.array(sharedDtsiVersionSummarySchema),total:z.number().int().nonnegative()}).strict();
 export const sharedDtsiRecognitionSchema = z.object({resourceId:id,versionId:id,catalogReleaseId:z.string().nullable(),items:z.array(z.object({
@@ -151,7 +151,7 @@ export const sharedDtsiSchemaRegistry = {
   "sharedDtsi.lifecycle":{summary:"Retire or restore a shared resource with state comparison",tags,requestBody:"SharedDtsiLifecycleRequest",responseBody:"SharedDtsiLifecycleResponse"},
   "sharedDtsi.projectImport": { summary: "Create a shared draft from an authorized exact private source revision", tags, requestBody: "SharedDtsiProjectImportRequest", responseBody: "SharedDtsiDraftResponse", successStatus: 201 as const },
   "sharedDtsi.list": { summary: "List Organization shared DTSI resources", tags, responseBody: "SharedDtsiListResponse",
-    requestParameters: [{ name: "q", in: "query" as const }, { name: "offset", in: "query" as const }, { name: "limit", in: "query" as const }] },
+    requestParameters: [{ name: "q", in: "query" as const }, { name: "offset", in: "query" as const }, { name: "limit", in: "query" as const }, { name: "includeMemberCount", in: "query" as const, description: "Set to 1 to include each resource's current source member count.", schema: {type:"string" as const,enum:["1"]} }] },
   "sharedDtsi.create": { summary: "Create a shared DTSI resource draft", tags, requestBody: "SharedDtsiDraftRequest", responseBody: "SharedDtsiDraftResponse", successStatus: 201 as const },
   "sharedDtsi.get": { summary: "Read the current shared DTSI draft", tags, responseBody: "SharedDtsiDraftResponse" },
   "sharedDtsi.save": { summary: "Save a shared DTSI draft with revision comparison", tags, requestBody: "SharedDtsiDraftUpdateRequest", responseBody: "SharedDtsiDraftResponse" },
