@@ -98,6 +98,51 @@ test("safely adds, renames and removes draft members while retaining editor cont
   await expect(page.getByText("暂无源码文件，请添加文件或新建源码。",{exact:true})).toBeVisible();
   await expect(page.getByRole("button",{name:"保存草稿",exact:true})).toBeDisabled();await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeDisabled();
 });
+test("locates a long source path without losing edits in another member",async({page,catalogAcceptanceRuntime},testInfo)=>{
+  void catalogAcceptanceRuntime;
+  const pageErrors:string[]=[],serverErrors:string[]=[];
+  page.on("pageerror",error=>pageErrors.push(error.message));
+  page.on("response",response=>{if(response.status()>=500)serverErrors.push(`${response.status()} ${new URL(response.url()).pathname}`);});
+  await page.setViewportSize({width:1440,height:900});
+  await signInCatalogActor(page,"org-admin","/parameter-admin/sources");
+  await dismissXiaozeHint(page);
+  await page.getByRole("button",{name:"导入资源",exact:true}).click();
+  const longPath=`library/${"a".repeat(160)}.dtsi`;
+  const zip=new JSZip();
+  zip.file(longPath,'/include/ "missing.dtsi"\n/ {};\n');
+  zip.file("library/other.dtsi",'/ { original {}; };\n');
+  await page.locator('input[type="file"]').first().setInputFiles({name:"long-path.zip",mimeType:"application/zip",buffer:await zip.generateAsync({type:"nodebuffer"})});
+  await page.getByLabel("资源名称",{exact:true}).fill("长".repeat(160));
+  await page.getByLabel("变更说明",{exact:true}).fill("检查长路径定位");
+  await page.getByRole("button",{name:"保存草稿",exact:true}).click();
+  await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"预览发布",exact:true}).click();
+  const alert=page.getByRole("alert");
+  await expect(alert).toContainText("缺少依赖文件 missing.dtsi");
+  const locate=alert.getByRole("button",{name:`定位源码：${longPath}:1:1`,exact:true});
+  const files=page.getByRole("navigation",{name:"资源文件",exact:true});
+  await files.getByRole("button",{name:"library/other.dtsi",exact:true}).click();
+  const editor=page.getByLabel("DTSI 源码",{exact:true});
+  await editor.click();await page.keyboard.press("ControlOrMeta+End");await page.keyboard.insertText("// unsaved local edit");
+  await page.getByLabel("变更说明",{exact:true}).fill("未保存的说明");
+  for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+    await page.setViewportSize(viewport);
+    await locate.focus();
+    await expect(locate).toBeInViewport({ratio:1});
+    expect(await locate.evaluate(element=>{const rect=element.getBoundingClientRect();const hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+2);return hit===element || element.contains(hit);})).toBe(true);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await catalogScreenshot(page,testInfo,`shared-dtsi-long-diagnostic-${viewport.width}`);
+    await page.keyboard.press("Enter");
+    await expect(page.getByLabel("文件路径",{exact:true})).toHaveValue(longPath);
+    await expect(editor).toBeFocused();
+    await expect(editor).toContainText("missing.dtsi");
+    await files.getByRole("button",{name:"library/other.dtsi",exact:true}).click();
+    await expect(editor).toContainText("original");
+    await expect(editor).toContainText("unsaved local edit");
+    await expect(page.getByLabel("变更说明",{exact:true})).toHaveValue("未保存的说明");
+  }
+  expect(pageErrors).toEqual([]);expect(serverErrors).toEqual([]);
+});
 
 test("imports a relative ZIP library, repairs missing dependencies and publishes all original source members",async({page,catalogAcceptanceRuntime},testInfo)=>{
   void catalogAcceptanceRuntime;
@@ -124,6 +169,13 @@ test("imports a relative ZIP library, repairs missing dependencies and publishes
   await expect(page.getByRole("alert")).toContainText("library/main.dtsi:1:1");
   await expect(page.getByRole("alert")).toContainText("missing.dtsi");
   await catalogScreenshot(page,testInfo,"shared-dtsi-multifile-missing-1440");
+  await files.getByRole("button",{name:"library/parts/battery.dtsi",exact:true}).click();
+  await expect(page.getByLabel("文件路径",{exact:true})).toHaveValue("library/parts/battery.dtsi");
+  await page.getByRole("button",{name:"定位源码：library/main.dtsi:1:1",exact:true}).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("文件路径",{exact:true})).toHaveValue("library/main.dtsi");
+  await expect(page.getByLabel("DTSI 源码",{exact:true})).toBeFocused();
+  await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("missing.dtsi");
   await files.getByRole("button",{name:"library/parts/battery.dtsi",exact:true}).click();
   await page.getByLabel("文件路径",{exact:true}).fill("library/parts/missing.dtsi");
   await files.getByRole("button",{name:"library/main.dtsi",exact:true}).focus();

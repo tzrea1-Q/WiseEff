@@ -12,8 +12,11 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   const byName = new Map(draft.members.map(member=>[member.sourceName,member]));
   const files = new Map(draft.members.map(member=>[member.sourceName,{content:member.content,fileVersionId:member.id}]));
   const includeSearchPaths = draft.buildInputs?.includeSearchPaths ?? [], defines = draft.buildInputs?.defines ?? {};
-  const reject=(sourceName:string,offset:number,message:string,code?:string):never=>{
-    const location=offsetToLineColumn(byName.get(sourceName)!.content,offset);
+  const reject=(sourceName:string,offset:number|undefined,message:string,code?:string):never=>{
+    const member=byName.get(sourceName);
+    if (!member || offset === undefined || !Number.isInteger(offset) || offset < 0 || offset > member.content.length)
+      throw new ApiError("VALIDATION_FAILED",message,code?{reason:code}:{});
+    const location=offsetToLineColumn(member.content,offset);
     const prefix=[`${sourceName}：`,`${sourceName}:`].find(value=>message.startsWith(value));
     const detail=prefix?message.slice(prefix.length).replace(/^\d+(?::\d+)?[：:]\s*/u,"").trimStart():message;
     throw new ApiError("VALIDATION_FAILED",`${sourceName}:${location.line}:${location.column}：${detail}`,
@@ -27,7 +30,7 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
         files, includeSearchPaths, defines, overlayOrder: [] }));
       for (const edge of graph) included.add(edge.target);
     } catch (error) {
-      if (error instanceof DtsPreprocessingError) reject(error.fileName, error.offset, error.message);
+      if (error instanceof DtsPreprocessingError) reject(error.fileName, error.hasSourceOffset ? error.offset : undefined, error.message, error.code);
       throw error;
     }
   }
@@ -35,7 +38,7 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
     if (cpp) continue;
     let tokens;
     try { tokens=lexDts(member.content); }
-    catch (error) { const message=error instanceof Error?error.message:"设备树语法无效。";reject(member.sourceName,Number(/offset (\d+)/u.exec(message)?.[1]??0),message); }
+    catch (error) { const message=error instanceof Error?error.message:"设备树语法无效。";const offset=/offset (\d+)$/u.exec(message)?.[1];reject(member.sourceName,offset === undefined ? undefined : Number(offset),message); }
     for (let i=0;i<tokens!.length;i++) {
       const token=tokens![i]!,next=tokens![i+1];
       const directive=token.value==="#" && next?.kind==="ident"?`#${next.value}`:token.value;
@@ -78,25 +81,25 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
   catch (error) {
     if (error instanceof DtsPreprocessingError) {
       if (error.code === "preprocess-busy") throw new ApiError("CONFLICT", error.message, { reason: error.code });
-      reject(error.fileName, error.offset, error.message, error.code);
+      reject(error.fileName, error.hasSourceOffset ? error.offset : undefined, error.message, error.code);
     }
     throw error;
   }
   let declarations=0,expandedBytes=0;
   const compatibleSelectors=new Set<string>();
   for (const root of roots) {
-    let expanded:ReturnType<typeof expandDtsIncludes>;
+    let expanded:{text:string;diagnostics:ReturnType<typeof expandDtsIncludes>["diagnostics"];originAt:(offset:number)=>{fileName:string;offset:number}|undefined};
     try {
       const prepared = preprocessing?.documents.get(root.sourceName);
       expanded = prepared ? { text: prepared.text, diagnostics: [], originAt: (offset: number) => {
         const origin = prepared.originForSpan({ start: offset, end: offset });
-        return { fileName: origin?.sourceName ?? root.sourceName, offset: origin?.start ?? 0 };
+        return origin ? { fileName: origin.sourceName, offset: origin.start } : undefined;
       } } : expandDtsIncludes({entryFile:root.sourceName,files,includeSearchPaths});
     }
-    catch {return reject(root.sourceName,0,"include 展开源码超过 32 MiB 安全上限。");}
-    const fail=(offset:number,message:string):never=>{const origin=expanded.originAt(offset);return reject(origin.fileName,origin.offset,message);};
+    catch {return reject(root.sourceName,undefined,"include 展开源码超过 32 MiB 安全上限。");}
+    const fail=(offset:number|undefined,message:string):never=>{const origin=offset !== undefined && expanded.text.length ? expanded.originAt(offset) : undefined;return reject(origin?.fileName ?? root.sourceName,origin?.offset,message);};
     expandedBytes+=Buffer.byteLength(expanded.text);
-    if (expandedBytes>32*1024*1024) fail(0,"include 展开源码超过 32 MiB。");
+    if (expandedBytes>32*1024*1024) fail(undefined,"include 展开源码超过 32 MiB。");
     try {
       const tokens=lexDts(expanded.text);
       for (const token of tokens.entries()) {
@@ -130,10 +133,12 @@ export async function sharedDtsiPublicationSource(draft: SharedDtsiDraft) {
     } catch(error) {
       if(error instanceof ApiError)throw error;
       const message=error instanceof Error?error.message:"设备树语法无效。";
-      fail(Number(/(?:offset|at) (\d+)/u.exec(message)?.[1]??0),message);
+      const offset=/(?:offset|at) (\d+)$/u.exec(message)?.[1];
+      fail(offset === undefined ? undefined : Number(offset),
+        /^Expected property value at \d+$/u.test(message) ? "属性赋值缺少值。" : message);
     }
   }
-  if(!declarations)reject(roots[0]?.sourceName??draft.members[0]!.sourceName,0,"源码中没有可发布的设备树声明。");
+  if(!declarations)reject(roots[0]?.sourceName??draft.members[0]!.sourceName,undefined,"源码中没有可发布的设备树声明。");
   const members=draft.members.map(member=>({...member,checksum:`sha256:${createHash("sha256").update(member.content).digest("hex")}`,sizeBytes:Buffer.byteLength(member.content)}));
   const manifest:SharedDtsiManifest={schemaVersion:"shared-dtsi/v1",...(draft.sourceEvidence ? {sourceEvidence:draft.sourceEvidence}:{}),members:members.map(({content:_,...member})=>({...member,role:/\.dtsi?$/u.test(member.sourceName)?"include":"header"})),
     compatibleSelectors:[...compatibleSelectors].sort(),includeGraph:graph,buildInputs:{includeSearchPaths, ...(preprocessing?.receipt.defines ? { defines: preprocessing.receipt.defines } : {}), ...(preprocessing ? { preprocessing: preprocessing.receipt } : {})},externalReferences:[...references].filter(reference=>reference.startsWith("&{")

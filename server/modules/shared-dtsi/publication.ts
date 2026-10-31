@@ -10,7 +10,7 @@ import type { SharedDtsiDraft, SharedDtsiManifest, SharedDtsiPublicationPreview,
   SharedDtsiVersion, SharedDtsiVersionSummary } from "../contracts/dtoSchemas/sharedDtsi";
 import { sharedDtsiManifestSchema } from "../contracts/dtoSchemas/sharedDtsi";
 import { getSharedDtsiDraft, lockDraft, requireRead, requireWrite, type WriteContext } from "./service";
-import { closureManifest, closureMembers, composeDtsBuildInputs, loadSharedDtsiClosure } from "./dependencies";
+import { closureManifest, closureMembers, composeDtsBuildInputs, loadSharedDtsiClosure, mountedSharedPath } from "./dependencies";
 import { assertSharedDtsiNewReferences, lockSharedDtsiReferences } from "./lifecycle";
 import { compareSharedDtsiSources } from "./comparisonData";
 import { assertDtsPreprocessingAvailable, DtsPreprocessingError, requiresDtsPreprocessing } from "../dts/cppSources";
@@ -37,7 +37,19 @@ export async function completePublicationSource(db:Database,auth:AuthContext,dra
     paths.add(path);
   }
   const declared = draft.buildInputs ?? { includeSearchPaths: [], defines: {} };
-  const source=await publicationSource({...draft,members,buildInputs:composeDtsBuildInputs(declared,resources)});
+  let source: Awaited<ReturnType<typeof publicationSource>>;
+  try { source=await publicationSource({...draft,members,buildInputs:composeDtsBuildInputs(declared,resources)}); }
+  catch (error) {
+    if (!(error instanceof ApiError) || !Array.isArray(error.details.diagnostics)) throw error;
+    const diagnostics=error.details.diagnostics.map((diagnostic:unknown) => {
+      if (!diagnostic || typeof diagnostic !== "object" || !("sourceName" in diagnostic) || typeof diagnostic.sourceName !== "string") return diagnostic;
+      const matches=resources.flatMap(resource=>resource.item.members
+        .filter(member=>mountedSharedPath(resource.mountPath,member.sourceName)===diagnostic.sourceName)
+        .map(member=>({resourceId:resource.resourceId,versionId:resource.versionId,memberId:member.id})));
+      return matches.length===1 ? {...diagnostic,source:matches[0]} : diagnostic;
+    });
+    throw new ApiError(error.code,error.message,{...error.details,diagnostics});
+  }
   if(!resources.length && !draft.dependencies?.length)return source;
   const own=new Set(draft.members.map(member=>member.id));
   source.members=source.members.filter(member=>own.has(member.id));
