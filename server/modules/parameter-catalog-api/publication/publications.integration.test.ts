@@ -766,13 +766,20 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
     pin = retiredPointer.current;
     const retiredImport = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "retired.md" } });
     expect(retiredImport.body).toMatchObject({ item: { candidate: null, entries: [
-      { outcome: "conflict", diagnostics: expect.arrayContaining([expect.objectContaining({ line: 2, message: expect.stringContaining("弃用") })]) },
+      { outcome: "conflict", diagnostics: expect.arrayContaining([expect.objectContaining({ line: 2, message: "定义已退役，请先在目录列表中恢复。" })]) },
       { outcome: "skip" },
     ] } });
     const mismatch = await post("/api/v2/catalog/publication-candidates", { markdownImport: {
       document: document.replace("# Driver `acme,power`", "# Driver `acme,power`\nnature: logical-service · cardinality: multiple"), fileName: "mismatch.md" } });
-    expect(catalogMarkdownImportResponseSchema.parse(mismatch.body).item.entries[0]).toMatchObject({ outcome: "error", diagnostics: expect.arrayContaining([
+    expect(catalogMarkdownImportResponseSchema.parse(mismatch.body).item.entries[0]).toMatchObject({ outcome: "conflict", diagnostics: expect.arrayContaining([
       expect.objectContaining({ field: "主体", line: 2 }),
+      expect.objectContaining({ message: "定义已退役，请先在目录列表中恢复。" }),
+    ]) });
+    const invalidRetired = await post("/api/v2/catalog/publication-candidates", { markdownImport: {
+      document: document.replace("| 简述 | 新说明 |", "| 类型 | unknown |"), fileName: "invalid-retired.md" } });
+    expect(catalogMarkdownImportResponseSchema.parse(invalidRetired.body).item.entries[0]).toMatchObject({ outcome: "conflict", diagnostics: expect.arrayContaining([
+      expect.objectContaining({ field: "类型", line: 6 }),
+      expect.objectContaining({ message: "定义已退役，请先在目录列表中恢复。" }),
     ]) });
   } finally {
     await close();

@@ -74,9 +74,9 @@ export function classifyEntry(input: {
       const hasErrors = diagnostics.length > 0;
       diagnostics.push(diagnostic(
         section, definition, "属性键", revision.lifecycle === "retired"
-          ? "定义已弃用，请使用现有恢复流程。" : "目录中已有不同内容的定义；如要修订，请加 `操作：修订`。", definition.line,
+          ? "定义已退役，请先在目录列表中恢复。" : "目录中已有不同内容的定义；如要修订，请加 `操作：修订`。", definition.line,
       ));
-      return { outcome: hasErrors ? "error" : "conflict", diagnostics };
+      return { outcome: hasErrors && revision.lifecycle !== "retired" ? "error" : "conflict", diagnostics };
     }
   }
   return { outcome: diagnostics.length ? "error" : "create", diagnostics };
