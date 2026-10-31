@@ -29,6 +29,17 @@ function setup(overrides: Partial<WorkbenchDtsEditorProps> = {}) {
 }
 
 describe("WorkbenchDtsEditor", () => {
+  it("accepts an explicit saved baseline without losing selection, scroll or undo",()=>{
+    const input=setup({text:"original",baseText:"original",baselineRevision:1});
+    const editor=input.getEditor();
+    act(()=>editor.dispatch({changes:{from:8,insert:" changed"},selection:{anchor:4}}));
+    editor.scrollDOM.scrollTop=37;editor.scrollDOM.scrollLeft=21;
+    input.rerenderProps({baseText:"original changed",baselineRevision:2});
+    expect(input.handle.current?.getSnapshot()).toMatchObject({text:"original changed",dirty:false,selection:{anchor:4,head:4}});
+    expect(editor.scrollDOM.scrollTop).toBe(37);expect(editor.scrollDOM.scrollLeft).toBe(21);
+    act(()=>undo(editor));
+    expect(input.handle.current?.getSnapshot()).toMatchObject({text:"original",dirty:true});
+  });
   it("reveals a repeated explicit result but ignores unrelated focus-line updates", () => {
     const span = { startLine: 2, endLine: 2 };
     const input = setup({ focusSpan: span, focusLine: 2 });

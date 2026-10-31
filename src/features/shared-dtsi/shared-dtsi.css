@@ -41,6 +41,7 @@
 .shared-dtsi-members ul { display: grid; gap: var(--space-2); list-style: none; padding: 0; padding-inline-end: var(--space-2); margin: 0; }
 .shared-dtsi-members button { width: 100%; height: auto; min-height: var(--space-10); justify-content: start; border-color: var(--border-strong); white-space: normal; text-align: start; overflow-wrap: anywhere; }
 .shared-dtsi-members button[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.shared-dtsi-member-error { display: block; color: var(--danger); font-size: var(--text-base); overflow-wrap: anywhere; }
 .shared-dtsi-recognition { min-width: 0; overflow-wrap: anywhere; }
 .shared-dtsi-recognition > ul { display: grid; gap: var(--space-4); list-style: none; margin: var(--space-4) 0; padding: 0; }
 .shared-dtsi-recognition > ul > li { border-bottom: var(--stroke-hairline) solid var(--border); padding-bottom: var(--space-4); }

@@ -38,6 +38,46 @@ import { selectControlOption } from "./helpers/selectControl";
 
 test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.env.TEST_DATABASE_URL});
 
+test("safely adds, renames and removes draft members while retaining editor context",async({page,catalogAcceptanceRuntime},testInfo)=>{
+  void catalogAcceptanceRuntime;
+  await page.setViewportSize({width:1440,height:900});await signInCatalogActor(page,"org-admin","/parameter-admin/sources");await dismissXiaozeHint(page);
+  await page.getByRole("button",{name:"导入资源",exact:true}).click();
+  await page.locator('input[type="file"]').first().setInputFiles({name:"main.dtsi",mimeType:"text/plain",buffer:Buffer.from("/ { main {}; };\n")});
+  const editor=page.getByLabel("DTSI 源码",{exact:true});
+  await editor.click();await page.keyboard.press("ControlOrMeta+End");await page.keyboard.insertText("// unsaved\n");
+  await page.getByLabel("变更说明",{exact:true}).fill("整理共享源码文件。");
+  const add=page.locator('input[aria-label="添加源码文件"]');
+  await add.setInputFiles({name:"part.dtsi",mimeType:"text/plain",buffer:Buffer.from("/ { part {}; };\n")});
+  const files=page.getByRole("navigation",{name:"资源文件",exact:true});
+  await expect(files.getByRole("button",{name:"part.dtsi",exact:true})).toBeVisible();
+  await expect(editor).toContainText("unsaved");
+  await add.setInputFiles({name:"main.dtsi",mimeType:"text/plain",buffer:Buffer.from("replacement")});
+  let conflict=page.getByRole("dialog",{name:"替换重名文件？",exact:true});
+  await expect(conflict).toContainText("main.dtsi");await conflict.getByRole("button",{name:"取消",exact:true}).click();
+  await expect(editor).toContainText("unsaved");await expect(page.getByLabel("变更说明",{exact:true})).toHaveValue("整理共享源码文件。");
+  await add.setInputFiles({name:"main.dtsi",mimeType:"text/plain",buffer:Buffer.from("/ { replaced {}; };\n")});
+  conflict=page.getByRole("dialog",{name:"替换重名文件？",exact:true});await conflict.getByRole("button",{name:"替换重名文件",exact:true}).click();
+  await expect(editor).toContainText("replaced");
+  await files.getByRole("button",{name:"part.dtsi",exact:true}).focus();await page.keyboard.press("Enter");
+  await page.getByLabel("文件路径",{exact:true}).fill("parts/part.dtsi");
+  for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+    await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await catalogScreenshot(page,testInfo,`shared-file-management-${viewport.width}`);
+  }
+  await page.getByRole("button",{name:"保存草稿",exact:true}).click();await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
+  const resourceId=new URL(page.url()).searchParams.get("resource")!;
+  await expect(page.getByLabel("文件路径",{exact:true})).toHaveValue("parts/part.dtsi");
+  const persisted=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}`);
+  expect((persisted.body as {item:{members:unknown[]}}).item.members).toEqual(expect.arrayContaining([
+    expect.objectContaining({sourceName:"main.dtsi",content:"/ { replaced {}; };\n"}),expect.objectContaining({sourceName:"parts/part.dtsi",content:"/ { part {}; };\n"})]));
+  await page.reload();await expect(files.getByRole("button",{name:"parts/part.dtsi",exact:true})).toBeVisible();
+  await files.getByRole("button",{name:"parts/part.dtsi",exact:true}).click();await expect(editor).toContainText("part");
+  await page.getByRole("button",{name:"移除当前文件",exact:true}).click();await page.getByRole("dialog",{name:"移除文件？"}).getByRole("button",{name:"移除文件",exact:true}).click();
+  await page.getByRole("button",{name:"移除当前文件",exact:true}).click();await page.getByRole("dialog",{name:"移除文件？"}).getByRole("button",{name:"移除文件",exact:true}).click();
+  await expect(page.getByText("暂无源码文件，请添加文件或新建源码。",{exact:true})).toBeVisible();
+  await expect(page.getByRole("button",{name:"保存草稿",exact:true})).toBeDisabled();await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeDisabled();
+});
+
 test("imports a relative ZIP library, repairs missing dependencies and publishes all original source members",async({page,catalogAcceptanceRuntime},testInfo)=>{
   void catalogAcceptanceRuntime;
   const pageErrors:string[]=[],serverErrors:string[]=[];

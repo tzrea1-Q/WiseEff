@@ -33,6 +33,8 @@ export type WorkbenchDtsEditorProps = {
   text: string;
   /** Authoritative source for dirty comparison when text restores a local draft. */
   baseText?: string;
+  /** Opt in to acknowledging a newly saved authoritative baseline without resetting the editor. */
+  baselineRevision?: string | number;
   sessions?: WorkbenchDtsEditorSessions;
   initialSelection?: { anchor: number; head: number };
   initialVisibleLine?: number;
@@ -57,6 +59,7 @@ type EditorSession = {
   initialDoc: Text;
   initialText: string;
   base: Text;
+  baselineRevision?: string | number;
   changes: ChangeDesc;
   generation: number;
   lineSeparator: string;
@@ -297,7 +300,7 @@ export const WorkbenchDtsEditor = forwardRef<WorkbenchDtsEditorHandle, Workbench
       restoreLine = initial.initialVisibleLine;
       const base = initial.baseText === undefined ? initialState.doc : EditorState.create({ doc: initial.baseText }).doc;
       session = {
-        key: props.sessionKey, resetKey: props.resetKey, state: initialState, initialDoc: initialState.doc, initialText: initial.text, base,
+        key: props.sessionKey, resetKey: props.resetKey, state: initialState, initialDoc: initialState.doc, initialText: initial.text, base, baselineRevision:initial.baselineRevision,
         changes: initialChanges(base, initialState.doc), generation: 0, lineSeparator,
         normalizedLineEndings: separators.size > 1, scrollTop: 0, scrollLeft: 0, mode, attributes, runtime
       };
@@ -313,6 +316,15 @@ export const WorkbenchDtsEditor = forwardRef<WorkbenchDtsEditorHandle, Workbench
     analyze();
     callbacks.current.onDirtyChange?.({ sessionKey: session.key, generation: session.generation, dirty: !session.state.doc.eq(session.base) });
   }, [props.sessionKey, props.resetKey, props.sessions, flush, analyze, runtimeExtensions]);
+
+  useLayoutEffect(() => {
+    const session=active.current, editor=view.current;
+    if(!session || !editor || props.baselineRevision===undefined || props.baselineRevision===session.baselineRevision || props.baseText===undefined)return;
+    session.baselineRevision=props.baselineRevision;
+    session.base=EditorState.create({doc:props.baseText}).doc;
+    session.changes=initialChanges(session.base,editor.state.doc);
+    callbacks.current.onDirtyChange?.({sessionKey:session.key,generation:session.generation,dirty:!editor.state.doc.eq(session.base)});
+  },[props.sessionKey,props.resetKey,props.baselineRevision,props.baseText]);
 
   useLayoutEffect(() => {
     const editor = view.current;
