@@ -50,6 +50,47 @@ function renderDialog(
  * pipeline, and report the actual activation outcome.
  */
 describe("DefinitionLifecycleDialog", () => {
+  it("summarizes a batch and submits one candidate with a shared optional reason", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+    const publish = vi.spyOn(ports.catalog, "publishPublicationCandidate");
+    const second = { ...activeDefinition, id: "second", propertyKey: "second-key", usageSummary: { policyCount: 2, projectCount: 3, currentValueCount: 4 } };
+    render(<DefinitionLifecycleDialog open intent="retire-definition" actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState}
+      catalog={ports.catalog} catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition}
+      definitions={[activeDefinition, second]} onOpenChange={vi.fn()} />);
+    expect(screen.getByText(/策略使用量暂不可用/)).toBeInTheDocument();
+    expect(screen.getByText(/项目 5.*当前值 6/)).toBeInTheDocument();
+    expect(screen.getByText(/second-key/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("原因"), "统一弃用");
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
+    expect(preview.mock.calls[0]?.[0]?.changeSet).toEqual([
+      expect.objectContaining({ op: "retire-definition", definitionId: activeDefinition.id, reason: "统一弃用" }),
+      expect.objectContaining({ op: "retire-definition", definitionId: "second", reason: "统一弃用" })
+    ]);
+    const confirm = await screen.findByRole("dialog", { name: /确认弃用/ });
+    expect(within(confirm).getByText(/项目 5.*当前值 6/)).toBeInTheDocument();
+    expect(within(confirm).getByText(/second-key/)).toBeInTheDocument();
+    await user.click(within(confirm).getByRole("button", { name: "确认弃用" }));
+    await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+  });
+
+  it("allows a batch without a reason and blocks it in mock mode", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const view = render(<DefinitionLifecycleDialog open intent="restore-definition" actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition} definitions={[activeDefinition]}
+      runtimeMode="mock" onOpenChange={vi.fn()} />);
+    expect(screen.getByText("模拟模式不支持，请使用 API 模式。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预演影响" })).toBeDisabled();
+    view.rerender(<DefinitionLifecycleDialog open intent="restore-definition" actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} definition={activeDefinition} definitions={[activeDefinition]}
+      runtimeMode="api" onOpenChange={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "预演影响" })).toBeEnabled();
+  });
   it("requires a reason before it will capture the impact", async () => {
     const user = userEvent.setup();
     const { ports } = renderDialog("retire-definition");
@@ -145,6 +186,7 @@ describe("DefinitionLifecycleDialog", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveAttribute("data-preserve-input", "true");
+    expect(alert).toHaveTextContent("目录发布已变化");
     expect(screen.getByLabelText("原因")).toHaveValue("保留输入");
   });
 

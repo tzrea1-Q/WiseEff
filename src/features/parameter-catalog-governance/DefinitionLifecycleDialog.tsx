@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
-import { catalogStateFromFailure, type CatalogDomainState } from "@/application/parameter-catalog/states";
+import type { CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -15,6 +15,8 @@ import type {
 import { canExecutePublicationAction, publicationStatusCopy } from "./publicationState";
 import { createGovernanceIdempotencyKey, createGovernanceSubmitGate } from "./governanceState";
 import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
+import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { catalogErrorCopy } from "@/features/parameter-catalog/copy";
 
 export type DefinitionLifecycleIntent = "retire-definition" | "restore-definition";
 
@@ -27,6 +29,8 @@ export type DefinitionLifecycleDialogProps = {
   catalog: ParameterCatalogRepository;
   catalogReleaseId: string;
   definition: CatalogDefinitionResponse["item"];
+  definitions?: CatalogDefinitionResponse["item"][];
+  runtimeMode?: WiseEffRuntimeMode;
   createIdempotencyKey?: () => string;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
@@ -85,6 +89,8 @@ export function DefinitionLifecycleDialog({
   catalog,
   catalogReleaseId,
   definition,
+  definitions,
+  runtimeMode,
   createIdempotencyKey,
   onOpenChange,
   onCompleted,
@@ -108,6 +114,10 @@ export function DefinitionLifecycleDialog({
     sessionPermissions
   );
   const contentText = copy[intent];
+  const batch = definitions !== undefined;
+  const targets = definitions ?? [definition];
+  const policyUnavailable = targets.some((item) => item.usageSummary.policyCount === null);
+  const usage = `本组织使用量：${policyUnavailable ? "策略使用量暂不可用" : `策略 ${targets.reduce((sum, item) => sum + (item.usageSummary.policyCount ?? 0), 0)}`} · 项目 ${targets.reduce((sum, item) => sum + item.usageSummary.projectCount, 0)} · 当前值 ${targets.reduce((sum, item) => sum + item.usageSummary.currentValueCount, 0)}`;
 
   const stopPolling = () => {
     if (pollRef.current !== null) {
@@ -160,24 +170,21 @@ export function DefinitionLifecycleDialog({
     if (!allowed || pending) {
       return;
     }
-    if (!reason.trim()) {
+    if (!batch && !reason.trim()) {
       setFieldError("请填写原因，用于审计。");
       return;
     }
-    const content = lifecycleContentOf(definition);
     setPending(true);
     try {
       const created = await catalog.createPublicationCandidate(
         {
-          changeSet: [
-            {
+          changeSet: targets.map((target) => ({
               op: intent,
-              definitionId: definition.id,
+              definitionId: target.id,
               class: "semantic",
               ...(reason.trim() ? { reason: reason.trim() } : {}),
-              content
-            }
-          ] as never
+              content: lifecycleContentOf(target)
+            })) as never
         },
         { catalogReleaseId }
       );
@@ -233,7 +240,7 @@ export function DefinitionLifecycleDialog({
       >
         <h2>{contentText.title}</h2>
         <p>{contentText.explanation}</p>
-        <dl className="parameter-catalog__dl">
+        {batch ? <><p>{usage}</p><ul>{targets.map((item) => <li key={item.id}>{item.propertyKey} · {item.subject.canonicalName}</li>)}</ul></> : <dl className="parameter-catalog__dl">
           <dt>属性键</dt>
           <dd>{definition.propertyKey}</dd>
           <dt>主体</dt>
@@ -249,16 +256,17 @@ export function DefinitionLifecycleDialog({
               : `策略 ${definition.usageSummary.policyCount}`}
             {` · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}`}
           </dd>
-        </dl>
+        </dl>}
         <p role="note">{contentText.impact}</p>
         <label>
-          <span>原因</span>
+          <span>原因{batch ? "（可选）" : ""}</span>
           <textarea
             value={reason}
             aria-label="原因"
             onChange={(event) => setReason(event.target.value)}
           />
         </label>
+        {batch && runtimeMode === "mock" ? <p role="status">模拟模式不支持，请使用 API 模式。</p> : null}
         {fieldError ? (
           <p role="alert" data-preserve-input="true">
             {fieldError}
@@ -282,7 +290,7 @@ export function DefinitionLifecycleDialog({
             type="button"
             className="button primary"
             data-lifecycle-action={intent}
-            disabled={!allowed || pending || !reason.trim()}
+            disabled={!allowed || pending || (!batch && !reason.trim()) || (batch && (runtimeMode === "mock" || targets.length === 0 || targets.length > 128))}
             title={allowed ? undefined : "当前会话缺少发布能力或目录不可写。"}
             onClick={() => void captureCandidate()}
           >
@@ -293,7 +301,7 @@ export function DefinitionLifecycleDialog({
       <ConfirmDialog
         open={confirmOpen}
         title={`确认${intent === "retire-definition" ? "弃用" : "恢复"}`}
-        description={impactSummary(candidate, definition, intent)}
+        description={batch ? `${usage}。\n${targets.map((item) => `${item.subject.canonicalName} · ${item.propertyKey}`).join("\n")}\n变更定义 ${candidate?.impactSummary.changedDefinitionCount ?? 0}。` : impactSummary(candidate, definition, intent)}
         confirmLabel={contentText.action}
         pending={pending}
         pendingLabel="正在发布…"
@@ -347,14 +355,11 @@ function jobStatusText(job: CatalogPublicationJobResponse["item"]): string {
 function publicationFailureText(error: unknown): string {
   // Only a typed catalog failure can name a reason; anything else (a transport
   // failure, for example) must still produce readable copy instead of throwing.
-  let reason: string;
+  let reason: ReturnType<typeof catalogFailureReason>;
   try {
     reason = catalogFailureReason(error as never);
   } catch {
     reason = "unknown";
   }
-  const state = catalogStateFromFailure(error);
-  return reason === "unknown"
-    ? `操作失败（${state.kind}）。请刷新证据后重试，输入已保留。`
-    : `操作失败（${reason}）。请刷新证据后重试，输入已保留。`;
+  return `${catalogErrorCopy(reason)} 输入已保留。`;
 }

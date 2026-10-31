@@ -141,6 +141,7 @@ export function CatalogOrganizationSurface({
   const [lifecycle, setLifecycle] = useState<{
     intent: DefinitionLifecycleIntent;
     definition: CatalogDefinitionResponse["item"];
+    definitions?: CatalogDefinitionResponse["item"][];
     ownerState: CatalogDomainState;
   } | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
@@ -374,6 +375,11 @@ export function CatalogOrganizationSurface({
           if (command === "correct-identity") return;
           setLifecycle({ intent: command, definition, ownerState });
         }}
+        onBatchDefinitionCommand={actor !== "agent" && sessionPermissions?.includes("catalog:author") && sessionPermissions.includes("catalog:publish")
+          ? (intent, definitions, ownerState) => {
+            const definition = definitions[0];
+            if (definition) setLifecycle({ intent, definition, definitions, ownerState });
+          } : undefined}
         renderDefinitionEditor={
           domainState
             ? (definition, history) => (
@@ -571,6 +577,8 @@ export function CatalogOrganizationSurface({
           catalog={catalog}
           catalogReleaseId={catalogReleaseId}
           definition={lifecycle.definition}
+          definitions={lifecycle.definitions}
+          runtimeMode={runtimeMode}
           createIdempotencyKey={createGovernanceIdempotencyKey}
           onCompleted={() => setSurfaceEpoch((value) => value + 1)}
           onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}

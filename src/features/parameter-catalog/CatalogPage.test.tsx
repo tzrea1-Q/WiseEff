@@ -184,6 +184,7 @@ function renderCatalog(
     definitionAuthoringAllowed?: boolean;
     definitionPublishingAllowed?: boolean;
     onDefinitionCommand?: PageProps["onDefinitionCommand"];
+    onBatchDefinitionCommand?: PageProps["onBatchDefinitionCommand"];
     renderDefinitionEditor?: PageProps["renderDefinitionEditor"];
   } = {}
 ) {
@@ -202,6 +203,7 @@ function renderCatalog(
       definitionAuthoringAllowed={options.definitionAuthoringAllowed}
       definitionPublishingAllowed={options.definitionPublishingAllowed}
       onDefinitionCommand={options.onDefinitionCommand}
+      onBatchDefinitionCommand={options.onBatchDefinitionCommand}
       renderDefinitionEditor={options.renderDefinitionEditor}
       initialSearch={options.search ?? ""}
       layoutMode={options.layoutMode ?? "desktop"}
@@ -217,6 +219,50 @@ function renderCatalog(
 
 // These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
 describe("CatalogPage", { timeout: 15_000 }, () => {
+  it("selects definitions, selects all of a subject, and gates batch actions by lifecycle", async () => {
+    const user = userEvent.setup();
+    const repository = lifecycleInventory();
+    const second = { ...activeDefinition, id: "second", propertyKey: "second-key", lifecycle: "retired" as const };
+    vi.spyOn(repository, "listSubjectDefinitions").mockResolvedValue({ items: [activeDefinition, second], totalCount: 2,
+      hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    const onBatchDefinitionCommand = vi.fn();
+    renderCatalog({ repository, search: `?subjectId=${registeredSubject.id}`, definitionPublishingAllowed: true,
+      onBatchDefinitionCommand });
+    await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+    expect(screen.getByRole("button", { name: "弃用所选（1）" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "恢复所选（1）" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "选中该主体下全部定义" }));
+    expect(await screen.findByText(/所选定义状态不同/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "弃用所选（2）" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "恢复所选（2）" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+    await user.click(screen.getByRole("button", { name: "恢复所选（1）" }));
+    expect(onBatchDefinitionCommand).toHaveBeenCalledWith("restore-definition", [second], expect.anything());
+  });
+
+  it("hides batch controls without governance authority", async () => {
+    renderCatalog({ actor: "user", sessionPermissions: [], definitionPublishingAllowed: false });
+    await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+    expect(screen.queryByRole("group", { name: "批量定义操作" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` })).not.toBeInTheDocument();
+  });
+
+  it("enforces the 128 definition limit after selecting an entire subject", async () => {
+    const user = userEvent.setup();
+    const repository = lifecycleInventory();
+    const page = { items: [activeDefinition], totalCount: 129, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID };
+    const all = Array.from({ length: 129 }, (_, index) => ({ ...activeDefinition, id: `definition-${index}`, propertyKey: `key-${index}` }));
+    vi.spyOn(repository, "listSubjectDefinitions").mockImplementation(async (_subjectId, query) =>
+      query?.limit !== 100 ? page : query.cursor
+        ? { ...page, items: all.slice(100) }
+        : { ...page, items: all.slice(0, 100), hasMore: true, nextCursor: "next" });
+    renderCatalog({ repository, search: `?subjectId=${registeredSubject.id}`, definitionPublishingAllowed: true,
+      onBatchDefinitionCommand: vi.fn() });
+    await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` });
+    await user.click(screen.getByRole("button", { name: "选中该主体下全部定义" }));
+    expect(await screen.findByText("每批最多选择 128 个定义。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "弃用所选（129）" })).toBeDisabled();
+  });
   it("keeps definitions visible and highlights unset module attribution", async () => {
     const repository = createMockParameterCatalogRepository({ scenario: "ready" });
     const registration = { ...registeredSubject.registration, placement: { id: "retained-placement", displayName: "unset", parentPlacementId: null } };

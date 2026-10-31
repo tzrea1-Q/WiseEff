@@ -89,6 +89,10 @@ Definition import metadata can optionally specify a business category path and m
 
 In definition management, read the value type, unit and limits before editing. Returning from a correction preview to edit requires a new preview. Closing an unsaved editor asks whether to discard changes; publication progress remains visible and refreshable. The history view loads older revisions on request and compares their content with the current revision.
 
+### Batch retire or restore definitions
+
+In API mode, Catalog governors can select definition rows or select every definition under the current subject. Select up to 128 definitions with the same lifecycle, then choose retire or restore. Mixed states must be separated into different batches. Review the current Organization's usage totals and each definition, optionally enter one shared reason, and preview the changes. Confirm the Candidate through the existing authorization and publication flow. The batch succeeds or fails together; existing identities, historical revisions and pinned project references remain.
+
 The examples field accepts a complete DTS property statement, a DTS value, or a JSON example array. DTS examples may include `/* ... */` and `// ...` comments, including after the final semicolon. Comments outside strings are ignored when converting the example; quoted content such as `"7|8"`, `"3^1"`, `"0xa"`, or `"http://host"` remains unchanged.
 
 A Platform Admin with Catalog authoring and publication capabilities can leave the affected-project selection empty when correcting an unused identity. Preview and publication check current references across all Organizations. Existing or concurrently added references stop this shortcut and require the actual project migration. A target identity conflict links to its existing Definition. Completion creates a replacement Definition and retains the old key and history; it does not delete or retire the old identity. The separate retirement action appears only with authoritative global zero-reference evidence and rechecks it before opening the existing retirement flow.

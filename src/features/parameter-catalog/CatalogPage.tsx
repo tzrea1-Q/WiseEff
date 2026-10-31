@@ -27,7 +27,7 @@ import type { ParameterCatalogRepository } from "@/application/ports/ParameterCa
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
-import { DataTable, type Column } from "@/components/admin";
+import { type Column } from "@/components/admin";
 import { listAllCanonicalPages } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -48,6 +48,7 @@ import type {
 import { useCatalogLayoutMode, type CatalogLayoutMode } from "./catalogLayout";
 import { CatalogModuleNavigator } from "./CatalogModuleNavigator";
 import { DefinitionDeletionDialog } from "./DefinitionDeletionDialog";
+import { DefinitionTable } from "./DefinitionTable";
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 import {
   buildCatalogModuleTree,
@@ -66,7 +67,6 @@ import {
 } from "./catalogPresentation";
 import {
   catalogAuthoringAccessHint,
-  catalogDefinitionsLabel,
   catalogDetailCloseLabel,
   catalogDetailLabel,
   catalogHistoryCloseLabel,
@@ -142,6 +142,11 @@ export type CatalogPageProps = {
   onDefinitionCommand?: (
     command: "retire-definition" | "restore-definition" | "correct-identity",
     definition: DefinitionItem,
+    ownerState: CatalogDomainState
+  ) => void;
+  onBatchDefinitionCommand?: (
+    command: "retire-definition" | "restore-definition",
+    definitions: DefinitionItem[],
     ownerState: CatalogDomainState
   ) => void;
   /**
@@ -245,6 +250,7 @@ export function CatalogPage({
   onDefinitionDeleted,
   renderDefinitionEditor,
   onDefinitionCommand,
+  onBatchDefinitionCommand,
   definitionPublishingAllowed = false,
   definitionAuthoringAllowed = false,
   onImportDefinitions,
@@ -289,6 +295,16 @@ export function CatalogPage({
   const [editorState, setEditorState] = useState({ dirty: false, pending: false });
   const [leaveEditorOpen, setLeaveEditorOpen] = useState(false);
   const [deletingDefinition, setDeletingDefinition] = useState<DefinitionItem | null>(null);
+  const [selectedDefinitions, setSelectedDefinitions] = useState<DefinitionItem[]>([]);
+  const [selectionError, setSelectionError] = useState("");
+  const [selectingSubject, setSelectingSubject] = useState(false);
+  const selectionGeneration = useRef(0);
+  useEffect(() => { setSelectedDefinitions([]); setSelectionError(""); }, [organizationId, refreshEpoch, snapshot?.document.item.catalogReleaseId]);
+  useEffect(() => {
+    setSelectingSubject(false);
+    return () => { selectionGeneration.current += 1; };
+  }, [organizationId, anchor.subjectId, snapshot?.document.item.catalogReleaseId]);
+  useEffect(() => { if (!definitionPublishingAllowed || !onBatchDefinitionCommand) setSelectedDefinitions([]); }, [definitionPublishingAllowed, onBatchDefinitionCommand]);
   const closingEditor = useRef(false);
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   const finishEditorLeave = (allowed: boolean) => {
@@ -1037,102 +1053,61 @@ export function CatalogPage({
                   : `共 ${totalCount} 项 · 第 ${cursorTrail.length + 1} 页`}
               </p>
             </header>
+            {definitionPublishingAllowed && onBatchDefinitionCommand ? <div className="parameter-catalog__actions" role="group" aria-label="批量定义操作">
+              {anchor.subjectId && release ? <button type="button" className="button subtle sm" disabled={selectingSubject}
+                onClick={() => {
+                  const generation = selectionGeneration.current;
+                  setSelectingSubject(true);
+                  setSelectionError("");
+                  void listAllCanonicalPages((query) => repository.listSubjectDefinitions(anchor.subjectId!, query),
+                    { catalogReleaseId: release.catalogReleaseId }).then((items) => {
+                    if (generation === selectionGeneration.current) setSelectedDefinitions((current) => [
+                      ...current.filter((item) => !items.some((row) => row.id === item.id)), ...items
+                    ]);
+                  }).catch(() => { if (generation === selectionGeneration.current) setSelectionError("无法读取该主体的全部定义，请重试。"); })
+                    .finally(() => { if (generation === selectionGeneration.current) setSelectingSubject(false); });
+                }}>选中该主体下全部定义</button> : null}
+              <button type="button" className="button subtle sm"
+                disabled={inFlight || selectingSubject || selectedDefinitions.length === 0 || selectedDefinitions.length > 128 || !selectedDefinitions.every((item) => item.lifecycle === "active" && ownerWritable(item))}
+                onClick={() => onBatchDefinitionCommand("retire-definition", selectedDefinitions, workspaceState)}>弃用所选（{selectedDefinitions.length}）</button>
+              <button type="button" className="button subtle sm"
+                disabled={inFlight || selectingSubject || selectedDefinitions.length === 0 || selectedDefinitions.length > 128 || !selectedDefinitions.every((item) => item.lifecycle === "retired" && ownerWritable(item))}
+                onClick={() => onBatchDefinitionCommand("restore-definition", selectedDefinitions, workspaceState)}>恢复所选（{selectedDefinitions.length}）</button>
+              {selectedDefinitions.length > 128 ? <span role="status">每批最多选择 128 个定义。</span>
+                : selectedDefinitions.length > 0 && !selectedDefinitions.every((item) => item.lifecycle === selectedDefinitions[0]?.lifecycle)
+                  ? <span role="status">所选定义状态不同，请选择相同状态的定义。</span> : null}
+              {selectionError ? <span role="alert">{selectionError}</span> : null}
+            </div> : null}
             {showListEmptyState ? (
               <div data-catalog-empty={pageEmptyReason}>
                 <SectionEmpty message={catalogEmptyMessage(pageEmptyReason)} />
               </div>
-            ) : compactList ? (
-              <div className="parameter-catalog__cards parameter-catalog__table-wrap--mobile">
-                {definitions.map((item) => (
-                  <div key={item.id} className="parameter-catalog__card-row">
-                    <button
-                      type="button"
-                      className="parameter-catalog__card"
-                      aria-pressed={item.id === definition?.id}
-                      onClick={() => selectDefinition(item)}
-                    >
-                      <code className="parameter-catalog__subject-name">{item.propertyKey}</code>
-                      <span>{item.currentRevision.displayName || "—"}</span>
-                      <span className="parameter-catalog__subject-meta">
-                        {item.subject.canonicalName} · {catalogLifecycleLabel(item.lifecycle)}{ownerStatusLabel(item) ? ` · ${ownerStatusLabel(item)}` : ""}
-                      </span>
-                    </button>
-                    {/* Narrow screens keep the same editor entry as the desktop table. */}
-                    <button
-                      type="button"
-                      className="button subtle sm"
-                      aria-label={`${canEditDefinition(item) ? "编辑" : "查看"} ${item.propertyKey}`}
-                      data-catalog-row-action={canEditDefinition(item) ? "edit" : "read"}
-                      onClick={() => selectDefinition(item)}
-                    >
-                      {canEditDefinition(item) ? "编辑" : "查看"}
-                    </button>
-                    {canDeleteDefinition ? <button type="button" className="button subtle sm"
-                      aria-label={`彻底删除 ${item.propertyKey}`} disabled={inFlight || error !== undefined}
-                      onClick={() => setDeletingDefinition(item)}>彻底删除</button> : null}
-                  </div>
-                ))}
-              </div>
             ) : (
-              <div className="parameter-catalog__table-wrap--desktop">
-                <DataTable
-                  rows={definitions}
-                  rowKey={(row) => row.id}
-                  columns={columns}
-                  tableClassName="parameter-catalog__table"
-                  selectedRowKey={definition?.id}
-                  onRowClick={selectDefinition}
-                  aria-label={catalogDefinitionsLabel}
-                  pageSize={Math.max(definitions.length, 1)}
-                  renderRowActions={(row) => (
-                    <span className="parameter-catalog__row-actions">
-                      <button
-                        type="button"
-                        className="button subtle sm"
-                        aria-label={`${canEditDefinition(row) ? "编辑" : "查看"} ${row.propertyKey}`}
-                        data-catalog-row-action={canEditDefinition(row) ? "edit" : "read"}
-                        onClick={() => selectDefinition(row)}
-                      >
-                        {canEditDefinition(row) ? "编辑" : "查看"}
-                      </button>
-                      {canDeleteDefinition ? <button type="button" className="button subtle sm"
-                        aria-label={`彻底删除 ${row.propertyKey}`} disabled={inFlight || error !== undefined}
-                        onClick={() => setDeletingDefinition(row)}>彻底删除</button> : null}
-                      {definitionPublishingAllowed && onDefinitionCommand && !inFlight && error === undefined && ownerWritable(row) ? (
-                        <button
-                          type="button"
-                          className="button subtle sm"
-                          aria-label={`${row.lifecycle === "retired" ? "恢复" : "弃用"} ${row.propertyKey}`}
-                          data-catalog-row-action={
-                            row.lifecycle === "retired" ? "restore-definition" : "retire-definition"
-                          }
-                          onClick={() =>
-                            onDefinitionCommand(
-                              row.lifecycle === "retired" ? "restore-definition" : "retire-definition",
-                              row,
-                              deriveCatalogDomainState({
-                                document: snapshot?.document,
-                                subject: subjectsById.get(row.subject.id),
-                                inFlight,
-                                error
-                              })
-                            )
-                          }
-                        >
-                          {row.lifecycle === "retired" ? "恢复" : "弃用"}
-                        </button>
-                      ) : null}
-                    </span>
-                  )}
-                  emptyState={
-                    filterEmptyReason ? (
-                      <div data-catalog-empty={filterEmptyReason}>
-                        <SectionEmpty message={catalogEmptyMessage(filterEmptyReason)} />
-                      </div>
-                    ) : undefined
-                  }
-                />
-              </div>
+              <DefinitionTable rows={definitions} columns={columns} compact={compactList}
+                selectedDefinitionId={definition?.id} onOpen={selectDefinition} canEdit={canEditDefinition}
+                ownerStatusLabel={ownerStatusLabel} selectedIds={selectedDefinitions.map((item) => item.id)}
+                onSelectionChange={definitionPublishingAllowed && onBatchDefinitionCommand ? (item, checked) => {
+                  setSelectedDefinitions((current) => checked ? [...current.filter((row) => row.id !== item.id), item] : current.filter((row) => row.id !== item.id));
+                } : undefined}
+                renderActions={(row) => <span className="parameter-catalog__row-actions">
+                  {!compactList ? <button type="button" className="button subtle sm"
+                    aria-label={`${canEditDefinition(row) ? "编辑" : "查看"} ${row.propertyKey}`}
+                    data-catalog-row-action={canEditDefinition(row) ? "edit" : "read"}
+                    onClick={() => selectDefinition(row)}>{canEditDefinition(row) ? "编辑" : "查看"}</button> : null}
+                  {canDeleteDefinition ? <button type="button" className="button subtle sm"
+                    aria-label={`彻底删除 ${row.propertyKey}`} disabled={inFlight || error !== undefined}
+                    onClick={() => setDeletingDefinition(row)}>彻底删除</button> : null}
+                  {!compactList && definitionPublishingAllowed && onDefinitionCommand && !inFlight && error === undefined && ownerWritable(row) ? (
+                    <button type="button" className="button subtle sm"
+                      aria-label={`${row.lifecycle === "retired" ? "恢复" : "弃用"} ${row.propertyKey}`}
+                      data-catalog-row-action={row.lifecycle === "retired" ? "restore-definition" : "retire-definition"}
+                      onClick={() => onDefinitionCommand(row.lifecycle === "retired" ? "restore-definition" : "retire-definition", row,
+                        deriveCatalogDomainState({ document: snapshot?.document, subject: subjectsById.get(row.subject.id), inFlight, error }))}>
+                      {row.lifecycle === "retired" ? "恢复" : "弃用"}
+                    </button>) : null}
+                </span>}
+                emptyState={filterEmptyReason ? <div data-catalog-empty={filterEmptyReason}>
+                  <SectionEmpty message={catalogEmptyMessage(filterEmptyReason)} /></div> : undefined} />
             )}
             <nav className="parameter-catalog__pagination" aria-label={catalogPaginationLabel}>
               <label className="parameter-catalog__page-size">
