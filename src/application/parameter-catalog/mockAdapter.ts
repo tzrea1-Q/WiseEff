@@ -701,6 +701,8 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
   };
 
   const governance: ParameterCatalogGovernanceRepository = {
+    async listUnregisteredSubjects() { throw new WiseEffApiError("SERVICE_UNAVAILABLE", "", { reason: "mock-batch-unavailable" }, "mock"); },
+    async createBatchRegistration() { throw new WiseEffApiError("SERVICE_UNAVAILABLE", "", { reason: "mock-batch-unavailable" }, "mock"); },
     async listDriverCompatibleDiscovery() {
       return { status: "unavailable", reason: "catalog-unavailable" };
     },

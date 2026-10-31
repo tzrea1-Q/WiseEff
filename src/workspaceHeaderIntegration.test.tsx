@@ -36,8 +36,8 @@ describe("normalized workspace headers", () => {
 
     expect(topbar.querySelector(".topbar-title")).toHaveTextContent("参数管理后台");
     expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("参数定义管理");
-    expect(within(topbar).getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "批量参数导入" })).not.toBeInTheDocument();
+    expect(within(topbar).getByRole("button", { name: "打开项目值批量导入" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "项目值批量导入" })).not.toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
   });
 

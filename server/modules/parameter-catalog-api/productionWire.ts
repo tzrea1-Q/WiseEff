@@ -55,7 +55,10 @@ import {
   catalogRegistrationDtoSchema,
 } from "../contracts/dtoSchemas/parameterCatalog";
 
-import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
+import { registerCatalogBatchRegistrationRoutes, registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
+import { listUnregisteredSubjects } from "../parameter-governance/registration/readRepository";
+import { moduleKindForSubject } from "../parameter-governance/registration/repositories";
+import { executeBatchRegistration } from "../parameter-governance/registration/batch";
 import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
 import { registerDefinitionDeletionRoutes } from "./definitionDeletion/routes";
 import type { DefinitionArchiveStores } from "./definitionDeletion/archives";
@@ -480,7 +483,8 @@ const authenticateGovernance =
     const organizationDetail = matched?.id === "catalog.getRegistration";
     if (matched && (organizationDetail || [
       "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
-      "catalog.createRegistration", "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement"
+      "catalog.createRegistration", "catalog.createBatchRegistration", "catalog.listUnregisteredSubjects",
+      "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement"
     ].includes(matched.id))) {
       const targetId = matched.params.organizationId;
       if (!targetId || (request.query.organizationId !== undefined && request.query.organizationId !== targetId) ||
@@ -623,9 +627,6 @@ const createKernelReadiness = (
   };
 };
 
-const expectedModuleKind = (subjectKind: CatalogSubjectKind): string =>
-  subjectKind === "driver" ? "driver-group" : subjectKind === "node-type" ? "node-type" : "business";
-
 const lookupDefaultDestinationModule = async (
   pool: pg.Pool,
   organizationId: string,
@@ -638,7 +639,7 @@ const lookupDefaultDestinationModule = async (
         and kind = $2
       order by depth asc, id asc
       limit 1`,
-    [organizationId, expectedModuleKind(subjectKind)],
+    [organizationId, moduleKindForSubject(subjectKind)],
   );
   return result.rows[0]?.id ?? null;
 };
@@ -760,6 +761,8 @@ const createGovernancePorts = (
 
   return {
     authenticate: authenticateGovernance(resolveAuth, pool),
+    listUnregisteredSubjects: pool ? (organizationId, releaseId, source) => listUnregisteredSubjects(pool, organizationId, releaseId, source) : undefined,
+    executeBatchRegistration: pool ? (input) => executeBatchRegistration(pool, input) : undefined,
     currentRelease: async () => {
       if (!pool) {
         return null;
@@ -813,7 +816,7 @@ const createGovernancePorts = (
             const result = await pool.query<{ id: string }>(
               `select id from public.parameter_modules
                 where organization_id = $1 and id = $2 and kind = $3`,
-              [organizationId, destinationModuleId, expectedModuleKind(subjectKind)],
+              [organizationId, destinationModuleId, moduleKindForSubject(subjectKind)],
             );
             return result.rows[0]?.id ?? null;
           }
@@ -980,11 +983,13 @@ export const registerParameterCatalogApi = (
 ): void => {
   const pool = getRootPostgresPool(options.db);
   const readPorts = createReadPorts(pool, options.resolveAuth, options.db, options.catalogPublication ?? {});
+  const governancePorts = createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore);
   registerCatalogReadRoutes(router, readPorts);
   registerCatalogGovernanceRoutes(
     router,
-    createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),
+    governancePorts,
   );
+  registerCatalogBatchRegistrationRoutes(router, governancePorts);
   registerCatalogDriverCompatibleDiscoveryRoute(router, {
     db: options.db, objectStore: options.objectStore, resolveAuth: options.resolveAuth,
     resolveInvocation: async (request) => {
@@ -996,7 +1001,7 @@ export const registerParameterCatalogApi = (
   registerDefinitionDeletionRoutes(router, options);
   registerCatalogDefinitionReplacementRoutes(
     router,
-    createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),
+    governancePorts,
   );
   registerCatalogPublicationRoutes(
     router,

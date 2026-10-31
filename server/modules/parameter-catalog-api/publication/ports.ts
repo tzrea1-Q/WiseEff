@@ -14,6 +14,7 @@ import { impactFactsFromAllocation } from "../../catalog-publication/jobs/execut
 import { parsePublicationChangeSet, previewPublicationCandidate } from "../../catalog-publication/preview";
 import { parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
 import { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
+import { modulePath, readPlacementHintEvidence } from "../../parameter-governance/registration/readRepository";
 import {
   getCandidate,
   getArtifactByDigest,
@@ -30,6 +31,7 @@ type CatalogPointerPool = Parameters<typeof readCurrentCatalogPointer>[0];
 import type {
   CatalogPublicationFailure,
   CatalogPublicationPorts,
+  PlacementHintWithWarnings,
   PublicationCandidateView,
   PublicationJobView,
   PublicationSurfaceView,
@@ -235,6 +237,7 @@ export function bindCatalogPublicationCommands(input: {
         return { ok: false, error: { kind: "reason", reason: "candidate-stale" } };
       }
       let plan: ReturnType<typeof planMarkdownImport> | undefined;
+      let placementHints: PlacementHintWithWarnings[] = [];
       if (command.markdownImport) {
         const artifact = await getArtifactByDigest(db, pointer.current.digest);
         if (!artifact.ok) return { ok: false, error: { kind: "reason", reason: "artifact-missing" } };
@@ -242,7 +245,24 @@ export function bindCatalogPublicationCommands(input: {
         const snapshot = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
         plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot);
-        if (!plan.changeSet) return { ok: true, value: { candidate: null, noChange: plan.noChange, entries: plan.entries, source: plan.source } };
+        if (plan.placementHints.length && pool) {
+          const { modules, registrations } = await readPlacementHintEvidence(pool, command.organizationId);
+          placementHints = plan.placementHints.map((hint) => {
+            const warnings: string[] = [];
+            const registered = registrations.find((item) => item.subjectId === hint.subjectId);
+            const subject = snapshot.documents.find((item) => item.kind === "subject" && item.content.id === hint.subjectId);
+            const canonicalName = subject?.kind === "subject" ? subject.content.canonicalKey : `${hint.kind}:${hint.selector}`;
+            if (registered) warnings.push(`已登记于 ${modulePath(registered.moduleId, modules)}，未改动`);
+            else if (hint.categoryPath) {
+              const parents = modules.filter((item) => (item.kind === "business" || (item.kind === "unclassified" && hint.categoryPath === "未分类")) && modulePath(item.id, modules) === hint.categoryPath);
+              if (!parents.length) warnings.push("业务分类不存在。");
+              else if (parents.length > 1) warnings.push("业务分类路径不唯一。");
+              else if (modules.some((item) => item.parentId === parents[0]!.id && item.name === (hint.moduleName ?? canonicalName))) warnings.push("同一分类下已有同名模块。");
+            }
+            return { ...hint, warnings };
+          });
+        }
+        if (!plan.changeSet) return { ok: true, value: { candidate: null, noChange: plan.noChange, entries: plan.entries, source: plan.source, placementHints } };
       }
       const parsed = plan?.changeSet ?? parsePublicationChangeSet(command.changeSet);
       if ("error" in parsed) return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
@@ -268,7 +288,7 @@ export function bindCatalogPublicationCommands(input: {
         capabilityContract: capabilityOf(previewed.value.candidate),
         authorOrganizationId: command.organizationId,
       };
-      return { ok: true, value: plan ? { candidate, noChange: plan.noChange, entries: plan.entries, source: plan.source } : candidate };
+      return { ok: true, value: plan ? { candidate, noChange: plan.noChange, entries: plan.entries, source: plan.source, placementHints } : candidate };
     },
     async getCandidate(query) {
       let candidateId: ReturnType<typeof CatalogCandidateId>;

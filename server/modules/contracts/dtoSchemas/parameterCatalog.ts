@@ -427,6 +427,29 @@ export const catalogRegisterSubjectRequestSchema = catalogObject({
   }
 });
 
+export const catalogBatchRegistrationRequestSchema = catalogObject({
+  rows: z.array(catalogObject({
+    subjectId: z.string().trim().min(1),
+    target: z.union([
+      catalogObject({ type: z.literal("existing-module"), moduleId: z.string().trim().min(1) }),
+      catalogObject({ type: z.literal("new-module"), parentModuleId: z.string().trim().min(1), name: z.string().trim().min(1).max(120).regex(/^[^\u0000-\u001f\u007f-\u009f]+$/u) }),
+      catalogObject({ type: z.literal("unclassified"), name: z.string().trim().min(1).max(120).regex(/^[^\u0000-\u001f\u007f-\u009f]+$/u) })
+    ])
+  })).min(1).max(128)
+});
+export const catalogBatchRegistrationResponseSchema = catalogObject({
+  batchId: z.string(), items: z.array(catalogRegistrationDtoSchema)
+});
+export const catalogBatchRegistrationFailureResponseSchema = z.object({
+  error: z.object({ code: z.string(), message: z.string(), requestId: z.string(),
+    details: z.object({ retryable: z.boolean(), rows: z.array(z.object({ index: z.number().int().nonnegative(), subjectId: z.string(), code: z.enum(["category-missing", "name-invalid", "name-taken", "module-occupied", "already-registered", "subject-inactive", "release-drift", "conflict"]), field: z.enum(["category", "name", "subject"]) })).optional() }).passthrough() })
+});
+export const catalogUnregisteredSubjectsResponseSchema = catalogObject({
+  catalogReleaseId: z.string(),
+  items: z.array(catalogObject({ id: z.string(), canonicalName: z.string(), kind: z.enum(["driver", "node-type", "configuration-schema"]), availableModuleIds: z.array(z.string()) })),
+  modules: z.array(catalogObject({ id: z.string(), name: z.string(), parentId: z.string().nullable(), kind: z.string(), occupied: z.boolean() }))
+});
+
 export const catalogRetireRegistrationRequestSchema = catalogObject({
   reason: z.string()
 });
@@ -1467,6 +1490,8 @@ export const catalogPublicationCandidateResponseSchema = itemEnvelopeSchema(
 export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObject({
   candidate: catalogPublicationCandidateDtoSchema.nullable(),
   noChange: z.boolean(),
+  placementHints: z.array(catalogObject({ kind: z.string(), selector: z.string(), subjectId: z.string().optional(),
+    categoryPath: z.string().optional(), moduleName: z.string().optional(), line: z.number().int().positive(), warnings: z.array(z.string()) })),
   entries: z.array(catalogObject({
     subjectHeading: z.string(), definitionHeading: z.string(),
     selector: z.string(), propertyKey: z.string(), displayName: z.string(),
@@ -1668,6 +1693,10 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogDefinitionTimelineResponse: catalogDefinitionTimelineResponseSchema,
   CatalogRegistrationListResponse: catalogRegistrationListResponseSchema,
   CatalogRegisterSubjectRequest: catalogRegisterSubjectRequestSchema,
+  CatalogBatchRegistrationRequest: catalogBatchRegistrationRequestSchema,
+  CatalogBatchRegistrationResponse: catalogBatchRegistrationResponseSchema,
+  CatalogBatchRegistrationFailureResponse: catalogBatchRegistrationFailureResponseSchema,
+  CatalogUnregisteredSubjectsResponse: catalogUnregisteredSubjectsResponseSchema,
   CatalogRegistrationResponse: catalogRegistrationResponseSchema,
   CatalogRetireRegistrationRequest: catalogRetireRegistrationRequestSchema,
   CatalogRestoreRegistrationRequest: catalogRestoreRegistrationRequestSchema,
@@ -1829,6 +1858,20 @@ export const parameterCatalogCanonicalRoutes = [
     id: "catalog.listDefinitionTimeline",
     method: "GET",
     path: "/api/v2/catalog/definitions/:definitionId/timeline",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.listUnregisteredSubjects",
+    method: "GET",
+    path: "/api/v2/organizations/:organizationId/unregistered-subjects",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.createBatchRegistration",
+    method: "POST",
+    path: "/api/v2/organizations/:organizationId/subject-registrations/batch",
     module: "catalog",
     stability: "mvp"
   },
@@ -2075,6 +2118,8 @@ export const parameterCatalogRouteGates: Record<
   "catalog.getDefinitionRevision": ["PCAT-API-03", "PCAT-API-11"],
   "catalog.listDefinitionTimeline": ["PCAT-API-03", "PCAT-API-11"],
   "catalog.listRegistrations": ["PCAT-API-04"],
+  "catalog.listUnregisteredSubjects": ["PCAT-API-04"],
+  "catalog.createBatchRegistration": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.createRegistration": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.getRegistration": ["PCAT-API-04"],
   "catalog.retireRegistration": ["PCAT-API-04", "PCAT-API-10"],
@@ -2131,6 +2176,8 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.getDefinitionRevision": "getDefinitionRevision",
   "catalog.listDefinitionTimeline": "listDefinitionTimeline",
   "catalog.listRegistrations": "listRegistrations",
+  "catalog.listUnregisteredSubjects": "listUnregisteredSubjects",
+  "catalog.createBatchRegistration": "createBatchRegistration",
   "catalog.createRegistration": "createRegistration",
   "catalog.getRegistration": "getRegistration",
   "catalog.retireRegistration": "retireRegistration",
@@ -2438,6 +2485,18 @@ export const parameterCatalogSchemaRegistry = {
     additionalResponses: catalogReadErrors,
     requestParameters: pageQueryParameters,
     successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.listUnregisteredSubjects": {
+    summary: "List current unregistered organization subjects and placement candidates",
+    tags: ["catalog"], responseBody: "CatalogUnregisteredSubjectsResponse", additionalResponses: catalogReadErrors,
+    requestParameters: [{ name: "source", in: "query", required: false, schema: { type: "string", enum: ["organization", "all"] } }],
+    successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.createBatchRegistration": {
+    summary: "Register subjects atomically in one organization",
+    tags: ["catalog"], requestBody: "CatalogBatchRegistrationRequest", responseBody: "CatalogBatchRegistrationResponse",
+    successStatus: 201, additionalResponses: { ...catalogWriteErrors, "400": "ErrorResponse", "409": "CatalogBatchRegistrationFailureResponse" },
+    requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader], successHeaders: [catalogReleaseResponseHeader]
   },
   "catalog.createRegistration": {
     summary: "Register one active current-release subject with an explicit placement intent",

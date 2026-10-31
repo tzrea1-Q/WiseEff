@@ -12448,6 +12448,172 @@
         }
       }
     },
+    "/api/v2/organizations/{organizationId}/unregistered-subjects": {
+      "get": {
+        "operationId": "catalog.listUnregisteredSubjects",
+        "summary": "List current unregistered organization subjects and placement candidates",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "organization",
+                "all"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogUnregisteredSubjectsResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/organizations/{organizationId}/subject-registrations/batch": {
+      "post": {
+        "operationId": "catalog.createBatchRegistration",
+        "summary": "Register subjects atomically in one organization",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-WiseEff-Catalog-Release",
+            "in": "header",
+            "required": true,
+            "description": "Catalog release observed by the client.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Idempotency key for governance writes.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogBatchRegistrationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogBatchRegistrationResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogBatchRegistrationFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/organizations/{organizationId}/subject-registrations": {
       "get": {
         "operationId": "catalog.listRegistrations",
@@ -85288,6 +85454,390 @@
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogRegistrationListResponse"
       },
+      "CatalogUnregisteredSubjectsResponse": {
+        "type": "object",
+        "properties": {
+          "catalogReleaseId": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "canonicalName": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "driver",
+                    "node-type",
+                    "configuration-schema"
+                  ]
+                },
+                "availableModuleIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "canonicalName",
+                "kind",
+                "availableModuleIds"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "parentId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "occupied": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "parentId",
+                "kind",
+                "occupied"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "catalogReleaseId",
+          "items",
+          "modules"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogUnregisteredSubjectsResponse"
+      },
+      "CatalogBatchRegistrationRequest": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "subjectId": {
+                  "type": "string"
+                },
+                "target": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "existing-module"
+                          ]
+                        },
+                        "moduleId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "moduleId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "new-module"
+                          ]
+                        },
+                        "parentModuleId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "parentModuleId",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "unclassified"
+                          ]
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "subjectId",
+                "target"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogBatchRegistrationRequest"
+      },
+      "CatalogBatchRegistrationResponse": {
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "organizationId": {
+                  "type": "string"
+                },
+                "subjectId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "retired"
+                  ]
+                },
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "explicit",
+                    "automatic",
+                    "review"
+                  ]
+                },
+                "placement": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "parentPlacementId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "moduleId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "displayName",
+                    "parentPlacementId"
+                  ],
+                  "additionalProperties": false
+                },
+                "impact": {
+                  "type": "object",
+                  "properties": {
+                    "bindingCount": {
+                      "type": "number"
+                    },
+                    "projectCount": {
+                      "type": "number"
+                    },
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "bindingCount": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "bindingCount"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "bindingCount",
+                    "projectCount"
+                  ],
+                  "additionalProperties": false
+                },
+                "catalogReleaseId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "organizationId",
+                "subjectId",
+                "status",
+                "method",
+                "placement",
+                "catalogReleaseId"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "batchId",
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogBatchRegistrationResponse"
+      },
+      "CatalogBatchRegistrationFailureResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object",
+                "properties": {
+                  "retryable": {
+                    "type": "boolean"
+                  },
+                  "rows": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "index": {
+                          "type": "number"
+                        },
+                        "subjectId": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "category-missing",
+                            "name-invalid",
+                            "name-taken",
+                            "module-occupied",
+                            "already-registered",
+                            "subject-inactive",
+                            "release-drift",
+                            "conflict"
+                          ]
+                        },
+                        "field": {
+                          "type": "string",
+                          "enum": [
+                            "category",
+                            "name",
+                            "subject"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "subjectId",
+                        "code",
+                        "field"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "retryable"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "requestId",
+              "details"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogBatchRegistrationFailureResponse"
+      },
       "CatalogRegisterSubjectRequest": {
         "type": "object",
         "properties": {
@@ -88214,6 +88764,45 @@
                   "noChange": {
                     "type": "boolean"
                   },
+                  "placementHints": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "string"
+                        },
+                        "subjectId": {
+                          "type": "string"
+                        },
+                        "categoryPath": {
+                          "type": "string"
+                        },
+                        "moduleName": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "number"
+                        },
+                        "warnings": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "selector",
+                        "line",
+                        "warnings"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "entries": {
                     "type": "array",
                     "items": {
@@ -88311,6 +88900,7 @@
                 "required": [
                   "candidate",
                   "noChange",
+                  "placementHints",
                   "entries",
                   "source"
                 ],
@@ -88409,6 +88999,45 @@
               "noChange": {
                 "type": "boolean"
               },
+              "placementHints": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    },
+                    "selector": {
+                      "type": "string"
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "categoryPath": {
+                      "type": "string"
+                    },
+                    "moduleName": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "number"
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "selector",
+                    "line",
+                    "warnings"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "entries": {
                 "type": "array",
                 "items": {
@@ -88506,6 +89135,7 @@
             "required": [
               "candidate",
               "noChange",
+              "placementHints",
               "entries",
               "source"
             ],

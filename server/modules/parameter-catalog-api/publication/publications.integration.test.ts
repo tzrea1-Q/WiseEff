@@ -189,6 +189,12 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
       headers: { [CATALOG_RELEASE_HEADER]: pinId }, body,
     });
     authenticateAs(publisherScope());
+    const hinted = await post({ markdownImport: { ...markdownImport,
+      document: document.replace("# Driver `acme,power`", "# Driver `acme,new`\nnature: physical-device · cardinality: multiple · 业务分类：不存在 · 模块名称：设备") } });
+    expect(hinted.status).toBe(201);
+    expect(hinted.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [
+      { selector: "acme,new", categoryPath: "不存在", moduleName: "设备", warnings: [expect.stringContaining("不存在")] },
+    ] } });
     expect((await post({ markdownImport, changeSet: changeSetFor("ambiguous") })).status).toBe(400);
     const before = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
     const invalid = await post({ markdownImport: { ...markdownImport, document: document.replace("integer", "enum") } });
@@ -247,6 +253,53 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     expect(catalogMarkdownImportResponseSchema.parse(conflict.body).item).toMatchObject({ candidate: null, noChange: false, entries: [{ outcome: "conflict" }] });
     const after = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
     expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+  });
+
+  it("warns about organization placement without changing preview outcomes", async () => {
+    const org = "org-placement-1450";
+    await pool.query(`insert into public.organizations (id, name) values ($1, 'Placement')`, [org]);
+    for (const [id, parent, name] of [["p1450-a", null, "电源"], ["p1450-b", "p1450-a", "充电"],
+      ["p1450-c", null, "电源 / 充电"], ["p1450-used", "p1450-a", "设备"], ["p1450-default", "p1450-a", "node-type:new-subject"]] as const) {
+      await pool.query(`insert into public.parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin)
+        values ($1, $2, $3, $4, $1, 1, 'business', 'curated')`, [id, org, parent, name]);
+    }
+    await pool.query(`insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key)
+      values ('asub1450', $1, 'driver-registration', '既有设备', 'curated', 'acme,power')`, [org]);
+    await pool.query(`insert into public.parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin, attribution_subject_id)
+      values ('p1450-driver', $1, 'p1450-a', '既有设备', 'p1450-driver', 2, 'driver-group', 'curated', 'asub1450')`, [org]);
+    const registrationClient = await pool.connect();
+    try {
+      await registrationClient.query("begin");
+      await registrationClient.query("set constraints all deferred");
+      await registrationClient.query(`insert into parameter_catalog.organization_subject_registrations
+        (id, organization_id, subject_id, status, registration_method, proof, current_placement_id)
+        values ('reg1450', $1, 'csub_acme_power', 'active', 'explicit', '{}'::jsonb, 'placement1450')`, [org]);
+      await registrationClient.query(`insert into parameter_catalog.subject_placements (id, registration_id, organization_id, module_id, origin)
+        values ('placement1450', 'reg1450', $1, 'p1450-driver', 'curated')`, [org]);
+      await registrationClient.query("commit");
+    } finally { registrationClient.release(); }
+    const post = (text: string) => request("POST", "/api/v2/catalog/publication-candidates", {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { markdownImport: { document: text, fileName: "placement.md" } },
+    });
+    const base = "# NodeType `new-subject`\n业务分类：电源 · 模块名称：设备\n## `one` 参数\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |";
+    authenticateAs(publisherScope(org));
+    const collision = await post(base);
+    expect(collision.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ warnings: ["同一分类下已有同名模块。"] }] } });
+    expect((await post(base.replace(" · 模块名称：设备", ""))).body)
+      .toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ warnings: ["同一分类下已有同名模块。"] }] } });
+    const ambiguous = await post(base.replace("业务分类：电源", "业务分类：电源 / 充电"));
+    expect(ambiguous.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ warnings: ["业务分类路径不唯一。"] }] } });
+    authenticateAs(publisherScope(OTHER_ORG));
+    expect((await post(base)).body).toMatchObject({ item: { placementHints: [{ warnings: ["业务分类不存在。"] }] } });
+    authenticateAs(publisherScope(org));
+    const existing = "# Driver `acme,power`\n业务分类：不存在\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n| 单位 | mA |\n| 最小值 | 0 |\n\nMaximum accepted input current.";
+    const skipped = await post(existing);
+    expect(skipped.body).toMatchObject({ item: { candidate: null, noChange: true, entries: [{ outcome: "skip" }],
+      placementHints: [{ warnings: ["已登记于 电源 / 既有设备，未改动"] }] } });
+    expect((await post(existing.replace("Input current limit", "Changed"))).body)
+      .toMatchObject({ item: { candidate: null, noChange: false, entries: [{ outcome: "conflict" }] } });
+    expect((await post(existing.replace("integer", "enum"))).body)
+      .toMatchObject({ item: { candidate: null, noChange: false, entries: [{ outcome: "error" }] } });
   });
 
   it("accepts 128 changes on the preview route and rejects 129", async () => {

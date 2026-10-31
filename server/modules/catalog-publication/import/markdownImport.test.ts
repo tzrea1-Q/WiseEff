@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { firstAcmePredecessor } from "../builder/predecessorHarness";
+import { allocationFor, firstAcmePredecessor, frozenPageIdentity } from "../builder/predecessorHarness";
+import { buildCompleteSuccessor } from "../builder/completeSuccessor";
 import { planMarkdownImport } from "./markdownImport";
 import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 import { buildCreateDefinitionChangeSet, emptyPublicationDraft } from "../../../../src/features/parameter-catalog-governance/publicationState";
@@ -25,6 +26,38 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("builds identical artifact bytes and candidate content with or without placement hints", async () => {
+    const predecessor = firstAcmePredecessor();
+    const plain = planMarkdownImport(document, "d.md", predecessor.first);
+    const hinted = planMarkdownImport(document.replace("# Driver `acme,power`", "# Driver `acme,power`\n业务分类：电源 · 模块名称：设备"), "d.md", predecessor.first);
+    expect(plain.changeSet).not.toBeNull();
+    expect(hinted.changeSet).toEqual(plain.changeSet);
+    if (!plain.changeSet || !hinted.changeSet) throw new Error("expected changes");
+    const input = { predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      frozenIdentity: frozenPageIdentity([allocationFor("import-one"), allocationFor("import-two")]) };
+    const original = await buildCompleteSuccessor({ ...input, changeSet: plain.changeSet });
+    const withHints = await buildCompleteSuccessor({ ...input, changeSet: hinted.changeSet });
+    expect(original.ok && original.value.kind === "successor").toBe(true);
+    expect(withHints.ok && withHints.value.kind === "successor").toBe(true);
+    if (!original.ok || original.value.kind !== "successor" || !withHints.ok || withHints.value.kind !== "successor") throw new Error("expected successor");
+    expect(withHints.value.artifact.artifactBytes).toEqual(original.value.artifact.artifactBytes);
+    expect(withHints.value.candidate).toEqual(original.value.candidate);
+  });
+
+  it("keeps optional placement hints outside the change set for every subject kind", () => {
+    const snapshot = firstAcmePredecessor().first;
+    for (const kind of ["Driver", "NodeType", "ConfigurationSchema"]) {
+      const base = document.replace("Driver `acme,power`", `${kind} \`acme,new\``)
+        .replace("\n\n##", kind === "Driver" ? "\nnature: physical-device · cardinality: multiple\n\n##" : "\n\n##");
+      const hinted = base.replace("\n\n##", `${kind === "Driver" ? " · " : "\n"}业务分类：电源 / 充电管理 · 模块名称：充电芯片\n\n##`);
+      const plain = planMarkdownImport(base, "d.md", snapshot);
+      const plan = planMarkdownImport(hinted, "d.md", snapshot);
+      expect(plan.changeSet).toEqual(plain.changeSet);
+      expect(plan.placementHints).toEqual([expect.objectContaining({ selector: "acme,new", categoryPath: "电源 / 充电管理", moduleName: "充电芯片" })]);
+      const invalid = planMarkdownImport(hinted.replace("电源 / 充电管理", "电源 / "), "d.md", snapshot);
+      expect(invalid.entries[0]).toMatchObject({ outcome: "error", diagnostics: expect.arrayContaining([expect.objectContaining({ line: 2 })]) });
+    }
+  });
   it("creates subjects with their definitions and checks driver facts", () => {
     const snapshot = firstAcmePredecessor().first;
     const fresh = document.replace("acme,power", "acme,new").replace("\n\n##", "\nnature: physical-device · cardinality: multiple\n\n##");

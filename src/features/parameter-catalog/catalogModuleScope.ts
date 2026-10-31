@@ -31,7 +31,7 @@ export type CatalogNavigatorNode = {
 export const CATALOG_UNREGISTERED_GROUP_ID = "group:unregistered";
 
 /** Group node label for subjects that carry no usable placement yet. */
-export const CATALOG_UNREGISTERED_GROUP_LABEL = "未登记主体";
+export const CATALOG_UNREGISTERED_GROUP_LABEL = "待登记主体";
 
 function subjectLeaf(subject: SubjectItem, describeSubject: (item: SubjectItem) => string): CatalogNavigatorNode {
   return {

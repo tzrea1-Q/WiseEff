@@ -7,6 +7,8 @@ import type {
 } from "../../parameter-governance/registration/command";
 import type { RegistrationFailure } from "../../parameter-governance/registration/failures";
 import type { RegistrationResult } from "../../parameter-governance/registration/result";
+import type { BatchRegistrationInput, executeBatchRegistration } from "../../parameter-governance/registration/batch";
+import type { listUnregisteredSubjects } from "../../parameter-governance/registration/readRepository";
 import type { RegistrationList } from "../../parameter-governance/queries";
 import type {
   GetReviewItemQuery,
@@ -23,13 +25,15 @@ import type { ProposalFailure } from "../../parameter-governance/proposals/failu
 import type { ProposalResult } from "../../parameter-governance/proposals/result";
 import type { CatalogReleasePin, Result } from "../../parameter-catalog-contract/index";
 import type {
+  catalogBatchRegistrationCommandByRouteId,
   catalogDefinitionReplacementCommandByRouteId,
   catalogGovernanceCommandByRouteId,
 } from "./mapping";
 
 export type CatalogGovernanceRouteId =
   | keyof typeof catalogGovernanceCommandByRouteId
-  | keyof typeof catalogDefinitionReplacementCommandByRouteId;
+  | keyof typeof catalogDefinitionReplacementCommandByRouteId
+  | keyof typeof catalogBatchRegistrationCommandByRouteId;
 
 export type CatalogGovernanceRequest = {
   readonly method: string;
@@ -133,6 +137,8 @@ export type ReviewItemDetails = Pick<
 >;
 
 export type CatalogGovernancePorts = {
+  readonly executeBatchRegistration?: (input: BatchRegistrationInput) => ReturnType<typeof executeBatchRegistration>;
+  readonly listUnregisteredSubjects?: (organizationId: string, releaseId: string, source: "organization" | "all") => ReturnType<typeof listUnregisteredSubjects>;
   readonly authenticate: (
     request: CatalogGovernanceRequest,
   ) => Promise<CatalogGovernanceAuthResult>;

@@ -69,6 +69,11 @@ export function catalogActionsForSession(input: {
   return actions;
 }
 
+export function mayRegisterInOrganization(actor: CatalogActorKind, permissions?: readonly string[] | null, state?: CatalogDomainState, authorityActor: CatalogActorKind = actor): boolean {
+  return actor !== "agent" && (state ? isCatalogActionEnabled(authorityActor, "register-subject", state, permissions)
+    : catalogActionsForSession({ actor: authorityActor, permissions }).includes("register-subject"));
+}
+
 /** Map the live shell role onto Catalog authority. Agent is not a platform role. */
 export function catalogActorForRole(roleId: string): CatalogActorKind {
   if (roleId === "platform-admin") {

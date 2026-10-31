@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
+import { mayRegisterInOrganization, type CatalogActorKind } from "@/application/parameter-catalog/authority";
 import type { CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
-import { listAllCanonicalPages } from "@/application/parameter-catalog/listAllCanonicalPages";
-import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
-import { toAttributionFlatNodes } from "@/components/parameter-topology/moduleAttributionTreeUtils";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,8 +20,7 @@ import {
   publicationStatusCopy, publicationSuccessKind,
 } from "./publicationState";
 import { usePublicationFlow } from "./usePublicationFlow";
-import { canExecuteGovernanceAction } from "./governanceState";
-import { RegistrationDialog, type RegistrationModuleOption } from "./RegistrationDialog";
+import { openBatchRegistration } from "./batchRegistrationHandoff";
 import { DEFINITION_IMPORT_TEMPLATE } from "@/domain/parameter-catalog/definitionImportTemplate";
 
 export type DefinitionImportDialogProps = {
@@ -62,15 +58,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const [newSubjects, setNewSubjects] = useState<CatalogSubjectResponse["item"][]>([]);
   const [subjectError, setSubjectError] = useState(false);
   const [subjectEpoch, setSubjectEpoch] = useState(0);
-  const [registering, setRegistering] = useState<string | null>(null);
-  const [registrationError, setRegistrationError] = useState<string | null>(null);
-  const [registeredNames, setRegisteredNames] = useState<string[]>([]);
-  const [registrationTarget, setRegistrationTarget] = useState<{
-    subject: CatalogSubjectResponse["item"];
-    modules: RegistrationModuleOption[];
-    parents: RegistrationModuleOption[];
-  } | null>(null);
-  const registrationGate = useRef(false);
+  const [placementHints, setPlacementHints] = useState<CatalogMarkdownImportResponse["item"]["placementHints"]>([]);
   const unavailable = props.runtimeMode === "mock" || !catalog.previewMarkdownImport
     ? "模拟模式不支持导入预览，请使用 API 模式。" : null;
   const canPreview = !unavailable && props.publicationSurface?.authoringAllowed === true
@@ -99,7 +87,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setEntries(null);
     setNoChange(false);
     setErrorsOnly(false);
-    setRegisteredNames([]);
+    setPlacementHints([]);
     return flow.stopPolling;
   }, [open, catalog, props.currentPersonId, props.organizationId]);
 
@@ -127,43 +115,6 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     return () => { cancelled = true; };
   }, [open, succeeded, candidate, flow.candidateVerified, catalog, subjectEpoch]);
 
-  const loadRegistrationTarget = async (subject: CatalogSubjectResponse["item"]) => {
-    if (!props.moduleRegistry) throw new Error("module registry unavailable");
-    subject = (await catalog.getSubject(subject.id)).item;
-    if (subject.registration.status !== "unregistered") {
-      setNewSubjects((items) => items.filter((item) => item.id !== subject.id));
-      setRegistrationTarget(null);
-      props.onCompleted?.();
-      return;
-    }
-    if (subject.membership.status !== "active") throw new Error("subject is not active");
-    const [registry, registrations] = await Promise.all([
-      props.moduleRegistry.getRegistry(),
-      listAllCanonicalPages((query) => props.governance.listRegistrations(props.organizationId, query),
-        { catalogReleaseId: subject.membership.catalogReleaseId }),
-    ]);
-    const flat = toAttributionFlatNodes(registry.modules);
-    const kind = subject.type === "driver" ? "driver-group" : subject.type === "node-type" ? "node-type" : "business";
-    const occupied = new Set(registrations.flatMap((row) => row.placement.moduleId ? [row.placement.moduleId] : []));
-    const options = registry.modules.map((item) => {
-      return { id: item.id, displayName: modulePathSegments(item, flat).join(" / "), kind: item.kind,
-        occupied: occupied.has(item.id) };
-    });
-    const modules = options.filter((item) => item.kind === kind && !item.occupied);
-    const parents = options.filter((item) => item.kind === "business");
-    if (!modules.length && !parents.length) throw new Error("module destinations unavailable");
-    setRegistrationTarget({ subject, modules, parents });
-  };
-  const openRegistration = async (subject: CatalogSubjectResponse["item"]) => {
-    if (registrationGate.current) return;
-    registrationGate.current = true;
-    setRegistering(subject.id);
-    setRegistrationError(null);
-    try { await loadRegistrationTarget(subject); }
-    catch { setRegistrationError(subject.id); }
-    finally { registrationGate.current = false; setRegistering(null); }
-  };
-
   const close = () => {
     if (dirty && !leaveConfirm) { setLeaveConfirm(true); return; }
     setLeaveConfirm(false);
@@ -172,6 +123,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const updateDocument = (nextDocument: string, nextFileName: string) => {
     flow.reset();
     setEntries(null);
+    setPlacementHints([]);
     setNoChange(false);
     setErrorsOnly(false);
     setDocument(nextDocument);
@@ -184,6 +136,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         { markdownImport: { document, fileName } }, { catalogReleaseId },
       );
       setEntries(result.item.entries);
+      setPlacementHints(result.item.placementHints ?? []);
       setNoChange(result.item.noChange);
       setErrorsOnly(false);
       return result.item.candidate;
@@ -206,6 +159,9 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   entries?.forEach((entry) => { counts[entry.outcome] += 1; });
   const summary = [...(counts.create ? [`新建 ${counts.create}`] : []), ...(counts.error ? [`错误 ${counts.error}`] : []),
     ...(counts.skip ? [`跳过 ${counts.skip}`] : []), ...(counts.conflict ? [`冲突 ${counts.conflict}`] : [])].join(" · ");
+  const placementWarnings = placementHints?.flatMap((hint) => hint.warnings.map((warning) => ({
+    selector: hint.selector, line: hint.line, warning,
+  }))) ?? [];
 
   return <>
     <ModalDialog open={open} onDismiss={pending ? undefined : close}
@@ -215,7 +171,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
       {({ titleId, descriptionId }) => <>
         <h2 id={titleId}>批量导入定义</h2>
         <div className="confirm-dialog__scroll"><div id={descriptionId} className="governance-confirm-dialog__body">
-          <p>粘贴或上传 Markdown 文档，格式见模板；可引用已有主体或新建主体。</p>
+          <p>粘贴或上传 Markdown 文档，格式见模板；可引用已有主体或新建主体。业务分类和模块名称为可选的登记提示，不影响发布。</p>
           {unavailable ? <p role="status">{unavailable}</p> : null}
           {advisory ? <p role="status" data-tone={advisory.tone}>{advisory.message}</p> : null}
           {status ? <p role="status" aria-label="发布任务状态" data-publication-status={job?.status}
@@ -224,15 +180,18 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
           {failure ? <p role="alert" className="governance-confirm-dialog__error">{failure}</p> : null}
           {succeeded && subjectError ? <p role="alert">新主体的登记状态加载失败，发布仍已生效。<button type="button"
             className="button subtle sm" onClick={() => setSubjectEpoch((value) => value + 1)}>重试加载</button></p> : null}
-          {registeredNames.map((name) => <p role="status" key={name}>已登记 {name}</p>)}
           {succeeded && newSubjects.length > 0 ? <section aria-label="待登记的新主体">
             <p>以下新主体尚未在本组织登记。登记是独立操作，不影响已生效的发布。</p>
-            <ul>{newSubjects.map((subject) => <li key={subject.id}>{subject.canonicalName}{" "}
-              {canExecuteGovernanceAction(actor, "register-subject", domainState, sessionPermissions)
-                ? <button type="button" className="button subtle sm" disabled={registering !== null}
-                  aria-label={`登记 ${subject.canonicalName}`} onClick={() => void openRegistration(subject)}>登记</button> : null}
-              {registrationError === subject.id ? <span role="alert">无法加载登记目标，请检查组织模块后重试；发布仍已生效。</span> : null}
-            </li>)}</ul>
+            <ul className="list-disc space-y-1 pl-4 text-sm">{newSubjects.map((subject) => <li key={subject.id}>{subject.canonicalName}</li>)}</ul>
+            {mayRegisterInOrganization(actor, sessionPermissions, domainState)
+              ? <button type="button" className="button subtle sm" onClick={() => {
+                openBatchRegistration({ organizationId: props.organizationId, userId: props.currentPersonId,
+                  subjectIds: newSubjects.map((subject) => subject.id), hints: Object.fromEntries(newSubjects.flatMap((subject) => {
+                    const hint = placementHints?.find((item) => item.selector === subject.canonicalName && item.kind === subject.type);
+                    return hint ? [[subject.id, { categoryPath: hint.categoryPath, moduleName: hint.moduleName }]] : [];
+                  })) });
+                props.onOpenChange(false);
+              }}>前往批量登记</button> : null}
           </section> : null}
           {canPreview && !succeeded ? <div className="parameter-catalog-publication-dialog__form">
             <div className="parameter-catalog-import-dialog__file-actions">
@@ -259,6 +218,11 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
             </label>
           </div> : null}
             {entries ? <div className="parameter-catalog-import-dialog__results">
+              {placementWarnings.length ? <section className="definition-editor__banner" data-tone="warning" aria-label="登记提示（不影响发布）">
+                <strong>登记提示（不影响发布）</strong>
+                <ul className="list-disc space-y-1 pl-4">{placementWarnings.map((item, index) =>
+                  <li key={`${item.selector}-${item.line}-${index}`}>{item.selector} · 第 {item.line} 行：{item.warning}</li>)}</ul>
+              </section> : null}
               <div className="parameter-catalog-import-dialog__summary">
                 {summary ? <p>{summary}</p> : null}
                 {counts.error > 0 || counts.conflict > 0
@@ -312,18 +276,6 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         </div>
       </>}
     </ModalDialog>
-    {registrationTarget ? <RegistrationDialog open intent="register-subject" actor={actor} domainState={domainState}
-      repository={props.governance} organizationId={props.organizationId} subjectId={registrationTarget.subject.id}
-      subjectName={registrationTarget.subject.canonicalName} catalogReleaseId={registrationTarget.subject.membership.catalogReleaseId}
-      moduleOptions={registrationTarget.modules} newDestinationParents={registrationTarget.parents}
-      subjectImpact={{ activeDefinitionCount: registrationTarget.subject.definitionCounts.active, bindingCount: null, projectCount: null }}
-      createIdempotencyKey={props.createIdempotencyKey} onOpenChange={(next) => { if (!next) setRegistrationTarget(null); }}
-      onRefreshEvidence={() => loadRegistrationTarget(registrationTarget.subject)}
-      onCompleted={() => {
-        setRegisteredNames((names) => [...names, registrationTarget.subject.canonicalName]);
-        setNewSubjects((items) => items.filter((item) => item.id !== registrationTarget.subject.id));
-        props.onCompleted?.();
-      }} /> : null}
     <PublicationConfirmation confirm={confirm} allowed={confirm === "publish" ? canPublish : canPreview}
       risk={candidate?.riskClass ?? "high"} actor={actor} pending={pending}
       onPreview={() => void runPreview()} onPublish={() => void runPublish()} onCancel={() => setConfirm(null)} />

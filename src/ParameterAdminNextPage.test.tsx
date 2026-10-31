@@ -644,10 +644,10 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
   it("opens the import wizard from the organization area", async () => {
     renderPage({ parameterActions: createParameterActions() });
 
-    const importRegion = await screen.findByRole("region", { name: "批量参数导入" });
-    fireEvent.click(within(importRegion).getByRole("button", { name: "打开批量参数导入" }));
+    const importRegion = await screen.findByRole("region", { name: "项目值批量导入" });
+    fireEvent.click(within(importRegion).getByRole("button", { name: "打开项目值批量导入" }));
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    const dialog = screen.getByRole("dialog", { name: "项目值批量导入" });
     expect(within(dialog).getByLabelText("目标项目")).toHaveAttribute("data-value", initialState.activeProjectId);
     expect(dialog.querySelector('input[type="file"]')).toHaveAttribute(
       "accept",
@@ -673,8 +673,8 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
     const parameterActions = createParameterActions();
     renderPage({ parameterActions, runtimeMode: "api" });
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开批量参数导入" }));
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    fireEvent.click(await screen.findByRole("button", { name: "打开项目值批量导入" }));
+    const dialog = screen.getByRole("dialog", { name: "项目值批量导入" });
 
     fillPasteImportContent(
       dialog,
@@ -709,18 +709,18 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
       )
     );
     expect(await within(dialog).findByRole("region", { name: "导入处理回执" })).toHaveTextContent("api-import-batch");
-    expect(screen.getByRole("dialog", { name: "批量参数导入" })).toBeVisible();
+    expect(screen.getByRole("dialog", { name: "项目值批量导入" })).toBeVisible();
     fireEvent.click(within(dialog).getByRole("button", { name: "完成" }));
     await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "批量参数导入" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("dialog", { name: "项目值批量导入" })).not.toBeInTheDocument()
     );
   });
 
   it("parses CSV paste into the review step", async () => {
     renderPage({ parameterActions: createParameterActions() });
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开批量参数导入" }));
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    fireEvent.click(await screen.findByRole("button", { name: "打开项目值批量导入" }));
+    const dialog = screen.getByRole("dialog", { name: "项目值批量导入" });
 
     fillPasteImportContent(
       dialog,
@@ -747,8 +747,8 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
       );
     renderPage({ parameterActions: createParameterActions({ parseDtsImport }) });
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开批量参数导入" }));
-    let dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    fireEvent.click(await screen.findByRole("button", { name: "打开项目值批量导入" }));
+    let dialog = screen.getByRole("dialog", { name: "项目值批量导入" });
 
     fillPasteImportContent(dialog, '/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n');
     expect(within(dialog).getByRole("status")).toHaveTextContent("将使用服务端解析");
@@ -760,8 +760,8 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
     fireEvent.click(
       within(screen.getByRole("dialog", { name: "退出批量导入向导？" })).getByRole("button", { name: "丢弃并退出" })
     );
-    fireEvent.click(screen.getByRole("button", { name: "打开批量参数导入" }));
-    dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    fireEvent.click(screen.getByRole("button", { name: "打开项目值批量导入" }));
+    dialog = screen.getByRole("dialog", { name: "项目值批量导入" });
 
     fillPasteImportContent(dialog, `/dts-v1/;\n/ { oversized = <${"1 ".repeat(20)}>; };\n`);
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));

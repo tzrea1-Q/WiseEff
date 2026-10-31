@@ -120,7 +120,7 @@ function TreeNode({
  *
  * One tree carries the whole navigation: maintained modules are the branches and
  * every subject is a leaf (registered subjects under their module, subjects with
- * no placement yet under one `未登记主体` branch). Selecting a module scopes the
+ * no placement yet under one `待登记主体` branch). Selecting a module scopes the
  * collection to the node and its whole subtree, selecting a subject scopes it to
  * that subject, and clearing the selection returns to the complete organization
  * collection.

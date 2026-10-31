@@ -29,6 +29,7 @@ import {
   loadRegistrationByOrgSubject,
   lockOrganizationRegistrations,
   lockDestinationModule,
+  moduleKindForSubject,
   reserveIdempotency,
   updatePlacementModule,
   updateRegistrationStatus,
@@ -47,9 +48,6 @@ const fail = (error: RegistrationFailure): Result<never, RegistrationFailure> =>
   ok: false,
   error,
 });
-
-const expectedModuleKind = (subjectKind: RegisterSubjectCommand["subjectKind"]): string =>
-  subjectKind === "driver" ? "driver-group" : subjectKind === "configuration-schema" ? "business" : "node-type";
 
 const toResult = (
   registration: RegistrationRow,
@@ -119,7 +117,7 @@ const writeRegister = async (
     command.destinationModuleId,
   );
   if (!destination.ok) return destination;
-  if (destination.value.kind !== expectedModuleKind(command.subjectKind)) {
+  if (destination.value.kind !== moduleKindForSubject(command.subjectKind)) {
     return fail({
       kind: "invalid-placement-parent",
       destinationModuleId: command.destinationModuleId,

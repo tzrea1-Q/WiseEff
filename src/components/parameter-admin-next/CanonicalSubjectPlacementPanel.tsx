@@ -6,6 +6,7 @@ import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 import {
   isCatalogActionEnabled,
   catalogActionsForSession,
+  mayRegisterInOrganization,
   type CatalogActorKind
 } from "@/application/parameter-catalog/authority";
 import {
@@ -14,6 +15,7 @@ import {
   type CatalogDomainState
 } from "@/application/parameter-catalog/states";
 import { createGovernanceIdempotencyKey } from "@/features/parameter-catalog-governance/governanceState";
+import { openBatchRegistration } from "@/features/parameter-catalog-governance/batchRegistrationHandoff";
 import {
   RegistrationDialog,
   type RegistrationModuleOption,
@@ -810,6 +812,11 @@ export function CanonicalSubjectPlacementPanel({
         currentPersonId, catalogReleaseId, publicationSurface,
         onCompleted: () => void handleCompleted(), onRefreshEvidence: async () => { await loadCanonical(); },
         onOpenChange: (open) => { if (!open) closeSubjectCreation(); },
+        onBatchRegistration: onNavigate && mayRegisterInOrganization(actor, sessionPermissions) ? (subjectId) => {
+          setCreateSubjectOpen(false);
+          openBatchRegistration({ organizationId, userId: currentPersonId, subjectIds: [subjectId] });
+          onNavigate(buildCatalogHref(EMPTY_CATALOG_URL_ANCHOR));
+        } : undefined,
         onAddDefinition: onNavigate ? (subjectId) => {
           closeSubjectCreation();
           onNavigate(`${buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, subjectId })}&createDefinition=1`);

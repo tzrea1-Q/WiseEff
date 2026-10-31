@@ -16,6 +16,42 @@ export type RegistrationService = {
   ): Promise<Result<RegistrationResult, RegistrationFailure>>;
 };
 
+export function assertRegistrationInvocation(command: Pick<RegistrationCommand, "context" | "organizationId">) {
+  const context = command.context;
+  const invocation = "invocation" in context ? context.invocation : undefined;
+  const requestId = "requestId" in context ? context.requestId : undefined;
+  if (invocation) {
+    const trusted = assertTrustedInvocationMatchesScope(invocation.principal, invocation, command.organizationId, "organization registration");
+    if (trusted.initiator !== "user" || context.principalId !== trusted.principal.user.id || !requestId?.trim()) {
+      throw new TrustedInvocationContextError("Organization registration requires its real actor and request correlation");
+    }
+  }
+  return invocation ? { invocation, requestId: requestId! } : undefined;
+}
+
+export async function auditRegistration(client: pg.PoolClient, command: RegistrationCommand, result: RegistrationResult, batchId?: string) {
+  const trusted = assertRegistrationInvocation(command);
+  if (!trusted || result.outcome !== "committed") return;
+  const context = command.context;
+  await writeAuditEventInTx(asAuditTx(client), trusted.invocation, { requestId: trusted.requestId }, {
+    app: "parameter-governance", kind: "parameter-catalog-registration",
+    action: result.replacement ? "registration-replace-placement" : command.kind === "retire-unregistered" ? "registration-retire" : `registration-${command.kind}`, severity: "Medium",
+    projectId: null, targetType: "organization-subject-registration", targetId: result.registrationId,
+    metadata: { catalogReleaseId: command.expectedRelease.id, actorKind: context.actorKind, ...(batchId ? { batchId } : {}),
+      ...(command.kind === "move-placement" && command.replacement && result.replacement ? {
+        reason: command.replacement.reason,
+        source: { registrationId: result.registrationId, placementId: result.placementId,
+          subjectId: result.subjectId, beforeModuleId: result.replacement.previousSourceModuleId,
+          afterModuleId: result.moduleId, beforePlacementVersion: command.expectedPlacementVersion,
+          afterPlacementVersion: result.placementVersion },
+        displaced: { ...result.replacement },
+      } : {}),
+      ...((command.kind === "retire" || command.kind === "restore" || command.kind === "retire-unregistered") ? {
+        reason: command.reason, beforeStatus: result.previousRegistrationStatus, afterStatus: result.registrationStatus,
+      } : {}) }
+  });
+}
+
 export const executeRegistration = async (
   pool: pg.Pool,
   command: RegistrationCommand,
@@ -24,35 +60,9 @@ export const executeRegistration = async (
   if (!validated.ok) return validated;
   try {
     return await withRegistrationUnitOfWork(pool, async (client) => {
-      const context = command.context;
-      const invocation = "invocation" in context ? context.invocation : undefined;
-      const requestId = "requestId" in context ? context.requestId : undefined;
-      if (invocation) {
-        const trusted = assertTrustedInvocationMatchesScope(invocation.principal, invocation, command.organizationId, "organization registration");
-        if (trusted.initiator !== "user" || context.principalId !== trusted.principal.user.id || !requestId?.trim()) {
-          throw new TrustedInvocationContextError("Organization registration requires its real actor and request correlation");
-        }
-      }
+      assertRegistrationInvocation(command);
       const result = await writeGuardedRegistration(client, validated.value);
-      if (result.ok && result.value.outcome === "committed" && invocation) {
-        await writeAuditEventInTx(asAuditTx(client), invocation, { requestId: requestId! }, {
-          app: "parameter-governance", kind: "parameter-catalog-registration",
-          action: result.value.replacement ? "registration-replace-placement" : command.kind === "retire-unregistered" ? "registration-retire" : `registration-${command.kind}`, severity: "Medium",
-          projectId: null, targetType: "organization-subject-registration", targetId: result.value.registrationId,
-          metadata: { catalogReleaseId: command.expectedRelease.id, actorKind: context.actorKind,
-            ...(command.kind === "move-placement" && command.replacement && result.value.replacement ? {
-              reason: command.replacement.reason,
-              source: { registrationId: result.value.registrationId, placementId: result.value.placementId,
-                subjectId: result.value.subjectId, beforeModuleId: result.value.replacement.previousSourceModuleId,
-                afterModuleId: result.value.moduleId, beforePlacementVersion: command.expectedPlacementVersion,
-                afterPlacementVersion: result.value.placementVersion },
-              displaced: { ...result.value.replacement },
-            } : {}),
-            ...((command.kind === "retire" || command.kind === "restore" || command.kind === "retire-unregistered") ? {
-              reason: command.reason, beforeStatus: result.value.previousRegistrationStatus, afterStatus: result.value.registrationStatus,
-            } : {}) }
-        });
-      }
+      if (result.ok) await auditRegistration(client, command, result.value);
       return result;
     });
   } catch (error) {

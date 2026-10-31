@@ -3,6 +3,9 @@ import type { ParameterRecord } from "@/domain/parameters/types";
 import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
 
 import type {
+  catalogBatchRegistrationRequestSchema,
+  catalogBatchRegistrationResponseSchema,
+  catalogUnregisteredSubjectsResponseSchema,
   catalogDefinitionErasureListResponseSchema,
   catalogDefinitionDeletionPreviewResponseSchema,
   catalogDeleteDefinitionRequestSchema,
@@ -116,6 +119,9 @@ export type CatalogDefinitionTimelineResponse = z.infer<typeof catalogDefinition
 export type CatalogRegistrationListResponse = z.infer<typeof catalogRegistrationListResponseSchema>;
 export type CatalogRegistrationResponse = z.infer<typeof catalogRegistrationResponseSchema>;
 export type CatalogRegisterSubjectRequest = z.infer<typeof catalogRegisterSubjectRequestSchema>;
+export type CatalogBatchRegistrationRequest = z.infer<typeof catalogBatchRegistrationRequestSchema>;
+export type CatalogBatchRegistrationResponse = z.infer<typeof catalogBatchRegistrationResponseSchema>;
+export type CatalogUnregisteredSubjectsResponse = z.infer<typeof catalogUnregisteredSubjectsResponseSchema>;
 export type CatalogRetireRegistrationRequest = z.infer<typeof catalogRetireRegistrationRequestSchema>;
 export type CatalogRestoreRegistrationRequest = z.infer<typeof catalogRestoreRegistrationRequestSchema>;
 export type CatalogPlacementResponse = z.infer<typeof catalogPlacementResponseSchema>;

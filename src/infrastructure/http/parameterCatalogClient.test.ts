@@ -316,7 +316,7 @@ describe("parameter catalog client contract", () => {
   });
 
   it("posts a Markdown import and parses the located plan with no candidate", async () => {
-    const result = { item: { candidate: null, noChange: false, source: { fileName: "defs.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [{
+    const result = { item: { candidate: null, noChange: false, placementHints: [], source: { fileName: "defs.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [{
       subjectHeading: "# Driver `x,y`", definitionHeading: "## `key` 名称", outcome: "error",
       selector: "x,y", propertyKey: "key", displayName: "名称",
       diagnostics: [{ subjectHeading: "# Driver `x,y`", definitionHeading: "## `key` 名称", field: "类型", message: "类型无效。", line: 5 }],

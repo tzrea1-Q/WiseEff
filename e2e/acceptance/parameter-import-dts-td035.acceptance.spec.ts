@@ -74,11 +74,11 @@ test.describe("PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignmen
     await dismissXiaozeHint(page);
     await prepareInteractionSurface(page);
     // Bulk import lives in the TopBar action slot; clear cpk-web-inspector first.
-    const openImport = page.getByRole("button", { name: "打开批量参数导入" });
+    const openImport = page.getByRole("button", { name: "打开项目值批量导入" });
     await expect(openImport).toBeVisible({ timeout: 30_000 });
     await openImport.click();
-    // The wizard dialog is named by its eyebrow title "批量参数导入" (stable across steps).
-    const wizard = page.getByRole("dialog", { name: "批量参数导入" });
+    // The wizard dialog is named by its eyebrow title "项目值批量导入" (stable across steps).
+    const wizard = page.getByRole("dialog", { name: "项目值批量导入" });
     await expect(wizard).toBeVisible();
     await wizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();
     const pasteDialog = page.getByRole("dialog", { name: "粘贴导入内容" });

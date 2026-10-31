@@ -37,6 +37,7 @@ function renderDialog(
     createIdempotencyKey?: () => string;
     paginate?: boolean;
     prepare?: (ports: ReturnType<typeof createMockCatalogPorts>) => void;
+    onBatchRegistration?: (subjectId: string) => void;
   } = {}
 ) {
   const ports = createMockCatalogPorts({
@@ -85,6 +86,7 @@ function renderDialog(
       createIdempotencyKey={options.createIdempotencyKey ?? (() => "pub-key")}
       onOpenChange={vi.fn()}
       onCompleted={completed}
+      onBatchRegistration={options.onBatchRegistration}
       onRefreshEvidence={refreshed}
     />
   );
@@ -542,16 +544,19 @@ describe("PublicationDialog", () => {
     expect(screen.getByLabelText("发布预览")).toHaveTextContent("高");
   });
 
-  it("keeps catalog success visible when registration followup fails", async () => {
+  it.each(["active", "queued"] as const)("opens batch registration for the new subject after %s publication activates", async (publicationOutcome) => {
+    const onBatchRegistration = vi.fn();
     const { ports } = renderDialog({
       intent: "create-subject",
       actor: "org-admin",
       permissions: ["catalog:author", "catalog:publish"],
-      publicationOutcome: "active"
+      publicationOutcome,
+      onBatchRegistration
     });
-    const register = vi.spyOn(ports.governance, "createRegistration").mockRejectedValueOnce(
-      catalogApiFailure("placement-conflict")
-    );
+    const register = vi.spyOn(ports.governance, "createRegistration");
+    if (publicationOutcome === "queued") vi.spyOn(ports.catalog, "getPublication").mockResolvedValue({
+      item: { ...catalogPublicationJob, status: "active", effective: true, isCurrent: true, currentness: "active" }
+    });
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("compatible 标识"), "acme,aux");
     await selectControlOption(screen.getByLabelText("驱动性质"), "physical-device");
@@ -561,10 +566,34 @@ describe("PublicationDialog", () => {
     await user.click(await screen.findByRole("button", { name: "发布到目录" }));
     await confirm("确认发布");
     expect(await screen.findByText(/目录发布已生效/)).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "登记到本组织" }));
-    expect(await screen.findByText(/组织登记失败/)).toBeVisible();
-    expect(screen.getByText(/目录发布已生效/)).toBeVisible();
-    expect(register).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("如需在本组织使用，请单独登记主体。")).not.toBeInTheDocument();
+    expect(register).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "前往批量登记" }));
+    expect(onBatchRegistration).toHaveBeenCalledWith("csub_new_1");
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it("preserves the new subject for batch registration when a queued publication is reopened", async () => {
+    const onBatchRegistration = vi.fn();
+    const first = renderDialog({ intent: "create-subject", actor: "org-admin", publicationOutcome: "queued", onBatchRegistration,
+      prepare: (ports) => { vi.spyOn(ports.catalog, "getPublication").mockResolvedValue({ item: { ...catalogPublicationJob,
+        status: "queued", effective: false, isCurrent: false, currentness: null } }); } });
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("compatible 标识"), "acme,restored");
+    await selectControlOption(screen.getByLabelText("驱动性质"), "physical-device");
+    await selectControlOption(screen.getByLabelText("实例基数"), "multiple");
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    await waitFor(() => expect(window.localStorage.getItem(PUBLICATION_JOB_STORAGE_KEY)).not.toBeNull());
+    expect(screen.queryByRole("button", { name: "前往批量登记" })).not.toBeInTheDocument();
+    first.unmount();
+    renderDialog({ intent: "create-subject", actor: "org-admin", onBatchRegistration,
+      prepare: (ports) => { vi.spyOn(ports.catalog, "getPublication").mockResolvedValue({ item: { ...catalogPublicationJob,
+        status: "active", effective: true, isCurrent: true, currentness: "active" } }); } });
+    await user.click(await screen.findByRole("button", { name: "前往批量登记" }));
+    expect(onBatchRegistration).toHaveBeenCalledWith("csub_new_1");
   });
 
   it("preserves fields and invalidates the previous preview when the directory version changes", async () => {
