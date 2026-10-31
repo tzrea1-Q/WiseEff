@@ -5,6 +5,43 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v2/shared-dtsi/import-preview": {
+      "post": {
+        "operationId": "sharedDtsi.importPreview",
+        "summary": "Inspect an authorized ZIP without saving a draft",
+        "tags": [
+          "parameter-files"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedDtsiArchiveInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiImportPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/shared-dtsi/{resourceId}/lifecycle": {
       "post": {
         "operationId": "sharedDtsi.lifecycle",
@@ -28987,6 +29024,80 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "ProjectLocalOverrideResponse"
+      },
+      "SharedDtsiArchiveInput": {
+        "type": "object",
+        "properties": {
+          "archive": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "contentBase64": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "contentBase64"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "archive"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiArchiveInput"
+      },
+      "SharedDtsiImportPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sourceName": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "sourceName",
+                    "content"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "ignored": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "members",
+              "ignored"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiImportPreviewResponse"
       },
       "SharedDtsiLifecycleRequest": {
         "type": "object",

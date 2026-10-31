@@ -48,6 +48,7 @@ import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
 import { isRetiredCatalogWriteRoute, registerCatalogLegacyRetirementRoutes } from "./modules/parameter-catalog-api/legacy/routes";
 import { registerParameterModuleRoutes } from "./modules/parameter-modules/routes";
 import { registerSharedDtsiRoutes } from "./modules/shared-dtsi/routes";
+import { sharedDtsiImportLimits } from "./modules/contracts/dtoSchemas/sharedDtsi";
 import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
 import { registerCatalogProjectValueConsumerRoutes } from "./modules/parameter-bindings/catalogProjectValueRoutes";
 import { registerDtsReloadRoutes } from "./modules/dts-reload/routes";
@@ -438,6 +439,8 @@ export const LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES =
 export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
 
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  // The ZIP is base64 encoded in a small JSON envelope.
+  if (method === "POST" && /^\/+api\/+v2\/+shared-dtsi\/+import-preview\/*$/u.test(path)) return Math.ceil(sharedDtsiImportLimits.maxArchiveBytes / 3) * 4 + 64 * 1024;
   // Base64 of a bounded 17 MiB ZIP plus the name, ownership choice and confirmation.
   if (method === "POST" && /^\/+api\/+v1\/+projects\/+[^/]+\/+config-set-import\/+(?:preview|apply)\/*$/u.test(path)) return 24 * 1024 * 1024;
   // Allow JSON escaping of the bounded 16 MiB set plus the selected legacy member alias.

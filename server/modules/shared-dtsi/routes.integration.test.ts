@@ -401,6 +401,29 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await call(`/${root.resourceId}/draft`,"POST",{baseVersionId:root.id})).body.item).toHaveProperty("dependencies",[{resourceId:middle.resourceId,versionId:middle.id,mountPath:"middle"}]);
   });
 
+  it("inspects a ZIP without persisting a draft and reports ignored auxiliary files", async () => {
+    const query=`?q=${encodeURIComponent("导入预览")}`;
+    const before=(await call(query)).body.items;
+    const zip = new JSZip();
+    zip.file("lib/main.dtsi", source);
+    zip.file("README.md", "Notes");
+    const input = {archive:{name:"sources.zip",contentBase64:await zip.generateAsync({type:"base64"})}};
+    const result = await publicationCall<{item:{members:{sourceName:string;content:string}[];ignored:string[]}}>("/import-preview", "POST", input);
+    expect(result.status, result.bodyText).toBe(200);
+    expect(result.body.item.members).toEqual([{sourceName:"lib/main.dtsi",content:source}]);
+    expect(result.body.item.ignored).toEqual(["README.md"]);
+    expect((await call(query)).body.items).toEqual(before);
+    const reader = { ...auth, roles: [], permissions: ["parameter:view"] as typeof auth.permissions };
+    expect((await publicationCall("/import-preview", "POST", input, reader)).status).toBe(403);
+    const headerOnly=new JSZip();headerOnly.file("defs.h","#define VALUE 1\n");
+    expect((await publicationCall("/import-preview","POST",{archive:{name:"headers.zip",contentBase64:await headerOnly.generateAsync({type:"base64"})}})).status).toBe(400);
+    const invalid=new JSZip();invalid.file("bad.dtsi",Buffer.from([0xff,0xfe,0xff]));
+    const invalidResult=await publicationCall<{error:{message:string}}>("/import-preview","POST",{archive:{name:"invalid.zip",contentBase64:await invalid.generateAsync({type:"base64"})}});
+    expect(invalidResult.status).toBe(400);expect(invalidResult.body.error.message).toContain("bad.dtsi");
+    const unsafe=new JSZip();unsafe.file("valid.dtsi",source);unsafe.file("notes:bad.md","ignored");
+    expect((await publicationCall("/import-preview","POST",{archive:{name:"unsafe.zip",contentBase64:await unsafe.generateAsync({type:"base64"})}})).status).toBe(400);
+  });
+
   it("imports original ZIP bytes and refuses unsafe archives without saving a partial resource", async () => {
     const zip = new JSZip();
     zip.file("lib/main.dtsi", '/include/ "node.dtsi"\n');

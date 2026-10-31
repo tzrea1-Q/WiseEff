@@ -3,6 +3,31 @@ import { expect } from "playwright/test";
 import JSZip from "jszip";
 import { test } from "./helpers/catalogFixtureRuntime";
 import { catalogJson, catalogScreenshot, dismissXiaozeHint, signInCatalogActor } from "./helpers/catalogBrowser";
+
+test("inspects a ZIP before saving and preserves edited source until replacement is confirmed",async({page,catalogAcceptanceRuntime})=>{
+  void catalogAcceptanceRuntime;
+  await page.setViewportSize({width:1440,height:900});
+  await signInCatalogActor(page,"org-admin","/parameter-admin/sources");
+  await dismissXiaozeHint(page);
+  await page.getByRole("button",{name:"导入资源",exact:true}).click();
+  await expect(page.getByRole("button",{name:"选择文件",exact:true})).toBeVisible();
+  await expect(page.getByLabel("DTSI 源码",{exact:true})).toHaveCount(0);
+  await page.locator('input[type="file"]').first().setInputFiles({name:"old.dtsi",mimeType:"text/plain",buffer:Buffer.from('/ { old {}; };\n')});
+  await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("old");
+  const archive=new JSZip();archive.file("lib/new.dtsi",'/ { new {}; };\n');archive.file("README.md","notes");
+  await page.locator('input[type="file"]').first().setInputFiles({name:"replacement.zip",mimeType:"application/zip",buffer:await archive.generateAsync({type:"nodebuffer"})});
+  const confirmation=page.getByRole("dialog",{name:"替换全部源码？"});
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button",{name:"替换源码",exact:true}).click();
+  await expect(page.getByLabel("DTSI 源码",{exact:true})).toContainText("new");
+  await expect(page.getByText("已忽略 1 个非源码文件")).toBeVisible();
+  await page.getByRole("button",{name:"保存草稿",exact:true}).click();
+  await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
+  const resourceId=new URL(page.url()).searchParams.get("resource")!;
+  const draft=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}`);
+  expect(draft.status).toBe(200);
+  expect((draft.body as {item:{members:unknown[]}}).item.members).toEqual([expect.objectContaining({sourceName:"lib/new.dtsi",content:'/ { new {}; };\n'})]);
+});
 import { selectControlOption } from "./helpers/selectControl";
 
 test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.env.TEST_DATABASE_URL});

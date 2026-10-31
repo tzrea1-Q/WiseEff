@@ -1,11 +1,15 @@
 import type { ApiClient } from "./apiClient";
 import { sharedDtsiDraftSchema, sharedDtsiListSchema, sharedDtsiResourceDetailSchema, sharedDtsiVersionSchema, sharedDtsiVersionsSchema, sharedDtsiPreviewSchema,
-  sharedDtsiRecognitionSchema,sharedDtsiComparisonSchema,sharedDtsiUsagesSchema,sharedDtsiLifecycleResultSchema,type SharedDtsiDraftInput,type SharedDtsiLifecycleInput } from "@wiseeff/dto-schemas";
+  sharedDtsiRecognitionSchema,sharedDtsiComparisonSchema,sharedDtsiUsagesSchema,sharedDtsiLifecycleResultSchema,sharedDtsiImportPreviewSchema,type SharedDtsiDraftInput,type SharedDtsiLifecycleInput } from "@wiseeff/dto-schemas";
 
 export function createSharedDtsiClient(api: ApiClient) {
   const base = "/api/v2/shared-dtsi";
   const resource = (id: string) => `${base}/${encodeURIComponent(id)}`;
   return {
+    async inspectArchive(archive: NonNullable<SharedDtsiDraftInput["archive"]>) {
+      const result = await api.post<{item:unknown}>(`${base}/import-preview`, {archive});
+      return sharedDtsiImportPreviewSchema.parse(result.item);
+    },
     async list(input: { q?: string; offset?: number; limit?: number } = {}) {
       const query = new URLSearchParams();
       for (const [key, value] of Object.entries(input)) if (value !== undefined) query.set(key, String(value));

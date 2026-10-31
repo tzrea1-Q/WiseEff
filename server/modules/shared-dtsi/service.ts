@@ -121,7 +121,7 @@ export async function createSharedDtsiDraft(db: Database, auth: AuthContext, inp
     return getSharedDtsiDraft(tx, auth, resourceId);
   });
 }
-function inputMembers(input: SharedDtsiDraftInput) {
+export function inputMembers(input: SharedDtsiDraftInput) {
   const members = input.members ?? [{sourceName:input.sourceName,content:input.content,id:undefined}];
   const paths = new Set<string>(), ids = new Set<string>();
   let bytes = 0;
