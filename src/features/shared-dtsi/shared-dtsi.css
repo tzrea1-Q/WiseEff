@@ -20,8 +20,11 @@
 .shared-dtsi-fields { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
 .shared-dtsi-fields label { display: grid; flex: 1; min-width: 0; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); }
 .shared-dtsi-source { display: flex; flex: 1; min-width: 0; height: calc(var(--space-10) * 10); min-height: calc(var(--space-10) * 8); overflow: hidden; border: var(--stroke-hairline) solid var(--border); border-radius: var(--radius-md); }
-.shared-dtsi-error { color: var(--danger); }
+.shared-dtsi-error { color: var(--danger); overflow-wrap: anywhere; }
 .shared-dtsi-error p { margin: 0 0 var(--space-2); }
+.shared-dtsi-error__location { max-width: 100%; height: auto; min-height: var(--space-8); color: var(--accent); text-align: start; white-space: normal; overflow-wrap: anywhere; }
+button.shared-dtsi-error__location { padding-block: var(--space-1); }
+a.shared-dtsi-error__location { display: inline-block; text-decoration: underline; text-underline-offset: var(--space-1); }
 .shared-dtsi-pagination { justify-content: end; padding-block: var(--space-3); color: var(--text-secondary); }
 .shared-dtsi-change-description { display: grid; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-base); }
 .shared-dtsi-change-description textarea { resize: vertical; }

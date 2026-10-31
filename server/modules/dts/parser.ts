@@ -301,7 +301,7 @@ class Parser {
   private parsePropertyValue(): { rawText: string; span: { start: number; end: number } } {
     if (this.check("semi")) {
       const pos = this.peek().span.start;
-      return { rawText: "", span: { start: pos, end: pos } };
+      throw new Error(`Expected property value at ${pos}`);
     }
 
     const startTok = this.peek();
