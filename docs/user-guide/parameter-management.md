@@ -87,6 +87,10 @@ Use **Unregistered subjects** to find active subjects in the current Catalog rel
 
 Definition import metadata can optionally specify a business category path and module name for each subject. Separate category levels with ` / `. Preview reports missing or ambiguous categories, name collisions, and hints ignored for already registered subjects; these warnings do not block publication. Hints are Organization placement guidance and are not part of the published Catalog artifact.
 
+### Batch revision of definitions
+
+In the definition import dialog, mark each existing definition with the revision operation described in the downloadable template. Use the same subject and property key; include only fields to change. Omitted fields retain their current values, and `-` clears an optional field. A document can also create definitions, up to 128 entries in total. Preview shows differences, risk and the Organization's usage for semantic revisions. Unchanged entries are skipped; conflicts and errors must be resolved before one Candidate is authorized and published. Semantic revisions leave existing project Bindings on their previous revisions until the governed cutover.
+
 In definition management, read the value type, unit and limits before editing. Returning from a correction preview to edit requires a new preview. Closing an unsaved editor asks whether to discard changes; publication progress remains visible and refreshable. The history view loads older revisions on request and compares their content with the current revision.
 
 The examples field accepts a complete DTS property statement, a DTS value, or a JSON example array. DTS examples may include `/* ... */` and `// ...` comments, including after the final semicolon. Comments outside strings are ignored when converting the example; quoted content such as `"7|8"`, `"3^1"`, `"0xa"`, or `"http://host"` remains unchanged.

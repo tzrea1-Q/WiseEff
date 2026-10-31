@@ -7,6 +7,7 @@ import { parseCanonicalPropertyKey } from "../../../parameter-catalog-contract/i
 import type { SupportedDefinitionContent } from "../../builder/types";
 import { contentClassOf, revisedDefinitionContent } from "../../builder/completeSuccessor";
 import { diagnostic, type Definition, type ImportDiagnostic, type ImportEntry, type Subject } from "./types";
+import { unwrapArraySchema } from "./schema";
 
 const comparableContent = (
   content: SupportedDefinitionContent | CatalogReleaseDefinitionDocument["content"]["revision"],
@@ -44,6 +45,10 @@ export function classifyEntry(input: {
     const content = input.entry.content;
     if (revision.lifecycle === "active" && content
       && isDeepStrictEqual(comparableContent(revision), comparableContent(content))) {
+      if (!diagnostics.length && definition.fields.some((field) => field.name === "操作" && field.value === "修订")) {
+        diagnostics.push(diagnostic(section, definition, "操作", "无变化。", definition.line));
+        return { outcome: "skip", diagnostics };
+      }
       return { outcome: diagnostics.length ? "error" : "skip", diagnostics };
     }
     if (definition.fields.some((field) => field.name === "操作" && field.value === "修订")
@@ -51,12 +56,8 @@ export function classifyEntry(input: {
       const next = revisedDefinitionContent(revision, content);
       const fields = (value: CatalogReleaseDefinitionDocument["content"]["revision"]) => {
         const schema = value.valueSchema as Record<string, unknown>;
-        let item = schema;
-        let depth = 0;
-        while (item.type === "array" && item.items && typeof item.items === "object") {
-          depth += 1;
-          item = item.items as Record<string, unknown>;
-        }
+        const { item, arrays } = unwrapArraySchema(schema);
+        const depth = arrays.length;
         return { "显示名": value.displayName, "正文": value.documentation, "简述": value.description ?? null,
           "单位": value.unit ?? null, "类型": `${"array<".repeat(depth)}${item.type ?? "mixed"}${">".repeat(depth)}`,
           "类型说明": item.description ?? null, "最小值": item.minimum ?? null, "最大值": item.maximum ?? null,
@@ -73,9 +74,9 @@ export function classifyEntry(input: {
       const hasErrors = diagnostics.length > 0;
       diagnostics.push(diagnostic(
         section, definition, "属性键", revision.lifecycle === "retired"
-          ? "定义已退役，请使用现有恢复流程。" : "目录中已有不同内容或非活跃的定义，请使用现有定义管理入口。", definition.line,
+          ? "定义已弃用，请使用现有恢复流程。" : "目录中已有不同内容的定义；如要修订，请加 `操作：修订`。", definition.line,
       ));
-      return { outcome: hasErrors && revision.lifecycle !== "retired" ? "error" : "conflict", diagnostics };
+      return { outcome: hasErrors ? "error" : "conflict", diagnostics };
     }
   }
   return { outcome: diagnostics.length ? "error" : "create", diagnostics };

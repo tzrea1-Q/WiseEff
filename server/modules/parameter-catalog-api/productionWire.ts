@@ -514,6 +514,7 @@ const publicationScope = (auth: AuthContext): TrustedPublicationScope => ({
   actorKind: governanceActorKind(auth),
   permissions: auth.permissions,
   trustedActor: createUserInvocation(auth),
+  projectScope: parameterUsageProjectScope(auth) ?? { kind: "only", ids: [] },
 });
 
 const authenticatePublication =

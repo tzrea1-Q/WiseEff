@@ -41,6 +41,8 @@ export type ImportEntry = {
   displayName: string;
   outcome: "create" | "revise" | "skip" | "conflict" | "error";
   revisionClass?: "documentation" | "semantic";
+  riskClass?: "low" | "high";
+  usageSummary?: { policyCount: number | null; projectCount: number; currentValueCount: number };
   diffs?: { field: string; oldValue: unknown; newValue: unknown }[];
   diagnostics: ImportDiagnostic[];
 };

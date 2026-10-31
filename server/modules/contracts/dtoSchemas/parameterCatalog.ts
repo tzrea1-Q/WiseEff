@@ -1497,6 +1497,8 @@ export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObj
     selector: z.string(), propertyKey: z.string(), displayName: z.string(),
     outcome: z.enum(["create", "revise", "skip", "conflict", "error"]),
     revisionClass: z.enum(["documentation", "semantic"]).optional(),
+    riskClass: z.enum(["low", "high"]).optional(),
+    usageSummary: catalogObject({ policyCount: z.number().int().nonnegative().nullable(), projectCount: z.number().int().nonnegative(), currentValueCount: z.number().int().nonnegative() }).optional(),
     diffs: z.array(catalogObject({ field: z.string(), oldValue: catalogJsonValueSchema, newValue: catalogJsonValueSchema })).optional(),
     diagnostics: z.array(catalogObject({
       subjectHeading: z.string(), definitionHeading: z.string(), field: z.string(), message: z.string(),

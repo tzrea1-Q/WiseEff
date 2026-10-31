@@ -88840,6 +88840,36 @@
                             "semantic"
                           ]
                         },
+                        "riskClass": {
+                          "type": "string",
+                          "enum": [
+                            "low",
+                            "high"
+                          ]
+                        },
+                        "usageSummary": {
+                          "type": "object",
+                          "properties": {
+                            "policyCount": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "projectCount": {
+                              "type": "number"
+                            },
+                            "currentValueCount": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "policyCount",
+                            "projectCount",
+                            "currentValueCount"
+                          ],
+                          "additionalProperties": false
+                        },
                         "diffs": {
                           "type": "array",
                           "items": {
@@ -89105,6 +89135,36 @@
                         "documentation",
                         "semantic"
                       ]
+                    },
+                    "riskClass": {
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "high"
+                      ]
+                    },
+                    "usageSummary": {
+                      "type": "object",
+                      "properties": {
+                        "policyCount": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "projectCount": {
+                          "type": "number"
+                        },
+                        "currentValueCount": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "policyCount",
+                        "projectCount",
+                        "currentValueCount"
+                      ],
+                      "additionalProperties": false
                     },
                     "diffs": {
                       "type": "array",

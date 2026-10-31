@@ -245,8 +245,10 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
                       data-tone={entry.outcome === "error" || entry.outcome === "conflict" ? "warning" : undefined}>
                       {entry.outcome === "create" ? "新建" : entry.outcome === "revise" ? "修订" : entry.outcome === "error" ? "错误"
                         : entry.outcome === "skip" ? "跳过" : "冲突"}</span>
-                      {entry.revisionClass ? <div>{entry.revisionClass === "semantic" ? "语义修订" : "说明修订"}</div> : null}</td>
+                      {entry.revisionClass ? <div>{entry.revisionClass === "semantic" ? "语义修订" : "说明修订"}</div> : null}
+                      {entry.riskClass ? <div>{entry.riskClass === "high" ? "高风险" : "低风险"}</div> : null}</td>
                     <td>{entry.diffs?.map((diff) => <div key={diff.field}>{diff.field}：{formatDiffValue(diff.oldValue)} → {formatDiffValue(diff.newValue)}</div>)}
+                      {entry.usageSummary ? <div>{entry.usageSummary.policyCount === null ? "策略使用量暂不可用" : `策略 ${entry.usageSummary.policyCount}`} · 项目 {entry.usageSummary.projectCount} · 当前值 {entry.usageSummary.currentValueCount}</div> : null}
                       {entry.diagnostics.map((item, i) => <div key={`${item.field}-${item.line}-${i}`}>
                       第 {item.line} 行 · {item.field}：{item.message}</div>)}</td>
                   </tr>)}</tbody>

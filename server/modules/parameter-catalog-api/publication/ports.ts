@@ -4,9 +4,12 @@ import {
   CatalogReleaseDigest,
   CatalogReleaseId,
   PublicationJobId,
+  ParameterDefinitionId,
   type CatalogReleasePin,
 } from "../../parameter-catalog-contract/index";
 import { classifyImpact } from "../../catalog-publication/authorization/classify";
+import { createUsageQueries } from "../../parameter-bindings/usage";
+import { createUsageProjectionFromQueries } from "../read/ports";
 import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "../../catalog-publication/builder/capabilities";
 import { withPublicationCoordinator } from "../../catalog-publication/coordinator";
 import { enqueuePublicationJob } from "../../catalog-publication/enqueue";
@@ -14,6 +17,8 @@ import { impactFactsFromAllocation } from "../../catalog-publication/jobs/execut
 import { parsePublicationChangeSet, previewPublicationCandidate } from "../../catalog-publication/preview";
 import { parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
 import { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
+import { parseMarkdown } from "../../catalog-publication/import/markdownImport/parse";
+import { resolveSubject } from "../../catalog-publication/import/markdownImport/resolve";
 import { modulePath, readPlacementHintEvidence } from "../../parameter-governance/registration/readRepository";
 import {
   getCandidate,
@@ -237,6 +242,7 @@ export function bindCatalogPublicationCommands(input: {
         return { ok: false, error: { kind: "reason", reason: "candidate-stale" } };
       }
       let plan: ReturnType<typeof planMarkdownImport> | undefined;
+      let entryChangeIndexes: number[] = [];
       let placementHints: PlacementHintWithWarnings[] = [];
       if (command.markdownImport) {
         const artifact = await getArtifactByDigest(db, pointer.current.digest);
@@ -245,6 +251,35 @@ export function bindCatalogPublicationCommands(input: {
         const snapshot = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
         plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot);
+        const subjects = new Map(parseMarkdown(command.markdownImport.document).subjects.map((section) =>
+          [section.heading, resolveSubject(section, snapshot).subject]));
+        const definitionFor = (entry: ReturnType<typeof planMarkdownImport>["entries"][number]) => {
+          const subject = subjects.get(entry.subjectHeading);
+          return snapshot.documents.find((item) => item.kind === "definition" && item.content.subjectId === subject?.content.id && item.content.propertyKey === entry.propertyKey);
+        };
+        entryChangeIndexes = plan.entries.map((entry) => {
+          const definition = definitionFor(entry);
+          const subject = subjects.get(entry.subjectHeading);
+          return plan!.changeSet?.findIndex((change) =>
+            (change.op === "revise-definition" && entry.outcome === "revise" && change.definitionId === definition?.content.id)
+            || (change.op === "create-definition" && entry.outcome === "create" && change.subjectId === subject?.content.id && change.propertyKey === entry.propertyKey)
+            || (change.op === "create-subject-with-definitions" && entry.outcome === "create" && change.selector.value === entry.selector && change.definitions.some((item) => item.propertyKey === entry.propertyKey))) ?? -1;
+        });
+        const semanticIds = plan.entries.flatMap((entry) => {
+          if (entry.outcome !== "revise" || entry.revisionClass !== "semantic") return [];
+          const definition = definitionFor(entry);
+          return definition?.kind === "definition" ? [ParameterDefinitionId(definition.content.id)] : [];
+        });
+        const usage = pool && semanticIds.length ? await createUsageProjectionFromQueries(createUsageQueries(pool)).summarizeMany({
+          organizationId: command.organizationId, principalId: command.principalId,
+          projectScope: command.projectScope ?? { kind: "only", ids: [] }, definitionIds: semanticIds,
+        }) : new Map();
+        plan.entries = plan.entries.map((entry) => {
+          if (entry.outcome !== "revise" || entry.revisionClass !== "semantic") return entry;
+          const definition = definitionFor(entry);
+          const summary = definition?.kind === "definition" ? usage.get(ParameterDefinitionId(definition.content.id)) : undefined;
+          return { ...entry, ...(summary ? { usageSummary: summary } : {}) };
+        });
         if (plan.placementHints.length && pool) {
           const { modules, registrations } = await readPlacementHintEvidence(pool, command.organizationId);
           placementHints = plan.placementHints.map((hint) => {
@@ -278,6 +313,21 @@ export function bindCatalogPublicationCommands(input: {
       });
       if (!previewed.ok) {
         return { ok: false, error: mapPreviewError(previewed.error.kind) };
+      }
+      if (plan?.changeSet) {
+        const facts = previewed.value.impactFacts;
+        plan.entries = plan.entries.map((entry, index) => {
+          if (entry.outcome !== "create" && entry.outcome !== "revise") return entry;
+          const operation = facts.operations[entryChangeIndexes[index] ?? -1];
+          if (!operation) return entry;
+          const semantic = operation.op === "revise-definition" && operation.class === "semantic";
+          const newSubject = operation.op === "create-subject-with-definitions";
+          const classified = classifyImpact({ ...facts, operations: [operation], introducesNewSubject: newSubject,
+            changesSelector: newSubject && facts.changesSelector, changesAlias: false, changesFallback: false,
+            tightensExistingContract: semantic && facts.tightensExistingContract, changesUnitOrSemantic: semantic,
+            retiresIdentity: false });
+          return { ...entry, ...(classified.ok ? { riskClass: classified.value } : {}) };
+        });
       }
       const candidate = {
         id: previewed.value.candidate.id,
