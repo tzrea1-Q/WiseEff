@@ -286,7 +286,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     setForm({...current,sourceName:member.sourceName,content:member.content});setMemberIndex(index);setEditorDirty(false);setReloadEditor(value=>value+1);
   };
   const memberNavigation=(members:{sourceName:string}[],select:(index:number)=>void)=>members.length>1?<nav aria-label="资源文件" className="shared-dtsi-members"><ul>
-    {members.map((member,index)=><li key={index}><Button variant={index===memberIndex?"secondary":"ghost"} aria-current={index===memberIndex?"true":undefined}
+    {members.map((member,index)=><li key={index}><Button variant="outline" aria-current={index===memberIndex?"true":undefined}
       disabled={pending} onClick={()=>select(index)}>{member.sourceName}</Button></li>)}</ul></nav>:null;
   const importControls=<>
     <input ref={upload} type="file" accept=".dts,.dtsi,.h,.hpp,.zip" multiple hidden onChange={event=>{void importFiles(event.target.files);event.target.value="";}} />

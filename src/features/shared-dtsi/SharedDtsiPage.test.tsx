@@ -165,7 +165,14 @@ describe("shared DTSI draft authoring", () => {
     files.forEach((file,index)=>{Object.defineProperty(file,"webkitRelativePath",{value:["lib/main.dtsi","lib/parts/node.dtsi","headers/constants.h"][index]});
       Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode([ '/include/ "parts/node.dtsi"\n','/ { node {}; };\n',"#define VALUE 42\n"][index]!).buffer});});
     await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,files);
-    await user.click(await screen.findByRole("button",{name:"headers/constants.h"}));
+    const first=await screen.findByRole("button",{name:"lib/main.dtsi"});
+    const target=screen.getByRole("button",{name:"headers/constants.h"});
+    expect(first).toHaveAttribute("aria-current","true");
+    expect(first).toHaveAttribute("data-variant","outline");
+    expect(target).toHaveAttribute("data-variant","outline");
+    target.focus(); await user.keyboard("{Enter}");
+    expect(target).toHaveAttribute("aria-current","true");
+    expect(first).not.toHaveAttribute("aria-current");
     expect(screen.getByLabelText("文件路径")).toHaveValue("headers/constants.h");
     expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("#define VALUE 42");
     await user.type(screen.getByLabelText("文件路径"),"pp");
