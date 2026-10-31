@@ -44,14 +44,14 @@ export async function getSharedDtsiDraft(db: Database, auth: AuthContext, resour
   const { buildInputs, ...draft } = row;
   return { ...draft, ...(buildInputs && (buildInputs.includeSearchPaths.length || Object.keys(buildInputs.defines).length) ? { buildInputs } : {}), updatedAt: row.updatedAt.toISOString() };
 }
-export async function listSharedDtsiResources(db: Database, auth: AuthContext, input: { q: string; offset: number; limit: number }) {
+export async function listSharedDtsiResources(db: Database, auth: AuthContext, input: { q: string; offset: number; limit: number; eligible?: "1"; exclude?: string[] }) {
   requireRead(auth);
   if (input.q) {
     const {getSharedDtsiVersion,preparePublishedSharedDtsiSource} = await import("./publication");
     const matches: SharedDtsiResourceSummary[] = [];
     // ponytail: linear metadata scan; frozen selectors avoid recompiling current resources, add a SQL index when library size warrants it.
     for (let offset=0;;offset+=100) {
-      const page = await listSharedDtsiResources(db,auth,{q:"",offset,limit:100});
+      const page = await listSharedDtsiResources(db,auth,{...input,q:"",offset,limit:100});
       for (const row of page.items) {
         const needle=input.q.toLowerCase();
         if ([row.name,row.sourceName].some(value=>value.toLowerCase().includes(needle))) { matches.push(row);continue; }
@@ -85,19 +85,20 @@ export async function listSharedDtsiResources(db: Database, auth: AuthContext, i
     }
     return {items:matches.slice(input.offset,input.offset+input.limit),total:matches.length};
   }
-  const values = [parameterOrganizationId(auth), input.q];
+  const values = [parameterOrganizationId(auth), input.q, input.exclude??[]];
   const tables = `from public.shared_dtsi_resources r left join public.shared_dtsi_drafts d on d.resource_id=r.id and d.organization_id=r.organization_id
     left join lateral (select id,resource_id,version,name,change_description,digest,created_at,created_by_user_id
       from public.shared_dtsi_revisions where resource_id=r.id and organization_id=r.organization_id order by version desc limit 1) v on true`;
   const filter = ` where r.organization_id=$1 and ($2='' or position(lower($2) in lower(r.name))>0
     or exists(select 1 from public.shared_dtsi_draft_members m where m.draft_id=d.id and position(lower($2) in lower(m.source_name))>0)
-    or exists(select 1 from public.shared_dtsi_revision_members m where m.revision_id=v.id and position(lower($2) in lower(m.source_name))>0))`;
+    or exists(select 1 from public.shared_dtsi_revision_members m where m.revision_id=v.id and position(lower($2) in lower(m.source_name))>0))
+    and r.id <> all($3::text[]) ${input.eligible?"and r.state='active' and v.id is not null":""}`;
   const rows = (await db.query<Omit<SharedDtsiResourceSummary,"updatedAt"> & {updatedAt:Date}>(`select r.id as "resourceId",r.name,r.state,r.lifecycle_revision as "lifecycleRevision",r.updated_at as "updatedAt",d.revision as "draftRevision",
     coalesce((select min(m.source_name) from public.shared_dtsi_revision_members m where m.revision_id=v.id),
       (select min(m.source_name) from public.shared_dtsi_draft_members m where m.draft_id=d.id)) as "sourceName",
     case when v.id is null then null else jsonb_build_object('id',v.id,'resourceId',v.resource_id,'version',v.version,'name',v.name,
       'changeDescription',v.change_description,'digest',v.digest,'createdAt',v.created_at,'createdByUserId',v.created_by_user_id) end as "currentVersion" ${tables}${filter}
-    order by r.updated_at desc,r.id limit $3 offset $4`, [...values, input.limit, input.offset])).rows;
+    order by r.updated_at desc,r.id limit $4 offset $5`, [...values, input.limit, input.offset])).rows;
   const total = (await db.query<{ count: string }>(`select count(*) ${tables}${filter}`, values)).rows[0]!.count;
   return { items: rows.map(row => ({ ...row, updatedAt: row.updatedAt.toISOString() })) satisfies SharedDtsiResourceSummary[], total: Number(total) };
 }
