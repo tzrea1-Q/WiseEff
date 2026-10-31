@@ -128,7 +128,7 @@ export async function createSharedDtsiDraft(db: Database, auth: AuthContext, inp
     return getSharedDtsiDraft(tx, auth, resourceId);
   });
 }
-export function inputMembers(input: SharedDtsiDraftInput) {
+export function inputMembers(input: SharedDtsiDraftInput, options: { allowHeaderOnly?: boolean } = {}) {
   const members = input.members ?? [{sourceName:input.sourceName,content:input.content,id:undefined}];
   const paths = new Set<string>(), ids = new Set<string>();
   let bytes = 0;
@@ -139,7 +139,7 @@ export function inputMembers(input: SharedDtsiDraftInput) {
     bytes += Buffer.byteLength(member.content);
   }
   if (bytes > sharedDtsiImportLimits.maxTotalBytes) throw new ApiError("VALIDATION_FAILED", "资源源码总量不能超过 16 MiB。");
-  if (!members.some(member=>/\.dtsi?$/u.test(member.sourceName))) throw new ApiError("VALIDATION_FAILED", "资源至少需要一个 .dts 或 .dtsi 源码成员；头文件单独保存为依赖。");
+  if (!options.allowHeaderOnly && !members.some(member=>/\.dtsi?$/u.test(member.sourceName))) throw new ApiError("VALIDATION_FAILED", "资源至少需要一个 .dts 或 .dtsi 源码成员；头文件单独保存为依赖。");
   return members;
 }
 export async function lockDraft(db: Database, auth: AuthContext, resourceId: string, expectedRevision: number) {
