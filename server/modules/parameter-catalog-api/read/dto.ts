@@ -109,6 +109,10 @@ export function mapDefinitionRevision(
   });
 }
 
+export function definitionLifecycle(definition: ParameterDefinitionSnapshot) {
+  return definition.selectedRevision.content.lifecycle;
+}
+
 export function mapCatalogDefinition(
   snapshot: CatalogSnapshot,
   definition: ParameterDefinitionSnapshot,

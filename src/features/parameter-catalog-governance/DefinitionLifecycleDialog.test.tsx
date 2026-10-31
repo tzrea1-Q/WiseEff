@@ -7,6 +7,7 @@ import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdap
 import {
   CATALOG_RELEASE_ID,
   activeDefinition,
+  catalogPublicationJob,
   readyCatalogDocument
 } from "@/application/parameter-catalog/fixtures";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
@@ -32,10 +33,11 @@ function renderDialog(
       domainState={domainState}
       catalog={ports.catalog}
       catalogReleaseId={CATALOG_RELEASE_ID}
-      definition={{
+      mode="single"
+      definitions={[{
         ...definition,
         lifecycle: intent === "restore-definition" ? "retired" : "active"
-      }}
+      }]}
       createIdempotencyKey={() => "idem-847-lifecycle"}
       onOpenChange={vi.fn()}
       onCompleted={onCompleted}
@@ -50,6 +52,97 @@ function renderDialog(
  * pipeline, and report the actual activation outcome.
  */
 describe("DefinitionLifecycleDialog", () => {
+  it.each([
+    [false, "retire-definition", "退役"], [true, "retire-definition", "退役"],
+    [false, "restore-definition", "恢复"], [true, "restore-definition", "恢复"]
+  ] as const)("finishes an active publication and refreshes on close (batch: %s, %s)", async (batch, intent, action) => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    vi.spyOn(ports.catalog, "publishPublicationCandidate").mockResolvedValue({ item: {
+      ...catalogPublicationJob, status: "active", effective: true, isCurrent: true, currentness: "active"
+    } });
+    const refresh = vi.fn(async () => {});
+    const close = vi.fn();
+    const definitions = batch ? [activeDefinition, { ...activeDefinition, id: "second", propertyKey: "second-key" }] : undefined;
+    render(<DefinitionLifecycleDialog open intent={intent} actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} mode={batch ? "batch" : "single"} definitions={definitions ?? [activeDefinition]}
+      onRefreshEvidence={refresh} onOpenChange={close} />);
+    if (!batch) await user.type(screen.getByLabelText("原因"), "退役原因");
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    const confirm = await screen.findByRole("dialog", { name: `确认${action}` });
+    await user.click(within(confirm).getByRole("button", { name: `确认${action}` }));
+    expect(await screen.findByText(`已生效：${batch ? 2 : 1} 个定义已${action}。`)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "预演影响" })).not.toBeInTheDocument();
+    expect(refresh).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "完成" }));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect(close).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps an activated dialog open when refreshing the current release fails", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    vi.spyOn(ports.catalog, "getPublication").mockResolvedValue({ item: {
+      ...catalogPublicationJob, status: "active", effective: true, isCurrent: true, currentness: "active"
+    } });
+    const close = vi.fn();
+    render(<DefinitionLifecycleDialog open intent="retire-definition" actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} mode="batch" definitions={[activeDefinition]}
+      onRefreshEvidence={async () => { throw new Error("unavailable"); }} onOpenChange={close} />);
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    const confirm = await screen.findByRole("dialog", { name: "确认退役" });
+    await user.click(within(confirm).getByRole("button", { name: "确认退役" }));
+    await screen.findByText("已生效：1 个定义已退役。");
+    await user.click(screen.getByRole("button", { name: "完成" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "完成" })).toBeEnabled();
+  });
+  it("summarizes a batch and submits one candidate with a shared optional reason", async () => {
+    const user = userEvent.setup();
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+    const publish = vi.spyOn(ports.catalog, "publishPublicationCandidate");
+    const second = { ...activeDefinition, id: "second", propertyKey: "second-key", usageSummary: { policyCount: 2, projectCount: 3, currentValueCount: 4 } };
+    render(<DefinitionLifecycleDialog open intent="retire-definition" actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState}
+      catalog={ports.catalog} catalogReleaseId={CATALOG_RELEASE_ID} mode="batch"
+      definitions={[activeDefinition, second]} onOpenChange={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: "退役 2 个参数定义" })).toBeInTheDocument();
+    expect(screen.getByText(/策略使用量暂不可用/)).toBeInTheDocument();
+    expect(screen.getByText(/项目 5.*当前值 6/)).toBeInTheDocument();
+    expect(screen.getByText(/second-key/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("原因"), "统一退役");
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
+    expect(preview.mock.calls[0]?.[0]?.changeSet).toEqual([
+      expect.objectContaining({ op: "retire-definition", definitionId: activeDefinition.id, reason: "统一退役" }),
+      expect.objectContaining({ op: "retire-definition", definitionId: "second", reason: "统一退役" })
+    ]);
+    const confirm = await screen.findByRole("dialog", { name: /确认退役/ });
+    expect(within(confirm).getByText(/项目 5.*当前值 6/)).toBeInTheDocument();
+    expect(within(confirm).queryByText(/second-key/)).not.toBeInTheDocument();
+    expect(confirm).toHaveTextContent("2 个定义");
+    await user.click(within(confirm).getByRole("button", { name: "确认退役" }));
+    await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+  });
+
+  it("allows a batch without a reason and blocks it in mock mode", async () => {
+    const ports = createMockCatalogPorts({ scenario: "ready" });
+    const view = render(<DefinitionLifecycleDialog open intent="restore-definition" actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} mode="batch" definitions={[activeDefinition]}
+      runtimeMode="mock" onOpenChange={vi.fn()} />);
+    expect(screen.getByText("模拟模式不支持，请使用 API 模式。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预演影响" })).toBeDisabled();
+    view.rerender(<DefinitionLifecycleDialog open intent="restore-definition" actor="org-admin"
+      sessionPermissions={["catalog:author", "catalog:publish"]} domainState={domainState} catalog={ports.catalog}
+      catalogReleaseId={CATALOG_RELEASE_ID} mode="batch" definitions={[activeDefinition]}
+      runtimeMode="api" onOpenChange={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "预演影响" })).toBeEnabled();
+  });
   it("requires a reason before it will capture the impact", async () => {
     const user = userEvent.setup();
     const { ports } = renderDialog("retire-definition");
@@ -92,13 +185,13 @@ describe("DefinitionLifecycleDialog", () => {
       const { ports } = renderDialog(intent, definition);
       const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
 
-      await user.type(screen.getByLabelText("原因"), `保留当前内容后${intent === "retire-definition" ? "弃用" : "恢复"}`);
+      await user.type(screen.getByLabelText("原因"), `保留当前内容后${intent === "retire-definition" ? "退役" : "恢复"}`);
       await user.click(screen.getByRole("button", { name: "预演影响" }));
 
       await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
       expect(preview.mock.calls[0]?.[0]?.changeSet?.[0]).toMatchObject({
         op: intent,
-        reason: `保留当前内容后${intent === "retire-definition" ? "弃用" : "恢复"}`,
+        reason: `保留当前内容后${intent === "retire-definition" ? "退役" : "恢复"}`,
         content: {
           displayName: activeDefinition.currentRevision.displayName,
           documentation: activeDefinition.currentRevision.documentation,
@@ -124,13 +217,13 @@ describe("DefinitionLifecycleDialog", () => {
       definitionId: activeDefinition.id
     });
 
-    const confirm = await screen.findByRole("dialog", { name: /确认弃用/ });
+    const confirm = await screen.findByRole("dialog", { name: /确认退役/ });
     expect(within(confirm).getByText(/策略使用量暂不可用/)).toBeInTheDocument();
     expect(within(confirm).getByText(/共享目录影响/)).toBeInTheDocument();
-    await user.click(within(confirm).getByRole("button", { name: "确认弃用" }));
+    await user.click(within(confirm).getByRole("button", { name: "确认退役" }));
 
     await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(onCompleted).toHaveBeenCalled());
+    expect(onCompleted).not.toHaveBeenCalled();
   });
 
   it("keeps the input and does not silently resubmit when the request fails", async () => {
@@ -145,6 +238,7 @@ describe("DefinitionLifecycleDialog", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveAttribute("data-preserve-input", "true");
+    expect(alert).toHaveTextContent("目录发布已变化");
     expect(screen.getByLabelText("原因")).toHaveValue("保留输入");
   });
 

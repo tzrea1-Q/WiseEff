@@ -19,6 +19,7 @@ import {
   catalogCreateProposalRequestSchema,
   catalogCreatePublicationCandidateRequestSchema,
   catalogMarkdownImportResponseSchema,
+  catalogRevisionDocumentResponseSchema,
   catalogCreateReplacementRequestSchema,
   catalogContinueReplacementRequestSchema,
   catalogReplacementListResponseSchema,
@@ -261,7 +262,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     }
 
     const pathname = path.split("?")[0]!;
-    const organizationProjection = method === "GET" && /^\/api\/v2\/catalog\/(subjects|definitions)(\/|$)/.test(pathname)
+    const organizationProjection = method === "GET" && /^\/api\/v2\/catalog\/(subjects|definitions|revision-document)(\/|$)/.test(pathname)
       && !pathname.endsWith("/deletion-preview");
     const resourcePath = path.startsWith("/api/v2/projects/") || organizationProjection ? withOrganizationScope(path, options.organizationId) : path;
     const response = await fetchImpl(`${baseUrl}${resourcePath}`, {
@@ -310,6 +311,12 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
   }
 
   const client = {
+    exportRevisionDocument: (ids: string[], query: { catalogReleaseId: string }) => {
+      const params = new URLSearchParams({ catalogReleaseId: query.catalogReleaseId });
+      for (const id of ids) params.append("definitionId", id);
+      return request("GET", `${canonical("catalog.exportRevisionDocument")}?${params}`, catalogRevisionDocumentResponseSchema,
+        "CatalogRevisionDocumentResponse");
+    },
     listUnregisteredSubjects: (organizationId: string, source: "organization" | "all", catalogReleaseId: string) =>
       request("GET", `${canonical("catalog.listUnregisteredSubjects", { organizationId })}?source=${source}`,
         catalogUnregisteredSubjectsResponseSchema, "CatalogUnregisteredSubjectsResponse", { context: { catalogReleaseId } }),
@@ -1010,6 +1017,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
 
   const _methodCoverage: typeof parameterCatalogClientMethodByRouteId = {
     "catalog.get": "getCatalog",
+    "catalog.exportRevisionDocument": "exportRevisionDocument",
     "catalog.listSubjects": "listSubjects",
     "catalog.getSubject": "getSubject",
     "catalog.listSubjectDefinitions": "listSubjectDefinitions",

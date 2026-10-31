@@ -1,12 +1,21 @@
 import type { ContractJsonValue } from "../../../parameter-catalog-contract/index";
+import type { CatalogReleaseDefinitionDocument } from "../../../catalog-kernel/compiler/types";
 import { CATALOG_CAPABILITY_ALLOW_LIST, validateSupportedDefinitionContent } from "../../builder/capabilities";
 import { MAX_DEFINITION_UNIT_CHARS, type SupportedDefinitionContent, type SupportedValueSchema } from "../../builder/types";
 import { diagnostic, type Definition, type Field, type ImportDiagnostic, type Subject } from "./types";
+import { formatValueType, unwrapArraySchema } from "./schema";
 
-const ALLOWED_FIELDS = new Set(["类型", "类型说明", "单位", "最小值", "最大值", "最少项数", "最多项数", "示例", "简述"]);
+export const IMPORT_FIELDS = {
+  operation: "操作", type: "类型", typeDescription: "类型说明", unit: "单位", minimum: "最小值", maximum: "最大值",
+  minItems: "最少项数", maxItems: "最多项数", example: "示例", description: "简述", documentation: "说明",
+} as const;
+const ALLOWED_FIELDS = new Set<string>(Object.values(IMPORT_FIELDS));
+
+export const isRevisionEntry = (definition: Definition) =>
+  definition.fields.some((field) => field.name === IMPORT_FIELDS.operation && field.value === "修订");
 
 /** Build supported definition content and locate field validation errors. */
-export function buildContent(section: Subject, definition: Definition): {
+export function buildContent(section: Subject, definition: Definition, current?: CatalogReleaseDefinitionDocument["content"]["revision"]): {
   content: SupportedDefinitionContent | null;
   diagnostics: ImportDiagnostic[];
 } {
@@ -26,7 +35,16 @@ export function buildContent(section: Subject, definition: Definition): {
     fields.set(field.name, values);
   }
   const first = (field: string) => fields.get(field)?.[0];
-  const type = first("类型")?.value ?? "";
+  const clears = (field: Field | undefined) => field?.value === "-" && !field.literalDash;
+  const operation = first("操作");
+  if (operation && operation.value !== "新建" && operation.value !== "修订") problem("操作", "操作须为新建或修订。", operation.line);
+  if (first("说明") && definition.documentationLine !== undefined) {
+    problem("说明", "说明字段与正文不能同时填写。", first("说明")!.line);
+  }
+  const { arrays: currentArrays, item: currentItem } = unwrapArraySchema(current ? structuredClone(current.valueSchema) as Record<string, unknown> : {});
+  const currentDepth = currentArrays.length;
+  const currentType = current ? formatValueType(current.valueSchema as Record<string, unknown>) : "";
+  const type = first("类型")?.value ?? currentType;
   let itemType = type;
   let depth = 0;
   const maxDepth = CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxArraySchemaDepth ?? 0;
@@ -38,18 +56,30 @@ export function buildContent(section: Subject, definition: Definition): {
     problem("类型", `类型须为 integer、number、string、boolean、null、mixed 或 array<…>；数组最多嵌套 ${maxDepth} 层。`, first("类型")?.line ?? definition.line);
   }
   const description = first("类型说明");
-  if (itemType === "mixed" && !description?.value.trim()) {
+  if (itemType === "mixed" && (!(description?.value ?? (typeof currentItem.description === "string" ? currentItem.description : "")).trim() || (current && clears(description)))) {
     problem("类型说明", "mixed 必须填写类型说明。", description?.line ?? first("类型")?.line ?? definition.line);
   } else if (itemType !== "mixed" && description) {
     problem("类型说明", "类型说明仅适用于 mixed。", description.line);
   }
-  const itemSchema: Record<string, unknown> = itemType === "mixed"
-    ? { description: description?.value ?? "" } : { type: itemType };
-  let valueSchema = itemSchema;
-  for (let i = 0; i < Math.min(depth, maxDepth + 1); i += 1) valueSchema = { type: "array", items: valueSchema };
+  if (current && depth < currentDepth && currentArrays.slice(depth).some((array) =>
+    Object.keys(array).some((key) => key !== "type" && key !== "items"))) {
+    problem("类型", "更改数组嵌套层数可能丢失现有约束，请使用定义管理入口。", first("类型")!.line);
+  }
+  let valueSchema: Record<string, unknown> = current ? currentItem
+    : itemType === "mixed" ? { description: description?.value ?? "" } : { type: itemType };
+  for (let i = Math.min(depth, maxDepth + 1) - 1; i >= 0; i -= 1) {
+    valueSchema = { ...(currentArrays[i] ?? { type: "array" }), items: valueSchema };
+  }
+  const { item: itemSchema } = unwrapArraySchema(valueSchema);
+  if (current && first("类型")) {
+    if (itemType === "mixed") delete itemSchema.type;
+    else itemSchema.type = itemType;
+  }
+  if (description && itemType === "mixed") itemSchema.description = description.value;
   for (const [field, property] of [["最小值", "minimum"], ["最大值", "maximum"]] as const) {
     const row = first(field);
     if (!row) continue;
+    if (current && clears(row)) { delete itemSchema[property]; continue; }
     const value = Number(row.value);
     if (!row.value || !Number.isFinite(value) || (itemType !== "integer" && itemType !== "number")) {
       problem(field, "数值边界无效。", row.line);
@@ -60,6 +90,7 @@ export function buildContent(section: Subject, definition: Definition): {
   for (const [field, property] of [["最少项数", "minItems"], ["最多项数", "maxItems"]] as const) {
     const row = first(field);
     if (!row) continue;
+    if (current && clears(row)) { delete valueSchema[property]; continue; }
     const value = Number(row.value);
     if (!depth || !row.value || !Number.isInteger(value) || value < 0
       || value > (CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxItemsBound ?? 0) || Object.is(value, -0)) {
@@ -68,11 +99,16 @@ export function buildContent(section: Subject, definition: Definition): {
   }
   if (typeof valueSchema.minItems === "number" && typeof valueSchema.maxItems === "number"
     && valueSchema.minItems > valueSchema.maxItems) {
-    problem("最少项数", "最少项数不能大于最多项数。", first("最少项数")!.line);
+    problem("最少项数", "最少项数不能大于最多项数。", first("最少项数")?.line ?? first("最多项数")?.line ?? definition.line);
   }
   const examples: ContractJsonValue[] = [];
   const exampleLines: number[] = [];
+  if (current && (fields.get("示例")?.length ?? 0) > 1 && fields.get("示例")?.some(clears)) {
+    const row = fields.get("示例")!.find(clears)!;
+    problem("示例", "清空示例时不能同时填写其他示例。", row.line);
+  }
   for (const row of fields.get("示例") ?? []) {
+    if (current && clears(row)) continue;
     try {
       examples.push(type === "string" ? row.value : JSON.parse(row.value, (_key, value: unknown) => {
         if (typeof value === "number" && !Number.isFinite(value)) throw new Error("invalid number");
@@ -84,13 +120,14 @@ export function buildContent(section: Subject, definition: Definition): {
     }
     exampleLines.push(row.line);
   }
-  const content = {
+  const content: SupportedDefinitionContent = {
     displayName: definition.displayName,
-    documentation: definition.documentation,
-    ...(first("简述") ? { description: first("简述")?.value } : {}),
-    ...(first("单位") ? { unit: first("单位")?.value } : {}),
+    documentation: first("说明") ? (current && clears(first("说明")) ? "" : first("说明")!.value)
+      : definition.documentationLine === undefined && current ? current.documentation : current && definition.documentation === "-" ? "" : definition.documentation,
+    ...((clears(first("简述")) && current) ? { description: null } : (first("简述") || current?.description != null) ? { description: first("简述")?.value ?? current?.description } : {}),
+    ...((clears(first("单位")) && current) ? { unit: null } : (first("单位") || current?.unit != null) ? { unit: first("单位")?.value ?? current?.unit } : {}),
     valueSchema: valueSchema as SupportedValueSchema,
-    ...(examples.length ? { examples } : {}),
+    ...(examples.length ? { examples } : current && fields.has("示例") ? { examples: null } : current?.examples != null ? { examples: current.examples } : {}),
   };
   const checked = validateSupportedDefinitionContent(content, "content");
   if (fields.get("示例") && fields.get("示例")!.length > 8) {

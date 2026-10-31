@@ -11615,6 +11615,73 @@
         }
       }
     },
+    "/api/v2/catalog/revision-document": {
+      "get": {
+        "operationId": "catalog.exportRevisionDocument",
+        "summary": "Export visible definitions as a Markdown revision document",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "catalogReleaseId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "definitionId",
+            "in": "query",
+            "required": true,
+            "description": "Repeat for up to 128 definition IDs.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogRevisionDocumentResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/catalog/subjects": {
       "get": {
         "operationId": "catalog.listSubjects",
@@ -83958,6 +84025,56 @@
         ],
         "x-wiseeff-schema": "CatalogDocumentResponse"
       },
+      "CatalogRevisionDocumentResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "document": {
+                "type": "string"
+              },
+              "skipped": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "retired",
+                        "deprecated",
+                        "not-visible",
+                        "unknown",
+                        "documentation-not-expressible",
+                        "not-round-trippable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "document",
+              "skipped"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogRevisionDocumentResponse"
+      },
       "CatalogSubjectListResponse": {
         "type": "object",
         "properties": {
@@ -88827,10 +88944,71 @@
                           "type": "string",
                           "enum": [
                             "create",
+                            "revise",
                             "skip",
                             "conflict",
                             "error"
                           ]
+                        },
+                        "revisionClass": {
+                          "type": "string",
+                          "enum": [
+                            "documentation",
+                            "semantic"
+                          ]
+                        },
+                        "riskClass": {
+                          "type": "string",
+                          "enum": [
+                            "low",
+                            "high"
+                          ]
+                        },
+                        "usageSummary": {
+                          "type": "object",
+                          "properties": {
+                            "policyCount": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "projectCount": {
+                              "type": "number"
+                            },
+                            "currentValueCount": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "policyCount",
+                            "projectCount",
+                            "currentValueCount"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "diffs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "oldValue": {
+                                "type": "object"
+                              },
+                              "newValue": {
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "oldValue",
+                              "newValue"
+                            ],
+                            "additionalProperties": false
+                          }
                         },
                         "diagnostics": {
                           "type": "array",
@@ -89062,10 +89240,71 @@
                       "type": "string",
                       "enum": [
                         "create",
+                        "revise",
                         "skip",
                         "conflict",
                         "error"
                       ]
+                    },
+                    "revisionClass": {
+                      "type": "string",
+                      "enum": [
+                        "documentation",
+                        "semantic"
+                      ]
+                    },
+                    "riskClass": {
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "high"
+                      ]
+                    },
+                    "usageSummary": {
+                      "type": "object",
+                      "properties": {
+                        "policyCount": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "projectCount": {
+                          "type": "number"
+                        },
+                        "currentValueCount": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "policyCount",
+                        "projectCount",
+                        "currentValueCount"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "diffs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "oldValue": {
+                            "type": "object"
+                          },
+                          "newValue": {
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "oldValue",
+                          "newValue"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "diagnostics": {
                       "type": "array",

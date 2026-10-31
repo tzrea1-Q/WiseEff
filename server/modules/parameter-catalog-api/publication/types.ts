@@ -3,6 +3,7 @@ import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
 import type { BackendPermission } from "../../auth/types";
 import type { catalogPublicationCommandByRouteId } from "./mapping";
 import type { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
+import type { UsageProjectScope } from "../../parameter-bindings/usage";
 
 export type PlacementHintWithWarnings = ReturnType<typeof planMarkdownImport>["placementHints"][number] & { warnings: string[] };
 
@@ -37,6 +38,7 @@ export type TrustedPublicationScope = {
   readonly actorKind: TrustedPublicationActorKind;
   readonly permissions: readonly BackendPermission[];
   readonly trustedActor: TrustedInvocationContext;
+  readonly projectScope?: UsageProjectScope;
 };
 
 export type CatalogPublicationAuthResult =
@@ -94,6 +96,7 @@ export type PreviewPublicationCommand = {
   readonly principalId: string;
   readonly permissions: readonly BackendPermission[];
   readonly actorKind: TrustedPublicationActorKind;
+  readonly projectScope?: UsageProjectScope;
   readonly catalogReleaseId: string;
   readonly changeSet?: unknown;
   readonly markdownImport?: { readonly document: string; readonly fileName: string };

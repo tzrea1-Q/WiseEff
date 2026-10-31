@@ -19,7 +19,7 @@ describe("S8-READ threat matrix", () => {
       "pcat-api-02-subject-definition-reads",
       "pcat-api-03-revision-timeline",
     ]);
-    expect(catalogReadRouteIds).toHaveLength(9);
+    expect(catalogReadRouteIds).toHaveLength(10);
     expect(catalogReadRouteIds.sort()).toEqual(Object.keys(parameterCatalogKernelReadByRouteId).sort());
   });
 });

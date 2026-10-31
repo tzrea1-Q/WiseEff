@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { allocationFor, firstAcmePredecessor, frozenPageIdentity } from "../builder/predecessorHarness";
 import { buildCompleteSuccessor } from "../builder/completeSuccessor";
-import { planMarkdownImport } from "./markdownImport";
+import { planMarkdownImport, serializeMarkdownRevision } from "./markdownImport";
 import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 import { buildCreateDefinitionChangeSet, emptyPublicationDraft } from "../../../../src/features/parameter-catalog-governance/publicationState";
 
@@ -26,6 +26,107 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("reports only the missing target when a revision omits its type", () => {
+    const input = "# Driver `acme,power`\n\n## `no_such_key` 不存在\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 单位 | V |";
+    const plan = planMarkdownImport(input, "revision.md", firstAcmePredecessor().first);
+    expect(plan.entries).toHaveLength(1);
+    expect(plan.entries[0]).toMatchObject({ outcome: "error" });
+    expect(plan.entries[0]?.diagnostics).toEqual([{
+      subjectHeading: "# Driver `acme,power`", definitionHeading: "## `no_such_key` 不存在",
+      field: "操作", message: "修订的定义不存在。", line: 3,
+    }]);
+    expect(plan.changeSet).toBeNull();
+  });
+  it("retains subject diagnostics when a revision target is missing", () => {
+    const input = "# Driver `acme,power`\nnature: logical-service · cardinality: multiple\n## `no_such_key` 不存在\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 单位 | V |";
+    const plan = planMarkdownImport(input, "revision.md", firstAcmePredecessor().first);
+    expect(plan.entries[0]).toMatchObject({ outcome: "error" });
+    expect(plan.entries[0]?.diagnostics).toEqual([
+      expect.objectContaining({ field: "主体", line: 2, message: "主体性质或基数与目录不一致。" }),
+      expect.objectContaining({ field: "操作", line: 3, message: "修订的定义不存在。" }),
+    ]);
+  });
+  it("retains definition syntax diagnostics when a revision target is missing", () => {
+    const input = "# Driver `acme,power`\n## `no_such_key` 不存在\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 错误的表格行 |\n| 单位 | V |";
+    const plan = planMarkdownImport(input, "revision.md", firstAcmePredecessor().first);
+    expect(plan.entries[0]).toMatchObject({ outcome: "error" });
+    expect(plan.entries[0]?.diagnostics).toEqual([
+      expect.objectContaining({ field: "操作", line: 2, message: "修订的定义不存在。" }),
+      expect.objectContaining({ field: "字段表", line: 6, message: "字段表格式无效。" }),
+    ]);
+  });
+  it.each([ ["retired", "定义已退役，请先在目录列表中恢复。"], ["deprecated", "仅可修订现行定义。"] ] as const)("rejects revision of a %s definition", (lifecycle, message) => {
+    const snapshot = firstAcmePredecessor().first;
+    const input = { ...snapshot, documents: snapshot.documents.map((item) => item.kind === "definition"
+      ? { ...item, content: { ...item.content, revision: { ...item.content.revision, lifecycle } } } : item) };
+    const plan = planMarkdownImport("# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 说明 | 新说明 |", "revision.md", input);
+    expect(plan.entries[0]).toMatchObject({ outcome: "conflict", diagnostics: expect.arrayContaining([expect.objectContaining({ message })]) });
+    expect(plan.entries[0]?.diagnostics.some((issue) => issue.message.includes("如要修订"))).toBe(false);
+  });
+  it("round trips exported revision documents without changes", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const original = snapshot.documents.find((item) => item.kind === "definition");
+    if (!original || original.kind !== "definition") throw new Error("fixture missing");
+    const numeric = { ...original, content: { ...original.content, revision: { ...original.content.revision,
+      valueSchema: { type: "array", minItems: 1, maxItems: 3, items: { type: "array", minItems: 1, maxItems: 2, items: { type: "integer", minimum: 0, maximum: 10 } } },
+      examples: [[[1, 2]]], description: "输入 \\ 路径 | 输出", documentation: "第一段。\n\n第二段。" } } };
+    const mixed = { ...original, content: { ...original.content, id: "pdef_mixed", propertyKey: "mixed",
+      revision: { ...original.content.revision, displayName: "混合", valueSchema: { type: "array", items: { description: "整数或字符串" } }, examples: [[1, "a"]] } } };
+    const input = { ...snapshot, documents: [...snapshot.documents.filter((item) => item !== original), numeric, mixed] };
+    const { document: markdown } = serializeMarkdownRevision(input, [numeric.content.id, mixed.content.id]);
+    expect(markdown).toContain("# Driver `acme,power`");
+    expect(markdown).toContain("| 操作 | 修订 |");
+    expect(markdown).toContain("输入 \\\\ 路径 \\| 输出");
+    const plan = planMarkdownImport(markdown, "revision.md", input);
+    expect(plan.entries.map((entry) => entry.outcome)).toEqual(["skip", "skip"]);
+    expect(plan.entries.every((entry) => entry.diagnostics.some((issue) => issue.message === "无变化。"))).toBe(true);
+    expect(plan.changeSet).toBeNull();
+    expect(plan.noChange).toBe(true);
+  });
+  it("round trips literal dashes and distinguishes them from clearing fields", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const input = { ...snapshot, documents: snapshot.documents.map((item) => item.kind === "definition"
+      ? { ...item, content: { ...item.content, revision: { ...item.content.revision, unit: "-", description: "-", documentation: "-",
+        valueSchema: { type: "string" }, examples: ["-"] } } } : item) };
+    const { document: markdown } = serializeMarkdownRevision(input, ["pdef_acme_power_iin_max"]);
+    expect(markdown).toContain("| 单位 | \\- |");
+    expect(markdown).toContain("| 简述 | \\- |");
+    expect(markdown).toContain("| 示例 | \\- |");
+    expect(markdown).toContain("| 说明 | \\- |");
+    expect(planMarkdownImport(markdown, "revision.md", input)).toMatchObject({ noChange: true, changeSet: null,
+      entries: [{ outcome: "skip" }] });
+    const cleared = planMarkdownImport(markdown.replace("| 单位 | \\- |", "| 单位 | - |"), "revision.md", input);
+    expect(cleared.changeSet).toMatchObject([{ op: "revise-definition", content: { unit: null } }]);
+    const clearedDocumentation = planMarkdownImport(markdown.replace("| 说明 | \\- |", "| 说明 | - |"), "revision.md", input);
+    expect(clearedDocumentation.changeSet).toMatchObject([{ op: "revise-definition", content: { documentation: "" } }]);
+    const literal = planMarkdownImport("# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 单位 | \\- |", "revision.md", snapshot);
+    expect(literal.changeSet).toMatchObject([{ op: "revise-definition", content: { unit: "-" } }]);
+  });
+  it("plans deterministic partial revisions with the builder's content class", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const revision = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 最大值 | 3000 |";
+    const plan = planMarkdownImport(revision, "d.md", snapshot);
+    expect(plan.entries[0]).toMatchObject({ outcome: "revise", revisionClass: "semantic",
+      diffs: [expect.objectContaining({ field: "最大值", oldValue: null, newValue: 3000 })] });
+    expect(plan.changeSet).toEqual(planMarkdownImport(revision, "d.md", snapshot).changeSet);
+    expect(plan.changeSet).toMatchObject([{ op: "revise-definition", class: "semantic", content: {
+      unit: "mA", documentation: "Maximum accepted input current.", valueSchema: { type: "integer", minimum: 0, maximum: 3000 },
+    } }]);
+    const documentation = revision.replace("| 最大值 | 3000 |", "| 简述 | 新说明 |");
+    expect(planMarkdownImport(documentation, "d.md", snapshot).entries[0]).toMatchObject({ outcome: "revise", revisionClass: "documentation" });
+  });
+  it("keeps each entry's resolved definition, operation and tightening facts", () => {
+    const base = firstAcmePredecessor().first;
+    const original = base.documents.find((item) => item.kind === "definition");
+    if (!original || original.kind !== "definition") throw new Error("fixture missing");
+    const snapshot = { ...base, documents: [...base.documents, { ...original, content: { ...original.content, id: "pdef_other", propertyKey: "other" } }] };
+    const input = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 最小值 | 1 |\n## `other` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 单位 | A |";
+    const plan = planMarkdownImport(input, "batch.md", snapshot);
+    expect(plan.entries).toMatchObject([
+      { definitionId: "pdef_acme_power_iin_max", operationIndex: 0, tightensExistingContract: true },
+      { definitionId: "pdef_other", operationIndex: 1, tightensExistingContract: false },
+    ]);
+  });
   it("builds identical artifact bytes and candidate content with or without placement hints", async () => {
     const predecessor = firstAcmePredecessor();
     const plain = planMarkdownImport(document, "d.md", predecessor.first);

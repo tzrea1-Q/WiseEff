@@ -2,6 +2,8 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createCatalogKernel } from "../../catalog-kernel/interface";
+import { firstAcmePredecessor } from "../../catalog-publication/builder/predecessorHarness";
+import { ParameterDefinitionId } from "../../parameter-catalog-contract/index";
 import { seedCompiledCatalogProjection } from "../../catalog-kernel/runtime/currentSnapshot";
 import {
   CATALOG_RELEASE_HEADER,
@@ -89,12 +91,88 @@ describe("S8-READ HTTP against a real catalog snapshot", () => {
       usage: zeroUsageProjection,
       timeline: kernelOnlyTimelineComposer,
       authenticate: async () => ({ ok: true, scope }),
+      loadRevisionExportSnapshot: async (pin) => pin.id === pins.current.id ? { ...firstAcmePredecessor().first,
+        manifest: { ...firstAcmePredecessor().first.manifest, release: { ...firstAcmePredecessor().first.manifest.release, id: pins.current.id } } } : null,
     };
   }, 60_000);
 
   afterAll(async () => {
     await pool?.end();
     await database?.close();
+  });
+
+  it("exports only visible active definitions for the current release and refuses a historical pin", async () => {
+    const active = "pdef_acme_power_iin_max";
+    const hidden = "pdef_acme_power_iin_min";
+    const request = (readPorts: CatalogReadPorts) => requestJson<{ item: { document: string; skipped: { id: string; reason: string }[] } }>(
+      createCatalogReadHttpServer(readPorts),
+      `/api/v2/catalog/revision-document?catalogReleaseId=${releaseId}&definitionId=${active}&definitionId=${hidden}&definitionId=unknown`,
+    );
+    const limited: CatalogReadPorts = { ...ports, authenticate: async () => ({ ok: true, scope: { ...scope,
+      definitions: { kind: "only", ids: [ParameterDefinitionId(active)], fingerprint: "limited" } } }) };
+    const exported = await request(limited);
+    expect(exported.status).toBe(200);
+    expect(exported.body.item.document).toContain("## `iin_max`");
+    expect(exported.body.item.document).not.toContain("## `iin_min`");
+    expect(exported.body.item.skipped).toEqual([{ id: hidden, reason: "not-visible" }, { id: "unknown", reason: "not-visible" }]);
+    const stale = await requestJson(createCatalogReadHttpServer(ports),
+      `/api/v2/catalog/revision-document?catalogReleaseId=${previousReleaseId}&definitionId=${active}`);
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ error: { details: { reason: "release-drift" } } });
+    const forbidden = await request({ ...ports, authenticate: async () => ({ ok: true, scope: { ...scope, canReadCatalog: false } }) });
+    expect(forbidden.status).toBe(403);
+    const agent = await request({ ...limited, authenticate: async () => ({ ok: true, scope: { ...scope, actorKind: "agent",
+      definitions: { kind: "only", ids: [ParameterDefinitionId(active)], fingerprint: "limited" } } }) });
+    expect(agent.status).toBe(200);
+    expect(agent.body.item).toEqual(exported.body.item);
+    const tooMany = await requestJson(createCatalogReadHttpServer(ports),
+      `/api/v2/catalog/revision-document?catalogReleaseId=${releaseId}&${Array.from({ length: 129 }, () => `definitionId=${active}`).join("&")}`);
+    expect(tooMany.status).toBe(400);
+    const drift = await requestJson(createCatalogReadHttpServer(ports),
+      `/api/v2/catalog/revision-document?catalogReleaseId=${previousReleaseId}&definitionId=${active}`,
+      { headers: { [CATALOG_RELEASE_HEADER]: releaseId } });
+    expect(drift.status).toBe(409);
+  });
+
+  it("skips individually when documentation or another field cannot round trip", async () => {
+    const source = firstAcmePredecessor().first;
+    const definition = source.documents.find((item) => item.kind === "definition");
+    if (!definition || definition.kind !== "definition") throw new Error("fixture missing");
+    for (const [revision, reason] of [
+      [{ documentation: "第一段\n\n## 文档标题" }, "documentation-not-expressible"],
+      [{ description: "第一行\n第二行" }, "not-round-trippable"],
+    ] as const) {
+      const changed = { ...source, manifest: { ...source.manifest, release: { ...source.manifest.release, id: releaseId } }, documents: source.documents.map((item) => item === definition
+        ? { ...definition, content: { ...definition.content, revision: { ...definition.content.revision, ...revision } } } : item) };
+      const readPorts = { ...ports, loadRevisionExportSnapshot: async () => changed };
+      const response = await requestJson<{ item: { document: string; skipped: { id: string; reason: string }[] } }>(
+        createCatalogReadHttpServer(readPorts),
+        `/api/v2/catalog/revision-document?catalogReleaseId=${releaseId}&definitionId=${definition.content.id}`,
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.item.document).not.toContain("## `iin_max`");
+      expect(response.body.item.skipped).toEqual([{ id: definition.content.id, reason }]);
+    }
+  });
+
+  it("exports valid entries alongside an unrepresentable definition", async () => {
+    const source = firstAcmePredecessor().first;
+    const original = source.documents.find((item) => item.kind === "definition");
+    if (!original || original.kind !== "definition") throw new Error("fixture missing");
+    const invalid = { ...original, content: { ...original.content, revision: { ...original.content.revision, documentation: "## 标题" } } };
+    const valid = { ...original, content: { ...original.content, id: "pdef_acme_power_iin_min", propertyKey: "iin_min" } };
+    const changed = { ...source, manifest: { ...source.manifest, release: { ...source.manifest.release, id: releaseId } },
+      documents: [...source.documents.filter((item) => item !== original), invalid, valid] };
+    const readPorts = { ...ports, loadRevisionExportSnapshot: async () => changed };
+    const response = await requestJson<{ item: { document: string; skipped: { id: string; reason: string }[] } }>(
+      createCatalogReadHttpServer(readPorts),
+      `/api/v2/catalog/revision-document?catalogReleaseId=${releaseId}&definitionId=${invalid.content.id}&definitionId=${valid.content.id}&definitionId=unknown`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.body.item.document).toContain("## `iin_min`");
+    expect(response.body.item.document).not.toContain("## `iin_max`");
+    expect(response.body.item.skipped).toEqual([{ id: invalid.content.id, reason: "documentation-not-expressible" },
+      { id: "unknown", reason: "unknown" }]);
   });
 
   it("closes all nine GET routes through Kernel over HTTP with the release header", async () => {
@@ -104,6 +182,7 @@ describe("S8-READ HTTP against a real catalog snapshot", () => {
     expect(catalog.status).toBe(200);
     expect(catalog.headers.get(CATALOG_RELEASE_HEADER)).toBe(releaseId);
     const document = catalogDocumentResponseSchema.parse(catalog.body);
+    if (!document.item) throw new Error("expected published catalog");
     expect(document.item.status).toBe("ready");
     expect(document.item.catalogReleaseId).toBe(releaseId);
     expect(document.item.digest).toMatch(/^sha256:/);

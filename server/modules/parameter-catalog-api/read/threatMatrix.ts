@@ -14,7 +14,7 @@ export const THREAT_MATRIX: readonly ThreatMatrixRow[] = Object.freeze([
     id: 1,
     name: "nine-route-kernel-closure",
     initialState: "frozen S8-CON read request, captured Kernel pin, trusted scope, and cursor",
-    action: "dispatch each of the nine GET /api/v2/catalog read routes",
+    action: "dispatch each GET /api/v2/catalog read route",
     expected: "exactly the S8-CON Kernel snapshot operation for that route; one canonical DTO or typed error",
     leftover: "no extra Catalog read, no handler-owned alias/lifecycle/revision/page policy",
   }),

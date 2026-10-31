@@ -13,7 +13,7 @@ export type SyntaxDiagnostic = ImportDiagnostic & {
   definitionLine?: number;
 };
 
-export type Field = { name: string; value: string; line: number };
+export type Field = { name: string; value: string; line: number; literalDash?: boolean };
 export type Definition = {
   heading: string;
   line: number;
@@ -39,7 +39,14 @@ export type ImportEntry = {
   selector: string;
   propertyKey: string;
   displayName: string;
-  outcome: "create" | "skip" | "conflict" | "error";
+  definitionId?: string;
+  operationIndex?: number;
+  tightensExistingContract?: boolean;
+  outcome: "create" | "revise" | "skip" | "conflict" | "error";
+  revisionClass?: "documentation" | "semantic";
+  riskClass?: "low" | "high";
+  usageSummary?: { policyCount: number | null; projectCount: number; currentValueCount: number };
+  diffs?: { field: string; oldValue: unknown; newValue: unknown }[];
   diagnostics: ImportDiagnostic[];
 };
 

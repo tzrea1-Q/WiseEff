@@ -13,6 +13,7 @@ import {
   catalogUpdatePlacementRequestSchema,
   catalogWithdrawProposalRequestSchema
 } from "@wiseeff/dto-schemas";
+import { MockDefinitionBatchUnsupportedError } from "./definitionBatch";
 
 import type {
   CatalogConditionalWriteContext,
@@ -483,6 +484,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async previewMarkdownImport() {
       throw new Error("模拟模式不支持导入预览，请使用 API 模式。");
+    },
+    async exportRevisionDocument() {
+      throw new MockDefinitionBatchUnsupportedError();
     },
     async getPublicationCandidate(candidateId) {
       assertReadyForRead(store);

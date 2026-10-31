@@ -1,6 +1,7 @@
 import type {
   CatalogMarkdownImportRequest,
   CatalogMarkdownImportResponse,
+  CatalogRevisionDocumentResponse,
   CatalogDefinitionErasureListResponse,
   CatalogDefinitionDeletionPreviewResponse,
   CatalogDeleteDefinitionRequest,
@@ -121,6 +122,7 @@ export interface ParameterCatalogRepository {
     context: CatalogPublicationWriteContext
   ): Promise<CatalogPublicationCandidateResponse>;
   previewMarkdownImport?(body: CatalogMarkdownImportRequest, context: CatalogPublicationWriteContext): Promise<CatalogMarkdownImportResponse>;
+  exportRevisionDocument?(ids: string[], query: { catalogReleaseId: string }): Promise<CatalogRevisionDocumentResponse>;
   getPublicationCandidate(candidateId: string): Promise<CatalogPublicationCandidateResponse>;
   publishPublicationCandidate(
     candidateId: string,

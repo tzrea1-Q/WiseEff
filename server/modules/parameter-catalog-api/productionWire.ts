@@ -67,7 +67,8 @@ import { createParameterCatalogMigrationService } from "../parameter-catalog-mig
 import type { ReplacementPublicationPorts } from "../parameter-catalog-migration/types";
 import { enqueuePublicationJob } from "../catalog-publication/enqueue";
 import { withPublicationCoordinator } from "../catalog-publication/coordinator";
-import { getJob, getReceiptByJobId } from "../catalog-publication/persistence/store";
+import { getArtifactByDigest, getJob, getReceiptByJobId } from "../catalog-publication/persistence/store";
+import { parseBundleBytes, targetReleaseOf } from "../catalog-publication/builder/bundleCodec";
 import {
   bindCatalogGovernanceCommands,
   bindGovernanceCatalogQueryPorts,
@@ -514,6 +515,7 @@ const publicationScope = (auth: AuthContext): TrustedPublicationScope => ({
   actorKind: governanceActorKind(auth),
   permissions: auth.permissions,
   trustedActor: createUserInvocation(auth),
+  projectScope: parameterUsageProjectScope(auth) ?? { kind: "only", ids: [] },
 });
 
 const authenticatePublication =
@@ -700,6 +702,13 @@ const createReadPorts = (
     usage: createUsageProjectionFromQueries(usage),
     timeline: kernelOnlyTimelineComposer,
     authenticate: authenticateCatalog(resolveAuth, db),
+    loadRevisionExportSnapshot: async (pin) => {
+      if (!db) return null;
+      const artifact = await getArtifactByDigest(db, pin.digest);
+      if (!artifact.ok) return null;
+      const bundle = parseBundleBytes(artifact.value.artifactBytes);
+      return bundle.ok ? targetReleaseOf(bundle.bundle) ?? null : null;
+    },
   };
 };
 

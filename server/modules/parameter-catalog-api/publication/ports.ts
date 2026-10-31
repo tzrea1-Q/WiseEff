@@ -4,9 +4,12 @@ import {
   CatalogReleaseDigest,
   CatalogReleaseId,
   PublicationJobId,
+  ParameterDefinitionId,
   type CatalogReleasePin,
 } from "../../parameter-catalog-contract/index";
 import { classifyImpact } from "../../catalog-publication/authorization/classify";
+import { createUsageQueries } from "../../parameter-bindings/usage";
+import { createUsageProjectionFromQueries } from "../read/ports";
 import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "../../catalog-publication/builder/capabilities";
 import { withPublicationCoordinator } from "../../catalog-publication/coordinator";
 import { enqueuePublicationJob } from "../../catalog-publication/enqueue";
@@ -14,6 +17,7 @@ import { impactFactsFromAllocation } from "../../catalog-publication/jobs/execut
 import { parsePublicationChangeSet, previewPublicationCandidate } from "../../catalog-publication/preview";
 import { parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
 import { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
+
 import { modulePath, readPlacementHintEvidence } from "../../parameter-governance/registration/readRepository";
 import {
   getCandidate,
@@ -36,6 +40,16 @@ import type {
   PublicationJobView,
   PublicationSurfaceView,
 } from "./types";
+
+function publicImportEntries(entries: ReturnType<typeof planMarkdownImport>["entries"]) {
+  return entries.map((entry) => {
+    const result = { ...entry };
+    delete result.definitionId;
+    delete result.operationIndex;
+    delete result.tightensExistingContract;
+    return result;
+  });
+}
 
 const authorOrganizationIdOf = (candidate: PublicationCandidateRecord): string | null => {
   const value = candidate.identityAllocation.authorOrganizationId;
@@ -245,6 +259,19 @@ export function bindCatalogPublicationCommands(input: {
         const snapshot = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
         plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot);
+        const semanticIds = plan.entries.flatMap((entry) => {
+          if (entry.outcome !== "revise" || entry.revisionClass !== "semantic" || !entry.definitionId) return [];
+          return [ParameterDefinitionId(entry.definitionId)];
+        });
+        const usage = pool && semanticIds.length ? await createUsageProjectionFromQueries(createUsageQueries(pool)).summarizeMany({
+          organizationId: command.organizationId, principalId: command.principalId,
+          projectScope: command.projectScope ?? { kind: "only", ids: [] }, definitionIds: semanticIds,
+        }) : new Map();
+        plan.entries = plan.entries.map((entry) => {
+          if (entry.outcome !== "revise" || entry.revisionClass !== "semantic") return entry;
+          const summary = entry.definitionId ? usage.get(ParameterDefinitionId(entry.definitionId)) : undefined;
+          return { ...entry, ...(summary ? { usageSummary: summary } : {}) };
+        });
         if (plan.placementHints.length && pool) {
           const { modules, registrations } = await readPlacementHintEvidence(pool, command.organizationId);
           placementHints = plan.placementHints.map((hint) => {
@@ -262,7 +289,7 @@ export function bindCatalogPublicationCommands(input: {
             return { ...hint, warnings };
           });
         }
-        if (!plan.changeSet) return { ok: true, value: { candidate: null, noChange: plan.noChange, entries: plan.entries, source: plan.source, placementHints } };
+        if (!plan.changeSet) return { ok: true, value: { candidate: null, noChange: plan.noChange, entries: publicImportEntries(plan.entries), source: plan.source, placementHints } };
       }
       const parsed = plan?.changeSet ?? parsePublicationChangeSet(command.changeSet);
       if ("error" in parsed) return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
@@ -279,6 +306,21 @@ export function bindCatalogPublicationCommands(input: {
       if (!previewed.ok) {
         return { ok: false, error: mapPreviewError(previewed.error.kind) };
       }
+      if (plan?.changeSet) {
+        const facts = previewed.value.impactFacts;
+        plan.entries = plan.entries.map((entry) => {
+          if (entry.outcome !== "create" && entry.outcome !== "revise") return entry;
+          const operation = facts.operations[entry.operationIndex ?? -1];
+          if (!operation) return entry;
+          const semantic = operation.op === "revise-definition" && operation.class === "semantic";
+          const newSubject = operation.op === "create-subject-with-definitions";
+          const classified = classifyImpact({ ...facts, operations: [operation], introducesNewSubject: newSubject,
+            changesSelector: newSubject && facts.changesSelector, changesAlias: false, changesFallback: false,
+            tightensExistingContract: semantic && Boolean(entry.tightensExistingContract), changesUnitOrSemantic: semantic,
+            retiresIdentity: false });
+          return { ...entry, ...(classified.ok ? { riskClass: classified.value } : {}) };
+        });
+      }
       const candidate = {
         id: previewed.value.candidate.id,
         expectedBaseReleaseId: previewed.value.candidate.expectedBaseReleaseId,
@@ -288,7 +330,7 @@ export function bindCatalogPublicationCommands(input: {
         capabilityContract: capabilityOf(previewed.value.candidate),
         authorOrganizationId: command.organizationId,
       };
-      return { ok: true, value: plan ? { candidate, noChange: plan.noChange, entries: plan.entries, source: plan.source, placementHints } : candidate };
+      return { ok: true, value: plan ? { candidate, noChange: plan.noChange, entries: publicImportEntries(plan.entries), source: plan.source, placementHints } : candidate };
     },
     async getCandidate(query) {
       let candidateId: ReturnType<typeof CatalogCandidateId>;

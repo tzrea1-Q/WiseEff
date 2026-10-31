@@ -117,10 +117,10 @@ describe("DefinitionEditorBody", () => {
     await user.click(screen.getByRole("button", { name: "预演影响" }));
     await user.click(await screen.findByRole("button", { name: "确认并执行纠错" }));
     await user.click(within(screen.getByRole("dialog", { name: "确认执行身份纠错" })).getByRole("button", { name: "确认执行" }));
-    await user.click(await screen.findByRole("button", { name: "单独弃用旧定义" }));
+    await user.click(await screen.findByRole("button", { name: "单独退役旧定义" }));
     expect(retire).not.toHaveBeenCalled();
     expect(await screen.findByRole("alert")).toHaveTextContent("旧定义已有当前项目引用");
-    expect(screen.queryByRole("button", { name: "单独弃用旧定义" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "单独退役旧定义" })).not.toBeInTheDocument();
   });
 
   it("preserves a colliding identity and links to the existing Definition", async () => {
@@ -710,7 +710,7 @@ describe("DefinitionEditorBody", () => {
 
     await user.click(screen.getByRole("button", { name: "确认并执行迁移" }));
     const confirm = await screen.findByRole("dialog", { name: /确认执行身份纠错迁移/ });
-    expect(within(confirm).getByText(/迁移不会自动弃用旧定义/)).toBeInTheDocument();
+    expect(within(confirm).getByText(/迁移不会自动退役旧定义/)).toBeInTheDocument();
     await user.click(within(confirm).getByRole("button", { name: "确认执行" }));
 
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));

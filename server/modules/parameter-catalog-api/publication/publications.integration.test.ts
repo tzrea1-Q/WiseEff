@@ -17,6 +17,11 @@ import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
 import { runPublicationManagerOnce } from "../../catalog-publication/jobs/manager";
 import { getReceiptByJobId } from "../../catalog-publication/persistence/store";
+import { getArtifactByDigest } from "../../catalog-publication/persistence/store";
+import { parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
+import { createCatalogReadHttpServer } from "../read/http";
+import { kernelOnlyTimelineComposer, unregisteredProjection, zeroUsageProjection } from "../read/ports";
+import { requestJson } from "../../../test/testClient";
 import { withPublicationCoordinator } from "../../catalog-publication/coordinator";
 import {
   enablePublicationPolicy,
@@ -34,8 +39,11 @@ import {
   persistPredecessorArtifact,
   connect,
 } from "../../catalog-kernel/install/publicationTestHarness";
-import { CATALOG_RELEASE_HEADER, catalogMarkdownImportResponseSchema, catalogPublicationJobResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
-import { PublicationJobId } from "../../parameter-catalog-contract/index";
+import { CATALOG_RELEASE_HEADER, catalogMarkdownImportResponseSchema, catalogPublicationCandidateResponseSchema, catalogPublicationJobResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
+import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, PublicationJobId } from "../../parameter-catalog-contract/index";
+import { createCatalogKernel } from "../../catalog-kernel/interface";
+import { createRegistrationService } from "../../parameter-governance/registration";
+import { createSourceBackedBindingService } from "../../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import {
   createPostgresDatabase,
   createDatabase,
@@ -124,6 +132,7 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
       actorKind: "org-admin",
       permissions: auth.permissions,
       trustedActor: createUserInvocation(auth),
+      projectScope: { kind: "all" },
     };
   };
 
@@ -253,6 +262,92 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     expect(catalogMarkdownImportResponseSchema.parse(conflict.body).item).toMatchObject({ candidate: null, noChange: false, entries: [{ outcome: "conflict" }] });
     const after = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
     expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+  });
+
+  it("locates revision clearing errors and explains unchanged and conflicting entries", async () => {
+    authenticateAs(publisherScope());
+    const base = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |";
+    const post = (document: string) => request("POST", "/api/v2/catalog/publication-candidates", {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { markdownImport: { document, fileName: "revision.md" } },
+    });
+    expect((await post(base)).body).toMatchObject({ item: { entries: [{ outcome: "skip", diagnostics: [
+      { message: expect.stringContaining("无变化"), line: 2 },
+    ] }] } });
+    expect((await post(`${base}\n| 类型 | - |`)).body).toMatchObject({ item: { candidate: null, entries: [
+      { outcome: "error", diagnostics: [expect.objectContaining({ field: "类型", line: 6 })] },
+    ] } });
+    expect((await post(`${base}\n| 单位 | - |`)).body).toMatchObject({ item: { entries: [
+      { outcome: "revise", diffs: expect.arrayContaining([expect.objectContaining({ field: "单位", oldValue: "mA", newValue: null })]) },
+    ] } });
+    expect((await post(`${base}\n| 最小值 | - |\n| 说明 | - |`)).body).toMatchObject({ item: { entries: [
+      { outcome: "revise", diffs: expect.arrayContaining([
+        expect.objectContaining({ field: "最小值", oldValue: 0, newValue: null }),
+        expect.objectContaining({ field: "说明", oldValue: "Maximum accepted input current.", newValue: "" }),
+      ]) },
+    ] } });
+    expect((await post(`${base}\n| 说明 | - |\n\nNew documentation.`)).body).toMatchObject({ item: { candidate: null, entries: [
+      { outcome: "error", diagnostics: expect.arrayContaining([expect.objectContaining({ field: "说明", line: 6 })]) },
+    ] } });
+    expect((await post(base.replace("| 操作 | 修订 |", "| 类型 | integer |"))).body).toMatchObject({ item: { entries: [
+      { outcome: "conflict", diagnostics: [expect.objectContaining({ message: expect.stringContaining("如要修订，请加 `操作：修订`"), line: 2 })] },
+    ] } });
+  });
+
+  it("reports mixed revision risk, scoped usage, missing keys, subject mismatch and the import cap", async () => {
+    authenticateAs(publisherScope());
+    const base = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |";
+    const post = (document: string) => request("POST", "/api/v2/catalog/publication-candidates", {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { markdownImport: { document, fileName: "batch.md" } },
+    });
+    const mixed = `${base}\n| 最小值 | 1 |\n## \`new_one\` New\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`;
+    expect((await post(mixed)).body).toMatchObject({ item: { candidate: { riskClass: "high" }, entries: [
+      { outcome: "revise", revisionClass: "semantic", riskClass: "high", usageSummary: { policyCount: null, projectCount: 0, currentValueCount: 0 } },
+      { outcome: "create", riskClass: "low" },
+    ] } });
+    expect((await post(base.replace("iin_max", "missing"))).body).toMatchObject({ item: { candidate: null, entries: [
+      { outcome: "error", diagnostics: expect.arrayContaining([expect.objectContaining({ field: "操作", line: 2 })]) },
+    ] } });
+    expect((await post(base.replace("# Driver `acme,power`", "# Driver `acme,power`\nnature: logical-service · cardinality: multiple"))).body)
+      .toMatchObject({ item: { candidate: null, entries: [{ outcome: "error" }] } });
+    const tooMany = `# Driver \`acme,power\`\n${Array.from({ length: 129 }, (_, i) => `## \`cap_${i}\` Name\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`).join("\n")}`;
+    const atLimit = tooMany.slice(0, tooMany.lastIndexOf("## `cap_128`"));
+    expect((await post(atLimit)).body).toMatchObject({ item: { candidate: { impactSummary: { addedDefinitionCount: 128 } } } });
+    expect((await post(tooMany)).body).toMatchObject({ item: { candidate: null, entries: [
+      { outcome: "error", diagnostics: [expect.objectContaining({ message: expect.stringContaining("最多导入 128 条"), line: 1 })] },
+    ] } });
+  });
+
+  it("limits semantic revision usage to the caller's organization and project scope", async () => {
+    const pointer = await readCurrentCatalogPointer(pool);
+    if (pointer.kind !== "installed") throw new Error("catalog missing");
+    const snapshot = await createCatalogKernel(pool).loadCurrentCatalog(pointer.current);
+    if (!snapshot.ok) throw new Error("snapshot missing");
+    for (const org of ["usage-1455-a", "usage-1455-b"]) {
+      await pool.query("insert into public.organizations(id,name) values ($1,$1) on conflict (id) do nothing", [org]);
+      await pool.query("insert into public.projects(id,organization_id,name,code) values ($1,$2,$1,$1)", [`project-${org}`, org]);
+      await pool.query("insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,source_key) values ($1,$2,'driver-registration','Driver','compatible:acme,power')", [`attr-${org}`, org]);
+      await pool.query("insert into public.driver_registrations(attribution_subject_id,driver_nature,instance_cardinality) values ($1,'physical-device','multiple')", [`attr-${org}`]);
+      await pool.query("insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id) values ($1,$2,'Driver',$1,1,'driver-group','curated',$3)", [`module-${org}`, org, `attr-${org}`]);
+      const registration = await createRegistrationService(pool).execute({ kind: "register", organizationId: org,
+        subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver", expectedRelease: pointer.current,
+        placement: { mode: "use-default" }, destinationModuleId: `module-${org}`, method: "explicit", proof: { reason: "fixture" },
+        idempotencyKey: `registration-${org}`, context: { actorKind: "org-admin", principalId: `fixture-${org}` } });
+      if (!registration.ok) throw new Error("registration failed");
+      const binding = await createSourceBackedBindingService(pool, { initialPayload: { kind: "number", value: 1 } }).stabilize({
+        snapshot: snapshot.value, organizationId: org, projectId: `project-${org}`, logicalNodeId: `node-${org}`,
+        registrationId: registration.value.registrationId, definitionId: ParameterDefinitionId("pdef_acme_power_iin_max"),
+        effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_1"), expectedEffectiveRevisionId: null,
+      });
+      if (!binding.ok) throw new Error("binding failed");
+    }
+    const post = () => request("POST", "/api/v2/catalog/publication-candidates", { headers: { [CATALOG_RELEASE_HEADER]: pinId },
+      body: { markdownImport: { fileName: "usage.md", document: "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 最小值 | 1 |" } } });
+    authenticateAs(publisherScope("usage-1455-a"));
+    expect((await post()).body).toMatchObject({ item: { entries: [{ usageSummary: { projectCount: 1, currentValueCount: 1 } }] } });
+    authenticateAs({ ...publisherScope("usage-1455-a"), projectScope: { kind: "only", ids: [] } });
+    expect((await post()).body).toMatchObject({ item: { entries: [{ usageSummary: { projectCount: 0, currentValueCount: 0 } }] } });
+    authenticateAs(publisherScope("usage-1455-b"));
+    expect((await post()).body).toMatchObject({ item: { entries: [{ usageSummary: { projectCount: 1, currentValueCount: 1 } }] } });
   });
 
   it("warns about organization placement without changing preview outcomes", async () => {
@@ -605,6 +700,131 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
   });
 });
 
+it("publishes a mixed Markdown create and revision in one Candidate", async () => {
+  const database = await createEphemeralTestDatabase("mdrev");
+  const db = createPostgresDatabase(database.url);
+  const pool = getRootPostgresPool(db)!;
+  const client = await connect(database.url);
+  let close = async () => {};
+  try {
+    const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(client, predecessor);
+    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
+    let pin = { id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest };
+    const ports: CatalogPublicationPorts = {
+      authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId: ORG, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
+      currentRelease: async () => pin,
+      ...bindCatalogPublicationCommands({ db, pool }),
+    };
+    const server = await listenCatalogPublicationHttpServer(ports);
+    close = server.close;
+    const post = async (path: string, body: unknown) => {
+      const response = await fetch(`${server.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: pin.id }, body: JSON.stringify(body) });
+      return { status: response.status, body: await response.json() };
+    };
+    const document = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 简述 | 新说明 |\n## `mixed_new` New definition\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |";
+    const preview = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "revision.md" } });
+    expect(preview.status).toBe(201);
+    const plan = catalogMarkdownImportResponseSchema.parse(preview.body).item;
+    expect(plan.entries[0]).toMatchObject({ outcome: "revise", revisionClass: "documentation", riskClass: "low",
+      diffs: [{ field: "简述", oldValue: null, newValue: "新说明" }] });
+    expect(plan.entries[1]).toMatchObject({ outcome: "create" });
+    const published = await post(`/api/v2/catalog/publication-candidates/${plan.candidate!.id}/publish`, { idempotencyKey: "md-revision" });
+    expect(published.status).toBe(201);
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "markdown-revision-test" })).toBe("claimed");
+    const pointer = await readCurrentCatalogPointer(pool);
+    if (pointer.kind !== "installed") throw new Error("publication did not install a release");
+    expect(pointer.current.id).not.toBe(predecessor.compiled.release.id);
+    const head = await client.query<{ content: Record<string, unknown>; revision_number: string }>(`select r.content, r.revision_number from parameter_catalog.catalog_release_definition_heads h
+      join parameter_catalog.definition_revisions r on r.id = h.revision_id
+      where h.release_id = $1 and h.definition_id = 'pdef_acme_power_iin_max'`, [pointer.current.id]);
+    expect(head.rows[0]).toMatchObject({ revision_number: "2", content: { displayName: "Input current limit", description: "新说明",
+      documentation: "Maximum accepted input current.", unit: "mA", valueSchema: { type: "integer", minimum: 0 } } });
+    const created = await client.query<{ id: string; property_key: string }>(`select d.id, d.property_key from parameter_catalog.catalog_release_definition_heads h
+      join parameter_catalog.parameter_definitions d on d.id = h.definition_id
+      where h.release_id = $1 and d.property_key = 'mixed_new'`, [pointer.current.id]);
+    expect(created.rows).toHaveLength(1);
+    pin = pointer.current;
+    const clearDocument = "# Driver `acme,power`\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 单位 | - |";
+    const clearPreview = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document: clearDocument, fileName: "clear.md" } });
+    const clearPlan = catalogMarkdownImportResponseSchema.parse(clearPreview.body).item;
+    expect(clearPlan).toMatchObject({ candidate: { riskClass: "high" }, entries: [{ outcome: "revise", riskClass: "high" }] });
+    expect((await post(`/api/v2/catalog/publication-candidates/${clearPlan.candidate!.id}/publish`, { idempotencyKey: "md-clear" })).status).toBe(201);
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "markdown-clear-test" })).toBe("claimed");
+    const clearedPointer = await readCurrentCatalogPointer(pool);
+    if (clearedPointer.kind !== "installed") throw new Error("clear did not install a release");
+    pin = clearedPointer.current;
+    const clearedHead = await client.query<{ content: Record<string, unknown> }>(`select r.content from parameter_catalog.catalog_release_definition_heads h
+      join parameter_catalog.definition_revisions r on r.id = h.revision_id
+      where h.release_id = $1 and h.definition_id = 'pdef_acme_power_iin_max'`, [pin.id]);
+    expect(clearedHead.rows[0]!.content).not.toHaveProperty("unit");
+    const retired = await post("/api/v2/catalog/publication-candidates", { changeSet: [{ op: "retire-definition",
+      definitionId: "pdef_acme_power_iin_max", content: { displayName: "Input current limit", description: "新说明",
+        documentation: "Maximum accepted input current.", valueSchema: { type: "integer", minimum: 0 } } }] });
+    expect(retired.status).toBe(201);
+    const retiredId = (retired.body as { item: { id: string } }).item.id;
+    expect((await post(`/api/v2/catalog/publication-candidates/${retiredId}/publish`, { idempotencyKey: "md-retire" })).status).toBe(201);
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "markdown-retire-test" })).toBe("claimed");
+    const retiredPointer = await readCurrentCatalogPointer(pool);
+    if (retiredPointer.kind !== "installed") throw new Error("retirement did not install a release");
+    pin = retiredPointer.current;
+    const runtime = createCatalogKernel(pool);
+    const loaded = await runtime.loadCurrentCatalog(pin);
+    if (!loaded.ok) throw new Error("retired catalog did not load");
+    const readPorts = {
+      runtime,
+      readiness: {
+        current: async () => ({ status: "ready" as const, document: { pin, snapshotKind: "current" as const,
+          releaseSequence: 4, publishedAt: "2026-09-12T00:00:00Z", materializedAt: "2026-09-12T00:00:00Z",
+          materializationFingerprint: loaded.value.materializationFingerprint } }),
+        named: async () => ({ status: "ready" as const, document: { pin, snapshotKind: "current" as const,
+          releaseSequence: 4, publishedAt: "2026-09-12T00:00:00Z", materializedAt: "2026-09-12T00:00:00Z",
+          materializationFingerprint: loaded.value.materializationFingerprint } }),
+      },
+      registration: unregisteredProjection, usage: zeroUsageProjection, timeline: kernelOnlyTimelineComposer,
+      authenticate: async () => ({ ok: true as const, scope: { principalId: PUBLISHER, organizationId: ORG,
+        actorKind: "org-admin" as const, canReadCatalog: true, canRegister: true, projectScope: { kind: "all" as const },
+        subjects: { kind: "all" as const }, definitions: { kind: "all" as const } } }),
+      loadRevisionExportSnapshot: async () => {
+        const artifact = await getArtifactByDigest(db, pin.digest);
+        if (!artifact.ok) return null;
+        const bundle = parseBundleBytes(artifact.value.artifactBytes);
+        return bundle.ok ? targetReleaseOf(bundle.bundle) ?? null : null;
+      },
+    };
+    const exported = await requestJson<{ item: { document: string; skipped: { id: string; reason: string }[] } }>(createCatalogReadHttpServer(readPorts),
+      `/api/v2/catalog/revision-document?catalogReleaseId=${pin.id}&definitionId=${created.rows[0]!.id}&definitionId=pdef_acme_power_iin_max`);
+    expect(exported.status).toBe(200);
+    expect(exported.body.item.skipped).toEqual([{ id: "pdef_acme_power_iin_max", reason: "retired" }]);
+    const unchanged = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document: exported.body.item.document, fileName: "export.md" } });
+    expect(catalogMarkdownImportResponseSchema.parse(unchanged.body).item).toMatchObject({ candidate: null, noChange: true,
+      entries: [{ outcome: "skip", diagnostics: [expect.objectContaining({ message: "无变化。" })] }] });
+    const retiredImport = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "retired.md" } });
+    expect(retiredImport.body).toMatchObject({ item: { candidate: null, entries: [
+      { outcome: "conflict", diagnostics: expect.arrayContaining([expect.objectContaining({ line: 2, message: "定义已退役，请先在目录列表中恢复。" })]) },
+      { outcome: "skip" },
+    ] } });
+    const mismatch = await post("/api/v2/catalog/publication-candidates", { markdownImport: {
+      document: document.replace("# Driver `acme,power`", "# Driver `acme,power`\nnature: logical-service · cardinality: multiple"), fileName: "mismatch.md" } });
+    expect(catalogMarkdownImportResponseSchema.parse(mismatch.body).item.entries[0]).toMatchObject({ outcome: "conflict", diagnostics: expect.arrayContaining([
+      expect.objectContaining({ field: "主体", line: 2 }),
+      expect.objectContaining({ message: "定义已退役，请先在目录列表中恢复。" }),
+    ]) });
+    const invalidRetired = await post("/api/v2/catalog/publication-candidates", { markdownImport: {
+      document: document.replace("| 简述 | 新说明 |", "| 类型 | unknown |"), fileName: "invalid-retired.md" } });
+    expect(catalogMarkdownImportResponseSchema.parse(invalidRetired.body).item.entries[0]).toMatchObject({ outcome: "conflict", diagnostics: expect.arrayContaining([
+      expect.objectContaining({ field: "类型", line: 6 }),
+      expect.objectContaining({ message: "定义已退役，请先在目录列表中恢复。" }),
+    ]) });
+  } finally {
+    await close();
+    await client.end();
+    await db.close();
+    await database.drop();
+  }
+}, 120_000);
+
 it.each([false, true])("publishes a three-definition Markdown import (new subject: %s) through the manager and records an activation receipt", async (newSubject) => {
   const database = await createEphemeralTestDatabase("mdimport");
   const db = createPostgresDatabase(database.url);
@@ -669,6 +889,67 @@ it.each([false, true])("publishes a three-definition Markdown import (new subjec
       const subject = await client.query<{ n: string }>(`select count(*)::text as n from parameter_catalog.catalog_subjects where canonical_key = 'acme,new'`);
       expect(subject.rows[0]?.n).toBe("1");
     }
+  } finally {
+    await close();
+    await client.end();
+    await db.close();
+    await database.drop();
+  }
+}, 120_000);
+
+it("publishes batch retire and restore atomically and rejects a batch with a failing row", async () => {
+  const database = await createEphemeralTestDatabase("batchlife");
+  const db = createPostgresDatabase(database.url);
+  const pool = getRootPostgresPool(db)!;
+  const client = await connect(database.url);
+  let close = async () => {};
+  try {
+    const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(client, predecessor);
+    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: true });
+    let currentRelease = { id: predecessor.compiled.release.id, digest: predecessor.compiled.release.digest };
+    const auth = makeTestAuthContext({ userId: PUBLISHER, organizationId: ORG, permissions: [...publisherPermissions, ...authorPermissions], roleId: "admin" });
+    const server = await listenCatalogPublicationHttpServer({
+      authenticate: async () => ({ ok: true, scope: { principalId: PUBLISHER, organizationId: ORG, actorKind: "org-admin", permissions: auth.permissions, trustedActor: createUserInvocation(auth) } }),
+      currentRelease: async () => currentRelease,
+      ...bindCatalogPublicationCommands({ db, pool })
+    });
+    close = server.close;
+    const post = async (path: string, body: unknown) => {
+      const response = await fetch(`${server.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: currentRelease.id }, body: JSON.stringify(body) });
+      return { status: response.status, body: await response.json() };
+    };
+    const publish = async (changeSet: unknown[], key: string) => {
+      const candidate = await post("/api/v2/catalog/publication-candidates", { changeSet });
+      expect(candidate.status).toBe(201);
+      const candidateId = catalogPublicationCandidateResponseSchema.parse(candidate.body).item.id;
+      const result = await post(`/api/v2/catalog/publication-candidates/${candidateId}/publish`, { idempotencyKey: key });
+      expect(result.status).toBe(201);
+      expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool), resolvePublisherActor: async () => userActor(PUBLISHER, publisherPermissions), ownerId: "batch-lifecycle-test" })).toBe("claimed");
+      const pointer = await readCurrentCatalogPointer(pool);
+      if (pointer.kind !== "installed") throw new Error("publication did not install a release");
+      currentRelease = pointer.current;
+    };
+    const keys = ["lifecycle_a", "lifecycle_b", "lifecycle_c"];
+    await publish(keys.flatMap(changeSetFor), "lifecycle-create");
+    const read = () => client.query<{ id: string; property_key: string; lifecycle: string }>(
+      `select d.id, d.property_key, r.content->>'lifecycle' as lifecycle from parameter_catalog.parameter_definitions d
+       join parameter_catalog.catalog_release_definition_heads h on h.definition_id = d.id
+       join parameter_catalog.catalog_state s on s.current_catalog_release_id = h.release_id
+       join parameter_catalog.definition_revisions r on r.id = h.revision_id
+       where d.property_key in ('lifecycle_a', 'lifecycle_b', 'lifecycle_c') order by d.property_key`);
+    const definitions = (await read()).rows;
+    expect(definitions).toHaveLength(3);
+    const changes = (op: "retire-definition" | "restore-definition") => definitions.map((d) => ({
+      op, definitionId: d.id, class: "semantic", content: integerContent(`Input ${d.property_key}`, `Documentation for ${d.property_key}.`)
+    }));
+    const rejected = await post("/api/v2/catalog/publication-candidates", { changeSet: [...changes("retire-definition").slice(0, 2), { ...changes("retire-definition")[2], definitionId: "pdef_missing" }] });
+    expect(rejected.status).toBeGreaterThanOrEqual(400);
+    expect((await read()).rows.map((row) => row.lifecycle)).toEqual(["active", "active", "active"]);
+    await publish(changes("retire-definition"), "lifecycle-retire");
+    expect((await read()).rows.map((row) => row.lifecycle)).toEqual(["retired", "retired", "retired"]);
+    await publish(changes("restore-definition"), "lifecycle-restore");
+    expect((await read()).rows.map((row) => row.lifecycle)).toEqual(["active", "active", "active"]);
   } finally {
     await close();
     await client.end();

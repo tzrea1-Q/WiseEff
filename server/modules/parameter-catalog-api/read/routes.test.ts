@@ -13,10 +13,10 @@ const frozenReadKeys = parameterCatalogCanonicalRoutes
   .map((route) => `GET ${route.path}`);
 
 describe("S8-READ WiseEff router registration", () => {
-  it("registers the nine frozen S8-CON catalog GET routes on createRouter().listRoutes()", () => {
+  it("registers the catalog GET routes on createRouter().listRoutes()", () => {
     const router = createRouter();
     registerCatalogReadRoutes(router, {} as CatalogReadPorts);
-    expect(frozenReadKeys).toHaveLength(9);
+    expect(frozenReadKeys).toHaveLength(10);
     expect(router.listRoutes().map((route) => `${route.method} ${route.pattern}`).sort()).toEqual(
       [...frozenReadKeys].sort(),
     );

@@ -53,7 +53,7 @@ export const DEFINITION_IMPORT_TEMPLATE = `# Driver \`vendor,existing-driver\`
 | 类型说明 | mixed |
 | 示例 | {"value":1} |
 
-数组和 mixed 的示例使用 JSON；每行一个示例，最多 8 行。数组的项数限制作用于最外层，数值边界作用于最内层的数值类型，最多嵌套 4 层。字段值中的竖线请写为 \\|。
+数组和 mixed 的示例使用 JSON；每行一个示例，最多 8 行。数组的项数限制作用于最外层，数值边界作用于最内层的数值类型，最多嵌套 4 层。修订时保留内层数组的项数限制，文档不能编辑这些限制。字段值中的竖线请写为 \\|，反斜线写为 \\\\。操作字段可填「新建」（默认）或「修订」；修订只填写用户明确要求更改的字段，未填写的保留原值，可选字段写 - 表示清空；要填写字面值 -，请写 \\-。
 
 # Driver \`vendor,new-driver\`
 nature: physical-device · cardinality: multiple · 业务分类：电源 / 充电管理 · 模块名称：充电芯片

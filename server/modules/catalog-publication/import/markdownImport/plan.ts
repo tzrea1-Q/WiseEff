@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 
 import type { CatalogReleaseNode } from "../../../catalog-kernel/compiler/types";
 import type { CatalogChange, SupportedDefinitionContent } from "../../builder/types";
+import { tighterConstraint } from "../../builder/completeSuccessor";
 import { classifyEntry } from "./classify";
-import { buildContent } from "./content";
+import { buildContent, isRevisionEntry } from "./content";
 import { parseMarkdown } from "./parse";
 import { resolveSubject, subjectChanges } from "./resolve";
 import { diagnostic, type ImportDiagnostic, type ImportEntry, type SyntaxDiagnostic } from "./types";
@@ -52,6 +53,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       } else if (!previous) newSubjects.set(section.selector, resolved);
     }
     const creations: { propertyKey: string; content: SupportedDefinitionContent }[] = [];
+    const createdEntries: ImportEntry[] = [];
     const sectionDiagnostics = [
       ...syntax.diagnostics.filter((item) => item.subjectLine === section.line && item.definitionLine === undefined)
         .map(publicDiagnostic),
@@ -66,33 +68,55 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       continue;
     }
     for (const definition of section.definitions) {
-      const content = buildContent(section, definition);
-      const diagnostics = [
-        ...sectionDiagnostics.map((item) => ({ ...item, definitionHeading: definition.heading })),
-        ...syntax.diagnostics.filter((item) => item.definitionLine === definition.line).map(publicDiagnostic),
-        ...content.diagnostics,
-      ];
+      const revise = isRevisionEntry(definition);
+      const existing = resolved.subject ? snapshot.documents.find((item) => item.kind === "definition"
+        && item.content.subjectId === resolved.subject!.content.id && item.content.propertyKey === definition.propertyKey) : undefined;
       const naturalKey = `${resolved.subject?.content.id ?? `${section.kind}:${section.selector}`}\0${definition.propertyKey}`;
       const duplicate = seen.has(naturalKey);
       seen.add(naturalKey);
+      const diagnostics = [
+        ...sectionDiagnostics.map((item) => ({ ...item, definitionHeading: definition.heading })),
+        ...syntax.diagnostics.filter((item) => item.definitionLine === definition.line).map(publicDiagnostic),
+      ];
+      if (revise && !existing) {
+        entries.push({ subjectHeading: section.heading, definitionHeading: definition.heading,
+          selector: section.selector, propertyKey: definition.propertyKey, displayName: definition.displayName,
+          outcome: "error", diagnostics: [...diagnostics, diagnostic(section, definition, "操作", "修订的定义不存在。", definition.line)] });
+        continue;
+      }
+      const content = buildContent(section, definition, revise && existing?.kind === "definition" ? existing.content.revision : undefined);
+      diagnostics.push(...content.diagnostics);
       const classified = classifyEntry({
         entry: { section, definition, subject: resolved.subject, content: content.content, duplicate, diagnostics },
         snapshot,
       });
-      entries.push({ subjectHeading: section.heading, definitionHeading: definition.heading,
+      const entry: ImportEntry = { subjectHeading: section.heading, definitionHeading: definition.heading,
         selector: section.selector, propertyKey: definition.propertyKey, displayName: definition.displayName,
-        ...classified });
+        ...(existing?.kind === "definition" ? { definitionId: existing.content.id } : {}), ...classified };
+      entries.push(entry);
       if (classified.outcome === "create" && content.content) {
         creations.push({ propertyKey: definition.propertyKey, content: content.content });
+        createdEntries.push(entry);
+      }
+      if (classified.outcome === "revise" && content.content && existing?.kind === "definition" && classified.revisionClass) {
+        entry.operationIndex = changes.length;
+        entry.tightensExistingContract = tighterConstraint(existing.content.revision.valueSchema, content.content.valueSchema);
+        changes.push({ op: "revise-definition", definitionId: existing.content.id, class: classified.revisionClass, content: content.content });
       }
     }
     for (const change of subjectChanges(resolved, creations)) {
       const previous = change.op === "create-subject-with-definitions"
         ? changes.find((item) => item.op === "create-subject-with-definitions" && item.canonicalKey === change.canonicalKey)
         : undefined;
+      const operationIndex = previous ? changes.indexOf(previous) : changes.length;
       if (previous?.op === "create-subject-with-definitions" && change.op === "create-subject-with-definitions") {
-        changes[changes.indexOf(previous)] = { ...previous, definitions: [...previous.definitions, ...change.definitions] };
+        changes[operationIndex] = { ...previous, definitions: [...previous.definitions, ...change.definitions] };
       } else changes.push(change);
+      for (const entry of createdEntries) {
+        if (change.op === "create-subject-with-definitions" || (change.op === "create-definition" && change.propertyKey === entry.propertyKey)) {
+          entry.operationIndex = operationIndex;
+        }
+      }
     }
   }
   if (!entries.length) {
@@ -100,7 +124,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       message: "文档中没有有效的定义标题。", line: 1 }));
   }
   for (const entry of entries) entry.diagnostics.sort((a, b) => a.line - b.line);
-  const ready = entries.every((entry) => entry.outcome === "create" || entry.outcome === "skip");
+  const ready = entries.every((entry) => entry.outcome === "create" || entry.outcome === "revise" || entry.outcome === "skip");
   return { entries, changeSet: ready && changes.length > 0 ? changes : null,
     noChange: entries.length > 0 && entries.every((entry) => entry.outcome === "skip"), source, placementHints };
 }

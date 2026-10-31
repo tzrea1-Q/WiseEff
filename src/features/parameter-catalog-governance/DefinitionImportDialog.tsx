@@ -22,6 +22,10 @@ import {
 import { usePublicationFlow } from "./usePublicationFlow";
 import { openBatchRegistration } from "./batchRegistrationHandoff";
 import { DEFINITION_IMPORT_TEMPLATE } from "@/domain/parameter-catalog/definitionImportTemplate";
+import { formatUsageSummary } from "./formatUsageSummary";
+
+const formatDiffValue = (value: unknown) => value == null ? "—" : typeof value === "string" ? value : JSON.stringify(value);
+const outcomeLabels = { create: "新建", revise: "修订", error: "错误", skip: "跳过", conflict: "冲突" } as const;
 
 export type DefinitionImportDialogProps = {
   open: boolean;
@@ -155,10 +159,10 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const inputDisabled = pending || Boolean(job && publicationJobIsPending(job.status));
   const visibleEntries = entries?.filter((entry) =>
     !errorsOnly || entry.outcome === "error" || entry.outcome === "conflict");
-  const counts = { create: 0, error: 0, skip: 0, conflict: 0 };
+  const counts = { create: 0, revise: 0, error: 0, skip: 0, conflict: 0 };
   entries?.forEach((entry) => { counts[entry.outcome] += 1; });
-  const summary = [...(counts.create ? [`新建 ${counts.create}`] : []), ...(counts.error ? [`错误 ${counts.error}`] : []),
-    ...(counts.skip ? [`跳过 ${counts.skip}`] : []), ...(counts.conflict ? [`冲突 ${counts.conflict}`] : [])].join(" · ");
+  const summary = (Object.keys(outcomeLabels) as (keyof typeof outcomeLabels)[])
+    .filter((outcome) => counts[outcome]).map((outcome) => `${outcomeLabels[outcome]} ${counts[outcome]}`).join(" · ");
   const placementWarnings = placementHints?.flatMap((hint) => hint.warnings.map((warning) => ({
     selector: hint.selector, line: hint.line, warning,
   }))) ?? [];
@@ -176,7 +180,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
           {advisory ? <p role="status" data-tone={advisory.tone}>{advisory.message}</p> : null}
           {status ? <p role="status" aria-label="发布任务状态" data-publication-status={job?.status}
             data-tone={status.tone}>{succeeded === "active" && entries && status.tone === "success"
-              ? `已发布 ${counts.create} 条定义，目录已生效。` : status.message}</p> : null}
+              ? `已发布 ${counts.create + counts.revise} 条定义，目录已生效。` : status.message}</p> : null}
           {failure ? <p role="alert" className="governance-confirm-dialog__error">{failure}</p> : null}
           {succeeded && subjectError ? <p role="alert">新主体的登记状态加载失败，发布仍已生效。<button type="button"
             className="button subtle sm" onClick={() => setSubjectEpoch((value) => value + 1)}>重试加载</button></p> : null}
@@ -241,9 +245,12 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
                     <td>{entry.displayName || "—"}</td>
                     <td><span className="parameter-catalog__badge"
                       data-tone={entry.outcome === "error" || entry.outcome === "conflict" ? "warning" : undefined}>
-                      {entry.outcome === "create" ? "新建" : entry.outcome === "error" ? "错误"
-                        : entry.outcome === "skip" ? "跳过" : "冲突"}</span></td>
-                    <td>{entry.diagnostics.map((item, i) => <div key={`${item.field}-${item.line}-${i}`}>
+                      {outcomeLabels[entry.outcome]}</span>
+                      {entry.revisionClass ? <div>{entry.revisionClass === "semantic" ? "语义修订" : "说明修订"}</div> : null}
+                      {entry.riskClass ? <div>{entry.riskClass === "high" ? "高风险" : "低风险"}</div> : null}</td>
+                    <td>{entry.diffs?.map((diff) => <div key={diff.field}>{diff.field}：{formatDiffValue(diff.oldValue)} → {formatDiffValue(diff.newValue)}</div>)}
+                      {entry.usageSummary ? <div>{formatUsageSummary(entry.usageSummary)}</div> : null}
+                      {entry.diagnostics.map((item, i) => <div key={`${item.field}-${item.line}-${i}`}>
                       第 {item.line} 行 · {item.field}：{item.message}</div>)}</td>
                   </tr>)}</tbody>
               </table>

@@ -31,6 +31,7 @@ import type { CatalogListQuery, CatalogSubjectListResponse } from "@/infrastruct
 import { CatalogPage } from "./CatalogPage";
 import type { CatalogLayoutMode } from "./catalogLayout";
 import { catalogEmptyMessages } from "./copy";
+import { catalogApiFailure } from "@/application/parameter-catalog/errors";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import type { CatalogModule } from "./catalogModuleScope";
 
@@ -184,6 +185,7 @@ function renderCatalog(
     definitionAuthoringAllowed?: boolean;
     definitionPublishingAllowed?: boolean;
     onDefinitionCommand?: PageProps["onDefinitionCommand"];
+    onBatchDefinitionCommand?: PageProps["onBatchDefinitionCommand"];
     renderDefinitionEditor?: PageProps["renderDefinitionEditor"];
   } = {}
 ) {
@@ -202,6 +204,7 @@ function renderCatalog(
       definitionAuthoringAllowed={options.definitionAuthoringAllowed}
       definitionPublishingAllowed={options.definitionPublishingAllowed}
       onDefinitionCommand={options.onDefinitionCommand}
+      onBatchDefinitionCommand={options.onBatchDefinitionCommand}
       renderDefinitionEditor={options.renderDefinitionEditor}
       initialSearch={options.search ?? ""}
       layoutMode={options.layoutMode ?? "desktop"}
@@ -217,6 +220,115 @@ function renderCatalog(
 
 // These tests page through 101-subject inventories with user events; CI runners need more than the 5s default.
 describe("CatalogPage", { timeout: 15_000 }, () => {
+  it("exports the selected active definitions and reports skipped IDs", async () => {
+    const user = userEvent.setup();
+    const repository = lifecycleInventory();
+    const exportRevisionDocument = vi.fn().mockResolvedValue({ item: { document: "# Driver `acme,power`", skipped: [
+      { id: "pdef_retired", reason: "retired" }, { id: "pdef_doc", reason: "documentation-not-expressible" },
+      { id: "pdef_other", reason: "not-round-trippable" },
+    ] } });
+    Object.assign(repository, { exportRevisionDocument });
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    try {
+      renderCatalog({ repository, definitionPublishingAllowed: true, onBatchDefinitionCommand: vi.fn() });
+      await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+      await user.click(screen.getByRole("button", { name: "导出为修订文档" }));
+      expect(exportRevisionDocument).toHaveBeenCalledWith([activeDefinition.id], { catalogReleaseId: CATALOG_RELEASE_ID });
+      expect(await screen.findByText(/pdef_retired（已退役）/)).toBeVisible();
+      expect(screen.getByText(/pdef_doc（说明无法在文档中表达）/)).toBeVisible();
+      expect(screen.getByText(/pdef_other（内容无法无损导入）/)).toBeVisible();
+      expect(click).toHaveBeenCalled();
+    } finally {
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+      click.mockRestore();
+    }
+  });
+
+  it("selects definitions, selects all of a subject, and gates batch actions by lifecycle", async () => {
+    const user = userEvent.setup();
+    const repository = lifecycleInventory();
+    const second = { ...activeDefinition, id: "second", propertyKey: "second-key", lifecycle: "retired" as const };
+    vi.spyOn(repository, "listSubjectDefinitions").mockResolvedValue({ items: [activeDefinition, second], totalCount: 2,
+      hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    const onBatchDefinitionCommand = vi.fn();
+    renderCatalog({ repository, search: `?subjectId=${registeredSubject.id}`, definitionPublishingAllowed: true,
+      onBatchDefinitionCommand });
+    await screen.findByRole("button", { name: "选中该主体下全部定义" });
+    expect(screen.queryByRole("group", { name: "批量定义操作" })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+    expect(screen.getByText("已选 1 项")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退役所选（1）" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "恢复所选（1）" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "导出为修订文档" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "选中该主体下全部定义" }));
+    expect(await screen.findByText(/所选定义状态不同/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退役所选（2）" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "恢复所选（2）" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+    expect(screen.getByRole("button", { name: "导出为修订文档" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "恢复所选（1）" }));
+    expect(onBatchDefinitionCommand).toHaveBeenCalledWith("restore-definition", [second], expect.anything());
+    await user.click(screen.getByRole("button", { name: "清除选择" }));
+    expect(screen.queryByRole("group", { name: "批量定义操作" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选中该主体下全部定义" })).toBeEnabled();
+  });
+
+  it("explains that export is unavailable in mock mode", async () => {
+    const user = userEvent.setup();
+    renderCatalog({ repository: lifecycleInventory(), definitionPublishingAllowed: true, onBatchDefinitionCommand: vi.fn() });
+    await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+    await user.click(screen.getByRole("button", { name: "导出为修订文档" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("模拟模式不支持，请使用 API 模式。");
+  });
+
+  it("asks the user to refresh when the export release has changed", async () => {
+    const user = userEvent.setup();
+    const repository = lifecycleInventory();
+    vi.spyOn(repository, "exportRevisionDocument").mockRejectedValue(catalogApiFailure("release-drift"));
+    renderCatalog({ repository, definitionPublishingAllowed: true, onBatchDefinitionCommand: vi.fn() });
+    await user.click(await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` }));
+    await user.click(screen.getByRole("button", { name: "导出为修订文档" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("目录发布已变化，请刷新后重新确认。");
+  });
+
+  it("explains why a selected definition is not writable", async () => {
+    const user = userEvent.setup();
+    const repository = lifecycleInventory();
+    const blocked = { ...activeDefinition, registration: { status: "retired" as const, id: "registration-retired" } };
+    vi.spyOn(repository, "listSubjectDefinitions").mockResolvedValue({ items: [blocked], totalCount: 1,
+      hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    renderCatalog({ repository, search: `?subjectId=${registeredSubject.id}`, definitionPublishingAllowed: true, onBatchDefinitionCommand: vi.fn() });
+    await user.click(await screen.findByRole("button", { name: "选中该主体下全部定义" }));
+    expect(await screen.findByText("所选定义中有当前不可写的项。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "退役所选（1）" })).toBeDisabled();
+  });
+
+  it("hides batch controls without governance authority", async () => {
+    renderCatalog({ actor: "user", sessionPermissions: [], definitionPublishingAllowed: false });
+    await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+    expect(screen.queryByRole("group", { name: "批量定义操作" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` })).not.toBeInTheDocument();
+  });
+
+  it("enforces the 128 definition limit after selecting an entire subject", async () => {
+    const user = userEvent.setup();
+    const repository = lifecycleInventory();
+    const page = { items: [activeDefinition], totalCount: 129, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID };
+    const all = Array.from({ length: 129 }, (_, index) => ({ ...activeDefinition, id: `definition-${index}`, propertyKey: `key-${index}` }));
+    vi.spyOn(repository, "listSubjectDefinitions").mockImplementation(async (_subjectId, query) =>
+      query?.limit !== 100 ? page : query.cursor
+        ? { ...page, items: all.slice(100) }
+        : { ...page, items: all.slice(0, 100), hasMore: true, nextCursor: "next" });
+    renderCatalog({ repository, search: `?subjectId=${registeredSubject.id}`, definitionPublishingAllowed: true,
+      onBatchDefinitionCommand: vi.fn() });
+    await screen.findByRole("checkbox", { name: `选择 ${activeDefinition.propertyKey}` });
+    await user.click(screen.getByRole("button", { name: "选中该主体下全部定义" }));
+    expect(await screen.findByText("每批最多选择 128 个定义。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退役所选（129）" })).toBeDisabled();
+  });
   it("keeps definitions visible and highlights unset module attribution", async () => {
     const repository = createMockParameterCatalogRepository({ scenario: "ready" });
     const registration = { ...registeredSubject.registration, placement: { id: "retained-placement", displayName: "unset", parentPlacementId: null } };
@@ -335,7 +447,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(await screen.findByRole("button", { name: "查看 historical-key" })).toBeVisible();
     expect(await screen.findByRole("button", { name: `编辑 ${activeDefinition.propertyKey}` })).toBeVisible();
     expect(screen.queryByRole("button", { name: "编辑 historical-key" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "弃用 historical-key" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "退役 historical-key" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看 historical-key" })
       .closest(layoutMode === "desktop" ? "tr" : ".parameter-catalog__card-row")).toHaveTextContent("主体已退役");
   });
@@ -356,7 +468,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(screen.getByRole("button", { name: "查看 retired-key" })).toBeVisible();
     expect(await screen.findByRole("button", { name: "恢复 retired-key" })).toBeVisible();
     expect(screen.getByRole("button", { name: "查看 registration-key" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "弃用 registration-key" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "退役 registration-key" })).not.toBeInTheDocument();
   });
 
   it("identifies the retired subject without marking the entire catalog release retired", async () => {

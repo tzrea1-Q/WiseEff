@@ -152,6 +152,7 @@ async function dispatch(
       principalId: scope.principalId,
       permissions: scope.permissions,
       actorKind: scope.actorKind,
+      projectScope: scope.projectScope,
       catalogReleaseId: pin.pin.id,
       ...("markdownImport" in parsed.data
         ? { markdownImport: parsed.data.markdownImport }
