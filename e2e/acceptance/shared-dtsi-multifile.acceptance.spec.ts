@@ -269,9 +269,12 @@ test("imports a relative ZIP library, repairs missing dependencies and publishes
     });
     const lineHeight=await editor.locator(".cm-line").first().evaluate(node=>parseFloat(getComputedStyle(node).lineHeight));
     expect(visible/lineHeight).toBeGreaterThanOrEqual(viewport.lines);
+    await expect(page.getByLabel("版本说明",{exact:true})).toBeInViewport({ratio:1});
+    await expect(page.getByRole("button",{name:"检查并预览",exact:true})).toBeInViewport({ratio:1});
     await expect(page.getByLabel("文件路径",{exact:true})).toBeInViewport({ratio:1});
     await expect(page.getByRole("button",{name:"移除当前文件",exact:true})).toBeInViewport({ratio:1});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await catalogScreenshot(page,testInfo,`shared-dtsi-error-preparation-${viewport.width}`);
   }
   await page.setViewportSize({width:1440,height:900});
   await catalogScreenshot(page,testInfo,"shared-dtsi-multifile-missing-1440");
