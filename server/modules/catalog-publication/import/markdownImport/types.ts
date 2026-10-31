@@ -39,7 +39,9 @@ export type ImportEntry = {
   selector: string;
   propertyKey: string;
   displayName: string;
-  outcome: "create" | "skip" | "conflict" | "error";
+  outcome: "create" | "revise" | "skip" | "conflict" | "error";
+  revisionClass?: "documentation" | "semantic";
+  diffs?: { field: string; oldValue: unknown; newValue: unknown }[];
   diagnostics: ImportDiagnostic[];
 };
 

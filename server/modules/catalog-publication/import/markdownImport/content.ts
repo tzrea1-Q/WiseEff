@@ -1,12 +1,13 @@
 import type { ContractJsonValue } from "../../../parameter-catalog-contract/index";
+import type { CatalogReleaseDefinitionDocument } from "../../../catalog-kernel/compiler/types";
 import { CATALOG_CAPABILITY_ALLOW_LIST, validateSupportedDefinitionContent } from "../../builder/capabilities";
 import { MAX_DEFINITION_UNIT_CHARS, type SupportedDefinitionContent, type SupportedValueSchema } from "../../builder/types";
 import { diagnostic, type Definition, type Field, type ImportDiagnostic, type Subject } from "./types";
 
-const ALLOWED_FIELDS = new Set(["类型", "类型说明", "单位", "最小值", "最大值", "最少项数", "最多项数", "示例", "简述"]);
+const ALLOWED_FIELDS = new Set(["操作", "类型", "类型说明", "单位", "最小值", "最大值", "最少项数", "最多项数", "示例", "简述"]);
 
 /** Build supported definition content and locate field validation errors. */
-export function buildContent(section: Subject, definition: Definition): {
+export function buildContent(section: Subject, definition: Definition, current?: CatalogReleaseDefinitionDocument["content"]["revision"]): {
   content: SupportedDefinitionContent | null;
   diagnostics: ImportDiagnostic[];
 } {
@@ -26,7 +27,18 @@ export function buildContent(section: Subject, definition: Definition): {
     fields.set(field.name, values);
   }
   const first = (field: string) => fields.get(field)?.[0];
-  const type = first("类型")?.value ?? "";
+  const operation = first("操作");
+  if (operation && operation.value !== "新建" && operation.value !== "修订") problem("操作", "操作须为新建或修订。", operation.line);
+  let currentItem: Record<string, unknown> = current ? structuredClone(current.valueSchema) as Record<string, unknown> : {};
+  let currentDepth = 0;
+  const currentArrays: Record<string, unknown>[] = [];
+  while (currentItem.type === "array" && currentItem.items && typeof currentItem.items === "object") {
+    currentArrays.push(currentItem);
+    currentDepth += 1;
+    currentItem = currentItem.items as Record<string, unknown>;
+  }
+  const currentType = current ? `${"array<".repeat(currentDepth)}${currentItem.type ?? "mixed"}${">".repeat(currentDepth)}` : "";
+  const type = first("类型")?.value ?? currentType;
   let itemType = type;
   let depth = 0;
   const maxDepth = CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxArraySchemaDepth ?? 0;
@@ -38,15 +50,27 @@ export function buildContent(section: Subject, definition: Definition): {
     problem("类型", `类型须为 integer、number、string、boolean、null、mixed 或 array<…>；数组最多嵌套 ${maxDepth} 层。`, first("类型")?.line ?? definition.line);
   }
   const description = first("类型说明");
-  if (itemType === "mixed" && !description?.value.trim()) {
+  if (itemType === "mixed" && !(description?.value ?? (typeof currentItem.description === "string" ? currentItem.description : "")).trim()) {
     problem("类型说明", "mixed 必须填写类型说明。", description?.line ?? first("类型")?.line ?? definition.line);
   } else if (itemType !== "mixed" && description) {
     problem("类型说明", "类型说明仅适用于 mixed。", description.line);
   }
-  const itemSchema: Record<string, unknown> = itemType === "mixed"
-    ? { description: description?.value ?? "" } : { type: itemType };
-  let valueSchema = itemSchema;
-  for (let i = 0; i < Math.min(depth, maxDepth + 1); i += 1) valueSchema = { type: "array", items: valueSchema };
+  if (current && depth < currentDepth && currentArrays.slice(depth).some((array) =>
+    Object.keys(array).some((key) => key !== "type" && key !== "items"))) {
+    problem("类型", "更改数组嵌套层数可能丢失现有约束，请使用定义管理入口。", first("类型")!.line);
+  }
+  let valueSchema: Record<string, unknown> = current ? currentItem
+    : itemType === "mixed" ? { description: description?.value ?? "" } : { type: itemType };
+  for (let i = Math.min(depth, maxDepth + 1) - 1; i >= 0; i -= 1) {
+    valueSchema = { ...(currentArrays[i] ?? { type: "array" }), items: valueSchema };
+  }
+  let itemSchema = valueSchema;
+  while (itemSchema.type === "array" && itemSchema.items && typeof itemSchema.items === "object") itemSchema = itemSchema.items as Record<string, unknown>;
+  if (current && first("类型")) {
+    if (itemType === "mixed") delete itemSchema.type;
+    else itemSchema.type = itemType;
+  }
+  if (description && itemType === "mixed") itemSchema.description = description.value;
   for (const [field, property] of [["最小值", "minimum"], ["最大值", "maximum"]] as const) {
     const row = first(field);
     if (!row) continue;
@@ -86,11 +110,11 @@ export function buildContent(section: Subject, definition: Definition): {
   }
   const content = {
     displayName: definition.displayName,
-    documentation: definition.documentation,
-    ...(first("简述") ? { description: first("简述")?.value } : {}),
-    ...(first("单位") ? { unit: first("单位")?.value } : {}),
+    documentation: definition.documentationLine === undefined && current ? current.documentation : definition.documentation,
+    ...((first("简述") || current?.description != null) ? { description: first("简述")?.value ?? current?.description } : {}),
+    ...((first("单位") || current?.unit != null) ? { unit: first("单位")?.value ?? current?.unit } : {}),
     valueSchema: valueSchema as SupportedValueSchema,
-    ...(examples.length ? { examples } : {}),
+    ...(examples.length ? { examples } : current?.examples != null && !fields.has("示例") ? { examples: current.examples } : {}),
   };
   const checked = validateSupportedDefinitionContent(content, "content");
   if (fields.get("示例") && fields.get("示例")!.length > 8) {

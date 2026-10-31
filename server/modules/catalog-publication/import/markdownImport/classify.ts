@@ -5,6 +5,7 @@ import type {
 } from "../../../catalog-kernel/compiler/types";
 import { parseCanonicalPropertyKey } from "../../../parameter-catalog-contract/index";
 import type { SupportedDefinitionContent } from "../../builder/types";
+import { contentClassOf, revisedDefinitionContent } from "../../builder/completeSuccessor";
 import { diagnostic, type Definition, type ImportDiagnostic, type ImportEntry, type Subject } from "./types";
 
 const comparableContent = (
@@ -26,7 +27,7 @@ export function classifyEntry(input: {
     diagnostics: ImportDiagnostic[];
   };
   snapshot: CatalogReleaseNode;
-}): { outcome: ImportEntry["outcome"]; diagnostics: ImportDiagnostic[] } {
+}): Pick<ImportEntry, "outcome" | "diagnostics" | "revisionClass" | "diffs"> {
   const { section, definition, subject, duplicate } = input.entry;
   const diagnostics = [...input.entry.diagnostics];
   if (!parseCanonicalPropertyKey(definition.propertyKey).ok) {
@@ -44,6 +45,29 @@ export function classifyEntry(input: {
     if (revision.lifecycle === "active" && content
       && isDeepStrictEqual(comparableContent(revision), comparableContent(content))) {
       return { outcome: diagnostics.length ? "error" : "skip", diagnostics };
+    }
+    if (definition.fields.some((field) => field.name === "操作" && field.value === "修订")
+      && revision.lifecycle === "active" && content && !diagnostics.length) {
+      const next = revisedDefinitionContent(revision, content);
+      const fields = (value: CatalogReleaseDefinitionDocument["content"]["revision"]) => {
+        const schema = value.valueSchema as Record<string, unknown>;
+        let item = schema;
+        let depth = 0;
+        while (item.type === "array" && item.items && typeof item.items === "object") {
+          depth += 1;
+          item = item.items as Record<string, unknown>;
+        }
+        return { "显示名": value.displayName, "正文": value.documentation, "简述": value.description ?? null,
+          "单位": value.unit ?? null, "类型": `${"array<".repeat(depth)}${item.type ?? "mixed"}${">".repeat(depth)}`,
+          "类型说明": item.description ?? null, "最小值": item.minimum ?? null, "最大值": item.maximum ?? null,
+          "最少项数": schema.minItems ?? null, "最多项数": schema.maxItems ?? null, "示例": value.examples ?? null };
+      };
+      const oldFields = fields(revision);
+      const newFields = fields(next);
+      const diffs = (Object.keys(oldFields) as (keyof typeof oldFields)[])
+        .filter((field) => !isDeepStrictEqual(oldFields[field], newFields[field]))
+        .map((field) => ({ field, oldValue: oldFields[field], newValue: newFields[field] }));
+      return { outcome: "revise", diagnostics, revisionClass: contentClassOf(revision, next), diffs };
     }
     if (content || revision.lifecycle === "retired") {
       const hasErrors = diagnostics.length > 0;

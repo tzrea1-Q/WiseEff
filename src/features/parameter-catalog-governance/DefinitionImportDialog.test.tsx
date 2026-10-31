@@ -140,6 +140,24 @@ it("shows the mock-mode limitation as soon as the dialog opens", () => {
   expect(screen.queryByRole("button", { name: "解析并预览" })).not.toBeInTheDocument();
 });
 
+it("shows each revision field's old and new values and its class", async () => {
+  renderImport({ prepare: (ports) => {
+    ports.catalog.previewMarkdownImport = async () => ({ item: { candidate: null, noChange: false, placementHints: [],
+      source: { fileName: "d.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [{
+        subjectHeading: "# Driver `acme,power`", definitionHeading: "## `iin_max` 电流", selector: "acme,power",
+        propertyKey: "iin_max", displayName: "电流", outcome: "revise", revisionClass: "semantic",
+        diffs: [{ field: "最大值", oldValue: 1000, newValue: 3000 }], diagnostics: [],
+      }] } });
+  } });
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText("Markdown 文档"), "修订文档");
+  await user.click(screen.getByRole("button", { name: "解析并预览" }));
+  const row = (await screen.findByText("iin_max")).closest("tr")!;
+  expect(row).toHaveTextContent("修订");
+  expect(row).toHaveTextContent("语义修订");
+  expect(row).toHaveTextContent("最大值：1000 → 3000");
+});
+
 it("previews pasted text, publishes and tracks the existing publication job", async () => {
   const { ports, completed } = renderImport({ prepare: (ports) => {
     ports.catalog.previewMarkdownImport = async () => {
