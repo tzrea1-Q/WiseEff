@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
@@ -51,6 +51,48 @@ function setup(options: { writable?: boolean; saveError?: boolean;dependency?:bo
 }
 
 describe("shared DTSI draft authoring", () => {
+  it("blocks unsafe relative paths and canonically equivalent duplicate paths",async()=>{
+    const user=userEvent.setup();setup();
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await screen.findByRole("button",{name:"选择文件"});
+    const files=["main.dtsi","café.dtsi"].map(name=>{const file=new File([name],name);Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode(name).buffer});return file;});
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,files);
+    const path=await screen.findByLabelText("文件路径");
+    for(const invalid of ["../outside.dtsi","/absolute.dtsi","folder//bad.dtsi","folder\\bad.dtsi"]){
+      fireEvent.change(path,{target:{value:invalid}});expect(path).toHaveAttribute("aria-invalid","true");
+      expect(screen.getByRole("button",{name:"保存草稿"})).toBeDisabled();
+    }
+    fireEvent.change(path,{target:{value:"cafe\u0301.dtsi"}});
+    expect(path).toHaveAttribute("aria-invalid","true");expect(screen.getAllByText("文件路径已存在。")).toHaveLength(2);
+    expect(screen.getByRole("button",{name:"保存草稿"})).toBeDisabled();
+  });
+  it("confirms all same-batch NFC collisions and keeps unrelated members on cancel and replace",async()=>{
+    const user=userEvent.setup();setup();
+    await user.click(await screen.findByRole("button",{name:"导入资源"}));await screen.findByRole("button",{name:"选择文件"});
+    const make=(name:string,content:string)=>{const file=new File([content],name);Object.defineProperty(file,"arrayBuffer",{value:async()=>new TextEncoder().encode(content).buffer});return file;};
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!,[make("café.dtsi","original café"),make("node.dtsi","original node"),make("keep.h","original keep")]);
+    await user.clear(await screen.findByLabelText("资源名称"));await user.type(screen.getByLabelText("资源名称"),"保留资源");
+    await user.click(screen.getByText("构建设置",{exact:true}));
+    fireEvent.change(screen.getByLabelText("构建宏"),{target:{value:"CONFIG=1"}});
+    fireEvent.change(screen.getByLabelText("Include 搜索目录"),{target:{value:"include"}});
+    const add=document.querySelector<HTMLInputElement>('input[aria-label="添加源码文件"]')!;
+    const batch=()=>[make("cafe\u0301.dtsi","new café"),make("node.dtsi","new node"),make("extra.h","new extra")];
+    await user.upload(add,batch());let dialog=await screen.findByRole("dialog",{name:"替换重名文件？"});
+    expect(dialog).toHaveTextContent("cafe\u0301.dtsi");expect(dialog).toHaveTextContent("node.dtsi");
+    await user.click(within(dialog).getByRole("button",{name:"取消"}));
+    expect(screen.queryByRole("button",{name:"extra.h"})).not.toBeInTheDocument();
+    expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("original café");
+    await user.click(screen.getByRole("button",{name:"node.dtsi"}));expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("original node");
+    await user.click(screen.getByRole("button",{name:"keep.h"}));expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("original keep");
+    await user.click(screen.getByRole("button",{name:"café.dtsi"}));
+    expect(screen.getByLabelText("资源名称")).toHaveValue("保留资源");
+    expect(screen.getByLabelText("构建宏")).toHaveValue("CONFIG=1");expect(screen.getByLabelText("Include 搜索目录")).toHaveValue("include");
+    await user.upload(add,batch());dialog=await screen.findByRole("dialog",{name:"替换重名文件？"});
+    await user.click(within(dialog).getByRole("button",{name:"替换重名文件"}));
+    expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("new café");
+    await user.click(screen.getByRole("button",{name:"node.dtsi"}));expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("new node");
+    await user.click(screen.getByRole("button",{name:"keep.h"}));expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("original keep");
+    await user.click(screen.getByRole("button",{name:"extra.h"}));expect(screen.getByLabelText("DTSI 源码")).toHaveTextContent("new extra");
+  });
   it("does not accept edits during first save or its subsequent reload",async()=>{
     let releaseSave!:()=>void,releaseGet!:()=>void;
     const saveGate=new Promise<void>(resolve=>{releaseSave=resolve;}),getGate=new Promise<void>(resolve=>{releaseGet=resolve;});
