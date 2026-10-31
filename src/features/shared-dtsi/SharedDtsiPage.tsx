@@ -26,6 +26,7 @@ import { SharedDtsiDependencies } from "./SharedDtsiDependencies";
 import { SharedDtsiRecognition } from "./SharedDtsiRecognition";
 import { SharedDtsiComparison, SharedDtsiComparisonContent } from "./SharedDtsiComparison";
 import { SharedDtsiLifecycle } from "./SharedDtsiLifecycle";
+import { conflictingMembers, hasDuplicateMemberPaths, hasMemberPath, mergeSourceMembers, sourceMembers, withContent } from "./sharedDtsiMembers";
 
 type Props = { apiClient?: ApiClient; canWrite: boolean; canCreateSubject?:boolean;canProposeSource?:boolean;canReviewSource?:boolean;search: string; organizationId?: string; onNavigate: (path: string) => void };
 type Scope = { key: string; client: ReturnType<typeof createSharedDtsiClient> | null; pending: boolean };
@@ -34,9 +35,6 @@ const draftInput = (draft: SharedDtsiDraft): SharedDtsiDraftInput => ({ name: dr
   sourceName: draft.members[0]!.sourceName, content: draft.members[0]!.content, changeDescription: draft.changeDescription,
   ...(draft.buildInputs ? { buildInputs: draft.buildInputs } : {}),
   dependencies:draft.dependencies??[],members:draft.members });
-const sourceMembers = (input:SharedDtsiDraftInput) => input.members ?? [{sourceName:input.sourceName,content:input.content}];
-const withContent = (input:SharedDtsiDraftInput,index:number,content:string):SharedDtsiDraftInput => ({...input,content,
-  ...(input.members?{members:input.members.map((member,at)=>at===index?{...member,content}:member)}:{})});
 const comparable = (input:SharedDtsiDraftInput) => JSON.stringify({name:input.name,changeDescription:input.changeDescription,members:sourceMembers(input),archive:input.archive,dependencies:input.dependencies??[],buildInputs:input.buildInputs});
 const message = (error: unknown) => error instanceof WiseEffApiError ? error.message : "请求失败，请重试。";
 const staleDraft = (error: unknown) => error instanceof WiseEffApiError && error.code === "CONFLICT" && !["preprocess-busy", "shared-resource-retired"].includes(String(error.details.reason));
@@ -164,12 +162,12 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     const name=members[index]?.sourceName??"";
     const parsed=sharedDtsiDraftInputSchema.shape.sourceName.safeParse(name);
     if(!parsed.success)return parsed.error.issues[0]?.message??"文件路径无效。";
-    return members.some((member,at)=>at!==index && member.sourceName.normalize("NFC")===name.normalize("NFC"))?"文件路径已存在。":"";
+    return hasMemberPath(members,name,index)?"文件路径已存在。":"";
   };
   const invalidMembers=members.some((_,index)=>Boolean(memberPathError(index)));
   const missingSource=members.length>0 && !members.some(member=>/\.dtsi?$/u.test(member.sourceName));
   const atMemberLimit=members.length>=sharedDtsiImportLimits.maxFiles;
-  const newFileError=!sharedDtsiDraftInputSchema.shape.sourceName.safeParse(newFilePath).success?"请输入有效的资源内源码路径。":members.some(member=>member.sourceName.normalize("NFC")===newFilePath.normalize("NFC"))?"文件路径已存在。":"";
+  const newFileError=!sharedDtsiDraftInputSchema.shape.sourceName.safeParse(newFilePath).success?"请输入有效的资源内源码路径。":hasMemberPath(members,newFilePath)?"文件路径已存在。":"";
   const localDirty = Boolean(selected) && !published && tab === "source" && (editorDirty || comparable(form) !== comparable(base)
     || JSON.stringify(buildText) !== JSON.stringify(buildTexts(base.buildInputs)));
   const dirty = canWrite && localDirty;
@@ -361,8 +359,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     if (!isCurrent(scope) || choice.edit !== edits.current || scope.pending) return;
     const current=withContent(form,memberIndex,editor.current?.flush()?.text??form.content);
     const previous=sourceMembers(current);
-    const merged=previous.map(old=>{const next=choice.members.find(member=>member.sourceName.normalize("NFC")===old.sourceName.normalize("NFC"));return next?{...old,content:next.content}:old;});
-    merged.push(...choice.members.filter(member=>!previous.some(old=>old.sourceName.normalize("NFC")===member.sourceName.normalize("NFC"))));
+    const merged=mergeSourceMembers(previous,choice.members);
     const checked=sharedDtsiDraftInputSchema.safeParse({name:"导入预览",sourceName:merged[memberIndex]?.sourceName??merged[0]?.sourceName,content:merged[memberIndex]?.content??merged[0]?.content,members:merged});
     if(!checked.success || merged.reduce((size,member)=>size+new TextEncoder().encode(member.content).length,0)>sharedDtsiImportLimits.maxTotalBytes){setError(checked.success?"资源源码总量不能超过 16 MiB。":checked.error.issues[0]?.message??"文件数量或大小超出限制。");setAddition(null);return;}
     const activeChanged=previous[memberIndex]?.content!==merged[memberIndex]?.content;
@@ -411,7 +408,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
         const issue=parsed.error.issues[0]!;const index=issue.path[1];
         throw new WiseEffApiError("VALIDATION_FAILED",`${typeof index==="number"?members[index]?.sourceName+"：":""}${issue.message}`,{},"");
       }
-      if(new Set(members.map(member=>member.sourceName.normalize("NFC"))).size!==members.length)
+      if(hasDuplicateMemberPaths(members))
         throw new WiseEffApiError("VALIDATION_FAILED","选择的文件包含重复路径，请调整后重试。",{},"");
       if(!adding && !members.some(member=>/\.dtsi?$/u.test(member.sourceName)))
         throw new WiseEffApiError("VALIDATION_FAILED","资源至少需要一个 .dts 或 .dtsi 源码文件。",{},"");
@@ -419,7 +416,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
       const name=directory&&file.webkitRelativePath ? file.webkitRelativePath.split("/")[0]! : file.name.replace(/\.(dts|dtsi|h|hpp|zip)$/u,"");
       const choice={members,name,ignored,edit};
       if(adding) {
-        if(members.some(member=>sourceMembers(form).some(old=>old.sourceName.normalize("NFC")===member.sourceName.normalize("NFC")))) setAddition(choice);
+        if(conflictingMembers(sourceMembers(form),members).length) setAddition(choice);
         else applyAddition(choice);
         return;
       }
@@ -670,7 +667,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     <SettingsLeaveGuard dirty={(localDirty || creatingHere) && !leaving} saving={pending || creatingHere} description={uncertainCreate?"保存结果未确认，资源可能已创建。离开后请先核对资源列表；本页未保存的输入将丢失。":"离开将放弃本页未保存的修改，已保存的草稿不会受到影响。"} />
     <ConfirmDialog open={newFileOpen} title="新建源码" description="输入资源内相对路径。" extra={<label>文件路径<Input aria-label="文件路径" value={newFilePath} onChange={event=>setNewFilePath(event.target.value)} aria-invalid={Boolean(newFilePath && newFileError)} />{newFilePath && newFileError?<span role="alert">{newFileError}</span>:null}</label>} confirmLabel="创建文件" confirmDisabled={Boolean(newFileError) || atMemberLimit} onCancel={()=>setNewFileOpen(false)} onConfirm={createMember} />
     <ConfirmDialog open={removeOpen} title="移除文件？" description={`将从当前草稿中移除 ${form.sourceName}。`} confirmLabel="移除文件" onCancel={()=>setRemoveOpen(false)} onConfirm={removeMember} />
-    <ConfirmDialog open={Boolean(addition)} title="替换重名文件？" description={`以下文件路径已存在，将替换其源码：${addition?.members.filter(member=>sourceMembers(form).some(old=>old.sourceName.normalize("NFC")===member.sourceName.normalize("NFC"))).map(member=>member.sourceName).join("、")??""}。其他文件会保留。`}
+    <ConfirmDialog open={Boolean(addition)} title="替换重名文件？" description={`以下文件路径已存在，将替换其源码：${addition?conflictingMembers(sourceMembers(form),addition.members).map(member=>member.sourceName).join("、"):""}。其他文件会保留。`}
       confirmLabel="替换重名文件" onCancel={()=>setAddition(null)} onConfirm={()=>{if(addition)applyAddition(addition);}} />
     <ConfirmDialog open={Boolean(replacement)} title="替换全部源码？" description={`将替换当前 ${sourceMembers(form).length} 个文件及未保存的源码修改，资源名称和设置会保留。`}
       confirmLabel="替换源码" onCancel={()=>setReplacement(null)} onConfirm={()=>{if(replacement)applyImport(replacement);}} />

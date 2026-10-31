@@ -661,8 +661,28 @@ describe("shared DTSI draft HTTP workflow (PostgreSQL API login)", () => {
     expect((await call(query)).body.items).toEqual(before);
     const reader = { ...auth, roles: [], permissions: ["parameter:view"] as typeof auth.permissions };
     expect((await publicationCall("/import-preview", "POST", input, reader)).status).toBe(403);
-    const headerOnly=new JSZip();headerOnly.file("defs.h","#define VALUE 1\n");
-    expect((await publicationCall("/import-preview","POST",{archive:{name:"headers.zip",contentBase64:await headerOnly.generateAsync({type:"base64"})}})).status).toBe(400);
+    const headerOnly=new JSZip();headerOnly.file("defs.h","#define VALUE 1\n");headerOnly.file("inc/defs.hpp","#define OTHER 2\n");
+    const headerArchive={name:"headers.zip",contentBase64:await headerOnly.generateAsync({type:"base64"})};
+    const headerPreview=await publicationCall<{item:{members:{sourceName:string;content:string}[];ignored:string[]}}>("/import-preview","POST",{archive:headerArchive});
+    expect(headerPreview.status,headerPreview.bodyText).toBe(200);
+    expect(headerPreview.body.item.members).toEqual(expect.arrayContaining([{sourceName:"defs.h",content:"#define VALUE 1\n"},{sourceName:"inc/defs.hpp",content:"#define OTHER 2\n"}]));
+    expect((await publicationCall("/import-preview","POST",{archive:headerArchive},reader)).status).toBe(403);
+    expect((await call("","POST",{name:"Header only",archive:headerArchive})).status).toBe(400);
+    const draft=(await call("","POST",{name:"Header replacement",sourceName:"main.dtsi",content:source})).body.item;
+    expect((await call(`/${draft.resourceId}/draft`,"PUT",{name:draft.name,archive:headerArchive,expectedRevision:1})).status).toBe(400);
+    expect((await call(`/${draft.resourceId}`)).body.item).toMatchObject({revision:1,members:draft.members});
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ('header-other-admin','org-other-dtsi','Other author','Admin',true)");
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('header-other-role','header-other-admin','org-other-dtsi','admin')");
+    const other=makeTestAuthContext({organizationId:"org-other-dtsi",userId:"header-other-admin"});
+    expect((await call(`/${draft.resourceId}/draft`,"PUT",{name:draft.name,expectedRevision:1,members:[{sourceName:"main.dtsi",content:source},...headerPreview.body.item.members]},other)).status).toBe(404);
+    const empty=new JSZip();
+    expect((await publicationCall("/import-preview","POST",{archive:{name:"empty.zip",contentBase64:await empty.generateAsync({type:"base64"})}})).status).toBe(400);
+    const badHeaderArchives=[new JSZip().file("bad.h",Buffer.from([0xff,0xfe])),new JSZip().file("bad:header.h","#define X 1"),
+      new JSZip().file("café.h","a").file("cafe\u0301.h","b"),new JSZip().file("large.h",Buffer.alloc(2_097_153,0x41))];
+    for(const archive of badHeaderArchives){
+      const rejected=await publicationCall("/import-preview","POST",{archive:{name:"invalid-headers.zip",contentBase64:await archive.generateAsync({type:"base64",compression:"DEFLATE"})}});
+      expect(rejected.status,rejected.bodyText).toBe(400);
+    }
     const invalid=new JSZip();invalid.file("bad.dtsi",Buffer.from([0xff,0xfe,0xff]));
     const invalidResult=await publicationCall<{error:{message:string}}>("/import-preview","POST",{archive:{name:"invalid.zip",contentBase64:await invalid.generateAsync({type:"base64"})}});
     expect(invalidResult.status).toBe(400);expect(invalidResult.body.error.message).toContain("bad.dtsi");

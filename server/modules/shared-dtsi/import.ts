@@ -34,7 +34,7 @@ export async function inspectSharedDtsiArchive(input:SharedDtsiDraftInput) {
     const issue=parsed.error.issues[0]!,index=issue.path[1];
     throw new ApiError("VALIDATION_FAILED",`${typeof index==="number"?members[index]?.sourceName??"归档":"归档"}：${issue.message}`,{issues:parsed.error.issues});
   }
-  inputMembers(parsed.data);
+  inputMembers(parsed.data, { allowHeaderOnly: true });
   return {input:parsed.data,ignored};
 }
 

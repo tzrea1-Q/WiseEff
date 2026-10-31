@@ -58,6 +58,41 @@ test("inspects a ZIP before saving and preserves edited source until replacement
 
 test.use({catalogRuntimeScope:import.meta.url,catalogRuntimeDatabaseUrl:process.env.TEST_DATABASE_URL});
 
+test("adds a header-only ZIP to a draft without replacing its edited source",async({page,catalogAcceptanceRuntime})=>{
+  void catalogAcceptanceRuntime;
+  const archive=new JSZip();archive.file("include/defs.h","#define VALUE 1\n");archive.file("include/extra.hpp","#define EXTRA 2\n");
+  const zip={name:"headers.zip",mimeType:"application/zip",buffer:await archive.generateAsync({type:"nodebuffer"})};
+  await signInCatalogActor(page,"org-admin","/parameter-admin/sources");await dismissXiaozeHint(page);
+  await page.getByRole("button",{name:"导入资源",exact:true}).click();
+  await page.locator('input[type="file"]').first().setInputFiles({name:"main.dtsi",mimeType:"text/plain",buffer:Buffer.from("/ { main {}; };\n")});
+  await page.getByLabel("资源名称",{exact:true}).fill(`Header archive ${Date.now()}`);
+  await page.getByRole("button",{name:"保存草稿",exact:true}).click();await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
+  const resourceId=new URL(page.url()).searchParams.get("resource")!;
+  const editor=page.getByLabel("DTSI 源码",{exact:true});
+  await editor.click();await page.keyboard.press("ControlOrMeta+End");await page.keyboard.insertText("// local edit\n");
+  const inspecting=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname==="/api/v2/shared-dtsi/import-preview");
+  await page.getByLabel("添加源码文件",{exact:true}).setInputFiles(zip);
+  expect((await inspecting).status()).toBe(200);
+  const files=page.getByRole("navigation",{name:"资源文件",exact:true});
+  await expect(files.getByRole("button",{name:"include/defs.h",exact:true})).toBeVisible();
+  await expect(files.getByRole("button",{name:"include/extra.hpp",exact:true})).toBeVisible();
+  await expect(editor).toContainText("local edit");
+  await page.getByRole("button",{name:"保存草稿",exact:true}).click();await expect(page.getByText("草稿已保存",{exact:true})).toBeVisible();
+  const saved=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/${resourceId}`);
+  expect(saved.status).toBe(200);
+  expect((saved.body as {item:{members:{sourceName:string;content:string}[]}}).item.members).toEqual(expect.arrayContaining([
+    expect.objectContaining({sourceName:"main.dtsi",content:"/ { main {}; };\n// local edit\n"}),
+    expect.objectContaining({sourceName:"include/defs.h",content:"#define VALUE 1\n"}),
+    expect.objectContaining({sourceName:"include/extra.hpp",content:"#define EXTRA 2\n"})]));
+  await page.locator('input[type="file"]').first().setInputFiles(zip);
+  await expect(page.getByRole("alert")).toContainText("资源至少需要一个 .dts 或 .dtsi 源码文件");
+  await expect(editor).toContainText("local edit");await expect(files.getByRole("button",{name:"include/defs.h",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"返回资源列表",exact:true}).click();await page.getByRole("button",{name:"导入资源",exact:true}).click();
+  await page.locator('input[type="file"]').first().setInputFiles(zip);
+  await expect(page.getByRole("alert")).toContainText("资源至少需要一个 .dts 或 .dtsi 源码文件");
+  await expect(page.getByLabel("DTSI 源码",{exact:true})).toHaveCount(0);
+});
+
 test("safely adds, renames and removes draft members while retaining editor context",async({page,catalogAcceptanceRuntime},testInfo)=>{
   void catalogAcceptanceRuntime;
   await page.setViewportSize({width:1440,height:900});await signInCatalogActor(page,"org-admin","/parameter-admin/sources");await dismissXiaozeHint(page);
