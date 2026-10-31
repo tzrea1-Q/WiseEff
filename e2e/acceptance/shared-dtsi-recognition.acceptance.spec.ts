@@ -57,6 +57,12 @@ test("#1431 recognizes frozen source instances, submits an ambiguity proposal an
       await page.setViewportSize(viewport);await assertNoPageOverflow(page);
       await catalogScreenshot(page,testInfo,`shared-recognition-${viewport.width}`);
     }
+    const panel=page.getByRole("tabpanel",{name:"来源识别",exact:true});
+    await panel.evaluate(node=>{node.scrollTop=node.scrollHeight;});
+    expect(await panel.evaluate(node=>node.scrollTop>0 && node.scrollHeight>node.clientHeight)).toBe(true);
+    await expect(page.getByRole("heading",{name:"精确来源识别",exact:true})).toBeInViewport({ratio:1});
+    await expect(page.getByRole("tab",{name:"来源识别",exact:true})).toHaveAttribute("aria-selected","true");
+    await expect(recognition.getByText("&{/soc}/device@3",{exact:true})).toBeInViewport();
     await recognition.getByRole("link",{name:"记录识别修订",exact:true}).focus();await page.keyboard.press("Enter");
     const proposal=page.getByRole("dialog",{name:"来源识别修订",exact:true});
     await proposal.getByLabel("变更说明",{exact:true}).fill("核对 device@1 的两个正式候选，按项目实际硬件确认身份；不绑定全局实例。");
@@ -119,7 +125,9 @@ test("#1431 recognizes frozen source instances, submits an ambiguity proposal an
     await expect(page).toHaveURL(catalogAppUrl(sourcePath));
     await expect(recognition.getByText("&{/soc}/device@2",{exact:true})).toBeVisible();
     await page.evaluate(()=>document.documentElement.classList.add("dark"));
-    await expect(page.getByRole("button",{name:"返回资源列表",exact:true})).toHaveCSS("color","rgb(183, 193, 212)");
+    const back=page.getByRole("button",{name:"返回资源列表",exact:true});
+    await expect(back).toHaveAttribute("data-variant","outline");
+    await expect(back).toHaveCSS("color","rgb(232, 236, 244)");
     await assertNoPageOverflow(page);await catalogScreenshot(page,testInfo,"shared-recognition-guest-dark-1280");
     expect(errors).toEqual([]);expect(serverErrors).toEqual([]);
   } finally {await db.close();}
@@ -166,6 +174,23 @@ test("#1431 retains source recognition loading, retry and empty states and a scr
   await editor.scrollIntoViewIfNeeded();
   await expect(editor).toBeInViewport({ratio:0.9});
   await expect(page.getByRole("button",{name:"预览发布",exact:true})).toBeInViewport({ratio:1});
-  expect(await page.locator('.shared-dtsi-page--editor').evaluate(node=>node.scrollTop>0 && node.scrollHeight>node.clientHeight)).toBe(true);
+  const body=page.locator(".shared-dtsi-resource-body");
+  expect(await body.evaluate(node=>node.scrollTop>0 && node.scrollHeight>node.clientHeight)).toBe(true);
+  await body.evaluate(node=>{node.scrollTop=node.scrollHeight;});
+  const header=await page.locator(".shared-dtsi-header--resource").boundingBox();
+  const bodyBox=await body.boundingBox();
+  const editorBox=await editor.boundingBox();
+  const filesBox=await page.getByRole("navigation",{name:"资源文件",exact:true}).boundingBox();
+  expect(header).not.toBeNull();expect(bodyBox).not.toBeNull();expect(editorBox).not.toBeNull();expect(filesBox).not.toBeNull();
+  expect(editorBox!.y).toBeGreaterThanOrEqual(header!.y+header!.height);
+  expect(filesBox!.y).toBeGreaterThanOrEqual(header!.y+header!.height);
+  expect(editorBox!.y).toBeGreaterThanOrEqual(bodyBox!.y);
+  expect(filesBox!.y).toBeGreaterThanOrEqual(bodyBox!.y);
+  expect(editorBox!.y+editorBox!.height).toBeLessThanOrEqual(bodyBox!.y+bodyBox!.height);
+  expect(filesBox!.y+filesBox!.height).toBeLessThanOrEqual(bodyBox!.y+bodyBox!.height);
+  expect(editorBox!.x).toBeGreaterThanOrEqual(bodyBox!.x);
+  expect(filesBox!.x).toBeGreaterThanOrEqual(bodyBox!.x);
+  expect(editorBox!.x+editorBox!.width).toBeLessThanOrEqual(bodyBox!.x+bodyBox!.width);
+  expect(filesBox!.x+filesBox!.width).toBeLessThanOrEqual(bodyBox!.x+bodyBox!.width);
   await catalogScreenshot(page,testInfo,"shared-draft-error-editor-scrolled-1280");
 });
