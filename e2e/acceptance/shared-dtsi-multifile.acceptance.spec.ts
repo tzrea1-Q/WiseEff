@@ -68,9 +68,10 @@ test("imports a relative ZIP library, repairs missing dependencies and publishes
   await files.getByRole("button",{name:"library/main.dtsi",exact:true}).focus();
   await page.keyboard.press("Enter");
   await page.getByRole("button",{name:"预览发布",exact:true}).click();
-  await expect(page.getByRole("heading",{name:"发布 battery-library",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"发布预览",exact:true})).toBeVisible();
+  await expect(page.getByRole("region",{name:"发布摘要",exact:true}).getByText("battery-library",{exact:true})).toBeVisible();
   await expect(page.getByText("project_host",{exact:true})).toBeVisible();
-  await page.getByRole("combobox",{name:"比较文件",exact:true}).click();await page.getByRole("option",{name:"新增 → include/constants.h",exact:true}).click();
+  await page.getByRole("combobox",{name:"比较文件",exact:true}).click();await page.getByRole("option",{name:"新增 include/constants.h",exact:true}).click();
   await expect(page.getByRole("region",{name:"共享原始源码修改片段",exact:true})).toContainText("#define VOLTAGE 42");
   await page.setViewportSize({width:1280,height:800});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

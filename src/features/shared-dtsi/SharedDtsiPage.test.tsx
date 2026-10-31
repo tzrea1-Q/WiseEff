@@ -281,13 +281,25 @@ describe("shared DTSI draft authoring", () => {
     }});
     function Harness(){const[search,setSearch]=useState(`?resource=${resourceId}`);return <SharedDtsiPage apiClient={api} canWrite search={search} onNavigate={path=>setSearch(new URL(path,"http://localhost").search)}/>;}
     render(<Harness/>);
+    expect(await screen.findByRole("button",{name:"返回资源列表"})).toHaveAttribute("data-variant","outline");
     await user.click(await screen.findByRole("button",{name:"预览发布"}));
+    expect(screen.getByRole("heading",{name:"发布预览"})).toBeVisible();
+    expect(screen.getByText("已检查源码及共享资源依赖；未验证项目编译、设备树 Schema 或硬件。")).toBeVisible();
     expect(screen.getByText("本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。")).toBeVisible();
     expect(screen.getByLabelText("首次发布 → 待发布版本")).toBeVisible();
+    expect(screen.queryByRole("combobox",{name:"比较文件"})).not.toBeInTheDocument();
+    expect(screen.getByText("新增 battery.dtsi")).toBeVisible();
+    screen.getByRole("button",{name:"返回编辑"}).focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("button",{name:"预览发布"})).toHaveFocus();
+    expect(screen.getByLabelText("变更说明")).toHaveValue("首次共享版本");
+    await user.click(screen.getByRole("button",{name:"预览发布"}));
     await user.click(screen.getByRole("radio",{name:"语义声明"}));
+    expect(within(screen.getByRole("region",{name:"有序语义声明修改片段"})).queryByText("删除行")).not.toBeInTheDocument();
     expect(screen.getByLabelText("有序语义声明变更后")).toHaveTextContent("battery");
     await user.click(screen.getByRole("button",{name:"发布版本"}));
     await screen.findByText("v1 · 已发布，只读");
+    expect(screen.getByRole("button",{name:"返回资源列表"})).toHaveAttribute("data-variant","outline");
     expect(screen.getByLabelText("已发布 DTSI 源码")).toHaveAttribute("aria-readonly","true");
     expect(screen.queryByRole("button",{name:"保存草稿"})).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab",{name:"版本"}));

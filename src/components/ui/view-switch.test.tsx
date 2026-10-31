@@ -24,13 +24,27 @@ describe("ViewSwitch", () => {
     expect(overrides).toEqual([]);
   });
 
-  it.each(["section", "tabs", "toggle"] as const)("preserves an option's error explanation for %s", (variant) => {
-    render(<ViewSwitch variant={variant} ariaLabel="节点对应确认" value="mapping" onValueChange={() => {}} items={[
+  it.each(["section", "tabs", "toggle", "toggle-outline"] as const)("preserves an option's error explanation for %s", (variant) => {
+    const props={ariaLabel:"节点对应确认",value:"mapping",onValueChange:()=>{},items:[
       { value: "mapping", label: "节点对应确认", id: "mapping-tab", panelId: "mapping-panel",
         title: "任务计数不可用" }
-    ]} />);
+    ]};
+    render(variant === "tabs" ? <ViewSwitch variant="tabs" {...props} /> : <ViewSwitch variant={variant} {...props} />);
     const option = screen.getByRole(variant === "section" ? "button" : variant === "tabs" ? "tab" : "radio", { name: "节点对应确认" });
     expect(option).toHaveAttribute("title", "任务计数不可用");
+  });
+
+  it("makes the outlined toggle an opt-in with visible option and selected boundaries", () => {
+    const css=readStylesheet("src/components/ui/view-switch.css");
+    expect(declarationsFor(css,".view-switch--toggle-outline").border).toBe("var(--stroke-hairline) solid var(--border-strong)");
+    expect(declarationsFor(css,".view-switch--toggle-outline .view-switch__item")["border-color"]).toBe("var(--text-muted)");
+    const selected=declarationsFor(css,'.view-switch--toggle-outline .view-switch__item[aria-checked="true"]');
+    expect(selected["border-color"]).toBe("var(--accent)");
+    expect(selected.background).toBe("var(--accent-soft)");
+    render(<><ViewSwitch variant="toggle" ariaLabel="普通" value="one" onValueChange={()=>{}} items={[{value:"one",label:"普通"}]} />
+      <ViewSwitch variant="toggle-outline" ariaLabel="带边框" value="one" onValueChange={()=>{}} items={[{value:"one",label:"带边框"}]} /></>);
+    expect(screen.getByRole("radiogroup",{name:"普通"})).not.toHaveClass("view-switch--toggle-outline");
+    expect(screen.getByRole("radiogroup",{name:"带边框"})).toHaveClass("view-switch--toggle-outline");
   });
 
   it.each([
@@ -38,9 +52,10 @@ describe("ViewSwitch", () => {
     ["tabs", "var(--space-8)", "var(--radius-md)", "var(--text-base)", "var(--leading-base)", "var(--accent-soft)"],
     ["toggle", "calc(var(--space-6) + var(--space-1))", "var(--radius-sm)", "var(--text-sm)", "var(--leading-sm)", "var(--surface)"]
   ] as const)("gives %s tokenized geometry, selected fill, and a visible keyboard focus ring", async (variant, height, radius, size, leading, fill) => {
-    render(<ViewSwitch variant={variant} ariaLabel="视图" value="first" onValueChange={() => {}} items={[
+    const props={ariaLabel:"视图",value:"first",onValueChange:()=>{},items:[
       { value: "first", label: "第一项", id: "first-tab", panelId: "first-panel" }
-    ]} />);
+    ]};
+    render(variant === "tabs" ? <ViewSwitch variant="tabs" {...props} /> : <ViewSwitch variant={variant} {...props} />);
     await userEvent.tab();
     const focused = screen.getByRole(variant === "section" ? "button" : variant === "tabs" ? "tab" : "radio", { name: "第一项" });
     expect(focused).toHaveFocus();
@@ -166,10 +181,10 @@ describe("ViewSwitch", () => {
     expect(screen.getByRole("tabpanel", { name: "账号库" })).toHaveFocus();
   });
 
-  it("names an option radio group and selects with arrows, Space, or a click", async () => {
+  it.each(["toggle", "toggle-outline"] as const)("names a %s radio group and selects with arrows, Space, or a click", async (variant) => {
     function Options() {
       const [value, setValue] = useState("all");
-      return <ViewSwitch variant="toggle" ariaLabel="显示范围" value={value} onValueChange={setValue} items={[
+      return <ViewSwitch variant={variant} ariaLabel="显示范围" value={value} onValueChange={setValue} items={[
         { value: "all", label: "全部" },
         { value: "disabled", label: "不可用", disabled: true },
         { value: "mine", label: "我的" }

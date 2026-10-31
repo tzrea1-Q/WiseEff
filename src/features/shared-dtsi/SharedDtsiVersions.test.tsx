@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "@/infrastructure/http/apiClient";
 import { SharedDtsiPage } from "./SharedDtsiPage";
-import { SharedDtsiComparison } from "./SharedDtsiComparison";
+import { SharedDtsiComparison, SharedDtsiComparisonContent } from "./SharedDtsiComparison";
 import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
 
 const resourceId="33333333-3333-4333-8333-333333333333";
@@ -13,15 +13,64 @@ const versions=[1,2,3].map(version=>({id:`${version}1111111-1111-4111-8111-11111
 const memberId="22222222-2222-4222-8222-222222222222";
 const comparison={before:versions[0],after:versions[2],buildInputs:{before:{includeSearchPaths:[],defines:{ROOT_FLAG:"1"}},after:{includeSearchPaths:[],defines:{ROOT_FLAG:"2"}}},dependencies:{before:[],after:[]},sources:[{resourceId,resourceName:"Shared source",memberId,
   before:{sourceName:"lib/node.dtsi",content:'/ { a { value = <1>; }; };'},after:{sourceName:"lib/node.dtsi",content:'/ { a { value = <3>; }; };'}}],
-  semantic:{scope:"ordered-fragment-declarations",before:"a { value = <1>; };",after:"a { /delete-property/ value; value = <3>; };",externalReferences:[]}};
+  semantic:{scope:"ordered-fragment-declarations" as const,before:"a { value = <1>; };",after:"a { /delete-property/ value; value = <3>; };",externalReferences:[]}};
 
 describe("immutable version comparison and authorized usage",()=>{
+  it("shows a single changed file directly and lets users choose between multiple files",async()=>{
+    const user=userEvent.setup();
+    const view=render(<SharedDtsiComparisonContent result={comparison} resourceId={resourceId} beforeLabel="v1" afterLabel="v3" />);
+    expect(screen.getByText("lib/node.dtsi")).toBeVisible();
+    expect(screen.queryByRole("combobox",{name:"比较文件"})).not.toBeInTheDocument();
+    expect(screen.getByRole("region",{name:"共享原始源码修改片段"})).toHaveTextContent("value = <3>");
+    const second={resourceId,resourceName:"Shared source",memberId:"66666666-6666-4666-8666-666666666666",before:null,
+      after:{sourceName:"lib/extra.dtsi",content:"/ { added {}; };\n"}};
+    view.rerender(<SharedDtsiComparisonContent result={{...comparison,sources:[...comparison.sources,second]}} resourceId={resourceId} beforeLabel="v1" afterLabel="v3" />);
+    await user.click(screen.getByRole("combobox",{name:"比较文件"}));
+    await user.click(screen.getByRole("option",{name:"新增 lib/extra.dtsi"}));
+    expect(screen.getByRole("region",{name:"共享原始源码修改片段"})).toHaveTextContent("added");
+    expect(screen.getByText("源码差异")).toBeVisible();
+    screen.getByRole("radio",{name:"原始源码"}).focus();
+    await user.keyboard("{ArrowRight>}");
+    await waitFor(()=>expect(screen.getByRole("radio",{name:"语义声明"})).toBeChecked());
+    await user.keyboard("{/ArrowRight}{ArrowLeft>}");
+    await waitFor(()=>expect(screen.getByRole("radio",{name:"原始源码"})).toBeChecked());
+    await user.keyboard("{/ArrowLeft}");
+    expect(screen.getByRole("region",{name:"共享原始源码修改片段"})).toHaveTextContent("added");
+  });
+  it("does not invent a file change when both source snapshots are missing",()=>{
+    render(<SharedDtsiComparisonContent result={{...comparison,sources:[{...comparison.sources[0]!,before:null,after:null}]}} resourceId={resourceId} beforeLabel="v1" afterLabel="v3" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("文件信息不完整，无法显示差异。");
+    expect(screen.queryByText("新增空文件。")).not.toBeInTheDocument();
+  });
+  it("only adds references from the earlier version when the preview already lists current references",async()=>{
+    const user=userEvent.setup();
+    const result={...comparison,semantic:{...comparison.semantic,externalReferences:["&current","&previous"]}};
+    const view=render(<SharedDtsiComparisonContent result={result} resourceId={resourceId} beforeLabel="v1" afterLabel="待发布版本" currentExternalReferences={["&current"]} />);
+    await user.click(screen.getByRole("radio",{name:"语义声明"}));
+    expect(screen.getByText("仅旧版本中的引用：&previous")).toBeVisible();
+    expect(screen.queryByText(/项目需提供的外部引用：/)).not.toBeInTheDocument();
+    view.rerender(<SharedDtsiComparisonContent result={result} resourceId={resourceId} beforeLabel="v1" afterLabel="待发布版本" currentExternalReferences={["&current","&previous"]} />);
+    expect(screen.queryByText(/仅旧版本中的引用/)).not.toBeInTheDocument();
+    view.rerender(<SharedDtsiComparisonContent result={result} resourceId={resourceId} beforeLabel="v1" afterLabel="v3" />);
+    expect(screen.getByText("两个版本涉及的外部引用：&current、&previous")).toBeVisible();
+  });
+  it("shows setting and dependency changes only when a previous version exists",()=>{
+    const pin={resourceId:"77777777-7777-4777-8777-777777777777",versionId:"88888888-8888-4888-8888-888888888888",name:"Common",version:1,digest:"sha256:fixed",mountPath:""};
+    const result={...comparison,dependencies:{before:[],after:[pin]}};
+    const view=render(<SharedDtsiComparisonContent result={result} resourceId={resourceId} beforeLabel="首次发布" afterLabel="待发布版本" initialPublication />);
+    expect(screen.queryByText("构建设置变化")).not.toBeInTheDocument();
+    expect(screen.queryByText("固定依赖变化")).not.toBeInTheDocument();
+    view.rerender(<SharedDtsiComparisonContent result={result} resourceId={resourceId} beforeLabel="v1" afterLabel="待发布版本" />);
+    expect(screen.getByText("构建设置变化")).toBeVisible();
+    expect(screen.getByText("固定依赖变化")).toBeVisible();
+  });
   it("explains macro-only changes while keeping identical original files separate from semantic values",async()=>{
     const user=userEvent.setup();
     const api=createApiClient({baseUrl:"",fetchImpl:async()=>new Response(JSON.stringify({item:{...comparison,sources:[],
       semantic:{...comparison.semantic,before:"/ { context { flag = <1>; }; };",after:"/ { context { flag = <2>; }; };"}}}))});
     render(<SharedDtsiComparison client={createSharedDtsiClient(api)} resourceId={resourceId} before={versions[0]!.id} after={versions[2]!.id} />);
     await screen.findByText("原始源码没有变化");
+    expect(screen.getByText("v1 → v3")).toBeVisible();
     await user.click(screen.getByText("构建设置变化"));expect(screen.getByText("ROOT_FLAG=1")).toBeVisible();expect(screen.getByText("ROOT_FLAG=2")).toBeVisible();
     await user.click(screen.getByRole("radio",{name:"语义声明"}));
     expect(screen.getByRole("region",{name:"有序语义声明修改片段"})).toHaveTextContent("flag = <1>");
@@ -47,13 +96,24 @@ describe("immutable version comparison and authorized usage",()=>{
     expect(screen.getByRole("button",{name:"比较所选版本"})).toBeDisabled();
     await user.click(screen.getByRole("checkbox",{name:"选择版本 v3"}));await user.click(screen.getByRole("checkbox",{name:"选择版本 v1"}));
     expect(screen.getByRole("checkbox",{name:"选择版本 v2"})).toBeDisabled();
+    expect(screen.getAllByText("v1 → v3")).toHaveLength(1);
     await user.click(screen.getByRole("button",{name:"比较所选版本"}));
-    await screen.findByText("无法比较所选版本。");await user.click(screen.getByRole("button",{name:"重试"}));
+    await screen.findByText("无法比较所选版本。");
+    expect(screen.getAllByText("v1 → v3")).toHaveLength(1);
+    await user.click(screen.getByRole("button",{name:"重试"}));
     await screen.findByRole("region",{name:"共享原始源码修改片段"});
+    expect(screen.getAllByText("v1 → v3")).toHaveLength(1);
+    expect(screen.getByRole("radiogroup",{name:"版本差异类型"})).toHaveClass("view-switch--toggle-outline");
     await user.click(screen.getByText("构建设置变化"));expect(screen.getByText("ROOT_FLAG=1")).toBeVisible();expect(screen.getByText("ROOT_FLAG=2")).toBeVisible();
     expect(fetchImpl.mock.calls.filter(([url])=>String(url).includes("/comparison")).every(([url])=>String(url).includes(`before=${versions[0]!.id}&after=${versions[2]!.id}`))).toBe(true);
     await user.click(screen.getByRole("radio",{name:"语义声明"}));
     expect(screen.getByRole("region",{name:"有序语义声明修改片段"})).toHaveTextContent("/delete-property/ value;");
+    screen.getByRole("button",{name:"返回版本记录"}).focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("button",{name:"比较所选版本"})).toHaveFocus();
+    expect(screen.getByRole("checkbox",{name:"选择版本 v1"})).toBeChecked();
+    expect(screen.getByRole("checkbox",{name:"选择版本 v3"})).toBeChecked();
+    expect(screen.getAllByText("v1 → v3")).toHaveLength(1);
     await user.click(screen.getByRole("tab",{name:"使用情况"}));
     const config=await screen.findByRole("link",{name:"Visible project / Pinned config"});
     expect(config).toHaveAttribute("href","/parameter-admin/projects/visible%2Fproject/configuration?organization=org&configSet=exact-config&tab=effective");
@@ -79,6 +139,7 @@ describe("immutable version comparison and authorized usage",()=>{
     function Harness(){const[search,setSearch]=useState(`?resource=${resourceId}&tab=versions`);return <SharedDtsiPage apiClient={api} canWrite={false} search={search} onNavigate={path=>setSearch(new URL(path,"http://localhost").search)} />;}
     render(<Harness/>);await user.click(await screen.findByRole("checkbox",{name:"选择版本 v1"}));await user.click(screen.getByRole("checkbox",{name:"选择版本 v3"}));
     await user.click(screen.getByRole("button",{name:"比较所选版本"}));await screen.findByLabelText("正在比较所选版本");
+    expect(screen.getAllByText("v1 → v3")).toHaveLength(1);
     await user.click(screen.getByRole("tab",{name:"使用情况"}));await screen.findByText("没有可显示的项目使用");
     await act(async()=>{finish(new Response(JSON.stringify({item:comparison})));});
     expect(screen.queryByRole("region",{name:"共享原始源码修改片段"})).not.toBeInTheDocument();
