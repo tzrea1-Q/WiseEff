@@ -165,7 +165,7 @@ test("#1431 retains source recognition loading, retry and empty states and a scr
   await page.goto(catalogAppUrl(`/parameter-admin/sources?resource=${draftId}`));
   await expect(page.getByLabel("资源名称",{exact:true})).toHaveValue("紧凑窗口完整编辑器");
   await page.getByText("构建设置",{exact:true}).click();
-  await page.getByText("固定资源依赖（按需）",{exact:true}).click();
+  await page.getByText("引用其他共享资源",{exact:true}).click();
   await page.getByRole("button",{name:"预览发布",exact:true}).click();
   await expect(page.getByRole("alert")).toContainText("冻结");
   await page.setViewportSize({width:1280,height:800});

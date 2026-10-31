@@ -32,7 +32,7 @@ export function SharedDtsiComparisonContent({result,resourceId,beforeLabel,after
     {buildInputsChanged?<details><summary>构建设置变化</summary>
       {(["before","after"] as const).map(side=><div key={side}><h3>{labels[side]}</h3><dl className="shared-dtsi-metadata">
         <div><dt>搜索目录</dt><dd>{result.buildInputs[side].includeSearchPaths.join("、")||"资源目录"}</dd></div>
-        <div><dt>构建宏</dt><dd>{Object.entries(result.buildInputs[side].defines).map(([name,value])=>`${name}=${value}`).join("\n")||"未声明"}</dd></div>
+        <div><dt>预处理宏</dt><dd>{Object.entries(result.buildInputs[side].defines).map(([name,value])=>`${name}=${value}`).join("\n")||"未声明"}</dd></div>
       </dl></div>)}
     </details>:null}
     {JSON.stringify(result.dependencies.before)!==JSON.stringify(result.dependencies.after)?<details><summary>固定依赖变化</summary>

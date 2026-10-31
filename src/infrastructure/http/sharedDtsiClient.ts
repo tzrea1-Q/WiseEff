@@ -10,7 +10,7 @@ export function createSharedDtsiClient(api: ApiClient) {
       const result = await api.post<{item:unknown}>(`${base}/import-preview`, {archive});
       return sharedDtsiImportPreviewSchema.parse(result.item);
     },
-    async list(input: { q?: string; offset?: number; limit?: number } = {}) {
+    async list(input: { q?: string; offset?: number; limit?: number; eligible?: "1"; exclude?: string } = {}) {
       const query = new URLSearchParams();
       for (const [key, value] of Object.entries(input)) if (value !== undefined) query.set(key, String(value));
       return sharedDtsiListSchema.parse(await api.get(`${base}?${query}`));
