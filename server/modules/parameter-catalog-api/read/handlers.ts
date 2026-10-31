@@ -22,6 +22,7 @@ import {
   type SubjectLifecycle,
 } from "../../parameter-catalog-contract/index";
 import {
+  definitionLifecycle,
   emptyReasonFor,
   mapCatalogDefinition,
   mapCatalogDocument,
@@ -324,10 +325,10 @@ async function handleRevisionExport(snapshot: CatalogSnapshot, ports: CatalogRea
     const result = snapshot.getDefinitionById(ParameterDefinitionId(id));
     if (result.status === "unknown" || result.status === "not-published") { skipped.push({ id, reason: "unknown" }); continue; }
     if (hiddenId(scope.subjects, result.definition.subjectId)) { skipped.push({ id, reason: "not-visible" }); continue; }
-    if (result.status === "retired" || result.definition.selectedRevision.content.lifecycle === "retired") {
+    if (result.status === "retired" || definitionLifecycle(result.definition) === "retired") {
       skipped.push({ id, reason: "retired" }); continue;
     }
-    if (result.definition.selectedRevision.content.lifecycle === "deprecated") { skipped.push({ id, reason: "deprecated" }); continue; }
+    if (definitionLifecycle(result.definition) === "deprecated") { skipped.push({ id, reason: "deprecated" }); continue; }
     const sourceDefinition = source.documents.find((item) => item.kind === "definition" && item.content.id === id);
     if (!sourceDefinition || sourceDefinition.kind !== "definition") return catalogNotReady(request.requestId);
     allowed.push(id);
