@@ -110,7 +110,8 @@ test("publishes original header macros and recovers an unfrozen-input diagnostic
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
   await expect(page.getByText("草稿已保存", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "预览发布", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "发布 cpp-common", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "发布预览", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "发布摘要", exact: true }).getByText("cpp-common", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 1440, height: 900 });
   await catalogScreenshot(page, testInfo, "shared-dtsi-cpp-preview-1440");
   await page.getByRole("button", { name: "发布版本", exact: true }).focus();
@@ -145,7 +146,8 @@ test("publishes a source-only shared version and retains its history after disca
   await catalogScreenshot(page,testInfo,"shared-source-draft-1440");
   const resourceId=new URL(page.url()).searchParams.get("resource")!;
   await page.getByRole("button",{name:"预览发布",exact:true}).click();
-  await expect(page.getByRole("heading",{name:"发布 battery-common",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"发布预览",exact:true})).toBeVisible();
+  await expect(page.getByRole("region",{name:"发布摘要",exact:true}).getByText("battery-common",{exact:true})).toBeVisible();
   await expect(page.getByText("本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。",{exact:true})).toBeVisible();
   await expect(page.getByRole("region",{name:"首次发布 → 待发布版本",exact:true})).toBeVisible();
   await catalogScreenshot(page,testInfo,"shared-dtsi-publication-preview-1440");

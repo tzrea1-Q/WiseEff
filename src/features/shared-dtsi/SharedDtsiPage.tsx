@@ -122,6 +122,8 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const editorSessions=useRef<WorkbenchDtsEditorSessions>(new Map());
   const memberKeys=useRef<string[]>([crypto.randomUUID()]);
   const resume=useRef<{resourceId:string;revision:number;members:{id:string;content:string;key:string}[];activeId:string}|null>(null);
+  const previewButton = useRef<HTMLButtonElement>(null);
+  const restorePreviewFocus = useRef(false);
   const upload = useRef<HTMLInputElement>(null);
   const directoryUpload = useRef<HTMLInputElement>(null);
   const additionalUpload = useRef<HTMLInputElement>(null);
@@ -147,6 +149,12 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     || JSON.stringify(buildText) !== JSON.stringify(buildTexts(base.buildInputs)));
   const busyLoading = loading || loadedScope !== scope;
   const currentPreview = preview?.scope === scope ? preview : null;
+  useEffect(() => {
+    if (!currentPreview && restorePreviewFocus.current) {
+      restorePreviewFocus.current = false;
+      previewButton.current?.focus();
+    }
+  }, [currentPreview]);
   const sessionKey = memberKeys.current[memberIndex] ?? "shared-dtsi-empty";
   const path = useCallback((resourceId: string, options?: { version?: string; tab?: string }) => {
     const params = new URLSearchParams(search);
@@ -434,20 +442,25 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   </section>;
 
   if (currentPreview) return <section className="shared-dtsi-page shared-dtsi-page--editor" aria-label="共享 DTSI 发布预览" aria-busy={pending}>
-    <header className="shared-dtsi-header"><div><Button variant="ghost" disabled={pending} onClick={() => setPreview(null)}>返回编辑</Button>
-      <h1>发布 {currentPreview.data.name}</h1></div><Button disabled={pending} onClick={() => void publish()}>{pending ? "正在发布…" : "发布版本"}</Button></header>
+    <header className="shared-dtsi-header shared-dtsi-preview-header"><div className="shared-dtsi-preview-heading"><Button variant="outline" size="sm" disabled={pending} onClick={() => { restorePreviewFocus.current = true; setPreview(null); }}><ArrowLeft aria-hidden="true" />返回编辑</Button>
+      <h1>发布预览</h1></div><Button disabled={pending} onClick={() => void publish()}>{pending ? "正在发布…" : "发布版本"}</Button></header>
     {error ? <p role="alert" className="shared-dtsi-error">{error}</p> : null}
-    <p>本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。</p>
-    <p>预览检查源码与依赖，不代表完整项目编译或设备验证通过。</p>
-    <dl className="shared-dtsi-metadata"><div><dt>文件</dt><dd>{currentPreview.data.manifest.members.length} 个 · 共享源码库</dd></div>
-      <div><dt>变更说明</dt><dd>{currentPreview.data.changeDescription}</dd></div>
-      {currentPreview.data.manifest.externalReferences.length ? <div><dt>项目需提供的引用</dt><dd>{currentPreview.data.manifest.externalReferences.join("、")}</dd></div> : null}</dl>
+    <section className="shared-dtsi-preview-overview" aria-labelledby="shared-dtsi-preview-summary">
+      <h2 id="shared-dtsi-preview-summary">发布摘要</h2>
+      <div className="shared-dtsi-preview-summary">
+        <dl className="shared-dtsi-preview-facts"><dt>资源名称</dt><dd>{currentPreview.data.name}</dd>
+          <dt>版本说明</dt><dd>{currentPreview.data.changeDescription}</dd>
+          {currentPreview.data.manifest.externalReferences.length ? <><dt>项目需提供的引用</dt><dd>{currentPreview.data.manifest.externalReferences.join("、")}</dd></> : null}</dl>
+        <dl className="shared-dtsi-preview-facts"><dt>检查范围</dt><dd>已检查源码及共享资源依赖；未验证项目编译、设备树 Schema 或硬件。</dd>
+          <dt>发布影响</dt><dd>本组织有查看权限的用户可读取完整源码；发布不会自动更新项目配置。</dd></dl>
+      </div>
+  </section>
     {fixedBuildInputs(currentPreview.data.manifest.buildInputs)}
     {currentPreview.data.manifest.dependencyClosure?.length?<details><summary>完整固定依赖（{currentPreview.data.manifest.dependencyClosure.length}）</summary>
       <ul>{currentPreview.data.manifest.dependencyClosure.map(pin=><li key={pin.resourceId}>{pin.name} · 版本 {pin.version} · {pin.mountPath||"资源根目录"} <a
         href={path(pin.resourceId,{version:pin.versionId,tab:"source"})} target="_blank" rel="noreferrer">查看源码</a></li>)}</ul></details>:null}
     <SharedDtsiComparisonContent key={currentPreview.data.id} result={currentPreview.data.comparison} resourceId={selected}
-      beforeLabel={currentPreview.data.comparison.before?`v${currentPreview.data.comparison.before.version}`:"首次发布"} afterLabel="待发布版本" />
+      beforeLabel={currentPreview.data.comparison.before?`v${currentPreview.data.comparison.before.version}`:"首次发布"} afterLabel="待发布版本" initialPublication={!currentPreview.data.comparison.before} currentExternalReferences={currentPreview.data.manifest.externalReferences} />
   </section>;
 
   if (published || tab === "versions" || tab === "usages") return <section className="shared-dtsi-page shared-dtsi-page--editor shared-dtsi-page--resource" aria-label="共享 DTSI 版本" aria-busy={pending}>
@@ -492,7 +505,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
           {chosenVersions.length!==2?<p id="shared-comparison-hint">选择两个已发布版本进行比较。</p>:null}</>:null}
       </div>
       {comparing&&chosenVersions.length===2?<SharedDtsiComparison key={chosenVersions.map(version=>version.id).join("/")} client={client} resourceId={selected}
-        before={chosenVersions[0]!.id} after={chosenVersions[1]!.id} />:<DataTable rows={versions} rowKey={row=>row.id} fluid pageSize={20} columns={[
+        before={chosenVersions[0]!.id} after={chosenVersions[1]!.id} showVersionLabel={false} />:<DataTable rows={versions} rowKey={row=>row.id} fluid pageSize={20} columns={[
         ...(versionsTotal>1?[{key:"select",header:"比较",render:(row:SharedDtsiVersionSummary)=><input type="checkbox" aria-label={`选择版本 v${row.version}`} checked={chosenVersions.some(item=>item.id===row.id)}
           disabled={chosenVersions.length===2&&!chosenVersions.some(item=>item.id===row.id)} onChange={event=>{setComparing(false);setChosenVersions(current=>event.target.checked?[...current,row].sort((a,b)=>a.version-b.version):current.filter(item=>item.id!==row.id));}} />}]:[]),
         {key:"version",header:"版本",render:row=><Button variant="link" onClick={()=>void navigate(selected,{version:row.id,tab:"source"})}>v{row.version}</Button>},
@@ -528,7 +541,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
       {detail?.currentVersion ? <Button variant="ghost" disabled={pending} onClick={()=>void navigate(selected,{version:detail.currentVersion!.id,tab:"source"})}>查看已发布版本</Button> : null}</div>
       <div className="shared-dtsi-actions">{saved === selected ? <span role="status">草稿已保存</span> : null}{draft && canWrite ? <Button variant="outline" disabled={pending || conflict} onClick={() => setDiscardOpen(true)}>丢弃草稿</Button> : null}
         {canWrite && (draft || selected==="new") ? <Button variant={draft?"outline":"default"} disabled={pending || !dirty || conflict || !form.name.trim() || !members.length || invalidMembers || missingSource} onClick={() => void save()}>{pending ? "保存中…" : "保存草稿"}</Button> : null}
-        {draft && canWrite && detail?.state!=="retired" ? <Button aria-describedby={!form.changeDescription.trim()?"shared-publication-hint":undefined} disabled={pending || conflict || !form.changeDescription.trim() || !members.length || invalidMembers || missingSource} onClick={()=>void preparePublication()}>{previewFailure?.details.reason === "preprocess-busy" ? "重试检查" : "预览发布"}</Button> : null}</div>
+        {draft && canWrite && detail?.state!=="retired" ? <Button ref={previewButton} aria-describedby={!form.changeDescription.trim()?"shared-publication-hint":undefined} disabled={pending || conflict || !form.changeDescription.trim() || !members.length || invalidMembers || missingSource} onClick={()=>void preparePublication()}>{previewFailure?.details.reason === "preprocess-busy" ? "重试检查" : "预览发布"}</Button> : null}</div>
     </header>
     <div className="shared-dtsi-resource-body">
     {lifecycleControls}
