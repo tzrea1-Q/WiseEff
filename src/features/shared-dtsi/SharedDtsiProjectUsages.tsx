@@ -22,7 +22,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
     status=requestedStatus==="referenced"||requestedStatus==="unreferenced"?requestedStatus:"all";
   const pageValue=Number(params.get("usagePage")??"1"),page=Number.isSafeInteger(pageValue)&&pageValue>0&&pageValue<=5001?pageValue:1;
   const [reload,setReload]=useState(0);
-  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;instance:string;organizationId?:string;action?:{kind:"switch"|"remove";reference:Row["references"][number]}}|null>(null);
+  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;instance:string;organizationId?:string;currentUserId?:string;action?:{kind:"switch"|"remove";reference:Row["references"][number]}}|null>(null);
   const [appliedNotice,setAppliedNotice]=useState("");
   const [uncertainNotice,setUncertainNotice]=useState(false);
   const [unavailableTargets,setUnavailableTargets]=useState<Set<string>>(()=>new Set());
@@ -32,14 +32,14 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
   const listRecovery=useRef<{scope:number;epochs:Map<string,number>}|null>(null);
   const additionClient=useMemo(()=>createCanonicalMemberAdditionClient(apiClient),[apiClient]);
   const sharedClient=useMemo(()=>createSharedDtsiClient(apiClient),[apiClient]);
-  useEffect(()=>()=>{scopeEpoch.current++;listRecovery.current=null;setSelected(null);setRechecking(null);setRecheckError("");},[apiClient,organizationId,canWrite,search]);
+  useEffect(()=>()=>{scopeEpoch.current++;listRecovery.current=null;setSelected(null);setRechecking(null);setRecheckError("");},[apiClient,organizationId,currentUserId,canWrite,search]);
   const [loaded,setLoaded]=useState<{key:string;client:ApiClient;canWrite:boolean;result?:Result;error?:string}|null>(null);
-  const key=JSON.stringify([organizationId,query,status,page,reload]);
-  const selection=selected?.scope===search&&selected.client===apiClient&&selected.canWrite===canWrite&&selected.organizationId===organizationId?selected:null;
+  const key=JSON.stringify([organizationId,currentUserId,query,status,page,reload]);
+  const selection=selected?.scope===search&&selected.client===apiClient&&selected.canWrite===canWrite&&selected.organizationId===organizationId&&selected.currentUserId===currentUserId?selected:null;
   const selectionInstance=useRef<string|null>(null);
   selectionInstance.current=selection?.instance??null;
   const current=loaded?.key===key&&loaded.client===apiClient&&loaded.canWrite===canWrite?loaded:null;
-  const targetKey=(row:Row)=>JSON.stringify([organizationId,row.projectId,row.configSetId]);
+  const targetKey=(row:Row)=>JSON.stringify([organizationId,currentUserId,row.projectId,row.configSetId]);
   const close=()=>{setSelected(null);requestAnimationFrame(()=>{if(trigger.current?.isConnected)trigger.current.focus();else document.querySelector<HTMLInputElement>('[aria-label="搜索项目使用"]')?.focus();});};
   const readTarget=async(row:Row)=>{
     if(!row.configSetId)throw new Error("目标配置不存在，请返回列表核对。");
@@ -104,7 +104,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
     if(!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey&&event.button===0){event.preventDefault();onNavigate(target);}
   };
   const usageReturn=`/parameter-admin/sources?${params}`;
-  const hiddenTarget=Boolean(current?.result&&[...unavailableTargets].some(target=>JSON.parse(target)[0]===(organizationId??null)&&!current.result!.items.some(row=>targetKey(row)===target)));
+  const hiddenTarget=Boolean(current?.result&&[...unavailableTargets].some(target=>{const [org,user]=JSON.parse(target);return org===(organizationId??null)&&user===(currentUserId??null)&&!current.result!.items.some(row=>targetKey(row)===target);}));
   const sourcePath=(resourceId:string,versionId:string)=>{
     const target=new URLSearchParams(search);target.set("resource",resourceId);target.set("version",versionId);target.delete("tab");
     return `/parameter-admin/sources?${target}`;
@@ -163,7 +163,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
         {key:"action",header:"操作",render:row=>{const target=projectPath(row);return <div className="shared-dtsi-usage-action">
           {!row.configSetId?<span>请先创建配置</span>:!row.configurationReady?<span>请先完成配置初始化</span>:null}
           {unavailableTargets.has(targetKey(row))?<><span>配置不可用，请核对权限或初始化状态</span><Button variant="outline" size="sm" disabled={rechecking===targetKey(row)} onClick={()=>void recheckTarget(row)}>{rechecking===targetKey(row)?"正在核对…":"重新核对"}</Button></>:null}
-          {row.configSetId && row.configurationReady && row.canConfigure&&!unavailableTargets.has(targetKey(row))?<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice("");setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId,instance:crypto.randomUUID()});}}>配置资源包</Button>:null}
+          {row.configSetId && row.configurationReady && row.canConfigure&&!unavailableTargets.has(targetKey(row))?<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice("");setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID()});}}>配置资源包</Button>:null}
           <a href={target} onClick={event=>follow(event,target)}>{row.configSetId&&row.configurationReady?"查看生效配置":"前往配置工作台"}</a></div>;}}
       ]}} />
     {current?.result && current.result.total>20?<nav className="shared-dtsi-pagination" aria-label="项目使用分页">

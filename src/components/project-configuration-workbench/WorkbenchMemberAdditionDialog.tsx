@@ -162,7 +162,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     catch(failure){setError(presentError(failure,"无法保存引用变更，请稍后重试。"));}
   };
   return <ModalDialog open onDismiss={busy ? undefined : dismiss} initialFocusRef={closeRef} describedBy
-    className="workbench-member-addition-dialog" backdropClassName="param-admin-modal-backdrop">
+    className={`workbench-member-addition-dialog${sharedOnly?" workbench-member-addition-dialog--shared":""}`} backdropClassName="param-admin-modal-backdrop">
     {({ titleId, descriptionId }) => <>
       <header><div><h2 id={titleId}>{removeReference?"移除共享引用":conversionSource?"转换为共享引用":switchReference?"切换共享版本":sharedOnly?"添加资源包":"加入配置文件"}</h2><p id={descriptionId}>{sharedOnly?`${targetProjectName??projectId} · ${configSets.find(set=>set.id===configSetId)?.name==="default"?"默认配置":configSets.find(set=>set.id===configSetId)?.name}：${removeReference?"预览移除影响，确认后解除引用。":switchReference?"预览版本切换，确认后保留项目覆盖。":"选择已发布资源和固定版本。"}`:removeReference?"预览此项目的文件、节点、覆盖及参数来源变化；确认后创建新配置修订，历史来源保留。":conversionSource?"选择已发布版本。完整来源和生效配置一致后，确认转换所选私有源码及依赖。":switchReference?"选择新版本或旧版本，保留当前项目覆盖；确认后创建新配置修订。":source === "shared"
         ? "选择共享资源及固定版本，预览配置变化后确认引用。"

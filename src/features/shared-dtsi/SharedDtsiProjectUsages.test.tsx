@@ -136,6 +136,18 @@ describe("shared DTSI project usage", () => {
     expect(screen.queryByRole("dialog",{name:"配置资源包"})).not.toBeInTheDocument();
   });
 
+  it("closes a pending resource operation when the signed-in user changes",async()=>{
+    const user=userEvent.setup();
+    const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,
+      references:[{resourceId:resourceOne,resourceName:"公共电源",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:false,requiredBy:[]}]}],total:1,visibility:"organization"})));
+    const apiClient=createApiClient({baseUrl:"",fetchImpl}),base={apiClient,canWrite:true,organizationId:"org-a",search:"?view=projects",onNavigate:()=>{}};
+    const view=render(<SharedDtsiPage {...base} currentUserId="user-a"/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"移除引用"}));
+    expect(screen.getByRole("dialog",{name:"移除共享引用"})).toBeVisible();
+    view.rerender(<SharedDtsiPage {...base} currentUserId="user-b"/>);
+    expect(screen.queryByRole("dialog",{name:"移除共享引用"})).not.toBeInTheDocument();
+  });
+
   it("refreshes the exact target after a concurrent duplicate and disables the newly referenced package",async()=>{
     const user=userEvent.setup();let concurrent=false,failRefresh=true;
     const version={id:versionOne,resourceId:resourceOne,version:1,name:"公共电源",changeDescription:"初版",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
