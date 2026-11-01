@@ -18,6 +18,7 @@ export const sharedSwitchConflictSchema=z.object({
   identity:z.boolean().optional(),projectCorrection:z.boolean().optional()
 });
 export type SharedSwitchConflict=z.infer<typeof sharedSwitchConflictSchema>;
+export const memberAdditionDiagnosticSchema=sharedSwitchConflictSchema.partial().extend({severity:z.enum(["error","warning"]),code:z.string(),message:z.string(),rawMessage:z.string().optional()});
 
 const additionFields = {
   candidateId: z.string().min(1).optional(), fileId: z.string().min(1).optional(),
@@ -54,7 +55,7 @@ export const memberAdditionPreviewResponseSchema = z.object({ item: z.object({
   members: z.array(z.object({ fileId: z.string(), fileVersionId: z.string(), sourceName: z.string(), format: z.enum(["dts", "json"]),
     role: z.string(), sortOrder: z.number().int(), checksum: z.string(), sizeBytes: z.number() })),
   entryFile: z.string().nullable(), includeSearchPaths: z.array(z.string()), overlayOrder: z.array(z.string()),
-  diagnostics: z.array(z.object({ severity: z.enum(["error", "warning"]), code: z.string(), message: z.string() })),
+  diagnostics: z.array(memberAdditionDiagnosticSchema),
   impact: z.object({ parameterChanges: z.number().int(), nodeAdditions: z.number().int(), nodeRemovals: z.number().int(),
     restoredParameters: z.number().int().nonnegative().optional(),
     retainedBindings: z.number().int(), sourceReplacements: z.number().int() })

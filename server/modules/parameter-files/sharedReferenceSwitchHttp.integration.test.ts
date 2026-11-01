@@ -1,8 +1,9 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
@@ -40,12 +41,12 @@ describe("shared reference version switches through the real API role", () => {
   let storage: ReturnType<typeof createLocalObjectStore>, directory: string;
   const sets: Record<string, string> = {}, token = `shared_ref_${process.pid}`;
   let resourceId: string, versionId: string, nativeHeadVersionId:string, appliedA: Applied["item"];
-  function server(auth = admin, sourceStore: ObjectStore = storage) {
+  function server(auth = admin, sourceStore: ObjectStore = storage, database:Database=api) {
     const router = createRouter();
     registerSharedDtsiRoutes(router, { db: api, getCurrentAuthContext: () => auth });
     registerCatalogProjectValueConsumerRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth });
     registerParameterTopologyRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth, refusalAuditSink: createTrustedRefusalAuditSink(db) });
-    registerParameterFileRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth,
+    registerParameterFileRoutes(router, { db: database, objectStore: sourceStore, getCurrentAuthContext: () => auth,
       refusalAuditSink: createTrustedRefusalAuditSink(db) });
     return createHttpServer(router);
   }
@@ -83,6 +84,25 @@ describe("shared reference version switches through the real API role", () => {
     await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('shared-ref-editor-role','shared-ref-editor',$1,$2,'hardware-user')", [ORG, A]);
   }, 120_000);
   afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); if (directory) await rm(directory, { recursive: true, force: true }); }, 120_000);
+
+  it("pages authorized pending operations without per-row authorization queries",async()=>{
+    const index=(await db.query<{indexdef:string}>("select indexdef from pg_indexes where schemaname='public' and indexname='member_addition_intent_pending_list_idx'")).rows[0];
+    expect(index?.indexdef).toContain("organization_id, actor_user_id, created_at DESC, id");expect(index?.indexdef).toContain("NOT acknowledged");
+    const first=await post<{item:{id:string}}>(`${path(A)}/intents`,{registrationId:randomUUID()});
+    const second=await post<{item:{id:string}}>(`${path(B)}/intents`,{registrationId:randomUUID()});
+    expect(first.status).toBe(200);expect(second.status).toBe(200);
+    let calls=0;
+    const counting:Database={query:(text,values)=>api.query(text,values),transaction:(fn,options)=>api.transaction(tx=>fn({...tx,query:(text,values)=>{calls++;return tx.query(text,values);}}),options)};
+    const list=async(query:string)=>{calls=0;const response=await requestJson<{items:Array<{id:string;projectId:string}>;total:number}>(server(admin,storage,counting),`/api/v1/member-addition-intents?${query}`);return {response,calls};};
+    const all=await list("limit=1&offset=0"),next=await list("limit=1&offset=1"),one=await list(`limit=1&projectId=${A}`),past=await list("limit=1&offset=9");
+    expect(all.response.body.total).toBe(2);expect(next.response.body.total).toBe(2);expect(past.response.body).toMatchObject({total:2,items:[]});
+    expect(new Set([all.response.body.items[0]!.id,next.response.body.items[0]!.id])).toEqual(new Set([first.body.item.id,second.body.item.id]));
+    expect(one.response.body.items[0]!.projectId).toBe(A);expect(all.calls).toBe(one.calls);
+    await db.query("delete from user_role_bindings where id='shared-ref-role'");
+    try{expect((await list("limit=1")).response.body).toMatchObject({total:0,items:[]});}
+    finally{await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-ref-role',$1,$2,'admin')",[ADMIN,ORG]);}
+    for(const [project,item] of [[A,first.body.item],[B,second.body.item]] as const){expect((await post(`${path(project)}/intents/${item.id}/stop`,{})).status).toBe(200);expect((await post(`${path(project)}/intents/${item.id}/ack`,{})).status).toBe(200);}
+  },120_000);
 
   it("registers an operation before applying and permanently fences a stopped operation", async () => {
     const registration={registrationId:"3e70aa87-0fa8-44b7-8e04-c209ec9db771"};

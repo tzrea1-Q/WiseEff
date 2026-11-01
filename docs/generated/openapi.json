@@ -30300,6 +30300,18 @@
                 "configurationReady": {
                   "type": "boolean"
                 },
+                "configurationIssue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "no-configuration",
+                    "no-resolved-source",
+                    "missing-root",
+                    "source-changed"
+                  ]
+                },
                 "canConfigure": {
                   "type": "boolean"
                 },
@@ -80541,6 +80553,42 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "sourceName": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "number"
+                    },
+                    "node": {
+                      "type": "string"
+                    },
+                    "property": {
+                      "type": "string"
+                    },
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileVersionId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "versionId": {
+                      "type": "string"
+                    },
+                    "memberId": {
+                      "type": "string"
+                    },
+                    "identity": {
+                      "type": "boolean"
+                    },
+                    "projectCorrection": {
+                      "type": "boolean"
+                    },
                     "severity": {
                       "type": "string",
                       "enum": [
@@ -80551,14 +80599,14 @@
                     "code": {
                       "type": "string"
                     },
-                    "message": {
+                    "rawMessage": {
                       "type": "string"
                     }
                   },
                   "required": [
+                    "message",
                     "severity",
-                    "code",
-                    "message"
+                    "code"
                   ],
                   "additionalProperties": false
                 }

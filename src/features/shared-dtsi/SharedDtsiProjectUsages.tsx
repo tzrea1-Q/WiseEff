@@ -12,12 +12,15 @@ import { SharedMemberPendingOperations } from "@/components/project-configuratio
 import { createMemberAdditionIntentClient, type MemberAdditionIntent } from "@/infrastructure/http/memberAdditionIntentClient";
 import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
 import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
+import { currentSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
 import type { SharedSwitchConflict } from "@wiseeff/dto-schemas";
 import { ArrowLeft } from "lucide-react";
 
 type Result=SharedDtsiProjectUsages;
 type Row=Result["items"][number];
 type Action={kind:"switch"|"remove";reference:Row["references"][number]};
+// Correction returns through other routes; keep user input only in memory, never the proof or mutation identity.
+const additionDrafts=new Map<string,{reason:string;mountPath:string}>();
 
 export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,canWrite,search,onNavigate,header}:{
   apiClient:ApiClient;organizationId?:string;currentUserId?:string;canWrite:boolean;search:string;onNavigate:(path:string)=>void;header:ReactNode;
@@ -26,7 +29,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
     status=requestedStatus==="referenced"||requestedStatus==="unreferenced"?requestedStatus:"all";
   const pageValue=Number(params.get("usagePage")??"1"),page=Number.isSafeInteger(pageValue)&&pageValue>0&&pageValue<=5001?pageValue:1;
   const [reload,setReload]=useState(0);
-  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;instance:string;organizationId?:string;currentUserId?:string;action?:Action}|null>(null);
+  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;instance:string;organizationId?:string;currentUserId?:string;action?:Action;additionDraft?:{reason:string;mountPath:string}}|null>(null);
   const [appliedNotice,setAppliedNotice]=useState("");
   const [uncertainNotice,setUncertainNotice]=useState(false);
   const [unavailableTargets,setUnavailableTargets]=useState<Set<string>>(()=>new Set());
@@ -66,6 +69,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
   selectionInstance.current=selection?.instance??null;
   const current=loaded?.key===key&&loaded.client===apiClient&&loaded.canWrite===canWrite?loaded:null;
   const targetKey=(row:Row)=>JSON.stringify([organizationId,currentUserId,row.projectId,row.configSetId]);
+  const additionDraftKey=(row:Row,resourceId:string,versionId:string)=>JSON.stringify([currentSharedOperationSession(),organizationId,currentUserId,row.projectId,row.configSetId,resourceId,versionId]);
   const openConfiguration=async(row:Row,element:HTMLElement)=>{
     if(!intentClient||!currentUserId||!row.configSetId||openingRef.current)return;
     const target=targetKey(row);openingRef.current=true;setOpening(target);setRecheckError("");
@@ -75,7 +79,8 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
       if(source){const updated=await readTarget(row);if(activeScope.current!==scope)return;if(!updated||!updated.canConfigure||!updated.configurationReady)throw new Error("目标配置不可用");targetRow=updated;}
       const existing=source?targetRow.references.find(ref=>ref.resourceId===source.resourceId):undefined;
       if(existing&&(!existing.direct||existing.versionId===source?.versionId)){setReload(value=>value+1);return;}
-      setPendingFocus(undefined);trigger.current=element;setAppliedNotice("");setUncertainNotice(false);setSelected({row:targetRow,adding:Boolean(source),scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID(),...(source&&existing?{action:{kind:"switch" as const,reference:existing}}:{})});
+      const additionDraft=source&&!existing?additionDrafts.get(additionDraftKey(targetRow,source.resourceId,source.versionId)):undefined;
+      setPendingFocus(undefined);trigger.current=element;setAppliedNotice("");setUncertainNotice(false);setSelected({row:targetRow,adding:Boolean(source),scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID(),...(additionDraft?{additionDraft}:{}),...(source&&existing?{action:{kind:"switch" as const,reference:existing}}:{})});
     }catch{if(activeScope.current===scope)setRecheckError(source?"无法核对目标配置或权限，请稍后重试。":"无法核对待处理操作，请稍后重试。");}
     finally{if(activeScope.current===scope){openingRef.current=false;setOpening(null);}}
   };
@@ -151,13 +156,28 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
   const projectPath=(row:Row)=>{
     const target=new URLSearchParams({returnTo:usageReturn});
     if(organizationId)target.set("organization",organizationId);
-    if(row.configSetId){target.set("configSet",row.configSetId);target.set("tab","effective");}
+    if(row.configSetId){target.set("configSet",row.configSetId);target.set("tab",row.configurationReady?"effective":"source");}
     return `/parameter-admin/projects/${encodeURIComponent(row.projectId)}/configuration?${target}`;
   };
-  const recoverReference=(location:SharedSwitchConflict,draft:{versionId:string;reason:string})=>{
-    if(!selection?.action || !selection.row.configSetId || !currentUserId || !organizationId)throw new Error("无法确定项目上下文，请返回工作台后重试。");
+  const recoverReference=(location:SharedSwitchConflict,draft:{resourceId?:string;versionId:string;reason:string;mountPath?:string})=>{
+    if(!selection?.row.configSetId || !currentUserId || !organizationId)throw new Error("无法确定项目上下文，请返回工作台后重试。");
     const {row,action}=selection;
     const configSetId=row.configSetId!;
+    if(!action){
+      if(!draft.resourceId||!draft.versionId)throw new Error("无法确定所选资源版本，请返回列表重新选择。");
+      additionDrafts.set(additionDraftKey(row,draft.resourceId,draft.versionId),{reason:draft.reason,mountPath:draft.mountPath??""});
+      const resume=new URLSearchParams(search);resume.set("view","projects");resume.set("referenceResource",draft.resourceId);resume.set("referenceVersion",draft.versionId);
+      resume.set("referenceTargetProject",row.projectId);resume.set("referenceTargetConfig",configSetId);
+      if(!referenceResource)resume.set("referenceReturn",usageReturn);
+      const next=new URLSearchParams({organizationId,configSet:configSetId,tab:"source",sourceMode:"working",returnTo:`/parameter-admin/sources?${resume}`});
+      if(location.fileId&&!location.resourceId)next.set("file",location.fileId);
+      if(location.node)next.set("node",location.node);if(location.property)next.set("property",location.property);if(location.line)next.set("line",String(location.line));
+      const project=`/parameter-admin/projects/${encodeURIComponent(row.projectId)}/configuration?${next}`;
+      if(location.resourceId&&location.versionId){const shared=new URLSearchParams({organization:organizationId,resource:location.resourceId,version:location.versionId,tab:location.identity?"recognition":"source",projectContext:project});
+        if(location.memberId)shared.set("member",location.memberId);if(location.line)shared.set("line",String(location.line));onNavigate(`/parameter-admin/sources?${shared}`);
+      }else onNavigate(project);
+      return;
+    }
     const scope=`wiseeff.shared-switch:${currentUserId}:${organizationId}:${row.projectId}:${row.configSetId}`;
     const task={scope,...(action.kind==="remove"?{operation:"remove"}:{}),reference:{resourceId:action.reference.resourceId,versionId:action.reference.versionId,version:action.reference.version},draft};
     const saved=sessionStorage.getItem(scope);
@@ -186,7 +206,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
   const referenceMode=Boolean(referenceResource||referenceVersion);
   const returnPath=params.get("referenceReturn")??"";
   const safeReturn=/^\/parameter-admin\/sources(?:\?[^#]*)?$/.test(returnPath)?returnPath:"/parameter-admin/sources";
-  const referenceHeader=<div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源包" onClick={()=>{if(currentUserId)sessionStorage.setItem(`wiseeff.shared-reference-focus:${currentUserId}:${organizationId??""}`,referenceResource);onNavigate(safeReturn);}}><ArrowLeft aria-hidden="true"/>返回</Button><h1>选择项目配置</h1></div>;
+  const referenceHeader=<div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源包" onClick={()=>{try{if(currentUserId)sessionStorage.setItem(`wiseeff.shared-reference-focus:${currentUserId}:${organizationId??""}`,referenceResource);}catch{/* Navigation does not require a focus hint. */}onNavigate(safeReturn);}}><ArrowLeft aria-hidden="true"/>返回</Button><h1>选择项目配置</h1></div>;
   return <div className="shared-dtsi-page">{intentClient&&currentUserId&&canWrite?<SharedMemberPendingOperations client={intentClient} scope={JSON.stringify([currentUserId,organizationId])} refresh={intentRefresh} focus={pendingFocus} onClearFocus={()=>setPendingFocus(undefined)} onResolved={()=>setReload(value=>value+1)}/>:null}<AdminListPage label="共享 DTSI" headerContent={referenceMode?referenceHeader:header} headerActions={null}
     filterBar={<><SearchField className="shared-dtsi-list-search" ariaLabel="搜索项目使用" placeholder="搜索项目、配置或资源包" maxLength={160} value={query}
       onValueChange={value=>update({usageQuery:value,usagePage:""})} />
@@ -199,14 +219,15 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
       columns:[
         {key:"project",header:"项目",render:row=><span className="shared-dtsi-usage-name">{row.projectName}</span>},
         {key:"configuration",header:"配置",render:row=>row.configSetName===null?"暂无配置":row.configSetName==="default"?"默认配置":row.configSetName},
-        {key:"references",header:"已引用资源包",render:row=>{const direct=row.references.filter(ref=>ref.direct),dependencies=row.references.filter(ref=>!ref.direct||ref.requiredBy.length>0);
-          return <div className="shared-dtsi-usage-references">{direct.length?direct.map(resource):<span>未引用共享资源包</span>}
+        {key:"references",header:"已引用资源包",render:row=>{const direct=row.references.filter(ref=>ref.direct),dependencies=row.references.filter(ref=>!ref.direct);
+          return <div className="shared-dtsi-usage-references">{direct.length?direct.map(ref=><span key={ref.resourceId}>{resource(ref)}{ref.requiredBy.length?<span>同时由 {ref.requiredBy.map(item=>item.resourceName).join("、")} 引入</span>:null}</span>):<span>未引用共享资源包</span>}
             {dependencies.length?<details><summary>依赖关系（{dependencies.length}）</summary><ul>{dependencies.map(ref=><li key={ref.resourceId}>{resource(ref)}
               {ref.requiredBy.length?<span> · 由 {ref.requiredBy.map(item=>item.resourceName).join("、")} 引入</span>:null}</li>)}</ul></details>:null}</div>;}},
         {key:"action",header:"操作",render:row=>{const target=projectPath(row),existing=source?row.references.find(ref=>ref.resourceId===source.resourceId):undefined;return <div className="shared-dtsi-usage-action">
-          {!row.configSetId?<span>请先创建配置</span>:!row.configurationReady?<span>请先完成配置初始化</span>:null}
+          {!row.configSetId?<span>请先创建配置</span>:!row.configurationReady?<span>{row.configurationIssue==="no-resolved-source"?"尚无已解析的配置来源":row.configurationIssue==="missing-root"?"配置缺少有效的项目根文件":row.configurationIssue==="source-changed"?"项目源码与已解析配置不一致":"请先完成配置初始化"}</span>:null}
           {referenceMode&&row.configSetId&&row.configurationReady&&!row.canConfigure?<span>没有配置权限</span>:null}
           {unavailableTargets.has(targetKey(row))?<><span>配置不可用，请核对权限或初始化状态</span><Button variant="outline" size="sm" disabled={rechecking===targetKey(row)} onClick={()=>void recheckTarget(row)}>{rechecking===targetKey(row)?"正在核对…":"重新核对"}</Button></>:null}
+          {referenceMode&&row.projectId===params.get("referenceTargetProject")&&row.configSetId===params.get("referenceTargetConfig")?<span>上次选择的配置</span>:null}
           {referenceMode&&existing&&!existing.direct?<span>由 {existing.requiredBy.map((ref,index)=>{const direct=row.references.find(item=>item.resourceId===ref.resourceId&&item.direct);const path=direct?sourcePath(direct.resourceId,direct.versionId):target;return <span key={ref.resourceId}>{index?"、":""}<a href={path} onClick={event=>follow(event,path)}>{ref.resourceName}</a></span>;})} 引入</span>:referenceMode&&source&&existing?.versionId===source.versionId?<span>已固定此版本</span>:null}
           {canWrite&&row.configSetId && row.configurationReady && row.canConfigure&&!unavailableTargets.has(targetKey(row))&&(!referenceMode||source&&!existing||source&&existing?.direct&&existing.versionId!==source.versionId)?<Button variant="outline" size="sm" disabled={Boolean(opening)} onClick={event=>void openConfiguration(row,event.currentTarget)}>{opening===targetKey(row)?"正在核对…":referenceMode?(existing?`切换至 v${source!.version}`:"引用到此配置"):"配置资源包"}</Button>:null}
           <a href={target} onClick={event=>follow(event,target)}>{row.configSetId&&row.configurationReady?"查看生效配置":"前往配置工作台"}</a></div>;}}
@@ -235,15 +256,16 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
       configSets={[{id:selection.row.configSetId,name:selection.row.configSetName??""}]} initialConfigSetId={selection.row.configSetId} availableFiles={[]}
       client={additionClient} sharedClient={sharedClient} sharedOnly existingReferences={selection.row.references} targetProjectName={selection.row.projectName}
       initialSharedSource={source} switchDraft={source&&selection.action?.kind==="switch"?{versionId:source.versionId,reason:""}:undefined}
+      initialAdditionDraft={selection.additionDraft}
       canContinueOperation={()=>selectionInstance.current===selection.instance}
       switchReference={selection.action?.kind==="switch"?selection.action.reference:undefined}
       removeReference={selection.action?.kind==="remove"?selection.action.reference:undefined}
-      onRecoverSwitch={selection.action?recoverReference:undefined}
+      onRecoverSwitch={recoverReference}
       onOperationStart={async(_operation,registrationId,targetConfigSetId)=>{if(!intentClient||!currentUserId||targetConfigSetId!==selection.row.configSetId)throw new Error("Missing operation scope");let registered:MemberAdditionIntent;try{registered=await intentClient.register(selection.row.projectId,targetConfigSetId,registrationId);if(registered.projectId!==selection.row.projectId||registered.configSetId!==targetConfigSetId)throw new Error("Mismatched operation target");}catch(error){if(selectionInstance.current===selection.instance){setPendingFocus({projectId:selection.row.projectId,configSetId:targetConfigSetId});setIntentRefresh(value=>value+1);}throw error;}if(registered.status==="stopped"||registered.status==="applied"&&!registered.result){setIntentRefresh(value=>value+1);return {resolved:registered.status};}if(selectionInstance.current===selection.instance)intent.current=registered;return registered.clientMutationId;}}
       onOperationResolved={()=>{const done=intent.current;if(done&&intentClient&&selectionInstance.current===selection.instance)void intentClient.acknowledge(done).catch(()=>{}).finally(()=>setIntentRefresh(value=>value+1));}}
       onDefinitiveRejection={async()=>{const current=intent.current;if(!current||!intentClient||selectionInstance.current!==selection.instance)throw new Error("Missing operation");const stopped=await intentClient.stop(current);if(selectionInstance.current!==selection.instance||stopped.status==="pending")throw new Error("Unconfirmed operation");if(stopped.status==="stopped")await intentClient.acknowledge(stopped);setIntentRefresh(value=>value+1);return stopped.status;}}
       refreshExistingReferences={()=>refreshTarget(selection.row,selection.instance)}
-      onDismiss={()=>{if(referenceMode||pendingFocus||unavailableTargets.has(targetKey(selection.row)))close();else setSelected({...selection,adding:false,action:undefined});}} onUncertainDismiss={()=>{setUncertainNotice(true);close();setIntentRefresh(value=>value+1);setReload(value=>value+1);}}
-      onApplied={()=>{if(selectionInstance.current!==selection.instance)return;setAppliedNotice(selection.action?.kind==="remove"?"已移除资源包引用。":selection.action?.kind==="switch"?"已切换资源包版本。":"资源包已加入配置。");close();setReload(value=>value+1);}} />:null}
+      onDismiss={()=>{if(source)additionDrafts.delete(additionDraftKey(selection.row,source.resourceId,source.versionId));if(referenceMode||pendingFocus||unavailableTargets.has(targetKey(selection.row)))close();else setSelected({...selection,adding:false,action:undefined});}} onUncertainDismiss={()=>{setUncertainNotice(true);close();setIntentRefresh(value=>value+1);setReload(value=>value+1);}}
+      onApplied={()=>{if(selectionInstance.current!==selection.instance)return;if(source)additionDrafts.delete(additionDraftKey(selection.row,source.resourceId,source.versionId));setAppliedNotice(selection.action?.kind==="remove"?"已移除资源包引用。":selection.action?.kind==="switch"?"已切换资源包版本。":"资源包已加入配置。");close();setReload(value=>value+1);}} />:null}
   </div>;
 }

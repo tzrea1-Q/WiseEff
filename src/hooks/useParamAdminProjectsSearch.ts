@@ -93,7 +93,7 @@ export function resolveSharedDtsiUsageReturnPath(search: string): string | null 
   if(!returnTo.startsWith("/parameter-admin/sources?"))return null;
   const url=new URL(returnTo,"http://local");
   if(url.pathname!=="/parameter-admin/sources"||url.hash||url.searchParams.get("view")!=="projects")return null;
-  const allowed=new Set(["view","organization","usageQuery","usageStatus","usagePage"]),params=new URLSearchParams();
+  const allowed=new Set(["view","organization","usageQuery","usageStatus","usagePage","resourceQuery","resourcePage","referenceResource","referenceVersion","referenceReturn","referenceTargetProject","referenceTargetConfig"]),params=new URLSearchParams();
   for(const [key,value] of url.searchParams)if(allowed.has(key)&&!params.has(key))params.set(key,value);
   return `/parameter-admin/sources?${params}`;
 }

@@ -73,7 +73,7 @@ export const sharedDtsiUsagesSchema=z.object({items:z.array(z.object({projectId:
   upgradeAvailable:z.boolean(),evaluation:z.literal("not-evaluated")}).strict()),total:z.number().int().nonnegative(),visibility:z.enum(["organization","authorized-projects"])}).strict();
 export const sharedDtsiProjectUsagesSchema=z.object({items:z.array(z.object({
   projectId:z.string(),projectName:z.string(),projectCode:z.string(),configSetId:z.string().nullable(),configSetName:z.string().nullable(),
-  configurationReady:z.boolean(),canConfigure:z.boolean(),references:z.array(z.object({resourceId:id,resourceName:z.string(),versionId:id,
+  configurationReady:z.boolean(),configurationIssue:z.enum(["no-configuration","no-resolved-source","missing-root","source-changed"]).nullable().optional(),canConfigure:z.boolean(),references:z.array(z.object({resourceId:id,resourceName:z.string(),versionId:id,
     version:z.number().int().positive(),direct:z.boolean(),state:z.enum(["active","retired"]),upgradeAvailable:z.boolean(),
     requiredBy:z.array(z.object({resourceId:id,resourceName:z.string()}).strict())}).strict())
 }).strict()),total:z.number().int().nonnegative(),visibility:z.enum(["organization","authorized-projects"])}).strict();

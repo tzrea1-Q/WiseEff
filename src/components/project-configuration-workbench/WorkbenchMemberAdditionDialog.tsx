@@ -22,7 +22,7 @@ import { currentSharedOperationSession } from "@/application/project-configurati
 
 const roleLabels = { base: "基础", overlay: "覆盖层", charging: "充电", thermal: "温控", misc: "其他 / include" };
 export type RecoveredMemberOperation=MemberAdditionBody & {proofToken:string;reason:string;clientMutationId:string};
-export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, initialSharedSource, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences, onOperationStart, onOperationResolved, onDefinitiveRejection, canContinueOperation, checkPending }: {
+export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, initialSharedSource, initialAdditionDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences, onOperationStart, onOperationResolved, onDefinitiveRejection, canContinueOperation, checkPending }: {
   projectId: string; configSets: Array<{ id: string; name: string }>; initialConfigSetId: string;
   availableFiles: ProjectParameterFile[]; client?: ReturnType<typeof createCanonicalMemberAdditionClient>;
   switchReference?: {resourceId:string;versionId:string;version:number};
@@ -30,9 +30,10 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   removeReference?: {resourceId:string;versionId:string;version:number};
   switchDraft?: {versionId:string;reason:string};
   initialSharedSource?:{resourceId:string;versionId:string;version:number;name:string};
+  initialAdditionDraft?:{reason:string;mountPath:string};
   projectRoot?:{fileId:string;sourceName:string};
   onSwitchDraftChange?: (draft:{versionId:string;reason:string})=>void;
-  onRecoverSwitch?: (source:SharedSwitchConflict,draft:{versionId:string;reason:string})=>void;
+  onRecoverSwitch?: (source:SharedSwitchConflict,draft:{resourceId?:string;versionId:string;reason:string;mountPath?:string})=>void;
   sharedClient?: Pick<ReturnType<typeof createSharedDtsiClient>, "list" | "versions">;
   catalogRepository?: Pick<ParameterCatalogRepository, "listSubjects" | "listSubjectDefinitions">;
   fileRepository?: Pick<ParameterFileRepository, "downloadVersion">;
@@ -59,10 +60,10 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   const [registration, setRegistration] = useState<JsonRegistrationSelection>({ configurationSchemaId: "", mappings: [] });
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [preview, setPreview] = useState<MemberAdditionPreview | null>(null), [preparedBody, setPreparedBody] = useState<MemberAdditionBody | null>(null);
-  const [reason, setReason] = useState(switchDraft?.reason??""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState(switchDraft?.reason??initialAdditionDraft?.reason??""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [switchConflicts,setSwitchConflicts]=useState<SharedSwitchConflict[]>([]);
   const [compositionError,setCompositionError]=useState<"dependency"|"stale"|null>(null);
-  const [errorDiagnostics, setErrorDiagnostics] = useState<string[]>([]);
+  const [errorDiagnostics, setErrorDiagnostics] = useState<Array<{message:string;rawMessage?:string;source?:SharedSwitchConflict}>>([]);
   const mutationId = useRef<string | null>(null);
   const registrationId = useRef<string | null>(null);
   const mutationReason = useRef<string | null>(null);
@@ -75,7 +76,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   const [resources, setResources] = useState<SharedDtsiResourceSummary[]>([]), [versions, setVersions] = useState<SharedDtsiVersionSummary[]>([]);
   const [resourceId, setResourceId] = useState(reference?.resourceId??initialSharedSource?.resourceId??""), [versionId, setVersionId] = useState(switchDraft?.versionId??initialSharedSource?.versionId??"");
   useEffect(()=>{if(reference)onSwitchDraftChange?.({versionId,reason});},[versionId,reason,reference,onSwitchDraftChange]);
-  const [mountPath,setMountPath]=useState("");
+  const [mountPath,setMountPath]=useState(initialAdditionDraft?.mountPath??"");
   const [query, setQuery] = useState(""), [resourceOffset, setResourceOffset] = useState(0), [versionOffset, setVersionOffset] = useState(0);
   const [resourceTotal, setResourceTotal] = useState(0), [versionTotal, setVersionTotal] = useState(0);
   const [sharedLoading, setSharedLoading] = useState(false), [sharedError, setSharedError] = useState(""), [sharedRetry, setSharedRetry] = useState(0);
@@ -100,8 +101,11 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     const diagnostics = failure instanceof WiseEffApiError ? failure.details.diagnostics : null;
     const conflicts=sharedSwitchConflictSchema.array().safeParse(failure instanceof WiseEffApiError?failure.details.switchConflicts:null);
     setSwitchConflicts(conflicts.success?conflicts.data:[]);
-    setErrorDiagnostics(Array.isArray(diagnostics) ? diagnostics.flatMap((item: unknown) =>
-      item && typeof item === "object" && "message" in item && typeof item.message === "string" ? [item.message] : []) : []);
+    setErrorDiagnostics(Array.isArray(diagnostics) ? diagnostics.flatMap((item: unknown) => {
+      if(!item || typeof item!=="object" || !("message" in item) || typeof item.message!=="string")return [];
+      const source=sharedSwitchConflictSchema.safeParse(item);
+      return [{message:item.message,...("rawMessage" in item&&typeof item.rawMessage==="string"?{rawMessage:item.rawMessage}:{}),...(source.success?{source:source.data}:{})}];
+    }) : []);
   }
   async function refreshReferences() {
     if(!refreshExistingReferences)return;
@@ -188,7 +192,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   }
   const dismiss=()=>{if(uncertain && onUncertainDismiss)onUncertainDismiss();else onDismiss();};
   const recover=(location:SharedSwitchConflict)=>{
-    try{onRecoverSwitch?.(location,{versionId,reason});invalidate();}
+    try{onRecoverSwitch?.(location,{...(!reference?{resourceId,mountPath}:{}),versionId,reason});invalidate();}
     catch(failure){setError(presentError(failure,"无法保存引用变更，请稍后重试。"));}
   };
   return <ModalDialog open onDismiss={busy ? undefined : dismiss} initialFocusRef={closeRef} describedBy
@@ -272,7 +276,13 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
           </div>
         </section>:null}
         {uncertain&&switchConflicts.length?<ul aria-label="来源校验诊断">{switchConflicts.map((item,index)=><li key={index}>{item.sourceName}{item.line?`:${item.line}`:""} · {item.message}</li>)}</ul>:null}
-        {!switchConflicts.length && errorDiagnostics.length ? <ul aria-label="来源校验诊断">{errorDiagnostics.map((message, index) => <li key={index}>{message}</li>)}</ul> : null}
+        {!switchConflicts.length && errorDiagnostics.length ? <ul aria-label="来源校验诊断">{errorDiagnostics.map(({message,rawMessage,source}, index) => <li key={index}>
+          {source?<p>{source.sourceName}{source.line?`:${source.line}`:""}</p>:null}<p>{message}</p>
+          {rawMessage&&rawMessage!==message?<details><summary>查看原始诊断</summary><pre>{rawMessage}</pre></details>:null}
+          {source&&onRecoverSwitch&&(source.fileId||source.resourceId)?<Button type="button" variant="outline" onClick={()=>recover(source)}>{source.resourceId?"核对共享来源":"修正项目源码"}</Button>:null}
+          {source?.projectCorrection&&source.resourceId&&onRecoverSwitch?<Button type="button" variant="outline" onClick={()=>recover({message:source.message,sourceName:"配置",node:source.node,property:source.property})}>前往项目工作台处理</Button>:null}
+        </li>)}</ul> : null}
+        {source==="shared"&&!reference&&error&&!uncertain&&onRecoverSwitch&&!errorDiagnostics.some(item=>item.source?.fileId||item.source?.resourceId)?<Button type="button" variant="outline" onClick={()=>recover({message:error,sourceName:"配置"})}>前往项目工作台处理</Button>:null}
         {preview ? <section aria-label={conversionSource?"共享转换预览":removeReference?"移除引用预览":switchReference?"版本切换预览":"加入配置预览"} className={preview.sharedSwitch?"workbench-member-addition-dialog__switch-preview":sharedOnly?"workbench-member-addition-dialog__shared-preview":undefined}>
           {preview.sharedConversion?<>
             <p role="status" className="workbench-member-addition-dialog__switch-status">完整生效配置与构建校验通过，文件、节点及参数关联身份保留。</p>
@@ -334,7 +344,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
           {preview.impact.restoredParameters ? <p>恢复 {preview.impact.restoredParameters} 个已删除参数，保留原身份及历史。</p> : null}
           {preview.impact.retainedBindings ? <p>保留 {preview.impact.retainedBindings} 个参数关联及历史。</p> : null}
           {preview.impact.sourceReplacements ? <p>{preview.impact.sourceReplacements} 个参数将切换有效来源文件，关联身份及历史保留。</p> : null}
-          {preview.diagnostics.map((item, index) => <p key={`${item.code}-${index}`}>{item.message}</p>)}
+          {preview.diagnostics.map((item, index) => <div key={`${item.code}-${index}`}><p>{item.message}</p>{item.rawMessage&&item.rawMessage!==item.message?<details><summary>查看原始诊断</summary><pre>{item.rawMessage}</pre></details>:null}</div>)}
         </section> : null}
       </div>
       {preview || reference ? <footer role="group" aria-label={removeReference?"移除引用确认":switchReference?"版本切换确认":"加入配置确认"}>

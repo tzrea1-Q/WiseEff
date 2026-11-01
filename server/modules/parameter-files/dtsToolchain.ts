@@ -121,6 +121,7 @@ const SKIPPED_FILE_LABEL = "<toolchain>";
 
 const DIAGNOSTIC_LINE =
   /^(.+?):(\d+)(?:\.\d+(?:-\d+)?)?:\s*(fatal error|error|warning)\b[^:]*:\s*(.+)$/i;
+const PREFIXED_DIAGNOSTIC_LINE = /^(fatal error|error|warning):\s*(.+?):(\d+)(?:\.\d+(?:-\d+(?:\.\d+)?)?)?\s+(.+)$/i;
 
 function repoRootFromModule(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -431,17 +432,24 @@ function assertWithinRoot(rootDir: string, candidatePath: string): boolean {
   return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !rel.startsWith("../"));
 }
 
-function parseDtcStderr(stderr: string): DtsToolchainDiagnostic[] {
+function parseDtcStderr(stderr: string,root:string,original:DtsToolchainConfigSet,compiled:DtsToolchainConfigSet): DtsToolchainDiagnostic[] {
   const diagnostics: DtsToolchainDiagnostic[] = [];
   for (const rawLine of stderr.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line) continue;
-    const match = DIAGNOSTIC_LINE.exec(line);
-    if (!match) continue;
-    const [, file, lineNumber, severityRaw, message] = match;
+    const match = DIAGNOSTIC_LINE.exec(line),prefixed=PREFIXED_DIAGNOSTIC_LINE.exec(line);
+    if (!match&&!prefixed) continue;
+    const [,file,lineNumber,severityRaw,message]=match??["",prefixed![2],prefixed![3],prefixed![1],prefixed![4]];
+    const candidate=resolve(root,file.trim()),logical=relative(root,candidate).replace(/\\/g,"/");
+    const source=assertWithinRoot(root,candidate)&&original.files.has(logical)?logical:SKIPPED_FILE_LABEL;
+    const exact=source!==SKIPPED_FILE_LABEL&&original.files.get(source)?.content===compiled.files.get(source)?.content;
+    const check=line.match(/\b(?:fatal error|error|warning)\s*\(([a-z0-9_]+)\):/i)?.[1]?.toLowerCase();
+    const codes:Record<string,string>={duplicate_label:"dtc-duplicate-label",duplicate_node_names:"dtc-duplicate-node",duplicate_property_names:"dtc-duplicate-property",unit_address_vs_reg:"dtc-unit-address",reg_format:"dtc-reg-format",ranges_format:"dtc-ranges-format",phandle_references:"dtc-reference",path_references:"dtc-reference"};
+    const code=check?codes[check]:prefixed&&/^syntax error\b/i.test(message)?"dtc-syntax":undefined;
     diagnostics.push({
-      file: file.trim(),
-      line: Number(lineNumber),
+      file: source,
+      ...(exact?{line:Number(lineNumber)}:{}),
+      ...(code?{code}:{}),
       severity: severityRaw.toLowerCase() === "warning" ? "warning" : "error",
       message: message.trim(),
       stage: "dtc"
@@ -820,7 +828,7 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
           return mode === "warn" ? { ...result, ok: true } : result;
         }
         if (baseCompile.spawnError || (baseCompile.code !== 0 && baseCompile.code !== null)) {
-          diagnostics.push(...parseDtcStderr(baseCompile.stderr));
+          diagnostics.push(...parseDtcStderr(baseCompile.stderr,tmpDir,configSet,compileConfigSet));
           if (diagnostics.length === 0) {
             diagnostics.push({
               file: configSet.entryFile,
@@ -835,7 +843,7 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
           const result = failed(mode, "compile-failed", versions, diagnostics, artifacts);
           return mode === "warn" ? { ...result, ok: true } : result;
         }
-        diagnostics.push(...parseDtcStderr(baseCompile.stderr));
+        diagnostics.push(...parseDtcStderr(baseCompile.stderr,tmpDir,configSet,compileConfigSet));
         // vite-env stubs require encoding; latin1 preserves DTB bytes for hashing/copy.
         artifacts.baseDtbSha256 = createHash("sha256")
           .update(readFileSync(baseDtb, "latin1"), "latin1")
@@ -865,7 +873,7 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
             return mode === "warn" ? { ...result, ok: true } : result;
           }
           if (overlayCompile.spawnError || (overlayCompile.code !== 0 && overlayCompile.code !== null)) {
-            diagnostics.push(...parseDtcStderr(overlayCompile.stderr));
+            diagnostics.push(...parseDtcStderr(overlayCompile.stderr,tmpDir,configSet,compileConfigSet));
             if (!diagnostics.some((d) => d.file === overlayName && d.severity === "error")) {
               diagnostics.push({
                 file: overlayName,
@@ -880,7 +888,7 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
             const result = failed(mode, "compile-failed", versions, diagnostics, artifacts);
             return mode === "warn" ? { ...result, ok: true } : result;
           }
-          diagnostics.push(...parseDtcStderr(overlayCompile.stderr));
+          diagnostics.push(...parseDtcStderr(overlayCompile.stderr,tmpDir,configSet,compileConfigSet));
           dtboPaths.push(dtboPath);
         }
 

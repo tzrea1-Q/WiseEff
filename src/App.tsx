@@ -869,6 +869,7 @@ function AppShell({
       .catch((error) => {
         if (cancelledRef.current) return;
         if (isAuthRejectionError(error)) {
+          invalidateSharedOperationSession();
           clearLocalAuthToken();
           setApiAuthStatus("unauthenticated");
           setApiAuthError(authProbeErrorMessage(error));
@@ -1054,6 +1055,7 @@ function AppShell({
 
   const handleAuthSession = useCallback(
     async (session: AuthSessionDto) => {
+      invalidateSharedOperationSession();
       domainDataHydratedRef.current = false;
       hydrateAuthContext(session.auth);
       setApiAuthStatus("authenticated");
