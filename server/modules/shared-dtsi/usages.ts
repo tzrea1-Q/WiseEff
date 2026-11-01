@@ -27,7 +27,9 @@ export async function listSharedDtsiProjectUsages(db:Database,auth:AuthContext,i
         where r.organization_id=p.organization_id and r.project_id=p.id and r.config_set_id=c.id and position(lower($3) in lower(v.name))>0))
     and ($4='all' or ($4='referenced' and ${referenced}) or ($4='unreferenced' and not ${referenced}))`;
   type Row={projectId:string;projectName:string;projectCode:string;configSetId:string|null;configSetName:string|null;configurationReady:boolean};
-  const rows=(await db.query<Row>(`select p.id as "projectId",p.name as "projectName",p.code as "projectCode",c.id as "configSetId",c.name as "configSetName",
+  type Ref={configSetId:string;resourceId:string;resourceName:string;versionId:string;version:number;direct:boolean;state:"active"|"retired";upgradeAvailable:boolean;manifest:unknown};
+  const result=(await db.query<{items:Row[];total:number;references:Ref[]}>(`with page as materialized (
+    select p.id as "projectId",p.name as "projectName",p.code as "projectCode",c.id as "configSetId",c.name as "configSetName",
     exists(select 1 from public.dts_config_revisions rev
       where rev.id=(select latest.id from public.dts_config_revisions latest where latest.organization_id=p.organization_id
         and latest.project_id=p.id and latest.config_set_id=c.id and latest.status='resolved' order by latest.revision_number desc limit 1)
@@ -42,16 +44,19 @@ export async function listSharedDtsiProjectUsages(db:Database,auth:AuthContext,i
         where m.config_revision_id=rev.id and (f.id is null or f.current_version_id is distinct from m.file_version_id
           or f.config_set_role is distinct from case when m.role='include' then 'misc' else m.role end
           or f.config_set_sort_order is distinct from m.sort_order))) as "configurationReady"
-    ${from} order by p.name,p.id,c.name,c.id limit $5 offset $6`,[...values,input.limit,input.offset])).rows;
-  const total=Number((await db.query<{count:string}>(`select count(*) ${from}`,values)).rows[0]!.count);
-  const configIds=rows.flatMap(row=>row.configSetId?[row.configSetId]:[]);
-  type Ref={configSetId:string;resourceId:string;resourceName:string;versionId:string;version:number;direct:boolean;state:"active"|"retired";upgradeAvailable:boolean;manifest:unknown};
-  const refs=configIds.length?(await db.query<Ref>(`select r.config_set_id as "configSetId",r.resource_id as "resourceId",v.name as "resourceName",
+    ${from} order by p.name,p.id,c.name,c.id limit $5 offset $6
+    ), refs as (
+    select r.config_set_id as "configSetId",r.resource_id as "resourceId",v.name as "resourceName",
     r.revision_id as "versionId",v.version,r.is_direct as direct,s.state,
     exists(select 1 from public.shared_dtsi_revisions newer where newer.organization_id=r.organization_id and newer.resource_id=r.resource_id and newer.version>v.version) as "upgradeAvailable",v.manifest
     from public.project_shared_dtsi_references r join public.shared_dtsi_resources s on s.id=r.resource_id and s.organization_id=r.organization_id
     join public.shared_dtsi_revisions v on v.id=r.revision_id and v.organization_id=r.organization_id and v.resource_id=r.resource_id
-    where r.organization_id=$1 and r.config_set_id=any($2::text[]) order by v.name,r.resource_id`,[values[0],configIds])).rows:[];
+    where r.organization_id=$1 and r.config_set_id in (select "configSetId" from page)
+    ) select (select count(*)::integer ${from}) as total,
+      coalesce((select jsonb_agg(to_jsonb(page) order by page."projectName",page."projectId",page."configSetName",page."configSetId") from page),'[]'::jsonb) as items,
+      coalesce((select jsonb_agg(to_jsonb(refs) order by refs."resourceName",refs."resourceId") from refs),'[]'::jsonb) as references`,
+    [...values,input.limit,input.offset])).rows[0]!;
+  const {items:rows,total,references:refs}=result;
   const refsByConfig=new Map<string,Ref[]>();
   for(const ref of refs){const group=refsByConfig.get(ref.configSetId)??[];group.push(ref);refsByConfig.set(ref.configSetId,group);}
   const hasAdminRole=current.roles.some(role=>role.roleId==="admin"||role.roleId==="platform-admin");

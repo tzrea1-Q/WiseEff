@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import type { Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
@@ -48,9 +49,9 @@ describe("fixed shared references through the real API role", () => {
   const jsonFiles: Record<string, { fileId: string; versionId: string }> = {};
   const privateRoots: Record<string, { fileId: string; fileVersionId: string; configRevisionId: string }> = {};
   let resourceId: string, versionId: string, appliedA: Applied["item"], appliedB: Applied["item"];
-  function server(auth = admin, sourceStore: ObjectStore = storage) {
+  function server(auth = admin, sourceStore: ObjectStore = storage, database: Database = api) {
     const router = createRouter();
-    registerSharedDtsiRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth });
+    registerSharedDtsiRoutes(router, { db: database, objectStore: sourceStore, getCurrentAuthContext: () => auth });
     registerCatalogProjectValueConsumerRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth });
     registerParameterTopologyRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth, refusalAuditSink: createTrustedRefusalAuditSink(db) });
     registerParameterFileRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth,
@@ -117,6 +118,8 @@ describe("fixed shared references through the real API role", () => {
     expect(page.body).toMatchObject({total:2,items:[{projectId:emptyProject,configSetId:first.id,configurationReady:false,references:[]}]});
     const later=await requestJson<{items:{configSetId:string}[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=OVERVIEW-EMPTY&status=unreferenced&limit=1&offset=1");
     expect(later.body).toMatchObject({total:2,items:[{configSetId:second.id}]});
+    const pastEnd=await requestJson<{items:unknown[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=OVERVIEW-EMPTY&status=unreferenced&limit=1&offset=9");
+    expect(pastEnd.body).toMatchObject({total:2,items:[]});
     const referenced=await requestJson<{items:unknown[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=OVERVIEW-EMPTY&status=referenced");
     expect(referenced.body).toMatchObject({total:0,items:[]});
     expect((await requestJson(server(),"/api/v2/shared-dtsi/project-usages?status=invalid")).status).toBe(400);
@@ -396,7 +399,21 @@ describe("fixed shared references through the real API role", () => {
     expect(exported.body.manifest.members.find(member => member.sharedReference)?.sharedReference?.versionId).toBe(versionId);
     const previewB = await post<Preview>(`${path(B)}/preview`, body);
     const bodyB = { ...body, proofToken: previewB.body.item.proofToken, reason: "Use fixed source in independent project", clientMutationId: "shared-ref-b" };
-    const responseB = await post<Applied>(`${path(B)}/apply`, bodyB);
+    let selected!:()=>void, release!:()=>void;
+    const rowsRead=new Promise<void>(resolve=>{selected=resolve;}),continueRead=new Promise<void>(resolve=>{release=resolve;});
+    const gate:Database={...api,async query<Row>(sql:string,values?:unknown[]){
+      const result=await api.query<Row>(sql,values);
+      if(sql.includes("from public.projects p left join public.dts_config_set c")){selected();await continueRead;}
+      return result;
+    }};
+    const pendingOverview=requestJson<{items:{projectId:string;references:unknown[]}[];total:number}>(server(admin,storage,gate),`/api/v2/shared-dtsi/project-usages?q=${B}&status=unreferenced`);
+    await rowsRead;
+    const responseB = await post<Applied>(`${path(B)}/apply`, bodyB).finally(release);
+    const beforeCommit=await pendingOverview;
+    expect(beforeCommit.status,beforeCommit.bodyText).toBe(200);
+    expect(beforeCommit.body).toMatchObject({total:1,items:[{projectId:B,references:[]}]});
+    const afterCommit=await requestJson<{items:unknown[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?q=${B}&status=unreferenced`);
+    expect(afterCommit.body).toMatchObject({total:0,items:[]});
     expect(responseB.status, responseB.bodyText).toBe(200); appliedB = responseB.body.item;
     expect(appliedB.fileId).not.toBe(appliedA.fileId); expect(appliedB.fileVersionId).not.toBe(appliedA.fileVersionId);
     expect((await post(`${path(B)}/apply`, bodyB)).body).toEqual(responseB.body);
