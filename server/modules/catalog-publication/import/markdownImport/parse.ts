@@ -43,6 +43,8 @@ export function parseMarkdown(document: string): SyntaxTree {
 
   for (const [index, text] of document.replace(/\r\n?/g, "\n").split("\n").entries()) {
     const line = index + 1;
+    // Downloaded guides are visible blockquotes before the data; body quotes remain definition content.
+    if (!subject && /^>($|\s)/u.test(text)) continue;
     if (fence && definition) {
       body.push(text);
       if (new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`, "u").test(text)) fence = "";

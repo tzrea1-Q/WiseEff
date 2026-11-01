@@ -192,7 +192,7 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
   });
 
   it("plans Markdown on the server, preserves evidence, and refuses invalid or unauthorized requests", async () => {
-    const document = "# Driver `acme,power`\n## `import_a` 导入 A\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n";
+    const document = "> 填写说明，不作为定义正文。\n# Driver `acme,power`\n## `import_a` 导入 A\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n";
     const markdownImport = { document, fileName: "defs.md" };
     const post = (body: unknown) => request("POST", "/api/v2/catalog/publication-candidates", {
       headers: { [CATALOG_RELEASE_HEADER]: pinId }, body,
@@ -210,7 +210,7 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     expect(invalid.status).toBe(200);
     expect(invalid.body).toMatchObject({ item: { candidate: null, entries: [{ outcome: "error" }] } });
     expect(catalogMarkdownImportResponseSchema.parse(invalid.body).item.entries[0]?.diagnostics)
-      .toEqual(expect.arrayContaining([expect.objectContaining({ field: "类型", line: 5 })]));
+      .toEqual(expect.arrayContaining([expect.objectContaining({ field: "类型", line: 6 })]));
     const after = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
     expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
     const created = await post({ markdownImport });
@@ -233,7 +233,7 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
       `select a.source_kind, a.toolchain from catalog_publication.release_artifacts a join catalog_publication.candidates c on c.artifact_id = a.id where c.id = $1`, [id],
     ));
     expect(artifacts.rows[0]).toMatchObject({ source_kind: "markdown-import", toolchain: { markdownImport: {
-      fileName: "defs.md", sha256: `sha256:${createHash("sha256").update(document).digest("hex")}`, parserVersion: "markdown-import/v1",
+      fileName: "defs.md", sha256: `sha256:${createHash("sha256").update(document).digest("hex")}`, parserVersion: "markdown-import/v2",
     } } });
     const publisher = publisherScope();
     authenticateAs({ ...publisher, permissions: ["catalog:publish"] });

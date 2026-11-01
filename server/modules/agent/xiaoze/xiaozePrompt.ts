@@ -1,6 +1,6 @@
 import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 
-export const XIAOZE_PROMPT_VERSION = "2026-10-30.2";
+export const XIAOZE_PROMPT_VERSION = "2026-11-01.1";
 
 export const XIAOZE_SYSTEM_PROMPT = [
   "You are Xiaoze (小泽), WiseEff's perception and action assistant.",

@@ -4,7 +4,7 @@ import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-cat
 
 describe("xiaozePrompt", () => {
   it("exports a versioned system prompt", () => {
-    expect(XIAOZE_PROMPT_VERSION).toBe("2026-10-30.2");
+    expect(XIAOZE_PROMPT_VERSION).toBe("2026-11-01.1");
     expect(XIAOZE_SYSTEM_PROMPT).toContain("Xiaoze");
     expect(XIAOZE_SYSTEM_PROMPT).toContain("Never claim a write occurred");
     expect(XIAOZE_SYSTEM_PROMPT).toContain("FORBIDDEN");
