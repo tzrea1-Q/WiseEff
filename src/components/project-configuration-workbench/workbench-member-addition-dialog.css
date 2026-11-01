@@ -40,3 +40,8 @@
 .workbench-member-addition-dialog--shared .workbench-member-addition-dialog__selection > summary,
 .workbench-member-addition-dialog--shared .workbench-member-addition-dialog__switch-metadata details > summary { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
 .workbench-member-addition-dialog--shared .workbench-member-addition-dialog__switch-metadata details[open] > summary { margin-bottom: var(--space-3); }
+.shared-member-pending { margin-block: var(--space-4); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.shared-member-pending h2 { margin: 0 0 var(--space-3); }
+.shared-member-pending ul { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.shared-member-pending li { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.shared-member-pending nav { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }

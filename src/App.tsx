@@ -115,7 +115,8 @@ import {
   type RegisterLocalAccountResponseDto,
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
-import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
+import { clearSessionDraftsForLogout, clearSharedSwitchTasksForLogout } from "@/application/project-configuration/sessionDraftStorage";
+import { invalidateSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
 import { AppToastLayer } from "@/components/common/AppToastLayer";
 import { unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -1066,6 +1067,8 @@ function AppShell({
   );
 
   const handleLogout = useCallback(async () => {
+    invalidateSharedOperationSession();
+    clearSharedSwitchTasksForLogout();
     domainDataHydratedRef.current = false;
     const client = appRuntime.authClient;
     try {

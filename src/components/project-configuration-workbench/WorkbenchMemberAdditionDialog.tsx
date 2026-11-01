@@ -18,6 +18,7 @@ import { createCanonicalMemberAdditionClient, type MemberAdditionBody, type Memb
 import { presentError } from "@/infrastructure/http/presentError";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import "./workbench-member-addition-dialog.css";
+import { currentSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
 
 const roleLabels = { base: "基础", overlay: "覆盖层", charging: "充电", thermal: "温控", misc: "其他 / include" };
 export type RecoveredMemberOperation=MemberAdditionBody & {proofToken:string;reason:string;clientMutationId:string};
@@ -39,7 +40,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   targetProjectName?: string;
   onUncertainDismiss?: () => void;
   refreshExistingReferences?: () => Promise<Array<{resourceId:string;versionId?:string;direct?:boolean}>>;
-  onOperationStart?:(operation:RecoveredMemberOperation)=>void|Promise<void>;
+  onOperationStart?:(operation:RecoveredMemberOperation,registrationId:string)=>void|string|{resolved:"applied"|"stopped"}|Promise<void|string|{resolved:"applied"|"stopped"}>;
   onOperationResolved?:()=>void;
   canContinueOperation?:()=>boolean;
 }) {
@@ -60,6 +61,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   const [compositionError,setCompositionError]=useState<"dependency"|"stale"|null>(null);
   const [errorDiagnostics, setErrorDiagnostics] = useState<string[]>([]);
   const mutationId = useRef<string | null>(null);
+  const registrationId = useRef<string | null>(null);
   const mutationReason = useRef<string | null>(null);
   const applying=useRef(false);
   const [uncertain,setUncertain]=useState(false);
@@ -87,7 +89,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     return () => { active = false; };
   }, [source, sharedClient, resourceId, query, resourceOffset, versionOffset, sharedRetry,removeReference]);
   const format = source === "existing" ? availableFiles.find((item) => item.id === fileId)?.format : candidate?.format ?? (file?.name.toLowerCase().endsWith(".json") ? "json" : "dts");
-  const invalidate = () => { setPreview(null); setPreparedBody(null); setError(""); setRefreshError(""); setErrorDiagnostics([]); setSwitchConflicts([]);setCompositionError(null); mutationId.current = null; mutationReason.current=null;setUncertain(false); };
+  const invalidate = () => { setPreview(null); setPreparedBody(null); setError(""); setRefreshError(""); setErrorDiagnostics([]); setSwitchConflicts([]);setCompositionError(null); mutationId.current = null;registrationId.current=null; mutationReason.current=null;setUncertain(false); };
   function showError(failure: unknown, fallback: string) {
     setError(presentError(failure, fallback));
     const cause=failure instanceof WiseEffApiError?failure.details.reason:null;
@@ -139,25 +141,28 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         sortOrder: Number(sortOrder), ...(registerJson ? { json: { configurationSchemaId: registration.configurationSchemaId, rootPointer: "", mappings: jsonMappings! } } : {}) };
       const result = await client.preview(projectId, configSetId, body);
       if (!mounted.current) return;
-      setPreparedBody(body); setPreview(result); mutationId.current = crypto.randomUUID();
+      setPreparedBody(body); setPreview(result); mutationId.current = crypto.randomUUID();registrationId.current=crypto.randomUUID();
     } catch (failure) { if (mounted.current) {
       showError(failure, "无法预览文件组成，请检查文件后重试。");
       if(sharedOnly && refreshExistingReferences && failure instanceof WiseEffApiError && (failure.code==="CONFLICT"||[401,403,404].includes(failure.status??0))) {setRefreshRequired(true);await refreshReferences();}
     } } finally { if (mounted.current) setBusy(false); }
   }
   async function apply() {
-    if (applying.current || busy || !preview || !preparedBody || !mutationId.current || !reason.trim()) return;
+    if (applying.current || busy || !preview || !preparedBody || !mutationId.current || !registrationId.current || !reason.trim()) return;
     mutationReason.current??=reason.trim();
+    const session=currentSharedOperationSession();
     applying.current=true;
     setBusy(true); setError(""); setErrorDiagnostics([]);
     try {
-      try{await onOperationStart?.({...preparedBody,proofToken:preview.proofToken,reason:mutationReason.current,clientMutationId:mutationId.current});}
-      catch{if(mounted.current)setError("无法确认操作登记，请稍后重试。");return;}
-      if(!mounted.current||canContinueOperation?.()===false)return;
+      try{const registered=await onOperationStart?.({...preparedBody,proofToken:preview.proofToken,reason:mutationReason.current,clientMutationId:mutationId.current},registrationId.current);
+        if(registered&&typeof registered==="object"){if(mounted.current&&session===currentSharedOperationSession()){setUncertain(true);setError(registered.resolved==="applied"?"该操作此前已应用，详情不可用。请返回列表核对。":"该操作已停止，请返回列表核对。");}return;}
+        if(registered)mutationId.current=registered;}
+      catch{if(mounted.current&&session===currentSharedOperationSession()){setUncertain(true);setError("无法确认操作登记。请重试同一操作，或返回列表核对。");}return;}
+      if(!mounted.current||session!==currentSharedOperationSession()||canContinueOperation?.()===false)return;
       const result = await client.apply(projectId, configSetId, { ...preparedBody, proofToken: preview.proofToken, reason: mutationReason.current, clientMutationId: mutationId.current });
-      if (mounted.current) {onOperationResolved?.();onApplied(configSetId, result.fileId);}
-    } catch (failure) { if (mounted.current) {
-      if((sharedOnly||preserveUncertain) && (uncertain || !(failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500))){
+      if (mounted.current&&session===currentSharedOperationSession()) {onOperationResolved?.();onApplied(configSetId, result.fileId);}
+    } catch (failure) { if (mounted.current&&session===currentSharedOperationSession()) {
+      if((sharedOnly||preserveUncertain) && (Boolean(onOperationStart)||uncertain || !(failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500))){
         setUncertain(true);setError(uncertain && failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500
           ? "应用结果尚未确认，本次重试被拒绝。请返回列表核对项目配置，或稍后重试同一操作。"
           : "应用结果尚未确认。请重试同一操作，或返回列表核对项目配置。");

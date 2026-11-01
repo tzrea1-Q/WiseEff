@@ -6,6 +6,7 @@ import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canon
 import { WorkbenchMemberAdditionDialog } from "./WorkbenchMemberAdditionDialog";
 import type { ParameterCatalogRepository, CatalogSubjectListResponse, CatalogDefinitionListResponse } from "@/application/ports/ParameterCatalogRepository";
 import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistration";
+import { invalidateSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
 
 afterEach(cleanup);
 
@@ -18,6 +19,28 @@ it("does not send an apply after its registration finishes in a different scope"
   await user.type(screen.getByRole("textbox",{name:"变更说明"}),"移除引用");await user.click(screen.getByRole("button",{name:"预览移除引用"}));
   await user.click(await screen.findByRole("button",{name:"确认移除引用"}));valid=false;await act(async()=>finish());
   expect(client.apply).not.toHaveBeenCalled();
+});
+
+it("does not send an apply after logout begins during registration",async()=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
+  let finish!:()=>void;const registering=new Promise<void>(resolve=>{finish=resolve;});
+  const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} preserveUncertain
+    removeReference={{resourceId,versionId,version:1}} client={client} onOperationStart={()=>registering} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.type(screen.getByRole("textbox",{name:"变更说明"}),"移除引用");await user.click(screen.getByRole("button",{name:"预览移除引用"}));await user.click(await screen.findByRole("button",{name:"确认移除引用"}));
+  invalidateSharedOperationSession();await act(async()=>finish());expect(client.apply).not.toHaveBeenCalled();
+});
+
+it("freezes an uncertain registration and reuses it before applying the server operation ID",async()=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
+  const register=vi.fn().mockRejectedValueOnce(new Error("lost response")).mockResolvedValueOnce("server-mutation");
+  const client={upload:vi.fn(),apply:vi.fn().mockRejectedValue(new Error("lost apply")),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} preserveUncertain
+    removeReference={{resourceId,versionId,version:1}} client={client} onOperationStart={register} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.type(screen.getByRole("textbox",{name:"变更说明"}),"原始原因");await user.click(screen.getByRole("button",{name:"预览移除引用"}));await user.click(await screen.findByRole("button",{name:"确认移除引用"}));
+  expect(await screen.findByRole("alert")).toHaveTextContent("无法确认操作登记");expect(client.apply).not.toHaveBeenCalled();expect(screen.getByRole("textbox",{name:"变更说明"})).toBeDisabled();
+  await user.click(screen.getByRole("button",{name:"重试同一操作"}));await waitFor(()=>expect(client.apply).toHaveBeenCalledOnce());
+  expect(register.mock.calls[0]![1]).toBe(register.mock.calls[1]![1]);expect(client.apply.mock.calls[0]![2]).toMatchObject({clientMutationId:"server-mutation",reason:"原始原因"});
 });
 
 it("describes the actual shared-resource action and retains its target context",()=>{
