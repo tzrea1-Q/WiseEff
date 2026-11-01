@@ -138,6 +138,20 @@ describe("confirmed project purge HTTP", () => {
     expect(await purge("purge-stale", busy.stateDigest)).toMatchObject({ status: 409, body: { error: { details: { reason: "project-purge-blocked" } } } });
   });
 
+  it("invalidates project deletion previews when an operation intent changes",async()=>{
+    const project="purge-intent";await createProject(db,{organizationId:"purge-org",id:project,name:"Intent",code:"INTENT"});
+    const set=await createConfigSet(db,auth,{projectId:project,name:"Intent"});const before=await preview(project);
+    const path=`/api/v1/projects/${project}/config-sets/${set.id}/member-addition/intents`,server=createWiseEffServer({db,objectStore:store});
+    const reservation=await requestJson<{item:{id:string}}>(server,path,{method:"POST",headers,body:JSON.stringify({registrationId:"eaf3b44d-20f3-423d-99fd-e06de5018c47"})});
+    expect(reservation.status,reservation.bodyText).toBe(200);const after=await preview(project);
+    expect(after.stateDigest).not.toBe(before.stateDigest);
+    expect(after.inventory).toContainEqual(expect.objectContaining({key:"member-addition-intents",count:1,disposition:"delete"}));
+    expect((await purge(project,before.stateDigest)).status).toBe(409);
+    const stopped=await requestJson(server,`${path}/${reservation.body.item.id}/stop`,{method:"POST",headers,body:"{}"});expect(stopped.status,stopped.bodyText).toBe(200);
+    expect((await purge(project,after.stateDigest)).status).toBe(409);
+    const final=await preview(project);expect((await purge(project,final.stateDigest)).status).toBe(200);
+  },120_000);
+
   it("rolls back the whole project when the audit cannot commit", async () => {
     const file = await canonical("purge-rollback", 62);
     const impact = await preview("purge-rollback");
