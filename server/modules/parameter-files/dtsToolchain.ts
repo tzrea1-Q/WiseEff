@@ -443,9 +443,13 @@ function parseDtcStderr(stderr: string,root:string,original:DtsToolchainConfigSe
     const candidate=resolve(root,file.trim()),logical=relative(root,candidate).replace(/\\/g,"/");
     const source=assertWithinRoot(root,candidate)&&original.files.has(logical)?logical:SKIPPED_FILE_LABEL;
     const exact=source!==SKIPPED_FILE_LABEL&&original.files.get(source)?.content===compiled.files.get(source)?.content;
+    const check=line.match(/\b(?:fatal error|error|warning)\s*\(([a-z0-9_]+)\):/i)?.[1]?.toLowerCase();
+    const codes:Record<string,string>={duplicate_label:"dtc-duplicate-label",duplicate_node_names:"dtc-duplicate-node",duplicate_property_names:"dtc-duplicate-property",unit_address_vs_reg:"dtc-unit-address",reg_format:"dtc-reg-format",ranges_format:"dtc-ranges-format",phandle_references:"dtc-reference",path_references:"dtc-reference"};
+    const code=check?codes[check]:prefixed&&/^syntax error\b/i.test(message)?"dtc-syntax":undefined;
     diagnostics.push({
       file: source,
       ...(exact?{line:Number(lineNumber)}:{}),
+      ...(code?{code}:{}),
       severity: severityRaw.toLowerCase() === "warning" ? "warning" : "error",
       message: message.trim(),
       stage: "dtc"

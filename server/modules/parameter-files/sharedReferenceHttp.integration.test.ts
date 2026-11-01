@@ -120,6 +120,13 @@ describe("fixed shared references through the real API role", () => {
     const result=await post<{error:{details:{diagnostics:Array<{message:string;sourceName?:string;resourceId?:string;versionId?:string;line?:number}>}}}>(`/api/v1/projects/${A}/config-sets/${sets[A]}/member-addition/preview`,{sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:1});
     expect(result.status,result.bodyText).toBe(400);
     expect(result.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({sourceName:"external.dtsi",resourceId,versionId:version.body.item.id,line:1,message:"找不到覆盖目标节点（&not_in_project）。",rawMessage:expect.stringContaining("Overlay target")})]));
+    for(const [index,content] of ['&{/missing} { flag = <1>; };','/ { clocks = <&{/missing}>; };'].entries()){
+      const pathDraft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:`Missing path ${index}`,sourceName:`missing-${index}.dtsi`,content,changeDescription:"Missing path"});expect(pathDraft.status,pathDraft.bodyText).toBe(201);
+      const pathId=pathDraft.body.item.resourceId,pathPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${pathId}/publication-preview`,{expectedRevision:1});expect(pathPreview.status,pathPreview.bodyText).toBe(201);
+      const pathVersion=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${pathId}/publications`,{previewId:pathPreview.body.item.id,idempotencyKey:`missing-path-${index}`});expect(pathVersion.status,pathVersion.bodyText).toBe(201);
+      const failure=await post<{error:{details:{diagnostics:Array<{code:string;message:string}>}}}>(`/api/v1/projects/${A}/config-sets/${sets[A]}/member-addition/preview`,{sharedReference:{resourceId:pathId,versionId:pathVersion.body.item.id},role:"misc",sortOrder:1});
+      expect(failure.status,failure.bodyText).toBe(400);expect(failure.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({code:"target-unresolved",message:expect.stringContaining("找不到引用的目标节点")})]));
+    }
   });
 
   it("reports the real source when a catalog identity disagreement blocks addition",async()=>{
@@ -147,7 +154,7 @@ describe("fixed shared references through the real API role", () => {
     const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});expect(preview.status,preview.bodyText).toBe(201);
     const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"root-diagnostic-source"});expect(version.status,version.bodyText).toBe(201);
     const toolchain:DtsToolchainRunner={probe:async()=>({dtc:{path:null,version:null},fdtoverlay:{path:null,version:null},dtschema:{path:null,version:null}}),validate:async()=>({ok:false,mode:"release",compiler:{dtc:null,fdtoverlay:null,dtschema:null},artifacts:{},diagnostics:[
-      {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:1},
+      {severity:"error",code:"dtc-duplicate-label",message:"Duplicate label /Users/private/secret",file:"board.dts",line:1},
       {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:2},
       {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:5},
       {severity:"error",code:"same",message:"Same diagnostic",file:"shared.dtsi",line:1},
@@ -155,7 +162,7 @@ describe("fixed shared references through the real API role", () => {
     const security={invocation:createUserInvocation(admin),requestId:"root-diagnostic",refusalSink:createTrustedRefusalAuditSink(db)};
     const failure=await previewCanonicalMemberAddition(api,storage,admin,{projectId:project,configSetId,sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:1},security,{toolchain}).catch(error=>error);
     const errors=failure.details.diagnostics as Array<{sourceName:string;fileId?:string;resourceId?:string;line?:number}>;
-    expect(errors).toHaveLength(5);expect(errors[0]).toMatchObject({sourceName:"board.dts",fileId:rootFile.file.id,line:1});
+    expect(errors).toHaveLength(5);expect(errors[0]).toMatchObject({sourceName:"board.dts",fileId:rootFile.file.id,line:1,message:"节点标签重复。"});
     expect(errors[1]).toMatchObject({sourceName:"board.dts"});expect(errors[1]!.fileId).toBeUndefined();expect(errors[1]!.line).toBeUndefined();
     expect(errors[2]).toMatchObject({sourceName:"board.dts",fileId:rootFile.file.id,line:3});expect(errors[3]).toMatchObject({sourceName:"shared.dtsi",resourceId,line:1});
     expect(JSON.stringify(failure.details)).not.toContain("/Users/private/secret");expect(errors[4]).toMatchObject({sourceName:"配置"});expect(errors[4]!.line).toBeUndefined();

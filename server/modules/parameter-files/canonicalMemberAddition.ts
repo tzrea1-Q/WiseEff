@@ -105,10 +105,13 @@ function conflict(message: string): never { throw new ApiError("CONFLICT", messa
 function rootDiagnosticMessage(code: string, message: string, fileName?: string): string {
   const labels: Record<string, string> = {
     "include-cycle": "文件存在循环引用", "include-missing": "找不到引用文件", "path-escape": "引用路径超出当前配置",
-    "label-duplicate": "节点标签重复", "target-unresolved": "找不到删除目标节点", "dangling-reference": "找不到覆盖目标节点",
+    "label-duplicate": "节点标签重复", "target-unresolved": "找不到引用的目标节点", "dangling-reference": "找不到覆盖目标节点",
     "source-proof-limit": "配置超过精确来源校验容量", "toolchain-unavailable": "DTS 校验工具不可用，请联系管理员检查工具链",
     "version-mismatch": "DTS 校验工具版本不匹配", "compile-failed": "DTS 编译失败，请检查文件语法与引用",
-    "schema-failed": "DTS 规范校验失败", "timeout": "DTS 校验超时", "overlay-order": "覆盖文件顺序无效"
+    "schema-failed": "DTS 规范校验失败", "timeout": "DTS 校验超时", "overlay-order": "覆盖文件顺序无效",
+    "dtc-syntax": "DTS 语法错误", "dtc-duplicate-label": "节点标签重复", "dtc-duplicate-node": "节点名称重复",
+    "dtc-duplicate-property": "属性名称重复", "dtc-unit-address": "节点单元地址与 reg 属性不匹配",
+    "dtc-reg-format": "reg 属性格式无效", "dtc-ranges-format": "ranges 属性格式无效", "dtc-reference": "节点引用无效"
   };
   const references = [...message.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
   return `${fileName ?? "配置"}：${labels[code] ?? "DTS 校验未通过"}${references.length ? `（${references.join("、")}）` : ""}。`;

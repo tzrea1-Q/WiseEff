@@ -289,8 +289,10 @@ describe("createDtsToolchainRunner", () => {
     const runner=createDtsToolchainRunner();const probe=await runner.probe();
     expect(probe.dtc.path).toBeTruthy();expect(probe.fdtoverlay.path).toBeTruthy();expect(probe.dtschema.path).toBeTruthy();
     const result=await runner.validate({entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],files:new Map([["board.dts",{content:'/dts-v1/;\n/ { duplicate: x {}; duplicate: y {}; };\n'}]])},{mode:"release"});
-    expect(result.ok).toBe(false);expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({file:"board.dts",line:2,stage:"dtc"})]));
+    expect(result.ok).toBe(false);expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({file:"board.dts",line:2,stage:"dtc",code:"dtc-duplicate-label"})]));
     expect(result.diagnostics.every(item=>!item.file.startsWith("/"))).toBe(true);
+    const syntax=await runner.validate({entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],files:new Map([["board.dts",{content:'/dts-v1/;\n/ { broken = <1; };\n'}]])},{mode:"release"});
+    expect(syntax.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({file:"board.dts",line:2,code:"dtc-syntax"})]));
   },30_000);
   it("validates exact prepared CPP without reopening the compiler and refuses changed frozen inputs", async () => {
     const source = '#include "defs.h"\n/dts-v1/; / { target { limit = <VALUE>; }; };';
