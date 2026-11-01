@@ -37,7 +37,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   sharedOnly?: boolean; existingReferences?: Array<{resourceId:string;direct:boolean;requiredBy:Array<{resourceName:string}>}>;
   targetProjectName?: string;
   onUncertainDismiss?: () => void;
-  refreshExistingReferences?: () => Promise<void>;
+  refreshExistingReferences?: () => Promise<Array<{resourceId:string}>>;
 }) {
   const reference=removeReference??switchReference;
   const client = useMemo(() => suppliedClient ?? createCanonicalMemberAdditionClient(), [suppliedClient]);
@@ -59,6 +59,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   const mutationReason = useRef<string | null>(null);
   const [uncertain,setUncertain]=useState(false);
   const [refreshRequired,setRefreshRequired]=useState(false),[refreshingReferences,setRefreshingReferences]=useState(false);
+  const [refreshError,setRefreshError]=useState("");
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [resources, setResources] = useState<SharedDtsiResourceSummary[]>([]), [versions, setVersions] = useState<SharedDtsiVersionSummary[]>([]);
@@ -81,7 +82,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     return () => { active = false; };
   }, [source, sharedClient, resourceId, query, resourceOffset, versionOffset, sharedRetry,removeReference]);
   const format = source === "existing" ? availableFiles.find((item) => item.id === fileId)?.format : candidate?.format ?? (file?.name.toLowerCase().endsWith(".json") ? "json" : "dts");
-  const invalidate = () => { setPreview(null); setPreparedBody(null); setError(""); setErrorDiagnostics([]); setSwitchConflicts([]);setCompositionError(null); mutationId.current = null; mutationReason.current=null;setUncertain(false); };
+  const invalidate = () => { setPreview(null); setPreparedBody(null); setError(""); setRefreshError(""); setErrorDiagnostics([]); setSwitchConflicts([]);setCompositionError(null); mutationId.current = null; mutationReason.current=null;setUncertain(false); };
   function showError(failure: unknown, fallback: string) {
     setError(presentError(failure, fallback));
     const cause=failure instanceof WiseEffApiError?failure.details.reason:null;
@@ -94,12 +95,15 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   }
   async function refreshReferences() {
     if(!refreshExistingReferences)return;
-    setRefreshingReferences(true);
+    setRefreshingReferences(true);setRefreshError("");
     try {
-      await refreshExistingReferences();
-      if(mounted.current){setResourceId("");setVersionId("");setVersions([]);setRefreshRequired(false);setError("配置已更新，请重新选择资源。");}
+      const references=await refreshExistingReferences();
+      if(mounted.current){
+        if(references.some(ref=>ref.resourceId===resourceId)){setResourceId("");setVersionId("");setVersions([]);setError("配置已更新，请重新选择资源。");}
+        setRefreshRequired(false);
+      }
     } catch(failure) {
-      if(mounted.current)setError(presentError(failure,"无法重新核对目标配置，请重试。"));
+      if(mounted.current)setRefreshError(presentError(failure,"无法重新核对目标配置，请重试。"));
     } finally {if(mounted.current)setRefreshingReferences(false);}
   }
   async function prepare() {
@@ -212,7 +216,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
             <Button type="submit" disabled={busy || refreshRequired || refreshingReferences || !configSetId || (!removeReference&&(source === "shared" ? !resourceId || !versionId || sharedLoading || Boolean(sharedError) : source === "existing" ? !fileId : !file && !candidate))}>{busy ? "正在核对…" : removeReference?"预览移除引用":conversionSource?"预览共享转换":switchReference?"预览版本切换":"预览加入配置"}</Button>
           </fieldset>
         </form></details>
-        {error ? <p role="alert">{reference&&switchConflicts.length?(removeReference?"移除引用未通过。":"版本切换未通过。"):error}</p> : null}
+        {error||refreshError ? <p role="alert">{reference&&switchConflicts.length?(removeReference?"移除引用未通过。":"版本切换未通过。"):error}{refreshError?`；重新核对失败：${refreshError}`:""}</p> : null}
         {refreshRequired&&!busy?<Button variant="outline" disabled={refreshingReferences} onClick={()=>void refreshReferences()}>{refreshingReferences?"正在核对配置…":"重新核对配置"}</Button>:null}
         {reference && error ? <section aria-label={removeReference?"移除引用冲突处理":"版本冲突处理"}>
           {switchConflicts.length?<ul>{switchConflicts.map((item,index)=><li key={index}>

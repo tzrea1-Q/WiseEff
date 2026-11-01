@@ -43,6 +43,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
     setSelected(previous=>previous?.instance===instance&&previous.client===apiClient&&previous.organizationId===organizationId&&previous.scope===search&&previous.row.projectId===row.projectId&&previous.row.configSetId===row.configSetId
       ? {...previous,row:updated}:previous);
     setReload(value=>value+1);
+    return updated.references;
   };
   useEffect(()=>{
     let cancelled=false;

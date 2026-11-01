@@ -96,6 +96,34 @@ describe("shared DTSI project usage", () => {
     const target=fetchImpl.mock.calls.map(([url])=>new URL(String(url),"http://localhost")).find(url=>url.searchParams.get("projectId")==="p1");
     expect(target?.searchParams.get("configSetId")).toBe("c1");expect(target?.searchParams.get("status")).toBe("all");
   });
+
+  it("retains the chosen package and source diagnostic when a conflict does not change its references",async()=>{
+    const user=userEvent.setup();let failRefresh=true;
+    const version={id:versionOne,resourceId:resourceOne,version:1,name:"公共电源",changeDescription:"初版",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
+    const row={projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:[]};
+    const fetchImpl=vi.fn(async(url:string|URL|Request)=>{
+      const path=String(url);let body:unknown,status=200;
+      if(path.includes("project-usages")&&path.includes("projectId=")&&failRefresh){status=503;body={error:{code:"INTERNAL_ERROR",message:"服务暂不可用"}};}
+      else if(path.includes("project-usages"))body={items:[row],total:1,visibility:"organization"};
+      else if(path.includes("/member-addition/preview")){status=409;body={error:{code:"CONFLICT",message:"目标位置已有文件，请调整挂载目录"}};}
+      else if(path.includes("/versions"))body={items:[version],total:1};
+      else body={items:[{resourceId:resourceOne,name:"公共电源",sourceName:"power.dtsi",draftRevision:null,state:"active",lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1};
+      return new Response(JSON.stringify(body),{status});
+    });
+    const apiClient=createApiClient({baseUrl:"",fetchImpl});
+    render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
+    await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"公共电源"}));
+    await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · 初版"}));
+    await user.click(screen.getByRole("button",{name:"预览加入配置"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("目标位置已有文件，请调整挂载目录");
+    expect(screen.getByRole("alert")).toHaveTextContent("服务暂不可用");
+    failRefresh=false;await user.click(screen.getByRole("button",{name:"重新核对配置"}));
+    await waitFor(()=>expect(screen.getByRole("button",{name:"预览加入配置"})).toBeEnabled());
+    expect(screen.getByRole("alert")).toHaveTextContent("目标位置已有文件，请调整挂载目录");
+    expect(screen.getByRole("combobox",{name:"共享资源"})).toHaveAttribute("data-value",resourceOne);
+    expect(screen.getByRole("combobox",{name:"固定版本"})).toHaveAttribute("data-value",versionOne);
+  });
   it("shows fixed references by configuration and preserves the selected view", async () => {
     const user = userEvent.setup();
     const fetchImpl = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(String(url).includes("project-usages") ? {
