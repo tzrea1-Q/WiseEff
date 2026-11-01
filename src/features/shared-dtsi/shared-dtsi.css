@@ -7,14 +7,14 @@
 .shared-dtsi-page .shared-dtsi-usage-table td:first-child { max-width: none; overflow: visible; }
 .shared-dtsi-usage-table th:nth-child(1) { width: 22%; }
 .shared-dtsi-usage-table th:nth-child(2) { width: 18%; }
-.shared-dtsi-usage-table th:nth-child(3) { width: 42%; }
-.shared-dtsi-usage-table th:nth-child(4) { width: 18%; }
+.shared-dtsi-usage-table th:nth-child(3) { width: 38%; }
+.shared-dtsi-usage-table th:nth-child(4) { width: 22%; }
 .shared-dtsi-usage-name, .shared-dtsi-usage-references, .shared-dtsi-usage-action { overflow-wrap: anywhere; }
 .shared-dtsi-usage-references { display: grid; gap: var(--space-2); }
 .shared-dtsi-usage-resource { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; }
-.shared-dtsi-usage-resource a, .shared-dtsi-usage-action a { color: var(--accent); text-decoration: underline; text-underline-offset: var(--space-1); }
+.shared-dtsi-usage-resource a, .shared-dtsi-usage-action span a { color: var(--accent); text-decoration: underline; text-underline-offset: var(--space-1); }
 .shared-dtsi-usage-resource span, .shared-dtsi-usage-action span { color: var(--text-secondary); }
-.shared-dtsi-usage-action { display: grid; gap: var(--space-1); }
+.shared-dtsi-usage-action { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .shared-dtsi-config-resources { list-style: none; padding: 0; margin: 0 0 var(--space-4); display: grid; gap: var(--space-2); }
 .shared-dtsi-config-resources li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); overflow-wrap: anywhere; }
 .shared-dtsi-config-resources li p { margin: var(--space-1) 0 0; color: var(--text-secondary); }
