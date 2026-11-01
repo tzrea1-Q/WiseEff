@@ -18,10 +18,10 @@ test("references exact published versions from the resource list and historical 
   const zip=new JSZip();zip.file("board.dts",'/dts-v1/; / { model = "Shortcut board"; compatible = "test,shortcut"; };');
   const input={name:"Shortcut board",ownership:"private",archive:{name:"project.zip",contentBase64:await zip.generateAsync({type:"base64"})},sourceConfiguration:{entryFile:"board.dts",overlayOrder:[],buildInputs:{includeSearchPaths:[],defines:{}}}};
   const checked=await post(`/api/v1/projects/${id}/config-set-import/preview`,input);const config=await post(`/api/v1/projects/${id}/config-set-import/apply`,{...input,proofToken:checked.proofToken,reason:"Prepare project",clientMutationId:"shortcut-init"});
-  const resource=await post("/api/v2/shared-dtsi",{name:"快捷引用公共源码",sourceName:"common.dtsi",content:'/ { shortcut_common { status = "okay"; }; };',changeDescription:"First"});
+  const resource=await post("/api/v2/shared-dtsi",{name:"快捷引用公共源码",sourceName:"common.dtsi",content:'/ { shortcut_common { status = "okay"; acceptance_limit = <1>; }; };',changeDescription:"First"});
   const publish=async(revision:number,key:string)=>{const preview=await post(`/api/v2/shared-dtsi/${resource.resourceId}/publication-preview`,{expectedRevision:revision});return post(`/api/v2/shared-dtsi/${resource.resourceId}/publications`,{previewId:preview.id,idempotencyKey:key});};
   const first=await publish(resource.revision,"shortcut-v1"),draft=await post(`/api/v2/shared-dtsi/${resource.resourceId}/draft`,{baseVersionId:first.id});
-  const saved=await catalogJson(page.request,"PUT",`/api/v2/shared-dtsi/${resource.resourceId}/draft`,{data:{name:"快捷引用公共源码",changeDescription:"Second",expectedRevision:draft.revision,members:draft.members.map((member:{id:string;sourceName:string;content:string})=>({...member,content:member.content.replace("okay","disabled")}))}});expect(saved.status).toBe(200);
+  const saved=await catalogJson(page.request,"PUT",`/api/v2/shared-dtsi/${resource.resourceId}/draft`,{data:{name:"快捷引用公共源码",changeDescription:"Second",expectedRevision:draft.revision,members:draft.members.map((member:{id:string;sourceName:string;content:string})=>({...member,content:member.content.replace("<1>","<2>")}))}});expect(saved.status).toBe(200);
   const second=await publish((saved.body as {item:{revision:number}}).item.revision,"shortcut-v2");
   await page.setViewportSize({width:1440,height:900});await signInCatalogActor(page,"org-admin","/parameter-admin/sources");
   const resourceRow=page.getByRole("row").filter({hasText:"快捷引用公共源码"});await resourceRow.getByRole("button",{name:"引用到项目",exact:true}).click();
@@ -39,5 +39,14 @@ test("references exact published versions from the resource list and historical 
   await expect(selected.getByText("已固定此版本")).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   const usage=await catalogJson(page.request,"GET",`/api/v2/shared-dtsi/project-usages?projectId=${id}&configSetId=${config.configSetId}&status=all&limit=1`);
   expect((usage.body as {items:Array<{references:Array<{resourceId:string;versionId:string}>}>}).items[0]!.references).toEqual(expect.arrayContaining([expect.objectContaining({resourceId:resource.resourceId,versionId:first.id})]));
+  await selected.getByRole("link",{name:"快捷引用公共源码 · v1",exact:true}).click();
+  expect(new URL(page.url()).searchParams.get("version")).toBe(first.id);
+  await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toContainText("acceptance_limit = <1>");
+  await page.getByRole("button",{name:"返回资源列表"}).click();
+  await page.getByRole("row").filter({hasText:name}).getByRole("link",{name:"查看生效配置",exact:true}).click();
+  expect(new URL(page.url()).searchParams.get("configSet")).toBe(config.configSetId);
+  await expect(page.getByRole("tab",{name:"生效配置",exact:true})).toHaveAttribute("aria-selected","true");
+  await page.getByRole("treeitem",{name:"节点 /shortcut_common",exact:true}).click();
+  await expect(page.getByLabel("acceptance_limit 最终值",{exact:true})).toHaveText("<1>");
   expect(first.id).not.toBe(second.id);
 });
