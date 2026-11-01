@@ -401,6 +401,7 @@ function renderWorkbench(options: {
   topologyRepository?: ProjectConfigurationWorkbenchProps["topologyRepository"];
   memberRemovalRepository?: ProjectConfigurationWorkbenchProps["memberRemovalRepository"];
   apiMode?: boolean;
+  apiClient?:ProjectConfigurationWorkbenchProps["apiClient"];
 } = {}) {
   const onNavigate = vi.fn(options.onNavigate ?? (() => undefined));
   const sharedProps = {
@@ -418,7 +419,8 @@ function renderWorkbench(options: {
     ...(options.draftStorage ? { draftStorage: options.draftStorage } : {}),
     ...(options.topologyRepository ? { topologyRepository: options.topologyRepository } : {}),
     ...(options.memberRemovalRepository ? { memberRemovalRepository: options.memberRemovalRepository } : {}),
-    ...(options.apiMode === undefined ? {} : { apiMode: options.apiMode })
+    ...(options.apiMode === undefined ? {} : { apiMode: options.apiMode }),
+    ...(options.apiClient ? {apiClient:options.apiClient}: {})
   };
   if (options.syncSearch) {
     function Harness() {
@@ -571,7 +573,8 @@ describe("ProjectConfigurationWorkbench", () => {
     const shared=sharedDtsiClient.createSharedDtsiClient(createApiClient({baseUrl:""}));
     vi.spyOn(sharedDtsiClient,"createSharedDtsiClient").mockReturnValue({...shared,versions:vi.fn(async()=>({items:[{id:target,resourceId,version:2,name:"Limits",changeDescription:"Next",digest:"fixed",createdAt:"today",createdByUserId:"author"}],total:1}))});
     vi.spyOn(memberAdditionClient,"createCanonicalMemberAdditionClient").mockReturnValue({upload:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"cs-default",fileName:"limits.dtsi",format:"dts" as const,members:[],entryFile:"aurora-board.dts",includeSearchPaths:["."],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}})),apply:vi.fn(async()=>({requestId:"request",fileId:"applied-file",fileVersionId:"applied-version",configRevisionId:"new-revision"}))});
-    const dts=createDtsRepository(),{onNavigate}=renderWorkbench({apiMode:true,search:"?configSet=cs-default&file=file-board&sharedSwitch=resume",dtsRepository:dts});
+    const apiClient=createApiClient({baseUrl:"",fetchImpl:async input=>new Response(JSON.stringify(String(input).includes("member-addition-intents")?{items:[],total:0}:{item:{id:"d0000000-0000-4000-8000-000000000001",clientMutationId:"d0000000-0000-4000-8000-000000000002",projectId:"project-1",projectName:"项目",configSetId:"cs-default",configSetName:"default",status:"pending"}}))});
+    const dts=createDtsRepository(),{onNavigate}=renderWorkbench({apiMode:true,apiClient,search:"?configSet=cs-default&file=file-board&sharedSwitch=resume",dtsRepository:dts});
     const dialog=await screen.findByRole("dialog",{name:"切换共享版本"}),reads=vi.mocked(dts.listConfigSetFiles).mock.calls.length;
     if(action==="cancel")await userEvent.click(within(dialog).getByRole("button",{name:"关闭"}));
     else{

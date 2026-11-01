@@ -922,6 +922,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
   it("updates the current profile and logs out from the topbar menu", async () => {
     window.history.replaceState(null, "", "/parameter-home");
+    sessionStorage.setItem("wiseeff.shared-switch:user:org:project:config","sensitive reason");
+    sessionStorage.setItem("unrelated-session-value","keep");
     const authClient = {
       getCurrentAuthContext: vi.fn(async () => ({
         user: {
@@ -978,6 +980,20 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
     expect(authClient.logout).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem("wiseeff.shared-switch:user:org:project:config")).toBeNull();
+    expect(sessionStorage.getItem("unrelated-session-value")).toBe("keep");sessionStorage.removeItem("unrelated-session-value");
+  });
+
+  it("continues logout when session storage access is denied",async()=>{
+    window.history.replaceState(null,"","/parameter-home");
+    const authClient={getCurrentAuthContext:vi.fn(async()=>({user:{id:"u-api-admin",organizationId:"org-chargelab",name:"API Admin",title:"Owner",isActive:true},organization:{id:"org-chargelab",name:"ChargeLab"},roles:[{projectId:null,roleId:"admin"}],permissions:["admin:access"]})),logout:vi.fn(async()=>undefined)};
+    renderApp({runtimeMode:"api",initialAppState:adminState,ports:{authClient,parameterRepository:createTestParameterRepository()}});
+    fireEvent.click(await screen.findByRole("button",{name:/打开用户菜单$/}));
+    window.localStorage.setItem("wiseeff.localAuthToken","temporary-test-token");window.localStorage.setItem("unrelated-logout-test","keep");
+    const denied=vi.spyOn(window,"sessionStorage","get").mockImplementation(()=>{throw new DOMException("denied","SecurityError");});
+    try{fireEvent.click(screen.getByRole("button",{name:"退出登录"}));expect(await screen.findByRole("heading",{name:"登录雷泽"})).toBeInTheDocument();
+      expect(authClient.logout).toHaveBeenCalledOnce();expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBeNull();expect(window.localStorage.getItem("unrelated-logout-test")).toBe("keep");
+    }finally{denied.mockRestore();window.localStorage.removeItem("unrelated-logout-test");}
   });
 
   it("routes user governance page mutations through injected API-mode actions", async () => {

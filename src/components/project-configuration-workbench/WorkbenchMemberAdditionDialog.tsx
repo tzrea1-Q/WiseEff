@@ -22,7 +22,7 @@ import { currentSharedOperationSession } from "@/application/project-configurati
 
 const roleLabels = { base: "基础", overlay: "覆盖层", charging: "充电", thermal: "温控", misc: "其他 / include" };
 export type RecoveredMemberOperation=MemberAdditionBody & {proofToken:string;reason:string;clientMutationId:string};
-export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences, onOperationStart, onOperationResolved, canContinueOperation }: {
+export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences, onOperationStart, onOperationResolved, onDefinitiveRejection, canContinueOperation, checkPending }: {
   projectId: string; configSets: Array<{ id: string; name: string }>; initialConfigSetId: string;
   availableFiles: ProjectParameterFile[]; client?: ReturnType<typeof createCanonicalMemberAdditionClient>;
   switchReference?: {resourceId:string;versionId:string;version:number};
@@ -42,7 +42,9 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   refreshExistingReferences?: () => Promise<Array<{resourceId:string;versionId?:string;direct?:boolean}>>;
   onOperationStart?:(operation:RecoveredMemberOperation,registrationId:string)=>void|string|{resolved:"applied"|"stopped"}|Promise<void|string|{resolved:"applied"|"stopped"}>;
   onOperationResolved?:()=>void;
+  onDefinitiveRejection?:()=>Promise<"stopped"|"applied">;
   canContinueOperation?:()=>boolean;
+  checkPending?:(configSetId:string)=>Promise<boolean>;
 }) {
   const reference=removeReference??switchReference;
   const client = useMemo(() => suppliedClient ?? createCanonicalMemberAdditionClient(), [suppliedClient]);
@@ -119,6 +121,8 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   async function prepare() {
     invalidate(); setBusy(true);
     try {
+      if(source==="shared"&&checkPending&&await checkPending(configSetId)){if(mounted.current)setError("此配置有待核对操作，请先返回并处理。");return;}
+      if(!mounted.current||canContinueOperation?.()===false)return;
       let uploaded = candidate;
       if (source === "upload" && !uploaded) {
         if (!file) throw new Error("请选择要上传的 DTS/JSON 文件。");
@@ -151,22 +155,30 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     if (applying.current || busy || !preview || !preparedBody || !mutationId.current || !registrationId.current || !reason.trim()) return;
     mutationReason.current??=reason.trim();
     const session=currentSharedOperationSession();
+    const protectedOperation=Boolean(onOperationStart&&(preparedBody.sharedReference||preparedBody.removeSharedReference));
     applying.current=true;
     setBusy(true); setError(""); setErrorDiagnostics([]);
     try {
-      try{const registered=await onOperationStart?.({...preparedBody,proofToken:preview.proofToken,reason:mutationReason.current,clientMutationId:mutationId.current},registrationId.current);
+      try{const registered=protectedOperation?await onOperationStart?.({...preparedBody,proofToken:preview.proofToken,reason:mutationReason.current,clientMutationId:mutationId.current},registrationId.current):undefined;
         if(registered&&typeof registered==="object"){if(mounted.current&&session===currentSharedOperationSession()){setUncertain(true);setError(registered.resolved==="applied"?"该操作此前已应用，详情不可用。请返回列表核对。":"该操作已停止，请返回列表核对。");}return;}
         if(registered)mutationId.current=registered;}
       catch{if(mounted.current&&session===currentSharedOperationSession()){setUncertain(true);setError("无法确认操作登记。请重试同一操作，或返回列表核对。");}return;}
       if(!mounted.current||session!==currentSharedOperationSession()||canContinueOperation?.()===false)return;
       const result = await client.apply(projectId, configSetId, { ...preparedBody, proofToken: preview.proofToken, reason: mutationReason.current, clientMutationId: mutationId.current });
-      if (mounted.current&&session===currentSharedOperationSession()) {onOperationResolved?.();onApplied(configSetId, result.fileId);}
+      if (mounted.current&&session===currentSharedOperationSession()) {if(protectedOperation)onOperationResolved?.();onApplied(configSetId, result.fileId);}
     } catch (failure) { if (mounted.current&&session===currentSharedOperationSession()) {
-      if((sharedOnly||preserveUncertain) && (Boolean(onOperationStart)||uncertain || !(failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500))){
-        setUncertain(true);setError(uncertain && failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500
-          ? "应用结果尚未确认，本次重试被拒绝。请返回列表核对项目配置，或稍后重试同一操作。"
-          : "应用结果尚未确认。请重试同一操作，或返回列表核对项目配置。");
-      }else{onOperationResolved?.();setPreview(null);setPreparedBody(null);mutationReason.current=null;showError(failure, "未能确认结果，请重新预览；选择与原因已保留。");
+      const definite=failure instanceof WiseEffApiError&&failure.status!==undefined&&failure.status>=400&&failure.status<500;
+      if(protectedOperation&&!uncertain&&definite&&onDefinitiveRejection){
+        try{const outcome=await onDefinitiveRejection();if(!mounted.current||session!==currentSharedOperationSession()||canContinueOperation?.()===false)return;
+          if(outcome==="stopped"){setPreview(null);setPreparedBody(null);mutationId.current=null;registrationId.current=null;mutationReason.current=null;showError(failure,"操作未能应用，请重新预览。");
+            if(sharedOnly&&refreshExistingReferences&&(failure.code==="CONFLICT"||[401,403,404].includes(failure.status??0))){setRefreshRequired(true);await refreshReferences();}return;}
+          setUncertain(true);setError("该操作已应用，请返回列表核对。");return;
+        }catch{/* A failed stop leaves the result unconfirmed. */}
+      }
+      if((sharedOnly||preserveUncertain||protectedOperation) && (protectedOperation||uncertain || !(failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500))){
+        setUncertain(true);if(definite){showError(failure,"本次操作被拒绝。");setError(`${presentError(failure,"本次操作被拒绝。")} 应用结果尚未确认，请返回列表核对。`);}
+        else setError("应用结果尚未确认。请重试同一操作，或返回列表核对项目配置。");
+      }else{setPreview(null);setPreparedBody(null);mutationReason.current=null;showError(failure, "未能确认结果，请重新预览；选择与原因已保留。");
         if(sharedOnly && refreshExistingReferences && failure instanceof WiseEffApiError && (failure.code==="CONFLICT"||[401,403,404].includes(failure.status??0))) {setRefreshRequired(true);await refreshReferences();}}
     } } finally { applying.current=false;if (mounted.current) setBusy(false); }
   }
@@ -176,7 +188,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     catch(failure){setError(presentError(failure,"无法保存引用变更，请稍后重试。"));}
   };
   return <ModalDialog open onDismiss={busy ? undefined : dismiss} initialFocusRef={closeRef} describedBy
-    className={`workbench-member-addition-dialog${sharedOnly||preserveUncertain?" workbench-member-addition-dialog--shared":""}`} backdropClassName="param-admin-modal-backdrop">
+    className={`workbench-member-addition-dialog${sharedOnly||preserveUncertain||onOperationStart&&source==="shared"?" workbench-member-addition-dialog--shared":""}`} backdropClassName="param-admin-modal-backdrop">
     {({ titleId, descriptionId }) => <>
       <header><div><h2 id={titleId}>{removeReference?"移除共享引用":conversionSource?"转换为共享引用":switchReference?"切换共享版本":sharedOnly?"添加资源包":"加入配置文件"}</h2><p id={descriptionId}>{sharedOnly?`${targetProjectName??projectId} · ${configSets.find(set=>set.id===configSetId)?.name==="default"?"默认配置":configSets.find(set=>set.id===configSetId)?.name}：${removeReference?"预览移除影响，确认后解除引用。":switchReference?"预览版本切换，确认后保留项目覆盖。":"选择已发布资源和固定版本。"}`:removeReference?"预览此项目的文件、节点、覆盖及参数来源变化；确认后创建新配置修订，历史来源保留。":conversionSource?"选择已发布版本。完整来源和生效配置一致后，确认转换所选私有源码及依赖。":switchReference?"选择新版本或旧版本，保留当前项目覆盖；确认后创建新配置修订。":source === "shared"
         ? "选择共享资源及固定版本，预览配置变化后确认引用。"
@@ -237,7 +249,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
             <Button type="submit" disabled={busy || refreshRequired || refreshingReferences || !configSetId || (!removeReference&&(source === "shared" ? !resourceId || !versionId || sharedLoading || Boolean(sharedError) : source === "existing" ? !fileId : !file && !candidate))}>{busy ? "正在核对…" : removeReference?"预览移除引用":conversionSource?"预览共享转换":switchReference?"预览版本切换":"预览加入配置"}</Button>
           </fieldset>
         </form></details>
-        {error||refreshError ? <p role="alert">{reference&&switchConflicts.length?(removeReference?"移除引用未通过。":"版本切换未通过。"):error}{refreshError?`；重新核对失败：${refreshError}`:""}</p> : null}
+        {error||refreshError ? <p role="alert">{reference&&switchConflicts.length&&!uncertain?(removeReference?"移除引用未通过。":"版本切换未通过。"):error}{refreshError?`；重新核对失败：${refreshError}`:""}</p> : null}
         {refreshRequired&&!busy?<Button variant="outline" disabled={refreshingReferences} onClick={()=>void refreshReferences()}>{refreshingReferences?"正在核对配置…":"重新核对配置"}</Button>:null}
         {reference && error && !uncertain ? <section aria-label={removeReference?"移除引用冲突处理":"版本冲突处理"}>
           {switchConflicts.length?<ul>{switchConflicts.map((item,index)=><li key={index}>
@@ -254,6 +266,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
             <Button type="button" variant="outline" onClick={onDismiss}>{compositionError?"返回配置组成":removeReference?"取消移除引用":"取消版本切换"}</Button>
           </div>
         </section>:null}
+        {uncertain&&switchConflicts.length?<ul aria-label="来源校验诊断">{switchConflicts.map((item,index)=><li key={index}>{item.sourceName}{item.line?`:${item.line}`:""} · {item.message}</li>)}</ul>:null}
         {!switchConflicts.length && errorDiagnostics.length ? <ul aria-label="来源校验诊断">{errorDiagnostics.map((message, index) => <li key={index}>{message}</li>)}</ul> : null}
         {preview ? <section aria-label={conversionSource?"共享转换预览":removeReference?"移除引用预览":switchReference?"版本切换预览":"加入配置预览"} className={preview.sharedSwitch?"workbench-member-addition-dialog__switch-preview":sharedOnly?"workbench-member-addition-dialog__shared-preview":undefined}>
           {preview.sharedConversion?<>
@@ -324,7 +337,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         {preview?<div>{!uncertain?<Button type="button" variant="outline" disabled={busy} onClick={invalidate}>取消本次预览</Button>:null}
         <Button type="button" disabled={busy || !reason.trim()} onClick={() => void apply()}>{busy ? "正在应用…" : uncertain?"重试同一操作":removeReference?"确认移除引用":conversionSource?"确认转换引用":switchReference?"确认切换版本":"确认加入配置"}</Button></div>:null}
       </footer> : null}
-      {sharedOnly||preserveUncertain?<SettingsLeaveGuard dirty={busy} saving={busy} />:null}
+      {sharedOnly||preserveUncertain||Boolean(onOperationStart&&source==="shared")?<SettingsLeaveGuard dirty={busy} saving={busy} />:null}
     </>}
   </ModalDialog>;
 }

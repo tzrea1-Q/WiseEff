@@ -12,11 +12,41 @@ const versionTwo = "b0000000-0000-4000-8000-000000000002";
 function clientFor(fetchImpl:typeof fetch){return createApiClient({baseUrl:"",fetchImpl:async(input,init)=>{
   const path=String(input);
   if(path.includes("/api/v1/member-addition-intents"))return new Response(JSON.stringify({items:[],total:0}));
-  if(path.includes("/member-addition/intents"))return new Response(JSON.stringify({item:{id:"intent",clientMutationId:"mutation",projectId:"p1",projectName:"项目甲",configSetId:"c1",configSetName:"default",status:path.includes("/ack")?"applied":"pending"}}));
+  if(path.includes("/member-addition/intents"))return new Response(JSON.stringify({item:{id:"d0000000-0000-4000-8000-000000000001",clientMutationId:"d0000000-0000-4000-8000-000000000002",projectId:"p1",projectName:"项目甲",configSetId:"c1",configSetName:"default",status:path.includes("/ack")?"applied":"pending"}}));
   return fetchImpl(input,init);
 }});}
 
 describe("shared DTSI project usage", () => {
+  it.each([200,503])("keeps the old user's late apply outcome available only to that user (%s)",async status=>{
+    const user=userEvent.setup();let actor="user-a",complete!:(value:Response)=>void,state:"pending"|"applied"|"stopped"="pending";
+    const entry=()=>({id:"d0000000-0000-4000-8000-000000000001",clientMutationId:"d0000000-0000-4000-8000-000000000002",projectId:"p1",projectName:"项目甲",configSetId:"c1",configSetName:"default",status:state});
+    const row={projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:[{resourceId:resourceOne,resourceName:"公共电源",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:false,requiredBy:[]}]};
+    let registered=false;const fetchImpl=vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{const path=String(input);
+      if(path.includes("member-addition-intents"))return new Response(JSON.stringify({items:actor==="user-a"&&registered?[entry()]:[],total:actor==="user-a"&&registered?1:0}));
+      if(path.includes("/member-addition/intents")){if(path.includes("/stop")){state=state==="applied"?"applied":"stopped";return new Response(JSON.stringify({item:entry()}));}if(path.includes("/ack")){registered=false;return new Response(JSON.stringify({item:entry()}));}registered=true;return new Response(JSON.stringify({item:entry()}));}
+      if(path.includes("/member-addition/preview"))return new Response(JSON.stringify({item:{proofToken:"a".repeat(64),configSetId:"c1",fileName:"board.dts",format:"dts",members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}}));
+      if(path.includes("/member-addition/apply"))return new Promise<Response>(resolve=>{complete=resolve;});
+      if(path.includes("project-usages"))return new Response(JSON.stringify({items:[row],total:1,visibility:"organization"}));
+      throw new Error(`Unexpected ${path} ${init?.method}`);});
+    const apiClient=createApiClient({baseUrl:"",fetchImpl}),props={apiClient,canWrite:true,organizationId:"org-a",search:"?view=projects",onNavigate:()=>{}};
+    const view=render(<SharedDtsiPage {...props} currentUserId="user-a"/>);await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"移除引用"}));
+    await user.type(screen.getByRole("textbox",{name:"变更说明"}),"原始原因");await user.click(screen.getByRole("button",{name:"预览移除引用"}));await user.click(await screen.findByRole("button",{name:"确认移除引用"}));
+    await waitFor(()=>expect(complete).toBeTypeOf("function"));actor="user-b";view.rerender(<SharedDtsiPage {...props} currentUserId="user-b"/>);await screen.findByRole("button",{name:"配置资源包"});
+    expect(screen.queryByText("结果尚未确认")).not.toBeInTheDocument();if(status===200)state="applied";
+    await act(async()=>complete(new Response(JSON.stringify(status===200?{item:{requestId:"r",fileId:"f",fileVersionId:"v",configRevisionId:"rev"}}:{error:{code:"INTERNAL_ERROR",message:"failure"}}),{status})));
+    actor="user-a";view.rerender(<SharedDtsiPage {...props} currentUserId="user-a"/>);await user.click(await screen.findByRole("button",{name:"核对"}));
+    if(status===200)expect(await screen.findByText("操作已应用。")).toBeVisible();else {await user.click(screen.getByRole("button",{name:"确认停止"}));expect(await screen.findByText("操作已停止，不会再执行。")).toBeVisible();}
+    expect(Object.values(sessionStorage).some(value=>value.includes("原始原因")||value.includes("a".repeat(64)))).toBe(false);
+  });
+  it("blocks a new configuration when its unconfirmed operation is outside the current filter or page",async()=>{
+    const user=userEvent.setup();const intent={id:"d0000000-0000-4000-8000-000000000001",clientMutationId:"d0000000-0000-4000-8000-000000000002",projectId:"p1",projectName:"项目甲",configSetId:"c1",configSetName:"default",status:"pending"};
+    const fetchImpl=vi.fn(async(input:string|URL|Request)=>{const path=String(input);
+      if(path.includes("member-addition-intents"))return new Response(JSON.stringify(path.includes("projectId=p1")?{items:[intent],total:1}:{items:[],total:0}));
+      return new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:[]}],total:1,visibility:"organization"}));});
+    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects&usageStatus=referenced&usagePage=2" onNavigate={()=>{}}/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));
+    expect(await screen.findByText("结果尚未确认")).toBeVisible();expect(screen.queryByRole("dialog",{name:"配置资源包"})).not.toBeInTheDocument();
+  });
   it("offers version switching and removal once per direct resource, never for an indirect dependency", async () => {
     const user=userEvent.setup();
     const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,

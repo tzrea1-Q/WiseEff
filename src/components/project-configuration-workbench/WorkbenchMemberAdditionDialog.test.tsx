@@ -43,6 +43,36 @@ it("freezes an uncertain registration and reuses it before applying the server o
   expect(register.mock.calls[0]![1]).toBe(register.mock.calls[1]![1]);expect(client.apply.mock.calls[0]![2]).toMatchObject({clientMutationId:"server-mutation",reason:"原始原因"});
 });
 
+it.each(["stopped","failed","applied"] as const)("handles the first definitive refusal when stopping returns %s",async outcome=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
+  const failure=new WiseEffApiError("CONFLICT","配置已变化",{switchConflicts:[{message:"请修正节点",sourceName:"board.dts",fileId:"root",line:4}]},"request",409);
+  const client={upload:vi.fn(),apply:vi.fn().mockRejectedValue(failure),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
+  const stop=vi.fn(async()=>{if(outcome==="failed")throw new Error("network");return outcome;});
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} preserveUncertain
+    removeReference={{resourceId,versionId,version:1}} client={client} onOperationStart={()=>"server-mutation"} onDefinitiveRejection={stop} onRecoverSwitch={vi.fn()} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.type(screen.getByRole("textbox",{name:"变更说明"}),"移除引用");await user.click(screen.getByRole("button",{name:"预览移除引用"}));await user.click(await screen.findByRole("button",{name:"确认移除引用"}));
+  expect(stop).toHaveBeenCalledOnce();
+  if(outcome==="stopped"){expect(await screen.findByText("请修正节点")).toBeVisible();expect(screen.getByRole("button",{name:"修正项目源码"})).toBeVisible();}
+  else if(outcome==="applied")expect(await screen.findByRole("alert")).toHaveTextContent("该操作已应用");
+  else {expect(await screen.findByText(/应用结果尚未确认/)).toBeVisible();expect(screen.getByRole("list",{name:"来源校验诊断"})).toHaveTextContent("请修正节点");}
+});
+
+it.each(["shared","conversion","private"] as const)("protects the actual %s source without changing private file behavior",async kind=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
+  const version={id:versionId,resourceId,version:1,name:"Power",changeDescription:"Initial",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
+  const register=vi.fn(async()=>"server-mutation"),checkPending=vi.fn(async()=>false);
+  const client={upload:vi.fn(),apply:vi.fn(async()=>({requestId:"r",fileId:"f",fileVersionId:"v",configRevisionId:"rev"})),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[{id:"private",projectId:"project",fileName:"private.dts",format:"dts",enabled:true,currentVersionId:"v1",updatedAt:""}]}
+    conversionSource={kind==="conversion"?{configRevisionId:"rev",fileId:"private",fileVersionId:"v1",sourceName:"private.dts"}:undefined}
+    client={client} sharedClient={{list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:"power.dtsi",draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1})),versions:vi.fn(async()=>({items:[version],total:1}))}}
+    onOperationStart={register} checkPending={checkPending} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  if(kind!=="conversion"){await user.click(screen.getByRole("combobox",{name:"文件来源"}));await user.click(screen.getByRole("option",{name:kind==="private"?"选择已有项目文件":"引用共享 DTSI 固定版本"}));}
+  if(kind!=="private"){await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"Power"}));await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · Initial"}));}
+  await user.click(screen.getByRole("button",{name:kind==="conversion"?"预览共享转换":"预览加入配置"}));await user.type(await screen.findByRole("textbox",{name:kind==="conversion"?"变更说明":"加入原因"}),"确认操作");
+  await user.click(screen.getByRole("button",{name:kind==="conversion"?"确认转换引用":"确认加入配置"}));await waitFor(()=>expect(client.apply).toHaveBeenCalledOnce());
+  expect(register).toHaveBeenCalledTimes(kind==="private"?0:1);expect(checkPending).toHaveBeenCalledTimes(kind==="private"?0:1);
+});
+
 it("describes the actual shared-resource action and retains its target context",()=>{
   const resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
   const props={projectId:"project",targetProjectName:"项目甲",configSets:[{id:"set",name:"default"}],initialConfigSetId:"set",availableFiles:[],sharedOnly:true,
