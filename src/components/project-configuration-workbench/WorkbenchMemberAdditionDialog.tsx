@@ -40,7 +40,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   targetProjectName?: string;
   onUncertainDismiss?: () => void;
   refreshExistingReferences?: () => Promise<Array<{resourceId:string;versionId?:string;direct?:boolean}>>;
-  onOperationStart?:(operation:RecoveredMemberOperation,registrationId:string)=>void|string|{resolved:"applied"|"stopped"}|Promise<void|string|{resolved:"applied"|"stopped"}>;
+  onOperationStart?:(operation:RecoveredMemberOperation,registrationId:string,configSetId:string)=>void|string|{resolved:"applied"|"stopped"}|Promise<void|string|{resolved:"applied"|"stopped"}>;
   onOperationResolved?:()=>void;
   onDefinitiveRejection?:()=>Promise<"stopped"|"applied">;
   canContinueOperation?:()=>boolean;
@@ -159,7 +159,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     applying.current=true;
     setBusy(true); setError(""); setErrorDiagnostics([]);
     try {
-      try{const registered=protectedOperation?await onOperationStart?.({...preparedBody,proofToken:preview.proofToken,reason:mutationReason.current,clientMutationId:mutationId.current},registrationId.current):undefined;
+      try{const registered=protectedOperation?await onOperationStart?.({...preparedBody,proofToken:preview.proofToken,reason:mutationReason.current,clientMutationId:mutationId.current},registrationId.current,configSetId):undefined;
         if(registered&&typeof registered==="object"){if(mounted.current&&session===currentSharedOperationSession()){setUncertain(true);setError(registered.resolved==="applied"?"该操作此前已应用，详情不可用。请返回列表核对。":"该操作已停止，请返回列表核对。");}return;}
         if(registered)mutationId.current=registered;}
       catch{if(mounted.current&&session===currentSharedOperationSession()){setUncertain(true);setError("无法确认操作登记。请重试同一操作，或返回列表核对。");}return;}

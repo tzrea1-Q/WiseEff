@@ -4326,7 +4326,9 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         try{await dialog.getByRole("button",{name:"确认切换版本"}).click();await expect(dialog.getByRole("alert")).toContainText("应用结果尚未确认");await dialog.getByRole("button",{name:"返回列表核对"}).click();}
         finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(lostSwitch),1);await page.unroute(`**${switchPath}*`);}
         expect(proof).toMatch(/^[0-9a-f]{64}$/);expect(await page.evaluate(({proof})=>Object.values(sessionStorage).some(value=>value.includes(proof)||value.includes("#1474 controlled switch")),{proof})).toBe(false);
-        await page.getByRole("button",{name:/打开用户菜单$/}).click();await page.getByRole("button",{name:"退出登录"}).click();await expect(page.getByRole("heading",{name:"登录雷泽"})).toBeVisible();
+        const logout404={method:"POST",path:"/api/v1/auth/logout",status:404};expectedBrowserApiFailures.push(logout404);
+        try{await page.getByRole("button",{name:/打开用户菜单$/}).click();await page.getByRole("button",{name:"退出登录"}).click();await expect(page.getByRole("heading",{name:"登录雷泽"})).toBeVisible();}
+        finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(logout404),1);}
         await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,usagePath));await dismissXiaozeHint(page);
         const pending=page.getByRole("region",{name:"待核对操作"});await expect(pending).toContainText("已应用");await pending.getByRole("button",{name:"核对"}).click();
         const recovery=page.getByRole("dialog",{name:"核对操作"});await expect(recovery).toContainText("操作已应用。");await recovery.getByRole("button",{name:"知道了"}).click();

@@ -62,15 +62,17 @@ it.each(["shared","conversion","private"] as const)("protects the actual %s sour
   const version={id:versionId,resourceId,version:1,name:"Power",changeDescription:"Initial",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
   const register=vi.fn(async()=>"server-mutation"),checkPending=vi.fn(async()=>false);
   const client={upload:vi.fn(),apply:vi.fn(async()=>({requestId:"r",fileId:"f",fileVersionId:"v",configRevisionId:"rev"})),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
-  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[{id:"private",projectId:"project",fileName:"private.dts",format:"dts",enabled:true,currentVersionId:"v1",updatedAt:""}]}
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"},{id:"set-b",name:"Other config"}]} initialConfigSetId="set" availableFiles={[{id:"private",projectId:"project",fileName:"private.dts",format:"dts",enabled:true,currentVersionId:"v1",updatedAt:""}]}
     conversionSource={kind==="conversion"?{configRevisionId:"rev",fileId:"private",fileVersionId:"v1",sourceName:"private.dts"}:undefined}
     client={client} sharedClient={{list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:"power.dtsi",draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1})),versions:vi.fn(async()=>({items:[version],total:1}))}}
     onOperationStart={register} checkPending={checkPending} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  if(kind!=="conversion"){await user.click(screen.getByRole("combobox",{name:"目标配置"}));await user.click(screen.getByRole("option",{name:"Other config"}));}
   if(kind!=="conversion"){await user.click(screen.getByRole("combobox",{name:"文件来源"}));await user.click(screen.getByRole("option",{name:kind==="private"?"选择已有项目文件":"引用共享 DTSI 固定版本"}));}
   if(kind!=="private"){await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"Power"}));await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · Initial"}));}
   await user.click(screen.getByRole("button",{name:kind==="conversion"?"预览共享转换":"预览加入配置"}));await user.type(await screen.findByRole("textbox",{name:kind==="conversion"?"变更说明":"加入原因"}),"确认操作");
   await user.click(screen.getByRole("button",{name:kind==="conversion"?"确认转换引用":"确认加入配置"}));await waitFor(()=>expect(client.apply).toHaveBeenCalledOnce());
   expect(register).toHaveBeenCalledTimes(kind==="private"?0:1);expect(checkPending).toHaveBeenCalledTimes(kind==="private"?0:1);
+  const target=kind==="conversion"?"set":"set-b";expect(client.apply.mock.calls[0]![1]).toBe(target);if(kind!=="private"){expect(register.mock.calls[0]![2]).toBe(target);expect(checkPending).toHaveBeenCalledWith(target);}
 });
 
 it("describes the actual shared-resource action and retains its target context",()=>{
