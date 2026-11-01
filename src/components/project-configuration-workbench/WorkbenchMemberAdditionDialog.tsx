@@ -21,7 +21,7 @@ import "./workbench-member-addition-dialog.css";
 
 const roleLabels = { base: "基础", overlay: "覆盖层", charging: "充电", thermal: "温控", misc: "其他 / include" };
 export type RecoveredMemberOperation=MemberAdditionBody & {proofToken:string;reason:string;clientMutationId:string};
-export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences, onOperationStart, onOperationResolved }: {
+export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences, onOperationStart, onOperationResolved, canContinueOperation }: {
   projectId: string; configSets: Array<{ id: string; name: string }>; initialConfigSetId: string;
   availableFiles: ProjectParameterFile[]; client?: ReturnType<typeof createCanonicalMemberAdditionClient>;
   switchReference?: {resourceId:string;versionId:string;version:number};
@@ -39,8 +39,9 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   targetProjectName?: string;
   onUncertainDismiss?: () => void;
   refreshExistingReferences?: () => Promise<Array<{resourceId:string;versionId?:string;direct?:boolean}>>;
-  onOperationStart?:(operation:RecoveredMemberOperation)=>void;
+  onOperationStart?:(operation:RecoveredMemberOperation)=>void|Promise<void>;
   onOperationResolved?:()=>void;
+  canContinueOperation?:()=>boolean;
 }) {
   const reference=removeReference??switchReference;
   const client = useMemo(() => suppliedClient ?? createCanonicalMemberAdditionClient(), [suppliedClient]);
@@ -60,6 +61,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   const [errorDiagnostics, setErrorDiagnostics] = useState<string[]>([]);
   const mutationId = useRef<string | null>(null);
   const mutationReason = useRef<string | null>(null);
+  const applying=useRef(false);
   const [uncertain,setUncertain]=useState(false);
   const [refreshRequired,setRefreshRequired]=useState(false),[refreshingReferences,setRefreshingReferences]=useState(false);
   const [refreshError,setRefreshError]=useState("");
@@ -144,12 +146,14 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     } } finally { if (mounted.current) setBusy(false); }
   }
   async function apply() {
-    if (busy || !preview || !preparedBody || !mutationId.current || !reason.trim()) return;
+    if (applying.current || busy || !preview || !preparedBody || !mutationId.current || !reason.trim()) return;
     mutationReason.current??=reason.trim();
-    try{onOperationStart?.({...preparedBody,proofToken:preview.proofToken,reason:mutationReason.current,clientMutationId:mutationId.current});}
-    catch{setError("无法保存本次操作的恢复信息，请检查浏览器存储后重试。");return;}
+    applying.current=true;
     setBusy(true); setError(""); setErrorDiagnostics([]);
     try {
+      try{await onOperationStart?.({...preparedBody,proofToken:preview.proofToken,reason:mutationReason.current,clientMutationId:mutationId.current});}
+      catch{if(mounted.current)setError("无法确认操作登记，请稍后重试。");return;}
+      if(!mounted.current||canContinueOperation?.()===false)return;
       const result = await client.apply(projectId, configSetId, { ...preparedBody, proofToken: preview.proofToken, reason: mutationReason.current, clientMutationId: mutationId.current });
       if (mounted.current) {onOperationResolved?.();onApplied(configSetId, result.fileId);}
     } catch (failure) { if (mounted.current) {
@@ -159,7 +163,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
           : "应用结果尚未确认。请重试同一操作，或返回列表核对项目配置。");
       }else{onOperationResolved?.();setPreview(null);setPreparedBody(null);mutationReason.current=null;showError(failure, "未能确认结果，请重新预览；选择与原因已保留。");
         if(sharedOnly && refreshExistingReferences && failure instanceof WiseEffApiError && (failure.code==="CONFLICT"||[401,403,404].includes(failure.status??0))) {setRefreshRequired(true);await refreshReferences();}}
-    } } finally { if (mounted.current) setBusy(false); }
+    } } finally { applying.current=false;if (mounted.current) setBusy(false); }
   }
   const dismiss=()=>{if(uncertain && onUncertainDismiss)onUncertainDismiss();else onDismiss();};
   const recover=(location:SharedSwitchConflict)=>{
@@ -167,7 +171,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     catch(failure){setError(presentError(failure,"无法保存引用变更，请稍后重试。"));}
   };
   return <ModalDialog open onDismiss={busy ? undefined : dismiss} initialFocusRef={closeRef} describedBy
-    className={`workbench-member-addition-dialog${sharedOnly?" workbench-member-addition-dialog--shared":""}`} backdropClassName="param-admin-modal-backdrop">
+    className={`workbench-member-addition-dialog${sharedOnly||preserveUncertain?" workbench-member-addition-dialog--shared":""}`} backdropClassName="param-admin-modal-backdrop">
     {({ titleId, descriptionId }) => <>
       <header><div><h2 id={titleId}>{removeReference?"移除共享引用":conversionSource?"转换为共享引用":switchReference?"切换共享版本":sharedOnly?"添加资源包":"加入配置文件"}</h2><p id={descriptionId}>{sharedOnly?`${targetProjectName??projectId} · ${configSets.find(set=>set.id===configSetId)?.name==="default"?"默认配置":configSets.find(set=>set.id===configSetId)?.name}：${removeReference?"预览移除影响，确认后解除引用。":switchReference?"预览版本切换，确认后保留项目覆盖。":"选择已发布资源和固定版本。"}`:removeReference?"预览此项目的文件、节点、覆盖及参数来源变化；确认后创建新配置修订，历史来源保留。":conversionSource?"选择已发布版本。完整来源和生效配置一致后，确认转换所选私有源码及依赖。":switchReference?"选择新版本或旧版本，保留当前项目覆盖；确认后创建新配置修订。":source === "shared"
         ? "选择共享资源及固定版本，预览配置变化后确认引用。"

@@ -11,6 +11,21 @@ const versionOne = "b0000000-0000-4000-8000-000000000001";
 const versionTwo = "b0000000-0000-4000-8000-000000000002";
 
 describe("shared DTSI project usage", () => {
+  it("does not replace an unreadable pending operation",async()=>{
+    sessionStorage.clear();const key=`wiseeff.shared-operation:${JSON.stringify(["org-a","user-a","p1","c1"])}`;sessionStorage.setItem(key,"invalid pending bytes");
+    const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:[]}],total:1,visibility:"organization"})));
+    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法读取待核对操作");expect(screen.queryByRole("button",{name:"配置资源包"})).not.toBeInTheDocument();
+    expect(sessionStorage.getItem(key)).toBe("invalid pending bytes");sessionStorage.clear();
+  });
+  it("fails closed when session storage cannot be read",async()=>{
+    const original=Storage.prototype.getItem,spy=vi.spyOn(Storage.prototype,"getItem").mockImplementation(function(key){if(key.startsWith("wiseeff.shared-operation:"))throw new Error("storage denied");return original.call(this,key);});
+    try{
+      const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:[]}],total:1,visibility:"organization"})));
+      render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+      expect(await screen.findByRole("alert")).toHaveTextContent("无法读取待核对操作");expect(screen.queryByRole("button",{name:"配置资源包"})).not.toBeInTheDocument();
+    }finally{spy.mockRestore();}
+  });
   it.each([200,503])("retains the original operation for its user when an in-flight apply returns %s after an identity change",async status=>{
     sessionStorage.clear();const user=userEvent.setup();let complete!:(response:Response)=>void;let submitted:unknown;let calls=0;
     const row={projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,

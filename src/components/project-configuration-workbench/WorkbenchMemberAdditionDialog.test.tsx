@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { createApiClient, WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -8,6 +8,17 @@ import type { ParameterCatalogRepository, CatalogSubjectListResponse, CatalogDef
 import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistration";
 
 afterEach(cleanup);
+
+it("does not send an apply after its registration finishes in a different scope",async()=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
+  let finish!:()=>void,valid=true;const registering=new Promise<void>(resolve=>{finish=resolve;});
+  const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} preserveUncertain
+    removeReference={{resourceId,versionId,version:1}} client={client} onOperationStart={()=>registering} canContinueOperation={()=>valid} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.type(screen.getByRole("textbox",{name:"变更说明"}),"移除引用");await user.click(screen.getByRole("button",{name:"预览移除引用"}));
+  await user.click(await screen.findByRole("button",{name:"确认移除引用"}));valid=false;await act(async()=>finish());
+  expect(client.apply).not.toHaveBeenCalled();
+});
 
 it("describes the actual shared-resource action and retains its target context",()=>{
   const resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";

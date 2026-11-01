@@ -43,12 +43,13 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
   const current=loaded?.key===key&&loaded.client===apiClient&&loaded.canWrite===canWrite?loaded:null;
   const targetKey=(row:Row)=>JSON.stringify([organizationId,currentUserId,row.projectId,row.configSetId]);
   const operationKey=(row:Row)=>`wiseeff.shared-operation:${targetKey(row)}`;
-  const pending=(row:Row):RecoveredMemberOperation|null=>{
-    if(!organizationId||!currentUserId||!row.configSetId)return null;
+  const pending=(row:Row):{state:"empty"}|{state:"error"}|{state:"pending";operation:RecoveredMemberOperation}=>{
+    if(!organizationId||!currentUserId||!row.configSetId)return {state:"error"};
     try{
-      const saved=JSON.parse(sessionStorage.getItem(operationKey(row))??"null");
-      return saved?memberAdditionApplyBodySchema.parse(saved):null;
-    }catch{return null;}
+      const raw=sessionStorage.getItem(operationKey(row));
+      if(raw===null)return {state:"empty"};
+      return {state:"pending",operation:memberAdditionApplyBodySchema.parse(JSON.parse(raw))};
+    }catch{return {state:"error"};}
   };
   const close=()=>{setSelected(null);requestAnimationFrame(()=>{if(trigger.current?.isConnected)trigger.current.focus();else document.querySelector<HTMLInputElement>('[aria-label="搜索项目使用"]')?.focus();});};
   const readTarget=async(row:Row)=>{
@@ -173,7 +174,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
         {key:"action",header:"操作",render:row=>{const target=projectPath(row),recovery=pending(row);return <div className="shared-dtsi-usage-action">
           {!row.configSetId?<span>请先创建配置</span>:!row.configurationReady?<span>请先完成配置初始化</span>:null}
           {unavailableTargets.has(targetKey(row))?<><span>配置不可用，请核对权限或初始化状态</span><Button variant="outline" size="sm" disabled={rechecking===targetKey(row)} onClick={()=>void recheckTarget(row)}>{rechecking===targetKey(row)?"正在核对…":"重新核对"}</Button></>:null}
-          {canWrite&&row.configSetId && row.configurationReady && row.canConfigure&&!unavailableTargets.has(targetKey(row))?(recovery?<><span>上次应用结果尚未确认</span><Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setRetryError("");setSelected({row,adding:true,scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID(),recovered:recovery});}}>核对上次操作</Button></>:<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice("");setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID()});}}>配置资源包</Button>):null}
+          {canWrite&&row.configSetId && row.configurationReady && row.canConfigure&&!unavailableTargets.has(targetKey(row))?(recovery.state==="error"?<span role="alert">无法读取待核对操作，请检查浏览器存储后重试。</span>:recovery.state==="pending"?<><span>上次应用结果尚未确认</span><Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setRetryError("");setSelected({row,adding:true,scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID(),recovered:recovery.operation});}}>核对上次操作</Button></>:<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice("");setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID()});}}>配置资源包</Button>):null}
           <a href={target} onClick={event=>follow(event,target)}>{row.configSetId&&row.configurationReady?"查看生效配置":"前往配置工作台"}</a></div>;}}
       ]}} />
     {current?.result && current.result.total>20?<nav className="shared-dtsi-pagination" aria-label="项目使用分页">
@@ -198,17 +199,18 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
     </ModalDialog>:null}
     {selection?.recovered&&selection.row.configSetId?<ModalDialog open className="workbench-member-addition-dialog" backdropClassName="param-admin-modal-backdrop" onDismiss={retrying?undefined:close}>
       {({titleId})=><><header><div><h2 id={titleId}>核对上次操作</h2><p>{selection.row.projectName} · {selection.row.configSetName==="default"?"默认配置":selection.row.configSetName}</p></div><Button variant="outline" disabled={retrying} onClick={close}>关闭</Button></header>
-        <div className="workbench-member-addition-dialog__body"><p>操作：{selection.recovered.removeSharedReference?"移除引用":selection.recovered.sharedReference?.replaceVersionId?"切换版本":"添加资源包"}</p><p>变更说明：{selection.recovered.reason}</p><p>上次应用结果尚未确认。重试将使用原来的操作，避免重复提交。</p>{retryError?<p role="alert">{retryError}</p>:null}</div>
+        <div className="workbench-member-addition-dialog__body"><p>操作：{selection.recovered!.removeSharedReference?"移除引用":selection.recovered!.sharedReference?.replaceVersionId?"切换版本":"添加资源包"}</p><p>变更说明：{selection.recovered!.reason}</p><p>上次应用结果尚未确认。重试将使用原来的操作，避免重复提交。</p>{retryError?<p role="alert">{retryError}</p>:null}</div>
         <footer><Button disabled={retrying} onClick={()=>{const active=selection;setRetrying(true);setRetryError("");void additionClient.apply(active.row.projectId,active.row.configSetId!,active.recovered!).then(()=>{
           if(selectionInstance.current!==active.instance)return;sessionStorage.removeItem(operationKey(active.row));setAppliedNotice("上次操作已确认。");close();setReload(value=>value+1);
         }).catch(()=>{if(selectionInstance.current===active.instance)setRetryError("应用结果仍未确认，请稍后重试同一操作。");}).finally(()=>{if(selectionInstance.current===active.instance)setRetrying(false);});}}>{retrying?"正在核对…":"重试同一操作"}</Button></footer></>}
     </ModalDialog>:selection?.adding&&selection.row.configSetId?<WorkbenchMemberAdditionDialog projectId={selection.row.projectId}
       configSets={[{id:selection.row.configSetId,name:selection.row.configSetName??""}]} initialConfigSetId={selection.row.configSetId} availableFiles={[]}
       client={additionClient} sharedClient={sharedClient} sharedOnly existingReferences={selection.row.references} targetProjectName={selection.row.projectName}
+      canContinueOperation={()=>selectionInstance.current===selection.instance}
       switchReference={selection.action?.kind==="switch"?selection.action.reference:undefined}
       removeReference={selection.action?.kind==="remove"?selection.action.reference:undefined}
       onRecoverSwitch={selection.action?recoverReference:undefined}
-      onOperationStart={operation=>{if(!currentUserId||!organizationId)throw new Error("Missing operation scope");const existing=pending(selection.row);if(existing&&existing.clientMutationId!==operation.clientMutationId)throw new Error("Pending operation");sessionStorage.setItem(operationKey(selection.row),JSON.stringify(operation));}}
+      onOperationStart={operation=>{const existing=pending(selection.row);if(existing.state==="error"||existing.state==="pending"&&existing.operation.clientMutationId!==operation.clientMutationId)throw new Error("Cannot replace pending operation");sessionStorage.setItem(operationKey(selection.row),JSON.stringify(operation));}}
       onOperationResolved={()=>{if(selectionInstance.current===selection.instance)sessionStorage.removeItem(operationKey(selection.row));}}
       refreshExistingReferences={()=>refreshTarget(selection.row,selection.instance)}
       onDismiss={()=>{if(unavailableTargets.has(targetKey(selection.row)))close();else setSelected({...selection,adding:false,action:undefined});}} onUncertainDismiss={()=>{setUncertainNotice(true);close();setReload(value=>value+1);}}
