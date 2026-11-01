@@ -3387,7 +3387,11 @@ test.describe("project configuration workbench post-cutover semantic identity", 
           const path=testInfo.outputPath(`shared-switch-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Shared switch ${viewport.width}`,{path,contentType:"image/png"});
         }
         await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
-        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("#1422 preserve the project decision");
+        const renewedPreview=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===`${compositionPath}/preview`);
+        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();
+        const renewed=await renewedPreview;expect(renewed.status(),await renewed.text()).toBe(200);
+        await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toBeVisible();
+        await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("#1422 preserve the project decision");
         const files=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});
         const root=((await files.json()).items as {fileId:string;fileName:string;role:string;currentVersionId:string}[]).find(file=>file.role==="base")!;
         const original=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});
