@@ -3582,8 +3582,12 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     expect(emptyResponse.status(),await emptyResponse.text()).toBe(201);
     const emptyId=(await emptyResponse.json()).item.id as string;
     await page.goto(disposablePageUrl(disposableRuntime,`/parameter-admin/sources?organization=${organizationId}`));
-    await page.getByRole("radio",{name:"项目使用",exact:true}).focus();
+    await waitForInteractionSurfaceReady(page);
+    const projectUsageSwitch=page.getByRole("radio",{name:"项目使用",exact:true});
+    await projectUsageSwitch.focus();
+    await expect(projectUsageSwitch).toBeFocused();
     await page.keyboard.press("Space");
+    await expect(projectUsageSwitch).toBeChecked();
     const search=page.getByRole("searchbox",{name:"搜索项目使用"});
     await search.fill(resourceName);
     const row=page.getByRole("row").filter({hasText:resourceName});
