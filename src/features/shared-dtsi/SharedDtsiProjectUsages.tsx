@@ -13,6 +13,7 @@ import { createMemberAdditionIntentClient, type MemberAdditionIntent } from "@/i
 import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
 import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
 import type { SharedSwitchConflict } from "@wiseeff/dto-schemas";
+import { ArrowLeft } from "lucide-react";
 
 type Result=SharedDtsiProjectUsages;
 type Row=Result["items"][number];
@@ -43,6 +44,20 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
   const activeScope=useRef(scope);activeScope.current=scope;
   const intentClient=useMemo(()=>organizationId?createMemberAdditionIntentClient(apiClient,organizationId):null,[apiClient,organizationId]);
   const sharedClient=useMemo(()=>createSharedDtsiClient(apiClient),[apiClient]);
+  const referenceResource=params.get("referenceResource")??"",referenceVersion=params.get("referenceVersion")??"";
+  const referenceKey=JSON.stringify([organizationId,currentUserId,canWrite,referenceResource,referenceVersion]);
+  const [referenceState,setReferenceState]=useState<{key:string;client:ApiClient;source?:{resourceId:string;versionId:string;version:number;name:string};error?:string}|null>(null);
+  const source=referenceState?.key===referenceKey&&referenceState.client===apiClient?referenceState.source:undefined;
+  useEffect(()=>{
+    if(!referenceResource || !referenceVersion)return;
+    let active=true;
+    void Promise.all([sharedClient.detail(referenceResource),sharedClient.version(referenceResource,referenceVersion)]).then(([detail,version])=>{
+      if(!active)return;
+      if(detail.state==="retired"||!detail.currentVersion||version.resourceId!==referenceResource||version.id!==referenceVersion){setReferenceState({key:referenceKey,client:apiClient,error:"资源包不可用，请返回并重新选择已发布版本。"});return;}
+      setReferenceState({key:referenceKey,client:apiClient,source:{resourceId:referenceResource,versionId:version.id,version:version.version,name:version.name}});
+    }).catch(()=>{if(active)setReferenceState({key:referenceKey,client:apiClient,error:"无法读取所选资源版本，请返回并重新选择。"});});
+    return()=>{active=false;};
+  },[sharedClient,referenceResource,referenceVersion,referenceKey,apiClient]);
   useEffect(()=>()=>{scopeEpoch.current++;listRecovery.current=null;intent.current=null;openingRef.current=false;setPendingFocus(undefined);setOpening(null);setSelected(null);setRechecking(null);setRecheckError("");},[apiClient,organizationId,currentUserId,canWrite,search]);
   const [loaded,setLoaded]=useState<{key:string;client:ApiClient;canWrite:boolean;result?:Result;error?:string}|null>(null);
   const key=JSON.stringify([organizationId,currentUserId,query,status,page,reload]);
@@ -56,8 +71,12 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
     const target=targetKey(row);openingRef.current=true;setOpening(target);setRecheckError("");
     try{const result=await intentClient.target(row.projectId,row.configSetId);if(activeScope.current!==scope)return;
       if(result.total){setPendingFocus({projectId:row.projectId,configSetId:row.configSetId});setIntentRefresh(value=>value+1);return;}
-      setPendingFocus(undefined);trigger.current=element;setAppliedNotice("");setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID()});
-    }catch{if(activeScope.current===scope)setRecheckError("无法核对待处理操作，请稍后重试。");}
+      let targetRow=row;
+      if(source){const updated=await readTarget(row);if(activeScope.current!==scope)return;if(!updated||!updated.canConfigure||!updated.configurationReady)throw new Error("目标配置不可用");targetRow=updated;}
+      const existing=source?targetRow.references.find(ref=>ref.resourceId===source.resourceId):undefined;
+      if(existing&&(!existing.direct||existing.versionId===source?.versionId)){setReload(value=>value+1);return;}
+      setPendingFocus(undefined);trigger.current=element;setAppliedNotice("");setUncertainNotice(false);setSelected({row:targetRow,adding:Boolean(source),scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID(),...(source&&existing?{action:{kind:"switch" as const,reference:existing}}:{})});
+    }catch{if(activeScope.current===scope)setRecheckError(source?"无法核对目标配置或权限，请稍后重试。":"无法核对待处理操作，请稍后重试。");}
     finally{if(activeScope.current===scope){openingRef.current=false;setOpening(null);}}
   };
   const close=()=>{setSelected(null);requestAnimationFrame(()=>{if(trigger.current?.isConnected)trigger.current.focus();else document.querySelector<HTMLInputElement>('[aria-label="搜索项目使用"]')?.focus();});};
@@ -164,12 +183,16 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
     return <span className="shared-dtsi-usage-resource" key={ref.resourceId}><a href={target} onClick={event=>follow(event,target)}>{ref.resourceName} · v{ref.version}</a>
       {ref.state==="retired"?<span>已停用</span>:null}{ref.upgradeAvailable?<span>有新版本</span>:null}</span>;
   };
-  return <div className="shared-dtsi-page">{intentClient&&currentUserId&&canWrite?<SharedMemberPendingOperations client={intentClient} scope={JSON.stringify([currentUserId,organizationId])} refresh={intentRefresh} focus={pendingFocus} onClearFocus={()=>setPendingFocus(undefined)} onResolved={()=>setReload(value=>value+1)}/>:null}<AdminListPage label="共享 DTSI" headerContent={header} headerActions={null}
+  const referenceMode=Boolean(referenceResource||referenceVersion);
+  const returnPath=params.get("referenceReturn")??"";
+  const safeReturn=/^\/parameter-admin\/sources(?:\?[^#]*)?$/.test(returnPath)?returnPath:"/parameter-admin/sources";
+  const referenceHeader=<div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源包" onClick={()=>{if(currentUserId)sessionStorage.setItem(`wiseeff.shared-reference-focus:${currentUserId}:${organizationId??""}`,referenceResource);onNavigate(safeReturn);}}><ArrowLeft aria-hidden="true"/>返回</Button><h1>选择项目配置</h1></div>;
+  return <div className="shared-dtsi-page">{intentClient&&currentUserId&&canWrite?<SharedMemberPendingOperations client={intentClient} scope={JSON.stringify([currentUserId,organizationId])} refresh={intentRefresh} focus={pendingFocus} onClearFocus={()=>setPendingFocus(undefined)} onResolved={()=>setReload(value=>value+1)}/>:null}<AdminListPage label="共享 DTSI" headerContent={referenceMode?referenceHeader:header} headerActions={null}
     filterBar={<><SearchField className="shared-dtsi-list-search" ariaLabel="搜索项目使用" placeholder="搜索项目、配置或资源包" maxLength={160} value={query}
       onValueChange={value=>update({usageQuery:value,usagePage:""})} />
       <SelectControl ariaLabel="引用状态" size="filter" value={status} onValueChange={value=>update({usageStatus:value==="all"?"":value,usagePage:""})}
         options={[{value:"all",label:"全部引用状态"},{value:"referenced",label:"已引用"},{value:"unreferenced",label:"未引用"}]} /></>}
-    notice={current?.result?.visibility==="authorized-projects"?<p>仅显示当前有权访问的项目配置。</p>:undefined}
+    notice={referenceMode||current?.result?.visibility==="authorized-projects"?<>{referenceMode?(source?<p>资源包：{source.name} · v{source.version}</p>:<p role="status">{!referenceResource||!referenceVersion?"资源版本不完整，请返回并重新选择。":referenceState?.key===referenceKey?referenceState.error??"正在读取资源版本…":"正在读取资源版本…"}</p>):null}{current?.result?.visibility==="authorized-projects"?<p>仅显示当前有权访问的项目配置。</p>:null}</>:undefined}
     emptyState={{title:"没有匹配的项目配置",message:"请调整搜索或筛选条件。"}}
     tableState={!current?<SectionSkeleton label="正在加载项目使用情况" />:current.error?<SectionError message={appliedNotice?`${appliedNotice}但列表刷新失败，请重试。`:uncertainNotice?"应用结果尚未确认，列表刷新失败，请重试。":current.error} onRetry={()=>setReload(value=>value+1)} />:undefined}
     table={{rows:current?.result?.items??[],rowKey:row=>`${row.projectId}/${row.configSetId??""}`,pageSize:20,page:1,fluid:true,ariaLabel:"项目使用",tableClassName:"shared-dtsi-usage-table",
@@ -180,10 +203,12 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
           return <div className="shared-dtsi-usage-references">{direct.length?direct.map(resource):<span>未引用共享资源包</span>}
             {dependencies.length?<details><summary>依赖关系（{dependencies.length}）</summary><ul>{dependencies.map(ref=><li key={ref.resourceId}>{resource(ref)}
               {ref.requiredBy.length?<span> · 由 {ref.requiredBy.map(item=>item.resourceName).join("、")} 引入</span>:null}</li>)}</ul></details>:null}</div>;}},
-        {key:"action",header:"操作",render:row=>{const target=projectPath(row);return <div className="shared-dtsi-usage-action">
+        {key:"action",header:"操作",render:row=>{const target=projectPath(row),existing=source?row.references.find(ref=>ref.resourceId===source.resourceId):undefined;return <div className="shared-dtsi-usage-action">
           {!row.configSetId?<span>请先创建配置</span>:!row.configurationReady?<span>请先完成配置初始化</span>:null}
+          {referenceMode&&row.configSetId&&row.configurationReady&&!row.canConfigure?<span>没有配置权限</span>:null}
           {unavailableTargets.has(targetKey(row))?<><span>配置不可用，请核对权限或初始化状态</span><Button variant="outline" size="sm" disabled={rechecking===targetKey(row)} onClick={()=>void recheckTarget(row)}>{rechecking===targetKey(row)?"正在核对…":"重新核对"}</Button></>:null}
-          {canWrite&&row.configSetId && row.configurationReady && row.canConfigure&&!unavailableTargets.has(targetKey(row))?<Button variant="outline" size="sm" disabled={Boolean(opening)} onClick={event=>void openConfiguration(row,event.currentTarget)}>{opening===targetKey(row)?"正在核对…":"配置资源包"}</Button>:null}
+          {referenceMode&&existing&&!existing.direct?<span>由 {existing.requiredBy.map((ref,index)=>{const direct=row.references.find(item=>item.resourceId===ref.resourceId&&item.direct);const path=direct?sourcePath(direct.resourceId,direct.versionId):target;return <span key={ref.resourceId}>{index?"、":""}<a href={path} onClick={event=>follow(event,path)}>{ref.resourceName}</a></span>;})} 引入</span>:referenceMode&&source&&existing?.versionId===source.versionId?<span>已固定此版本</span>:null}
+          {canWrite&&row.configSetId && row.configurationReady && row.canConfigure&&!unavailableTargets.has(targetKey(row))&&(!referenceMode||source&&!existing||source&&existing?.direct&&existing.versionId!==source.versionId)?<Button variant="outline" size="sm" disabled={Boolean(opening)} onClick={event=>void openConfiguration(row,event.currentTarget)}>{opening===targetKey(row)?"正在核对…":referenceMode?(existing?`切换至 v${source!.version}`:"引用到此配置"):"配置资源包"}</Button>:null}
           <a href={target} onClick={event=>follow(event,target)}>{row.configSetId&&row.configurationReady?"查看生效配置":"前往配置工作台"}</a></div>;}}
       ]}} />
     {current?.result && current.result.total>20?<nav className="shared-dtsi-pagination" aria-label="项目使用分页">
@@ -209,6 +234,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
     {selection?.adding&&selection.row.configSetId?<WorkbenchMemberAdditionDialog projectId={selection.row.projectId}
       configSets={[{id:selection.row.configSetId,name:selection.row.configSetName??""}]} initialConfigSetId={selection.row.configSetId} availableFiles={[]}
       client={additionClient} sharedClient={sharedClient} sharedOnly existingReferences={selection.row.references} targetProjectName={selection.row.projectName}
+      initialSharedSource={source} switchDraft={source&&selection.action?.kind==="switch"?{versionId:source.versionId,reason:""}:undefined}
       canContinueOperation={()=>selectionInstance.current===selection.instance}
       switchReference={selection.action?.kind==="switch"?selection.action.reference:undefined}
       removeReference={selection.action?.kind==="remove"?selection.action.reference:undefined}
@@ -217,7 +243,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
       onOperationResolved={()=>{const done=intent.current;if(done&&intentClient&&selectionInstance.current===selection.instance)void intentClient.acknowledge(done).catch(()=>{}).finally(()=>setIntentRefresh(value=>value+1));}}
       onDefinitiveRejection={async()=>{const current=intent.current;if(!current||!intentClient||selectionInstance.current!==selection.instance)throw new Error("Missing operation");const stopped=await intentClient.stop(current);if(selectionInstance.current!==selection.instance||stopped.status==="pending")throw new Error("Unconfirmed operation");if(stopped.status==="stopped")await intentClient.acknowledge(stopped);setIntentRefresh(value=>value+1);return stopped.status;}}
       refreshExistingReferences={()=>refreshTarget(selection.row,selection.instance)}
-      onDismiss={()=>{if(pendingFocus||unavailableTargets.has(targetKey(selection.row)))close();else setSelected({...selection,adding:false,action:undefined});}} onUncertainDismiss={()=>{setUncertainNotice(true);close();setIntentRefresh(value=>value+1);setReload(value=>value+1);}}
+      onDismiss={()=>{if(referenceMode||pendingFocus||unavailableTargets.has(targetKey(selection.row)))close();else setSelected({...selection,adding:false,action:undefined});}} onUncertainDismiss={()=>{setUncertainNotice(true);close();setIntentRefresh(value=>value+1);setReload(value=>value+1);}}
       onApplied={()=>{if(selectionInstance.current!==selection.instance)return;setAppliedNotice(selection.action?.kind==="remove"?"已移除资源包引用。":selection.action?.kind==="switch"?"已切换资源包版本。":"资源包已加入配置。");close();setReload(value=>value+1);}} />:null}
   </div>;
 }
