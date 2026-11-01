@@ -71,7 +71,7 @@ describe("fixed shared references through the real API role", () => {
       driverName: "Shared charger", idempotencyKey: "shared-ref-register", reason: "Synthetic shared reference acceptance" });
     for (const projectId of [A, B]) {
       await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')", [projectId, ORG]);
-      const configSetId = sets[projectId] = (await createConfigSet(db, admin, { projectId, name: "Shared reference" })).id;
+      const configSetId = sets[projectId] = (await createConfigSet(db, admin, { projectId, name: projectId===B?"Unique concurrency config":"Shared reference" })).id;
       const uploaded = await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: "board.dts", bytes: Buffer.from(source) });
       await addConfigSetFile(db, admin, { configSetId, fileId: uploaded.file.id, role: "base", sortOrder: 0 });
       const json = await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: "private.json", bytes: Buffer.from('{"local":true}') });
@@ -406,13 +406,14 @@ describe("fixed shared references through the real API role", () => {
       if(sql.includes("from public.projects p left join public.dts_config_set c")){selected();await continueRead;}
       return result;
     }};
-    const pendingOverview=requestJson<{items:{projectId:string;references:unknown[]}[];total:number}>(server(admin,storage,gate),`/api/v2/shared-dtsi/project-usages?q=${B}&status=unreferenced`);
+    const overviewPath="/api/v2/shared-dtsi/project-usages?q=Unique%20concurrency%20config&status=unreferenced";
+    const pendingOverview=requestJson<{items:{projectId:string;configSetId:string;references:unknown[]}[];total:number}>(server(admin,storage,gate),overviewPath);
     await rowsRead;
     const responseB = await post<Applied>(`${path(B)}/apply`, bodyB).finally(release);
     const beforeCommit=await pendingOverview;
     expect(beforeCommit.status,beforeCommit.bodyText).toBe(200);
-    expect(beforeCommit.body).toMatchObject({total:1,items:[{projectId:B,references:[]}]});
-    const afterCommit=await requestJson<{items:unknown[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?q=${B}&status=unreferenced`);
+    expect(beforeCommit.body).toMatchObject({total:1,items:[{projectId:B,configSetId:sets[B],references:[]}]});
+    const afterCommit=await requestJson<{items:unknown[];total:number}>(server(),overviewPath);
     expect(afterCommit.body).toMatchObject({total:0,items:[]});
     expect(responseB.status, responseB.bodyText).toBe(200); appliedB = responseB.body.item;
     expect(appliedB.fileId).not.toBe(appliedA.fileId); expect(appliedB.fileVersionId).not.toBe(appliedA.fileVersionId);
