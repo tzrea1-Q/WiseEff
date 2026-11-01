@@ -10,11 +10,16 @@ import { parameterOrganizationId, withParameterAccess } from "../parameters/oper
 import { getSharedDtsiResourceDetail } from "./publication";
 import { sharedDtsiManifestSchema, type SharedDtsiProjectUsages } from "../contracts/dtoSchemas/sharedDtsi";
 
-export async function listSharedDtsiProjectUsages(db:Database,auth:AuthContext,input:{q:string;status:"all"|"referenced"|"unreferenced";offset:number;limit:number}):Promise<SharedDtsiProjectUsages> {
+async function authorizeUsageRead(db:Database,auth:AuthContext) {
   const requestedOrganizationId=parameterOrganizationId(auth),current=await getAuthContext(db,auth.user.id);
   if(current.organization.id!==auth.organization.id)throw new ApiError("FORBIDDEN","账户所属组织已变化，请重新登录后访问共享资源。",{reason:"authentication-scope-changed"});
   requireRead(current);
   const authorized=withParameterAccess(current,await resolveOperatingContext(db,createUserInvocation(current),requestedOrganizationId));
+  return {current,authorized};
+}
+
+export async function listSharedDtsiProjectUsages(db:Database,auth:AuthContext,input:{q:string;status:"all"|"referenced"|"unreferenced";offset:number;limit:number}):Promise<SharedDtsiProjectUsages> {
+  const {current,authorized}=await authorizeUsageRead(db,auth);
   const scope=parameterUsageProjectScope(authorized);
   if(!scope)throw new ApiError("FORBIDDEN","当前项目使用范围不可用。");
   const values=[parameterOrganizationId(authorized),scope.kind==="all"?null:scope.ids,input.q,input.status];
@@ -72,10 +77,7 @@ export async function listSharedDtsiProjectUsages(db:Database,auth:AuthContext,i
 }
 
 export async function listSharedDtsiUsages(db:Database,auth:AuthContext,resourceId:string,input:{offset:number;limit:number}) {
-  const requestedOrganizationId=parameterOrganizationId(auth),current=await getAuthContext(db,auth.user.id);
-  if(current.organization.id!==auth.organization.id)throw new ApiError("FORBIDDEN","账户所属组织已变化，请重新登录后访问共享资源。",{reason:"authentication-scope-changed"});
-  requireRead(current);
-  const authorized=withParameterAccess(current,await resolveOperatingContext(db,createUserInvocation(current),requestedOrganizationId));
+  const {authorized}=await authorizeUsageRead(db,auth);
   const detail=await getSharedDtsiResourceDetail(db,authorized,resourceId);
   const scope=parameterUsageProjectScope(authorized);
   if(!scope)throw new ApiError("FORBIDDEN","当前项目使用范围不可用。");

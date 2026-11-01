@@ -724,6 +724,9 @@ describe("fixed shared references through the real API role", () => {
     const transferred=await requestJson(server(staleTransfer),`/api/v2/shared-dtsi/${resourceId}/usages`);
     expect(transferred.status,transferred.bodyText).toBe(403);
     expect(transferred.bodyText).not.toContain(A);expect(transferred.bodyText).not.toContain(B);
+    const overview=await requestJson(server(staleTransfer),"/api/v2/shared-dtsi/project-usages");
+    expect(overview.status,overview.bodyText).toBe(403);
+    expect(overview.bodyText).not.toContain(A);expect(overview.bodyText).not.toContain(B);
   });
 
   it("rechecks carried operating-target access after the platform role is revoked",async()=>{
@@ -737,10 +740,17 @@ describe("fixed shared references through the real API role", () => {
     expect(authorized.status,authorized.bodyText).toBe(200);
     expect(authorized.body).toMatchObject({total:2,visibility:"organization"});
     expect(authorized.body.items.map(row=>row.projectId).sort()).toEqual([A,B]);
+    const overviewEndpoint=`/api/v2/shared-dtsi/project-usages?organizationId=${ORG}&q=${A}`;
+    const authorizedOverview=await requestJson<{items:{projectId:string}[];total:number;visibility:string}>(server(stalePlatform),overviewEndpoint);
+    expect(authorizedOverview.status,authorizedOverview.bodyText).toBe(200);
+    expect(authorizedOverview.body).toMatchObject({total:1,visibility:"organization",items:[{projectId:A}]});
     await db.query("update user_role_bindings set role_id='admin' where id='shared-usage-platform-role'");
     const revoked=await requestJson(server(stalePlatform),endpoint);
     expect(revoked.status,revoked.bodyText).toBe(403);
     expect(revoked.bodyText).not.toContain(A);expect(revoked.bodyText).not.toContain(B);
+    const revokedOverview=await requestJson(server(stalePlatform),overviewEndpoint);
+    expect(revokedOverview.status,revokedOverview.bodyText).toBe(403);
+    expect(revokedOverview.bodyText).not.toContain(A);expect(revokedOverview.bodyText).not.toContain(B);
   });
 
   it("rejects legacy and canonical direct writes to the shared snapshot", async () => {
