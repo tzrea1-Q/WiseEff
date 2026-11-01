@@ -4246,7 +4246,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await expect(dialog.getByText("用途：共享 include（项目根入口保持不变）")).toHaveCount(0);
     for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
       await page.setViewportSize(viewport);
-      const path=testInfo.outputPath(`project-usage-select-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`project usage select ${viewport.width}`,{path,contentType:"image/png"});
+      const path=testInfo.outputPath(`project-usage-select-${viewport.width}.png`);await page.screenshot({path,animations:"disabled"});await testInfo.attach(`project usage select ${viewport.width}`,{path,contentType:"image/png"});
     }
     await dialog.getByRole("searchbox",{name:"搜索共享资源",exact:true}).fill(name);
     await selectControlOption(dialog.getByRole("combobox",{name:"共享资源",exact:true}),resourceId);
