@@ -28,9 +28,10 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
   const [rechecking,setRechecking]=useState<string|null>(null),[recheckError,setRecheckError]=useState("");
   const trigger=useRef<HTMLElement|null>(null);
   const scopeEpoch=useRef(0),targetEpoch=useRef(new Map<string,number>());
+  const listRecovery=useRef<{scope:number;epochs:Map<string,number>}|null>(null);
   const additionClient=useMemo(()=>createCanonicalMemberAdditionClient(apiClient),[apiClient]);
   const sharedClient=useMemo(()=>createSharedDtsiClient(apiClient),[apiClient]);
-  useEffect(()=>()=>{scopeEpoch.current++;setSelected(null);setRechecking(null);setRecheckError("");},[apiClient,organizationId,canWrite,search]);
+  useEffect(()=>()=>{scopeEpoch.current++;listRecovery.current=null;setSelected(null);setRechecking(null);setRecheckError("");},[apiClient,organizationId,canWrite,search]);
   const [loaded,setLoaded]=useState<{key:string;client:ApiClient;canWrite:boolean;result?:Result;error?:string}|null>(null);
   const key=JSON.stringify([organizationId,query,status,page,reload]);
   const selection=selected?.scope===search&&selected.client===apiClient&&selected.canWrite===canWrite&&selected.organizationId===organizationId?selected:null;
@@ -77,11 +78,19 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
   };
   useEffect(()=>{
     let cancelled=false;
+    const recovery=listRecovery.current;listRecovery.current=null;
     const request=new URLSearchParams({q:query,status,offset:String((page-1)*20),limit:"20"});
     if(organizationId)request.set("organizationId",organizationId);
     void apiClient.get<unknown>(`/api/v2/shared-dtsi/project-usages?${request}`).then(value=>{
       const result=sharedDtsiProjectUsagesSchema.parse(value);
-      if(!cancelled)setLoaded({key,client:apiClient,canWrite,result});
+      if(!cancelled){
+        if(recovery&&recovery.scope===scopeEpoch.current)setUnavailableTargets(previous=>{
+          const next=new Set(previous);
+          for(const row of result.items){const target=targetKey(row);if(row.canConfigure&&row.configurationReady&&recovery.epochs.has(target)&&recovery.epochs.get(target)===targetEpoch.current.get(target))next.delete(target);}
+          return next;
+        });
+        setLoaded({key,client:apiClient,canWrite,result});
+      }
     }).catch(error=>{if(!cancelled)setLoaded({key,client:apiClient,canWrite,error:error instanceof WiseEffApiError?error.message:"无法读取项目使用情况，请重试。"});});
     return()=>{cancelled=true;};
   },[apiClient,canWrite,key,organizationId,page,query,status]);
@@ -94,6 +103,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
     if(!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey&&event.button===0){event.preventDefault();onNavigate(target);}
   };
   const usageReturn=`/parameter-admin/sources?${params}`;
+  const hiddenTarget=Boolean(current?.result&&[...unavailableTargets].some(target=>JSON.parse(target)[0]===(organizationId??null)&&!current.result!.items.some(row=>targetKey(row)===target)));
   const sourcePath=(resourceId:string,versionId:string)=>{
     const target=new URLSearchParams(search);target.set("resource",resourceId);target.set("version",versionId);target.delete("tab");
     return `/parameter-admin/sources?${target}`;
@@ -135,6 +145,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
       <Button variant="outline" disabled={page===1} onClick={()=>update({usagePage:page===2?"":String(page-1)})}>上一页</Button>
       <span>{page} / {Math.ceil(current.result.total/20)}</span><Button variant="outline" disabled={page*20>=current.result.total} onClick={()=>update({usagePage:String(page+1)})}>下一页</Button>
     </nav>:null}
+    {hiddenTarget&&!selection?<div role="status"><span>部分项目配置不可用或权限已变化。</span><Button variant="outline" size="sm" onClick={()=>{listRecovery.current={scope:scopeEpoch.current,epochs:new Map(targetEpoch.current)};setReload(value=>value+1);}}>重新加载列表</Button></div>:null}
     {appliedNotice?<p role="status">资源包已加入配置。</p>:uncertainNotice?<p role="status">应用结果尚未确认，请核对项目配置后再操作。</p>:null}
     {recheckError?<p role="alert">{recheckError}</p>:null}
     {selection&&!selection.adding?<ModalDialog open className="workbench-member-addition-dialog" backdropClassName="param-admin-modal-backdrop" onDismiss={close}>

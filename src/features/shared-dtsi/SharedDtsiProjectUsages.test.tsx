@@ -170,6 +170,44 @@ describe("shared DTSI project usage", () => {
       expect(await screen.findByRole("button",{name:"配置资源包"})).toBeVisible();
     }
   });
+
+  it("recovers a target which disappeared from the authorized list only after a fresh explicit list reload",async()=>{
+    const user=userEvent.setup();let visible=true,hold=false;
+    let release!:(response:Response)=>void;
+    const delayed=new Promise<Response>(resolve=>{release=resolve;});
+    const version={id:versionOne,resourceId:resourceOne,version:1,name:"公共电源",changeDescription:"初版",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
+    const row={projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:[]};
+    const fetchImpl=vi.fn(async(url:string|URL|Request)=>{
+      const path=String(url);let body:unknown,status=200;
+      if(path.includes("project-usages")&&path.includes("projectId=")){visible=false;status=403;body={error:{code:"FORBIDDEN",message:"权限已撤销"}};}
+      else if(path.includes("project-usages")){
+        if(hold&&path.includes("organizationId=org-a"))return delayed;
+        body={items:visible?[row]:[],total:visible?1:0,visibility:"authorized-projects"};
+      }
+      else if(path.includes("/member-addition/preview")){status=409;body={error:{code:"CONFLICT",message:"配置已变化"}};}
+      else if(path.includes("/versions"))body={items:[version],total:1};
+      else body={items:[{resourceId:resourceOne,name:"公共电源",sourceName:"power.dtsi",draftRevision:null,state:"active",lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1};
+      return new Response(JSON.stringify(body),{status});
+    });
+    const apiClient=createApiClient({baseUrl:"",fetchImpl});
+    const view=render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
+    await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"公共电源"}));
+    await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · 初版"}));
+    await user.click(screen.getByRole("button",{name:"预览加入配置"}));await waitFor(()=>expect(screen.getByRole("button",{name:"重新核对配置"})).toBeEnabled());
+    await user.click(screen.getByRole("button",{name:"关闭"}));
+    expect(await screen.findByRole("button",{name:"重新加载列表"})).toBeVisible();
+    expect(screen.queryByText("项目甲")).not.toBeInTheDocument();
+    hold=true;await user.click(screen.getByRole("button",{name:"重新加载列表"}));
+    view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-b" search="?view=projects" onNavigate={()=>{}}/>);
+    await waitFor(()=>expect(fetchImpl.mock.calls.some(([url])=>String(url).includes("organizationId=org-b"))).toBe(true));
+    hold=false;view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    expect(await screen.findByRole("button",{name:"重新加载列表"})).toBeVisible();
+    await act(async()=>release(new Response(JSON.stringify({items:[row],total:1,visibility:"authorized-projects"}))));
+    expect(screen.queryByText("项目甲")).not.toBeInTheDocument();
+    visible=true;await user.click(screen.getByRole("button",{name:"重新加载列表"}));
+    expect(await screen.findByRole("button",{name:"配置资源包"})).toBeVisible();
+  });
   it("shows fixed references by configuration and preserves the selected view", async () => {
     const user = userEvent.setup();
     const fetchImpl = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(String(url).includes("project-usages") ? {
