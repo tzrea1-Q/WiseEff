@@ -130,6 +130,7 @@ describe("fresh database fixture policy", () => {
       "server/modules/parameter-bindings/binding/sourceOccurrenceMigration.integration.test.ts": ["src_occ_0151:false"],
       "server/modules/parameter-catalog-migration/sourceOccurrenceGuard.integration.test.ts": ["srcintegrityupgrade:false"],
       "server/modules/parameter-files/canonicalJsonSource.integration.test.ts": ["json_digest_upgrade:false"],
+      "server/modules/parameter-files/memberAdditionIntentUpgrade.integration.test.ts": ["intentupgrade:false"],
       "server/modules/parameter-kernel/parameterIdentityMode.integration.test.ts": ["test_t1080ci2_identity:false"],
       "server/modules/parameter-specs/specReviewTenantEvidence.integration.test.ts": ["mig0055:false"],
       "server/modules/parameter-topology/manifestBackfillMigration.test.ts": ["mig0054:false"],

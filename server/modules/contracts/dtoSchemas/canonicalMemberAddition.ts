@@ -18,6 +18,7 @@ export const sharedSwitchConflictSchema=z.object({
   identity:z.boolean().optional(),projectCorrection:z.boolean().optional()
 });
 export type SharedSwitchConflict=z.infer<typeof sharedSwitchConflictSchema>;
+export const memberAdditionDiagnosticSchema=sharedSwitchConflictSchema.partial().extend({severity:z.enum(["error","warning"]),code:z.string(),message:z.string(),rawMessage:z.string().optional()});
 
 const additionFields = {
   candidateId: z.string().min(1).optional(), fileId: z.string().min(1).optional(),
@@ -33,6 +34,13 @@ const exactlyOneSource = (value: { candidateId?: string; fileId?: string; shared
 export const memberAdditionBodySchema = z.object(additionFields).strict().refine(exactlyOneSource, "Choose exactly one candidate or existing file.");
 export const memberAdditionApplyBodySchema = z.object({ ...additionFields, proofToken: z.string().regex(/^[0-9a-f]{64}$/),
   reason: z.string().trim().min(1).max(2000), clientMutationId: z.string().trim().min(1).max(160) }).strict().refine(exactlyOneSource, "Choose exactly one candidate or existing file.");
+export const memberAdditionIntentSchema=z.object({id:z.string().uuid(),clientMutationId:z.string().uuid(),projectId:z.string(),projectName:z.string(),
+  configSetId:z.string(),configSetName:z.string(),status:z.enum(["pending","applied","stopped"]),result:z.object({requestId:z.string(),fileId:z.string(),fileVersionId:z.string(),configRevisionId:z.string()}).optional()});
+export const memberAdditionIntentResponseSchema=z.object({item:memberAdditionIntentSchema});
+export const memberAdditionIntentsResponseSchema=z.object({items:z.array(memberAdditionIntentSchema),total:z.number().int().nonnegative()});
+export const memberAdditionIntentRegisterSchema=z.object({registrationId:z.string().uuid()}).strict();
+export const memberAdditionIntentActionSchema=z.object({}).strict();
+export type MemberAdditionIntent=z.infer<typeof memberAdditionIntentSchema>;
 export const memberAdditionPreviewResponseSchema = z.object({ item: z.object({
   proofToken: z.string().regex(/^[0-9a-f]{64}$/), configSetId: z.string(), fileName: z.string(), format: z.enum(["dts", "json"]),
   sharedReference: z.object({ resourceId: z.string(), versionId: z.string(), memberId: z.string(), version: z.number(), digest: z.string() }).optional(),
@@ -47,7 +55,7 @@ export const memberAdditionPreviewResponseSchema = z.object({ item: z.object({
   members: z.array(z.object({ fileId: z.string(), fileVersionId: z.string(), sourceName: z.string(), format: z.enum(["dts", "json"]),
     role: z.string(), sortOrder: z.number().int(), checksum: z.string(), sizeBytes: z.number() })),
   entryFile: z.string().nullable(), includeSearchPaths: z.array(z.string()), overlayOrder: z.array(z.string()),
-  diagnostics: z.array(z.object({ severity: z.enum(["error", "warning"]), code: z.string(), message: z.string() })),
+  diagnostics: z.array(memberAdditionDiagnosticSchema),
   impact: z.object({ parameterChanges: z.number().int(), nodeAdditions: z.number().int(), nodeRemovals: z.number().int(),
     restoredParameters: z.number().int().nonnegative().optional(),
     retainedBindings: z.number().int(), sourceReplacements: z.number().int() })

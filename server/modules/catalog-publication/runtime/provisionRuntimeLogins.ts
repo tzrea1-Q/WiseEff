@@ -463,6 +463,11 @@ export async function provisionPublicationRuntimeLogins(
 
       await grantPublicAppDml(admin, names.api);
       await grantPublicAppDml(admin, names.worker);
+      const memberIntents = await admin.query<{ exists: boolean }>("select to_regclass('public.member_addition_intents') is not null as exists");
+      if (memberIntents.rows[0]?.exists) {
+        await admin.query(`revoke all on public.member_addition_intents from ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}`);
+        await admin.query(`grant select,insert,update(status,acknowledged,stop_audit_id,ack_audit_id) on public.member_addition_intents to ${quoteIdent(names.api)}`);
+      }
       const checkpointOwnership = await admin.query<{ exists: boolean }>("select to_regclass('public.agent_checkpoint_namespaces') is not null as exists");
       if (checkpointOwnership.rows[0]?.exists) {
         await admin.query(`revoke insert, update, delete on public.agent_checkpoint_namespaces from ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}`);

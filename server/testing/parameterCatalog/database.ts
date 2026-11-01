@@ -211,7 +211,12 @@ export const S2_SCH_0310_FINGERPRINT =
 export const S2_SCH_0314_FINGERPRINT =
   "72506760cd47ccd5b0c27d2036703cb2fec1827d8cbec37d26bfdb56b92dd5bf";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0314_FINGERPRINT;
+/** 0318 adds intent ownership to project and organization erasure inventory,
+ * locking and purge functions. Historical pins above remain unchanged. */
+export const S2_SCH_0318_FINGERPRINT =
+  "13a7665cb69a6ae39deb9e40cc2565a4f51154708e252fc6a6b4613ad5234eb5";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0318_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

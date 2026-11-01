@@ -401,6 +401,7 @@ function renderWorkbench(options: {
   topologyRepository?: ProjectConfigurationWorkbenchProps["topologyRepository"];
   memberRemovalRepository?: ProjectConfigurationWorkbenchProps["memberRemovalRepository"];
   apiMode?: boolean;
+  apiClient?:ProjectConfigurationWorkbenchProps["apiClient"];
 } = {}) {
   const onNavigate = vi.fn(options.onNavigate ?? (() => undefined));
   const sharedProps = {
@@ -418,7 +419,8 @@ function renderWorkbench(options: {
     ...(options.draftStorage ? { draftStorage: options.draftStorage } : {}),
     ...(options.topologyRepository ? { topologyRepository: options.topologyRepository } : {}),
     ...(options.memberRemovalRepository ? { memberRemovalRepository: options.memberRemovalRepository } : {}),
-    ...(options.apiMode === undefined ? {} : { apiMode: options.apiMode })
+    ...(options.apiMode === undefined ? {} : { apiMode: options.apiMode }),
+    ...(options.apiClient ? {apiClient:options.apiClient}: {})
   };
   if (options.syncSearch) {
     function Harness() {
@@ -563,6 +565,23 @@ function legacyDraftStorage(baseVersionId = "version-board-12") {
 }
 
 describe("ProjectConfigurationWorkbench", () => {
+  it("registers and applies a shared addition to the configuration selected in the dialog",async()=>{
+    const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
+    const version={id:versionId,resourceId,version:1,name:"Power",changeDescription:"Initial",digest:"fixed",createdAt:"today",createdByUserId:"author"};
+    const shared=sharedDtsiClient.createSharedDtsiClient(createApiClient({baseUrl:""}));
+    vi.spyOn(sharedDtsiClient,"createSharedDtsiClient").mockReturnValue({...shared,list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:"power.dtsi",draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1})),versions:vi.fn(async()=>({items:[version],total:1}))});
+    const apply=vi.fn<ReturnType<typeof memberAdditionClient.createCanonicalMemberAdditionClient>["apply"]>(async()=>({requestId:"request",fileId:"applied-file",fileVersionId:"version",configRevisionId:"revision"}));
+    vi.spyOn(memberAdditionClient,"createCanonicalMemberAdditionClient").mockReturnValue({upload:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"cs-alpha",fileName:"power.dtsi",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}})),apply});
+    const fetchImpl=vi.fn(async(input:string|URL|Request)=>new Response(JSON.stringify(String(input).includes("member-addition-intents")?{items:[],total:0}:{item:{id:"d0000000-0000-4000-8000-000000000001",clientMutationId:"d0000000-0000-4000-8000-000000000002",projectId:"project-1",projectName:"项目",configSetId:"cs-alpha",configSetName:"alpha",status:"pending"}})));
+    const apiClient=createApiClient({baseUrl:"",fetchImpl});renderWorkbench({apiMode:true,apiClient,search:"?configSet=cs-default&inspector=config-set"});
+    await user.click(await screen.findByRole("button",{name:"添加配置文件"}));const dialog=await screen.findByRole("dialog",{name:"加入配置文件"});
+    await user.click(within(dialog).getByRole("combobox",{name:"目标配置"}));await user.click(screen.getByRole("option",{name:"alpha"}));
+    await user.click(within(dialog).getByRole("combobox",{name:"文件来源"}));await user.click(screen.getByRole("option",{name:"引用共享 DTSI 固定版本"}));
+    await user.click(await within(dialog).findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"Power"}));
+    await user.click(await within(dialog).findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · Initial"}));
+    await user.click(within(dialog).getByRole("button",{name:"预览加入配置"}));await user.type(await within(dialog).findByRole("textbox",{name:"加入原因"}),"核对目标");await user.click(within(dialog).getByRole("button",{name:"确认加入配置"}));
+    await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0]![1]).toBe("cs-alpha");expect(fetchImpl.mock.calls.some(([url])=>String(url).includes("/config-sets/cs-alpha/member-addition/intents"))).toBe(true);
+  }, 10_000);
   it.each(["cancel","apply"])("continues switch %s when browser recovery storage cannot be cleared",async(action)=>{
     const resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",target="33333333-3333-4333-8333-333333333333";
     const scope="wiseeff.shared-switch:local-user:org-1:project-1:cs-default";
@@ -571,13 +590,16 @@ describe("ProjectConfigurationWorkbench", () => {
     const shared=sharedDtsiClient.createSharedDtsiClient(createApiClient({baseUrl:""}));
     vi.spyOn(sharedDtsiClient,"createSharedDtsiClient").mockReturnValue({...shared,versions:vi.fn(async()=>({items:[{id:target,resourceId,version:2,name:"Limits",changeDescription:"Next",digest:"fixed",createdAt:"today",createdByUserId:"author"}],total:1}))});
     vi.spyOn(memberAdditionClient,"createCanonicalMemberAdditionClient").mockReturnValue({upload:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"cs-default",fileName:"limits.dtsi",format:"dts" as const,members:[],entryFile:"aurora-board.dts",includeSearchPaths:["."],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}})),apply:vi.fn(async()=>({requestId:"request",fileId:"applied-file",fileVersionId:"applied-version",configRevisionId:"new-revision"}))});
-    const dts=createDtsRepository(),{onNavigate}=renderWorkbench({apiMode:true,search:"?configSet=cs-default&file=file-board&sharedSwitch=resume",dtsRepository:dts});
+    const fetchImpl=vi.fn(async(input:string|URL|Request)=>new Response(JSON.stringify(String(input).includes("member-addition-intents")?{items:[],total:0}:{item:{id:"d0000000-0000-4000-8000-000000000001",clientMutationId:"d0000000-0000-4000-8000-000000000002",projectId:"project-1",projectName:"项目",configSetId:"cs-default",configSetName:"default",status:"pending"}})));
+    const apiClient=createApiClient({baseUrl:"",fetchImpl});
+    const dts=createDtsRepository(),{onNavigate}=renderWorkbench({apiMode:true,apiClient,search:"?configSet=cs-default&file=file-board&sharedSwitch=resume",dtsRepository:dts});
     const dialog=await screen.findByRole("dialog",{name:"切换共享版本"}),reads=vi.mocked(dts.listConfigSetFiles).mock.calls.length;
     if(action==="cancel")await userEvent.click(within(dialog).getByRole("button",{name:"关闭"}));
     else{
       await userEvent.click(within(dialog).getByRole("button",{name:"预览版本切换"}));
       await userEvent.click(await within(dialog).findByRole("button",{name:"确认切换版本"}));
       await waitFor(()=>expect(onNavigate).toHaveBeenLastCalledWith(expect.stringContaining("file=applied-file")));
+      expect(fetchImpl.mock.calls.some(([url])=>String(url).includes("/config-sets/cs-default/member-addition/intents"))).toBe(true);
       await waitFor(()=>expect(vi.mocked(dts.listConfigSetFiles).mock.calls.length).toBeGreaterThan(reads));
     }
     expect(storage.removeItem).toHaveBeenCalledWith(scope);expect(screen.queryByRole("dialog",{name:"切换共享版本"})).not.toBeInTheDocument();

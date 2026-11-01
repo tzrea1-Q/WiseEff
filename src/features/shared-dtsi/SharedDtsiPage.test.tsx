@@ -84,6 +84,32 @@ function setup(options: { writable?: boolean; existingDraft?: boolean; saveError
 }
 
 describe("shared DTSI draft authoring", () => {
+  it("loads the resource list when session storage is unavailable",async()=>{
+    const get=vi.spyOn(Storage.prototype,"getItem").mockImplementation(()=>{throw new DOMException("denied","SecurityError");});
+    try{render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl:async()=>new Response(JSON.stringify({items:[],total:0}))})} currentUserId="user" canWrite search="" onNavigate={()=>{}}/>);
+      expect(await screen.findByText("尚无共享 DTSI")).toBeVisible();
+    }finally{get.mockRestore();}
+  });
+  it("restores resource search and page from the URL after returning",async()=>{
+    const requests:string[]=[],navigate=vi.fn(),api=createApiClient({baseUrl:"",fetchImpl:async(input)=>{requests.push(String(input));return new Response(JSON.stringify({items:[],total:25}));}});
+    const search="?resourceQuery=clock&resourcePage=2";
+    const view=render(<SharedDtsiPage apiClient={api} canWrite search={search} onNavigate={navigate}/>);
+    expect(await screen.findByRole("searchbox",{name:"搜索共享 DTSI"})).toHaveValue("clock");
+    await waitFor(()=>expect(requests.some(url=>url.includes("q=clock")&&url.includes("offset=20"))).toBe(true));
+    expect(screen.getByText("2 / 2")).toBeVisible();
+    view.unmount();render(<SharedDtsiPage apiClient={api} canWrite search={search} onNavigate={navigate}/>);
+    expect(await screen.findByRole("searchbox",{name:"搜索共享 DTSI"})).toHaveValue("clock");expect(await screen.findByText("2 / 2")).toBeVisible();
+  });
+  it("opens project selection with the exact published version from a resource row", async () => {
+    const resourceId="33333333-3333-4333-8333-333333333333", versionId="44444444-4444-4444-8444-444444444444";
+    const version={id:versionId,resourceId,version:2,name:"Published",changeDescription:"Release",digest:"fixed",createdAt:"2026-10-25T00:00:00Z",createdByUserId:"author"};
+    const rows=[{resourceId,name:"Published",updatedAt:version.createdAt,sourceName:"board.dtsi",state:"active",lifecycleRevision:1,draftRevision:1,currentVersion:version}];
+    const navigate=vi.fn();
+    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl:async()=>new Response(JSON.stringify({items:rows,total:1}))})} canWrite currentUserId="user" search="" onNavigate={navigate}/>);
+    await userEvent.setup().click(await screen.findByRole("button",{name:"引用到项目"}));
+    const params=new URL(navigate.mock.calls[0]![0],"http://localhost").searchParams;
+    expect(params.get("view")).toBe("projects");expect(params.get("referenceResource")).toBe(resourceId);expect(params.get("referenceVersion")).toBe(versionId);
+  });
   it("represents multi-file resources without presenting the first path as the whole resource", async () => {
     const timestamp="2026-10-25T00:00:00Z",resourceId="33333333-3333-4333-8333-333333333333";
     const version={id:"44444444-4444-4444-8444-444444444444",resourceId,version:2,name:"Published",changeDescription:"Published",digest:"sha256:fixed",createdAt:timestamp,createdByUserId:"author"};

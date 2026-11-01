@@ -16,6 +16,17 @@ const comparison={before:versions[0],after:versions[2],buildInputs:{before:{incl
   semantic:{scope:"ordered-fragment-declarations" as const,before:"a { value = <1>; };",after:"a { /delete-property/ value; value = <3>; };",externalReferences:[]}};
 
 describe("immutable version comparison and authorized usage",()=>{
+  it("keeps the historical version when starting a project reference",async()=>{
+    const navigate=vi.fn(),historic=versions[0]!;
+    const api=createApiClient({baseUrl:"",fetchImpl:async(url:string|URL|Request)=>new Response(JSON.stringify(String(url).includes("/detail")
+      ?{item:{resourceId,name:"Shared source",updatedAt:versions[2]!.createdAt,currentVersion:versions[2],draftRevision:1}}
+      :{item:{...historic,members:[{id:memberId,sourceName:"lib/node.dtsi",content:"/ {};",checksum:"fixed",sizeBytes:5}],manifest:{schemaVersion:"shared-dtsi/v1",members:[{id:memberId,sourceName:"lib/node.dtsi",checksum:"fixed",sizeBytes:5,role:"include"}],externalReferences:[]}}}))});
+    render(<SharedDtsiPage apiClient={api} canWrite currentUserId="user" search={`?resource=${resourceId}&version=${historic.id}`} onNavigate={navigate}/>);
+    await userEvent.setup().click(await screen.findByRole("button",{name:"引用到项目"}));
+    const params=new URL(navigate.mock.calls[0]![0],"http://localhost").searchParams;
+    expect(params.get("referenceVersion")).toBe(historic.id);expect(params.get("referenceResource")).toBe(resourceId);
+    expect(params.get("referenceReturn")).toContain(`version=${historic.id}`);
+  });
   it("shows a single changed file directly and lets users choose between multiple files",async()=>{
     const user=userEvent.setup();
     const view=render(<SharedDtsiComparisonContent result={comparison} resourceId={resourceId} beforeLabel="v1" afterLabel="v3" />);

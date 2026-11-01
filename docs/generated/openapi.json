@@ -265,6 +265,83 @@
         }
       }
     },
+    "/api/v2/shared-dtsi/project-usages": {
+      "get": {
+        "operationId": "sharedDtsi.projectUsages",
+        "summary": "List authorized project configurations and fixed shared references",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiProjectUsagesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/shared-dtsi/{resourceId}": {
       "get": {
         "operationId": "sharedDtsi.get",
@@ -26755,6 +26832,337 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}/member-addition/intents": {
+      "post": {
+        "operationId": "parameterFiles.reserveMemberAdditionIntent",
+        "summary": "Reserve an authenticated shared configuration operation identity",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberAdditionIntentRegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberAdditionIntentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/member-addition-intents": {
+      "get": {
+        "operationId": "parameterFiles.listMemberAdditionIntents",
+        "summary": "List the current user's authorized unresolved configuration operations",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000,
+              "default": 0
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberAdditionIntentsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}/member-addition/intents/{intentId}/stop": {
+      "post": {
+        "operationId": "parameterFiles.stopMemberAdditionIntent",
+        "summary": "Stop an unresolved operation or return its committed status",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "intentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberAdditionIntentActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberAdditionIntentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}/member-addition/intents/{intentId}/ack": {
+      "post": {
+        "operationId": "parameterFiles.acknowledgeMemberAdditionIntent",
+        "summary": "Acknowledge a terminal configuration operation without removing its fence",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "intentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberAdditionIntentActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberAdditionIntentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/config-sets/{configSetId}/files/{fileId}/removal-preview": {
       "post": {
         "operationId": "parameterFiles.previewAdministratorMemberRemoval",
@@ -29859,6 +30267,149 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "SharedDtsiUsagesResponse"
+      },
+      "SharedDtsiProjectUsagesResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": "string"
+                },
+                "projectName": {
+                  "type": "string"
+                },
+                "projectCode": {
+                  "type": "string"
+                },
+                "configSetId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "configSetName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "configurationReady": {
+                  "type": "boolean"
+                },
+                "configurationIssue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "no-configuration",
+                    "no-resolved-source",
+                    "missing-root",
+                    "source-changed"
+                  ]
+                },
+                "canConfigure": {
+                  "type": "boolean"
+                },
+                "references": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "resourceId": {
+                        "type": "string"
+                      },
+                      "resourceName": {
+                        "type": "string"
+                      },
+                      "versionId": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "number"
+                      },
+                      "direct": {
+                        "type": "boolean"
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "retired"
+                        ]
+                      },
+                      "upgradeAvailable": {
+                        "type": "boolean"
+                      },
+                      "requiredBy": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "resourceId": {
+                              "type": "string"
+                            },
+                            "resourceName": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resourceId",
+                            "resourceName"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "resourceId",
+                      "resourceName",
+                      "versionId",
+                      "version",
+                      "direct",
+                      "state",
+                      "upgradeAvailable",
+                      "requiredBy"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "projectId",
+                "projectName",
+                "projectCode",
+                "configSetId",
+                "configSetName",
+                "configurationReady",
+                "canConfigure",
+                "references"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "organization",
+              "authorized-projects"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "visibility"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiProjectUsagesResponse"
       },
       "SharedDtsiComparisonResponse": {
         "type": "object",
@@ -80002,6 +80553,42 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "sourceName": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "number"
+                    },
+                    "node": {
+                      "type": "string"
+                    },
+                    "property": {
+                      "type": "string"
+                    },
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileVersionId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "versionId": {
+                      "type": "string"
+                    },
+                    "memberId": {
+                      "type": "string"
+                    },
+                    "identity": {
+                      "type": "boolean"
+                    },
+                    "projectCorrection": {
+                      "type": "boolean"
+                    },
                     "severity": {
                       "type": "string",
                       "enum": [
@@ -80012,14 +80599,14 @@
                     "code": {
                       "type": "string"
                     },
-                    "message": {
+                    "rawMessage": {
                       "type": "string"
                     }
                   },
                   "required": [
+                    "message",
                     "severity",
-                    "code",
-                    "message"
+                    "code"
                   ],
                   "additionalProperties": false
                 }
@@ -80252,6 +80839,188 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CanonicalMemberAdditionApplyResponse"
+      },
+      "MemberAdditionIntentRegisterRequest": {
+        "type": "object",
+        "properties": {
+          "registrationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "registrationId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "MemberAdditionIntentRegisterRequest"
+      },
+      "MemberAdditionIntentResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "clientMutationId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "projectName": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "configSetName": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "applied",
+                  "stopped"
+                ]
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "fileId": {
+                    "type": "string"
+                  },
+                  "fileVersionId": {
+                    "type": "string"
+                  },
+                  "configRevisionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "fileId",
+                  "fileVersionId",
+                  "configRevisionId"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "clientMutationId",
+              "projectId",
+              "projectName",
+              "configSetId",
+              "configSetName",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "MemberAdditionIntentResponse"
+      },
+      "MemberAdditionIntentsResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "clientMutationId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "projectName": {
+                  "type": "string"
+                },
+                "configSetId": {
+                  "type": "string"
+                },
+                "configSetName": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "applied",
+                    "stopped"
+                  ]
+                },
+                "result": {
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileVersionId": {
+                      "type": "string"
+                    },
+                    "configRevisionId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "requestId",
+                    "fileId",
+                    "fileVersionId",
+                    "configRevisionId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "clientMutationId",
+                "projectId",
+                "projectName",
+                "configSetId",
+                "configSetName",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "MemberAdditionIntentsResponse"
+      },
+      "MemberAdditionIntentActionRequest": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "x-wiseeff-schema": "MemberAdditionIntentActionRequest"
       },
       "AdministratorMemberRemovalApplyRequest": {
         "type": "object",

@@ -97,6 +97,7 @@ describe("browser impact selection", () => {
       "e2e/acceptance/canonical-dashboard.acceptance.spec.ts",
       "e2e/acceptance/experience-registration.acceptance.spec.ts",
       "e2e/acceptance/issue897-canonical-modules.acceptance.spec.ts",
+      "e2e/acceptance/organization-administrator-succession.acceptance.spec.ts",
       "e2e/acceptance/parameter-admin-projects.acceptance.spec.ts",
       "e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts",
       "e2e/acceptance/parameter-catalog.acceptance.spec.ts",

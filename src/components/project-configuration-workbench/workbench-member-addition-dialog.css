@@ -12,6 +12,13 @@
 .workbench-member-addition-dialog__members { list-style: none; padding: 0; }
 .workbench-member-addition-dialog__members li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); padding-block: var(--space-2); border-bottom: 1px solid var(--border); }
 .workbench-member-addition-dialog__members li > span:last-child { color: var(--text-muted); }
+.workbench-member-addition-dialog__shared-preview { display: grid; gap: var(--space-3); }
+.workbench-member-addition-dialog__shared-preview > h3, .workbench-member-addition-dialog__shared-preview p { margin: 0; }
+.workbench-member-addition-dialog__shared-preview > h3 { font-size: var(--text-lg); }
+.workbench-member-addition-dialog__shared-preview > div { display: grid; gap: var(--space-1); }
+.workbench-member-addition-dialog__shared-preview .workbench-member-addition-dialog__members { margin: 0; }
+.workbench-member-addition-dialog__shared-preview details > summary { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.workbench-member-addition-dialog__shared-preview details[open] > summary { margin-bottom: var(--space-3); }
 .workbench-member-addition-dialog pre { max-width: 100%; max-height: calc(var(--space-16) * 3); overflow: auto; white-space: pre; padding: var(--space-3); background: var(--surface); font-family: var(--font-code); font-size: var(--text-sm); }
 .workbench-member-addition-dialog footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border); }
 .workbench-member-addition-dialog footer > div { display: flex; gap: var(--space-2); flex-wrap: wrap; }
@@ -30,3 +37,11 @@
 .workbench-member-addition-dialog__switch-change dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: var(--space-3) 0 0; }
 .workbench-member-addition-dialog__switch-change dd { margin: 0; }
 .workbench-member-addition-dialog__switch-metadata { display: grid; gap: var(--space-3); padding-block: var(--space-3); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.workbench-member-addition-dialog--shared .workbench-member-addition-dialog__selection > summary,
+.workbench-member-addition-dialog--shared .workbench-member-addition-dialog__switch-metadata details > summary { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.workbench-member-addition-dialog--shared .workbench-member-addition-dialog__switch-metadata details[open] > summary { margin-bottom: var(--space-3); }
+.shared-member-pending { margin-block: var(--space-4); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.shared-member-pending h2 { margin: 0 0 var(--space-3); }
+.shared-member-pending ul { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.shared-member-pending li { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.shared-member-pending nav { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }

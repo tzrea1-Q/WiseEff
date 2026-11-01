@@ -26,9 +26,10 @@ import { SharedDtsiDependencies } from "./SharedDtsiDependencies";
 import { SharedDtsiRecognition } from "./SharedDtsiRecognition";
 import { SharedDtsiComparison, SharedDtsiComparisonContent } from "./SharedDtsiComparison";
 import { SharedDtsiLifecycle } from "./SharedDtsiLifecycle";
+import { SharedDtsiProjectUsages } from "./SharedDtsiProjectUsages";
 import { conflictingMembers, hasDuplicateMemberPaths, hasMemberPath, mergeSourceMembers, sourceMembers, withContent } from "./sharedDtsiMembers";
 
-type Props = { apiClient?: ApiClient; canWrite: boolean; canCreateSubject?:boolean;canProposeSource?:boolean;canReviewSource?:boolean;search: string; organizationId?: string; onNavigate: (path: string) => void };
+type Props = { apiClient?: ApiClient; canWrite: boolean; canCreateSubject?:boolean;canProposeSource?:boolean;canReviewSource?:boolean;search: string; organizationId?: string; currentUserId?:string; onNavigate: (path: string) => void };
 type Scope = { key: string; client: ReturnType<typeof createSharedDtsiClient> | null; pending: boolean };
 const empty: SharedDtsiDraftInput = { name: "", sourceName: "common.dtsi", content: "", changeDescription: "",dependencies:[] };
 const draftInput = (draft: SharedDtsiDraft): SharedDtsiDraftInput => ({ name: draft.name,
@@ -70,9 +71,10 @@ function SharedDtsiTitle({name,draft=false}:{name:string;draft?:boolean}) {
   </TooltipTrigger>{truncated?<TooltipContent className="shared-dtsi-title-tooltip" side="bottom" align="start">{name}</TooltipContent>:null}</Tooltip></TooltipProvider>{draft?<span className="shared-dtsi-draft-label">草稿</span>:null}</h1>;
 }
 
-export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,canProposeSource=false,canReviewSource=false,search, organizationId, onNavigate }: Props) {
+export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,canProposeSource=false,canReviewSource=false,search, organizationId, currentUserId, onNavigate }: Props) {
   const client = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : null, [apiClient]);
   const selected = new URLSearchParams(search).get("resource") ?? "";
+  const projectUsageView = new URLSearchParams(search).get("view") === "projects";
   const selectedVersion = new URLSearchParams(search).get("version") ?? "";
   const selectedMember = new URLSearchParams(search).get("member");
   const requestedLine = new URLSearchParams(search).get("line") ?? "";
@@ -95,8 +97,9 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const [loadedScope, setLoadedScope] = useState<Scope | null>(null);
   const [rows, setRows] = useState<SharedDtsiResourceSummary[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [query, setQuery] = useState("");
+  const listParams=new URLSearchParams(search),query=listParams.get("resourceQuery")??"",requestedPage=Number(listParams.get("resourcePage")??"1");
+  const page=Number.isSafeInteger(requestedPage)&&requestedPage>0&&requestedPage<=5001?requestedPage:1;
+  const updateList=(changes:Record<string,string>)=>{const params=new URLSearchParams(search);for(const [key,value] of Object.entries(changes)){if(value)params.set(key,value);else params.delete(key);}onNavigate(`/parameter-admin/sources${params.size?`?${params}`:""}`);};
   const [draft, setDraft] = useState<SharedDtsiDraft | null>(null);
   const [detail, setDetail] = useState<SharedDtsiResourceDetail | null>(null);
   const [published, setPublished] = useState<SharedDtsiVersion | null>(null);
@@ -175,6 +178,18 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const permissionTransition=Boolean(!loading && loadedContext.current && loadedContext.current.client===client && loadedContext.current.organizationId===organizationId
     && loadedContext.current.search===search && loadedContext.current.canWrite!==canWrite);
   const busyLoading = loading || loadedScope !== scope && !permissionTransition;
+  useEffect(()=>{
+    if(busyLoading||!currentUserId)return;
+    const key=`wiseeff.shared-reference-focus:${currentUserId}:${organizationId??""}`;
+    let resource:string|null;try{resource=sessionStorage.getItem(key);}catch{return;}
+    if(!resource)return;
+    const frame=requestAnimationFrame(()=>{
+      const element=Array.from(document.querySelectorAll<HTMLButtonElement>("[data-reference-resource]"))
+        .find(button=>button.dataset.referenceResource===resource);
+      if(element){try{sessionStorage.removeItem(key);}catch{/* Focus restoration is optional. */}element.focus();}
+    });
+    return()=>cancelAnimationFrame(frame);
+  },[busyLoading,currentUserId,organizationId,rows,published]);
   const currentPreview = preview?.scope === scope ? preview : null;
   useEffect(() => {
     if (!currentPreview && restorePreviewFocus.current) {
@@ -195,6 +210,14 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   }, [search, selected,selectedVersion]);
   const leave = (resourceId: string, options?: { version?: string; tab?: string }) => { flushSync(() => setLeaving(true)); onNavigate(path(resourceId, options)); };
   const navigate = async (resourceId: string, options?: { version?: string; tab?: string }) => { if (!scope.pending && !creatingHere && await requestSettingsLeave() && isCurrent(scope)) leave(resourceId, options); };
+  const referenceToProject = async (resourceId:string,versionId:string) => {
+    if(scope.pending || creatingHere || !await requestSettingsLeave() || !isCurrent(scope))return;
+    const params=new URLSearchParams(search);
+    params.set("referenceReturn",`/parameter-admin/sources${search}`);
+    params.set("view","projects");params.set("referenceResource",resourceId);params.set("referenceVersion",versionId);
+    for(const key of ["resource","version","tab","member","line","column","projectContext","referenceTargetProject","referenceTargetConfig"])params.delete(key);
+    onNavigate(`/parameter-admin/sources?${params}`);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -214,6 +237,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     setSourceReady(selected !== "new"); setImporting(false); setIgnoredFiles([]); setReplacement(null); setAddition(null);setRemoveOpen(false);setNewFileOpen(false);nameTouched.current=false; setEditorVersion(++editorEpoch.current);
     if (!client) { setLoading(false); setLoadedScope(scope); return; }
     if (selected === "new") { setForm(empty); setBuildText(buildTexts(undefined)); setLoading(false); setLoadedScope(scope); return; }
+    if (!selected && projectUsageView) { setLoading(false); setLoadedScope(scope); return; }
     setLoading(true);
     void (selected ? client.detail(selected).then(async metadata => {
       if (cancelled || !isCurrent(scope)) return;
@@ -261,7 +285,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     }} })
       .finally(() => { if (!cancelled && isCurrent(scope)) {if(carryLoaded && resume.current===carry)resume.current=null; setLoading(false); setLoadedScope(scope); } });
     return () => { cancelled = true; };
-  }, [client, selected, selectedVersion, tab, query, page, historyPage,usagePage, reload, scope, isCurrent]);
+  }, [client, selected, selectedVersion, tab, query, page, historyPage,usagePage, reload, scope, isCurrent, projectUsageView]);
 
   const persist = async (operation: Scope) => {
     if (!client) throw new Error("API 不可用。");
@@ -488,9 +512,13 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   </>;
 
   if (!client) return <section className="shared-dtsi-page"><h1>共享 DTSI</h1><p role="status">共享 DTSI 需要 API 模式和有效登录。</p></section>;
-  if (!selected) return <div className="shared-dtsi-page"><AdminListPage label="共享 DTSI" headerContent={<h1>共享 DTSI</h1>}
+  const listHeader = <div className="shared-dtsi-list-heading"><h1>共享 DTSI</h1><ViewSwitch variant="toggle-outline" ariaLabel="共享 DTSI 视图" value={projectUsageView?"projects":"resources"}
+    onValueChange={value=>{const params=new URLSearchParams(search);if(value==="projects")params.set("view","projects");else for(const key of ["view","referenceResource","referenceVersion","referenceReturn","referenceTargetProject","referenceTargetConfig"])params.delete(key);onNavigate(`/parameter-admin/sources${params.size?`?${params}`:""}`);}}
+    items={[{value:"resources",label:"资源包"},{value:"projects",label:"项目使用"}]} /></div>;
+  if (!selected && projectUsageView && apiClient) return <SharedDtsiProjectUsages apiClient={apiClient} organizationId={organizationId} currentUserId={currentUserId} canWrite={canWrite} search={search} onNavigate={onNavigate} header={listHeader} />;
+  if (!selected) return <div className="shared-dtsi-page"><AdminListPage label="共享 DTSI" headerContent={listHeader}
     headerActions={canWrite ? <Button onClick={() => void navigate("new")}>导入资源</Button> : null}
-    filterBar={<SearchField className="shared-dtsi-list-search" ariaLabel="搜索共享 DTSI" value={query} onValueChange={value => { setQuery(value); setPage(1); }} placeholder="搜索名称、路径或已验证 compatible 标识" />}
+    filterBar={<SearchField className="shared-dtsi-list-search" ariaLabel="搜索共享 DTSI" maxLength={160} value={query} onValueChange={value => updateList({resourceQuery:value,resourcePage:""})} placeholder="搜索名称、路径或已验证 compatible 标识" />}
     emptyState={{ title: query ? "没有匹配的资源" : "尚无共享 DTSI", message: query ? "请调整搜索条件。" : "导入公共源码后，可在这里保存草稿并发布共享版本。" }}
     tableState={busyLoading ? <SectionSkeleton label="正在加载共享 DTSI" /> : error ? <SectionError message={error} onRetry={() => setReload(value => value + 1)} /> : undefined}
     table={{ rows, rowKey: row => row.resourceId, pageSize: 20, page: 1, fluid: true,
@@ -499,11 +527,12 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
         { key: "sourceName", header: "资源文件", render: row => row.memberCountScope===null && row.memberCount===0 ? "暂无文件"
           : row.memberCountScope && row.memberCount ? <span className="shared-dtsi-list-file" title={row.memberCount===1?row.sourceName:undefined}>{row.memberCountScope==="published"?"已发布":"草稿"} · {row.memberCount===1?row.sourceName:`${row.memberCount} 个文件`}</span>
           : "文件信息不可用" },
-        { key: "state", header: "当前版本", render: row => `${row.state==="retired"?"已停用 · ":""}${row.currentVersion ? `v${row.currentVersion.version}${row.draftRevision ? " · 有草稿" : ""}` : "草稿"}` },
-        { key: "updatedAt", header: "最后修改", render: row => formatAbsolute(row.updatedAt) }
+        { key: "state", header: "最新发布版本", render: row => `${row.state==="retired"?"已停用 · ":""}${row.currentVersion ? `v${row.currentVersion.version}${row.draftRevision ? " · 有草稿" : ""}` : "草稿"}` },
+        { key: "updatedAt", header: "最后修改", render: row => formatAbsolute(row.updatedAt) },
+        { key: "action", header: "操作", render: row => canWrite && row.state!=="retired" && row.currentVersion ? <Button variant="outline" size="sm" data-reference-resource={row.resourceId} onClick={()=>void referenceToProject(row.resourceId,row.currentVersion!.id)}>引用到项目</Button> : null }
       ] }} />
-    {!loading && total > 20 ? <nav className="shared-dtsi-pagination" aria-label="共享 DTSI 分页"><Button variant="outline" disabled={page === 1} onClick={() => setPage(value => value - 1)}>上一页</Button>
-      <span>{page} / {Math.ceil(total / 20)}</span><Button variant="outline" disabled={page * 20 >= total} onClick={() => setPage(value => value + 1)}>下一页</Button></nav> : null}
+    {!loading && total > 20 ? <nav className="shared-dtsi-pagination" aria-label="共享 DTSI 分页"><Button variant="outline" disabled={page === 1} onClick={() => updateList({resourcePage:page===2?"":String(page-1)})}>上一页</Button>
+      <span>{page} / {Math.ceil(total / 20)}</span><Button variant="outline" disabled={page * 20 >= total} onClick={() => updateList({resourcePage:String(page+1)})}>下一页</Button></nav> : null}
   </div>;
 
   const lifecycleControls=client&&detail?<SharedDtsiLifecycle key={scopeKey} client={client} resource={detail} canWrite={canWrite} pending={pending}
@@ -546,7 +575,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     <header className="shared-dtsi-header shared-dtsi-header--resource"><div className="shared-dtsi-heading"><Button variant="outline" size="sm" aria-label="返回资源列表" title="返回资源列表" onClick={() => void navigate("")} disabled={pending || creatingHere}><ArrowLeft aria-hidden="true" />返回</Button>
       <SharedDtsiTitle name={published?.name ?? detail?.name ?? "共享 DTSI"} />
       {projectReturnPath ? <a href={projectReturnPath} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onNavigate(projectReturnPath); } }}>返回项目节点</a> : null}</div>
-      {lifecycleControls}{canWrite && detail?.state!=="retired" && detail?.currentVersion ? <Button disabled={pending} onClick={() => detail.draftRevision ? void navigate(selected,{version:"draft",tab:"source"})
+      {lifecycleControls}{canWrite && detail?.state!=="retired" && published ? <Button variant="outline" data-reference-resource={selected} disabled={pending} onClick={()=>void referenceToProject(selected,published.id)}>引用到项目</Button>:null}{canWrite && detail?.state!=="retired" && detail?.currentVersion ? <Button disabled={pending} onClick={() => detail.draftRevision ? void navigate(selected,{version:"draft",tab:"source"})
         : published && published.id!==detail.currentVersion!.id ? void navigate(selected,{version:detail.currentVersion!.id,tab:"source"}) : void createVersionDraft()}>
         {detail.draftRevision ? "继续编辑草稿" : published && published.id!==detail.currentVersion.id ? "查看最新版本" : "创建新版本"}</Button> : null}</header>
     <div className="shared-dtsi-resource-body">

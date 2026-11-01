@@ -21,6 +21,7 @@ vi.mock("@/infrastructure/http/workflowPublicationClient", async (importOriginal
 import { existsSync, readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
 import App from "./App";
+import { currentSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
 import { appReducer } from "@/application/state/appState";
 import { initialState } from "./mockData";
 import { platformRoles } from "@/domain/users/types";
@@ -44,7 +45,8 @@ import {
   createTestUserGovernanceActions,
   renderApp
 } from "./test/harness";
-import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { createApiClient, WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { createAuthClient } from "@/infrastructure/http/authClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { SettingsFormPage } from "@/components/layout/SettingsFormPage";
 
@@ -487,10 +489,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("shows local login when API auth context is unauthenticated and enters the app after login", async () => {
+    const previousSession = currentSharedOperationSession();
     window.history.replaceState(null, "", "/parameter-home");
-    const authClient = {
-      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Session is not active.")),
-      login: vi.fn(async () => ({
+    window.localStorage.setItem("wiseeff.localAuthToken", "expired-token");
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).includes("/api/v1/me")) return Response.json({error:{code:"UNAUTHENTICATED",message:"Session is not active."}}, {status:401});
+      if (String(url).includes("/api/v1/auth/local-config")) return Response.json({provider:"local",selfRegisterEnabled:false,hasLocalAdmin:true,evaluationOrganizationName:null});
+      if (String(url).includes("/api/v1/auth/login")) return Response.json({
         token: "we_local_test",
         expiresAt: "2026-06-19T00:00:00.000Z",
         auth: {
@@ -506,8 +511,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
           roles: [{ projectId: null, roleId: "admin" }],
           permissions: ["admin:access", "users:manage"]
         }
-      }))
-    };
+      });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const authClient = createAuthClient(createApiClient({baseUrl:"",fetchImpl:fetchImpl as typeof fetch}));
 
     renderApp({
       runtimeMode: "api",
@@ -516,12 +523,17 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     });
 
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    const rejectedSession = currentSharedOperationSession();
+    expect(rejectedSession).toBeGreaterThan(previousSession);
+    expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBeNull();
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "local.admin" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "strong-password" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
     expect(await screen.findByText("Local Admin")).toBeInTheDocument();
-    expect(authClient.login).toHaveBeenCalledWith({ username: "local.admin", password: "strong-password" });
+    expect(currentSharedOperationSession()).toBeGreaterThan(rejectedSession);
+    expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBe("we_local_test");
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("/api/v1/auth/login"),expect.objectContaining({method:"POST",body:JSON.stringify({username:"local.admin",password:"strong-password"})}));
   });
 
   it("shows registration guidance only while the registration form is active", async () => {
@@ -574,6 +586,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("keeps the token and recovers through retry when the auth probe hits a network error", async () => {
+    const previousSession = currentSharedOperationSession();
     window.history.replaceState(null, "", "/parameter-home");
     window.localStorage.setItem("wiseeff.localAuthToken", "live-token");
     const getCurrentAuthContext = vi
@@ -607,6 +620,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
     expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBe("live-token");
+    expect(currentSharedOperationSession()).toBe(previousSession);
 
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
 
@@ -922,6 +936,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
   it("updates the current profile and logs out from the topbar menu", async () => {
     window.history.replaceState(null, "", "/parameter-home");
+    sessionStorage.setItem("wiseeff.shared-switch:user:org:project:config","sensitive reason");
+    sessionStorage.setItem("unrelated-session-value","keep");
     const authClient = {
       getCurrentAuthContext: vi.fn(async () => ({
         user: {
@@ -978,6 +994,20 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
     expect(authClient.logout).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem("wiseeff.shared-switch:user:org:project:config")).toBeNull();
+    expect(sessionStorage.getItem("unrelated-session-value")).toBe("keep");sessionStorage.removeItem("unrelated-session-value");
+  });
+
+  it("continues logout when session storage access is denied",async()=>{
+    window.history.replaceState(null,"","/parameter-home");
+    const authClient={getCurrentAuthContext:vi.fn(async()=>({user:{id:"u-api-admin",organizationId:"org-chargelab",name:"API Admin",title:"Owner",isActive:true},organization:{id:"org-chargelab",name:"ChargeLab"},roles:[{projectId:null,roleId:"admin"}],permissions:["admin:access"]})),logout:vi.fn(async()=>undefined)};
+    renderApp({runtimeMode:"api",initialAppState:adminState,ports:{authClient,parameterRepository:createTestParameterRepository()}});
+    fireEvent.click(await screen.findByRole("button",{name:/打开用户菜单$/}));
+    window.localStorage.setItem("wiseeff.localAuthToken","temporary-test-token");window.localStorage.setItem("unrelated-logout-test","keep");
+    const denied=vi.spyOn(window,"sessionStorage","get").mockImplementation(()=>{throw new DOMException("denied","SecurityError");});
+    try{fireEvent.click(screen.getByRole("button",{name:"退出登录"}));expect(await screen.findByRole("heading",{name:"登录雷泽"})).toBeInTheDocument();
+      expect(authClient.logout).toHaveBeenCalledOnce();expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBeNull();expect(window.localStorage.getItem("unrelated-logout-test")).toBe("keep");
+    }finally{denied.mockRestore();window.localStorage.removeItem("unrelated-logout-test");}
   });
 
   it("routes user governance page mutations through injected API-mode actions", async () => {

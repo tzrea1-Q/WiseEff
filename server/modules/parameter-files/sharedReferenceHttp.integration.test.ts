@@ -2,8 +2,9 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
+import type { Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
@@ -15,6 +16,7 @@ import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { createLocalObjectStore, type ObjectStore } from "../logs/objectStore";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
+import * as catalogValueSync from "../parameter-bindings/catalogProjectValueSync";
 import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
 import { registerParameterTopologyRoutes } from "../parameter-topology/routes";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
@@ -28,8 +30,10 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import { getAuthContext } from "../auth/repository";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
 import type { TopologyTree } from "../../../src/domain/parameter-topology/types";
-import { createDtsToolchainRunner } from "./dtsToolchain";
+import { createDtsToolchainRunner, type DtsToolchainRunner } from "./dtsToolchain";
+import { previewCanonicalMemberAddition } from "./canonicalMemberAddition";
 import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
+import { sharedDtsiProjectUsagesSchema } from "../contracts/dtoSchemas/sharedDtsi";
 
 const ORG = "org-shared-ref", ADMIN = "user-shared-ref", A = "shared-project-a", B = "shared-project-b";
 const admin = makeTestAuthContext({ organizationId: ORG, userId: ADMIN, roles: [{ roleId: "admin", projectId: null }] });
@@ -47,9 +51,9 @@ describe("fixed shared references through the real API role", () => {
   const jsonFiles: Record<string, { fileId: string; versionId: string }> = {};
   const privateRoots: Record<string, { fileId: string; fileVersionId: string; configRevisionId: string }> = {};
   let resourceId: string, versionId: string, appliedA: Applied["item"], appliedB: Applied["item"];
-  function server(auth = admin, sourceStore: ObjectStore = storage) {
+  function server(auth = admin, sourceStore: ObjectStore = storage, database: Database = api) {
     const router = createRouter();
-    registerSharedDtsiRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth });
+    registerSharedDtsiRoutes(router, { db: database, objectStore: sourceStore, getCurrentAuthContext: () => auth });
     registerCatalogProjectValueConsumerRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth });
     registerParameterTopologyRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth, refusalAuditSink: createTrustedRefusalAuditSink(db) });
     registerParameterFileRoutes(router, { db: api, objectStore: sourceStore, getCurrentAuthContext: () => auth,
@@ -69,7 +73,7 @@ describe("fixed shared references through the real API role", () => {
       driverName: "Shared charger", idempotencyKey: "shared-ref-register", reason: "Synthetic shared reference acceptance" });
     for (const projectId of [A, B]) {
       await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')", [projectId, ORG]);
-      const configSetId = sets[projectId] = (await createConfigSet(db, admin, { projectId, name: "Shared reference" })).id;
+      const configSetId = sets[projectId] = (await createConfigSet(db, admin, { projectId, name: projectId===B?"Unique concurrency config":"Shared reference" })).id;
       const uploaded = await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: "board.dts", bytes: Buffer.from(source) });
       await addConfigSetFile(db, admin, { configSetId, fileId: uploaded.file.id, role: "base", sortOrder: 0 });
       const json = await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: "private.json", bytes: Buffer.from('{"local":true}') });
@@ -89,6 +93,155 @@ describe("fixed shared references through the real API role", () => {
     await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('shared-ref-editor-role','shared-ref-editor',$1,$2,'hardware-user')", [ORG, A]);
   }, 120_000);
   afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); if (directory) await rm(directory, { recursive: true, force: true }); }, 120_000);
+
+  it("limits a usage refresh to the authorized project and exact configuration",async()=>{
+    const target=new URLSearchParams({projectId:A,configSetId:sets[A]!,limit:"1"});
+    const exact=await requestJson<{items:{projectId:string;configSetId:string}[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?${target}`);
+    expect(exact.body).toMatchObject({total:1,items:[{projectId:A,configSetId:sets[A]}]});
+    const blocked=new URLSearchParams({projectId:B,configSetId:sets[B]!,limit:"1"});
+    const limited=await requestJson<{items:unknown[];total:number}>(server(editor),`/api/v2/shared-dtsi/project-usages?${blocked}`);
+    expect(limited.body).toMatchObject({total:0,items:[]});expect(limited.bodyText).not.toContain(B);
+    const foreign=new URLSearchParams({projectId:A,configSetId:sets[B]!,limit:"1"});
+    const mismatch=await requestJson<{items:unknown[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?${foreign}`);
+    expect(mismatch.body).toMatchObject({total:0,items:[]});
+    await db.query("insert into organizations(id,name) values ('org-refresh-other','Other organization')");
+    await db.query("insert into projects(id,organization_id,name,code,status) values ('refresh-other','org-refresh-other','Foreign refresh','REFRESH-OTHER','initialized')");
+    const other=new URLSearchParams({projectId:"refresh-other",limit:"1"});
+    const hiddenOther=await requestJson<{items:unknown[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?${other}`);
+    expect(hiddenOther.body).toMatchObject({total:0,items:[]});expect(hiddenOther.bodyText).not.toContain("refresh-other");
+  });
+
+  it("returns the real shared source location for an unresolved reference during addition",async()=>{
+    const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Missing external label",sourceName:"external.dtsi",content:'&not_in_project { acceptance = <1>; };',changeDescription:"External reference"});
+    expect(draft.status,draft.bodyText).toBe(201);
+    const resourceId=draft.body.item.resourceId,preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});
+    expect(preview.status,preview.bodyText).toBe(201);
+    const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"unresolved-addition-location"});expect(version.status,version.bodyText).toBe(201);
+    const result=await post<{error:{details:{diagnostics:Array<{message:string;sourceName?:string;resourceId?:string;versionId?:string;line?:number}>}}}>(`/api/v1/projects/${A}/config-sets/${sets[A]}/member-addition/preview`,{sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:1});
+    expect(result.status,result.bodyText).toBe(400);
+    expect(result.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({sourceName:"external.dtsi",resourceId,versionId:version.body.item.id,line:1,message:"找不到覆盖目标节点（&not_in_project）。",rawMessage:expect.stringContaining("Overlay target")})]));
+    for(const [index,content] of ['&{/missing} { flag = <1>; };','/ { clocks = <&{/missing}>; };'].entries()){
+      const pathDraft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:`Missing path ${index}`,sourceName:`missing-${index}.dtsi`,content,changeDescription:"Missing path"});expect(pathDraft.status,pathDraft.bodyText).toBe(201);
+      const pathId=pathDraft.body.item.resourceId,pathPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${pathId}/publication-preview`,{expectedRevision:1});expect(pathPreview.status,pathPreview.bodyText).toBe(201);
+      const pathVersion=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${pathId}/publications`,{previewId:pathPreview.body.item.id,idempotencyKey:`missing-path-${index}`});expect(pathVersion.status,pathVersion.bodyText).toBe(201);
+      const failure=await post<{error:{details:{diagnostics:Array<{code:string;message:string}>}}}>(`/api/v1/projects/${A}/config-sets/${sets[A]}/member-addition/preview`,{sharedReference:{resourceId:pathId,versionId:pathVersion.body.item.id},role:"misc",sortOrder:1});
+      expect(failure.status,failure.bodyText).toBe(400);expect(failure.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({code:"target-unresolved",message:expect.stringContaining("找不到引用的目标节点")})]));
+    }
+  });
+
+  it("reports the real source when a catalog identity disagreement blocks addition",async()=>{
+    const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Identity conflict",sourceName:"identity.dtsi",content:'/ { unrelated {}; };',changeDescription:"Conflicting identity"});
+    expect(draft.status,draft.bodyText).toBe(201);const resourceId=draft.body.item.resourceId;
+    const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});expect(preview.status,preview.bodyText).toBe(201);
+    const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"identity-conflict-addition"});expect(version.status,version.bodyText).toBe(201);
+    const original=catalogValueSync.resolveObservedSubject;
+    const lookup=vi.spyOn(catalogValueSync,"resolveObservedSubject").mockImplementation((snapshot,input)=>input.nodeName==="charger"?{subjectId:"other-subject",subjectKind:"driver"}:original(snapshot,input));
+    try{const result=await post(`/api/v1/projects/${A}/config-sets/${sets[A]}/member-addition/preview`,{sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:2});
+      expect(result.status,result.bodyText).toBe(409);expect(result.body).toMatchObject({error:{details:{reason:"shared-version-identity",diagnostics:expect.arrayContaining([expect.objectContaining({fileId:privateRoots[A]!.fileId,sourceName:"board.dts",node:"/charger",property:"compatible",identity:true})])}}});
+    }finally{lookup.mockRestore();}
+  });
+
+  it("maps a diagnostic after an inserted include back to the original project root",async()=>{
+    const project="diagnostic-root-project",root='/dts-v1/;\n/ {\n  x { flag = <1>; };\n};\n';
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Root diagnostic','ROOT-DIAG','initialized')",[project,ORG]);
+    const configSetId=(await createConfigSet(db,admin,{projectId:project,name:"Root diagnostic"})).id;
+    const rootFile=await uploadProjectParameterFile(db,storage,admin,{projectId:project,fileName:"board.dts",bytes:Buffer.from(root)});
+    await addConfigSetFile(db,admin,{configSetId,fileId:rootFile.file.id,role:"base",sortOrder:0});
+    await ingestConfigRevision(db,{organizationId:ORG,projectId:project,configSetId,entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],members:[
+      {fileId:rootFile.file.id,fileVersionId:rootFile.version.id,fileName:"board.dts",role:"base",sortOrder:0,content:root}]},admin);
+    const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Diagnostic source",sourceName:"shared.dtsi",content:'/ { shared_node {}; };',changeDescription:"Diagnostic source"});
+    expect(draft.status,draft.bodyText).toBe(201);const resourceId=draft.body.item.resourceId;
+    const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});expect(preview.status,preview.bodyText).toBe(201);
+    const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"root-diagnostic-source"});expect(version.status,version.bodyText).toBe(201);
+    const toolchain:DtsToolchainRunner={probe:async()=>({dtc:{path:null,version:null},fdtoverlay:{path:null,version:null},dtschema:{path:null,version:null}}),validate:async()=>({ok:false,mode:"release",compiler:{dtc:null,fdtoverlay:null,dtschema:null},artifacts:{},diagnostics:[
+      {severity:"error",code:"dtc-duplicate-label",message:"Duplicate label /Users/private/secret",file:"board.dts",line:1},
+      {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:2},
+      {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:5},
+      {severity:"error",code:"same",message:"Same diagnostic",file:"shared.dtsi",line:1},
+      {severity:"error",code:"compile-failed",message:"spawn failed at /Users/private/secret/tool",file:"/Users/private/secret/board.dts",line:1}]})};
+    const security={invocation:createUserInvocation(admin),requestId:"root-diagnostic",refusalSink:createTrustedRefusalAuditSink(db)};
+    const failure=await previewCanonicalMemberAddition(api,storage,admin,{projectId:project,configSetId,sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:1},security,{toolchain}).catch(error=>error);
+    const errors=failure.details.diagnostics as Array<{sourceName:string;fileId?:string;resourceId?:string;line?:number}>;
+    expect(errors).toHaveLength(5);expect(errors[0]).toMatchObject({sourceName:"board.dts",fileId:rootFile.file.id,line:1,message:"节点标签重复。"});
+    expect(errors[1]).toMatchObject({sourceName:"board.dts"});expect(errors[1]!.fileId).toBeUndefined();expect(errors[1]!.line).toBeUndefined();
+    expect(errors[2]).toMatchObject({sourceName:"board.dts",fileId:rootFile.file.id,line:3});expect(errors[3]).toMatchObject({sourceName:"shared.dtsi",resourceId,line:1});
+    expect(JSON.stringify(failure.details)).not.toContain("/Users/private/secret");expect(errors[4]).toMatchObject({sourceName:"配置"});expect(errors[4]!.line).toBeUndefined();
+  });
+
+  it("reports the original root line when a shared overlay invalidates a later project overlay",async()=>{
+    const project="diagnostic-overlay-project",root='/dts-v1/;\n/include/ "base.dtsi"\n/ { model = "Overlay diagnostic"; };\n&x { flag = <1>; };\n',base='/ { x: x { flag = <0>; }; };';
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Overlay diagnostic','OVERLAY-DIAG','initialized')",[project,ORG]);
+    const configSetId=(await createConfigSet(db,admin,{projectId:project,name:"Overlay diagnostic"})).id;
+    const file=await uploadProjectParameterFile(db,storage,admin,{projectId:project,fileName:"board.dts",bytes:Buffer.from(root)}),baseFile=await uploadProjectParameterFile(db,storage,admin,{projectId:project,fileName:"base.dtsi",bytes:Buffer.from(base)});
+    await addConfigSetFile(db,admin,{configSetId,fileId:file.file.id,role:"base",sortOrder:0});await addConfigSetFile(db,admin,{configSetId,fileId:baseFile.file.id,role:"misc",sortOrder:1});
+    const revision=await ingestConfigRevision(db,{organizationId:ORG,projectId:project,configSetId,entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],members:[{fileId:file.file.id,fileVersionId:file.version.id,fileName:"board.dts",role:"base",sortOrder:0,content:root},{fileId:baseFile.file.id,fileVersionId:baseFile.version.id,fileName:"base.dtsi",role:"include",sortOrder:1,content:base}]},admin);
+    const imported=await post<{item:{resourceId:string;revision:number;name:string;members:Array<{id:string;sourceName:string;content:string}>;buildInputs:unknown;dependencies:unknown}}>(`/api/v2/projects/${project}/config-sets/${configSetId}/shared-dtsi`,{name:"Existing overlay base",configRevisionId:revision.id,fileId:baseFile.file.id,fileVersionId:baseFile.version.id});expect(imported.status,imported.bodyText).toBe(201);
+    const importedId=imported.body.item.resourceId,save=await requestJson<{item:{revision:number}}>(server(),`/api/v2/shared-dtsi/${importedId}/draft`,{method:"PUT",body:JSON.stringify({name:imported.body.item.name,members:imported.body.item.members,buildInputs:imported.body.item.buildInputs,dependencies:imported.body.item.dependencies,changeDescription:"Shared base",expectedRevision:imported.body.item.revision})});expect(save.status,save.bodyText).toBe(200);
+    const basePreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${importedId}/publication-preview`,{expectedRevision:save.body.item.revision});expect(basePreview.status,basePreview.bodyText).toBe(201);
+    const baseVersion=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${importedId}/publications`,{previewId:basePreview.body.item.id,idempotencyKey:"overlay-base-publication"});expect(baseVersion.status,baseVersion.bodyText).toBe(201);
+    const conversion={sharedReference:{resourceId:importedId,versionId:baseVersion.body.item.id,convertPrivate:{configRevisionId:revision.id,fileId:baseFile.file.id,fileVersionId:baseFile.version.id}},role:"misc",sortOrder:1};
+    const convertPreview=await post<Preview>(`/api/v1/projects/${project}/config-sets/${configSetId}/member-addition/preview`,conversion);expect(convertPreview.status,convertPreview.bodyText).toBe(200);
+    const converted=await post(`/api/v1/projects/${project}/config-sets/${configSetId}/member-addition/apply`,{...conversion,proofToken:convertPreview.body.item.proofToken,reason:"Prepare shared base",clientMutationId:"overlay-base-conversion"});expect(converted.status,converted.bodyText).toBe(200);
+    const nextDraft=await post<{item:{members:Array<{id:string;sourceName:string;content:string}>}}>(`/api/v2/shared-dtsi/${importedId}/draft`,{baseVersionId:baseVersion.body.item.id});expect(nextDraft.status,nextDraft.bodyText).toBe(201);
+    const nextSave=await requestJson(server(),`/api/v2/shared-dtsi/${importedId}/draft`,{method:"PUT",body:JSON.stringify({name:"Existing overlay base",members:nextDraft.body.item.members.map(member=>({...member,content:'\n\n&missing_from_switch { flag = <1>; };'})),expectedRevision:1,changeDescription:"Missing switch target"})});expect(nextSave.status,nextSave.bodyText).toBe(200);
+    const nextPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${importedId}/publication-preview`,{expectedRevision:2});expect(nextPreview.status,nextPreview.bodyText).toBe(201);
+    const nextVersion=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${importedId}/publications`,{previewId:nextPreview.body.item.id,idempotencyKey:"overlay-base-missing-target"});expect(nextVersion.status,nextVersion.bodyText).toBe(201);
+    const switched=await post<{error:{details:{diagnostics:Array<{sourceName?:string;resourceId?:string;versionId?:string;line?:number}>}}}>(`/api/v1/projects/${project}/config-sets/${configSetId}/member-addition/preview`,{sharedReference:{resourceId:importedId,versionId:nextVersion.body.item.id,replaceVersionId:baseVersion.body.item.id},role:"misc",sortOrder:1});
+    expect(switched.status,switched.bodyText).toBe(400);expect(switched.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({sourceName:"base.dtsi",resourceId:importedId,versionId:nextVersion.body.item.id,line:3})]));
+    const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Delete overlay target",sourceName:"delete.dtsi",content:'/ { /delete-node/ x; };',changeDescription:"Remove overlay target"});expect(draft.status,draft.bodyText).toBe(201);
+    const resourceId=draft.body.item.resourceId,preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});expect(preview.status,preview.bodyText).toBe(201);
+    const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"overlay-location"});expect(version.status,version.bodyText).toBe(201);
+    const result=await post<{error:{details:{diagnostics:Array<{sourceName?:string;fileId?:string;line?:number}>}}}>(`/api/v1/projects/${project}/config-sets/${configSetId}/member-addition/preview`,{sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:1});
+    expect(result.status,result.bodyText).toBe(400);expect(result.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({sourceName:"board.dts",fileId:file.file.id,line:4})]));
+  });
+
+  it("distinguishes a missing project root from changed source composition",async()=>{
+    const project="overview-readiness-project";
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Readiness case','RDY-CASE','initialized')",[project,ORG]);
+    const missing=(await createConfigSet(db,admin,{projectId:project,name:"Missing root"})).id;
+    await db.query("insert into dts_config_revisions(id,organization_id,project_id,config_set_id,revision_number,status,entry_file) values ('overview-missing-root',$1,$2,$3,1,'resolved','missing.dts')",[ORG,project,missing]);
+    const drift=(await createConfigSet(db,admin,{projectId:project,name:"Changed source"})).id;
+    const uploaded=await uploadProjectParameterFile(db,storage,admin,{projectId:project,fileName:"board.dts",bytes:Buffer.from(source)});
+    await addConfigSetFile(db,admin,{configSetId:drift,fileId:uploaded.file.id,role:"base",sortOrder:0});
+    await ingestConfigRevision(db,{organizationId:ORG,projectId:project,configSetId:drift,entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],members:[{fileId:uploaded.file.id,fileVersionId:uploaded.version.id,fileName:"board.dts",role:"base",sortOrder:0,content:source}]},admin);
+    await db.query("update project_parameter_files set config_set_sort_order=1 where id=$1",[uploaded.file.id]);
+    const result=await requestJson<{items:Array<{configSetId:string;configurationIssue:string;configurationReady:boolean}>}>(server(),`/api/v2/shared-dtsi/project-usages?projectId=${project}&limit=20`);
+    expect(result.status,result.bodyText).toBe(200);
+    expect(result.body.items).toEqual(expect.arrayContaining([expect.objectContaining({configSetId:missing,configurationIssue:"missing-root",configurationReady:false}),expect.objectContaining({configSetId:drift,configurationIssue:"source-changed",configurationReady:false})]));
+  });
+
+  it("lists authorized project configurations including those without shared references", async () => {
+    const emptyProject = "overview-empty-project";
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Overview empty','OVERVIEW-EMPTY','initialized')", [emptyProject, ORG]);
+    await db.query("insert into organizations(id,name) values ('org-overview-other','Other overview')");
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ('overview-other-admin','org-overview-other','Other admin','Admin',true)");
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('overview-other-role','overview-other-admin','org-overview-other','admin')");
+    await db.query("insert into projects(id,organization_id,name,code,status) values ('overview-other','org-overview-other','Overview other','OVERVIEW-OTHER','initialized')");
+    const result = await requestJson<{items:Array<{projectId:string;configSetId:string|null;references:unknown[]}>;total:number;visibility:string}>(server(), "/api/v2/shared-dtsi/project-usages?q=Overview");
+    expect(result.status, result.bodyText).toBe(200);
+    expect(sharedDtsiProjectUsagesSchema.safeParse(result.body).success).toBe(true);
+    expect(result.body).toMatchObject({total:1,visibility:"organization",items:[{projectId:emptyProject,configSetId:null,configurationIssue:"no-configuration",references:[]}]});
+    expect(result.bodyText).not.toContain("overview-other");
+    const other=makeTestAuthContext({organizationId:"org-overview-other",userId:"overview-other-admin"});
+    const otherList=await requestJson<{items:{projectId:string}[];total:number}>(server(other),"/api/v2/shared-dtsi/project-usages?q=Overview");
+    expect(otherList.body).toMatchObject({total:1,items:[{projectId:"overview-other"}]});
+    expect(otherList.bodyText).not.toContain(emptyProject);
+    const limited = await requestJson<{items:unknown[];total:number;visibility:string}>(server(editor), "/api/v2/shared-dtsi/project-usages?q=Overview");
+    expect(limited.status, limited.bodyText).toBe(200);
+    expect(limited.body).toMatchObject({total:0,visibility:"authorized-projects",items:[]});
+    const first=await createConfigSet(db,admin,{projectId:emptyProject,name:"Empty first"});
+    const second=await createConfigSet(db,admin,{projectId:emptyProject,name:"Empty second"});
+    const page=await requestJson<{items:{projectId:string;configSetId:string;configurationReady:boolean;references:unknown[]}[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=OVERVIEW-EMPTY&status=unreferenced&limit=1");
+    expect(page.status,page.bodyText).toBe(200);
+    expect(page.body).toMatchObject({total:2,items:[{projectId:emptyProject,configSetId:first.id,configurationReady:false,configurationIssue:"no-resolved-source",references:[]}]});
+    const later=await requestJson<{items:{configSetId:string}[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=OVERVIEW-EMPTY&status=unreferenced&limit=1&offset=1");
+    expect(later.body).toMatchObject({total:2,items:[{configSetId:second.id}]});
+    const pastEnd=await requestJson<{items:unknown[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=OVERVIEW-EMPTY&status=unreferenced&limit=1&offset=9");
+    expect(pastEnd.body).toMatchObject({total:2,items:[]});
+    const referenced=await requestJson<{items:unknown[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=OVERVIEW-EMPTY&status=referenced");
+    expect(referenced.body).toMatchObject({total:0,items:[]});
+    expect((await requestJson(server(),"/api/v2/shared-dtsi/project-usages?status=invalid")).status).toBe(400);
+  });
 
   it("stops new direct and transitive references while retaining exact existing closure during unrelated switches",async()=>{
     const A="lifecycle-project-a",B="lifecycle-project-b",localSets:Record<string,string>={};
@@ -364,7 +517,22 @@ describe("fixed shared references through the real API role", () => {
     expect(exported.body.manifest.members.find(member => member.sharedReference)?.sharedReference?.versionId).toBe(versionId);
     const previewB = await post<Preview>(`${path(B)}/preview`, body);
     const bodyB = { ...body, proofToken: previewB.body.item.proofToken, reason: "Use fixed source in independent project", clientMutationId: "shared-ref-b" };
-    const responseB = await post<Applied>(`${path(B)}/apply`, bodyB);
+    let selected!:()=>void, release!:()=>void;
+    const rowsRead=new Promise<void>(resolve=>{selected=resolve;}),continueRead=new Promise<void>(resolve=>{release=resolve;});
+    const gate:Database={...api,async query<Row>(sql:string,values?:unknown[]){
+      const result=await api.query<Row>(sql,values);
+      if(sql.includes("from public.projects p left join public.dts_config_set c")){selected();await continueRead;}
+      return result;
+    }};
+    const overviewPath="/api/v2/shared-dtsi/project-usages?q=Unique%20concurrency%20config&status=unreferenced";
+    const pendingOverview=requestJson<{items:{projectId:string;configSetId:string;references:unknown[]}[];total:number}>(server(admin,storage,gate),overviewPath);
+    await rowsRead;
+    const responseB = await post<Applied>(`${path(B)}/apply`, bodyB).finally(release);
+    const beforeCommit=await pendingOverview;
+    expect(beforeCommit.status,beforeCommit.bodyText).toBe(200);
+    expect(beforeCommit.body).toMatchObject({total:1,items:[{projectId:B,configSetId:sets[B],references:[]}]});
+    const afterCommit=await requestJson<{items:unknown[];total:number}>(server(),overviewPath);
+    expect(afterCommit.body).toMatchObject({total:0,items:[]});
     expect(responseB.status, responseB.bodyText).toBe(200); appliedB = responseB.body.item;
     expect(appliedB.fileId).not.toBe(appliedA.fileId); expect(appliedB.fileVersionId).not.toBe(appliedA.fileVersionId);
     expect((await post(`${path(B)}/apply`, bodyB)).body).toEqual(responseB.body);
@@ -455,8 +623,10 @@ describe("fixed shared references through the real API role", () => {
     expect(conflict.status,conflict.bodyText).toBe(400);expect(conflict.bodyText).toContain("FLAG");
     const ambiguous=await publish("Ambiguous include binding",[{sourceName:"other.dtsi",content:'/ { other {}; };'},
       {sourceName:"include/dt-bindings/power.h",content:'#define OTHER 1\n'}],{FLAG:"1"});
-    const collision=await post(`${path(projectId)}/preview`,{sharedReference:{resourceId:ambiguous.resourceId,versionId:ambiguous.id,mountPath:"other"},role:"misc",sortOrder:10});
-    expect(collision.status,collision.bodyText).toBe(400);expect(collision.bodyText).toContain("多个搜索目录");
+    const collision=await post<{error:{details:{diagnostics:{code:string;message:string;sourceName:string;line:number}[]}}}>(`${path(projectId)}/preview`,{sharedReference:{resourceId:ambiguous.resourceId,versionId:ambiguous.id,mountPath:"other"},role:"misc",sortOrder:10});
+    expect(collision.status,collision.bodyText).toBe(400);expect(collision.body.error.details.diagnostics).toContainEqual(expect.objectContaining({
+      code:"preprocess-include-ambiguous",message:"引用文件匹配多个搜索目录，请使用明确的相对路径或调整构建设置。",sourceName:"vendor/power/main.dtsi",line:1}));
+    expect(collision.bodyText).not.toContain("#define OTHER");
     expect((await requestJson(server(),`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`)).body).toEqual(before);
     const candidate=await post<{item:{id:string}}>(`/api/v1/projects/${projectId}/parameter-file-candidates`,{fileId:root.file.id,fileName:"cpp-board.dts",contentBase64:Buffer.from(rootSource).toString("base64"),intent:"source_revision",
       expectedCurrentVersionId:(before as {items:{fileId:string;currentVersionId:string}[]}).items.find(row=>row.fileId===root.file.id)!.currentVersionId,expectedConfigRevisionId:applied.body.item.configRevisionId,clientMutationId:"cpp-remove-entry"});
@@ -517,6 +687,30 @@ describe("fixed shared references through the real API role", () => {
     const restricted=await requestJson<{items:{projectId:string}[];total:number;visibility:string}>(server(editor),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
     expect(restricted.body.total).toBe(1);expect(restricted.body.items.map(row=>row.projectId)).toEqual([A]);expect(restricted.bodyText).not.toContain(B);
     expect(restricted.body.visibility).toBe("authorized-projects");
+    const overview=await requestJson<{items:{projectId:string;configSetId:string;configurationReady:boolean;references:{resourceId:string;versionId:string;direct:boolean;requiredBy:{resourceId:string}[]}[]}[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=Fixed%20leaf&status=referenced&limit=1");
+    expect(overview.status,overview.bodyText).toBe(200);
+    expect(sharedDtsiProjectUsagesSchema.safeParse(overview.body).success).toBe(true);
+    expect(overview.body.total).toBe(2);
+    expect(overview.body.items).toHaveLength(1);
+    expect(overview.body.items[0]).toMatchObject({projectId:A,configSetId:sets[A],configurationReady:true});
+    expect(overview.body.items[0]!.references).toEqual(expect.arrayContaining([
+      expect.objectContaining({resourceId:root.resourceId,versionId:root.id,direct:true}),
+      expect.objectContaining({resourceId:leaf.resourceId,versionId:leaf.id,direct:false,requiredBy:[expect.objectContaining({resourceId:root.resourceId})]})
+    ]));
+    const nextPage=await requestJson<{items:{projectId:string}[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=Fixed%20leaf&status=referenced&limit=1&offset=1");
+    expect(nextPage.body).toMatchObject({total:2,items:[{projectId:B}]});
+    const limitedOverview=await requestJson<{items:{projectId:string}[];total:number;visibility:string}>(server(editor),"/api/v2/shared-dtsi/project-usages?q=Fixed%20leaf");
+    expect(limitedOverview.body).toMatchObject({total:1,visibility:"authorized-projects",items:[{projectId:A}]});
+    expect(limitedOverview.bodyText).not.toContain(B);
+    const targetQuery=new URLSearchParams({projectId:A,configSetId:sets[A]!,limit:"1"});
+    const targeted=await requestJson<{items:{projectId:string;configSetId:string}[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?${targetQuery}`);
+    expect(targeted.body).toMatchObject({total:1,items:[{projectId:A,configSetId:sets[A]}]});
+    const forbiddenTarget=new URLSearchParams({projectId:B,configSetId:sets[B]!,limit:"1"});
+    const hidden=await requestJson<{items:unknown[];total:number}>(server(editor),`/api/v2/shared-dtsi/project-usages?${forbiddenTarget}`);
+    expect(hidden.body).toMatchObject({total:0,items:[]});expect(hidden.bodyText).not.toContain(B);
+    const wrongConfig=new URLSearchParams({projectId:A,configSetId:sets[B]!,limit:"1"});
+    const mismatch=await requestJson<{items:unknown[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?${wrongConfig}`);
+    expect(mismatch.body).toMatchObject({total:0,items:[]});
     await db.query("update user_role_bindings set project_id=null where id='shared-ref-editor-role'");
     try {
       const organizationGrant=await requestJson<{total:number;visibility:string}>(server(editor),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
@@ -539,6 +733,8 @@ describe("fixed shared references through the real API role", () => {
     expect(next.status,next.bodyText).toBe(201);expect(next.body.item.version).toBe(2);
     const oldPins=await requestJson<{items:{projectId:string;versionId:string;version:number;upgradeAvailable:boolean;evaluation:string}[]}>(server(),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);
     expect(oldPins.body.items).toEqual([A,B].map(projectId=>expect.objectContaining({projectId,versionId:leaf.id,version:1,upgradeAvailable:true,evaluation:"not-evaluated"})));
+    const afterPublication=await requestJson<{items:{references:{resourceId:string;versionId:string;upgradeAvailable:boolean}[]}[]}>(server(),"/api/v2/shared-dtsi/project-usages?q=Fixed%20leaf");
+    expect(afterPublication.body.items[0]!.references).toContainEqual(expect.objectContaining({resourceId:leaf.resourceId,versionId:leaf.id,upgradeAvailable:true}));
     for(const [index,project] of [A,B].entries())expect(frozenExport((await requestJson<Export>(server(),`/api/v1/projects/${project}/config-sets/${sets[project]}/export`)).body)).toEqual(frozenExport(exportsBefore[index]!.body));
     const sibling=await publish("Additional consumer",[{sourceName:"consumer.dtsi",content:'&fixed_leaf { sibling = <7>; };'}],
       [{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"mounted/vendor"}]);
@@ -603,6 +799,11 @@ describe("fixed shared references through the real API role", () => {
     const switching={sharedReference:{resourceId:shared.resourceId,versionId:next.body.item.id,replaceVersionId:shared.id},role:"misc",sortOrder:1};
     const switchPreview=await post<Preview>(`${secondPath}/member-addition/preview`,switching);expect(switchPreview.status,switchPreview.bodyText).toBe(200);
     const switched=await post<Applied>(`${secondPath}/member-addition/apply`,{...switching,proofToken:switchPreview.body.item.proofToken,reason:"Keep independent fixed versions",clientMutationId:"same-project-switch"});expect(switched.status,switched.bodyText).toBe(200);
+    const overview=await requestJson<{items:{configSetId:string;references:{resourceId:string;versionId:string}[]}[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=shared-same-project");
+    expect(overview.status,overview.bodyText).toBe(200);
+    expect(overview.body.total).toBe(2);
+    expect(overview.body.items.find(row=>row.configSetId===configIds[0])?.references).toContainEqual(expect.objectContaining({resourceId:shared.resourceId,versionId:shared.id}));
+    expect(overview.body.items.find(row=>row.configSetId===configIds[1])?.references).toContainEqual(expect.objectContaining({resourceId:shared.resourceId,versionId:next.body.item.id}));
     const secondExport=await requestJson<(typeof exports)[number]>(server(),`${secondPath}/export`);expect(secondExport.status,secondExport.bodyText).toBe(200);
     expect(secondExport.body.files).toContainEqual({name:"parts/common.dtsi",format:"dts",content:commonSource.replace('"okay"','"disabled"')});
     const oldCommon=exports[1]!.manifest.members.find(member=>member.fileName==="parts/common.dtsi")!;
@@ -652,6 +853,9 @@ describe("fixed shared references through the real API role", () => {
     const transferred=await requestJson(server(staleTransfer),`/api/v2/shared-dtsi/${resourceId}/usages`);
     expect(transferred.status,transferred.bodyText).toBe(403);
     expect(transferred.bodyText).not.toContain(A);expect(transferred.bodyText).not.toContain(B);
+    const overview=await requestJson(server(staleTransfer),"/api/v2/shared-dtsi/project-usages");
+    expect(overview.status,overview.bodyText).toBe(403);
+    expect(overview.bodyText).not.toContain(A);expect(overview.bodyText).not.toContain(B);
   });
 
   it("rechecks carried operating-target access after the platform role is revoked",async()=>{
@@ -665,10 +869,17 @@ describe("fixed shared references through the real API role", () => {
     expect(authorized.status,authorized.bodyText).toBe(200);
     expect(authorized.body).toMatchObject({total:2,visibility:"organization"});
     expect(authorized.body.items.map(row=>row.projectId).sort()).toEqual([A,B]);
+    const overviewEndpoint=`/api/v2/shared-dtsi/project-usages?organizationId=${ORG}&q=${A}`;
+    const authorizedOverview=await requestJson<{items:{projectId:string}[];total:number;visibility:string}>(server(stalePlatform),overviewEndpoint);
+    expect(authorizedOverview.status,authorizedOverview.bodyText).toBe(200);
+    expect(authorizedOverview.body).toMatchObject({total:1,visibility:"organization",items:[{projectId:A}]});
     await db.query("update user_role_bindings set role_id='admin' where id='shared-usage-platform-role'");
     const revoked=await requestJson(server(stalePlatform),endpoint);
     expect(revoked.status,revoked.bodyText).toBe(403);
     expect(revoked.bodyText).not.toContain(A);expect(revoked.bodyText).not.toContain(B);
+    const revokedOverview=await requestJson(server(stalePlatform),overviewEndpoint);
+    expect(revokedOverview.status,revokedOverview.bodyText).toBe(403);
+    expect(revokedOverview.bodyText).not.toContain(A);expect(revokedOverview.bodyText).not.toContain(B);
   });
 
   it("rejects legacy and canonical direct writes to the shared snapshot", async () => {

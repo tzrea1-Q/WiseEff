@@ -64,6 +64,26 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
       .toContainEqual({ key: `public.shared_dtsi_${relation}`, category: "organization-parameters", count: 0 });
   });
 
+  it("fences a foreign platform administrator's in-flight reservation when organization deletion is admitted",async()=>{
+    await seedCoreGraph(db,{organization:{id:"dtsi-admission-race"},users:[{id:"dtsi-admission-admin"}]});
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('dtsi-admission-role','dtsi-admission-admin','dtsi-admission-race','admin')");
+    await db.query("insert into projects(id,organization_id,name,code,status) values ('dtsi-admission-project','dtsi-admission-race','Race','RACE','initialized')");
+    const owner=await getAuthContext(db,"dtsi-admission-admin");const set=await createConfigSet(db,owner,{projectId:"dtsi-admission-project",name:"Race"});
+    const gate=await getRootPostgresPool(db)!.connect();await gate.query("begin");
+    await gate.query("update organizations set status='deleting' where id='dtsi-admission-race'");
+    let reservation:ReturnType<typeof request>;
+    try{
+      reservation=request(`/api/v1/projects/dtsi-admission-project/config-sets/${set.id}/member-addition/intents?organizationId=dtsi-admission-race`,"POST",
+        {registrationId:"f7868766-53e2-4178-8a32-20e16418026b"});
+      const deadline=Date.now()+15_000;let waiting=false;
+      while(Date.now()<deadline){const rows=await db.query<{n:string}>(`select count(*)::text n from pg_stat_activity where datname=current_database()
+        and wait_event_type='Lock' and query like '%from public.organizations where id=$1 for share%'`);if(Number(rows.rows[0]!.n)>0){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,20));}
+      expect(waiting).toBe(true);
+    }finally{await gate.query("commit");gate.release();}
+    expect((await reservation!).status).toBe(403);
+    expect((await db.query("select id from member_addition_intents where organization_id='dtsi-admission-race'")).rows).toEqual([]);
+  },120_000);
+
   it("erases owned drafts and immutable history while preserving foreign source and platform Catalog", async () => {
     async function create(user: string, name: string, publish: boolean) {
       const result = await request<{ item: Draft }>("/api/v2/shared-dtsi", "POST", {
@@ -99,6 +119,10 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
     const applied = await request(`${memberPath}/apply`, "POST", { ...reference, proofToken: plan.body.item.proofToken,
       reason: "Reference source before organization erasure", clientMutationId: "org-dtsi-reference" }, "dtsi-target-admin");
     expect(applied.status, applied.bodyText).toBe(200);
+    const intent=await request<{item:{id:string}}>(`${memberPath}/intents`,"POST",{registrationId:"a7a96887-ec8a-4fad-8e83-cc08b6dd1274"},"dtsi-target-admin");
+    expect(intent.status,intent.bodyText).toBe(200);
+    await expect(api.query("delete from public.member_addition_intents where id=$1",[intent.body.item.id])).rejects.toMatchObject({code:"42501"});
+    await expect(db.query("delete from public.member_addition_intents where id=$1",[intent.body.item.id])).rejects.toMatchObject({code:"55000"});
     const foreignVersion = await request(`${foreign.resource}/versions/${foreign.version}`, "GET", undefined, "dtsi-foreign-admin");
     const foreignSource = await request(foreignDraft.resource, "GET", undefined, "dtsi-foreign-admin");
     await expect(api.query("select parameter_catalog.definition_purge_mark('public.shared_dtsi_revisions','[]','DELETE')"))
@@ -120,7 +144,8 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
     expect(initial.body.item.blockers).toEqual([]);
     expect(initial.body.item.inventory).toEqual(expect.arrayContaining([
       { key: "public.project_shared_dtsi_references", category: "projects", count: 1 },
-      { key: "public.project_shared_dtsi_snapshots", category: "projects", count: 1 }
+      { key: "public.project_shared_dtsi_snapshots", category: "projects", count: 1 },
+      { key: "public.member_addition_intents", category: "projects", count: 1 }
     ]));
     for (const [relation, count] of Object.entries({ resources: 2, members: 2, drafts: 1, draft_members: 1,
       revisions: 1, revision_members: 1, publication_previews: 2 })) {
@@ -164,6 +189,7 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
     for (const relation of relations) expect((await db.query(`select count(*)::int n from public.shared_dtsi_${relation} where organization_id='dtsi-target'`)).rows)
       .toEqual([{ n: 0 }]);
     expect((await db.query("select id from organizations where id='dtsi-target'")).rows).toEqual([]);
+    expect((await db.query("select id from member_addition_intents where organization_id='dtsi-target'")).rows).toEqual([]);
     expect((await db.query("select id from project_shared_dtsi_references where organization_id='dtsi-target'")).rows).toEqual([]);
     expect((await db.query("select file_id from project_shared_dtsi_snapshots")).rows).toEqual([]);
     expect((await request(`${owned.resource}/versions/${owned.version}`, "GET", undefined, "dtsi-foreign-admin")).status).toBe(404);

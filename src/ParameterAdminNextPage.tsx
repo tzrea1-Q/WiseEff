@@ -268,7 +268,7 @@ export function ParameterAdminNextPage({
               canCreateSubject={Boolean(sessionPermissions?.includes("catalog:author"))}
               canReviewSource={Boolean(sessionRoles?.some(role=>role.roleId==="platform-admin"&&role.projectId===null))}
               canProposeSource={Boolean(sessionRoles?.some(role=>role.roleId==="admin"&&role.projectId===null) && !sessionRoles?.some(role=>role.roleId==="platform-admin"&&role.projectId===null))}
-              canWrite={Boolean(sessionPermissions?.includes("admin:access"))} organizationId={catalogOrganizationId} search={search} onNavigate={onNavigate} /> : null}
+              canWrite={Boolean(sessionPermissions?.includes("admin:access"))} organizationId={catalogOrganizationId} currentUserId={state?.currentUserId} search={search} onNavigate={onNavigate} /> : null}
             {organizationView === "specs" ? <OrganizationBulkImportPanel
               apiClient={runtime?.parameterApiClient}
               projects={projects}

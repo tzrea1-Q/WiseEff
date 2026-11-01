@@ -4,6 +4,7 @@ import type { SessionPropertyDraft } from "./sessionDrafts";
 import {
   classifySessionDraftRecovery,
   clearSessionDraftsForLogout,
+  clearSharedSwitchTasksForLogout,
   findRecoverableSessionDraft,
   readSessionDraftStore,
   removeSessionDraftBucket,
@@ -152,6 +153,13 @@ describe("sessionDraftStorage", () => {
     clearSessionDraftsForLogout(storage);
     expect(readSessionDraftStore(storage).buckets).toEqual([]);
     expect(findRecoverableSessionDraft(scope, storage)).toBeNull();
+  });
+
+  it("removes only shared switch drafts when logging out",()=>{
+    const storage=createMemoryStorage({"wiseeff.shared-switch:user:org:project:config":"reason", "other-session-value":"keep"});
+    clearSharedSwitchTasksForLogout(storage);
+    expect(storage.getItem("wiseeff.shared-switch:user:org:project:config")).toBeNull();
+    expect(storage.getItem("other-session-value")).toBe("keep");
   });
 
   it("removes a bucket when drafts are discarded or submitted empty", () => {

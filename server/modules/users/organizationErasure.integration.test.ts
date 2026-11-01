@@ -160,6 +160,25 @@ describe("Durable empty Organization erasure through HTTP and PostgreSQL", () =>
     expect((await db.query("select user_id,initiator_type from parameter_drafts where id='foreign-draft'")).rows).toEqual([{ user_id: null, initiator_type: "legacy" }]);
     expect((await db.query("select target_value,reason,updated_at,historical_attribution from parameter_drafts where id='foreign-draft'")).rows).toEqual(history);
   });
+  it("anonymizes an intent owned by a suspended foreign organization through the real API role",async()=>{
+    await db.query("update users set is_active=true where id='erasure-inactive'");
+    await db.query("insert into projects(id,organization_id,name,code) values('foreign-intent-project','erasure-home','Foreign intent','INTENT')");
+    await db.query("insert into dts_config_set(id,organization_id,project_id,name) values('foreign-intent-set','erasure-home','foreign-intent-project','Foreign')");
+    const token=`intent${randomBytes(5).toString("hex")}`,runtime=await provisionPublicationRuntimeLogins(database.url,{mode:"lab",runToken:token});
+    const api=createPostgresDatabase(runtime.apiUrl),server=createWiseEffServer({db:api,agentCheckpointer});
+    try{
+      const reserved=await requestJson<{item:{id:string}}>(server,"/api/v1/projects/foreign-intent-project/config-sets/foreign-intent-set/member-addition/intents?organizationId=erasure-home",
+        {method:"POST",headers:{"x-wiseeff-user":"erasure-inactive"},body:JSON.stringify({registrationId:"361c4c10-9057-4391-80d2-193430e5a5ed"})});
+      expect(reserved.status,reserved.bodyText).toBe(200);
+      await db.query("update organizations set status='suspended' where id='erasure-home'");
+      const p=await requestJson<{item:{stateDigest:string}}>(server,`${target}/deletion-preview`,{headers:{"x-wiseeff-user":"erasure-platform"}});
+      const erased=await requestJson<{item:{status:string}}>(server,`${target}/deletions`,{method:"POST",headers:{"x-wiseeff-user":"erasure-platform"},
+        body:JSON.stringify({stateDigest:p.body.item.stateDigest,confirmationOrganizationId:"erasure-target"})});
+      expect(erased.status,erased.bodyText).toBe(202);expect(erased.body.item.status).toBe("deleted");
+      expect((await db.query("select actor_user_id,registration_id,mutation_id,status from public.member_addition_intents where id=$1",[reserved.body.item.id])).rows)
+        .toEqual([{actor_user_id:null,registration_id:null,mutation_id:null,status:"pending"}]);
+    }finally{await api.close();await dropLabRuntimeLogins(database.url,token);}
+  },120_000);
   it.each(["user", "agent"])("retains a suspended foreign DTS revision's %s execution using its existing deleted-principal projection", async initiator => {
     await db.query("insert into projects(id,organization_id,name,code) values('foreign-dts-project','erasure-home','Foreign DTS','DTS')");
     await db.query("insert into dts_config_set(id,organization_id,project_id,name) values('foreign-dts-set','erasure-home','foreign-dts-project','Retain configuration')");

@@ -1503,7 +1503,20 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
           and parameter_catalog.definition_purge_allows_change(TG_TABLE_SCHEMA,TG_TABLE_NAME,old_value,'DELETE') then return old; end if;`);
       const privatePinOwner = branch.security_definer && branch.owner === CATALOG_MIGRATION_OWNER && !branch.runtime_execute
         && branch.source.includes("if new.erased_request_audit_id is not null and (TG_OP='INSERT' or new.erased_request_audit_id is distinct from old.erased_request_audit_id)\n    and not (TG_OP='UPDATE' and parameter_catalog.definition_purge_allows_change(TG_TABLE_SCHEMA,TG_TABLE_NAME,to_jsonb(old),'UPDATE')) then");
-      expect(explicitOwner || privateInvoker || leasedPrivateProbe || privatePinOwner, branch.identity).toBe(true);
+      const intentInvoker = branch.identity === "guard_member_addition_intent()" && !branch.security_definer && branch.migration_executor_owner
+        && /^\s*declare event_id text; event_action text;\s*begin\s*if tg_op='DELETE' then\s*if parameter_catalog\.definition_purge_allows_change\(tg_table_schema,tg_table_name,to_jsonb\(old\),'DELETE'\) then return old; end if;\s*raise exception using errcode='55000',message='Member operation identity is immutable';\s*end if;/i.test(branch.source)
+        && branch.source.match(/definition_purge_allows_change/gi)?.length === 1;
+      expect(explicitOwner || privateInvoker || leasedPrivateProbe || privatePinOwner || intentInvoker, branch.identity).toBe(true);
+      if (intentInvoker) {
+        expect(branch.settings).toEqual(["search_path=pg_catalog, public, parameter_catalog"]);
+        const attached = await client.query(`select c.oid::regclass::text as target from pg_trigger t join pg_class c on c.oid=t.tgrelid
+          where t.tgfoid='public.guard_member_addition_intent()'::regprocedure and not t.tgisinternal`);
+        expect(attached.rows).toEqual([{target:"member_addition_intents"}]);
+        for (const role of roles) {
+          const permission = await client.query<{can_delete:boolean}>("select has_table_privilege($1,'public.member_addition_intents','DELETE') as can_delete", [role]);
+          expect(permission.rows[0]?.can_delete, role).toBe(false);
+        }
+      }
       if (privateInvoker || leasedPrivateProbe) expect(branch.settings, branch.identity).toEqual(["search_path=pg_catalog, public"]);
       if (branch.security_definer && explicitOwner) {
         expect(branch.owner, branch.identity).toBe(CATALOG_MIGRATION_OWNER);

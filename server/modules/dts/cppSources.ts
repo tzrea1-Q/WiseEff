@@ -25,7 +25,7 @@ function stripCppComments(text: string) {
     token => token.startsWith('"') || token.startsWith("'") ? token : blank(token));
 }
 
-export type DtsPreprocessingFailureCode = "preprocess-input" | "preprocess-limit" | "preprocess-origin" | "preprocess-failed" | "preprocess-unavailable" | "preprocess-stale" | "preprocess-busy" | "path-escape";
+export type DtsPreprocessingFailureCode = "preprocess-input" | "preprocess-include-ambiguous" | "preprocess-limit" | "preprocess-origin" | "preprocess-failed" | "preprocess-unavailable" | "preprocess-stale" | "preprocess-busy" | "path-escape";
 export class DtsPreprocessingError extends Error {
   public readonly offset: number;
   public readonly hasSourceOffset: boolean;
@@ -108,10 +108,10 @@ function checkedInputs(input: DtsConfigSetInput) {
     if (/\b__(?:DATE|TIME|TIMESTAMP|FILE|BASE_FILE|COUNTER|INCLUDE_LEVEL)__\b|\b__has_(?:include|embed|builtin|feature|extension|attribute)\b|\b_Pragma\b|##/u.test(tokens) || tokens.includes(PREFIX))
       throw new DtsPreprocessingError("preprocess-input", `构建宏 ${name} 包含未冻结时间、环境探测或编译器指令；请修改构建设置。`, input.entryFile);
   }
-  const fail = (name: string, line: number | undefined, message: string): never => {
-    if (line === undefined) throw new DtsPreprocessingError("preprocess-input", `${name}：${message} 请在原始源码中修正后重新预览。`, name);
+  const fail = (name: string, line: number | undefined, message: string, code: DtsPreprocessingFailureCode = "preprocess-input"): never => {
+    if (line === undefined) throw new DtsPreprocessingError(code, `${name}：${message} 请在原始源码中修正后重新预览。`, name);
     const offset = input.files.get(name)!.content.split("\n").slice(0, line - 1).reduce((size, value) => size + value.length + 1, 0);
-    throw new DtsPreprocessingError("preprocess-input", `${name}:${line}：${message} 请在原始源码中修正后重新预览。`, name, offset);
+    throw new DtsPreprocessingError(code, `${name}:${line}：${message} 请在原始源码中修正后重新预览。`, name, offset);
   };
   if (input.files.size > 128) throw new DtsPreprocessingError("preprocess-limit", "预处理成员超过 128 个。", input.entryFile);
   const safePath = (name: string) => name !== "." && name === posix.normalize(name) && !name.startsWith("/") && name !== ".."
@@ -126,7 +126,7 @@ function checkedInputs(input: DtsConfigSetInput) {
       if (!safePath(candidate)) { if (!found) fail(name, line, "include 搜索会先逃逸冻结清单。"); continue; }
       if (!input.files.has(candidate)) continue;
       if (quoted && index === 0) return candidate;
-      if (found && found !== candidate) fail(name, line, `依赖 ${target} 同时匹配多个搜索目录；请使用明确的相对路径或调整构建设置。`);
+      if (found && found !== candidate) fail(name, line, `依赖 ${target} 同时匹配多个搜索目录；请使用明确的相对路径或调整构建设置。`, "preprocess-include-ambiguous");
       found = candidate;
     }
     if (!found) fail(name, line, `缺少冻结依赖 ${target}。`);

@@ -3387,7 +3387,11 @@ test.describe("project configuration workbench post-cutover semantic identity", 
           const path=testInfo.outputPath(`shared-switch-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`Shared switch ${viewport.width}`,{path,contentType:"image/png"});
         }
         await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toHaveCount(0);
-        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("#1422 preserve the project decision");
+        const renewedPreview=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===`${compositionPath}/preview`);
+        await dialog.getByRole("button",{name:"预览版本切换",exact:true}).click();
+        const renewed=await renewedPreview;expect(renewed.status(),await renewed.text()).toBe(200);
+        await expect(dialog.getByRole("button",{name:"确认切换版本",exact:true})).toBeVisible();
+        await expect(dialog.getByRole("textbox",{name:"变更说明",exact:true})).toHaveValue("#1422 preserve the project decision");
         const files=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});
         const root=((await files.json()).items as {fileId:string;fileName:string;role:string;currentVersionId:string}[]).find(file=>file.role==="base")!;
         const original=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});
@@ -3408,7 +3412,9 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));
       await dialog.getByRole("button",{name:"确认切换版本",exact:true}).focus();await page.keyboard.press("Enter");
       const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);revisions.push((await applied.json()).item.configRevisionId);
-      await expect(dialog).toHaveCount(0);await page.getByRole("tab",{name:"生效配置",exact:true}).click();
+      await expect(dialog).toHaveCount(0);
+      if(await composition.isVisible())await composition.getByRole("button",{name:"关闭配置组成",exact:true}).click();
+      await page.getByRole("tab",{name:"生效配置",exact:true}).click();
       await page.getByRole("treeitem",{name:"节点 /board",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"PrivateChoice", "keep"');
       await page.getByRole("treeitem",{name:"节点 /inherited",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText(index===0?'"SharedNew", "keep"':'"SharedOld", "keep"');
       await page.reload();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText(index===0?'"SharedNew", "keep"':'"SharedOld", "keep"');
@@ -3500,11 +3506,12 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       const response=await request.post(apiRoute(`/api/v2/shared-dtsi/${resource}/publications`),{headers:adminHeaders(),data:{previewId:(await preview.json()).item.id,idempotencyKey:`t10-${randomUUID()}`}});
       expect(response.status(),await response.text()).toBe(201);return (await response.json()).item as import("../../server/modules/contracts/dtoSchemas/sharedDtsi").SharedDtsiVersion;
     };
-    const dependency=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Shared dependency ${randomUUID()}`,sourceName:"leaf.dtsi",content:'/ { dependency { status = "okay"; }; };',changeDescription:"Exact dependency"}});
+    const dependencyName=`Shared dependency ${randomUUID()}`,resourceName=`Shared comparison ${randomUUID()}`;
+    const dependency=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:dependencyName,sourceName:"leaf.dtsi",content:'/ { dependency { status = "okay"; }; };',changeDescription:"Exact dependency"}});
     expect(dependency.status(),await dependency.text()).toBe(201);
     const leaf=await publish((await dependency.json()).item.resourceId,1);
     const content='/include/ "parts/common.dtsi"\n/include/ "vendor/leaf.dtsi"\n/ { board { rx_fod_cond = "SharedOriginal", "keep"; }; };\n';
-    const resource=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Shared comparison ${randomUUID()}`,members:[{sourceName:"main.dtsi",content},
+    const resource=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:resourceName,members:[{sourceName:"main.dtsi",content},
       {sourceName:"parts/common.dtsi",content:'/ { common { status = "okay"; }; };\n'}],dependencies:[{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}],changeDescription:"Original published source"}});
     expect(resource.status(),await resource.text()).toBe(201);
     const resourceId=(await resource.json()).item.resourceId as string,first=await publish(resourceId,1);
@@ -3574,6 +3581,55 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const usages=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/usages`),{headers:adminHeaders()});
     expect((await usages.json()).items).toContainEqual(expect.objectContaining({projectId,configSetId:binding.configSetId,versionId:first.id,version:1,direct:true,upgradeAvailable:true,evaluation:"not-evaluated"}));
     const old=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${first.id}`),{headers:adminHeaders()});expect((await old.json()).item.members).toEqual(first.members);
+
+    // #1472: a project's configuration usage must link the exact pin, not the successor.
+    const emptyName=`Empty shared reference ${randomUUID()}`;
+    const emptyResponse=await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`),{headers:adminHeaders(),data:{name:emptyName}});
+    expect(emptyResponse.status(),await emptyResponse.text()).toBe(201);
+    const emptyId=(await emptyResponse.json()).item.id as string;
+    await page.goto(disposablePageUrl(disposableRuntime,`/parameter-admin/sources?organization=${organizationId}`));
+    await waitForInteractionSurfaceReady(page);
+    const projectUsageSwitch=page.getByRole("radio",{name:"项目使用",exact:true});
+    await projectUsageSwitch.focus();
+    await expect(projectUsageSwitch).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(projectUsageSwitch).toBeChecked();
+    const search=page.getByRole("searchbox",{name:"搜索项目使用"});
+    await search.fill(resourceName);
+    const row=page.getByRole("row").filter({hasText:resourceName});
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("v1");
+    await expect(row).toContainText("有新版本");
+    await row.getByText("依赖关系（1）",{exact:true}).click();
+    await expect(row).toContainText(dependencyName);
+    await expect(row).toContainText(`由 ${resourceName} 引入`);
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);
+      await expect(row.getByRole("link",{name:`${resourceName} · v1`})).toBeVisible();
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      const screenshot=testInfo.outputPath(`shared-project-usage-${viewport.width}.png`);
+      await page.screenshot({path:screenshot});
+      await testInfo.attach(`Shared project usage ${viewport.width}`,{path:screenshot,contentType:"image/png"});
+    }
+    await row.getByRole("link",{name:`${resourceName} · v1`}).click();
+    expect(new URL(page.url()).searchParams.get("version")).toBe(first.id);
+    await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toContainText("SharedOriginal");
+    await page.getByRole("button",{name:"返回资源列表"}).click();
+    await expect(search).toHaveValue(resourceName);
+    await expect(row).toHaveCount(1);
+    await row.getByRole("link",{name:"查看生效配置",exact:true}).click();
+    expect(new URL(page.url()).searchParams.get("configSet")).toBe(binding.configSetId);
+    await expect(page.getByRole("tab",{name:"生效配置",exact:true})).toHaveAttribute("aria-selected","true");
+    await page.getByRole("button",{name:"项目使用",exact:true}).click();
+    await expect(search).toHaveValue(resourceName);
+    await search.fill(emptyName);
+    const emptyRow=page.getByRole("row").filter({hasText:emptyName});
+    await expect(emptyRow).toContainText("未引用共享资源包");
+    await expect(emptyRow.getByRole("link",{name:"前往配置工作台",exact:true})).toHaveAttribute("href",new RegExp(`configSet=${emptyId}`));
+    await selectControlOption(page.getByRole("combobox",{name:"引用状态"}),{label:"未引用"});
+    await expect(emptyRow).toBeVisible();
+    await selectControlOption(page.getByRole("combobox",{name:"引用状态"}),{label:"已引用"});
+    await expect(page.getByText("没有匹配的项目配置",{exact:true})).toBeVisible();
   });
 
   test("project editor reviews node status and explicit deletions through native source workflow", async ({ page, request }, testInfo) => {
@@ -4165,6 +4221,182 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const leafUsages=await request.get(apiRoute(`/api/v2/shared-dtsi/${leafDraft.resourceId}/usages`),{headers:adminHeaders()});
     expect(leafUsages.status(),await leafUsages.text()).toBe(200);
     expect((await leafUsages.json()).items).toContainEqual(expect.objectContaining({projectId,direct:false}));
+  });
+
+  test("administrator configures a fixed shared package from project usage", async ({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Project1473", "keep"; }; };',
+      rawValuePattern:'"Project1473", "keep"',nodeLocatorPattern:"board",reason:"#1473 project usage",timeoutMs:60_000});
+    const configResponse=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`),{headers:adminHeaders()});
+    expect(configResponse.status(),await configResponse.text()).toBe(200);
+    const config=(await configResponse.json()).items.find((item:{id:string})=>item.id===binding.configSetId) as {name:string};
+    expect(config).toBeDefined();
+    const name=`Project usage package ${randomUUID()}`;
+    const draft=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name,sourceName:"project-usage-package.dtsi",content:'/ { shared_usage_1473 { status = "okay"; }; };',changeDescription:"Initial package"}});
+    expect(draft.status(),await draft.text()).toBe(201);const resourceId=(await draft.json()).item.resourceId as string;
+    const check=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:1}});
+    expect(check.status(),await check.text()).toBe(201);
+    const published=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await check.json()).item.id,idempotencyKey:`usage-${randomUUID()}`}});
+    expect(published.status(),await published.text()).toBe(201);const versionId=(await published.json()).item.id as string;
+    const usagePath=`/parameter-admin/sources?${new URLSearchParams({organization:organizationId,view:"projects",usageQuery:config.name})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,usagePath));await dismissXiaozeHint(page);await waitForInteractionSurfaceReady(page);
+    const row=page.getByRole("row").filter({hasText:config.name});await expect(row).toHaveCount(1);
+    await expect(row).toContainText("未引用共享资源包");await row.getByRole("button",{name:"配置资源包",exact:true}).click();
+    const configured=page.getByRole("dialog",{name:"配置资源包",exact:true});await expect(configured).toContainText("未引用共享资源包");
+    await configured.getByRole("button",{name:"添加资源包",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"添加资源包",exact:true});await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(config.name==="default"?"默认配置":config.name);
+    await expect(dialog.getByRole("combobox",{name:"目标配置",exact:true})).toHaveCount(0);
+    await expect(dialog.getByText("用途：共享 include（项目根入口保持不变）")).toHaveCount(0);
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);
+      const path=testInfo.outputPath(`project-usage-select-${viewport.width}.png`);await page.screenshot({path,animations:"disabled"});await testInfo.attach(`project usage select ${viewport.width}`,{path,contentType:"image/png"});
+    }
+    await dialog.getByRole("searchbox",{name:"搜索共享资源",exact:true}).fill(name);
+    await selectControlOption(dialog.getByRole("combobox",{name:"共享资源",exact:true}),resourceId);
+    await selectControlOption(dialog.getByRole("combobox",{name:"固定版本",exact:true}),versionId);
+    const previewPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/preview`;
+    let previewing=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===previewPath,{timeout:60_000});
+    await dialog.getByRole("button",{name:"预览加入配置",exact:true}).click();let preview=await previewing;expect(preview.status(),await preview.text()).toBe(200);
+    await expect(dialog.getByRole("region",{name:"加入配置预览"})).toContainText("project-usage-package.dtsi");
+    await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();
+    const before=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/usages`),{headers:adminHeaders()});expect((await before.json()).items).not.toContainEqual(expect.objectContaining({projectId,configSetId:binding.configSetId}));
+    previewing=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===previewPath,{timeout:60_000});
+    await dialog.getByRole("button",{name:"预览加入配置",exact:true}).click();preview=await previewing;expect(preview.status(),await preview.text()).toBe(200);
+    await dialog.getByRole("textbox",{name:"加入原因"}).fill("确认固定共享资源");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);await expect(dialog.getByRole("button",{name:"确认加入配置"})).toBeInViewport({ratio:1});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      const path=testInfo.outputPath(`project-usage-add-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`project usage add ${viewport.width}`,{path,contentType:"image/png"});
+    }
+    const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"),{timeout:60_000});
+    await dialog.getByRole("button",{name:"确认加入配置"}).focus();await page.keyboard.press("Enter");const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);
+    await expect(row.getByRole("link",{name:`${name} · v1`})).toBeVisible();
+    const usages=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/usages`),{headers:adminHeaders()});
+    expect((await usages.json()).items).toContainEqual(expect.objectContaining({projectId,configSetId:binding.configSetId,versionId,direct:true}));
+    await row.getByRole("link",{name:"查看生效配置"}).click();await expect(page.getByRole("tab",{name:"生效配置"})).toHaveAttribute("aria-selected","true");
+    expect(new URL(page.url()).searchParams.get("configSet")).toBe(binding.configSetId);
+  });
+
+  test("manages shared resource versions and removal from project usage",async({page,request},testInfo)=>{
+    test.setTimeout(300_000);
+    await seedAcceptanceRoleMatrix();await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Project1474", "keep"; }; };',
+      rawValuePattern:'"Project1474", "keep"',nodeLocatorPattern:"board",reason:"#1474 usage operations",timeoutMs:60_000});
+    const other=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Other1474", "keep"; }; };',
+      rawValuePattern:'"Other1474", "keep"',nodeLocatorPattern:"board",reason:"#1474 independent configuration",timeoutMs:60_000});
+    const otherProject=`usage1474-${randomUUID()}`;
+    await withPgClient(client=>client.query("insert into projects(id,organization_id,name,code,status,initialization_status) values($1,$2,'Independent project',$1,'initialized','initialized')",[otherProject,organizationId]));
+    const outside=await seedIsolatedBinding(request,{projectId:otherProject,propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Outside1474", "keep"; }; };',
+      rawValuePattern:'"Outside1474", "keep"',nodeLocatorPattern:"board",reason:"#1474 independent project",timeoutMs:60_000});
+    const configs=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`),{headers:adminHeaders()});expect(configs.status(),await configs.text()).toBe(200);
+    const config=(await configs.json()).items.find((item:{id:string})=>item.id===binding.configSetId) as {name:string};
+    const name=`Usage switch ${randomUUID()}`,sourceName=`usage-switch-${randomUUID()}.dtsi`;
+    const source='/ { usage1474: usage1474 { status = "okay"; }; };';
+    const draft=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name,sourceName,content:source,changeDescription:"Original"}});
+    expect(draft.status(),await draft.text()).toBe(201);const resourceId=(await draft.json()).item.resourceId as string;
+    const publish=async(revision:number)=>{
+      const p=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:revision}});expect(p.status(),await p.text()).toBe(201);
+      const r=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await p.json()).item.id,idempotencyKey:randomUUID()}});expect(r.status(),await r.text()).toBe(201);return (await r.json()).item.id as string;
+    };
+    const v1=await publish(1);
+    for(const [targetProject,target] of [[projectId,binding.configSetId],[projectId,other.configSetId],[otherProject,outside.configSetId]]){
+      const path=`/api/v1/projects/${targetProject}/config-sets/${target}/member-addition`,addition={sharedReference:{resourceId,versionId:v1},role:"misc",sortOrder:1};
+      const p=await request.post(apiRoute(`${path}/preview`),{headers:adminHeaders(),data:addition});expect(p.status(),await p.text()).toBe(200);
+      const a=await request.post(apiRoute(`${path}/apply`),{headers:adminHeaders(),data:{...addition,proofToken:(await p.json()).item.proofToken,reason:"#1474 pin",clientMutationId:randomUUID()}});expect(a.status(),await a.text()).toBe(200);
+    }
+    const outsideBindings=await readCanonicalFixtureBindings(otherProject);
+    const outsideExport=await request.get(apiRoute(`/api/v1/projects/${otherProject}/config-sets/${outside.configSetId}/export`),{headers:adminHeaders()});expect(outsideExport.status(),await outsideExport.text()).toBe(200);const outsideSnapshot=await outsideExport.json();
+    const nextDraft=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{baseVersionId:v1}});expect(nextDraft.status(),await nextDraft.text()).toBe(201);
+    const saved=await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{expectedRevision:(await nextDraft.json()).item.revision,name,sourceName,content:source.replace('"okay"','"disabled"'),changeDescription:"Updated"}});expect(saved.status(),await saved.text()).toBe(200);
+    const v2=await publish((await saved.json()).item.revision);
+    const usagePath=`/parameter-admin/sources?${new URLSearchParams({organization:organizationId,view:"projects",usageQuery:config.name})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,usagePath));await dismissXiaozeHint(page);await waitForInteractionSurfaceReady(page);
+    const row=page.getByRole("row").filter({hasText:config.name});await expect(row).toHaveCount(1);
+    const reserved=await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/intents`),{headers:adminHeaders(),data:{registrationId:randomUUID()}});expect(reserved.status(),await reserved.text()).toBe(200);const reservedId=(await reserved.json()).item.id as string;
+    await page.reload();await waitForInteractionSurfaceReady(page);const pendingRegion=page.getByRole("region",{name:"待核对操作"});await pendingRegion.getByRole("button",{name:"核对"}).click();
+    const recoveryDialog=page.getByRole("dialog",{name:"核对操作"});await expect(recoveryDialog).toContainText("操作结果尚未确认");
+    const captureRecovery=async(label:string)=>{for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const shot=testInfo.outputPath(`usage-${label}-${viewport.width}.png`);await page.screenshot({path:shot,animations:"disabled"});await testInfo.attach(`Usage ${label} ${viewport.width}`,{path:shot,contentType:"image/png"});}};
+    await captureRecovery("pending");await page.keyboard.press("Escape");await expect(recoveryDialog).toHaveCount(0);await pendingRegion.getByRole("button",{name:"核对"}).click();
+    const stopPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/intents/${reservedId}/stop`,stopFailure={method:"POST",path:stopPath,status:503};expectedBrowserApiFailures.push(stopFailure);
+    await page.route(`**${stopPath}*`,route=>route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:{code:"INTERNAL_ERROR",message:"response unavailable"}})}),{times:1});
+    try{await recoveryDialog.getByRole("button",{name:"确认停止"}).focus();await page.keyboard.press("Enter");await expect(recoveryDialog.getByRole("alert")).toContainText("无法确认操作结果");await captureRecovery("recovery-error");}
+    finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(stopFailure),1);await page.unroute(`**${stopPath}*`);}
+    await recoveryDialog.getByRole("button",{name:"确认停止"}).focus();await page.keyboard.press("Enter");await expect(recoveryDialog).toContainText("操作已停止，不会再执行。");await captureRecovery("stopped");await recoveryDialog.getByRole("button",{name:"知道了"}).click();
+    let currentRevision="";
+    for(const [index,version] of [v2,v1].entries()){
+      await row.getByRole("button",{name:"配置资源包"}).click();const configured=page.getByRole("dialog",{name:"配置资源包"});
+      await configured.getByRole("button",{name:"切换版本"}).click();const dialog=page.getByRole("dialog",{name:"切换共享版本"});
+      await selectControlOption(dialog.getByRole("combobox",{name:"固定版本"}),version);
+      await dialog.getByRole("button",{name:"预览版本切换"}).click();await expect(dialog.getByRole("region",{name:"版本切换预览"})).toContainText("构建与参数约束校验通过");
+      await dialog.getByRole("textbox",{name:"变更说明"}).fill("#1474 controlled switch");
+      if(index===0)for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+        await page.setViewportSize(viewport);await expect(dialog.getByRole("button",{name:"确认切换版本"})).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        const shot=testInfo.outputPath(`usage-switch-${viewport.width}.png`);await page.screenshot({path:shot});await testInfo.attach(`Usage switch ${viewport.width}`,{path:shot,contentType:"image/png"});
+      }
+      if(index===1){
+        const switchPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/apply`,lostSwitch={method:"POST",path:switchPath,status:503};expectedBrowserApiFailures.push(lostSwitch);
+        let proof="";await page.route(`**${switchPath}*`,async route=>{proof=route.request().postDataJSON().proofToken;const upstream=await route.fetch();expect(upstream.status(),await upstream.text()).toBe(200);currentRevision=(await upstream.json()).item.configRevisionId;await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:{code:"INTERNAL_ERROR",message:"response unavailable"}})});},{times:1});
+        try{await dialog.getByRole("button",{name:"确认切换版本"}).click();await expect(dialog.getByRole("alert")).toContainText("应用结果尚未确认");await dialog.getByRole("button",{name:"返回列表核对"}).click();}
+        finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(lostSwitch),1);await page.unroute(`**${switchPath}*`);}
+        expect(proof).toMatch(/^[0-9a-f]{64}$/);expect(await page.evaluate(({proof})=>Object.values(sessionStorage).some(value=>value.includes(proof)||value.includes("#1474 controlled switch")),{proof})).toBe(false);
+        const logout404={method:"POST",path:"/api/v1/auth/logout",status:404};expectedBrowserApiFailures.push(logout404);
+        try{await page.getByRole("button",{name:/打开用户菜单$/}).click();await page.getByRole("button",{name:"退出登录"}).click();await expect(page.getByRole("heading",{name:"登录雷泽"})).toBeVisible();}
+        finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(logout404),1);}
+        await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,usagePath));await dismissXiaozeHint(page);
+        const pending=page.getByRole("region",{name:"待核对操作"});await expect(pending).toContainText("已应用");await pending.getByRole("button",{name:"核对"}).click();
+        const recovery=page.getByRole("dialog",{name:"核对操作"});await expect(recovery).toContainText("操作已应用。");
+        for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){await page.setViewportSize(viewport);await expect(recovery.getByRole("button",{name:"知道了"})).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const shot=testInfo.outputPath(`usage-recovery-${viewport.width}.png`);await page.screenshot({path:shot,animations:"disabled"});await testInfo.attach(`Usage recovery ${viewport.width}`,{path:shot,contentType:"image/png"});}
+        await recovery.getByRole("button",{name:"知道了"}).click();
+      }else{
+        const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));
+        await dialog.getByRole("button",{name:"确认切换版本"}).focus();await page.keyboard.press("Enter");const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);currentRevision=(await applied.json()).item.configRevisionId;
+      }
+      await expect(row.getByRole("link",{name:`${name} · v${index===0?2:1}`})).toBeVisible();
+    }
+    const files=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/files`),{headers:adminHeaders()});
+    const root=((await files.json()).items as {fileId:string;fileName:string;role:string;currentVersionId:string}[]).find(file=>file.role==="base")!;
+    const original=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});expect(original.status(),await original.text()).toBe(200);const originalSource=await original.text();
+    const candidate=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),{headers:adminHeaders(),data:{fileId:root.fileId,fileName:root.fileName,intent:"source_revision",contentBase64:Buffer.from(originalSource+'\n&usage1474 { status = "disabled"; };\n').toString("base64"),expectedCurrentVersionId:root.currentVersionId,expectedConfigRevisionId:currentRevision,clientMutationId:randomUUID()}});expect(candidate.status(),await candidate.text()).toBe(201);
+    const candidateId=(await candidate.json()).item.id as string,cp=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-preview`),{headers:adminHeaders()});expect(cp.status(),await cp.text()).toBe(200);
+    const ca=await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-apply`),{headers:adminHeaders(),data:{expectedCurrentVersionId:root.currentVersionId,expectedProofToken:(await cp.json()).item.proofToken,reason:"#1474 dependent overlay",clientMutationId:randomUUID()}});expect(ca.status(),await ca.text()).toBe(200);
+    await row.getByRole("button",{name:"配置资源包"}).click();await page.getByRole("dialog",{name:"配置资源包"}).getByRole("button",{name:"移除引用"}).click();
+    const dialog=page.getByRole("dialog",{name:"移除共享引用"});await dialog.getByRole("textbox",{name:"变更说明"}).fill("#1474 remove reference");
+    const refusal={method:"POST",path:`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/preview`,status:400};expectedBrowserApiFailures.push(refusal);
+    try{await dialog.getByRole("button",{name:"预览移除引用"}).click();await expect(dialog.getByRole("region",{name:"移除引用冲突处理"})).toContainText("找不到覆盖目标节点");
+      await dialog.getByRole("button",{name:"修正项目源码"}).first().click();}finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(refusal),1);}
+    const corrected=await prepareSourceFromEditor(page,originalSource,true);await corrected.dialog.getByRole("textbox",{name:"DTS 修改原因"}).fill("#1474 remove dependent overlay");
+    const saving=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/source-apply"));await corrected.dialog.getByRole("button",{name:"直接应用修改"}).click();expect((await saving).status()).toBe(200);
+    await page.getByRole("button",{name:"返回移除引用"}).click();await expect(dialog.getByRole("textbox",{name:"变更说明"})).toHaveValue("#1474 remove reference");
+    await dialog.getByRole("button",{name:"预览移除引用"}).click();await dialog.getByRole("button",{name:"取消本次预览"}).click();
+    await dialog.getByRole("button",{name:"预览移除引用"}).click();
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);await expect(dialog.getByRole("button",{name:"确认移除引用"})).toBeInViewport();
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      const shot=testInfo.outputPath(`usage-remove-${viewport.width}.png`);await page.screenshot({path:shot});await testInfo.attach(`Usage remove ${viewport.width}`,{path:shot,contentType:"image/png"});
+    }
+    const applyPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/apply`,lost={method:"POST",path:applyPath,status:503};expectedBrowserApiFailures.push(lost);
+    const submitted:Array<{proofToken:string;reason:string;clientMutationId:string}>=[];
+    await page.route(`**${applyPath}*`,async route=>{submitted.push(route.request().postDataJSON());const upstream=await route.fetch();expect(upstream.status(),await upstream.text()).toBe(200);await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:{code:"INTERNAL_ERROR",message:"response unavailable"}})});},{times:1});
+    try{
+      await dialog.getByRole("button",{name:"确认移除引用"}).focus();await page.keyboard.press("Enter");await expect(dialog.getByRole("alert")).toContainText("应用结果尚未确认");
+      const retry=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===applyPath);
+      await dialog.getByRole("button",{name:"重试同一操作"}).click();const removed=await retry;expect(removed.status(),await removed.text()).toBe(200);
+      const repeated=removed.request().postDataJSON();expect(repeated.proofToken).toBe(submitted[0]!.proofToken);expect(repeated.reason).toBe(submitted[0]!.reason);expect(repeated.clientMutationId).toBe(submitted[0]!.clientMutationId);
+    }finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(lost),1);await page.unroute(`**${applyPath}*`);}
+    await page.getByRole("button",{name:"项目使用",exact:true}).click();
+    const leave=page.getByRole("dialog",{name:"离开配置工作台"});await expect(leave.or(row)).toBeVisible();
+    if(await leave.isVisible())await leave.getByRole("button",{name:"保留草稿并离开"}).click();
+    await expect(row).toContainText("未引用共享资源包");
+    const usages=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/usages`),{headers:adminHeaders()});
+    expect((await usages.json()).items).toContainEqual(expect.objectContaining({projectId,configSetId:other.configSetId,versionId:v1,direct:true}));
+    expect((await usages.json()).items).toContainEqual(expect.objectContaining({projectId:otherProject,configSetId:outside.configSetId,versionId:v1,direct:true}));
+    expect(await readCanonicalFixtureBindings(otherProject)).toEqual(outsideBindings);
+    const afterExport=await request.get(apiRoute(`/api/v1/projects/${otherProject}/config-sets/${outside.configSetId}/export`),{headers:adminHeaders()});const afterSnapshot=await afterExport.json();
+    delete outsideSnapshot.manifest.exportedAt;delete afterSnapshot.manifest.exportedAt;expect(afterSnapshot).toEqual(outsideSnapshot);
+    const historical=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});expect(await historical.text()).toBe(originalSource);
   });
 
   test("administrator adds a staged overlay to a Canonical configuration through preview and keyboard confirmation", async ({ page, request }, testInfo) => {
