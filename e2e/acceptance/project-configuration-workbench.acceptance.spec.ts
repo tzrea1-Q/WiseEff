@@ -3500,11 +3500,12 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       const response=await request.post(apiRoute(`/api/v2/shared-dtsi/${resource}/publications`),{headers:adminHeaders(),data:{previewId:(await preview.json()).item.id,idempotencyKey:`t10-${randomUUID()}`}});
       expect(response.status(),await response.text()).toBe(201);return (await response.json()).item as import("../../server/modules/contracts/dtoSchemas/sharedDtsi").SharedDtsiVersion;
     };
-    const dependency=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Shared dependency ${randomUUID()}`,sourceName:"leaf.dtsi",content:'/ { dependency { status = "okay"; }; };',changeDescription:"Exact dependency"}});
+    const dependencyName=`Shared dependency ${randomUUID()}`,resourceName=`Shared comparison ${randomUUID()}`;
+    const dependency=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:dependencyName,sourceName:"leaf.dtsi",content:'/ { dependency { status = "okay"; }; };',changeDescription:"Exact dependency"}});
     expect(dependency.status(),await dependency.text()).toBe(201);
     const leaf=await publish((await dependency.json()).item.resourceId,1);
     const content='/include/ "parts/common.dtsi"\n/include/ "vendor/leaf.dtsi"\n/ { board { rx_fod_cond = "SharedOriginal", "keep"; }; };\n';
-    const resource=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:`Shared comparison ${randomUUID()}`,members:[{sourceName:"main.dtsi",content},
+    const resource=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name:resourceName,members:[{sourceName:"main.dtsi",content},
       {sourceName:"parts/common.dtsi",content:'/ { common { status = "okay"; }; };\n'}],dependencies:[{resourceId:leaf.resourceId,versionId:leaf.id,mountPath:"vendor"}],changeDescription:"Original published source"}});
     expect(resource.status(),await resource.text()).toBe(201);
     const resourceId=(await resource.json()).item.resourceId as string,first=await publish(resourceId,1);
@@ -3574,6 +3575,51 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const usages=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/usages`),{headers:adminHeaders()});
     expect((await usages.json()).items).toContainEqual(expect.objectContaining({projectId,configSetId:binding.configSetId,versionId:first.id,version:1,direct:true,upgradeAvailable:true,evaluation:"not-evaluated"}));
     const old=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/versions/${first.id}`),{headers:adminHeaders()});expect((await old.json()).item.members).toEqual(first.members);
+
+    // #1472: a project's configuration usage must link the exact pin, not the successor.
+    const emptyName=`Empty shared reference ${randomUUID()}`;
+    const emptyResponse=await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`),{headers:adminHeaders(),data:{name:emptyName}});
+    expect(emptyResponse.status(),await emptyResponse.text()).toBe(201);
+    const emptyId=(await emptyResponse.json()).item.id as string;
+    await page.goto(disposablePageUrl(disposableRuntime,`/parameter-admin/sources?organization=${organizationId}`));
+    await page.getByRole("radio",{name:"项目使用",exact:true}).focus();
+    await page.keyboard.press("Space");
+    const search=page.getByRole("searchbox",{name:"搜索项目使用"});
+    await search.fill(resourceName);
+    const row=page.getByRole("row").filter({hasText:resourceName});
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("v1");
+    await expect(row).toContainText("有新版本");
+    await row.getByText("依赖关系（1）",{exact:true}).click();
+    await expect(row).toContainText(dependencyName);
+    await expect(row).toContainText(`由 ${resourceName} 引入`);
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);
+      await expect(row.getByRole("link",{name:`${resourceName} · v1`})).toBeVisible();
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      const screenshot=testInfo.outputPath(`shared-project-usage-${viewport.width}.png`);
+      await page.screenshot({path:screenshot});
+      await testInfo.attach(`Shared project usage ${viewport.width}`,{path:screenshot,contentType:"image/png"});
+    }
+    await row.getByRole("link",{name:`${resourceName} · v1`}).click();
+    expect(new URL(page.url()).searchParams.get("version")).toBe(first.id);
+    await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toContainText("SharedOriginal");
+    await page.getByRole("button",{name:"返回资源列表"}).click();
+    await expect(search).toHaveValue(resourceName);
+    await expect(row).toHaveCount(1);
+    await row.getByRole("link",{name:"查看生效配置",exact:true}).click();
+    expect(new URL(page.url()).searchParams.get("configSet")).toBe(binding.configSetId);
+    await expect(page.getByRole("tab",{name:"生效配置",exact:true})).toHaveAttribute("aria-selected","true");
+    await page.getByRole("button",{name:"项目使用",exact:true}).click();
+    await expect(search).toHaveValue(resourceName);
+    await search.fill(emptyName);
+    const emptyRow=page.getByRole("row").filter({hasText:emptyName});
+    await expect(emptyRow).toContainText("未引用共享资源包");
+    await expect(emptyRow.getByRole("link",{name:"前往配置工作台",exact:true})).toHaveAttribute("href",new RegExp(`configSet=${emptyId}`));
+    await selectControlOption(page.getByRole("combobox",{name:"引用状态"}),{label:"未引用"});
+    await expect(emptyRow).toBeVisible();
+    await selectControlOption(page.getByRole("combobox",{name:"引用状态"}),{label:"已引用"});
+    await expect(page.getByText("没有匹配的项目配置",{exact:true})).toBeVisible();
   });
 
   test("project editor reviews node status and explicit deletions through native source workflow", async ({ page, request }, testInfo) => {
