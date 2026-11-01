@@ -10,8 +10,14 @@ import { isCurrentSourceAdministrator, requireCurrentSourceAdministrator } from 
 
 type Intent={id:string;organization_id:string;project_id:string;config_set_id:string;actor_user_id:string;registration_id:string;mutation_id:string;status:"pending"|"applied"|"stopped";acknowledged:boolean};
 type Target={projectId:string;configSetId:string};
+export function canonicalMemberMutationId(mutationId:string){
+  const text=mutationId.startsWith("{")&&mutationId.endsWith("}")?mutationId.slice(1,-1):mutationId;
+  if(!/^[0-9a-f-]+$/i.test(text))return mutationId;
+  const hex=text.replaceAll("-","").toLowerCase();if(!/^[0-9a-f]{32}$/.test(hex))return mutationId;
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
 export const lockMemberAdditionOperation=(tx:Database,organizationId:string,projectId:string,userId:string,mutationId:string)=>{
-  const key=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mutationId)?mutationId.toLowerCase():mutationId;
+  const key=canonicalMemberMutationId(mutationId);
   return tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))",[`member-addition:${organizationId}:${projectId}:${userId}:${key}`]);
 };
 async function authorize(tx:Database,auth:AuthContext,projectId:string){

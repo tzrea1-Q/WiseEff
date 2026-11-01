@@ -118,7 +118,12 @@ describe("shared reference version switches through the real API role", () => {
     expect((await post(`${path(A)}/apply`,operation)).status).toBe(409);
     expect((await post(`${path(A)}/intents/${created.body.item.id}/ack`,{})).status).toBe(200);
     expect((await post(`${path(A)}/apply`,operation)).status).toBe(409);
-    expect((await post(`${path(A)}/apply`,{...operation,clientMutationId:operation.clientMutationId.toUpperCase()})).status).toBe(409);
+    const raw=operation.clientMutationId.replaceAll("-","");
+    for(const alias of [operation.clientMutationId.toUpperCase(),raw,`{${operation.clientMutationId.toUpperCase()}}`,raw.match(/.{4}/g)!.join("-")]){
+      expect((await db.query<{id:string}>("select $1::uuid::text as id",[alias])).rows[0]!.id).toBe(operation.clientMutationId);
+      const result=await post<{error:{message:string}}>(`${path(A)}/apply`,{...operation,clientMutationId:alias});
+      expect(result.status,result.bodyText).toBe(409);expect(result.body.error.message).toContain("已停止");
+    }
     await expect(api.query("update public.member_addition_intents set status='pending' where id=$1",[created.body.item.id])).rejects.toMatchObject({code:"55000"});
     await expect(api.query("delete from public.member_addition_intents where id=$1",[created.body.item.id])).rejects.toMatchObject({code:"42501"});
     expect((await requestJson<{total:number}>(server(),"/api/v1/member-addition-intents")).body.total).toBe(0);
@@ -305,7 +310,8 @@ describe("shared reference version switches through the real API role", () => {
       const preview=await post<Preview>(`${path(B)}/preview`,body);expect(preview.status,preview.bodyText).toBe(200);
       const registration=await post<{item:{id:string;clientMutationId:string}}>(`${path(B)}/intents`,{registrationId:order==="apply"?"33f2ff34-2836-4891-8d7f-fcf53b01d271":"1b349061-2702-44fa-8239-32c2266f122d"});
       expect(registration.status,registration.bodyText).toBe(200);const item=registration.body.item;
-      const operation={...body,proofToken:preview.body.item.proofToken,reason:"Race stop and apply",clientMutationId:item.clientMutationId.toUpperCase()};
+      const operation={...body,proofToken:preview.body.item.proofToken,reason:"Race stop and apply",
+        clientMutationId:order==="apply"?item.clientMutationId.toUpperCase():`{${item.clientMutationId.replaceAll("-","")}}`};
       const gate=await pool.connect();await gate.query("begin");await gate.query("select id from public.users where id=$1 for no key update",[ADMIN]);
       let first:ReturnType<typeof post>,second:ReturnType<typeof post>;
       try{first=order==="apply"?post(`${path(B)}/apply`,operation):post(`${path(B)}/intents/${item.id}/stop`,{});await waitForBlocked(1);

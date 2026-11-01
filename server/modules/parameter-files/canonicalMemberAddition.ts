@@ -36,7 +36,7 @@ import type { ConfigRevisionManifestMember, ConfigRevisionMemberRole } from "../
 import { getParameterFileCandidateByIdForUpdate } from "./candidateRepository";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
-import { lockMemberAdditionOperation } from "./canonicalMemberAdditionIntents";
+import { canonicalMemberMutationId, lockMemberAdditionOperation } from "./canonicalMemberAdditionIntents";
 import { createDtsToolchainRunner, type DtsToolchainRunner } from "./dtsToolchain";
 import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
@@ -583,8 +583,8 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     await lockMemberAdditionOperation(tx,parameterOrganizationId(auth),input.projectId,auth.user.id,input.clientMutationId);
     const current = await lockSourceCatalogGovernance(tx, parameterOrganizationId(auth));
     const intent=(await tx.query<{id:string;config_set_id:string;status:string;mutation_id:string}>(`select id,config_set_id,status,mutation_id from public.member_addition_intents
-      where organization_id=$1 and project_id=$2 and actor_user_id=$3 and mutation_id::text=lower($4)`,
-      [parameterOrganizationId(auth),input.projectId,auth.user.id,input.clientMutationId])).rows[0];
+      where organization_id=$1 and project_id=$2 and actor_user_id=$3 and mutation_id::text=$4`,
+      [parameterOrganizationId(auth),input.projectId,auth.user.id,canonicalMemberMutationId(input.clientMutationId)])).rows[0];
     if(intent && (intent.config_set_id!==input.configSetId || intent.status==='stopped'))conflict("此操作已停止或目标配置不一致，请重新预览。");
     if(intent)input={...input,clientMutationId:intent.mutation_id};
     if(!intent && (await tx.query(`select 1 from public.member_addition_intents where organization_id=$1 and project_id=$2
