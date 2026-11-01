@@ -87,7 +87,7 @@ import { parameterModuleRegistryResponseSchema } from "./parameterModules";
 import { parameterDashboardSummaryResponseSchema } from "./parameterDashboard";
 import { administratorMemberRemovalApplyRequestSchema, administratorMemberRemovalPreviewResponseSchema, administratorMemberRemovalApplyResponseSchema } from "./memberRemoval";
 import { logDeletionPreviewResponseSchema, logDeletionStatusResponseSchema, logDeletionStatusListResponseSchema } from "./logs";
-import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAdditionPreviewResponseSchema, memberAdditionApplyResponseSchema } from "./canonicalMemberAddition";
+import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAdditionPreviewResponseSchema, memberAdditionApplyResponseSchema, memberAdditionIntentRegisterSchema, memberAdditionIntentActionSchema, memberAdditionIntentResponseSchema, memberAdditionIntentsResponseSchema } from "./canonicalMemberAddition";
 import { configSetImportPreviewBodySchema, configSetImportApplyBodySchema, configSetImportPreviewResponseSchema, configSetImportApplyResponseSchema } from "./configSetPackage";
 import { skillDeletionRequestSchema, skillDeletionPreviewResponseSchema, skillDeletionStatusResponseSchema, skillDeletionListResponseSchema } from "./skillDeletion";
 import { releaseBaselineRestoreRequestSchema, releaseBaselineRestorePreviewResponseSchema, releaseBaselineRollbackResponseSchema } from "./canonicalConfigurationRestore";
@@ -151,6 +151,10 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   CanonicalMemberAdditionApplyRequest: memberAdditionApplyBodySchema,
   CanonicalMemberAdditionPreviewResponse: memberAdditionPreviewResponseSchema,
   CanonicalMemberAdditionApplyResponse: memberAdditionApplyResponseSchema,
+  MemberAdditionIntentRegisterRequest: memberAdditionIntentRegisterSchema,
+  MemberAdditionIntentActionRequest: memberAdditionIntentActionSchema,
+  MemberAdditionIntentResponse: memberAdditionIntentResponseSchema,
+  MemberAdditionIntentsResponse: memberAdditionIntentsResponseSchema,
   AdministratorMemberRemovalApplyRequest: administratorMemberRemovalApplyRequestSchema,
   AdministratorMemberRemovalPreviewResponse: administratorMemberRemovalPreviewResponseSchema,
   AdministratorMemberRemovalApplyResponse: administratorMemberRemovalApplyResponseSchema,
@@ -289,6 +293,7 @@ export const dtoSchemaCoveredRouteIds = [
   "parameters.previewRestoreReleaseBaseline", "parameters.rollbackReleaseBaseline",
   "logs.listSkillDeletions", "logs.previewSkillDeletion", "logs.getSkillDeletionStatus", "logs.purgeSkill",
   "parameterFiles.previewCanonicalMemberAddition", "parameterFiles.applyCanonicalMemberAddition",
+  "parameterFiles.reserveMemberAdditionIntent", "parameterFiles.listMemberAdditionIntents", "parameterFiles.stopMemberAdditionIntent", "parameterFiles.acknowledgeMemberAdditionIntent",
   "parameterFiles.previewAdministratorMemberRemoval", "parameterFiles.applyAdministratorMemberRemoval",
   "logs.previewDeletion",
   "logs.purge", "logs.deletionStatus", "logs.pendingDeletions",

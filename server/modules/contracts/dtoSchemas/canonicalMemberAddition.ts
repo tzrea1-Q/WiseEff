@@ -37,6 +37,8 @@ export const memberAdditionIntentSchema=z.object({id:z.string().uuid(),clientMut
   configSetId:z.string(),configSetName:z.string(),status:z.enum(["pending","applied","stopped"]),result:z.object({requestId:z.string(),fileId:z.string(),fileVersionId:z.string(),configRevisionId:z.string()}).optional()});
 export const memberAdditionIntentResponseSchema=z.object({item:memberAdditionIntentSchema});
 export const memberAdditionIntentsResponseSchema=z.object({items:z.array(memberAdditionIntentSchema),total:z.number().int().nonnegative()});
+export const memberAdditionIntentRegisterSchema=z.object({registrationId:z.string().uuid()}).strict();
+export const memberAdditionIntentActionSchema=z.object({}).strict();
 export type MemberAdditionIntent=z.infer<typeof memberAdditionIntentSchema>;
 export const memberAdditionPreviewResponseSchema = z.object({ item: z.object({
   proofToken: z.string().regex(/^[0-9a-f]{64}$/), configSetId: z.string(), fileName: z.string(), format: z.enum(["dts", "json"]),

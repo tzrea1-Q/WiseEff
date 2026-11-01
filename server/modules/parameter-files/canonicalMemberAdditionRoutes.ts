@@ -8,7 +8,7 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { applyCanonicalMemberAddition, previewCanonicalMemberAddition } from "./canonicalMemberAddition";
-import { memberAdditionBodySchema, memberAdditionApplyBodySchema } from "../contracts/dtoSchemas/canonicalMemberAddition";
+import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAdditionIntentActionSchema, memberAdditionIntentRegisterSchema } from "../contracts/dtoSchemas/canonicalMemberAddition";
 import { listMemberAdditionIntents, reserveMemberAddition, resolveMemberAdditionIntent } from "./canonicalMemberAdditionIntents";
 
 export function registerCanonicalMemberAdditionRoutes(router: WiseEffRouter, options: {
@@ -40,11 +40,11 @@ export function registerCanonicalMemberAdditionRoutes(router: WiseEffRouter, opt
     const auth=await parameterRequestAccess(options.db,createUserInvocation(await options.getCurrentAuthContext(request)),request);
     const security={invocation:parameterInvocation(auth)??createUserInvocation(auth),requestId:request.requestId,refusalSink:sink};
     if(operation==="reserve"){
-      const body=z.object({registrationId:z.string().uuid()}).strict().safeParse(request.body);
+      const body=memberAdditionIntentRegisterSchema.safeParse(request.body);
       if(!body.success)throw new ApiError("VALIDATION_FAILED","Invalid registration identity.");
       return {status:200,body:{item:await reserveMemberAddition(options.db,auth,params,body.data.registrationId,security)}};
     }
-    if(!z.object({}).strict().safeParse(request.body).success)throw new ApiError("VALIDATION_FAILED","Invalid operation request.");
+    if(!memberAdditionIntentActionSchema.safeParse(request.body).success)throw new ApiError("VALIDATION_FAILED","Invalid operation request.");
     if(!params.intentId)throw new ApiError("VALIDATION_FAILED","Invalid operation identity.");
     return {status:200,body:{item:await resolveMemberAdditionIntent(options.db,auth,params,params.intentId,operation,security)}};
   }

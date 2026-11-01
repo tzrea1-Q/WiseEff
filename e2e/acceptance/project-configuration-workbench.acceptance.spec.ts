@@ -4309,6 +4309,16 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const usagePath=`/parameter-admin/sources?${new URLSearchParams({organization:organizationId,view:"projects",usageQuery:config.name})}`;
     await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,usagePath));await dismissXiaozeHint(page);await waitForInteractionSurfaceReady(page);
     const row=page.getByRole("row").filter({hasText:config.name});await expect(row).toHaveCount(1);
+    const reserved=await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/intents`),{headers:adminHeaders(),data:{registrationId:randomUUID()}});expect(reserved.status(),await reserved.text()).toBe(200);const reservedId=(await reserved.json()).item.id as string;
+    await page.reload();await waitForInteractionSurfaceReady(page);const pendingRegion=page.getByRole("region",{name:"待核对操作"});await pendingRegion.getByRole("button",{name:"核对"}).click();
+    const recoveryDialog=page.getByRole("dialog",{name:"核对操作"});await expect(recoveryDialog).toContainText("操作结果尚未确认");
+    const captureRecovery=async(label:string)=>{for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){await page.setViewportSize(viewport);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const shot=testInfo.outputPath(`usage-${label}-${viewport.width}.png`);await page.screenshot({path:shot});await testInfo.attach(`Usage ${label} ${viewport.width}`,{path:shot,contentType:"image/png"});}};
+    await captureRecovery("pending");await page.keyboard.press("Escape");await expect(recoveryDialog).toHaveCount(0);await pendingRegion.getByRole("button",{name:"核对"}).click();
+    const stopPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/intents/${reservedId}/stop`,stopFailure={method:"POST",path:stopPath,status:503};expectedBrowserApiFailures.push(stopFailure);
+    await page.route(`**${stopPath}*`,route=>route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:{code:"INTERNAL_ERROR",message:"response unavailable"}})}),{times:1});
+    try{await recoveryDialog.getByRole("button",{name:"确认停止"}).focus();await page.keyboard.press("Enter");await expect(recoveryDialog.getByRole("alert")).toContainText("无法确认操作结果");await captureRecovery("recovery-error");}
+    finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(stopFailure),1);await page.unroute(`**${stopPath}*`);}
+    await recoveryDialog.getByRole("button",{name:"确认停止"}).focus();await page.keyboard.press("Enter");await expect(recoveryDialog).toContainText("操作已停止，不会再执行。");await captureRecovery("stopped");await recoveryDialog.getByRole("button",{name:"知道了"}).click();
     let currentRevision="";
     for(const [index,version] of [v2,v1].entries()){
       await row.getByRole("button",{name:"配置资源包"}).click();const configured=page.getByRole("dialog",{name:"配置资源包"});

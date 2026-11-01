@@ -278,6 +278,18 @@ describe("M5 OpenAPI contract", () => {
     });
   });
 
+  it("publishes the authenticated member-operation recovery routes and schemas",()=>{
+    expect(routeManifest).toEqual(expect.arrayContaining([
+      expect.objectContaining({id:"parameterFiles.reserveMemberAdditionIntent",method:"POST",path:"/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/intents"}),
+      expect.objectContaining({id:"parameterFiles.listMemberAdditionIntents",method:"GET",path:"/api/v1/member-addition-intents"}),
+      expect.objectContaining({id:"parameterFiles.stopMemberAdditionIntent",method:"POST",path:"/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/intents/:intentId/stop"}),
+      expect.objectContaining({id:"parameterFiles.acknowledgeMemberAdditionIntent",method:"POST",path:"/api/v1/projects/:projectId/config-sets/:configSetId/member-addition/intents/:intentId/ack"})
+    ]));
+    expect(schemaRegistry["parameterFiles.reserveMemberAdditionIntent"]).toMatchObject({requestBody:"MemberAdditionIntentRegisterRequest",responseBody:"MemberAdditionIntentResponse"});
+    expect(schemaRegistry["parameterFiles.listMemberAdditionIntents"]).toMatchObject({responseBody:"MemberAdditionIntentsResponse"});
+    for(const id of ["parameterFiles.stopMemberAdditionIntent","parameterFiles.acknowledgeMemberAdditionIntent"])expect(schemaRegistry[id]).toMatchObject({requestBody:"MemberAdditionIntentActionRequest",responseBody:"MemberAdditionIntentResponse"});
+  });
+
   it("publishes debugging admin catalog API routes", () => {
     expect(routeManifest).toEqual(
       expect.arrayContaining([

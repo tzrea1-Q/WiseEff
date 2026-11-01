@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ModalDialog } from "@/components/common/ModalDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import type { createMemberAdditionIntentClient, MemberAdditionIntent } from "@/infrastructure/http/memberAdditionIntentClient";
 import { currentSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
@@ -32,9 +32,7 @@ export function SharedMemberPendingOperations({client,scope,refresh,onResolved,f
     <span>{item.status==="pending"?"结果尚未确认":item.status==="applied"?"已应用":"已停止"}</span>{" "}
     <Button size="sm" variant="outline" onClick={()=>{setActionError("");setSelected(item);}}>核对</Button>
   </li>)}</ul>{!focus&&list.total>50?<nav aria-label="待核对操作分页"><Button variant="outline" size="sm" disabled={page===0} onClick={()=>setPage(value=>value-1)}>上一页</Button><span>{page+1} / {Math.ceil(list.total/50)}</span><Button variant="outline" size="sm" disabled={(page+1)*50>=list.total} onClick={()=>setPage(value=>value+1)}>下一页</Button></nav>:null}
-  {selected?<ModalDialog open className="workbench-member-addition-dialog" backdropClassName="param-admin-modal-backdrop" onDismiss={busy?undefined:()=>setSelected(null)}>{({titleId})=><>
-    <header><div><h2 id={titleId}>核对操作</h2><p>{selected.projectName} · {selected.configSetName==="default"?"默认配置":selected.configSetName}</p></div><Button variant="outline" disabled={busy} onClick={()=>setSelected(null)}>关闭</Button></header>
-    <div className="workbench-member-addition-dialog__body"><p>{selected.status==="pending"?"操作结果尚未确认。停止后，即使原请求仍在途中，也不会再执行；如果已经应用，会显示实际结果。":selected.status==="applied"?"操作已应用。":"操作已停止，不会再执行。"}</p>{actionError?<p role="alert">{actionError}</p>:null}</div>
-    <footer><Button disabled={busy} onClick={()=>void act(selected,selected.status==="pending"?"stop":"ack")}>{busy?"正在核对…":selected.status==="pending"?"确认停止":"知道了"}</Button></footer>
-  </>}</ModalDialog>:null}</section>;
+  {selected?<ConfirmDialog open title="核对操作" description={<><p>{selected.projectName} · {selected.configSetName==="default"?"默认配置":selected.configSetName}</p><p>{selected.status==="pending"?"操作结果尚未确认。停止后，即使原请求仍在途中，也不会再执行；如果已经应用，会显示实际结果。":selected.status==="applied"?"操作已应用。":"操作已停止，不会再执行。"}</p></>}
+    confirmLabel={selected.status==="pending"?"确认停止":"知道了"} cancelLabel="稍后处理" pending={busy} pendingLabel="正在核对…" error={actionError}
+    onCancel={()=>setSelected(null)} onConfirm={()=>void act(selected,selected.status==="pending"?"stop":"ack")}/>:null}</section>;
 }
