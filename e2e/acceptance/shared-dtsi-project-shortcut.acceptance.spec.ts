@@ -24,13 +24,15 @@ test("references exact published versions from the resource list and historical 
   const saved=await catalogJson(page.request,"PUT",`/api/v2/shared-dtsi/${resource.resourceId}/draft`,{data:{name:"快捷引用公共源码",changeDescription:"Second",expectedRevision:draft.revision,members:draft.members.map((member:{id:string;sourceName:string;content:string})=>({...member,content:member.content.replace("<1>","<2>")}))}});expect(saved.status).toBe(200);
   const second=await publish((saved.body as {item:{revision:number}}).item.revision,"shortcut-v2");
   await page.setViewportSize({width:1440,height:900});await signInCatalogActor(page,"org-admin","/parameter-admin/sources");
+  await page.getByRole("searchbox",{name:"搜索共享 DTSI"}).fill("快捷引用");
+  await expect(page).toHaveURL(/resourceQuery=/);
   const resourceRow=page.getByRole("row").filter({hasText:"快捷引用公共源码"});await resourceRow.getByRole("button",{name:"引用到项目",exact:true}).click();
   await expect(page.getByText("资源包：快捷引用公共源码 · v2",{exact:true})).toBeVisible();
   const target=page.getByRole("row").filter({hasText:name});await target.getByRole("button",{name:"引用到此配置",exact:true}).click();
   let dialog=page.getByRole("dialog",{name:"添加资源包"});await dialog.getByRole("button",{name:"预览加入配置"}).click();await dialog.getByRole("textbox",{name:"加入原因"}).fill("Confirm exact version");
   await page.screenshot({path:testInfo.outputPath("shortcut-add-1440.png"),fullPage:true});await dialog.getByRole("button",{name:"确认加入配置"}).click();
   await expect(target.getByText("已固定此版本")).toBeVisible();
-  await page.getByRole("button",{name:"返回资源包"}).click();await expect(resourceRow.getByRole("button",{name:"引用到项目"})).toBeFocused();
+  await page.getByRole("button",{name:"返回资源包"}).click();await expect(page.getByRole("searchbox",{name:"搜索共享 DTSI"})).toHaveValue("快捷引用");await expect(resourceRow.getByRole("button",{name:"引用到项目"})).toBeFocused();
   await page.goto(catalogAppUrl(`/parameter-admin/sources?resource=${resource.resourceId}&version=${first.id}`));await page.getByRole("button",{name:"引用到项目",exact:true}).click();
   await expect(page.getByText("资源包：快捷引用公共源码 · v1",{exact:true})).toBeVisible();await page.setViewportSize({width:1280,height:800});
   const selected=page.getByRole("row").filter({hasText:name});await selected.getByRole("button",{name:"切换至 v1"}).click();dialog=page.getByRole("dialog",{name:"切换共享版本"});
@@ -48,5 +50,20 @@ test("references exact published versions from the resource list and historical 
   await expect(page.getByRole("tab",{name:"生效配置",exact:true})).toHaveAttribute("aria-selected","true");
   await page.getByRole("treeitem",{name:"节点 /shortcut_common",exact:true}).click();
   await expect(page.getByLabel("acceptance_limit 最终值",{exact:true})).toHaveText("<1>");
+  const unresolved=await post("/api/v2/shared-dtsi",{name:"缺少外部标签的资源",sourceName:"external.dtsi",content:'&not_in_project { acceptance = <1>; };',changeDescription:"Needs project label"});
+  const unresolvedPreview=await post(`/api/v2/shared-dtsi/${unresolved.resourceId}/publication-preview`,{expectedRevision:unresolved.revision});
+  const unresolvedVersion=await post(`/api/v2/shared-dtsi/${unresolved.resourceId}/publications`,{previewId:unresolvedPreview.id,idempotencyKey:"shortcut-unresolved"});
+  await page.goto(catalogAppUrl(`/parameter-admin/sources?resource=${unresolved.resourceId}&version=${unresolvedVersion.id}`));
+  await page.getByRole("button",{name:"引用到项目",exact:true}).click();
+  const blocked=page.getByRole("row").filter({hasText:name});await blocked.getByRole("button",{name:"引用到此配置"}).click();
+  const diagnostic=page.getByRole("dialog",{name:"添加资源包"});await diagnostic.getByRole("button",{name:"预览加入配置"}).click();
+  await expect(diagnostic.getByText("external.dtsi:1",{exact:true})).toBeVisible();
+  for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){await page.setViewportSize(viewport);await expect(diagnostic.getByRole("button",{name:"核对共享来源"})).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath(`shortcut-diagnostic-${viewport.width}.png`),fullPage:true});}
+  await diagnostic.getByRole("button",{name:"核对共享来源"}).click();
+  expect(new URL(page.url()).searchParams.get("version")).toBe(unresolvedVersion.id);
+  await expect(page.getByLabel("已发布 DTSI 源码",{exact:true})).toContainText("&not_in_project");
+  await page.getByRole("link",{name:"返回项目节点"}).click();await page.getByRole("button",{name:"项目使用",exact:true}).click();
+  await expect(page.getByText("资源包：缺少外部标签的资源 · v1",{exact:true})).toBeVisible();
+  await expect(page.getByRole("row").filter({hasText:name}).getByText("上次选择的配置")).toBeVisible();
   expect(first.id).not.toBe(second.id);
 });

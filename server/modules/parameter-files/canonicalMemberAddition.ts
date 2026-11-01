@@ -373,6 +373,14 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   };
   const refuseSwitch=(error:unknown,locations:SharedSwitchConflict[]):never=>{
     if(recomposing && error instanceof ApiError)throw new ApiError(error.code,error.message,{...error.details,switchConflicts:locations});
+    if(error instanceof ApiError && Array.isArray(error.details.diagnostics)){
+      const diagnostics=error.details.diagnostics.map(item=>{
+        if(!item || typeof item!=="object" || !("message" in item))return item;
+        const location=locations.find(candidate=>candidate.message===item.message);
+        return location?{...item,...location}:item;
+      });
+      throw new ApiError(error.code,error.message,{...error.details,diagnostics});
+    }
     throw error;
   };
   const nodeSource=(message:string,nodeLocator:string,propertyName?:string,identity=false)=>{

@@ -109,6 +109,32 @@ describe("fixed shared references through the real API role", () => {
     expect(hiddenOther.body).toMatchObject({total:0,items:[]});expect(hiddenOther.bodyText).not.toContain("refresh-other");
   });
 
+  it("returns the real shared source location for an unresolved reference during addition",async()=>{
+    const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Missing external label",sourceName:"external.dtsi",content:'&not_in_project { acceptance = <1>; };',changeDescription:"External reference"});
+    expect(draft.status,draft.bodyText).toBe(201);
+    const resourceId=draft.body.item.resourceId,preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});
+    expect(preview.status,preview.bodyText).toBe(201);
+    const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"unresolved-addition-location"});expect(version.status,version.bodyText).toBe(201);
+    const result=await post<{error:{details:{diagnostics:Array<{message:string;sourceName?:string;resourceId?:string;versionId?:string;line?:number}>}}}>(`/api/v1/projects/${A}/config-sets/${sets[A]}/member-addition/preview`,{sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:1});
+    expect(result.status,result.bodyText).toBe(400);
+    expect(result.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({sourceName:"external.dtsi",resourceId,versionId:version.body.item.id,line:1})]));
+  });
+
+  it("distinguishes a missing project root from changed source composition",async()=>{
+    const project="overview-readiness-project";
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Readiness case','RDY-CASE','initialized')",[project,ORG]);
+    const missing=(await createConfigSet(db,admin,{projectId:project,name:"Missing root"})).id;
+    await db.query("insert into dts_config_revisions(id,organization_id,project_id,config_set_id,revision_number,status,entry_file) values ('overview-missing-root',$1,$2,$3,1,'resolved','missing.dts')",[ORG,project,missing]);
+    const drift=(await createConfigSet(db,admin,{projectId:project,name:"Changed source"})).id;
+    const uploaded=await uploadProjectParameterFile(db,storage,admin,{projectId:project,fileName:"board.dts",bytes:Buffer.from(source)});
+    await addConfigSetFile(db,admin,{configSetId:drift,fileId:uploaded.file.id,role:"base",sortOrder:0});
+    await ingestConfigRevision(db,{organizationId:ORG,projectId:project,configSetId:drift,entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],members:[{fileId:uploaded.file.id,fileVersionId:uploaded.version.id,fileName:"board.dts",role:"base",sortOrder:0,content:source}]},admin);
+    await db.query("update project_parameter_files set config_set_sort_order=1 where id=$1",[uploaded.file.id]);
+    const result=await requestJson<{items:Array<{configSetId:string;configurationIssue:string;configurationReady:boolean}>}>(server(),`/api/v2/shared-dtsi/project-usages?projectId=${project}&limit=20`);
+    expect(result.status,result.bodyText).toBe(200);
+    expect(result.body.items).toEqual(expect.arrayContaining([expect.objectContaining({configSetId:missing,configurationIssue:"missing-root",configurationReady:false}),expect.objectContaining({configSetId:drift,configurationIssue:"source-changed",configurationReady:false})]));
+  });
+
   it("lists authorized project configurations including those without shared references", async () => {
     const emptyProject = "overview-empty-project";
     await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Overview empty','OVERVIEW-EMPTY','initialized')", [emptyProject, ORG]);
@@ -119,7 +145,7 @@ describe("fixed shared references through the real API role", () => {
     const result = await requestJson<{items:Array<{projectId:string;configSetId:string|null;references:unknown[]}>;total:number;visibility:string}>(server(), "/api/v2/shared-dtsi/project-usages?q=Overview");
     expect(result.status, result.bodyText).toBe(200);
     expect(sharedDtsiProjectUsagesSchema.safeParse(result.body).success).toBe(true);
-    expect(result.body).toMatchObject({total:1,visibility:"organization",items:[{projectId:emptyProject,configSetId:null,references:[]}]});
+    expect(result.body).toMatchObject({total:1,visibility:"organization",items:[{projectId:emptyProject,configSetId:null,configurationIssue:"no-configuration",references:[]}]});
     expect(result.bodyText).not.toContain("overview-other");
     const other=makeTestAuthContext({organizationId:"org-overview-other",userId:"overview-other-admin"});
     const otherList=await requestJson<{items:{projectId:string}[];total:number}>(server(other),"/api/v2/shared-dtsi/project-usages?q=Overview");
@@ -132,7 +158,7 @@ describe("fixed shared references through the real API role", () => {
     const second=await createConfigSet(db,admin,{projectId:emptyProject,name:"Empty second"});
     const page=await requestJson<{items:{projectId:string;configSetId:string;configurationReady:boolean;references:unknown[]}[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=OVERVIEW-EMPTY&status=unreferenced&limit=1");
     expect(page.status,page.bodyText).toBe(200);
-    expect(page.body).toMatchObject({total:2,items:[{projectId:emptyProject,configSetId:first.id,configurationReady:false,references:[]}]});
+    expect(page.body).toMatchObject({total:2,items:[{projectId:emptyProject,configSetId:first.id,configurationReady:false,configurationIssue:"no-resolved-source",references:[]}]});
     const later=await requestJson<{items:{configSetId:string}[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=OVERVIEW-EMPTY&status=unreferenced&limit=1&offset=1");
     expect(later.body).toMatchObject({total:2,items:[{configSetId:second.id}]});
     const pastEnd=await requestJson<{items:unknown[];total:number}>(server(),"/api/v2/shared-dtsi/project-usages?q=OVERVIEW-EMPTY&status=unreferenced&limit=1&offset=9");

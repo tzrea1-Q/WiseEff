@@ -10,6 +10,16 @@ import { invalidateSharedOperationSession } from "@/application/project-configur
 
 afterEach(cleanup);
 
+it("offers the actual source location when adding a shared resource fails validation",async()=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222",recover=vi.fn();
+  const failure=new WiseEffApiError("VALIDATION_FAILED","配置包含未解决的引用。",{diagnostics:[{severity:"error",code:"unresolved",message:"找不到标签",sourceName:"shared.dtsi",line:2,resourceId,versionId,memberId:"member"}]},"request",422);
+  const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn().mockRejectedValue(failure)};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"default"}]} initialConfigSetId="set" availableFiles={[]} sharedOnly initialSharedSource={{resourceId,versionId,version:1,name:"共享来源"}} client={client} onRecoverSwitch={recover} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.click(screen.getByRole("button",{name:"预览加入配置"}));
+  expect(await screen.findByText("shared.dtsi:2")).toBeVisible();expect(screen.getByText("找不到标签")).toBeVisible();
+  await user.click(screen.getByRole("button",{name:"核对共享来源"}));expect(recover).toHaveBeenCalledWith(expect.objectContaining({resourceId,versionId,memberId:"member",line:2}),expect.objectContaining({resourceId,versionId}));
+});
+
 it("discards a late preview when the selected project configuration changes",async()=>{
   const user=userEvent.setup(),source={resourceId:"11111111-1111-4111-8111-111111111111",versionId:"22222222-2222-4222-8222-222222222222",version:1,name:"共享来源"};
   const result={proofToken:"a".repeat(64),configSetId:"first",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}};

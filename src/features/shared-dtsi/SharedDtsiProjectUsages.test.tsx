@@ -17,6 +17,44 @@ function clientFor(fetchImpl:typeof fetch){return createApiClient({baseUrl:"",fe
 }});}
 
 describe("shared DTSI project usage", () => {
+  it("preserves the chosen project and source when an addition diagnostic opens project correction",async()=>{
+    const user=userEvent.setup(),navigate=vi.fn(),version={id:versionOne,resourceId:resourceOne,version:1,name:"公共电源",changeDescription:"首次",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
+    const fetchImpl=vi.fn(async(input:string|URL|Request)=>{const path=String(input);
+      if(path.includes("project-usages"))return new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:[]}],total:1,visibility:"organization"}));
+      if(path.includes("/member-addition/preview"))return new Response(JSON.stringify({error:{code:"VALIDATION_FAILED",message:"源码有误",details:{diagnostics:[{severity:"error",code:"unresolved",message:"缺少引用",sourceName:"board.dts",line:4,fileId:"file-a"}]}}}),{status:400});
+      if(path.includes("/versions"))return new Response(JSON.stringify({items:[version],total:1}));
+      return new Response(JSON.stringify({items:[{resourceId:resourceOne,name:"公共电源",sourceName:"power.dtsi",updatedAt:"today",draftRevision:null,currentVersion:version}],total:1}));});
+    render(<SharedDtsiPage apiClient={clientFor(fetchImpl)} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects&usageQuery=项目甲" onNavigate={navigate}/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
+    await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(screen.getByRole("option",{name:"公共电源"}));
+    await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(screen.getByRole("option",{name:"版本 1 · 首次"}));
+    await user.click(screen.getByRole("button",{name:"预览加入配置"}));await user.click(await screen.findByRole("button",{name:"修正项目源码"}));
+    const target=new URL(navigate.mock.calls.at(-1)![0],"http://localhost");expect(target.pathname).toBe("/parameter-admin/projects/p1/configuration");expect(target.searchParams.get("file")).toBe("file-a");expect(target.searchParams.get("line")).toBe("4");
+    const back=new URL(target.searchParams.get("returnTo")!,"http://localhost").searchParams;
+    expect(back.get("referenceResource")).toBe(resourceOne);expect(back.get("referenceVersion")).toBe(versionOne);expect(back.get("referenceTargetProject")).toBe("p1");expect(back.get("referenceTargetConfig")).toBe("c1");expect(back.get("usageQuery")).toBe("项目甲");
+  });
+  it("explains the specific unavailable configuration reason and opens its source workbench",async()=>{
+    const rows=[{projectId:"missing",projectName:"尚无解析",configurationIssue:"no-resolved-source"},{projectId:"root",projectName:"缺少根文件",configurationIssue:"missing-root"},{projectId:"drift",projectName:"源码已变化",configurationIssue:"source-changed"}].map(row=>({...row,projectCode:"A",configSetId:`${row.projectId}-set`,configSetName:"default",configurationReady:false,canConfigure:true,references:[]}));
+    const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:rows,total:3,visibility:"organization"})));
+    render(<SharedDtsiPage apiClient={clientFor(fetchImpl)} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    const check=async(name:string,message:string)=>{const row=(await screen.findByText(name)).closest("tr")!;expect(within(row).getByText(message)).toBeVisible();expect(within(row).getByRole("link",{name:"前往配置工作台"})).toHaveAttribute("href",expect.stringContaining("tab=source"));};
+    await check("尚无解析","尚无已解析的配置来源");await check("缺少根文件","配置缺少有效的项目根文件");await check("源码已变化","项目源码与已解析配置不一致");
+  });
+  it("returns to the resource when session storage rejects the focus hint",async()=>{
+    const set=vi.spyOn(Storage.prototype,"setItem").mockImplementation(()=>{throw new DOMException("denied","SecurityError");});const navigate=vi.fn();
+    try{render(<SharedDtsiPage apiClient={clientFor(async()=>new Response(JSON.stringify({items:[],total:0,visibility:"organization"})))} canWrite currentUserId="user-a" organizationId="org-a" search={`?view=projects&referenceResource=${resourceOne}&referenceVersion=${versionOne}`} onNavigate={navigate}/>);
+      await userEvent.setup().click(screen.getByRole("button",{name:"返回资源包"}));expect(navigate).toHaveBeenCalledWith("/parameter-admin/sources");
+    }finally{set.mockRestore();}
+  });
+  it("shows a direct resource once when another direct package also depends on it",async()=>{
+    const refs=[{resourceId:resourceOne,resourceName:"底层包",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:false,requiredBy:[{resourceId:resourceTwo,resourceName:"上层包"}]},
+      {resourceId:resourceTwo,resourceName:"上层包",versionId:versionTwo,version:1,direct:true,state:"active",upgradeAvailable:false,requiredBy:[]}];
+    const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:refs}],total:1,visibility:"organization"})));
+    render(<SharedDtsiPage apiClient={clientFor(fetchImpl)} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    const row=(await screen.findByText("项目甲")).closest("tr")!;
+    expect(within(row).getAllByRole("link",{name:"底层包 · v1"})).toHaveLength(1);
+    expect(within(row).getByText("同时由 上层包 引入")).toBeVisible();
+  });
   it("identifies same, different and indirect references for a fixed source version",async()=>{
     const version={id:versionTwo,resourceId:resourceOne,version:2,name:"公共电源",changeDescription:"新版",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
     const ref=(id:string,direct:boolean)=>({resourceId:resourceOne,resourceName:"公共电源",versionId:id,version:id===versionOne?1:2,direct,state:"active",upgradeAvailable:false,requiredBy:direct?[]:[{resourceId:resourceTwo,resourceName:"上游包"}]});

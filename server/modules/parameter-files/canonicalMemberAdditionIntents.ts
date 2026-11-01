@@ -89,10 +89,24 @@ export async function listMemberAdditionIntents(db:Database,auth:AuthContext,lim
     await requireActiveOrganization(tx,organizationId,true);
     const user=(await tx.query("select id from public.users where id=$1 and organization_id=$2 and is_active for no key update",[auth.user.id,auth.organization.id])).rows[0];
     if(!user)throw new ApiError("FORBIDDEN","当前用户无权查看待核对操作。");
-    const rows=(await tx.query<Intent>(`select * from public.member_addition_intents where organization_id=$1 and actor_user_id=$2 and not acknowledged
-      and ($3::text is null or project_id=$3) and ($4::text is null or config_set_id=$4) order by created_at desc,id`,
-      [organizationId,auth.user.id,filter.projectId??null,filter.configSetId??null])).rows;
-    const allowed:Intent[]=[];for(const row of rows)if(await isCurrentSourceAdministrator(tx,auth,row.project_id))allowed.push(row);
-    return {items:await Promise.all(allowed.slice(offset,offset+limit).map(row=>present(tx,row))),total:allowed.length};
+    // Source administrators have organization-wide project edit rights. The user fence above
+    // holds the current role snapshot stable through both the count and page reads.
+    if(!await isCurrentSourceAdministrator(tx,auth,filter.projectId??""))return {items:[],total:0};
+    const values=[organizationId,auth.user.id,filter.projectId??null,filter.configSetId??null];
+    const where=`i.organization_id=$1 and i.actor_user_id=$2 and not i.acknowledged
+      and ($3::text is null or i.project_id=$3) and ($4::text is null or i.config_set_id=$4)`;
+    const total=Number((await tx.query<{count:string}>(`select count(*) as count from public.member_addition_intents i where ${where}`,values)).rows[0]!.count);
+    const rows=(await tx.query<Intent & {project_name:string;config_name:string;applied_source_result:{requestId:string;fileId:string;fileVersionId:string;configRevisionId:string}|null}>(`
+      select i.*,p.name as project_name,s.name as config_name,receipt.applied_source_result
+      from public.member_addition_intents i
+      join public.projects p on p.id=i.project_id and p.organization_id=i.organization_id
+      join public.dts_config_set s on s.id=i.config_set_id and s.project_id=i.project_id and s.organization_id=i.organization_id
+      left join lateral (select r.applied_source_result from public.project_parameter_value_change_requests r
+        where i.status='applied' and r.organization_id=i.organization_id and r.project_id=i.project_id and r.submitter_user_id=i.actor_user_id
+          and r.source_revision_mutation_id=i.mutation_id::text and r.source_revision_config_set_id=i.config_set_id
+          and r.request_kind='member_addition' and r.status='approved' limit 1) receipt on true
+      where ${where} order by i.created_at desc,i.id limit $5 offset $6`,[...values,limit,offset])).rows;
+    return {items:rows.map(row=>({id:row.id,clientMutationId:row.mutation_id,projectId:row.project_id,projectName:row.project_name,
+      configSetId:row.config_set_id,configSetName:row.config_name,status:row.status,...(row.applied_source_result?{result:{requestId:row.applied_source_result.requestId,fileId:row.applied_source_result.fileId,fileVersionId:row.applied_source_result.fileVersionId,configRevisionId:row.applied_source_result.configRevisionId}}:{})})),total};
   });
 }
