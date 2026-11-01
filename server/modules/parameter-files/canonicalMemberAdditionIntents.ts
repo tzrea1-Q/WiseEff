@@ -11,6 +11,7 @@ import { isCurrentSourceAdministrator, requireCurrentSourceAdministrator } from 
 type Intent={id:string;organization_id:string;project_id:string;config_set_id:string;actor_user_id:string;registration_id:string;mutation_id:string;status:"pending"|"applied"|"stopped";acknowledged:boolean};
 type Target={projectId:string;configSetId:string};
 export function canonicalMemberMutationId(mutationId:string){
+  // Accept a safe superset of PostgreSQL UUID spellings so aliases share a fence.
   const text=mutationId.startsWith("{")&&mutationId.endsWith("}")?mutationId.slice(1,-1):mutationId;
   if(!/^[0-9a-f-]+$/i.test(text))return mutationId;
   const hex=text.replaceAll("-","").toLowerCase();if(!/^[0-9a-f]{32}$/.test(hex))return mutationId;
