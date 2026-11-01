@@ -71,6 +71,13 @@ export const sharedDtsiRecognitionReferenceSchema=z.object({resourceId:id,versio
 export type SharedDtsiRecognitionReference=z.infer<typeof sharedDtsiRecognitionReferenceSchema>;
 export const sharedDtsiUsagesSchema=z.object({items:z.array(z.object({projectId:z.string(),projectName:z.string(),configSetId:z.string(),configSetName:z.string(),versionId:id,version:z.number(),direct:z.boolean(),
   upgradeAvailable:z.boolean(),evaluation:z.literal("not-evaluated")}).strict()),total:z.number().int().nonnegative(),visibility:z.enum(["organization","authorized-projects"])}).strict();
+export const sharedDtsiProjectUsagesSchema=z.object({items:z.array(z.object({
+  projectId:z.string(),projectName:z.string(),projectCode:z.string(),configSetId:z.string().nullable(),configSetName:z.string().nullable(),
+  configurationReady:z.boolean(),canConfigure:z.boolean(),references:z.array(z.object({resourceId:id,resourceName:z.string(),versionId:id,
+    version:z.number().int().positive(),direct:z.boolean(),state:z.enum(["active","retired"]),upgradeAvailable:z.boolean(),
+    requiredBy:z.array(z.object({resourceId:id,resourceName:z.string()}).strict())}).strict())
+}).strict()),total:z.number().int().nonnegative(),visibility:z.enum(["organization","authorized-projects"])}).strict();
+export type SharedDtsiProjectUsages=z.infer<typeof sharedDtsiProjectUsagesSchema>;
 const comparisonSource=z.object({sourceName:z.string(),content:z.string()}).strict();
 export const sharedDtsiComparisonSchema=z.object({before:sharedDtsiVersionSummarySchema,after:sharedDtsiVersionSummarySchema,
   buildInputs:z.object({before:dtsBuildInputsSchema,after:dtsBuildInputsSchema}).strict(),
@@ -119,6 +126,7 @@ export const sharedDtsiDtoSchemaCatalog = {
   SharedDtsiVersionResponse: itemEnvelopeSchema(sharedDtsiVersionSchema),
   SharedDtsiVersionsResponse: sharedDtsiVersionsSchema,
   SharedDtsiUsagesResponse:sharedDtsiUsagesSchema,
+  SharedDtsiProjectUsagesResponse:sharedDtsiProjectUsagesSchema,
   SharedDtsiRecognitionResponse:sharedDtsiRecognitionSchema,
   SharedDtsiComparisonResponse:itemEnvelopeSchema(sharedDtsiComparisonSchema),
   SharedDtsiPreviewRequest: sharedDtsiPreviewRequestSchema,
@@ -132,6 +140,7 @@ export const sharedDtsiRoutes = [
   { id: "sharedDtsi.projectImport", method: "POST", path: "/api/v2/projects/:projectId/config-sets/:configSetId/shared-dtsi", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.list", method: "GET", path: "/api/v2/shared-dtsi", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.create", method: "POST", path: "/api/v2/shared-dtsi", module: "parameter-files", stability: "commercial-readiness" },
+  { id: "sharedDtsi.projectUsages", method: "GET", path: "/api/v2/shared-dtsi/project-usages", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.get", method: "GET", path: "/api/v2/shared-dtsi/:resourceId", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.save", method: "PUT", path: "/api/v2/shared-dtsi/:resourceId/draft", module: "parameter-files", stability: "commercial-readiness" },
   { id: "sharedDtsi.discard", method: "DELETE", path: "/api/v2/shared-dtsi/:resourceId/draft", module: "parameter-files", stability: "commercial-readiness" },
@@ -162,6 +171,8 @@ export const sharedDtsiSchemaRegistry = {
   "sharedDtsi.detail": { summary: "Read shared resource state", tags, responseBody: "SharedDtsiDetailResponse" },
   "sharedDtsi.usages":{summary:"List authorized direct and indirect project references",tags,responseBody:"SharedDtsiUsagesResponse",
     requestParameters:[{name:"offset",in:"query" as const},{name:"limit",in:"query" as const}]},
+  "sharedDtsi.projectUsages":{summary:"List authorized project configurations and fixed shared references",tags,responseBody:"SharedDtsiProjectUsagesResponse",
+    requestParameters:[{name:"q",in:"query" as const},{name:"status",in:"query" as const},{name:"offset",in:"query" as const},{name:"limit",in:"query" as const}]},
   "sharedDtsi.comparison":{summary:"Compare exact immutable original source and ordered fragment declarations",tags,responseBody:"SharedDtsiComparisonResponse",
     requestParameters:[{name:"before",in:"query" as const},{name:"after",in:"query" as const}]},
   "sharedDtsi.versions": { summary: "List immutable source versions", tags, responseBody: "SharedDtsiVersionsResponse",

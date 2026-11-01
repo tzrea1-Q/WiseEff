@@ -11,7 +11,7 @@ import { sharedDtsiArchiveInputSchema, sharedDtsiDraftInputSchema, sharedDtsiDra
 import { createSharedDtsiDraft, discardSharedDtsiDraft, getSharedDtsiDraft, listSharedDtsiResources, saveSharedDtsiDraft, requireWrite } from "./service";
 import { createSharedDtsiVersionDraft, getSharedDtsiResourceDetail, getSharedDtsiVersion, listSharedDtsiVersions,
   previewSharedDtsiPublication, publishSharedDtsi } from "./publication";
-import { listSharedDtsiUsages } from "./usages";
+import { listSharedDtsiProjectUsages, listSharedDtsiUsages } from "./usages";
 import { recognizeSharedDtsiVersion } from "./recognition";
 import type { ObjectStore } from "../logs/objectStore";
 import { importPrivateProjectSource } from "./projectImport";
@@ -58,6 +58,12 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
     const {archive}=parse(sharedDtsiArchiveInputSchema,request.body);
     const result=await inspectSharedDtsiArchive(parse(sharedDtsiDraftInputSchema,{name:"导入预览",archive}));
     return {status:200,body:{item:{members:result.input.members,ignored:result.ignored}}};
+  });
+  router.get("/api/v2/shared-dtsi/project-usages", async request => {
+    const {db,auth}=await access(request);
+    const query=parse(z.object({q:z.string().trim().max(160).default(""),status:z.enum(["all","referenced","unreferenced"]).default("all"),
+      offset:z.coerce.number().int().min(0).max(100_000).default(0),limit:z.coerce.number().int().min(1).max(100).default(20),organizationId:z.string().optional()}),request.query);
+    return {status:200,body:await listSharedDtsiProjectUsages(db,auth,query)};
   });
   router.get("/api/v2/shared-dtsi/:resourceId", async request => {
     const { db, auth } = await access(request);
