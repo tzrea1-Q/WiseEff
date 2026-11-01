@@ -62,7 +62,8 @@ export function registerSharedDtsiRoutes(router: WiseEffRouter, options: {
   router.get("/api/v2/shared-dtsi/project-usages", async request => {
     const {db,auth}=await access(request);
     const query=parse(z.object({q:z.string().trim().max(160).default(""),status:z.enum(["all","referenced","unreferenced"]).default("all"),
-      offset:z.coerce.number().int().min(0).max(100_000).default(0),limit:z.coerce.number().int().min(1).max(100).default(20),organizationId:z.string().optional()}),request.query);
+      offset:z.coerce.number().int().min(0).max(100_000).default(0),limit:z.coerce.number().int().min(1).max(100).default(20),organizationId:z.string().optional(),
+      projectId:z.string().min(1).max(200).optional(),configSetId:z.string().min(1).max(200).optional()}),request.query);
     return {status:200,body:await listSharedDtsiProjectUsages(db,auth,query)};
   });
   router.get("/api/v2/shared-dtsi/:resourceId", async request => {

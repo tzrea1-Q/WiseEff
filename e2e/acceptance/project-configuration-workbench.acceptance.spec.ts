@@ -4217,6 +4217,56 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     expect((await leafUsages.json()).items).toContainEqual(expect.objectContaining({projectId,direct:false}));
   });
 
+  test("administrator configures a fixed shared package from project usage", async ({page,request},testInfo)=>{
+    test.setTimeout(240_000);
+    await seedAcceptanceRoleMatrix();
+    await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
+    const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Project1473", "keep"; }; };',
+      rawValuePattern:'"Project1473", "keep"',nodeLocatorPattern:"board",reason:"#1473 project usage",timeoutMs:60_000});
+    const configResponse=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`),{headers:adminHeaders()});
+    expect(configResponse.status(),await configResponse.text()).toBe(200);
+    const config=(await configResponse.json()).items.find((item:{id:string})=>item.id===binding.configSetId) as {name:string};
+    expect(config).toBeDefined();
+    const name=`Project usage package ${randomUUID()}`;
+    const draft=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name,sourceName:"project-usage-package.dtsi",content:'/ { shared_usage_1473 { status = "okay"; }; };',changeDescription:"Initial package"}});
+    expect(draft.status(),await draft.text()).toBe(201);const resourceId=(await draft.json()).item.resourceId as string;
+    const check=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:1}});
+    expect(check.status(),await check.text()).toBe(201);
+    const published=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await check.json()).item.id,idempotencyKey:`usage-${randomUUID()}`}});
+    expect(published.status(),await published.text()).toBe(201);const versionId=(await published.json()).item.id as string;
+    const usagePath=`/parameter-admin/sources?${new URLSearchParams({organization:organizationId,view:"projects",usageQuery:config.name})}`;
+    await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,usagePath));await dismissXiaozeHint(page);await waitForInteractionSurfaceReady(page);
+    const row=page.getByRole("row").filter({hasText:config.name});await expect(row).toHaveCount(1);
+    await expect(row).toContainText("未引用共享资源包");await row.getByRole("button",{name:"配置资源包",exact:true}).click();
+    const configured=page.getByRole("dialog",{name:"配置资源包",exact:true});await expect(configured).toContainText("未引用共享资源包");
+    await configured.getByRole("button",{name:"添加资源包",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"添加资源包",exact:true});await expect(dialog).toBeVisible();
+    await dialog.getByRole("searchbox",{name:"搜索共享资源",exact:true}).fill(name);
+    await selectControlOption(dialog.getByRole("combobox",{name:"共享资源",exact:true}),resourceId);
+    await selectControlOption(dialog.getByRole("combobox",{name:"固定版本",exact:true}),versionId);
+    const previewPath=`/api/v1/projects/${projectId}/config-sets/${binding.configSetId}/member-addition/preview`;
+    let previewing=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===previewPath,{timeout:60_000});
+    await dialog.getByRole("button",{name:"预览加入配置",exact:true}).click();let preview=await previewing;expect(preview.status(),await preview.text()).toBe(200);
+    await expect(dialog.getByRole("region",{name:"加入配置预览"})).toContainText("project-usage-package.dtsi");
+    await dialog.getByRole("button",{name:"取消本次预览",exact:true}).click();
+    const before=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/usages`),{headers:adminHeaders()});expect((await before.json()).items).not.toContainEqual(expect.objectContaining({projectId,configSetId:binding.configSetId}));
+    previewing=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname===previewPath,{timeout:60_000});
+    await dialog.getByRole("button",{name:"预览加入配置",exact:true}).click();preview=await previewing;expect(preview.status(),await preview.text()).toBe(200);
+    await dialog.getByRole("textbox",{name:"加入原因"}).fill("确认固定共享资源");
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);await expect(dialog.getByRole("button",{name:"确认加入配置"})).toBeInViewport({ratio:1});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      const path=testInfo.outputPath(`project-usage-add-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`project usage add ${viewport.width}`,{path,contentType:"image/png"});
+    }
+    const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"),{timeout:60_000});
+    await dialog.getByRole("button",{name:"确认加入配置"}).focus();await page.keyboard.press("Enter");const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);
+    await expect(row.getByRole("link",{name:`${name} · v1`})).toBeVisible();
+    const usages=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/usages`),{headers:adminHeaders()});
+    expect((await usages.json()).items).toContainEqual(expect.objectContaining({projectId,configSetId:binding.configSetId,versionId,direct:true}));
+    await row.getByRole("link",{name:"查看生效配置"}).click();await expect(page.getByRole("tab",{name:"生效配置"})).toHaveAttribute("aria-selected","true");
+    expect(new URL(page.url()).searchParams.get("configSet")).toBe(binding.configSetId);
+  });
+
   test("administrator adds a staged overlay to a Canonical configuration through preview and keyboard confirmation", async ({ page, request }, testInfo) => {
     test.setTimeout(240_000);
     await seedAcceptanceRoleMatrix();

@@ -18,7 +18,7 @@ async function authorizeUsageRead(db:Database,auth:AuthContext) {
   return {current,authorized};
 }
 
-export async function listSharedDtsiProjectUsages(db:Database,auth:AuthContext,input:{q:string;status:"all"|"referenced"|"unreferenced";offset:number;limit:number}):Promise<SharedDtsiProjectUsages> {
+export async function listSharedDtsiProjectUsages(db:Database,auth:AuthContext,input:{q:string;status:"all"|"referenced"|"unreferenced";offset:number;limit:number;projectId?:string;configSetId?:string}):Promise<SharedDtsiProjectUsages> {
   const {current,authorized}=await authorizeUsageRead(db,auth);
   const scope=parameterUsageProjectScope(authorized);
   if(!scope)throw new ApiError("FORBIDDEN","当前项目使用范围不可用。");
@@ -26,6 +26,7 @@ export async function listSharedDtsiProjectUsages(db:Database,auth:AuthContext,i
   const referenced=`exists(select 1 from public.project_shared_dtsi_references r where r.organization_id=p.organization_id and r.project_id=p.id and r.config_set_id=c.id)`;
   const from=`from public.projects p left join public.dts_config_set c on c.organization_id=p.organization_id and c.project_id=p.id
     where p.organization_id=$1 and ($2::text[] is null or p.id=any($2::text[]))
+    and ($7::text is null or p.id=$7) and ($8::text is null or c.id=$8)
     and ($3='' or position(lower($3) in lower(p.name))>0 or position(lower($3) in lower(p.code))>0
       or position(lower($3) in lower(c.name))>0 or exists(select 1 from public.project_shared_dtsi_references r
         join public.shared_dtsi_revisions v on v.id=r.revision_id and v.organization_id=r.organization_id
@@ -60,7 +61,7 @@ export async function listSharedDtsiProjectUsages(db:Database,auth:AuthContext,i
     ) select (select count(*)::integer ${from}) as total,
       coalesce((select jsonb_agg(to_jsonb(page) order by page."projectName",page."projectId",page."configSetName",page."configSetId") from page),'[]'::jsonb) as items,
       coalesce((select jsonb_agg(to_jsonb(refs) order by refs."resourceName",refs."resourceId") from refs),'[]'::jsonb) as references`,
-    [...values,input.limit,input.offset])).rows[0]!;
+    [...values,input.limit,input.offset,input.projectId??null,input.configSetId??null])).rows[0]!;
   const {items:rows,total,references:refs}=result;
   const refsByConfig=new Map<string,Ref[]>();
   for(const ref of refs){const group=refsByConfig.get(ref.configSetId)??[];group.push(ref);refsByConfig.set(ref.configSetId,group);}
