@@ -4241,6 +4241,13 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const configured=page.getByRole("dialog",{name:"配置资源包",exact:true});await expect(configured).toContainText("未引用共享资源包");
     await configured.getByRole("button",{name:"添加资源包",exact:true}).click();
     const dialog=page.getByRole("dialog",{name:"添加资源包",exact:true});await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(config.name==="default"?"默认配置":config.name);
+    await expect(dialog.getByRole("combobox",{name:"目标配置",exact:true})).toHaveCount(0);
+    await expect(dialog.getByText("用途：共享 include（项目根入口保持不变）")).toHaveCount(0);
+    for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){
+      await page.setViewportSize(viewport);
+      const path=testInfo.outputPath(`project-usage-select-${viewport.width}.png`);await page.screenshot({path});await testInfo.attach(`project usage select ${viewport.width}`,{path,contentType:"image/png"});
+    }
     await dialog.getByRole("searchbox",{name:"搜索共享资源",exact:true}).fill(name);
     await selectControlOption(dialog.getByRole("combobox",{name:"共享资源",exact:true}),resourceId);
     await selectControlOption(dialog.getByRole("combobox",{name:"固定版本",exact:true}),versionId);

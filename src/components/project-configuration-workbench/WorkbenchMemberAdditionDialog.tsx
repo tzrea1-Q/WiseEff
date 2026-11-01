@@ -162,12 +162,12 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         : source === "upload" ? "上传仅保存候选；预览并确认后，文件组成及参数状态一起生效。" : "选择项目文件，预览配置变化后确认加入。"}</p></div>
         <Button ref={closeRef} type="button" variant="outline" disabled={busy} onClick={dismiss}>{uncertain?"返回列表核对":"关闭"}</Button></header>
       <div className="workbench-member-addition-dialog__body" aria-busy={busy}>
-        <details ref={selectionRef} open={!preview} className="workbench-member-addition-dialog__selection"><summary>文件与目标配置</summary>
+        <details ref={selectionRef} open={!preview} className="workbench-member-addition-dialog__selection"><summary>{sharedOnly?"资源包与版本":"文件与目标配置"}</summary>
         <form onSubmit={(event) => { event.preventDefault(); void prepare(); }}>
-          <fieldset disabled={busy||uncertain||refreshingReferences} aria-label="文件与目标配置">
-            <label>目标配置<SelectControl ariaLabel="目标配置" value={configSetId} disabled={busy||sharedOnly||Boolean(reference||conversionSource)}
+          <fieldset disabled={busy||uncertain||refreshingReferences} aria-label={sharedOnly?"资源包与版本":"文件与目标配置"}>
+            {!sharedOnly?<label>目标配置<SelectControl ariaLabel="目标配置" value={configSetId} disabled={busy||Boolean(reference||conversionSource)}
               onValueChange={(value) => { setConfigSetId(value); invalidate(); }}
-              options={configSets.map((set) => ({ value: set.id, label: set.name === "default" ? "默认配置" : set.name }))} /></label>
+              options={configSets.map((set) => ({ value: set.id, label: set.name === "default" ? "默认配置" : set.name }))} /></label>:null}
             {!reference&&!conversionSource&&!sharedOnly?<label>文件来源<SelectControl ariaLabel="文件来源" value={source} disabled={busy}
               onValueChange={(value) => { setSource(value); setRegistration({ configurationSchemaId: "", mappings: [] }); invalidate(); }}
               options={[{ value: "upload", label: "上传新文件" }, { value: "existing", label: "选择已有项目文件", disabled: !availableFiles.length }, { value: "shared", label: "引用共享 DTSI 固定版本" }]} /></label>:null}
@@ -200,7 +200,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
                   onChange={event=>{setMountPath(event.target.value);invalidate();}} /></label></details>:null}
               </>}
             {candidate && source === "upload" ? <p role="status">已保存候选：{candidate.fileName}；尚未加入配置。</p> : null}
-            {!removeReference?<div className="workbench-member-addition-dialog__columns">
+            {!removeReference&&!sharedOnly?<div className="workbench-member-addition-dialog__columns">
               {source !== "shared" ? <label>文件用途<SelectControl ariaLabel="文件用途" value={role} disabled={busy}
                 onValueChange={(value) => { setRole(value); invalidate(); }}
                 options={(Object.keys(roleLabels) as Array<MemberAdditionBody["role"]>).map((value) => ({ value, label: roleLabels[value] }))} /></label> : <p>{conversionSource?"文件用途、顺序和项目根入口保持原样。":"用途：共享 include（项目根入口保持不变）"}</p>}
