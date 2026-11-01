@@ -22,7 +22,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
   const source = {
     fileName,
     sha256: `sha256:${createHash("sha256").update(document, "utf8").digest("hex")}`,
-    parserVersion: "markdown-import/v1",
+    parserVersion: "markdown-import/v2",
   };
   const syntax = parseMarkdown(document);
   const definitionCount = syntax.subjects.reduce((count, subject) => count + subject.definitions.length, 0);

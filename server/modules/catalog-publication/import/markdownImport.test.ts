@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { allocationFor, firstAcmePredecessor, frozenPageIdentity } from "../builder/predecessorHarness";
 import { buildCompleteSuccessor } from "../builder/completeSuccessor";
 import { planMarkdownImport, serializeMarkdownRevision } from "./markdownImport";
-import { DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
+import { DEFINITION_IMPORT_GUIDE, DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 import { buildCreateDefinitionChangeSet, emptyPublicationDraft } from "../../../../src/features/parameter-catalog-governance/publicationState";
 
 const document = `# Driver \`acme,power\`
@@ -74,6 +74,9 @@ describe("Definition import planner", () => {
       revision: { ...original.content.revision, displayName: "混合", valueSchema: { type: "array", items: { description: "整数或字符串" } }, examples: [[1, "a"]] } } };
     const input = { ...snapshot, documents: [...snapshot.documents.filter((item) => item !== original), numeric, mixed] };
     const { document: markdown } = serializeMarkdownRevision(input, [numeric.content.id, mixed.content.id]);
+    expect(markdown).toContain("> # WiseEff 定义导入填写说明");
+    expect(markdown).toContain("删除字段行表示保留旧值");
+    expect(markdown).toContain(`导出时的目录版本：\`${input.manifest.release.id}\``);
     expect(markdown).toContain("# Driver `acme,power`");
     expect(markdown).toContain("| 操作 | 修订 |");
     expect(markdown).toContain("输入 \\\\ 路径 \\| 输出");
@@ -375,13 +378,45 @@ describe("Definition import planner", () => {
     expect(plan.changeSet?.[0]).toMatchObject({ content: { valueSchema: { type }, examples: [expected] } });
   });
 
-  it("plans the downloadable template with all supported types", () => {
-    const first = firstAcmePredecessor().first;
-    const snapshot = { ...first, documents: first.documents.map((item) => item.kind === "subject" && item.content.id === "csub_acme_power"
-      ? { ...item, content: { ...item.content, selector: { ...item.content.selector, value: "vendor,existing-driver" } } } : item) };
-    const plan = planMarkdownImport(DEFINITION_IMPORT_TEMPLATE, "template.md", snapshot);
+  it("plans the downloadable examples without requiring an example subject in the catalog or importing instructions", () => {
+    const plan = planMarkdownImport(DEFINITION_IMPORT_TEMPLATE, "template.md", firstAcmePredecessor().first);
+    expect(plan.entries).toHaveLength(7);
     expect(plan.entries.every((entry) => entry.outcome === "create")).toBe(true);
-    expect(plan.changeSet).not.toBeNull();
+    expect(plan.changeSet).toMatchObject([{ op: "create-subject-with-definitions", definitions: [
+      { content: { valueSchema: { type: "integer" } } },
+      { content: { valueSchema: { type: "number" } } },
+      { content: { valueSchema: { type: "string" } } },
+      { content: { valueSchema: { type: "boolean" } } },
+      { content: { valueSchema: { type: "null" } } },
+      { content: { valueSchema: { type: "array", items: { type: "array", items: { type: "integer" } } } } },
+      { content: { documentation: "调节配置的字段含义见类型说明。" } },
+    ] }]);
+  });
+
+  it("ignores only leading quoted instructions and preserves quotes inside definition documentation", () => {
+    const guide = "> # 填写说明\n> ```markdown\n> # Driver `example,ignored`\n> ## `ignored` 不导入的示例\n> ```\n\n";
+    const original = planMarkdownImport(document, "plain.md", firstAcmePredecessor().first);
+    const guided = planMarkdownImport(guide + document, "guided.md", firstAcmePredecessor().first);
+    expect(guided.changeSet).toEqual(original.changeSet);
+    const quotedBody = document.replace("说明正文。", "> 正文引用必须保留。\n\n说明正文。");
+    expect(planMarkdownImport(guide + quotedBody, "quoted.md", firstAcmePredecessor().first).changeSet?.[0])
+      .toMatchObject({ content: { documentation: "> 正文引用必须保留。\n\n说明正文。" } });
+    const bad = planMarkdownImport(guide + document.replace("| 类型 | integer |", "| 默认值 | 3 |"), "bad.md", firstAcmePredecessor().first);
+    expect(bad.changeSet).toBeNull();
+    expect(bad.entries[0]?.diagnostics).toContainEqual(expect.objectContaining({ field: "默认值", line: 12 }));
+  });
+
+  it("accepts the guide's complete revision, other-subject and existing-subject examples", () => {
+    const guide = DEFINITION_IMPORT_GUIDE.replace(/^> ?/gmu, "");
+    const examples = [...guide.matchAll(/```markdown\n([\s\S]*?)\n```/gu)];
+    expect(examples).toHaveLength(3);
+    for (const [, example] of examples) {
+      const input = example.replaceAll("example,charger", "acme,power")
+        .replaceAll("current-limit", "iin_max").replaceAll("电流限制", "Input current limit");
+      const plan = planMarkdownImport(input, "guide-example.md", firstAcmePredecessor().first);
+      expect(plan.entries.every((entry) => entry.outcome === "create" || entry.outcome === "revise")).toBe(true);
+      expect(plan.changeSet).not.toBeNull();
+    }
   });
 
   it("builds nested arrays, mixed and null schemas and parses their examples", () => {

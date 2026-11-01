@@ -3,6 +3,7 @@ import { IMPORT_FIELDS as F } from "./content";
 import { formatValueType, unwrapArraySchema } from "./schema";
 import { parseMarkdown } from "./parse";
 import { planMarkdownImport } from "./plan";
+import { DEFINITION_IMPORT_GUIDE } from "../../../../../src/domain/parameter-catalog/definitionImportTemplate";
 
 /** Serialize existing definition heads in the vocabulary understood by the importer. */
 function serialize(snapshot: CatalogReleaseNode, definitionIds: readonly string[], documentationOnly = false): string {
@@ -63,5 +64,6 @@ export function serializeMarkdownRevision(snapshot: CatalogReleaseNode, definiti
     }
     allowed.push(definitionId);
   }
-  return { document: serialize(snapshot, allowed), skipped };
+  const document = serialize(snapshot, allowed);
+  return { document: allowed.length ? `${DEFINITION_IMPORT_GUIDE}\n> 导出时的目录版本：\`${snapshot.manifest.release.id}\`。\n> 下方为所选现行定义的修订数据。原样导入会跳过无变化项；按上面的修订规则编辑后，再核对预览。\n\n${document}` : document, skipped };
 }
