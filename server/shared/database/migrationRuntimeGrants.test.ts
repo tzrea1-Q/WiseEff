@@ -30,6 +30,17 @@ function missingRuntimeGrants(sql: string): string[] {
           + (routine ? `executeformat('grantexecuteonfunction${routine}to%i',${recipient});` : "");
         if (recipient && cleanupLoop[2] === expected) return true;
       }
+      // Intent identities are retained fences: API writers may update only
+      // state columns; deletion is reserved for the migration owner.
+      if (table === "member_addition_intents") {
+        const afterCreate = uncommented.slice(create.index! + create[0].length).replace(/\s+|"/g, "").toLowerCase();
+        const grants = [...afterCreate.matchAll(/grant[^;]*on(?:table)?[^;]*member_addition_intents[^;]*;/g)].map(([grant]) => grant);
+        const expected = "declarerole_nametext;beginforrole_nameinselectrolnamefrompg_roleswherenotrolsuperandhas_table_privilege(oid,'public.users','update')andpg_has_role(oid,'catalog_publication_coordinator_role','member')loopexecuteformat('grantselect,insert,update(status,acknowledged,stop_audit_id,ack_audit_id)onpublic.member_addition_intentsto%i',role_name);executeformat('revokedeleteonpublic.member_addition_intentsfrom%i',role_name);endloop;end";
+        if (compact === expected && JSON.stringify(grants) === JSON.stringify([
+          "grantselect,deleteonpublic.member_addition_intentstocatalog_migration_owner;",
+          "grantselect,insert,update(status,acknowledged,stop_audit_id,ack_audit_id)onpublic.member_addition_intentsto%i',role_name);"
+        ]) && !/grant[^;]*onalltablesinschema[^;]*public/.test(afterCreate)) return true;
+      }
       if (table === "parameter_object_writes") {
         const afterCreate = uncommented.slice(create.index! + create[0].length).replace(/\s+|"/g, "").toLowerCase();
         const entries = "parameter_catalog.reserve_parameter_object_write(text,text),parameter_catalog.lock_parameter_object_write(text)";
@@ -355,6 +366,21 @@ describe("public table runtime grants (0185 onward)", () => {
       sql.replace("'public.log_domains'", "'public.unrelated'"), sql.replace("rolname <> 'PUBLIC'", "true"),
       sql.replace("to %I', role_name", "to %I', another_role")]) {
       expect(missingRuntimeGrants(invalid)).toEqual(["public_experience_registration"]);
+    }
+  });
+
+  it("recognizes only the restricted intent fence grants", () => {
+    const sql = readFileSync(new URL("0318_member_addition_intents.sql", migrationsDir), "utf8");
+    expect(missingRuntimeGrants(sql)).toEqual([]);
+    for (const invalid of [sql.replace("'public.users','UPDATE'", "'public.users','SELECT'"),
+      sql.replace("catalog_publication_coordinator_role", "catalog_worker_role"),
+      sql.replace("update(status,acknowledged,stop_audit_id,ack_audit_id)", "update"),
+      sql.replace("revoke delete", "revoke insert"),
+      sql + "\ngrant delete on public.member_addition_intents to public;",
+      sql + "\ngrant update(mutation_id) on public.member_addition_intents to public;",
+      sql + "\ngrant delete on public.users, public.member_addition_intents to public;",
+      sql + "\ngrant all on all tables in schema public to public;"]) {
+      expect(missingRuntimeGrants(invalid)).toEqual(["member_addition_intents"]);
     }
   });
 
