@@ -12,9 +12,12 @@ afterEach(cleanup);
 it("explains and disables existing direct and indirect packages in the shared chooser",async()=>{
   const user=userEvent.setup(),direct="11111111-1111-4111-8111-111111111111",indirect="22222222-2222-4222-8222-222222222222",versionId="33333333-3333-4333-8333-333333333333";
   const make=(resourceId:string,name:string)=>({resourceId,name,sourceName:"source.dtsi",draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:{id:versionId,resourceId,version:1,name,changeDescription:"First",digest:"fixed",createdAt:"today",createdByUserId:"admin"}});
-  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"default"}]} initialConfigSetId="set" availableFiles={[]} sharedOnly
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"default"}]} initialConfigSetId="set" availableFiles={[]} sharedOnly targetProjectName="项目甲"
     existingReferences={[{resourceId:direct,direct:true,requiredBy:[]},{resourceId:indirect,direct:false,requiredBy:[{resourceName:"直接包"}]}]}
     sharedClient={{list:vi.fn(async()=>({items:[make(direct,"直接包"),make(indirect,"依赖包")],total:2})),versions:vi.fn()}} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  expect(screen.getByRole("dialog",{name:"添加资源包"})).toHaveAccessibleDescription("项目甲 · 默认配置：选择已发布资源和固定版本。");
+  expect(screen.queryByRole("combobox",{name:"目标配置"})).not.toBeInTheDocument();
+  expect(screen.queryByText("用途：共享 include（项目根入口保持不变）")).not.toBeInTheDocument();
   await user.click(await screen.findByRole("combobox",{name:"共享资源"}));
   expect(await screen.findByRole("option",{name:"直接包 · 已引用"})).toHaveAttribute("aria-disabled","true");
   expect(screen.getByRole("option",{name:"依赖包 · 由 直接包 引入"})).toHaveAttribute("aria-disabled","true");
@@ -227,6 +230,8 @@ it("requires an explicit published version and clears its proof when the version
   render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{ id: "set", name: "默认配置" }]} initialConfigSetId="set" availableFiles={[]}
     client={client} sharedClient={sharedClient} onDismiss={vi.fn()} onApplied={vi.fn()} />);
   await user.click(screen.getByRole("combobox", { name: "文件来源" })); await user.click(screen.getByRole("option", { name: "引用共享 DTSI 固定版本" }));
+  expect(screen.getByRole("combobox", { name: "目标配置" })).toBeVisible();
+  expect(screen.getByText("用途：共享 include（项目根入口保持不变）")).toBeVisible();
   expect(screen.getByRole("dialog")).toHaveAccessibleDescription("选择共享资源及固定版本，预览配置变化后确认引用。");
   await user.click(await screen.findByRole("combobox", { name: "共享资源" })); await user.click(await screen.findByRole("option", { name: "Shared limits" }));
   expect(screen.getByRole("button", { name: "预览加入配置" })).toBeDisabled();
