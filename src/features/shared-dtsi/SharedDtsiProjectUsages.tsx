@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { sharedDtsiProjectUsagesSchema, type SharedDtsiProjectUsages } from "@wiseeff/dto-schemas";
 import { AdminListPage } from "@/components/layout/AdminListPage";
 import { SearchField } from "@/components/common/SearchField";
@@ -6,6 +6,10 @@ import { SectionError, SectionSkeleton } from "@/components/common/SectionState"
 import { SelectControl } from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
 import { WiseEffApiError, type ApiClient } from "@/infrastructure/http/apiClient";
+import { ModalDialog } from "@/components/common/ModalDialog";
+import { WorkbenchMemberAdditionDialog } from "@/components/project-configuration-workbench/WorkbenchMemberAdditionDialog";
+import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
+import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
 
 type Result=SharedDtsiProjectUsages;
 type Row=Result["items"][number];
@@ -17,9 +21,18 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
     status=requestedStatus==="referenced"||requestedStatus==="unreferenced"?requestedStatus:"all";
   const pageValue=Number(params.get("usagePage")??"1"),page=Number.isSafeInteger(pageValue)&&pageValue>0&&pageValue<=5001?pageValue:1;
   const [reload,setReload]=useState(0);
+  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;organizationId?:string}|null>(null);
+  const [appliedNotice,setAppliedNotice]=useState(false);
+  const [uncertainNotice,setUncertainNotice]=useState(false);
+  const trigger=useRef<HTMLElement|null>(null);
+  const additionClient=useMemo(()=>createCanonicalMemberAdditionClient(apiClient),[apiClient]);
+  const sharedClient=useMemo(()=>createSharedDtsiClient(apiClient),[apiClient]);
+  useEffect(()=>()=>setSelected(null),[apiClient,organizationId,canWrite,search]);
   const [loaded,setLoaded]=useState<{key:string;client:ApiClient;canWrite:boolean;result?:Result;error?:string}|null>(null);
   const key=JSON.stringify([organizationId,query,status,page,reload]);
+  const selection=selected?.scope===search&&selected.client===apiClient&&selected.canWrite===canWrite&&selected.organizationId===organizationId?selected:null;
   const current=loaded?.key===key&&loaded.client===apiClient&&loaded.canWrite===canWrite?loaded:null;
+  const close=()=>{setSelected(null);requestAnimationFrame(()=>trigger.current?.focus());};
   useEffect(()=>{
     let cancelled=false;
     const request=new URLSearchParams({q:query,status,offset:String((page-1)*20),limit:"20"});
@@ -61,7 +74,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
         options={[{value:"all",label:"全部引用状态"},{value:"referenced",label:"已引用"},{value:"unreferenced",label:"未引用"}]} /></>}
     notice={current?.result?.visibility==="authorized-projects"?<p>仅显示当前有权访问的项目配置。</p>:undefined}
     emptyState={{title:"没有匹配的项目配置",message:"请调整搜索或筛选条件。"}}
-    tableState={!current?<SectionSkeleton label="正在加载项目使用情况" />:current.error?<SectionError message={current.error} onRetry={()=>setReload(value=>value+1)} />:undefined}
+    tableState={!current?<SectionSkeleton label="正在加载项目使用情况" />:current.error?<SectionError message={appliedNotice?"资源包已加入配置，但列表刷新失败，请重试。":uncertainNotice?"应用结果尚未确认，列表刷新失败，请重试。":current.error} onRetry={()=>setReload(value=>value+1)} />:undefined}
     table={{rows:current?.result?.items??[],rowKey:row=>`${row.projectId}/${row.configSetId??""}`,pageSize:20,page:1,fluid:true,ariaLabel:"项目使用",tableClassName:"shared-dtsi-usage-table",
       columns:[
         {key:"project",header:"项目",render:row=><span className="shared-dtsi-usage-name">{row.projectName}</span>},
@@ -72,11 +85,25 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
               {ref.requiredBy.length?<span> · 由 {ref.requiredBy.map(item=>item.resourceName).join("、")} 引入</span>:null}</li>)}</ul></details>:null}</div>;}},
         {key:"action",header:"操作",render:row=>{const target=projectPath(row);return <div className="shared-dtsi-usage-action">
           {!row.configSetId?<span>请先创建配置</span>:!row.configurationReady?<span>请先完成配置初始化</span>:null}
+          {row.configSetId && row.configurationReady && row.canConfigure?<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice(false);setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId});}}>配置资源包</Button>:null}
           <a href={target} onClick={event=>follow(event,target)}>{row.configSetId&&row.configurationReady?"查看生效配置":"前往配置工作台"}</a></div>;}}
       ]}} />
     {current?.result && current.result.total>20?<nav className="shared-dtsi-pagination" aria-label="项目使用分页">
       <Button variant="outline" disabled={page===1} onClick={()=>update({usagePage:page===2?"":String(page-1)})}>上一页</Button>
       <span>{page} / {Math.ceil(current.result.total/20)}</span><Button variant="outline" disabled={page*20>=current.result.total} onClick={()=>update({usagePage:String(page+1)})}>下一页</Button>
     </nav>:null}
+    {appliedNotice?<p role="status">资源包已加入配置。</p>:uncertainNotice?<p role="status">应用结果尚未确认，请核对项目配置后再操作。</p>:null}
+    {selection&&!selection.adding?<ModalDialog open className="workbench-member-addition-dialog" backdropClassName="param-admin-modal-backdrop" onDismiss={close}>
+      {({titleId})=><><header><div><h2 id={titleId}>配置资源包</h2><p>{selection.row.projectName} · {selection.row.configSetName==="default"?"默认配置":selection.row.configSetName}</p></div>
+        <Button variant="outline" onClick={close}>关闭</Button></header>
+        <div className="workbench-member-addition-dialog__body"><h3>已引用资源包</h3>
+          {selection.row.references.some(ref=>ref.direct)?<ul>{selection.row.references.filter(ref=>ref.direct).map(ref=><li key={ref.resourceId}>{ref.resourceName} · v{ref.version}</li>)}</ul>:<p>未引用共享资源包</p>}
+          <Button onClick={()=>setSelected({...selection,adding:true})}>添加资源包</Button></div></>}
+    </ModalDialog>:null}
+    {selection?.adding&&selection.row.configSetId?<WorkbenchMemberAdditionDialog projectId={selection.row.projectId}
+      configSets={[{id:selection.row.configSetId,name:selection.row.configSetName??""}]} initialConfigSetId={selection.row.configSetId} availableFiles={[]}
+      client={additionClient} sharedClient={sharedClient} sharedOnly existingReferences={selection.row.references} targetProjectName={selection.row.projectName}
+      onDismiss={()=>setSelected({...selection,adding:false})} onUncertainDismiss={()=>{setUncertainNotice(true);close();setReload(value=>value+1);}}
+      onApplied={()=>{setAppliedNotice(true);close();setReload(value=>value+1);}} />:null}
   </div>;
 }

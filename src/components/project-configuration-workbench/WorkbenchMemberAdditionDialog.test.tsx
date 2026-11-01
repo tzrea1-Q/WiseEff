@@ -9,6 +9,35 @@ import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistrat
 
 afterEach(cleanup);
 
+it("explains and disables existing direct and indirect packages in the shared chooser",async()=>{
+  const user=userEvent.setup(),direct="11111111-1111-4111-8111-111111111111",indirect="22222222-2222-4222-8222-222222222222",versionId="33333333-3333-4333-8333-333333333333";
+  const make=(resourceId:string,name:string)=>({resourceId,name,sourceName:"source.dtsi",draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:{id:versionId,resourceId,version:1,name,changeDescription:"First",digest:"fixed",createdAt:"today",createdByUserId:"admin"}});
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"default"}]} initialConfigSetId="set" availableFiles={[]} sharedOnly
+    existingReferences={[{resourceId:direct,direct:true,requiredBy:[]},{resourceId:indirect,direct:false,requiredBy:[{resourceName:"直接包"}]}]}
+    sharedClient={{list:vi.fn(async()=>({items:[make(direct,"直接包"),make(indirect,"依赖包")],total:2})),versions:vi.fn()}} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.click(await screen.findByRole("combobox",{name:"共享资源"}));
+  expect(await screen.findByRole("option",{name:"直接包 · 已引用"})).toHaveAttribute("aria-disabled","true");
+  expect(screen.getByRole("option",{name:"依赖包 · 由 直接包 引入"})).toHaveAttribute("aria-disabled","true");
+});
+
+it("retries an uncertain shared addition using the identical proof, reason and mutation identity",async()=>{
+  const user=userEvent.setup(), resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
+  const version={id:versionId,resourceId,version:1,name:"Power",changeDescription:"First",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
+  const preview={proofToken:"a".repeat(64),configSetId:"set",fileName:"power.dtsi",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}};
+  const client={upload:vi.fn(),preview:vi.fn(async()=>preview),apply:vi.fn().mockRejectedValueOnce(new Error("network unavailable")).mockResolvedValueOnce({fileId:"shared"})};
+  const applied=vi.fn();
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"default"}]} initialConfigSetId="set" availableFiles={[]} sharedOnly targetProjectName="项目甲"
+    client={client} sharedClient={{list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:"power.dtsi",draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1})),versions:vi.fn(async()=>({items:[version],total:1}))}} onDismiss={vi.fn()} onApplied={applied}/>);
+  await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"Power"}));
+  await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · First"}));
+  await user.click(screen.getByRole("button",{name:"预览加入配置"}));await user.type(await screen.findByRole("textbox",{name:"加入原因"}),"测试引用");
+  await user.click(screen.getByRole("button",{name:"确认加入配置"}));
+  expect(await screen.findByRole("alert")).toHaveTextContent("应用结果尚未确认");
+  expect(screen.getByRole("textbox",{name:"加入原因"})).toBeDisabled();
+  await user.click(screen.getByRole("button",{name:"重试同一操作"}));
+  expect(client.apply).toHaveBeenCalledTimes(2);expect(client.apply.mock.calls[0]).toEqual(client.apply.mock.calls[1]);expect(applied).toHaveBeenCalledWith("set","shared");
+});
+
 it("converts an explicitly selected private source through the shared chooser and retains selection and reason after cancellation or failure",async()=>{
   const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
   const file={fileId:"private",fileVersionId:"private-v1",sourceName:"parts/power.dtsi",resourceId,versionId,memberId:"upstream",role:"include",sortOrder:1};
