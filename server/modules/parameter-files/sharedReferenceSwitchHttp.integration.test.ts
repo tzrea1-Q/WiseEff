@@ -2,7 +2,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createPostgresDatabase, getRootPostgresPool, type Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
@@ -92,7 +92,10 @@ describe("shared reference version switches through the real API role", () => {
     const second=await post<{item:{id:string}}>(`${path(B)}/intents`,{registrationId:randomUUID()});
     expect(first.status).toBe(200);expect(second.status).toBe(200);
     let calls=0;
-    const counting:Database={query:(text,values)=>api.query(text,values),transaction:(fn,options)=>api.transaction(tx=>fn({...tx,query:(text,values)=>{calls++;return tx.query(text,values);}}),options)};
+    const counting:Database={query:api.query,transaction:(fn,options)=>api.transaction(async tx=>{
+      const queries=vi.spyOn(tx,"query");
+      try{return await fn(tx);}finally{calls+=queries.mock.calls.length;queries.mockRestore();}
+    },options)};
     const list=async(query:string)=>{calls=0;const response=await requestJson<{items:Array<{id:string;projectId:string}>;total:number}>(server(admin,storage,counting),`/api/v1/member-addition-intents?${query}`);return {response,calls};};
     const all=await list("limit=1&offset=0"),next=await list("limit=1&offset=1"),one=await list(`limit=1&projectId=${A}`),past=await list("limit=1&offset=9");
     expect(all.response.body.total).toBe(2);expect(next.response.body.total).toBe(2);expect(past.response.body).toMatchObject({total:2,items:[]});
