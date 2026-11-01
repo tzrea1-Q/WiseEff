@@ -10,6 +10,21 @@ import { invalidateSharedOperationSession } from "@/application/project-configur
 
 afterEach(cleanup);
 
+it("discards a late preview when the selected project configuration changes",async()=>{
+  const user=userEvent.setup(),source={resourceId:"11111111-1111-4111-8111-111111111111",versionId:"22222222-2222-4222-8222-222222222222",version:1,name:"共享来源"};
+  const result={proofToken:"a".repeat(64),configSetId:"first",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}};
+  let release!:(value:typeof result)=>void;const late=new Promise<typeof result>(resolve=>{release=resolve;});
+  const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn(()=>late)};
+  const props={availableFiles:[],sharedOnly:true,initialSharedSource:source,client,onDismiss:vi.fn(),onApplied:vi.fn()};
+  const view=render(<WorkbenchMemberAdditionDialog key="first" {...props} projectId="first-project" targetProjectName="项目一" configSets={[{id:"first",name:"配置一"}]} initialConfigSetId="first"/>);
+  await user.click(screen.getByRole("button",{name:"预览加入配置"}));
+  view.rerender(<WorkbenchMemberAdditionDialog key="second" {...props} projectId="second-project" targetProjectName="项目二" configSets={[{id:"second",name:"配置二"}]} initialConfigSetId="second"/>);
+  await act(async()=>release(result));
+  expect(screen.getByRole("dialog",{name:"添加资源包"})).toHaveTextContent("项目二 · 配置二");
+  expect(screen.getByRole("dialog",{name:"添加资源包"})).toHaveTextContent("共享来源 · v1");
+  expect(screen.queryByRole("button",{name:"确认加入配置"})).not.toBeInTheDocument();expect(client.apply).not.toHaveBeenCalled();
+});
+
 it("does not send an apply after its registration finishes in a different scope",async()=>{
   const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
   let finish!:()=>void,valid=true;const registering=new Promise<void>(resolve=>{finish=resolve;});
@@ -60,8 +75,8 @@ it.each(["stopped","failed","applied"] as const)("handles the first definitive r
 it.each(["shared","conversion","private"] as const)("protects the actual %s source without changing private file behavior",async kind=>{
   const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
   const version={id:versionId,resourceId,version:1,name:"Power",changeDescription:"Initial",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
-  const register=vi.fn(async()=>"server-mutation"),checkPending=vi.fn(async()=>false);
-  const client={upload:vi.fn(),apply:vi.fn(async()=>({requestId:"r",fileId:"f",fileVersionId:"v",configRevisionId:"rev"})),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
+  const register=vi.fn(async(_operation:unknown,_id:string,_target:string)=>"server-mutation"),checkPending=vi.fn(async()=>false);
+  const client={upload:vi.fn(),apply:vi.fn(async(_projectId:string,_configSetId:string,_body:unknown)=>({requestId:"r",fileId:"f",fileVersionId:"v",configRevisionId:"rev"})),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
   render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"},{id:"set-b",name:"Other config"}]} initialConfigSetId="set" availableFiles={[{id:"private",projectId:"project",fileName:"private.dts",format:"dts",enabled:true,currentVersionId:"v1",updatedAt:""}]}
     conversionSource={kind==="conversion"?{configRevisionId:"rev",fileId:"private",fileVersionId:"v1",sourceName:"private.dts"}:undefined}
     client={client} sharedClient={{list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:"power.dtsi",draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1})),versions:vi.fn(async()=>({items:[version],total:1}))}}

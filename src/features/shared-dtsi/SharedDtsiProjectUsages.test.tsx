@@ -17,6 +17,44 @@ function clientFor(fetchImpl:typeof fetch){return createApiClient({baseUrl:"",fe
 }});}
 
 describe("shared DTSI project usage", () => {
+  it("identifies same, different and indirect references for a fixed source version",async()=>{
+    const version={id:versionTwo,resourceId:resourceOne,version:2,name:"公共电源",changeDescription:"新版",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
+    const ref=(id:string,direct:boolean)=>({resourceId:resourceOne,resourceName:"公共电源",versionId:id,version:id===versionOne?1:2,direct,state:"active",upgradeAvailable:false,requiredBy:direct?[]:[{resourceId:resourceTwo,resourceName:"上游包"}]});
+    const rows=[{projectId:"p1",projectName:"同版本",configSetId:"c1",references:[ref(versionTwo,true)]},{projectId:"p2",projectName:"旧版本",configSetId:"c2",references:[ref(versionOne,true)]},{projectId:"p3",projectName:"间接引用",configSetId:"c3",references:[ref(versionOne,false)]}].map(row=>({...row,projectCode:"A",configSetName:"default",configurationReady:true,canConfigure:true}));
+    const fetchImpl=vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{const path=String(input);
+      if(path.includes("/detail"))return new Response(JSON.stringify({item:{resourceId:resourceOne,name:"公共电源",updatedAt:"today",state:"active",lifecycleRevision:1,draftRevision:null,currentVersion:version}}));
+      if(path.includes(`/versions/${versionTwo}`))return new Response(JSON.stringify({item:{...version,members:[{id:versionOne,sourceName:"board.dtsi",content:"/ {};",checksum:"fixed",sizeBytes:5}],manifest:{schemaVersion:"shared-dtsi/v1",members:[{id:versionOne,sourceName:"board.dtsi",checksum:"fixed",sizeBytes:5,role:"include"}],externalReferences:[]}}}));
+      if(path.includes("/member-addition/preview"))return new Response(JSON.stringify({item:{proofToken:"a".repeat(64),configSetId:"c2",fileName:"board.dts",format:"dts",members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}}));
+      return new Response(JSON.stringify({items:rows,total:3,visibility:"organization"}));});
+    render(<SharedDtsiPage apiClient={clientFor(fetchImpl)} canWrite currentUserId="user-a" organizationId="org-a" search={`?view=projects&referenceResource=${resourceOne}&referenceVersion=${versionTwo}`} onNavigate={()=>{}}/>);
+    expect(await screen.findByText("资源包：公共电源 · v2")).toBeVisible();
+    expect(within(screen.getByText("同版本").closest("tr")!).getByText("已固定此版本")).toBeVisible();
+    expect(within(screen.getByText("旧版本").closest("tr")!).getByRole("button",{name:"切换至 v2"})).toBeVisible();
+    expect(screen.getByText("间接引用").closest("tr")).toHaveTextContent("由 上游包 引入");
+    expect(within(screen.getByText("间接引用").closest("tr")!).getByRole("link",{name:"上游包"})).toBeVisible();
+    await userEvent.setup().click(within(screen.getByText("旧版本").closest("tr")!).getByRole("button",{name:"切换至 v2"}));
+    expect(await screen.findByRole("dialog",{name:"切换共享版本"})).toHaveTextContent("公共电源 · v2");
+    await userEvent.setup().click(screen.getByRole("button",{name:"预览版本切换"}));
+    const preview=fetchImpl.mock.calls.find(([url])=>String(url).includes("/member-addition/preview"));
+    expect(JSON.parse(String(preview![1]!.body)).sharedReference).toMatchObject({resourceId:resourceOne,versionId:versionTwo,replaceVersionId:versionOne});
+  });
+  it("does not let a late source response overwrite a new identity and version",async()=>{
+    let release!:(response:Response)=>void;
+    const makeVersion=(id:string,number:number)=>({id,resourceId:resourceOne,version:number,name:`来源${number}`,changeDescription:"发布",digest:"fixed",createdAt:"today",createdByUserId:"admin"});
+    const item=(id:string,number:number)=>({...makeVersion(id,number),members:[{id:versionOne,sourceName:"board.dtsi",content:"/ {};",checksum:"fixed",sizeBytes:5}],manifest:{schemaVersion:"shared-dtsi/v1",members:[{id:versionOne,sourceName:"board.dtsi",checksum:"fixed",sizeBytes:5,role:"include"}],externalReferences:[]}});
+    const fetchImpl=vi.fn(async(input:string|URL|Request)=>{const path=String(input);
+      if(path.includes("/detail"))return new Response(JSON.stringify({item:{resourceId:resourceOne,name:"来源",updatedAt:"today",state:"active",lifecycleRevision:1,draftRevision:null,currentVersion:makeVersion(versionTwo,2)}}));
+      if(path.includes(`/versions/${versionOne}`))return new Promise<Response>(resolve=>{release=resolve;});
+      if(path.includes(`/versions/${versionTwo}`))return new Response(JSON.stringify({item:item(versionTwo,2)}));
+      return new Response(JSON.stringify({items:[],total:0,visibility:"authorized-projects"}));});
+    const apiClient=clientFor(fetchImpl),props={apiClient,canWrite:true,organizationId:"org-a",onNavigate:()=>{}};
+    const view=render(<SharedDtsiPage {...props} currentUserId="user-a" search={`?view=projects&referenceResource=${resourceOne}&referenceVersion=${versionOne}`}/>);
+    await waitFor(()=>expect(release).toBeTypeOf("function"));
+    view.rerender(<SharedDtsiPage {...props} currentUserId="user-b" search={`?view=projects&referenceResource=${resourceOne}&referenceVersion=${versionTwo}`}/>);
+    expect(await screen.findByText("资源包：来源2 · v2")).toBeVisible();
+    await act(async()=>release(new Response(JSON.stringify({item:item(versionOne,1)}))));
+    expect(screen.getByText("资源包：来源2 · v2")).toBeVisible();expect(screen.queryByText(/资源包：来源1/)).not.toBeInTheDocument();
+  });
   it.each([200,503])("keeps the old user's late apply outcome available only to that user (%s)",async status=>{
     const user=userEvent.setup();let actor="user-a",complete!:(value:Response)=>void,state:"pending"|"applied"|"stopped"="pending";
     const entry=()=>({id:"d0000000-0000-4000-8000-000000000001",clientMutationId:"d0000000-0000-4000-8000-000000000002",projectId:"p1",projectName:"项目甲",configSetId:"c1",configSetName:"default",status:state});

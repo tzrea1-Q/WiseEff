@@ -22,13 +22,14 @@ import { currentSharedOperationSession } from "@/application/project-configurati
 
 const roleLabels = { base: "基础", overlay: "覆盖层", charging: "充电", thermal: "温控", misc: "其他 / include" };
 export type RecoveredMemberOperation=MemberAdditionBody & {proofToken:string;reason:string;clientMutationId:string};
-export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences, onOperationStart, onOperationResolved, onDefinitiveRejection, canContinueOperation, checkPending }: {
+export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, initialSharedSource, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences, onOperationStart, onOperationResolved, onDefinitiveRejection, canContinueOperation, checkPending }: {
   projectId: string; configSets: Array<{ id: string; name: string }>; initialConfigSetId: string;
   availableFiles: ProjectParameterFile[]; client?: ReturnType<typeof createCanonicalMemberAdditionClient>;
   switchReference?: {resourceId:string;versionId:string;version:number};
   conversionSource?:{configRevisionId:string;fileId:string;fileVersionId:string;sourceName:string};
   removeReference?: {resourceId:string;versionId:string;version:number};
   switchDraft?: {versionId:string;reason:string};
+  initialSharedSource?:{resourceId:string;versionId:string;version:number;name:string};
   projectRoot?:{fileId:string;sourceName:string};
   onSwitchDraftChange?: (draft:{versionId:string;reason:string})=>void;
   onRecoverSwitch?: (source:SharedSwitchConflict,draft:{versionId:string;reason:string})=>void;
@@ -72,14 +73,14 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [resources, setResources] = useState<SharedDtsiResourceSummary[]>([]), [versions, setVersions] = useState<SharedDtsiVersionSummary[]>([]);
-  const [resourceId, setResourceId] = useState(reference?.resourceId??""), [versionId, setVersionId] = useState(switchDraft?.versionId??"");
+  const [resourceId, setResourceId] = useState(reference?.resourceId??initialSharedSource?.resourceId??""), [versionId, setVersionId] = useState(switchDraft?.versionId??initialSharedSource?.versionId??"");
   useEffect(()=>{if(reference)onSwitchDraftChange?.({versionId,reason});},[versionId,reason,reference,onSwitchDraftChange]);
   const [mountPath,setMountPath]=useState("");
   const [query, setQuery] = useState(""), [resourceOffset, setResourceOffset] = useState(0), [versionOffset, setVersionOffset] = useState(0);
   const [resourceTotal, setResourceTotal] = useState(0), [versionTotal, setVersionTotal] = useState(0);
   const [sharedLoading, setSharedLoading] = useState(false), [sharedError, setSharedError] = useState(""), [sharedRetry, setSharedRetry] = useState(0);
   useEffect(() => {
-    if (source !== "shared"||removeReference) return;
+    if (source !== "shared"||removeReference||initialSharedSource) return;
     let active = true;
     setSharedLoading(true); setSharedError("");
     void (resourceId ? sharedClient.versions(resourceId, versionOffset).then(result => {
@@ -89,7 +90,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     })).catch(failure => { if (active) setSharedError(presentError(failure, "无法读取共享资源，请重试。")); })
       .finally(() => { if (active) setSharedLoading(false); });
     return () => { active = false; };
-  }, [source, sharedClient, resourceId, query, resourceOffset, versionOffset, sharedRetry,removeReference]);
+  }, [source, sharedClient, resourceId, query, resourceOffset, versionOffset, sharedRetry,removeReference,initialSharedSource]);
   const format = source === "existing" ? availableFiles.find((item) => item.id === fileId)?.format : candidate?.format ?? (file?.name.toLowerCase().endsWith(".json") ? "json" : "dts");
   const invalidate = () => { setPreview(null); setPreparedBody(null); setError(""); setRefreshError(""); setErrorDiagnostics([]); setSwitchConflicts([]);setCompositionError(null); mutationId.current = null;registrationId.current=null; mutationReason.current=null;setUncertain(false); };
   function showError(failure: unknown, fallback: string) {
@@ -111,7 +112,10 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         if(reference){
           const latest=references.find(ref=>ref.resourceId===reference.resourceId);
           if(!latest || latest.versionId!==reference.versionId || latest.direct===false){setError("当前固定引用已变化，请返回配置资源包重新核对。");return;}
-        }else if(references.some(ref=>ref.resourceId===resourceId)){setResourceId("");setVersionId("");setVersions([]);setError("配置已更新，请重新选择资源。");}
+        }else if(references.some(ref=>ref.resourceId===resourceId)){
+          if(initialSharedSource){setError("配置已更新，请返回项目列表重新核对。");return;}
+          setResourceId("");setVersionId("");setVersions([]);setError("配置已更新，请重新选择资源。");
+        }
         setRefreshRequired(false);
       }
     } catch(failure) {
@@ -210,7 +214,8 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
                 onValueChange={(value) => { setFileId(value); setRegistration({ configurationSchemaId: "", mappings: [] }); invalidate(); }} options={availableFiles.map((item) => ({ value: item.id, label: item.fileName }))} /></label>
               : removeReference?<p>当前引用：版本 {removeReference.version}。共享资源及其他项目引用保留。</p>:<>
                 <p>{conversionSource?`所选私有源码：${conversionSource.sourceName}。JSON、项目覆盖和其他项目保持原样；转换后的共享来源只读。`:switchReference?`当前固定：版本 ${switchReference.version}。项目自有源码和覆盖保持原样。`:"共享源码固定为选定版本并只读。先载入共享声明，再应用项目声明；发布新版本不会更改此项目。"}</p>
-                {!switchReference?<><label>搜索共享资源<Input type="search" aria-label="搜索共享资源" value={query} onChange={event => {
+                {initialSharedSource?<p>资源包：{initialSharedSource.name} · v{initialSharedSource.version}</p>:null}
+                {!switchReference&&!initialSharedSource?<><label>搜索共享资源<Input type="search" aria-label="搜索共享资源" value={query} onChange={event => {
                   setQuery(event.target.value); setResourceOffset(0); setResourceId(""); setVersionId(""); setResources([]); setVersions([]); invalidate();
                 }} /></label>
                 <label>共享资源<SelectControl ariaLabel="共享资源" value={resourceId} disabled={sharedLoading || busy} placeholder="选择资源"
@@ -220,7 +225,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
                   <Button type="button" variant="outline" disabled={busy || sharedLoading || resourceOffset === 0} onClick={() => { setResourceOffset(value => value - 20); invalidate(); }}>上一页资源</Button>
                   <Button type="button" variant="outline" disabled={busy || sharedLoading || resourceOffset + 20 >= resourceTotal} onClick={() => { setResourceOffset(value => value + 20); invalidate(); }}>下一页资源</Button>
                 </div> : null}
-                {resourceId ? <label>固定版本<SelectControl ariaLabel="固定版本" value={versionId} disabled={sharedLoading || busy} placeholder="明确选择已发布版本"
+                {resourceId && !initialSharedSource ? <label>固定版本<SelectControl ariaLabel="固定版本" value={versionId} disabled={sharedLoading || busy} placeholder="明确选择已发布版本"
                   options={versions.map(item => ({ value: item.id, label: `版本 ${item.version} · ${item.changeDescription}`, disabled:item.id===switchReference?.versionId }))}
                   onValueChange={value => { setVersionId(value); invalidate(); }} /></label> : null}
                 {resourceId && versionTotal > 20 ? <div>
