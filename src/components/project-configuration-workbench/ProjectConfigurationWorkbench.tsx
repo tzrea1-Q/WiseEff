@@ -794,6 +794,7 @@ export function ProjectConfigurationWorkbench({
     try{saveSwitchTask({scope:switchTaskKey,...(activeSwitchTask?.operation?{operation:activeSwitchTask.operation}:{}),reference,draft});}catch{toast({tone:"danger",message:"无法保存引用变更任务，请检查浏览器存储后重试。"});return;}
     setMemberAdditionOpen(false);resumedSwitch.current="";
     const params=new URLSearchParams({organizationId:resolvedOrganizationId??"",configSet:selectedConfigSet.id,tab:"source",sourceMode:"working",sharedSwitch:"paused"});
+    const usageReturn=resolveSharedDtsiUsageReturnPath(search);if(usageReturn)params.set("returnTo",usageReturn);
     if(location.fileId&&!location.resourceId)params.set("file",location.fileId);
     if(location.node)params.set("node",location.node);
     if(location.property)params.set("property",location.property);

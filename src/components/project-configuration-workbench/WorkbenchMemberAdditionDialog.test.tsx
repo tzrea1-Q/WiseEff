@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { createApiClient, WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -162,6 +162,50 @@ it("switches an existing reference through the same preview owner and cancels pr
   expect(screen.queryByRole("button",{name:"确认切换版本"})).not.toBeInTheDocument();
   await user.click(screen.getByRole("button",{name:"预览版本切换"}));
   expect(await screen.findByRole("textbox",{name:"变更说明"})).toHaveValue("Preserve private limits");
+});
+
+it("preserves the selected target and conflict diagnostic when the existing reference has not changed",async()=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",next="33333333-3333-4333-8333-333333333333";
+  const versions=[old,next].map((id,index)=>({id,resourceId,version:index+1,name:"Limits",changeDescription:`Defaults ${index+1}`,digest:"fixed",createdAt:"today",createdByUserId:"author"}));
+  const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT","目标位置已有文件，请调整挂载目录。",{},"request"))};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} sharedOnly
+    switchReference={{resourceId,versionId:old,version:1}} refreshExistingReferences={async()=>[{resourceId,versionId:old}]} client={client}
+    sharedClient={{list:vi.fn(async()=>({items:[],total:0})),versions:vi.fn(async()=>({items:versions,total:2}))}} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 2 · Defaults 2"}));
+  await user.click(screen.getByRole("button",{name:"预览版本切换"}));
+  expect(await screen.findByRole("alert")).toHaveTextContent("目标位置已有文件");
+  await waitFor(()=>expect(screen.getByRole("button",{name:"预览版本切换"})).toBeEnabled());
+  expect(screen.getByRole("combobox",{name:"固定版本"})).toHaveAttribute("data-value",next);
+});
+
+it("blocks switching when a refreshed fixed reference has changed concurrently",async()=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",next="33333333-3333-4333-8333-333333333333";
+  const version={id:next,resourceId,version:2,name:"Limits",changeDescription:"Next",digest:"fixed",createdAt:"today",createdByUserId:"author"};
+  const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT","配置已变化",{},"request"))};
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} sharedOnly
+    switchReference={{resourceId,versionId:old,version:1}} refreshExistingReferences={async()=>[{resourceId,versionId:next,direct:true}]} client={client}
+    sharedClient={{list:vi.fn(async()=>({items:[],total:0})),versions:vi.fn(async()=>({items:[version],total:1}))}} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 2 · Next"}));
+  await user.click(screen.getByRole("button",{name:"预览版本切换"}));
+  expect(await screen.findByRole("alert")).toHaveTextContent("当前固定引用已变化");
+  expect(screen.getByRole("button",{name:"预览版本切换"})).toBeDisabled();expect(client.apply).not.toHaveBeenCalled();
+});
+
+it("keeps the original operation identity when a shared version switch has an uncertain result",async()=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",next="33333333-3333-4333-8333-333333333333";
+  const version={id:next,resourceId,version:2,name:"Limits",changeDescription:"Next",digest:"fixed",createdAt:"today",createdByUserId:"author"};
+  const client={upload:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}})),
+    apply:vi.fn().mockRejectedValueOnce(new Error("network unavailable")).mockRejectedValueOnce(new WiseEffApiError("FORBIDDEN","权限已撤销",{},"request",403))};
+  const onUncertainDismiss=vi.fn(),onDismiss=vi.fn();
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} sharedOnly
+    switchReference={{resourceId,versionId:old,version:1}} client={client} sharedClient={{list:vi.fn(),versions:vi.fn(async()=>({items:[version],total:1}))}}
+    onDismiss={onDismiss} onUncertainDismiss={onUncertainDismiss} onApplied={vi.fn()}/>);
+  await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 2 · Next"}));
+  await user.click(screen.getByRole("button",{name:"预览版本切换"}));await user.type(await screen.findByRole("textbox",{name:"变更说明"}),"更新版本");
+  await user.click(screen.getByRole("button",{name:"确认切换版本"}));await screen.findByRole("button",{name:"重试同一操作"});
+  await user.click(screen.getByRole("button",{name:"重试同一操作"}));expect(await screen.findByRole("alert")).toHaveTextContent("结果尚未确认");
+  expect(client.apply.mock.calls[0]).toEqual(client.apply.mock.calls[1]);expect(screen.queryByRole("button",{name:"取消版本切换"})).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"返回列表核对"}));expect(onUncertainDismiss).toHaveBeenCalledOnce();expect(onDismiss).not.toHaveBeenCalled();
 });
 
 it("requires an explicit published version and clears its proof when the version changes", async () => {

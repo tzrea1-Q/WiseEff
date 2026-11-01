@@ -10,19 +10,20 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { WorkbenchMemberAdditionDialog } from "@/components/project-configuration-workbench/WorkbenchMemberAdditionDialog";
 import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
 import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
+import type { SharedSwitchConflict } from "@wiseeff/dto-schemas";
 
 type Result=SharedDtsiProjectUsages;
 type Row=Result["items"][number];
 
-export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,search,onNavigate,header}:{
-  apiClient:ApiClient;organizationId?:string;canWrite:boolean;search:string;onNavigate:(path:string)=>void;header:ReactNode;
+export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,canWrite,search,onNavigate,header}:{
+  apiClient:ApiClient;organizationId?:string;currentUserId?:string;canWrite:boolean;search:string;onNavigate:(path:string)=>void;header:ReactNode;
 }) {
   const params=new URLSearchParams(search),query=params.get("usageQuery")??"",requestedStatus=params.get("usageStatus"),
     status=requestedStatus==="referenced"||requestedStatus==="unreferenced"?requestedStatus:"all";
   const pageValue=Number(params.get("usagePage")??"1"),page=Number.isSafeInteger(pageValue)&&pageValue>0&&pageValue<=5001?pageValue:1;
   const [reload,setReload]=useState(0);
-  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;instance:string;organizationId?:string}|null>(null);
-  const [appliedNotice,setAppliedNotice]=useState(false);
+  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;instance:string;organizationId?:string;action?:{kind:"switch"|"remove";reference:Row["references"][number]}}|null>(null);
+  const [appliedNotice,setAppliedNotice]=useState("");
   const [uncertainNotice,setUncertainNotice]=useState(false);
   const [unavailableTargets,setUnavailableTargets]=useState<Set<string>>(()=>new Set());
   const [rechecking,setRechecking]=useState<string|null>(null),[recheckError,setRecheckError]=useState("");
@@ -114,6 +115,30 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
     if(row.configSetId){target.set("configSet",row.configSetId);target.set("tab","effective");}
     return `/parameter-admin/projects/${encodeURIComponent(row.projectId)}/configuration?${target}`;
   };
+  const recoverReference=(location:SharedSwitchConflict,draft:{versionId:string;reason:string})=>{
+    if(!selection?.action || !selection.row.configSetId || !currentUserId || !organizationId)throw new Error("无法确定项目上下文，请返回工作台后重试。");
+    const {row,action}=selection;
+    const configSetId=row.configSetId!;
+    const scope=`wiseeff.shared-switch:${currentUserId}:${organizationId}:${row.projectId}:${row.configSetId}`;
+    const task={scope,...(action.kind==="remove"?{operation:"remove"}:{}),reference:{resourceId:action.reference.resourceId,versionId:action.reference.versionId,version:action.reference.version},draft};
+    const saved=sessionStorage.getItem(scope);
+    if(saved && saved!==JSON.stringify(task))throw new Error("此配置已有未完成的引用变更，请先在项目工作台处理。");
+    sessionStorage.setItem(scope,JSON.stringify(task));
+    const next=new URLSearchParams({organizationId,configSet:configSetId,tab:"source",sourceMode:"working",sharedSwitch:"paused",returnTo:usageReturn});
+    if(location.fileId&&!location.resourceId)next.set("file",location.fileId);
+    if(location.node)next.set("node",location.node);
+    if(location.property)next.set("property",location.property);
+    if(location.line)next.set("line",String(location.line));
+    const project=`/parameter-admin/projects/${encodeURIComponent(row.projectId)}/configuration?${next}`;
+    if(location.resourceId&&location.versionId){
+      next.set("sharedSwitch","resume");
+      const source=new URLSearchParams({organization:organizationId,resource:location.resourceId,version:location.versionId,
+        tab:location.identity?"recognition":"source",projectContext:`/parameter-admin/projects/${encodeURIComponent(row.projectId)}/configuration?${next}`});
+      if(location.memberId)source.set("member",location.memberId);
+      if(location.line)source.set("line",String(location.line));
+      onNavigate(`/parameter-admin/sources?${source}`);
+    }else onNavigate(project);
+  };
   const resource=(ref:Row["references"][number])=>{
     const target=sourcePath(ref.resourceId,ref.versionId);
     return <span className="shared-dtsi-usage-resource" key={ref.resourceId}><a href={target} onClick={event=>follow(event,target)}>{ref.resourceName} · v{ref.version}</a>
@@ -126,7 +151,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
         options={[{value:"all",label:"全部引用状态"},{value:"referenced",label:"已引用"},{value:"unreferenced",label:"未引用"}]} /></>}
     notice={current?.result?.visibility==="authorized-projects"?<p>仅显示当前有权访问的项目配置。</p>:undefined}
     emptyState={{title:"没有匹配的项目配置",message:"请调整搜索或筛选条件。"}}
-    tableState={!current?<SectionSkeleton label="正在加载项目使用情况" />:current.error?<SectionError message={appliedNotice?"资源包已加入配置，但列表刷新失败，请重试。":uncertainNotice?"应用结果尚未确认，列表刷新失败，请重试。":current.error} onRetry={()=>setReload(value=>value+1)} />:undefined}
+    tableState={!current?<SectionSkeleton label="正在加载项目使用情况" />:current.error?<SectionError message={appliedNotice?`${appliedNotice}但列表刷新失败，请重试。`:uncertainNotice?"应用结果尚未确认，列表刷新失败，请重试。":current.error} onRetry={()=>setReload(value=>value+1)} />:undefined}
     table={{rows:current?.result?.items??[],rowKey:row=>`${row.projectId}/${row.configSetId??""}`,pageSize:20,page:1,fluid:true,ariaLabel:"项目使用",tableClassName:"shared-dtsi-usage-table",
       columns:[
         {key:"project",header:"项目",render:row=><span className="shared-dtsi-usage-name">{row.projectName}</span>},
@@ -138,7 +163,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
         {key:"action",header:"操作",render:row=>{const target=projectPath(row);return <div className="shared-dtsi-usage-action">
           {!row.configSetId?<span>请先创建配置</span>:!row.configurationReady?<span>请先完成配置初始化</span>:null}
           {unavailableTargets.has(targetKey(row))?<><span>配置不可用，请核对权限或初始化状态</span><Button variant="outline" size="sm" disabled={rechecking===targetKey(row)} onClick={()=>void recheckTarget(row)}>{rechecking===targetKey(row)?"正在核对…":"重新核对"}</Button></>:null}
-          {row.configSetId && row.configurationReady && row.canConfigure&&!unavailableTargets.has(targetKey(row))?<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice(false);setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId,instance:crypto.randomUUID()});}}>配置资源包</Button>:null}
+          {row.configSetId && row.configurationReady && row.canConfigure&&!unavailableTargets.has(targetKey(row))?<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice("");setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId,instance:crypto.randomUUID()});}}>配置资源包</Button>:null}
           <a href={target} onClick={event=>follow(event,target)}>{row.configSetId&&row.configurationReady?"查看生效配置":"前往配置工作台"}</a></div>;}}
       ]}} />
     {current?.result && current.result.total>20?<nav className="shared-dtsi-pagination" aria-label="项目使用分页">
@@ -146,20 +171,29 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
       <span>{page} / {Math.ceil(current.result.total/20)}</span><Button variant="outline" disabled={page*20>=current.result.total} onClick={()=>update({usagePage:String(page+1)})}>下一页</Button>
     </nav>:null}
     {hiddenTarget&&!selection?<div role="status"><span>部分项目配置不可用或权限已变化。</span><Button variant="outline" size="sm" onClick={()=>{listRecovery.current={scope:scopeEpoch.current,epochs:new Map(targetEpoch.current)};setReload(value=>value+1);}}>重新加载列表</Button></div>:null}
-    {appliedNotice?<p role="status">资源包已加入配置。</p>:uncertainNotice?<p role="status">应用结果尚未确认，请核对项目配置后再操作。</p>:null}
+    {appliedNotice?<p role="status">{appliedNotice}</p>:uncertainNotice?<p role="status">应用结果尚未确认，请核对项目配置后再操作。</p>:null}
     {recheckError?<p role="alert">{recheckError}</p>:null}
     {selection&&!selection.adding?<ModalDialog open className="workbench-member-addition-dialog" backdropClassName="param-admin-modal-backdrop" onDismiss={close}>
       {({titleId})=><><header><div><h2 id={titleId}>配置资源包</h2><p>{selection.row.projectName} · {selection.row.configSetName==="default"?"默认配置":selection.row.configSetName}</p></div>
         <Button variant="outline" onClick={close}>关闭</Button></header>
         <div className="workbench-member-addition-dialog__body"><h3>已引用资源包</h3>
-          {selection.row.references.some(ref=>ref.direct)?<ul>{selection.row.references.filter(ref=>ref.direct).map(ref=><li key={ref.resourceId}>{ref.resourceName} · v{ref.version}</li>)}</ul>:<p>未引用共享资源包</p>}
+          {selection.row.references.some(ref=>ref.direct)?<ul className="shared-dtsi-config-resources">{selection.row.references.filter(ref=>ref.direct).map(ref=><li key={ref.resourceId}>
+            <div><span>{ref.resourceName} · v{ref.version}</span>{ref.requiredBy.length?<p>同时由 {ref.requiredBy.map(item=>item.resourceName).join("、")} 引入</p>:null}</div>
+            <div className="shared-dtsi-config-actions">
+            <Button variant="outline" size="sm" onClick={()=>setSelected({...selection,adding:true,action:{kind:"switch",reference:ref}})}>切换版本</Button>
+            <Button variant="outline" size="sm" onClick={()=>setSelected({...selection,adding:true,action:{kind:"remove",reference:ref}})}>移除引用</Button>
+            </div>
+          </li>)}</ul>:<p>未引用共享资源包</p>}
           <Button onClick={()=>setSelected({...selection,adding:true})}>添加资源包</Button></div></>}
     </ModalDialog>:null}
     {selection?.adding&&selection.row.configSetId?<WorkbenchMemberAdditionDialog projectId={selection.row.projectId}
       configSets={[{id:selection.row.configSetId,name:selection.row.configSetName??""}]} initialConfigSetId={selection.row.configSetId} availableFiles={[]}
       client={additionClient} sharedClient={sharedClient} sharedOnly existingReferences={selection.row.references} targetProjectName={selection.row.projectName}
+      switchReference={selection.action?.kind==="switch"?selection.action.reference:undefined}
+      removeReference={selection.action?.kind==="remove"?selection.action.reference:undefined}
+      onRecoverSwitch={selection.action?recoverReference:undefined}
       refreshExistingReferences={()=>refreshTarget(selection.row,selection.instance)}
-      onDismiss={()=>{if(unavailableTargets.has(targetKey(selection.row)))close();else setSelected({...selection,adding:false});}} onUncertainDismiss={()=>{setUncertainNotice(true);close();setReload(value=>value+1);}}
-      onApplied={()=>{setAppliedNotice(true);close();setReload(value=>value+1);}} />:null}
+      onDismiss={()=>{if(unavailableTargets.has(targetKey(selection.row)))close();else setSelected({...selection,adding:false,action:undefined});}} onUncertainDismiss={()=>{setUncertainNotice(true);close();setReload(value=>value+1);}}
+      onApplied={()=>{setAppliedNotice(selection.action?.kind==="remove"?"已移除资源包引用。":selection.action?.kind==="switch"?"已切换资源包版本。":"资源包已加入配置。");close();setReload(value=>value+1);}} />:null}
   </div>;
 }

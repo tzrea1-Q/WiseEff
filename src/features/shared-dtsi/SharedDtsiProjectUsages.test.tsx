@@ -11,6 +11,76 @@ const versionOne = "b0000000-0000-4000-8000-000000000001";
 const versionTwo = "b0000000-0000-4000-8000-000000000002";
 
 describe("shared DTSI project usage", () => {
+  it("offers version switching and removal once per direct resource, never for an indirect dependency", async () => {
+    const user=userEvent.setup();
+    const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,
+      references:[{resourceId:resourceOne,resourceName:"公共电源",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:true,requiredBy:[]},
+        {resourceId:resourceTwo,resourceName:"公共基础",versionId:versionTwo,version:1,direct:false,state:"active",upgradeAvailable:false,requiredBy:[{resourceId:resourceOne,resourceName:"公共电源"}]}]}],total:1,visibility:"organization"})));
+    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));
+    const dialog=screen.getByRole("dialog",{name:"配置资源包"});
+    expect(within(dialog).getAllByRole("button",{name:"切换版本"})).toHaveLength(1);
+    expect(within(dialog).getAllByRole("button",{name:"移除引用"})).toHaveLength(1);
+    expect(within(dialog).queryByText("公共基础 · v1")).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button",{name:"移除引用"}));
+    expect(screen.getByRole("dialog",{name:"移除共享引用"})).toHaveTextContent("版本 1");
+    expect(screen.getByRole("button",{name:"预览移除引用"})).toBeVisible();
+  });
+
+  it("switches and removes the selected direct reference only after explicit confirmation",async()=>{
+    const user=userEvent.setup();let pinned:string|null=versionOne;
+    const versions=[versionOne,versionTwo].map((id,index)=>({id,resourceId:resourceOne,version:index+1,name:"公共电源",changeDescription:`版本${index+1}`,digest:"fixed",createdAt:"today",createdByUserId:"admin"}));
+    const fetchImpl=vi.fn(async(url:string|URL|Request,init?:RequestInit)=>{
+      const path=String(url);let body:unknown;
+      if(path.includes("project-usages"))body={items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,
+        references:pinned?[{resourceId:resourceOne,resourceName:"公共电源",versionId:pinned,version:pinned===versionOne?1:2,direct:true,state:"active",upgradeAvailable:false,requiredBy:[]}]:[]}],total:1,visibility:"organization"};
+      else if(path.includes("/versions"))body={items:versions,total:2};
+      else if(path.includes("/member-addition/preview")){
+        const request=JSON.parse(String(init?.body));const removal=Boolean(request.removeSharedReference);
+        body={item:{proofToken:"a".repeat(64),configSetId:"c1",fileName:"board.dts",format:"dts",members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],
+          ...(removal?{sharedRemoval:{resourceId:resourceOne,versionId:versionTwo,version:2,name:"公共电源"}}:{}),
+          sharedSwitch:{beforeVersion:removal?2:1,afterVersion:removal?null:2,dependencies:{before:[],after:[]},sources:[],effective:[],build:{mode:"release",passed:true,includeSearchPaths:[],defines:{}}},
+          impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}};
+      }else if(path.includes("/member-addition/apply")){const request=JSON.parse(String(init?.body));pinned=request.removeSharedReference?null:request.sharedReference.versionId;body={item:{requestId:"r",fileId:"f",fileVersionId:"v",configRevisionId:"rev"}};}
+      else throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(body),{status:200,headers:{"Content-Type":"application/json"}});
+    });
+    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"切换版本"}));
+    await user.click(await screen.findByRole("combobox",{name:"固定版本"}));expect(screen.getByRole("option",{name:"版本 1 · 版本1"})).toHaveAttribute("aria-disabled","true");
+    await user.click(screen.getByRole("option",{name:"版本 2 · 版本2"}));await user.click(screen.getByRole("button",{name:"预览版本切换"}));
+    expect(pinned).toBe(versionOne);await user.type(await screen.findByRole("textbox",{name:"变更说明"}),"切换版本");
+    await user.click(screen.getByRole("button",{name:"确认切换版本"}));expect(await screen.findByText("公共电源 · v2")).toBeVisible();
+    await user.click(screen.getByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"移除引用"}));
+    await user.click(screen.getByRole("button",{name:"预览移除引用"}));await user.click(await screen.findByRole("button",{name:"取消本次预览"}));expect(pinned).toBe(versionTwo);
+    await user.click(screen.getByRole("button",{name:"预览移除引用"}));await user.type(await screen.findByRole("textbox",{name:"变更说明"}),"移除引用");
+    await user.click(screen.getByRole("button",{name:"确认移除引用"}));expect(await screen.findByText("未引用共享资源包")).toBeVisible();
+    expect(fetchImpl.mock.calls.filter(([url])=>String(url).includes("/member-addition/apply"))).toHaveLength(2);
+  });
+
+  it("opens the existing project correction task with the target version and reason preserved",async()=>{
+    sessionStorage.clear();const user=userEvent.setup(),navigate=vi.fn();
+    const version={id:versionTwo,resourceId:resourceOne,version:2,name:"公共电源",changeDescription:"新版",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
+    const fetchImpl=vi.fn(async(url:string|URL|Request)=>{
+      const path=String(url);let body:unknown,status=200;
+      if(path.includes("project-usages"))body={items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,
+        references:[{resourceId:resourceOne,resourceName:"公共电源",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:true,requiredBy:[]}]}],total:1,visibility:"organization"};
+      else if(path.includes("/versions"))body={items:[version],total:1};
+      else if(path.includes("/member-addition/preview")){status=422;body={error:{code:"VALIDATION_FAILED",message:"项目覆盖冲突",details:{switchConflicts:[{message:"请修正节点",sourceName:"board.dts",fileId:"root-file",line:9,node:"/charger",property:"limit"}]}}};}
+      else throw new Error(`Unexpected request: ${path}`);
+      return new Response(JSON.stringify(body),{status});
+    });
+    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects&usageQuery=项目甲" onNavigate={navigate}/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"切换版本"}));
+    await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 2 · 新版"}));
+    await user.type(screen.getByRole("textbox",{name:"变更说明"}),"保留本地设置");await user.click(screen.getByRole("button",{name:"预览版本切换"}));
+    await user.click(await screen.findByRole("button",{name:"修正项目源码"}));
+    const target=new URL(navigate.mock.lastCall![0],"http://local");
+    expect(target.pathname).toBe("/parameter-admin/projects/p1/configuration");expect(target.searchParams.get("file")).toBe("root-file");
+    expect(target.searchParams.get("returnTo")).toBe("/parameter-admin/sources?view=projects&usageQuery=%E9%A1%B9%E7%9B%AE%E7%94%B2");
+    expect(JSON.parse(sessionStorage.getItem("wiseeff.shared-switch:user-a:org-a:p1:c1")!)).toMatchObject({reference:{resourceId:resourceOne,versionId:versionOne},draft:{versionId:versionTwo,reason:"保留本地设置"}});
+    sessionStorage.clear();
+  });
   it("opens resource configuration for the selected project and shows existing direct references", async () => {
     const user=userEvent.setup();
     const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,

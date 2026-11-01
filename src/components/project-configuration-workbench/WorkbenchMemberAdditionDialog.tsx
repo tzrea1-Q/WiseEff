@@ -37,7 +37,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   sharedOnly?: boolean; existingReferences?: Array<{resourceId:string;direct:boolean;requiredBy:Array<{resourceName:string}>}>;
   targetProjectName?: string;
   onUncertainDismiss?: () => void;
-  refreshExistingReferences?: () => Promise<Array<{resourceId:string}>>;
+  refreshExistingReferences?: () => Promise<Array<{resourceId:string;versionId?:string;direct?:boolean}>>;
 }) {
   const reference=removeReference??switchReference;
   const client = useMemo(() => suppliedClient ?? createCanonicalMemberAdditionClient(), [suppliedClient]);
@@ -99,7 +99,10 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     try {
       const references=await refreshExistingReferences();
       if(mounted.current){
-        if(references.some(ref=>ref.resourceId===resourceId)){setResourceId("");setVersionId("");setVersions([]);setError("配置已更新，请重新选择资源。");}
+        if(reference){
+          const latest=references.find(ref=>ref.resourceId===reference.resourceId);
+          if(!latest || latest.versionId!==reference.versionId || latest.direct===false){setError("当前固定引用已变化，请返回配置资源包重新核对。");return;}
+        }else if(references.some(ref=>ref.resourceId===resourceId)){setResourceId("");setVersionId("");setVersions([]);setError("配置已更新，请重新选择资源。");}
         setRefreshRequired(false);
       }
     } catch(failure) {
@@ -154,6 +157,10 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
     } } finally { if (mounted.current) setBusy(false); }
   }
   const dismiss=()=>{if(uncertain && onUncertainDismiss)onUncertainDismiss();else onDismiss();};
+  const recover=(location:SharedSwitchConflict)=>{
+    try{onRecoverSwitch?.(location,{versionId,reason});invalidate();}
+    catch(failure){setError(presentError(failure,"无法保存引用变更，请稍后重试。"));}
+  };
   return <ModalDialog open onDismiss={busy ? undefined : dismiss} initialFocusRef={closeRef} describedBy
     className="workbench-member-addition-dialog" backdropClassName="param-admin-modal-backdrop">
     {({ titleId, descriptionId }) => <>
@@ -218,17 +225,18 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         </form></details>
         {error||refreshError ? <p role="alert">{reference&&switchConflicts.length?(removeReference?"移除引用未通过。":"版本切换未通过。"):error}{refreshError?`；重新核对失败：${refreshError}`:""}</p> : null}
         {refreshRequired&&!busy?<Button variant="outline" disabled={refreshingReferences} onClick={()=>void refreshReferences()}>{refreshingReferences?"正在核对配置…":"重新核对配置"}</Button>:null}
-        {reference && error ? <section aria-label={removeReference?"移除引用冲突处理":"版本冲突处理"}>
+        {reference && error && !uncertain ? <section aria-label={removeReference?"移除引用冲突处理":"版本冲突处理"}>
           {switchConflicts.length?<ul>{switchConflicts.map((item,index)=><li key={index}>
             <p>{item.sourceName}{item.line?`:${item.line}`:""}{item.node?` · ${item.node}`:""}{item.property?` · ${item.property}`:""}</p>
             <p>{item.message}</p>
             {onRecoverSwitch && (item.fileId||item.resourceId)?<div className="workbench-member-addition-dialog__conflict-actions">
-              <Button type="button" variant="outline" onClick={()=>{invalidate();onRecoverSwitch(item,{versionId,reason});}}>{item.resourceId?"核对共享来源":"修正项目源码"}</Button>
-              {item.resourceId && item.projectCorrection && projectRoot?<Button type="button" variant="outline" onClick={()=>{invalidate();onRecoverSwitch({message:item.message,...projectRoot,node:item.node,property:item.property},{versionId,reason});}}>编辑项目根文件</Button>:null}
+              <Button type="button" variant="outline" onClick={()=>recover(item)}>{item.resourceId?"核对共享来源":"修正项目源码"}</Button>
+              {item.resourceId && item.projectCorrection && projectRoot?<Button type="button" variant="outline" onClick={()=>recover({message:item.message,...projectRoot,node:item.node,property:item.property})}>编辑项目根文件</Button>:null}
             </div>:null}
           </li>)}</ul>:<p>{compositionError==="dependency"?"请先在配置组成中移除或变更依赖此资源的直接引用。":compositionError==="stale"?"请重新核对配置组成后预览。":removeReference?"当前配置未改变；请修正项目源码后重新预览。":"当前配置未改变；请重新预览，或选择其他目标版本。"}</p>}
           <div className="workbench-member-addition-dialog__conflict-actions">
-            {removeReference?!compositionError&&!switchConflicts.some(item=>item.fileId||item.projectCorrection)&&projectRoot&&onRecoverSwitch?<Button type="button" variant="outline" onClick={()=>{invalidate();onRecoverSwitch({message:error,...projectRoot},{versionId,reason});}}>编辑项目根文件</Button>:null:<Button type="button" variant="outline" onClick={()=>{invalidate();if(selectionRef.current){selectionRef.current.open=true;selectionRef.current.querySelector<HTMLButtonElement>('[aria-label="固定版本"]')?.focus();}}}>重选目标版本</Button>}
+            {sharedOnly && onRecoverSwitch && !compositionError && !switchConflicts.some(item=>item.fileId||item.resourceId)?<Button type="button" variant="outline" onClick={()=>recover({message:error,sourceName:"配置"})}>前往项目工作台处理</Button>:null}
+            {removeReference?!compositionError&&!switchConflicts.some(item=>item.fileId||item.projectCorrection)&&projectRoot&&onRecoverSwitch?<Button type="button" variant="outline" onClick={()=>recover({message:error,...projectRoot})}>编辑项目根文件</Button>:null:<Button type="button" variant="outline" onClick={()=>{invalidate();if(selectionRef.current){selectionRef.current.open=true;selectionRef.current.querySelector<HTMLButtonElement>('[aria-label="固定版本"]')?.focus();}}}>重选目标版本</Button>}
             <Button type="button" variant="outline" onClick={onDismiss}>{compositionError?"返回配置组成":removeReference?"取消移除引用":"取消版本切换"}</Button>
           </div>
         </section>:null}

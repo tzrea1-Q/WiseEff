@@ -29,7 +29,7 @@ import { SharedDtsiLifecycle } from "./SharedDtsiLifecycle";
 import { SharedDtsiProjectUsages } from "./SharedDtsiProjectUsages";
 import { conflictingMembers, hasDuplicateMemberPaths, hasMemberPath, mergeSourceMembers, sourceMembers, withContent } from "./sharedDtsiMembers";
 
-type Props = { apiClient?: ApiClient; canWrite: boolean; canCreateSubject?:boolean;canProposeSource?:boolean;canReviewSource?:boolean;search: string; organizationId?: string; onNavigate: (path: string) => void };
+type Props = { apiClient?: ApiClient; canWrite: boolean; canCreateSubject?:boolean;canProposeSource?:boolean;canReviewSource?:boolean;search: string; organizationId?: string; currentUserId?:string; onNavigate: (path: string) => void };
 type Scope = { key: string; client: ReturnType<typeof createSharedDtsiClient> | null; pending: boolean };
 const empty: SharedDtsiDraftInput = { name: "", sourceName: "common.dtsi", content: "", changeDescription: "",dependencies:[] };
 const draftInput = (draft: SharedDtsiDraft): SharedDtsiDraftInput => ({ name: draft.name,
@@ -71,7 +71,7 @@ function SharedDtsiTitle({name,draft=false}:{name:string;draft?:boolean}) {
   </TooltipTrigger>{truncated?<TooltipContent className="shared-dtsi-title-tooltip" side="bottom" align="start">{name}</TooltipContent>:null}</Tooltip></TooltipProvider>{draft?<span className="shared-dtsi-draft-label">草稿</span>:null}</h1>;
 }
 
-export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,canProposeSource=false,canReviewSource=false,search, organizationId, onNavigate }: Props) {
+export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,canProposeSource=false,canReviewSource=false,search, organizationId, currentUserId, onNavigate }: Props) {
   const client = useMemo(() => apiClient ? createSharedDtsiClient(apiClient) : null, [apiClient]);
   const selected = new URLSearchParams(search).get("resource") ?? "";
   const projectUsageView = new URLSearchParams(search).get("view") === "projects";
@@ -494,7 +494,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const listHeader = <div className="shared-dtsi-list-heading"><h1>共享 DTSI</h1><ViewSwitch variant="toggle-outline" ariaLabel="共享 DTSI 视图" value={projectUsageView?"projects":"resources"}
     onValueChange={value=>{const params=new URLSearchParams(search);if(value==="projects")params.set("view","projects");else params.delete("view");onNavigate(`/parameter-admin/sources${params.size?`?${params}`:""}`);}}
     items={[{value:"resources",label:"资源包"},{value:"projects",label:"项目使用"}]} /></div>;
-  if (!selected && projectUsageView && apiClient) return <SharedDtsiProjectUsages apiClient={apiClient} organizationId={organizationId} canWrite={canWrite} search={search} onNavigate={onNavigate} header={listHeader} />;
+  if (!selected && projectUsageView && apiClient) return <SharedDtsiProjectUsages apiClient={apiClient} organizationId={organizationId} currentUserId={currentUserId} canWrite={canWrite} search={search} onNavigate={onNavigate} header={listHeader} />;
   if (!selected) return <div className="shared-dtsi-page"><AdminListPage label="共享 DTSI" headerContent={listHeader}
     headerActions={canWrite ? <Button onClick={() => void navigate("new")}>导入资源</Button> : null}
     filterBar={<SearchField className="shared-dtsi-list-search" ariaLabel="搜索共享 DTSI" value={query} onValueChange={value => { setQuery(value); setPage(1); }} placeholder="搜索名称、路径或已验证 compatible 标识" />}
