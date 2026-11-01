@@ -813,6 +813,7 @@ describe("legacy parameter plane archive", () => {
       { child: "public.dts_validation_diagnostics", parent: "public.dts_logical_nodes", delete_action: "NO ACTION", constraint_count: "1" },
       { child: "public.dts_validation_runs", parent: "public.dts_config_revisions", delete_action: "CASCADE", constraint_count: "1" },
       { child: "public.legacy_parameter_migration_evidence", parent: "public.project_parameter_bindings", delete_action: "NO ACTION", constraint_count: "1" },
+      { child: "public.member_addition_intents", parent: "public.dts_config_set", delete_action: "RESTRICT", constraint_count: "1" },
       { child: "public.node_operations", parent: "parameter_catalog.project_parameter_bindings", delete_action: "RESTRICT", constraint_count: "2" },
       { child: "public.node_operations", parent: "public.project_parameter_bindings", delete_action: "NO ACTION", constraint_count: "1" },
       { child: "public.parameter_spec_review_tasks", parent: "public.dts_config_revisions", delete_action: "CASCADE", constraint_count: "1" },

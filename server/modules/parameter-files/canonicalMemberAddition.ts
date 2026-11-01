@@ -105,6 +105,7 @@ function conflict(message: string): never { throw new ApiError("CONFLICT", messa
 function rootDiagnosticMessage(code: string, message: string, fileName?: string): string {
   const labels: Record<string, string> = {
     "include-cycle": "文件存在循环引用", "include-missing": "找不到引用文件", "path-escape": "引用路径超出当前配置",
+    "preprocess-include-ambiguous": "引用文件匹配多个搜索目录，请使用明确的相对路径或调整构建设置",
     "label-duplicate": "节点标签重复", "target-unresolved": "找不到引用的目标节点", "dangling-reference": "找不到覆盖目标节点",
     "source-proof-limit": "配置超过精确来源校验容量", "toolchain-unavailable": "DTS 校验工具不可用，请联系管理员检查工具链",
     "version-mismatch": "DTS 校验工具版本不匹配", "compile-failed": "DTS 编译失败，请检查文件语法与引用",
@@ -113,7 +114,7 @@ function rootDiagnosticMessage(code: string, message: string, fileName?: string)
     "dtc-duplicate-property": "属性名称重复", "dtc-unit-address": "节点单元地址与 reg 属性不匹配",
     "dtc-reg-format": "reg 属性格式无效", "dtc-ranges-format": "ranges 属性格式无效", "dtc-reference": "节点引用无效"
   };
-  const references = [...message.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  const references = code === "preprocess-include-ambiguous" ? [] : [...message.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
   return `${fileName ?? "配置"}：${labels[code] ?? "DTS 校验未通过"}${references.length ? `（${references.join("、")}）` : ""}。`;
 }
 
@@ -408,7 +409,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       message: rootDiagnosticMessage(code,message,input.setAsRoot||removing?fileName:undefined).replace(/^配置：/,"") })));
     if (diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) {
       refuseSwitch(new ApiError("VALIDATION_FAILED", removing?"移除后仍有项目 include/overlay 使用该来源，请修正项目源码，再返回移除任务重新预览。":"配置包含未解决的 include/overlay 引用，请修正来源后重试。", { diagnostics }),
-        resolved.diagnostics.filter(row=>row.severity==="error"||/dangling|unresolved/.test(row.code)).map(row=>switchSource(removing?rootDiagnosticMessage(row.code,row.message).replace(/^配置：/,""):row.message,row.fileName,row.offset)));
+        resolved.diagnostics.filter(row=>row.severity==="error"||/dangling|unresolved/.test(row.code)).map(row=>switchSource(removing||row.code==="preprocess-include-ambiguous"?rootDiagnosticMessage(row.code,row.message).replace(/^配置：/,""):row.message,row.fileName,row.offset)));
     }
     anchors = await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, afterMembers);
     try { continuity = await prepareReviewedSourceContinuity(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,

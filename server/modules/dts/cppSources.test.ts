@@ -27,6 +27,15 @@ describe("controlled original DTS preprocessing", () => {
     await expect(prepareDtsSources({...input('#include "../defs.h"\n/ {};'),includeSearchPaths:["safe"],
       files:new Map([["board.dts",{fileVersionId:"board",content:'#include "../defs.h"\n/ {};'}],["defs.h",{fileVersionId:"header",content:"#define A 1"}]])})).rejects.toMatchObject({code:"preprocess-input"});
   });
+  it("identifies an include that matches multiple frozen search directories", async () => {
+    const files = new Map([
+      ["board.dts", {fileVersionId:"board",content:'#include <defs.h>\n/ {};'}],
+      ["first/defs.h", {fileVersionId:"one",content:"#define VALUE 1\n"}],
+      ["second/defs.h", {fileVersionId:"two",content:"#define VALUE 2\n"}]
+    ]);
+    await expect(prepareDtsSources({entryFile:"board.dts",includeSearchPaths:["first","second"],overlayOrder:[],files}))
+      .rejects.toMatchObject({code:"preprocess-include-ambiguous",fileName:"board.dts",message:expect.stringContaining("多个搜索目录")});
+  });
 });
 
 describe("native pinned CPP original-source proof", () => {

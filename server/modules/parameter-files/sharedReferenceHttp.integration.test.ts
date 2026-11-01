@@ -623,8 +623,10 @@ describe("fixed shared references through the real API role", () => {
     expect(conflict.status,conflict.bodyText).toBe(400);expect(conflict.bodyText).toContain("FLAG");
     const ambiguous=await publish("Ambiguous include binding",[{sourceName:"other.dtsi",content:'/ { other {}; };'},
       {sourceName:"include/dt-bindings/power.h",content:'#define OTHER 1\n'}],{FLAG:"1"});
-    const collision=await post(`${path(projectId)}/preview`,{sharedReference:{resourceId:ambiguous.resourceId,versionId:ambiguous.id,mountPath:"other"},role:"misc",sortOrder:10});
-    expect(collision.status,collision.bodyText).toBe(400);expect(collision.bodyText).toContain("多个搜索目录");
+    const collision=await post<{error:{details:{diagnostics:{code:string;message:string;sourceName:string;line:number}[]}}}>(`${path(projectId)}/preview`,{sharedReference:{resourceId:ambiguous.resourceId,versionId:ambiguous.id,mountPath:"other"},role:"misc",sortOrder:10});
+    expect(collision.status,collision.bodyText).toBe(400);expect(collision.body.error.details.diagnostics).toContainEqual(expect.objectContaining({
+      code:"preprocess-include-ambiguous",message:"引用文件匹配多个搜索目录，请使用明确的相对路径或调整构建设置。",sourceName:"vendor/power/main.dtsi",line:1}));
+    expect(collision.bodyText).not.toContain("#define OTHER");
     expect((await requestJson(server(),`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`)).body).toEqual(before);
     const candidate=await post<{item:{id:string}}>(`/api/v1/projects/${projectId}/parameter-file-candidates`,{fileId:root.file.id,fileName:"cpp-board.dts",contentBase64:Buffer.from(rootSource).toString("base64"),intent:"source_revision",
       expectedCurrentVersionId:(before as {items:{fileId:string;currentVersionId:string}[]}).items.find(row=>row.fileId===root.file.id)!.currentVersionId,expectedConfigRevisionId:applied.body.item.configRevisionId,clientMutationId:"cpp-remove-entry"});
