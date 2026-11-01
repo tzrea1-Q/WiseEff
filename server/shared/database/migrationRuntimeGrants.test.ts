@@ -11,7 +11,10 @@ function missingRuntimeGrants(sql: string): string[] {
     const parts = create[1].replaceAll('"', "").split(/\s*\.\s*/);
     if (parts.length === 2 && parts[0] !== "public") continue;
     const table = parts.at(-1)!;
-    if (optOuts.includes(table)) continue;
+    if (optOuts.includes(table)) {
+      if (table === "member_addition_intents") missing.push(table);
+      continue;
+    }
     const hasGrant = blocks.some((block) => {
       if (block.index! <= create.index!) return false;
       const compact = block[2].replace(/\s+/g, "").toLowerCase();
@@ -380,6 +383,8 @@ describe("public table runtime grants (0185 onward)", () => {
       sql + "\ngrant update(mutation_id) on public.member_addition_intents to public;",
       sql + "\ngrant delete on public.users, public.member_addition_intents to public;",
       sql + "\ngrant all on all tables in schema public to public;",
+      "-- runtime-acl: owner-only member_addition_intents exception\n" + sql,
+      "-- runtime-acl: owner-only member_addition_intents exception\n" + sql.replace("revoke delete", "revoke insert"),
       sql.replace("revoke delete", "revoke insert") + `\ndo $$ begin
         if has_table_privilege(oid, 'public.log_domains', 'INSERT') then
           execute 'grant select,insert,update,delete on public.member_addition_intents to public';
