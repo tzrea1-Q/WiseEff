@@ -294,6 +294,11 @@ describe("M5 OpenAPI contract", () => {
     for(const operation of operations.slice(2))expect(operation.parameters).toEqual(expect.arrayContaining([expect.objectContaining({name:"intentId",in:"path",required:true,schema:{type:"string",format:"uuid"}})]));
     expect(operations[1]!.parameters).toEqual(expect.arrayContaining([expect.objectContaining({name:"limit",schema:{type:"integer",minimum:1,maximum:50,default:50}}),expect.objectContaining({name:"offset",schema:{type:"integer",minimum:0,maximum:5000,default:0}})]));
     expect(document.components.schemas.MemberAdditionIntentRegisterRequest).toMatchObject({properties:{registrationId:{type:"string",format:"uuid"}}});
+    const fields={id:{type:"string",format:"uuid"},clientMutationId:{type:"string",format:"uuid"}};
+    expect(document.components.schemas.MemberAdditionIntentResponse).toMatchObject({properties:{item:{properties:fields}}});
+    expect(document.components.schemas.MemberAdditionIntentsResponse).toMatchObject({properties:{items:{items:{properties:fields}},total:{type:"integer",minimum:0}}});
+    for(const [index,operation] of operations.entries())expect(operation.responses["200"]).toMatchObject({content:{"application/json":{schema:{$ref:`#/components/schemas/${index===1?"MemberAdditionIntentsResponse":"MemberAdditionIntentResponse"}`}}}});
+    const item=(document.components.schemas.MemberAdditionIntentResponse as {properties:{item:{required:string[]}}}).properties.item;expect(item.required).not.toContain("result");
   });
 
   it("publishes debugging admin catalog API routes", () => {

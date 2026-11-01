@@ -80813,10 +80813,12 @@
             "type": "object",
             "properties": {
               "id": {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               "clientMutationId": {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               "projectId": {
                 "type": "string"
@@ -80890,10 +80892,12 @@
               "type": "object",
               "properties": {
                 "id": {
-                  "type": "string"
+                  "type": "string",
+                  "format": "uuid"
                 },
                 "clientMutationId": {
-                  "type": "string"
+                  "type": "string",
+                  "format": "uuid"
                 },
                 "projectId": {
                   "type": "string"
@@ -80953,7 +80957,8 @@
             }
           },
           "total": {
-            "type": "number"
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [

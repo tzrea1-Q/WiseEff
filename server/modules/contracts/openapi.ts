@@ -137,6 +137,13 @@ function buildSchemaPlaceholders() {
     type:"object",properties:{registrationId:{type:"string",format:"uuid"}},required:["registrationId"],additionalProperties:false,
     "x-wiseeff-schema":"MemberAdditionIntentRegisterRequest"
   };
+  type IntentFields={properties:{id:Record<string,unknown>;clientMutationId:Record<string,unknown>}};
+  const singleIntent=(schemas.MemberAdditionIntentResponse as {properties:{item:IntentFields}}).properties.item;
+  const intentList=(schemas.MemberAdditionIntentsResponse as {properties:{items:{items:IntentFields};total:Record<string,unknown>}}).properties;
+  for(const item of [singleIntent,intentList.items.items]){
+    item.properties.id={type:"string",format:"uuid"};item.properties.clientMutationId={type:"string",format:"uuid"};
+  }
+  intentList.total={type:"integer",minimum:0};
 
   schemas.LogBundleMultipartUpload = {
     type: "object", required: ["file"], properties: {
