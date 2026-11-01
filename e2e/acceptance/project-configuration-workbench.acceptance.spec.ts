@@ -4281,6 +4281,10 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       rawValuePattern:'"Project1474", "keep"',nodeLocatorPattern:"board",reason:"#1474 usage operations",timeoutMs:60_000});
     const other=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Other1474", "keep"; }; };',
       rawValuePattern:'"Other1474", "keep"',nodeLocatorPattern:"board",reason:"#1474 independent configuration",timeoutMs:60_000});
+    const otherProject=`usage1474-${randomUUID()}`;
+    await withPgClient(client=>client.query("insert into projects(id,organization_id,name,code,status,initialization_status) values($1,$2,'Independent project',$1,'initialized','initialized')",[otherProject,organizationId]));
+    const outside=await seedIsolatedBinding(request,{projectId:otherProject,propertyKey:"rx_fod_cond",dts:'/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "Outside1474", "keep"; }; };',
+      rawValuePattern:'"Outside1474", "keep"',nodeLocatorPattern:"board",reason:"#1474 independent project",timeoutMs:60_000});
     const configs=await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`),{headers:adminHeaders()});expect(configs.status(),await configs.text()).toBe(200);
     const config=(await configs.json()).items.find((item:{id:string})=>item.id===binding.configSetId) as {name:string};
     const name=`Usage switch ${randomUUID()}`,sourceName=`usage-switch-${randomUUID()}.dtsi`;
@@ -4292,11 +4296,13 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       const r=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await p.json()).item.id,idempotencyKey:randomUUID()}});expect(r.status(),await r.text()).toBe(201);return (await r.json()).item.id as string;
     };
     const v1=await publish(1);
-    for(const target of [binding.configSetId,other.configSetId]){
-      const path=`/api/v1/projects/${projectId}/config-sets/${target}/member-addition`,addition={sharedReference:{resourceId,versionId:v1},role:"misc",sortOrder:1};
+    for(const [targetProject,target] of [[projectId,binding.configSetId],[projectId,other.configSetId],[otherProject,outside.configSetId]]){
+      const path=`/api/v1/projects/${targetProject}/config-sets/${target}/member-addition`,addition={sharedReference:{resourceId,versionId:v1},role:"misc",sortOrder:1};
       const p=await request.post(apiRoute(`${path}/preview`),{headers:adminHeaders(),data:addition});expect(p.status(),await p.text()).toBe(200);
       const a=await request.post(apiRoute(`${path}/apply`),{headers:adminHeaders(),data:{...addition,proofToken:(await p.json()).item.proofToken,reason:"#1474 pin",clientMutationId:randomUUID()}});expect(a.status(),await a.text()).toBe(200);
     }
+    const outsideBindings=await readCanonicalFixtureBindings(otherProject);
+    const outsideExport=await request.get(apiRoute(`/api/v1/projects/${otherProject}/config-sets/${outside.configSetId}/export`),{headers:adminHeaders()});expect(outsideExport.status(),await outsideExport.text()).toBe(200);const outsideSnapshot=await outsideExport.json();
     const nextDraft=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{baseVersionId:v1}});expect(nextDraft.status(),await nextDraft.text()).toBe(201);
     const saved=await request.put(apiRoute(`/api/v2/shared-dtsi/${resourceId}/draft`),{headers:adminHeaders(),data:{expectedRevision:(await nextDraft.json()).item.revision,name,sourceName,content:source.replace('"okay"','"disabled"'),changeDescription:"Updated"}});expect(saved.status(),await saved.text()).toBe(200);
     const v2=await publish((await saved.json()).item.revision);
@@ -4349,10 +4355,16 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       const repeated=removed.request().postDataJSON();expect(repeated.proofToken).toBe(submitted[0]!.proofToken);expect(repeated.reason).toBe(submitted[0]!.reason);expect(repeated.clientMutationId).toBe(submitted[0]!.clientMutationId);
     }finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(lost),1);await page.unroute(`**${applyPath}*`);}
     await page.getByRole("button",{name:"项目使用",exact:true}).click();
-    await page.getByRole("dialog",{name:"离开配置工作台"}).getByRole("button",{name:"保留草稿并离开"}).click();
+    const leave=page.getByRole("dialog",{name:"离开配置工作台"});await expect(leave.or(row)).toBeVisible();
+    if(await leave.isVisible())await leave.getByRole("button",{name:"保留草稿并离开"}).click();
     await expect(row).toContainText("未引用共享资源包");
     const usages=await request.get(apiRoute(`/api/v2/shared-dtsi/${resourceId}/usages`),{headers:adminHeaders()});
     expect((await usages.json()).items).toContainEqual(expect.objectContaining({projectId,configSetId:other.configSetId,versionId:v1,direct:true}));
+    expect((await usages.json()).items).toContainEqual(expect.objectContaining({projectId:otherProject,configSetId:outside.configSetId,versionId:v1,direct:true}));
+    expect(await readCanonicalFixtureBindings(otherProject)).toEqual(outsideBindings);
+    const afterExport=await request.get(apiRoute(`/api/v1/projects/${otherProject}/config-sets/${outside.configSetId}/export`),{headers:adminHeaders()});const afterSnapshot=await afterExport.json();
+    delete outsideSnapshot.manifest.exportedAt;delete afterSnapshot.manifest.exportedAt;expect(afterSnapshot).toEqual(outsideSnapshot);
+    const historical=await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`),{headers:adminHeaders()});expect(await historical.text()).toBe(originalSource);
   });
 
   test("administrator adds a staged overlay to a Canonical configuration through preview and keyboard confirmation", async ({ page, request }, testInfo) => {
