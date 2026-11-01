@@ -150,13 +150,15 @@ describe("fixed shared references through the real API role", () => {
       {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:1},
       {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:2},
       {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:5},
-      {severity:"error",code:"same",message:"Same diagnostic",file:"shared.dtsi",line:1}]})};
+      {severity:"error",code:"same",message:"Same diagnostic",file:"shared.dtsi",line:1},
+      {severity:"error",code:"compile-failed",message:"spawn failed at /Users/private/secret/tool",file:"/Users/private/secret/board.dts",line:1}]})};
     const security={invocation:createUserInvocation(admin),requestId:"root-diagnostic",refusalSink:createTrustedRefusalAuditSink(db)};
     const failure=await previewCanonicalMemberAddition(api,storage,admin,{projectId:project,configSetId,sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:1},security,{toolchain}).catch(error=>error);
     const errors=failure.details.diagnostics as Array<{sourceName:string;fileId?:string;resourceId?:string;line?:number}>;
-    expect(errors).toHaveLength(4);expect(errors[0]).toMatchObject({sourceName:"board.dts",fileId:rootFile.file.id,line:1});
+    expect(errors).toHaveLength(5);expect(errors[0]).toMatchObject({sourceName:"board.dts",fileId:rootFile.file.id,line:1});
     expect(errors[1]).toMatchObject({sourceName:"board.dts"});expect(errors[1]!.fileId).toBeUndefined();expect(errors[1]!.line).toBeUndefined();
     expect(errors[2]).toMatchObject({sourceName:"board.dts",fileId:rootFile.file.id,line:3});expect(errors[3]).toMatchObject({sourceName:"shared.dtsi",resourceId,line:1});
+    expect(JSON.stringify(failure.details)).not.toContain("/Users/private/secret");expect(errors[4]).toMatchObject({sourceName:"配置"});expect(errors[4]!.line).toBeUndefined();
   });
 
   it("reports the original root line when a shared overlay invalidates a later project overlay",async()=>{
@@ -173,6 +175,12 @@ describe("fixed shared references through the real API role", () => {
     const conversion={sharedReference:{resourceId:importedId,versionId:baseVersion.body.item.id,convertPrivate:{configRevisionId:revision.id,fileId:baseFile.file.id,fileVersionId:baseFile.version.id}},role:"misc",sortOrder:1};
     const convertPreview=await post<Preview>(`/api/v1/projects/${project}/config-sets/${configSetId}/member-addition/preview`,conversion);expect(convertPreview.status,convertPreview.bodyText).toBe(200);
     const converted=await post(`/api/v1/projects/${project}/config-sets/${configSetId}/member-addition/apply`,{...conversion,proofToken:convertPreview.body.item.proofToken,reason:"Prepare shared base",clientMutationId:"overlay-base-conversion"});expect(converted.status,converted.bodyText).toBe(200);
+    const nextDraft=await post<{item:{members:Array<{id:string;sourceName:string;content:string}>}}>(`/api/v2/shared-dtsi/${importedId}/draft`,{baseVersionId:baseVersion.body.item.id});expect(nextDraft.status,nextDraft.bodyText).toBe(201);
+    const nextSave=await requestJson(server(),`/api/v2/shared-dtsi/${importedId}/draft`,{method:"PUT",body:JSON.stringify({name:"Existing overlay base",members:nextDraft.body.item.members.map(member=>({...member,content:'\n\n&missing_from_switch { flag = <1>; };'})),expectedRevision:1,changeDescription:"Missing switch target"})});expect(nextSave.status,nextSave.bodyText).toBe(200);
+    const nextPreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${importedId}/publication-preview`,{expectedRevision:2});expect(nextPreview.status,nextPreview.bodyText).toBe(201);
+    const nextVersion=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${importedId}/publications`,{previewId:nextPreview.body.item.id,idempotencyKey:"overlay-base-missing-target"});expect(nextVersion.status,nextVersion.bodyText).toBe(201);
+    const switched=await post<{error:{details:{diagnostics:Array<{sourceName?:string;resourceId?:string;versionId?:string;line?:number}>}}}>(`/api/v1/projects/${project}/config-sets/${configSetId}/member-addition/preview`,{sharedReference:{resourceId:importedId,versionId:nextVersion.body.item.id,replaceVersionId:baseVersion.body.item.id},role:"misc",sortOrder:1});
+    expect(switched.status,switched.bodyText).toBe(400);expect(switched.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({sourceName:"base.dtsi",resourceId:importedId,versionId:nextVersion.body.item.id,line:3})]));
     const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Delete overlay target",sourceName:"delete.dtsi",content:'/ { /delete-node/ x; };',changeDescription:"Remove overlay target"});expect(draft.status,draft.bodyText).toBe(201);
     const resourceId=draft.body.item.resourceId,preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});expect(preview.status,preview.bodyText).toBe(201);
     const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"overlay-location"});expect(version.status,version.bodyText).toBe(201);

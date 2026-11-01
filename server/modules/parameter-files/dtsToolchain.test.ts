@@ -278,6 +278,20 @@ describe("checkPinnedToolchainVersions", () => {
 });
 
 describe("createDtsToolchainRunner", () => {
+  it("does not turn an unrelated absolute compiler path into a project source",async()=>{
+    const runner=createDtsToolchainRunner({probeTools:async()=>pinnedProbe(),tmpDirFactory:trackingTmpDirFactory,
+      spawnFn:fakeSpawnScript((_command,args)=>({code:2,stderr:`${args.at(-1)}:2.1-2: ERROR (test): same\n/Users/private/other.dts:2.1-2: ERROR (test): same\n`}))});
+    const result=await runner.validate({entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],files:new Map([["board.dts",{content:'/dts-v1/;\n/ {};\n'}]])},{mode:"release"});
+    expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({file:"board.dts",line:2}),expect.objectContaining({file:"<toolchain>"})]));
+    expect(result.diagnostics.find(item=>item.file==="<toolchain>")?.line).toBeUndefined();
+  });
+  it("maps real pinned dtc absolute diagnostics only to an owned logical source",async()=>{
+    const runner=createDtsToolchainRunner();const probe=await runner.probe();
+    expect(probe.dtc.path).toBeTruthy();expect(probe.fdtoverlay.path).toBeTruthy();expect(probe.dtschema.path).toBeTruthy();
+    const result=await runner.validate({entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],files:new Map([["board.dts",{content:'/dts-v1/;\n/ { duplicate: x {}; duplicate: y {}; };\n'}]])},{mode:"release"});
+    expect(result.ok).toBe(false);expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({file:"board.dts",line:2,stage:"dtc"})]));
+    expect(result.diagnostics.every(item=>!item.file.startsWith("/"))).toBe(true);
+  },30_000);
   it("validates exact prepared CPP without reopening the compiler and refuses changed frozen inputs", async () => {
     const source = '#include "defs.h"\n/dts-v1/; / { target { limit = <VALUE>; }; };';
     const input = { entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [], defines: { ENABLED: "1" }, files: new Map([

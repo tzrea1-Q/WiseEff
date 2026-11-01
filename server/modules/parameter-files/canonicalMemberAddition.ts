@@ -367,9 +367,10 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const member=members.find(source=>source.sourceName===sourceName);
     const historical=beforeSources.find(source=>source.sourceName===sourceName);
     const historicalReference=currentReferences.find(reference=>reference.id===historical?.referenceId);
-    const inserted=member?.fileId===rootInsertion?.fileId&&offset!==undefined&&offset>=rootInsertion!.start&&offset<rootInsertion!.end;
-    const originalOffset=member?.fileId===rootInsertion?.fileId&&offset!==undefined&&offset>=rootInsertion!.end?offset-(rootInsertion!.end-rootInsertion!.start):offset;
-    const text=member?.fileId===rootInsertion?.fileId?rootEdit!.before:contents.get(sharedSource?.fileId??member?.fileId??"");
+    const mappedRoot=Boolean(rootInsertion&&member?.fileId===rootInsertion.fileId);
+    const inserted=mappedRoot&&offset!==undefined&&offset>=rootInsertion!.start&&offset<rootInsertion!.end;
+    const originalOffset=mappedRoot&&offset!==undefined&&offset>=rootInsertion!.end?offset-(rootInsertion!.end-rootInsertion!.start):offset;
+    const text=mappedRoot?rootEdit!.before:contents.get(sharedSource?.fileId??member?.fileId??"");
     return {message,sourceName,...(originalOffset===undefined||inserted||text===undefined?{}:{line:text.slice(0,originalOffset).split("\n").length}),
       ...(node?{node}:{}),...(property?{property}:{}),...(identity?{identity:true}:{}),
       ...(sharedSource?{resourceId:sharedSource.resourceId,versionId:sharedResources.find(resource=>resource.resourceId===sharedSource.resourceId)!.versionId,memberId:sharedSource.memberId}
@@ -400,7 +401,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       || !dts.some((row) => row.sourceName === entryFile && row.role === "base")) conflict("DTS 配置需要唯一可用的基础入口，请检查文件用途。");
     const files = new Map(dts.map((row) => [row.sourceName, { content: contents.get(row.fileId)!, fileVersionId: row.fileVersionId }]));
     resolved = await resolveDtsConfigSetAsync({ entryFile, includeSearchPaths, defines, overlayOrder, requireExactOrigins: true, files });
-    diagnostics.push(...resolved.diagnostics.map(({ severity, code, message, fileName,offset }) => ({ ...switchSource(message,fileName,offset),severity,code,rawMessage:message,
+    diagnostics.push(...resolved.diagnostics.map(({ severity, code, message, fileName,offset }) => ({ ...switchSource(message,fileName,offset),severity,code,...(code==="dangling-reference"?{rawMessage:message}:{}),
       message: rootDiagnosticMessage(code,message,input.setAsRoot||removing?fileName:undefined).replace(/^配置：/,"") })));
     if (diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) {
       refuseSwitch(new ApiError("VALIDATION_FAILED", removing?"移除后仍有项目 include/overlay 使用该来源，请修正项目源码，再返回移除任务重新预览。":"配置包含未解决的 include/overlay 引用，请修正来源后重试。", { diagnostics }),
@@ -476,13 +477,15 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const files=new Map(dts.map(row=>[row.sourceName,{content:contents.get(row.fileId)!,fileVersionId:row.fileVersionId}]));
     const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, input.configSetId, afterMembers, overlayOrder);
     const validated = await (toolchain ?? createDtsToolchainRunner()).validate({ entryFile, includeSearchPaths, defines, overlayOrder, files, formerRootOverlayFiles, preparedSources: resolved?.preprocessing }, { mode: "release" });
-    diagnostics.push(...validated.diagnostics.map((row) => {const source=sharedTargets.find(member=>member.sourceName===row.file)??members.find(member=>member.sourceName===row.file);
+    const toolchainDiagnostics=validated.diagnostics.map((row) => {const source=sharedTargets.find(member=>member.sourceName===row.file)??members.find(member=>member.sourceName===row.file);
       const text=source?contents.get(source.fileId):undefined,lines=text?.split("\n");
       const offset=row.line&&lines&&row.line<=lines.length?lines.slice(0,row.line-1).reduce((sum,line)=>sum+line.length+1,0):undefined;
-      return { ...switchSource(row.message,row.file,offset),severity: row.severity, code: row.code ?? "toolchain",rawMessage:row.message,
-      message: rootDiagnosticMessage(row.code ?? "toolchain",row.message,input.setAsRoot?`${row.file}${row.line?`，第 ${row.line} 行`:""}`:undefined).replace(/^配置：/,"") };}));
+      const sourceName=source?row.file:"配置";
+      const message=rootDiagnosticMessage(row.code??"toolchain","",input.setAsRoot&&source?`${sourceName}${row.line?`，第 ${row.line} 行`:""}`:undefined).replace(/^配置：/,"");
+      return { ...switchSource(message,sourceName,offset),severity: row.severity, code: row.code ?? "toolchain",message };});
+    diagnostics.push(...toolchainDiagnostics);
     if (!validated.ok || validated.mode !== "release") refuseSwitch(new ApiError("VALIDATION_FAILED", "DTS 工具链未通过，当前组成未改变。", { diagnostics }),
-      validated.diagnostics.map(row=>({...switchSource(row.message,row.file),...(row.line?{line:row.line}:{})})));
+      toolchainDiagnostics);
   }
   const restorations = await prepareSourceRestorations(tx, restorationScope, newProperties, anchors, snapshots);
   for (const restored of restorations) {
