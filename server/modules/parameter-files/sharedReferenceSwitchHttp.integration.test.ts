@@ -88,6 +88,10 @@ describe("shared reference version switches through the real API role", () => {
     const registration={registrationId:"3e70aa87-0fa8-44b7-8e04-c209ec9db771"};
     const created=await post<{item:{id:string;clientMutationId:string;status:string}}>(`${path(A)}/intents`,registration);
     expect(created.status,created.bodyText).toBe(200);expect(created.body.item.status).toBe("pending");
+    await expect(api.query("update public.member_addition_intents set status='applied' where id=$1",[created.body.item.id])).rejects.toMatchObject({code:"23514"});
+    await expect(api.query("update public.member_addition_intents set status='stopped' where id=$1",[created.body.item.id])).rejects.toMatchObject({code:"23514"});
+    const stored=(await db.query<{value:string}>("select row_to_json(i)::text as value from public.member_addition_intents i where id=$1",[created.body.item.id])).rows[0]!.value;
+    expect(stored).not.toMatch(/proof|reason|digest|body/i);
     expect((await post(`${path(A)}/intents`,registration)).body).toEqual(created.body);
     const list=await requestJson<{items:Array<{id:string;projectId:string;configSetId:string}>;total:number}>(server(),"/api/v1/member-addition-intents");
     expect(list.status,list.bodyText).toBe(200);expect(list.body).toMatchObject({total:1,items:[{id:created.body.item.id,projectId:A,configSetId:sets[A]}]});
@@ -114,6 +118,9 @@ describe("shared reference version switches through the real API role", () => {
     expect((await post(`${path(A)}/apply`,operation)).status).toBe(409);
     expect((await post(`${path(A)}/intents/${created.body.item.id}/ack`,{})).status).toBe(200);
     expect((await post(`${path(A)}/apply`,operation)).status).toBe(409);
+    expect((await post(`${path(A)}/apply`,{...operation,clientMutationId:operation.clientMutationId.toUpperCase()})).status).toBe(409);
+    await expect(api.query("update public.member_addition_intents set status='pending' where id=$1",[created.body.item.id])).rejects.toMatchObject({code:"55000"});
+    await expect(api.query("delete from public.member_addition_intents where id=$1",[created.body.item.id])).rejects.toMatchObject({code:"42501"});
     expect((await requestJson<{total:number}>(server(),"/api/v1/member-addition-intents")).body.total).toBe(0);
   },120_000);
 
@@ -187,7 +194,7 @@ describe("shared reference version switches through the real API role", () => {
     for(const project of [A,B]) {
       const preview=await post<Preview>(`${path(project)}/preview`,initial);
       expect(preview.status,preview.bodyText).toBe(200);
-      let mutationId=`initial-${project}`;
+      let mutationId=project===B?"EFEE6E1F-D365-4AC5-AE24-24CB44CD3B17":`initial-${project}`;
       if(project===A){const reserved=await post<{item:{id:string;clientMutationId:string}}>(`${path(project)}/intents`,{registrationId:"0a42d7fd-12ad-4762-92ea-64b7095195e8"});
         expect(reserved.status,reserved.bodyText).toBe(200);committedIntent=reserved.body.item.id;mutationId=reserved.body.item.clientMutationId;}
       let applied:Awaited<ReturnType<typeof post<Applied>>>;
@@ -196,7 +203,8 @@ describe("shared reference version switches through the real API role", () => {
         expect(attempts.map(result=>result.status).sort()).toEqual([200,409]);applied=attempts.find(result=>result.status===200)!;
         const reason=attempts[0]!.status===200?"Pin v1":"Different concurrent reason";
         expect((await post(`${path(project)}/apply`,{...initial,proofToken:preview.body.item.proofToken,reason,clientMutationId:mutationId})).body).toEqual(applied.body);
-      }else applied=await post<Applied>(`${path(project)}/apply`,{...initial,proofToken:preview.body.item.proofToken,reason:"Pin v1",clientMutationId:mutationId});
+      }else{applied=await post<Applied>(`${path(project)}/apply`,{...initial,proofToken:preview.body.item.proofToken,reason:"Pin v1",clientMutationId:mutationId});
+        expect((await post(`${path(project)}/apply`,{...initial,proofToken:preview.body.item.proofToken,reason:"Pin v1",clientMutationId:mutationId})).body).toEqual(applied.body);}
       expect(applied.status,applied.bodyText).toBe(200);
       if(project===A)appliedA=applied.body.item;
     }
@@ -297,7 +305,7 @@ describe("shared reference version switches through the real API role", () => {
       const preview=await post<Preview>(`${path(B)}/preview`,body);expect(preview.status,preview.bodyText).toBe(200);
       const registration=await post<{item:{id:string;clientMutationId:string}}>(`${path(B)}/intents`,{registrationId:order==="apply"?"33f2ff34-2836-4891-8d7f-fcf53b01d271":"1b349061-2702-44fa-8239-32c2266f122d"});
       expect(registration.status,registration.bodyText).toBe(200);const item=registration.body.item;
-      const operation={...body,proofToken:preview.body.item.proofToken,reason:"Race stop and apply",clientMutationId:item.clientMutationId};
+      const operation={...body,proofToken:preview.body.item.proofToken,reason:"Race stop and apply",clientMutationId:item.clientMutationId.toUpperCase()};
       const gate=await pool.connect();await gate.query("begin");await gate.query("select id from public.users where id=$1 for no key update",[ADMIN]);
       let first:ReturnType<typeof post>,second:ReturnType<typeof post>;
       try{first=order==="apply"?post(`${path(B)}/apply`,operation):post(`${path(B)}/intents/${item.id}/stop`,{});await waitForBlocked(1);
@@ -307,6 +315,7 @@ describe("shared reference version switches through the real API role", () => {
       if(order==="apply"){expect(a.status,a.bodyText).toBe(200);expect(b.status,b.bodyText).toBe(200);expect(b.body).toMatchObject({item:{status:"applied"}});}
       else{expect(a.status,a.bodyText).toBe(200);expect(a.body).toMatchObject({item:{status:"stopped"}});expect(b.status,b.bodyText).toBe(409);}
       expect((await post(`${path(B)}/intents/${item.id}/ack`,{})).status).toBe(200);
+      if(order==="apply")expect((await post(`${path(B)}/apply`,{...operation,clientMutationId:item.clientMutationId})).status).toBe(200);
     }
     const restore={sharedReference:{resourceId,versionId,replaceVersionId:nativeHeadVersionId},role:"misc",sortOrder:1};
     const preview=await post<Preview>(`${path(B)}/preview`,restore);expect(preview.status,preview.bodyText).toBe(200);

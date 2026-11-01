@@ -10,8 +10,10 @@ import { isCurrentSourceAdministrator, requireCurrentSourceAdministrator } from 
 
 type Intent={id:string;organization_id:string;project_id:string;config_set_id:string;actor_user_id:string;registration_id:string;mutation_id:string;status:"pending"|"applied"|"stopped";acknowledged:boolean};
 type Target={projectId:string;configSetId:string};
-export const lockMemberAdditionOperation=(tx:Database,organizationId:string,projectId:string,userId:string,mutationId:string)=>
-  tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))",[`member-addition:${organizationId}:${projectId}:${userId}:${mutationId}`]);
+export const lockMemberAdditionOperation=(tx:Database,organizationId:string,projectId:string,userId:string,mutationId:string)=>{
+  const key=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mutationId)?mutationId.toLowerCase():mutationId;
+  return tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))",[`member-addition:${organizationId}:${projectId}:${userId}:${key}`]);
+};
 async function authorize(tx:Database,auth:AuthContext,projectId:string){
   await requireActiveOrganization(tx,parameterOrganizationId(auth),true);
   return requireCurrentSourceAdministrator(tx,auth,projectId);
