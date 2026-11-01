@@ -265,6 +265,67 @@
         }
       }
     },
+    "/api/v2/shared-dtsi/project-usages": {
+      "get": {
+        "operationId": "sharedDtsi.projectUsages",
+        "summary": "List authorized project configurations and fixed shared references",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDtsiProjectUsagesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/shared-dtsi/{resourceId}": {
       "get": {
         "operationId": "sharedDtsi.get",
@@ -29859,6 +29920,137 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "SharedDtsiUsagesResponse"
+      },
+      "SharedDtsiProjectUsagesResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": "string"
+                },
+                "projectName": {
+                  "type": "string"
+                },
+                "projectCode": {
+                  "type": "string"
+                },
+                "configSetId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "configSetName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "configurationReady": {
+                  "type": "boolean"
+                },
+                "canConfigure": {
+                  "type": "boolean"
+                },
+                "references": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "resourceId": {
+                        "type": "string"
+                      },
+                      "resourceName": {
+                        "type": "string"
+                      },
+                      "versionId": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "number"
+                      },
+                      "direct": {
+                        "type": "boolean"
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "retired"
+                        ]
+                      },
+                      "upgradeAvailable": {
+                        "type": "boolean"
+                      },
+                      "requiredBy": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "resourceId": {
+                              "type": "string"
+                            },
+                            "resourceName": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resourceId",
+                            "resourceName"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "resourceId",
+                      "resourceName",
+                      "versionId",
+                      "version",
+                      "direct",
+                      "state",
+                      "upgradeAvailable",
+                      "requiredBy"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "projectId",
+                "projectName",
+                "projectCode",
+                "configSetId",
+                "configSetName",
+                "configurationReady",
+                "canConfigure",
+                "references"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "organization",
+              "authorized-projects"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "visibility"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SharedDtsiProjectUsagesResponse"
       },
       "SharedDtsiComparisonResponse": {
         "type": "object",
