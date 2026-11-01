@@ -13,10 +13,11 @@ afterEach(cleanup);
 it("does not send an apply after its registration finishes in a different scope",async()=>{
   const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
   let finish!:()=>void,valid=true;const registering=new Promise<void>(resolve=>{finish=resolve;});
-  const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
+  const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],sharedSwitch:{beforeVersion:1,afterVersion:null,dependencies:{before:[],after:[]},sources:[],effective:[],build:{mode:"release" as const,passed:true as const,includeSearchPaths:[],defines:{}}},impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
   render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} preserveUncertain
     removeReference={{resourceId,versionId,version:1}} client={client} onOperationStart={()=>registering} canContinueOperation={()=>valid} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
   await user.type(screen.getByRole("textbox",{name:"变更说明"}),"移除引用");await user.click(screen.getByRole("button",{name:"预览移除引用"}));
+  expect(await screen.findByText("参数及节点无变化。")).toBeVisible();
   await user.click(await screen.findByRole("button",{name:"确认移除引用"}));valid=false;await act(async()=>finish());
   expect(client.apply).not.toHaveBeenCalled();
 });
@@ -160,6 +161,7 @@ it("previews removal without browsing versions, cancels and retries with the sam
   expect(screen.queryByRole("combobox",{name:"固定版本"})).not.toBeInTheDocument();
   await user.click(screen.getByRole("button",{name:"预览移除引用"}));
   expect(await screen.findByRole("heading",{name:"Config · 移除 Limits · 版本 1（确认后生效）"})).toBeInTheDocument();
+  expect(screen.getByText("移除节点 1 个。")).toBeVisible();
   await user.type(screen.getByRole("textbox",{name:"变更说明"}),"Remove unused source");
   await user.click(screen.getByRole("button",{name:"取消本次预览"}));
   await user.click(screen.getByRole("button",{name:"预览移除引用"}));
@@ -207,6 +209,20 @@ it("locates a blocked project override and retains the task input across correct
   expect(screen.queryByRole("button",{name:"确认切换版本"})).not.toBeInTheDocument();
 });
 
+it.each([true,false])("shows the precise switch effect with effective changes: %s",async changed=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",next="33333333-3333-4333-8333-333333333333";
+  const effective=changed?[{node:"/power",property:"limit",oldShared:null,targetShared:"<15000000>",before:null,after:"<15000000>",originBefore:null,originAfter:"power.dtsi",localOverride:false}]:[];
+  const client={upload:vi.fn(),apply:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"power.dtsi",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],
+    sharedSwitch:{beforeVersion:1,afterVersion:2,dependencies:{before:[],after:[]},sources:[],effective,build:{mode:"release" as const,passed:true as const,includeSearchPaths:[],defines:{}}},impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:1,sourceReplacements:0}}))};
+  const versions=[{id:next,resourceId,version:2,name:"Power",changeDescription:"Update",digest:"fixed",createdAt:"today",createdByUserId:"admin"}];
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} switchReference={{resourceId,versionId:old,version:1}} switchDraft={{versionId:next,reason:""}} client={client} sharedClient={{list:vi.fn(),versions:vi.fn(async()=>({items:versions,total:1}))}} onDismiss={vi.fn()} onApplied={vi.fn()}/>);
+  await user.click(await screen.findByRole("button",{name:"预览版本切换"}));
+  if(changed)expect(await screen.findByText("/power · limit")).toBeVisible();
+  else expect(await screen.findByText("最终值、节点状态和来源无变化。")).toBeVisible();
+  expect(screen.queryByText("参数及节点无变化。")).not.toBeInTheDocument();
+  expect(screen.getByText("保留 1 个参数关联及历史。")).toBeVisible();
+});
+
 it("switches an existing reference through the same preview owner and cancels proof without losing the selected version or reason", async () => {
   const user=userEvent.setup(), resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",next="33333333-3333-4333-8333-333333333333";
   const versions=[old,next].map((id,index)=>({id,resourceId,version:index+1,name:"Limits",changeDescription:`Defaults ${index+1}`,digest:"sha256:fixed",createdAt:"2026-10-25",createdByUserId:"author"}));
@@ -226,6 +242,7 @@ it("switches an existing reference through the same preview owner and cancels pr
   await user.click(screen.getByRole("option",{name:"版本 2 · Defaults 2"}));
   await user.click(screen.getByRole("button",{name:"预览版本切换"}));
   expect(await screen.findByRole("heading",{name:"Config · 版本 1 → 版本 2（确认后生效）"})).toBeInTheDocument();
+  expect(screen.getByText("参数变化 1 项。")).toBeVisible();
   expect(screen.queryByText(/此项目的当前配置引用共享版本 2/)).not.toBeInTheDocument();
   const change=screen.getByText("/charger · iin_max").closest("summary")!;
   expect(change).toHaveTextContent("<36>保留本地覆盖");expect(change).not.toHaveTextContent("→");

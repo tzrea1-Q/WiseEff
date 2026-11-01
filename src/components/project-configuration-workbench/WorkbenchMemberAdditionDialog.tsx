@@ -321,11 +321,11 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
           {preview.includeSearchPaths.length && !preview.rootEdit ? <p>include 路径：{preview.includeSearchPaths.join("、")}</p> : null}
           {preview.overlayOrder.length ? <p>覆盖顺序：{preview.overlayOrder.join(" → ")}</p> : null}
           </>:null}
-          <p>{[
+          {(!preview.sharedSwitch || !switchReference || preview.impact.parameterChanges || preview.impact.nodeAdditions || preview.impact.nodeRemovals) ? <p>{[
             preview.impact.parameterChanges && `参数变化 ${preview.impact.parameterChanges} 项`,
             preview.impact.nodeAdditions && `新增节点 ${preview.impact.nodeAdditions} 个`,
             preview.impact.nodeRemovals && `移除节点 ${preview.impact.nodeRemovals} 个`
-          ].filter(Boolean).join("；") || "参数及节点无变化"}。</p>
+          ].filter(Boolean).join("；") || "参数及节点无变化"}。</p> : null}
           {preview.impact.restoredParameters ? <p>恢复 {preview.impact.restoredParameters} 个已删除参数，保留原身份及历史。</p> : null}
           {preview.impact.retainedBindings ? <p>保留 {preview.impact.retainedBindings} 个参数关联及历史。</p> : null}
           {preview.impact.sourceReplacements ? <p>{preview.impact.sourceReplacements} 个参数将切换有效来源文件，关联身份及历史保留。</p> : null}
