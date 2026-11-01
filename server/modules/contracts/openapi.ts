@@ -23,7 +23,7 @@ type ParameterObject = {
   in: "path" | "header" | "query";
   required: boolean;
   description?: string;
-  schema: { type: "string" | "integer"; enum?: string[] };
+  schema: { type: "string" | "integer"; enum?: string[]; format?:string; minimum?:number; maximum?:number; default?:number };
 };
 
 export type OpenApiOperation = {
@@ -133,6 +133,18 @@ function buildSchemaPlaceholders() {
     }
   }
 
+  schemas.MemberAdditionIntentRegisterRequest = {
+    type:"object",properties:{registrationId:{type:"string",format:"uuid"}},required:["registrationId"],additionalProperties:false,
+    "x-wiseeff-schema":"MemberAdditionIntentRegisterRequest"
+  };
+  type IntentFields={properties:{id:Record<string,unknown>;clientMutationId:Record<string,unknown>}};
+  const singleIntent=(schemas.MemberAdditionIntentResponse as {properties:{item:IntentFields}}).properties.item;
+  const intentList=(schemas.MemberAdditionIntentsResponse as {properties:{items:{items:IntentFields};total:Record<string,unknown>}}).properties;
+  for(const item of [singleIntent,intentList.items.items]){
+    item.properties.id={type:"string",format:"uuid"};item.properties.clientMutationId={type:"string",format:"uuid"};
+  }
+  intentList.total={type:"integer",minimum:0};
+
   schemas.LogBundleMultipartUpload = {
     type: "object", required: ["file"], properties: {
       file: { type: "array", minItems: 1, items: { type: "string", format: "binary" }, description: "Several plain files or one archive; repeated file parts form one log bundle." },
@@ -174,8 +186,11 @@ export function buildOpenApiDocument(): OpenApiDocument {
     const path = toOpenApiPath(route.path);
     const method = route.method.toLowerCase() as Lowercase<HttpMethod>;
     const parameters: ParameterObject[] = [
-      ...pathParameters(route.path),
-      ...(schema.requestParameters ?? []).map((parameter) => ({
+      ...pathParameters(route.path).map((parameter)=>{
+        const override=schema.requestParameters?.find((item)=>item.in==="path"&&item.name===parameter.name);
+        return override?{...parameter,...(override.description?{description:override.description}:{}),schema:override.schema??parameter.schema}:parameter;
+      }),
+      ...(schema.requestParameters ?? []).filter((parameter)=>parameter.in!=="path").map((parameter) => ({
         name: parameter.name,
         in: parameter.in,
         required: parameter.required ?? false,

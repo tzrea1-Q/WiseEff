@@ -201,6 +201,14 @@ export function clearSessionDraftsForLogout(storage: WritableStorage = localStor
   return writeSessionDraftStore(createEmptyStore(), storage);
 }
 
+export function clearSharedSwitchTasksForLogout(storage?:Storage):void {
+  try{
+    const target=storage??window.sessionStorage;
+    const keys=Array.from({length:target.length},(_,index)=>target.key(index)).filter((key):key is string=>Boolean(key?.startsWith("wiseeff.shared-switch:")));
+    for(const key of keys)target.removeItem(key);
+  }catch{/* Logout must still clear the authentication session. */}
+}
+
 export function formatSessionDraftCopyText(bucket: PersistedSessionDraftBucket): string {
   const lines = Object.entries(bucket.drafts).map(([key, draft]) => {
     return `${key}: ${draft.rawText}${draft.normalizedValue ? ` (${draft.normalizedValue})` : ""}`

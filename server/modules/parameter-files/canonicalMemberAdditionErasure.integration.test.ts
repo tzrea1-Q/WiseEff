@@ -63,8 +63,9 @@ it("erases one Definition from an addition proof while another transferred param
   const path = `/api/v1/projects/${PROJECT}/config-sets/${configSetId}/member-addition`;
   const body = { candidateId: staged.body.item.id, role: "overlay", sortOrder: 1 };
   const preview = await post<{ item: MemberAdditionPreview }>(`${path}/preview`, body); expect(preview.status, preview.bodyText).toBe(200);
+  const reservation=await post<{item:{id:string;clientMutationId:string}}>(`${path}/intents`,{registrationId:"efee6e1f-d365-4ac5-ae24-24cb44cd3b17"});expect(reservation.status,reservation.bodyText).toBe(200);
   const applied = await post<{ item: { requestId: string; fileId: string; fileVersionId: string; configRevisionId: string } }>(`${path}/apply`, { ...body,
-    proofToken: preview.body.item.proofToken, reason: "Add multi-parameter overlay", clientMutationId: "erasure-overlay-add" });
+    proofToken: preview.body.item.proofToken, reason: "Add multi-parameter overlay", clientMutationId: reservation.body.item.clientMutationId });
   expect(applied.status, applied.bodyText).toBe(200);
   const before = (await listCatalogBindingRowsForProject(api, auth, { projectId: PROJECT })).filter(row => row.definitionId === RETAINED);
   expect(before.map(row => row.rawValue).sort()).toEqual(["<40>", "<60>"]);
@@ -86,6 +87,10 @@ it("erases one Definition from an addition proof while another transferred param
   expect(await Promise.all(before.map(row => loadOwnedProjectValueSourcePin(api, { organizationId: ORG, projectId: PROJECT, bindingId: row.id, projectValueId: row.currentValueId })))).toEqual(pins);
   expect(await readHistorical()).toEqual(historical);
   expect((await db.query("select id from project_parameter_value_change_requests where id=$1", [applied.body.item.requestId])).rows).toEqual([]);
+  const afterPurge=await post<{item:{status:string;result?:unknown}}>(`${path}/intents/${reservation.body.item.id}/stop`,{});
+  expect(afterPurge.status,afterPurge.bodyText).toBe(200);expect(afterPurge.body.item.status).toBe("applied");expect(afterPurge.body.item.result).toBeUndefined();
+  expect((await post(`${path}/apply`,{...body,proofToken:preview.body.item.proofToken,reason:"Add multi-parameter overlay",clientMutationId:reservation.body.item.clientMutationId})).status).toBe(409);
+  expect((await post(`${path}/intents/${reservation.body.item.id}/ack`,{})).status).toBe(200);
   expect((await loadPublishedCatalog(getRootPostgresPool(db)!))?.getDefinitionById(ParameterDefinitionId(ERASED)).status).toBe("unknown");
   const residue = await db.query<{ retained: boolean }>(`select exists(select 1 from project_parameter_value_change_requests
     where source_revision_context::text like '%'||$1||'%' or member_frozen_proof::text like '%'||$1||'%') retained`, [ERASED]);

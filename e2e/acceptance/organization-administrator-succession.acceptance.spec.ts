@@ -63,6 +63,15 @@ test.describe("organization administrator succession with actual local login", (
       on conflict(user_id) do update set username=excluded.username,password_hash=excluded.password_hash`, [acceptanceCast.platformOperator.userId, operatorUsername, hash]));
   });
 
+  test("revokes the real local session and clears only shared switch drafts on logout",async({page})=>{
+    const session=await signIn(page,operatorUsername,"/parameter-home");
+    await page.evaluate(()=>{sessionStorage.setItem("wiseeff.shared-switch:acceptance","private reason");sessionStorage.setItem("unrelated-acceptance","keep");});
+    const logout=page.waitForResponse(response=>new URL(response.url()).pathname==="/api/v1/auth/logout"&&response.request().method()==="POST");
+    await signOut(page);expect((await logout).status()).toBe(200);
+    expect(await page.evaluate(()=>({draft:sessionStorage.getItem("wiseeff.shared-switch:acceptance"),unrelated:sessionStorage.getItem("unrelated-acceptance")}))).toEqual({draft:null,unrelated:"keep"});
+    const after=await page.request.get(apiRoute("/api/v1/me"),{headers:{Authorization:`Bearer ${session.token}`}});expect(after.status()).toBe(401);
+  });
+
   test("protects the last administrator, completes emergency recovery and refreshes a departing administrator's authority", async ({ page }, testInfo) => {
     // API prepares only this test's isolated Organization; all governance under test uses the actual UI.
     const operator = await page.request.post(apiRoute("/api/v1/auth/login"), { data: { username: operatorUsername, password: LOCAL_DEMO_SHARED_PASSWORD } });

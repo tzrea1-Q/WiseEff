@@ -17,6 +17,7 @@ import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings
 import { registerParameterTopologyRoutes } from "../parameter-topology/routes";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { registerSharedDtsiRoutes } from "../shared-dtsi/routes";
+import { deleteUser } from "../users/service";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { registerParameterFileRoutes } from "./routes";
 import { uploadProjectParameterFile } from "./service";
@@ -83,6 +84,106 @@ describe("shared reference version switches through the real API role", () => {
   }, 120_000);
   afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); if (directory) await rm(directory, { recursive: true, force: true }); }, 120_000);
 
+  it("registers an operation before applying and permanently fences a stopped operation", async () => {
+    const registration={registrationId:"3e70aa87-0fa8-44b7-8e04-c209ec9db771"};
+    const created=await post<{item:{id:string;clientMutationId:string;status:string}}>(`${path(A)}/intents`,registration);
+    expect(created.status,created.bodyText).toBe(200);expect(created.body.item.status).toBe("pending");
+    await expect(api.query("update public.member_addition_intents set status='applied' where id=$1",[created.body.item.id])).rejects.toMatchObject({code:"23514"});
+    await expect(api.query("update public.member_addition_intents set status='stopped' where id=$1",[created.body.item.id])).rejects.toMatchObject({code:"23514"});
+    const stored=(await db.query<{value:string}>("select row_to_json(i)::text as value from public.member_addition_intents i where id=$1",[created.body.item.id])).rows[0]!.value;
+    expect(stored).not.toMatch(/proof|reason|digest|body/i);
+    expect((await post(`${path(A)}/intents`,registration)).body).toEqual(created.body);
+    const list=await requestJson<{items:Array<{id:string;projectId:string;configSetId:string}>;total:number}>(server(),"/api/v1/member-addition-intents");
+    expect(list.status,list.bodyText).toBe(200);expect(list.body).toMatchObject({total:1,items:[{id:created.body.item.id,projectId:A,configSetId:sets[A]}]});
+    expect((await requestJson<{total:number}>(server(),`/api/v1/member-addition-intents?projectId=${A}&configSetId=${sets[A]}&limit=1`)).body.total).toBe(1);
+    expect((await requestJson<{total:number}>(server(),`/api/v1/member-addition-intents?projectId=${B}&configSetId=${sets[B]}&limit=1`)).body.total).toBe(0);
+    expect((await post(`${path(A)}/intents`,{registrationId:"d51cccfd-a0cc-43a2-8fa9-e0c095b4bb3d"})).status).toBe(409);
+    const operation={fileId:"not-used",role:"misc",sortOrder:1,proofToken:"0".repeat(64),reason:"Stop before apply",clientMutationId:created.body.item.clientMutationId};
+    const another=(await createConfigSet(db,admin,{projectId:A,name:"Other intent target"})).id;
+    expect((await post(`/api/v1/projects/${A}/config-sets/${another}/member-addition/intents`,registration)).status).toBe(409);
+    expect((await post(`/api/v1/projects/${A}/config-sets/${another}/member-addition/apply`,operation)).status).toBe(409);
+    expect((await post(`${path(A)}/apply`,{...operation,clientMutationId:"old-client-bypass"})).status).toBe(409);
+    await db.query("delete from user_role_bindings where id='shared-ref-role'");
+    try{expect((await post(`${path(A)}/intents/${created.body.item.id}/stop`,{})).status).toBe(403);}
+    finally{await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('shared-ref-role',$1,$2,'admin')",[ADMIN,ORG]);}
+    expect((await post(`${path(A)}/intents/${created.body.item.id}/stop`,{},editor)).status).toBe(403);
+    await db.query(`create function public.refuse_intent_stop_audit() returns trigger language plpgsql as $$begin
+      if new.action='member-operation-stopped' then raise exception 'synthetic audit failure'; end if; return new; end$$;
+      create trigger refuse_intent_stop_audit before insert on public.audit_events for each row execute function public.refuse_intent_stop_audit()`);
+    try{expect((await post(`${path(A)}/intents/${created.body.item.id}/stop`,{})).status).toBe(500);}
+    finally{await db.query("drop trigger refuse_intent_stop_audit on public.audit_events; drop function public.refuse_intent_stop_audit()");}
+    expect((await requestJson<{items:Array<{status:string}>}>(server(),"/api/v1/member-addition-intents")).body.items[0]?.status).toBe("pending");
+    const stopped=await post<{item:{id:string;status:string}}>(`${path(A)}/intents/${created.body.item.id}/stop`,{});
+    expect(stopped.status,stopped.bodyText).toBe(200);expect(stopped.body.item.status).toBe("stopped");
+    expect((await post(`${path(A)}/apply`,operation)).status).toBe(409);
+    expect((await post(`${path(A)}/intents/${created.body.item.id}/ack`,{})).status).toBe(200);
+    expect((await post(`${path(A)}/apply`,operation)).status).toBe(409);
+    const raw=operation.clientMutationId.replaceAll("-","");
+    for(const alias of [operation.clientMutationId.toUpperCase(),raw,`{${operation.clientMutationId.toUpperCase()}}`,raw.match(/.{4}/g)!.join("-")]){
+      expect((await db.query<{id:string}>("select $1::uuid::text as id",[alias])).rows[0]!.id).toBe(operation.clientMutationId);
+      const result=await post<{error:{message:string}}>(`${path(A)}/apply`,{...operation,clientMutationId:alias});
+      expect(result.status,result.bodyText).toBe(409);expect(result.body.error.message).toContain("已停止");
+    }
+    await expect(api.query("update public.member_addition_intents set status='pending' where id=$1",[created.body.item.id])).rejects.toMatchObject({code:"55000"});
+    await expect(api.query("delete from public.member_addition_intents where id=$1",[created.body.item.id])).rejects.toMatchObject({code:"42501"});
+    expect((await requestJson<{total:number}>(server(),"/api/v1/member-addition-intents")).body.total).toBe(0);
+  },120_000);
+
+  it("anonymizes a deleted account's reserved identity without removing the terminal fence",async()=>{
+    const actor=makeTestAuthContext({organizationId:ORG,userId:"delete-intent-user",roles:[{roleId:"admin",projectId:null}]});
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ('delete-intent-user',$1,'Temporary','Admin',true)",[ORG]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('delete-intent-role','delete-intent-user',$1,'admin')",[ORG]);
+    const created=await post<{item:{id:string}}>(`${path(A)}/intents`,{registrationId:"4b0eb954-8c29-4cc3-b3b2-08c7ec98f6b7"},actor);
+    expect(created.status,created.bodyText).toBe(200);
+    expect((await post(`${path(A)}/intents/${created.body.item.id}/stop`,{},actor)).status).toBe(200);
+    await deleteUser(api,admin,"delete-intent-user",{requestId:"delete-intent-user"});
+    expect((await db.query("select actor_user_id,registration_id,mutation_id,status from public.member_addition_intents where id=$1",[created.body.item.id])).rows)
+      .toEqual([{actor_user_id:null,registration_id:null,mutation_id:null,status:"stopped"}]);
+    expect((await post(`${path(A)}/intents/${created.body.item.id}/stop`,{},actor)).status).toBe(403);
+  },120_000);
+
+  it("purges reserved identities only with the exact project erasure and rolls back on failure",async()=>{
+    const project="intent-erasure-project";
+    await db.query("insert into projects(id,organization_id,name,code,status) values($1,$2,'Intent erasure','INTENTERASE','initialized')",[project,ORG]);
+    const set=await createConfigSet(db,admin,{projectId:project,name:"Intent erasure"});
+    const endpoint=`/api/v1/projects/${project}/config-sets/${set.id}/member-addition`;
+    const reserved=await post<{item:{id:string;clientMutationId:string}}>(`${endpoint}/intents`,{registrationId:"0f780525-b95d-4b94-97c3-e245e3689322"});
+    expect(reserved.status,reserved.bodyText).toBe(200);
+    await expect(api.query("delete from public.member_addition_intents where id=$1",[reserved.body.item.id])).rejects.toMatchObject({code:"42501"});
+    const purge=()=>api.transaction(tx=>tx.query("select parameter_catalog.purge_project($1,$2,$3,$4)",[ORG,project,ADMIN,"intent-erasure-preview"]));
+    await db.query(`create function public.refuse_intent_project_erasure() returns trigger language plpgsql as $$begin
+      if old.project_id='intent-erasure-project' then raise exception 'synthetic erasure failure'; end if; return old; end$$;
+      create trigger refuse_intent_project_erasure before delete on public.member_addition_intents for each row execute function public.refuse_intent_project_erasure()`);
+    try{await expect(purge()).rejects.toThrow();}
+    finally{await db.query("drop trigger refuse_intent_project_erasure on public.member_addition_intents; drop function public.refuse_intent_project_erasure()");}
+    expect((await db.query("select id from public.member_addition_intents where id=$1",[reserved.body.item.id])).rowCount).toBe(1);
+    await purge();expect((await db.query("select id from public.member_addition_intents where id=$1",[reserved.body.item.id])).rowCount).toBe(0);
+    await expect(db.query("insert into projects(id,organization_id,name,code,status) values($1,$2,'Recreated','INTENTAGAIN','initialized')",[project,ORG])).rejects.toMatchObject({code:"55000"});
+    expect((await post(`${endpoint}/apply`,{fileId:"not-used",role:"misc",sortOrder:1,proofToken:"0".repeat(64),reason:"Late request",clientMutationId:reserved.body.item.clientMutationId})).status).not.toBe(200);
+  },120_000);
+
+  it("does not deadlock project erasure against an apply waiting behind the Catalog fence",async()=>{
+    const project="intent-lock-project";
+    await db.query("insert into projects(id,organization_id,name,code,status) values($1,$2,'Intent lock','INTENTLOCK','initialized')",[project,ORG]);
+    const set=await createConfigSet(db,admin,{projectId:project,name:"Intent lock"});
+    const endpoint=`/api/v1/projects/${project}/config-sets/${set.id}/member-addition`;
+    const reserved=await post<{item:{id:string;clientMutationId:string}}>(`${endpoint}/intents`,{registrationId:"05c04cf7-a70c-47a3-88f9-dfdd6c3c8a11"});
+    expect(reserved.status,reserved.bodyText).toBe(200);
+    const gate=await getRootPostgresPool(api)!.connect();await gate.query("begin");await gate.query("select pg_advisory_xact_lock($1::bigint)",["688004000041"]);
+    let pending:ReturnType<typeof post>;
+    try{
+      pending=post(`${endpoint}/apply`,{fileId:"not-used",role:"misc",sortOrder:1,proofToken:"0".repeat(64),reason:"Waiting application",clientMutationId:reserved.body.item.clientMutationId});
+      const deadline=Date.now()+15_000;let blocked=false;
+      while(Date.now()<deadline){const waiting=await db.query<{n:string}>(`select count(*)::text n from pg_stat_activity where datname=current_database()
+        and wait_event_type='Lock' and query like '%pg_advisory_xact_lock_shared%'`);if(Number(waiting.rows[0]!.n)>0){blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,20));}
+      expect(blocked).toBe(true);
+      await gate.query("select parameter_catalog.purge_project($1,$2,$3,$4)",[ORG,project,ADMIN,"intent-lock-preview"]);
+      await gate.query("commit");
+    }catch(error){await gate.query("rollback");throw error;}finally{gate.release();}
+    const late=await pending!;expect(late.status,late.bodyText).not.toBe(200);
+    expect((await db.query("select id from public.member_addition_intents where id=$1",[reserved.body.item.id])).rowCount).toBe(0);
+  },120_000);
+
   it("upgrades only A and switching to an older dependency creates a new revision retaining local overrides and Binding history", async () => {
     const draft = await post<{item:{resourceId:string;revision:number}}>("/api/v2/shared-dtsi", {name:"Switch limits",sourceName:"limits.dtsi",content:shared,changeDescription:"First defaults"});
     expect(draft.status,draft.bodyText).toBe(201); resourceId=draft.body.item.resourceId;
@@ -94,13 +195,27 @@ describe("shared reference version switches through the real API role", () => {
     };
     versionId=await publish(1,"switch-v1");
     const initial={sharedReference:{resourceId,versionId},role:"misc",sortOrder:1};
+    let committedIntent="";
     for(const project of [A,B]) {
       const preview=await post<Preview>(`${path(project)}/preview`,initial);
       expect(preview.status,preview.bodyText).toBe(200);
-      const applied=await post<Applied>(`${path(project)}/apply`,{...initial,proofToken:preview.body.item.proofToken,reason:"Pin v1",clientMutationId:`initial-${project}`});
+      let mutationId=project===B?"EFEE6E1F-D365-4AC5-AE24-24CB44CD3B17":`initial-${project}`;
+      if(project===A){const reserved=await post<{item:{id:string;clientMutationId:string}}>(`${path(project)}/intents`,{registrationId:"0a42d7fd-12ad-4762-92ea-64b7095195e8"});
+        expect(reserved.status,reserved.bodyText).toBe(200);committedIntent=reserved.body.item.id;mutationId=reserved.body.item.clientMutationId;}
+      let applied:Awaited<ReturnType<typeof post<Applied>>>;
+      if(project===A){
+        const attempts=await Promise.all(["Pin v1","Different concurrent reason"].map(reason=>post<Applied>(`${path(project)}/apply`,{...initial,proofToken:preview.body.item.proofToken,reason,clientMutationId:mutationId})));
+        expect(attempts.map(result=>result.status).sort()).toEqual([200,409]);applied=attempts.find(result=>result.status===200)!;
+        const reason=attempts[0]!.status===200?"Pin v1":"Different concurrent reason";
+        expect((await post(`${path(project)}/apply`,{...initial,proofToken:preview.body.item.proofToken,reason,clientMutationId:mutationId})).body).toEqual(applied.body);
+      }else{applied=await post<Applied>(`${path(project)}/apply`,{...initial,proofToken:preview.body.item.proofToken,reason:"Pin v1",clientMutationId:mutationId});
+        expect((await post(`${path(project)}/apply`,{...initial,proofToken:preview.body.item.proofToken,reason:"Pin v1",clientMutationId:mutationId})).body).toEqual(applied.body);}
       expect(applied.status,applied.bodyText).toBe(200);
       if(project===A)appliedA=applied.body.item;
     }
+    const committed=await post<{item:{status:string;result:Applied["item"]}}>(`${path(A)}/intents/${committedIntent}/stop`,{});
+    expect(committed.status,committed.bodyText).toBe(200);expect(committed.body.item.status).toBe("applied");expect(committed.body.item.result.configRevisionId).toBe(appliedA.configRevisionId);
+    expect((await post(`${path(A)}/intents/${committedIntent}/ack`,{})).status).toBe(200);
     const files=(await requestJson<{items:{fileId:string;fileName:string;currentVersionId:string;role:string}[]}>(server(),`/api/v1/projects/${A}/config-sets/${sets[A]}/files`)).body.items;
     const root=files.find(file=>file.role==="base")!;
     const rootContent=await requestJson(server(),`/api/v1/projects/${A}/parameter-files/${root.fileId}/versions/${root.currentVersionId}/content`);
@@ -179,6 +294,39 @@ describe("shared reference version switches through the real API role", () => {
     const final=await listCatalogBindingRowsForProject(api,admin,{projectId:A});
     expect(final.map(row=>row.rawValue).sort()).toEqual(["<25>","<36>"]);
     expect(final.map(row=>row.id).sort()).toEqual(before.map(row=>row.id).sort());
+  },120_000);
+
+  it("serializes an in-flight apply and explicit stop in both orders",async()=>{
+    const pool=getRootPostgresPool(db)!;
+    async function waitForBlocked(expected:number){
+      const until=Date.now()+20_000;
+      while(Date.now()<until){const waiting=await db.query<{count:string}>(`select count(*)::text as count from pg_stat_activity
+        where datname=current_database() and wait_event_type='Lock' and query like '%select id from public.users%for no key update%'`);
+        if(Number(waiting.rows[0]!.count)>=expected)return;await new Promise(resolve=>setTimeout(resolve,20));}
+      throw new Error(`Expected ${expected} operations waiting for the user lock`);
+    }
+    for(const [order,target,from] of [["apply",nativeHeadVersionId,versionId],["stop",versionId,nativeHeadVersionId]] as const){
+      const body={sharedReference:{resourceId,versionId:target,replaceVersionId:from},role:"misc",sortOrder:1};
+      const preview=await post<Preview>(`${path(B)}/preview`,body);expect(preview.status,preview.bodyText).toBe(200);
+      const registration=await post<{item:{id:string;clientMutationId:string}}>(`${path(B)}/intents`,{registrationId:order==="apply"?"33f2ff34-2836-4891-8d7f-fcf53b01d271":"1b349061-2702-44fa-8239-32c2266f122d"});
+      expect(registration.status,registration.bodyText).toBe(200);const item=registration.body.item;
+      const operation={...body,proofToken:preview.body.item.proofToken,reason:"Race stop and apply",
+        clientMutationId:order==="apply"?item.clientMutationId.toUpperCase():`{${item.clientMutationId.replaceAll("-","")}}`};
+      const gate=await pool.connect();await gate.query("begin");await gate.query("select id from public.users where id=$1 for no key update",[ADMIN]);
+      let first:ReturnType<typeof post>,second:ReturnType<typeof post>;
+      try{first=order==="apply"?post(`${path(B)}/apply`,operation):post(`${path(B)}/intents/${item.id}/stop`,{});await waitForBlocked(1);
+        second=order==="apply"?post(`${path(B)}/intents/${item.id}/stop`,{}):post(`${path(B)}/apply`,operation);await waitForBlocked(2);
+      }finally{await gate.query("commit");gate.release();}
+      const [a,b]=await Promise.all([first!,second!]);
+      if(order==="apply"){expect(a.status,a.bodyText).toBe(200);expect(b.status,b.bodyText).toBe(200);expect(b.body).toMatchObject({item:{status:"applied"}});}
+      else{expect(a.status,a.bodyText).toBe(200);expect(a.body).toMatchObject({item:{status:"stopped"}});expect(b.status,b.bodyText).toBe(409);}
+      expect((await post(`${path(B)}/intents/${item.id}/ack`,{})).status).toBe(200);
+      if(order==="apply")expect((await post(`${path(B)}/apply`,{...operation,clientMutationId:item.clientMutationId})).status).toBe(200);
+    }
+    const restore={sharedReference:{resourceId,versionId,replaceVersionId:nativeHeadVersionId},role:"misc",sortOrder:1};
+    const preview=await post<Preview>(`${path(B)}/preview`,restore);expect(preview.status,preview.bodyText).toBe(200);
+    const applied=await post(`${path(B)}/apply`,{...restore,proofToken:preview.body.item.proofToken,reason:"Restore independent project",clientMutationId:"restore-race-b"});
+    expect(applied.status,applied.bodyText).toBe(200);
   },120_000);
 
   it("switches the complete CPP source closure using exact originals and frozen declared inputs while retaining historical sources",async()=>{

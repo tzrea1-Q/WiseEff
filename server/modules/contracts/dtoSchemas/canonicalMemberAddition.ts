@@ -33,6 +33,13 @@ const exactlyOneSource = (value: { candidateId?: string; fileId?: string; shared
 export const memberAdditionBodySchema = z.object(additionFields).strict().refine(exactlyOneSource, "Choose exactly one candidate or existing file.");
 export const memberAdditionApplyBodySchema = z.object({ ...additionFields, proofToken: z.string().regex(/^[0-9a-f]{64}$/),
   reason: z.string().trim().min(1).max(2000), clientMutationId: z.string().trim().min(1).max(160) }).strict().refine(exactlyOneSource, "Choose exactly one candidate or existing file.");
+export const memberAdditionIntentSchema=z.object({id:z.string().uuid(),clientMutationId:z.string().uuid(),projectId:z.string(),projectName:z.string(),
+  configSetId:z.string(),configSetName:z.string(),status:z.enum(["pending","applied","stopped"]),result:z.object({requestId:z.string(),fileId:z.string(),fileVersionId:z.string(),configRevisionId:z.string()}).optional()});
+export const memberAdditionIntentResponseSchema=z.object({item:memberAdditionIntentSchema});
+export const memberAdditionIntentsResponseSchema=z.object({items:z.array(memberAdditionIntentSchema),total:z.number().int().nonnegative()});
+export const memberAdditionIntentRegisterSchema=z.object({registrationId:z.string().uuid()}).strict();
+export const memberAdditionIntentActionSchema=z.object({}).strict();
+export type MemberAdditionIntent=z.infer<typeof memberAdditionIntentSchema>;
 export const memberAdditionPreviewResponseSchema = z.object({ item: z.object({
   proofToken: z.string().regex(/^[0-9a-f]{64}$/), configSetId: z.string(), fileName: z.string(), format: z.enum(["dts", "json"]),
   sharedReference: z.object({ resourceId: z.string(), versionId: z.string(), memberId: z.string(), version: z.number(), digest: z.string() }).optional(),

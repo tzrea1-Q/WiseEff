@@ -12,6 +12,8 @@ import { effectiveStructureNodes, WorkbenchEffectiveConfiguration } from "./Work
 import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { WorkbenchMemberRemovalDialog } from "./WorkbenchMemberRemovalDialog";
+import { SharedMemberPendingOperations } from "./SharedMemberPendingOperations";
+import { createMemberAdditionIntentClient, type MemberAdditionIntent } from "@/infrastructure/http/memberAdditionIntentClient";
 import { WorkbenchSetRootDialog } from "./WorkbenchSetRootDialog";
 import { CanonicalMemberRemovalSubmitDialog } from "@/features/parameter-review/CanonicalMemberRemovalSubmitDialog";
 import { CanonicalBatchSubmitDialog } from "@/features/parameter-review/CanonicalBatchSubmitDialog";
@@ -760,12 +762,20 @@ export function ProjectConfigurationWorkbench({
   const [switchSharedMember,setSwitchSharedMember]=useState<DtsConfigSetMemberFile|null>(null);
   const [conversionSource,setConversionSource]=useState<{configRevisionId:string;fileId:string;fileVersionId:string;sourceName:string}|undefined>();
   const resolvedOrganizationId = organizationId ?? selectedConfigSet?.organizationId ?? null;
+  const intentClient=useMemo(()=>apiClient&&resolvedOrganizationId&&apiMode?createMemberAdditionIntentClient(apiClient,resolvedOrganizationId):null,[apiClient,resolvedOrganizationId,apiMode]);
+  const [intentRefresh,setIntentRefresh]=useState(0);
+  const [pendingIntentFocus,setPendingIntentFocus]=useState<{projectId:string;configSetId:string}|undefined>();
+  const currentIntent=useRef<MemberAdditionIntent|null>(null);
   const switchTaskKey=`wiseeff.shared-switch:${currentUserId}:${resolvedOrganizationId}:${project.id}:${selectedConfigSet?.id}`;
+  const [memberAdditionScope,setMemberAdditionScope]=useState("");
+  const currentMemberAdditionScope=useRef("");
+  currentMemberAdditionScope.current=canAdmin?switchTaskKey:"";
+  const openMemberAddition=()=>{setMemberAdditionScope(switchTaskKey);setMemberAdditionOpen(true);};
   type SwitchTask={scope:string;operation?:"remove";reference:{resourceId:string;versionId:string;version:number};draft:{versionId:string;reason:string}};
   const [switchTask,setSwitchTask]=useState<SwitchTask|null>(null);
   const activeSwitchTask=switchTask?.scope===switchTaskKey?switchTask:null;
   useEffect(()=>{
-    setMemberAdditionOpen(false);setConversionSource(undefined);setSwitchSharedMember(null);
+    currentIntent.current=null;setPendingIntentFocus(undefined);setMemberAdditionOpen(false);setConversionSource(undefined);setSwitchSharedMember(null);
     try {
       const saved=JSON.parse(sessionStorage.getItem(switchTaskKey)??"null") as SwitchTask|null;
       if(saved?.scope===switchTaskKey && typeof saved.reference?.resourceId==="string" && typeof saved.reference.versionId==="string"
@@ -785,7 +795,7 @@ export function ProjectConfigurationWorkbench({
   const resumedSwitch=useRef("");
   useEffect(()=>{
     if(queryValue(search,"sharedSwitch")==="resume" && activeSwitchTask && canAdmin && resumedSwitch.current!==switchTaskKey){
-      resumedSwitch.current=switchTaskKey;setMemberAdditionOpen(true);
+      resumedSwitch.current=switchTaskKey;openMemberAddition();
     }
   },[search,activeSwitchTask,canAdmin,switchTaskKey]);
   const recoverSwitch=(location:SharedSwitchConflict,draft:SwitchTask["draft"])=>{
@@ -794,6 +804,7 @@ export function ProjectConfigurationWorkbench({
     try{saveSwitchTask({scope:switchTaskKey,...(activeSwitchTask?.operation?{operation:activeSwitchTask.operation}:{}),reference,draft});}catch{toast({tone:"danger",message:"无法保存引用变更任务，请检查浏览器存储后重试。"});return;}
     setMemberAdditionOpen(false);resumedSwitch.current="";
     const params=new URLSearchParams({organizationId:resolvedOrganizationId??"",configSet:selectedConfigSet.id,tab:"source",sourceMode:"working",sharedSwitch:"paused"});
+    const usageReturn=resolveSharedDtsiUsageReturnPath(search);if(usageReturn)params.set("returnTo",usageReturn);
     if(location.fileId&&!location.resourceId)params.set("file",location.fileId);
     if(location.node)params.set("node",location.node);
     if(location.property)params.set("property",location.property);
@@ -1978,8 +1989,9 @@ export function ProjectConfigurationWorkbench({
 
   return (
     <section className="configuration-workbench" aria-label="项目配置工作台" ref={workbenchBodyRef}>
+      {intentClient&&canAdmin?<SharedMemberPendingOperations client={intentClient} scope={JSON.stringify([currentUserId,resolvedOrganizationId])} refresh={intentRefresh} focus={pendingIntentFocus} onClearFocus={()=>setPendingIntentFocus(undefined)} onResolved={()=>{workspaceLoadSession.retryFiles();workspaceLoadSession.retryMembers();}}/>:null}
       {activeSwitchTask && !memberAdditionOpen && canAdmin?<div role="group" aria-label="待重新预览的版本切换">
-        <Button type="button" variant="outline" onClick={()=>setMemberAdditionOpen(true)}>{activeSwitchTask.operation==="remove"?"返回移除引用":"返回版本切换"}</Button>
+        <Button type="button" variant="outline" onClick={openMemberAddition}>{activeSwitchTask.operation==="remove"?"返回移除引用":"返回版本切换"}</Button>
         <Button type="button" variant="outline" onClick={dismissSwitchTask}>{activeSwitchTask.operation==="remove"?"取消移除引用":"取消版本切换"}</Button>
         <span>{activeSwitchTask.operation==="remove"?"待移除引用与变更说明已保留；修正生效后重新预览。":"目标版本与变更说明已保留；修正生效后重新预览。"}</span>
       </div>:null}
@@ -2245,11 +2257,11 @@ export function ProjectConfigurationWorkbench({
         onUpdateFile={(fileId) => openInspector("candidates", fileId)}
         onOpenVersions={(fileId) => openInspector("versions", fileId)}
         onAddSourceFile={() => openInspector("candidates")}
-        onCanonicalAdd={apiMode ? () => {dismissSwitchTask();setMemberAdditionOpen(true);} : undefined}
-        onSwitchSharedVersion={apiMode?member=>{setSwitchSharedMember(member);if(member.sharedReference){const task={scope:switchTaskKey,reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}}setMemberAdditionOpen(true);}:undefined}
-        onRemoveSharedReference={apiMode?member=>{if(member.sharedReference){const task:SwitchTask={scope:switchTaskKey,operation:"remove",reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}setMemberAdditionOpen(true);}}:undefined}
+        onCanonicalAdd={apiMode ? () => {dismissSwitchTask();openMemberAddition();} : undefined}
+        onSwitchSharedVersion={apiMode?member=>{setSwitchSharedMember(member);if(member.sharedReference){const task={scope:switchTaskKey,reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}}openMemberAddition();}:undefined}
+        onRemoveSharedReference={apiMode?member=>{if(member.sharedReference){const task:SwitchTask={scope:switchTaskKey,operation:"remove",reference:member.sharedReference,draft:{versionId:"",reason:""}};try{saveSwitchTask(task);}catch{setSwitchTask(task);}openMemberAddition();}}:undefined}
         onSetRoot={apiMode ? setSetRootTarget : undefined}
-        onConvertShared={apiMode&&sharedImportRevisionId?member=>{if(!member.currentVersionId)return;dismissSwitchTask();setConversionSource({configRevisionId:sharedImportRevisionId,fileId:member.fileId,fileVersionId:member.currentVersionId,sourceName:member.fileName});setMemberAdditionOpen(true);}:undefined}
+        onConvertShared={apiMode&&sharedImportRevisionId?member=>{if(!member.currentVersionId)return;dismissSwitchTask();setConversionSource({configRevisionId:sharedImportRevisionId,fileId:member.fileId,fileVersionId:member.currentVersionId,sourceName:member.fileName});openMemberAddition();}:undefined}
         onCreateShared={apiMode && sharedDtsiClient && sharedImportRevisionId ? member => {
           void runAction("create-shared",async () => {
             if(!member.currentVersionId) throw new Error("请先重新核对配置修订与文件版本。");
@@ -2264,16 +2276,23 @@ export function ProjectConfigurationWorkbench({
           });
         } : undefined}
       /> : null}
-      {memberAdditionOpen && canAdmin && selectedConfigSet ? <WorkbenchMemberAdditionDialog key={`${resolvedOrganizationId}:${project.id}:${selectedConfigSet.id}`} projectId={project.id} configSets={configSets}
+      {memberAdditionOpen && memberAdditionScope===switchTaskKey && canAdmin && selectedConfigSet ? <WorkbenchMemberAdditionDialog key={switchTaskKey} projectId={project.id} configSets={configSets}
         client={additionClient} sharedClient={sharedDtsiClient}
+        canContinueOperation={()=>currentMemberAdditionScope.current===switchTaskKey}
         switchReference={activeSwitchTask?.operation==="remove"?undefined:activeSwitchTask?.reference??switchSharedMember?.sharedReference}
         removeReference={activeSwitchTask?.operation==="remove"?activeSwitchTask.reference:undefined}
         conversionSource={conversionSource}
+        preserveUncertain={Boolean(activeSwitchTask||switchSharedMember)} onUncertainDismiss={()=>{dismissSwitchTask();setIntentRefresh(value=>value+1);workspaceLoadSession.retryFiles();workspaceLoadSession.retryMembers();workspaceLoadSession.retrySource();workspaceLoadSession.retryStructure();toast({tone:"danger",message:"应用结果尚未确认，请核对项目配置后再操作。"});}}
+        onOperationStart={apiMode?async(_operation,registrationId,targetConfigSetId)=>{if(!intentClient)throw new Error("Missing operation scope");let registered:MemberAdditionIntent;try{registered=await intentClient.register(project.id,targetConfigSetId,registrationId);if(registered.projectId!==project.id||registered.configSetId!==targetConfigSetId)throw new Error("Mismatched operation target");}catch(error){if(currentMemberAdditionScope.current===switchTaskKey){setPendingIntentFocus({projectId:project.id,configSetId:targetConfigSetId});setIntentRefresh(value=>value+1);}throw error;}if(registered.status==="stopped"||registered.status==="applied"&&!registered.result){setIntentRefresh(value=>value+1);return {resolved:registered.status};}if(currentMemberAdditionScope.current===switchTaskKey)currentIntent.current=registered;return registered.clientMutationId;}:undefined}
+        checkPending={apiMode?async configSetId=>{if(!intentClient)throw new Error("Missing operation scope");const result=await intentClient.target(project.id,configSetId);if(result.total&&currentMemberAdditionScope.current===switchTaskKey){setPendingIntentFocus({projectId:project.id,configSetId});setIntentRefresh(value=>value+1);}return result.total>0;}:undefined}
+        onOperationResolved={()=>{const done=currentIntent.current;if(done&&intentClient&&currentMemberAdditionScope.current===switchTaskKey)void intentClient.acknowledge(done).catch(()=>{}).finally(()=>setIntentRefresh(value=>value+1));}}
+        onDefinitiveRejection={async()=>{const current=currentIntent.current;if(!current||!intentClient||currentMemberAdditionScope.current!==switchTaskKey)throw new Error("Missing operation");const stopped=await intentClient.stop(current);if(currentMemberAdditionScope.current!==switchTaskKey||stopped.status==="pending")throw new Error("Unconfirmed operation");if(stopped.status==="stopped")await intentClient.acknowledge(stopped);setIntentRefresh(value=>value+1);return stopped.status;}}
         switchDraft={activeSwitchTask?.draft} onSwitchDraftChange={updateSwitchDraft} onRecoverSwitch={recoverSwitch}
         projectRoot={selectedMembers.find(member=>member.role==="base")?{fileId:selectedMembers.find(member=>member.role==="base")!.fileId,sourceName:selectedMembers.find(member=>member.role==="base")!.fileName}:undefined}
         catalogRepository={memberRemovalRepository} fileRepository={fileRepository}
         initialConfigSetId={selectedConfigSet.id} availableFiles={ungroupedFiles} onDismiss={()=>{if(activeSwitchTask?.operation==="remove"){workspaceLoadSession.retryFiles();workspaceLoadSession.retryMembers();}dismissSwitchTask();}}
         onApplied={(configSetId, fileId) => {
+          if(currentMemberAdditionScope.current!==switchTaskKey)return;
           dismissSwitchTask(); setInspectorOpen(false); workspaceLoadSession.retryFiles(); workspaceLoadSession.retryMembers();
           workspaceLoadSession.retrySource(); workspaceLoadSession.retryStructure(); setSourceWorkflowReloadToken((value) => value + 1);
           setVersionsReloadToken((value) => value + 1);

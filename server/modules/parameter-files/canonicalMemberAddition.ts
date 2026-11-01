@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
 import type { AuthContext } from "../auth/types";
 import { trustedDomainAttribution } from "../auth/trustedInvocation";
 import { NormalizedConfigurationSchemaId, PropertyKey, type CatalogSnapshot } from "../catalog-kernel/interface";
@@ -35,6 +36,7 @@ import type { ConfigRevisionManifestMember, ConfigRevisionMemberRole } from "../
 import { getParameterFileCandidateByIdForUpdate } from "./candidateRepository";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "./canonicalSource";
+import { canonicalMemberMutationId, lockMemberAdditionOperation } from "./canonicalMemberAdditionIntents";
 import { createDtsToolchainRunner, type DtsToolchainRunner } from "./dtsToolchain";
 import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
@@ -576,15 +578,25 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
   await requireCanonicalUserInvocation(auth, security, { projectId: input.projectId, operation: "configuration member addition apply", targetType: "dts-config-set", targetId: input.configSetId });
   const snapshot = await loadSnapshot(db), snapshots = await loadSourceRevisionCatalogSnapshots(db, input.projectId, parameterOrganizationId(auth), snapshot);
   try { return await withCanonicalSourceAttemptTransaction(db, storage, async (tx, attempt) => {
+    await requireActiveOrganization(tx,parameterOrganizationId(auth),true);
     auth = await requireCurrentSourceAdministrator(tx, auth, input.projectId);
-    await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`member-addition:${parameterOrganizationId(auth)}:${input.projectId}:${auth.user.id}:${input.clientMutationId}`]);
+    await lockMemberAdditionOperation(tx,parameterOrganizationId(auth),input.projectId,auth.user.id,input.clientMutationId);
+    const current = await lockSourceCatalogGovernance(tx, parameterOrganizationId(auth));
+    const intent=(await tx.query<{id:string;config_set_id:string;status:string;mutation_id:string}>(`select id,config_set_id,status,mutation_id from public.member_addition_intents
+      where organization_id=$1 and project_id=$2 and actor_user_id=$3 and mutation_id::text=$4`,
+      [parameterOrganizationId(auth),input.projectId,auth.user.id,canonicalMemberMutationId(input.clientMutationId)])).rows[0];
+    if(intent && (intent.config_set_id!==input.configSetId || intent.status==='stopped'))conflict("此操作已停止或目标配置不一致，请重新预览。");
+    if(intent)input={...input,clientMutationId:intent.mutation_id};
+    if(!intent && (await tx.query(`select 1 from public.member_addition_intents where organization_id=$1 and project_id=$2
+      and config_set_id=$3 and actor_user_id=$4 and not acknowledged`,[parameterOrganizationId(auth),input.projectId,input.configSetId,auth.user.id])).rowCount)
+      throw new ApiError("CONFLICT","此配置有待核对的操作，请先处理。",{reason:"member-operation-pending"});
     const mutationDigest = sourceRevisionDigest(input);
     const replay = (await tx.query<{ request_kind: string; source_revision_mutation_digest: string; applied_source_result: { requestId: string; fileId: string; fileVersionId: string; configRevisionId: string } }>(
       `select request_kind,source_revision_mutation_digest,applied_source_result from public.project_parameter_value_change_requests
        where organization_id=$1 and project_id=$2 and submitter_user_id=$3 and source_revision_mutation_id=$4`,
       [parameterOrganizationId(auth), input.projectId, auth.user.id, input.clientMutationId])).rows[0];
     if (replay) { if (replay.request_kind !== "member_addition" || replay.source_revision_mutation_digest !== mutationDigest || !replay.applied_source_result) conflict("此操作编号已用于不同的来源操作。"); return replay.applied_source_result; }
-    const current = await lockSourceCatalogGovernance(tx, parameterOrganizationId(auth));
+    if(intent?.status==='applied')conflict("此操作已应用，其历史回执已清理，不能重复应用。");
     if (snapshot ? current?.id !== snapshot.release.id || current.digest !== snapshot.release.digest : current) conflict("参数目录已变化，请重新预览。");
     const inspected = await inspect(tx, storage, auth, input, snapshot, snapshots, options.toolchain);
     const { proof, contents, candidate, target } = inspected;
@@ -757,6 +769,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
     await tx.query(`update public.project_parameter_value_change_requests set status='approved',apply_outcome='committed',applied_at=now(),
       applied_audit_ref=$2,applied_file_version_ids=$3::jsonb,applied_source_result=$4::jsonb,updated_at=now() where id=$1 and status='pending'`,
     [requestId, auditRef, JSON.stringify([...versionIds.values()].length ? [...versionIds.values()] : [fileVersionId]), JSON.stringify(receipt)]);
+    if(intent)await tx.query("update public.member_addition_intents set status='applied' where id=$1 and status='pending'",[intent.id]);
     return receipt;
   }); } catch (error) { rethrowSourceTransactionError(error); }
 }
