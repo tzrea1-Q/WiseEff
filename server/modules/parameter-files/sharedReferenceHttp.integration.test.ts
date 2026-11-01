@@ -92,6 +92,23 @@ describe("fixed shared references through the real API role", () => {
   }, 120_000);
   afterAll(async () => { await api?.close(); if (lane) await dropLabRuntimeLogins(lane.url, token); await db?.close(); await lane?.drop(); if (directory) await rm(directory, { recursive: true, force: true }); }, 120_000);
 
+  it("limits a usage refresh to the authorized project and exact configuration",async()=>{
+    const target=new URLSearchParams({projectId:A,configSetId:sets[A]!,limit:"1"});
+    const exact=await requestJson<{items:{projectId:string;configSetId:string}[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?${target}`);
+    expect(exact.body).toMatchObject({total:1,items:[{projectId:A,configSetId:sets[A]}]});
+    const blocked=new URLSearchParams({projectId:B,configSetId:sets[B]!,limit:"1"});
+    const limited=await requestJson<{items:unknown[];total:number}>(server(editor),`/api/v2/shared-dtsi/project-usages?${blocked}`);
+    expect(limited.body).toMatchObject({total:0,items:[]});expect(limited.bodyText).not.toContain(B);
+    const foreign=new URLSearchParams({projectId:A,configSetId:sets[B]!,limit:"1"});
+    const mismatch=await requestJson<{items:unknown[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?${foreign}`);
+    expect(mismatch.body).toMatchObject({total:0,items:[]});
+    await db.query("insert into organizations(id,name) values ('org-refresh-other','Other organization')");
+    await db.query("insert into projects(id,organization_id,name,code,status) values ('refresh-other','org-refresh-other','Foreign refresh','REFRESH-OTHER','initialized')");
+    const other=new URLSearchParams({projectId:"refresh-other",limit:"1"});
+    const hiddenOther=await requestJson<{items:unknown[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?${other}`);
+    expect(hiddenOther.body).toMatchObject({total:0,items:[]});expect(hiddenOther.bodyText).not.toContain("refresh-other");
+  });
+
   it("lists authorized project configurations including those without shared references", async () => {
     const emptyProject = "overview-empty-project";
     await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Overview empty','OVERVIEW-EMPTY','initialized')", [emptyProject, ORG]);
@@ -582,6 +599,15 @@ describe("fixed shared references through the real API role", () => {
     const limitedOverview=await requestJson<{items:{projectId:string}[];total:number;visibility:string}>(server(editor),"/api/v2/shared-dtsi/project-usages?q=Fixed%20leaf");
     expect(limitedOverview.body).toMatchObject({total:1,visibility:"authorized-projects",items:[{projectId:A}]});
     expect(limitedOverview.bodyText).not.toContain(B);
+    const targetQuery=new URLSearchParams({projectId:A,configSetId:sets[A]!,limit:"1"});
+    const targeted=await requestJson<{items:{projectId:string;configSetId:string}[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?${targetQuery}`);
+    expect(targeted.body).toMatchObject({total:1,items:[{projectId:A,configSetId:sets[A]}]});
+    const forbiddenTarget=new URLSearchParams({projectId:B,configSetId:sets[B]!,limit:"1"});
+    const hidden=await requestJson<{items:unknown[];total:number}>(server(editor),`/api/v2/shared-dtsi/project-usages?${forbiddenTarget}`);
+    expect(hidden.body).toMatchObject({total:0,items:[]});expect(hidden.bodyText).not.toContain(B);
+    const wrongConfig=new URLSearchParams({projectId:A,configSetId:sets[B]!,limit:"1"});
+    const mismatch=await requestJson<{items:unknown[];total:number}>(server(),`/api/v2/shared-dtsi/project-usages?${wrongConfig}`);
+    expect(mismatch.body).toMatchObject({total:0,items:[]});
     await db.query("update user_role_bindings set project_id=null where id='shared-ref-editor-role'");
     try {
       const organizationGrant=await requestJson<{total:number;visibility:string}>(server(editor),`/api/v2/shared-dtsi/${leaf.resourceId}/usages`);

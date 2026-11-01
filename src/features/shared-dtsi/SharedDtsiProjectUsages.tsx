@@ -21,7 +21,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
     status=requestedStatus==="referenced"||requestedStatus==="unreferenced"?requestedStatus:"all";
   const pageValue=Number(params.get("usagePage")??"1"),page=Number.isSafeInteger(pageValue)&&pageValue>0&&pageValue<=5001?pageValue:1;
   const [reload,setReload]=useState(0);
-  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;organizationId?:string}|null>(null);
+  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;instance:string;organizationId?:string}|null>(null);
   const [appliedNotice,setAppliedNotice]=useState(false);
   const [uncertainNotice,setUncertainNotice]=useState(false);
   const trigger=useRef<HTMLElement|null>(null);
@@ -32,7 +32,18 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
   const key=JSON.stringify([organizationId,query,status,page,reload]);
   const selection=selected?.scope===search&&selected.client===apiClient&&selected.canWrite===canWrite&&selected.organizationId===organizationId?selected:null;
   const current=loaded?.key===key&&loaded.client===apiClient&&loaded.canWrite===canWrite?loaded:null;
-  const close=()=>{setSelected(null);requestAnimationFrame(()=>trigger.current?.focus());};
+  const close=()=>{setSelected(null);requestAnimationFrame(()=>{if(trigger.current?.isConnected)trigger.current.focus();else document.querySelector<HTMLInputElement>('[aria-label="搜索项目使用"]')?.focus();});};
+  const refreshTarget=async(row:Row,instance:string)=>{
+    if(!row.configSetId)throw new Error("目标配置不存在，请返回列表核对。");
+    const request=new URLSearchParams({projectId:row.projectId,configSetId:row.configSetId,status:"all",limit:"1"});
+    if(organizationId)request.set("organizationId",organizationId);
+    const result=sharedDtsiProjectUsagesSchema.parse(await apiClient.get<unknown>(`/api/v2/shared-dtsi/project-usages?${request}`));
+    const updated=result.items.find(item=>item.projectId===row.projectId&&item.configSetId===row.configSetId);
+    if(!updated || !updated.canConfigure || !updated.configurationReady)throw new Error("配置不可用或权限已变化，请返回列表核对。");
+    setSelected(previous=>previous?.instance===instance&&previous.client===apiClient&&previous.organizationId===organizationId&&previous.scope===search&&previous.row.projectId===row.projectId&&previous.row.configSetId===row.configSetId
+      ? {...previous,row:updated}:previous);
+    setReload(value=>value+1);
+  };
   useEffect(()=>{
     let cancelled=false;
     const request=new URLSearchParams({q:query,status,offset:String((page-1)*20),limit:"20"});
@@ -85,7 +96,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
               {ref.requiredBy.length?<span> · 由 {ref.requiredBy.map(item=>item.resourceName).join("、")} 引入</span>:null}</li>)}</ul></details>:null}</div>;}},
         {key:"action",header:"操作",render:row=>{const target=projectPath(row);return <div className="shared-dtsi-usage-action">
           {!row.configSetId?<span>请先创建配置</span>:!row.configurationReady?<span>请先完成配置初始化</span>:null}
-          {row.configSetId && row.configurationReady && row.canConfigure?<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice(false);setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId});}}>配置资源包</Button>:null}
+          {row.configSetId && row.configurationReady && row.canConfigure?<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice(false);setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId,instance:crypto.randomUUID()});}}>配置资源包</Button>:null}
           <a href={target} onClick={event=>follow(event,target)}>{row.configSetId&&row.configurationReady?"查看生效配置":"前往配置工作台"}</a></div>;}}
       ]}} />
     {current?.result && current.result.total>20?<nav className="shared-dtsi-pagination" aria-label="项目使用分页">
@@ -103,6 +114,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
     {selection?.adding&&selection.row.configSetId?<WorkbenchMemberAdditionDialog projectId={selection.row.projectId}
       configSets={[{id:selection.row.configSetId,name:selection.row.configSetName??""}]} initialConfigSetId={selection.row.configSetId} availableFiles={[]}
       client={additionClient} sharedClient={sharedClient} sharedOnly existingReferences={selection.row.references} targetProjectName={selection.row.projectName}
+      refreshExistingReferences={()=>refreshTarget(selection.row,selection.instance)}
       onDismiss={()=>setSelected({...selection,adding:false})} onUncertainDismiss={()=>{setUncertainNotice(true);close();setReload(value=>value+1);}}
       onApplied={()=>{setAppliedNotice(true);close();setReload(value=>value+1);}} />:null}
   </div>;

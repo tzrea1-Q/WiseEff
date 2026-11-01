@@ -4231,7 +4231,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const draft=await request.post(apiRoute("/api/v2/shared-dtsi"),{headers:adminHeaders(),data:{name,sourceName:"project-usage-package.dtsi",content:'/ { shared_usage_1473 { status = "okay"; }; };',changeDescription:"Initial package"}});
     expect(draft.status(),await draft.text()).toBe(201);const resourceId=(await draft.json()).item.resourceId as string;
     const check=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publication-preview`),{headers:adminHeaders(),data:{expectedRevision:1}});
-    expect(check.status(),await check.text()).toBe(200);
+    expect(check.status(),await check.text()).toBe(201);
     const published=await request.post(apiRoute(`/api/v2/shared-dtsi/${resourceId}/publications`),{headers:adminHeaders(),data:{previewId:(await check.json()).item.id,idempotencyKey:`usage-${randomUUID()}`}});
     expect(published.status(),await published.text()).toBe(201);const versionId=(await published.json()).item.id as string;
     const usagePath=`/parameter-admin/sources?${new URLSearchParams({organization:organizationId,view:"projects",usageQuery:config.name})}`;

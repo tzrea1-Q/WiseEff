@@ -65,6 +65,37 @@ describe("shared DTSI project usage", () => {
     view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-b" search="?view=projects" onNavigate={()=>{}}/>);
     expect(screen.queryByRole("dialog",{name:"配置资源包"})).not.toBeInTheDocument();
   });
+
+  it("refreshes the exact target after a concurrent duplicate and disables the newly referenced package",async()=>{
+    const user=userEvent.setup();let concurrent=false,failRefresh=true;
+    const version={id:versionOne,resourceId:resourceOne,version:1,name:"公共电源",changeDescription:"初版",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
+    const row=()=>({projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,
+      references:concurrent?[{resourceId:resourceOne,resourceName:"公共电源",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:false,requiredBy:[]}]:[]});
+    const fetchImpl=vi.fn(async(url:string|URL|Request)=>{
+      const path=String(url);let body:unknown,status=200;
+      if(path.includes("project-usages")&&path.includes("projectId=")&&failRefresh){status=403;body={error:{code:"FORBIDDEN",message:"权限已撤销"}};}
+      else if(path.includes("project-usages"))body={items:[row()],total:1,visibility:"organization"};
+      else if(path.includes("/member-addition/preview")){concurrent=true;status=409;body={error:{code:"CONFLICT",message:"此配置已引用该资源"}};}
+      else if(path.includes("/versions"))body={items:[version],total:1};
+      else body={items:[{resourceId:resourceOne,name:"公共电源",sourceName:"power.dtsi",draftRevision:null,state:"active",lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1};
+      return new Response(JSON.stringify(body),{status});
+    });
+    const apiClient=createApiClient({baseUrl:"",fetchImpl});
+    render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects&usageStatus=unreferenced" onNavigate={()=>{}}/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
+    await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"公共电源"}));
+    await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · 初版"}));
+    await user.click(screen.getByRole("button",{name:"预览加入配置"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("权限已撤销");
+    expect(screen.getByRole("button",{name:"预览加入配置"})).toBeDisabled();
+    expect(screen.getByRole("combobox",{name:"固定版本"})).toHaveAttribute("data-value",versionOne);
+    failRefresh=false;await user.click(screen.getByRole("button",{name:"重新核对配置"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("配置已更新");
+    await user.click(await screen.findByRole("combobox",{name:"共享资源"}));
+    expect(await screen.findByRole("option",{name:"公共电源 · 已引用"})).toHaveAttribute("aria-disabled","true");
+    const target=fetchImpl.mock.calls.map(([url])=>new URL(String(url),"http://localhost")).find(url=>url.searchParams.get("projectId")==="p1");
+    expect(target?.searchParams.get("configSetId")).toBe("c1");expect(target?.searchParams.get("status")).toBe("all");
+  });
   it("shows fixed references by configuration and preserves the selected view", async () => {
     const user = userEvent.setup();
     const fetchImpl = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(String(url).includes("project-usages") ? {

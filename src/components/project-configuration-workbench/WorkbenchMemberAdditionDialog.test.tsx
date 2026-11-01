@@ -24,7 +24,8 @@ it("retries an uncertain shared addition using the identical proof, reason and m
   const user=userEvent.setup(), resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
   const version={id:versionId,resourceId,version:1,name:"Power",changeDescription:"First",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
   const preview={proofToken:"a".repeat(64),configSetId:"set",fileName:"power.dtsi",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}};
-  const client={upload:vi.fn(),preview:vi.fn(async()=>preview),apply:vi.fn().mockRejectedValueOnce(new Error("network unavailable")).mockResolvedValueOnce({fileId:"shared"})};
+  const client={upload:vi.fn(),preview:vi.fn(async()=>preview),apply:vi.fn().mockRejectedValueOnce(new Error("network unavailable"))
+    .mockRejectedValueOnce(new WiseEffApiError("FORBIDDEN","权限已撤销",{},"request",403)).mockResolvedValueOnce({fileId:"shared"})};
   const applied=vi.fn();
   render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"default"}]} initialConfigSetId="set" availableFiles={[]} sharedOnly targetProjectName="项目甲"
     client={client} sharedClient={{list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:"power.dtsi",draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1})),versions:vi.fn(async()=>({items:[version],total:1}))}} onDismiss={vi.fn()} onApplied={applied}/>);
@@ -35,7 +36,10 @@ it("retries an uncertain shared addition using the identical proof, reason and m
   expect(await screen.findByRole("alert")).toHaveTextContent("应用结果尚未确认");
   expect(screen.getByRole("textbox",{name:"加入原因"})).toBeDisabled();
   await user.click(screen.getByRole("button",{name:"重试同一操作"}));
-  expect(client.apply).toHaveBeenCalledTimes(2);expect(client.apply.mock.calls[0]).toEqual(client.apply.mock.calls[1]);expect(applied).toHaveBeenCalledWith("set","shared");
+  expect(await screen.findByRole("alert")).toHaveTextContent("应用结果尚未确认");
+  expect(screen.getByRole("textbox",{name:"加入原因"})).toBeDisabled();
+  await user.click(screen.getByRole("button",{name:"重试同一操作"}));
+  expect(client.apply).toHaveBeenCalledTimes(3);expect(client.apply.mock.calls[0]).toEqual(client.apply.mock.calls[1]);expect(client.apply.mock.calls[1]).toEqual(client.apply.mock.calls[2]);expect(applied).toHaveBeenCalledWith("set","shared");
 });
 
 it("converts an explicitly selected private source through the shared chooser and retains selection and reason after cancellation or failure",async()=>{
@@ -184,12 +188,17 @@ it("requires an explicit published version and clears its proof when the version
   expect(screen.getByRole("button", { name: "预览加入配置" })).toBeDisabled();
   await user.click(await screen.findByRole("combobox", { name: "固定版本" })); await user.click(await screen.findByRole("option", { name: "版本 1 · Initial limits" }));
   await user.click(screen.getByRole("button", { name: "预览加入配置" }));
-  expect(await screen.findByText("此项目的当前配置引用共享版本 1；来源成员只读，其他项目不受影响。")).toBeInTheDocument();
+  expect(await screen.findByText("确认后将固定引用版本 1；来源成员只读，其他项目不受影响。")).toBeInTheDocument();
+  expect(screen.queryByText(/此项目的当前配置引用共享版本/)).not.toBeInTheDocument();
   expect(bodies.at(-1)).toMatchObject({ sharedReference: { resourceId, versionId }, role: "misc" });
   expect(screen.getByLabelText("确认后根文件源码")).not.toBeVisible();
   expect(screen.getByRole("group", { name: "加入配置确认" })).toContainElement(screen.getByRole("button", { name: "确认加入配置" }));
   await user.click(screen.getByText("项目根文件 include 变更：board.dts"));
   expect(screen.getByLabelText("确认后根文件源码")).toHaveTextContent('/include/ "limits.dtsi"');
+  await user.click(screen.getByRole("button",{name:"取消本次预览"}));
+  expect(screen.queryByText("确认后将固定引用版本 1；来源成员只读，其他项目不受影响。")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"预览加入配置"}));
+  expect(await screen.findByText("确认后将固定引用版本 1；来源成员只读，其他项目不受影响。")).toBeVisible();
   await user.click(screen.getByText("文件与目标配置"));
   await user.click(screen.getByRole("combobox", { name: "固定版本" })); await user.click(screen.getByRole("option", { name: "版本 2 · Initial limits" }));
   expect(screen.queryByRole("button", { name: "确认加入配置" })).not.toBeInTheDocument();
