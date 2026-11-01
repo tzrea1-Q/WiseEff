@@ -288,6 +288,12 @@ describe("M5 OpenAPI contract", () => {
     expect(schemaRegistry["parameterFiles.reserveMemberAdditionIntent"]).toMatchObject({requestBody:"MemberAdditionIntentRegisterRequest",responseBody:"MemberAdditionIntentResponse"});
     expect(schemaRegistry["parameterFiles.listMemberAdditionIntents"]).toMatchObject({responseBody:"MemberAdditionIntentsResponse"});
     for(const id of ["parameterFiles.stopMemberAdditionIntent","parameterFiles.acknowledgeMemberAdditionIntent"])expect(schemaRegistry[id]).toMatchObject({requestBody:"MemberAdditionIntentActionRequest",responseBody:"MemberAdditionIntentResponse"});
+    const document=buildOpenApiDocument(),base="/api/v1/projects/{projectId}/config-sets/{configSetId}/member-addition/intents";
+    const operations=[document.paths[base]!.post!,document.paths["/api/v1/member-addition-intents"]!.get!,document.paths[`${base}/{intentId}/stop`]!.post!,document.paths[`${base}/{intentId}/ack`]!.post!];
+    for(const operation of operations){const parameters=operation.parameters??[],keys=parameters.map(parameter=>`${parameter.in}:${parameter.name}`);expect(new Set(keys).size).toBe(keys.length);expect(parameters.filter(parameter=>parameter.name==="organizationId"&&parameter.in==="query")).toHaveLength(1);}
+    for(const operation of operations.slice(2))expect(operation.parameters).toEqual(expect.arrayContaining([expect.objectContaining({name:"intentId",in:"path",required:true,schema:{type:"string",format:"uuid"}})]));
+    expect(operations[1]!.parameters).toEqual(expect.arrayContaining([expect.objectContaining({name:"limit",schema:{type:"integer",minimum:1,maximum:50,default:50}}),expect.objectContaining({name:"offset",schema:{type:"integer",minimum:0,maximum:5000,default:0}})]));
+    expect(document.components.schemas.MemberAdditionIntentRegisterRequest).toMatchObject({properties:{registrationId:{type:"string",format:"uuid"}}});
   });
 
   it("publishes debugging admin catalog API routes", () => {

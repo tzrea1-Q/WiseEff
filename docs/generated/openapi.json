@@ -26860,14 +26860,6 @@
             "name": "organizationId",
             "in": "query",
             "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "organizationId",
-            "in": "query",
-            "required": false,
             "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
@@ -26925,14 +26917,6 @@
         ],
         "parameters": [
           {
-            "name": "organizationId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "projectId",
             "in": "query",
             "required": false,
@@ -26953,7 +26937,10 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 50
             }
           },
           {
@@ -26961,7 +26948,10 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000,
+              "default": 0
             }
           },
           {
@@ -27032,15 +27022,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "organizationId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "uuid"
             }
           },
           {
@@ -27124,15 +27107,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "organizationId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "uuid"
             }
           },
           {
@@ -80820,7 +80796,8 @@
         "type": "object",
         "properties": {
           "registrationId": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [

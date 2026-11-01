@@ -14,10 +14,10 @@ import { organizationInvitationSchemaRegistry } from "./dtoSchemas/organizationI
 
 export type ContractParameterRef = {
   name: string;
-  in: "header" | "query";
+  in: "header" | "query" | "path";
   required?: boolean;
   description?: string;
-  schema?: { type: "string" | "integer"; enum?: string[] };
+  schema?: { type: "string" | "integer"; enum?: string[]; format?:string; minimum?:number; maximum?:number; default?:number };
 };
 
 export type ContractHeaderRef = {
@@ -2103,21 +2103,20 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "parameterFiles.reserveMemberAdditionIntent": {
     summary: "Reserve an authenticated shared configuration operation identity", tags: ["parameter-files"],
     requestBody: "MemberAdditionIntentRegisterRequest", responseBody: "MemberAdditionIntentResponse",
-    requestParameters: [{name:"organizationId",in:"query",schema:{type:"string"}}],
     additionalResponses: { "400":"ErrorResponse", "401":"ErrorResponse", "403":"ErrorResponse", "404":"ErrorResponse", "409":"ErrorResponse" }
   },
   "parameterFiles.listMemberAdditionIntents": {
     summary: "List the current user's authorized unresolved configuration operations", tags: ["parameter-files"], responseBody: "MemberAdditionIntentsResponse",
-    requestParameters: [{name:"organizationId",in:"query",schema:{type:"string"}},{name:"projectId",in:"query",schema:{type:"string"}},{name:"configSetId",in:"query",schema:{type:"string"}},{name:"limit",in:"query",schema:{type:"integer"}},{name:"offset",in:"query",schema:{type:"integer"}}],
+    requestParameters: [{name:"projectId",in:"query",schema:{type:"string"}},{name:"configSetId",in:"query",schema:{type:"string"}},{name:"limit",in:"query",schema:{type:"integer",minimum:1,maximum:50,default:50}},{name:"offset",in:"query",schema:{type:"integer",minimum:0,maximum:5000,default:0}}],
     additionalResponses: { "400":"ErrorResponse", "401":"ErrorResponse", "403":"ErrorResponse" }
   },
   "parameterFiles.stopMemberAdditionIntent": {
     summary: "Stop an unresolved operation or return its committed status", tags: ["parameter-files"], requestBody: "MemberAdditionIntentActionRequest", responseBody: "MemberAdditionIntentResponse",
-    requestParameters: [{name:"organizationId",in:"query",schema:{type:"string"}}], additionalResponses: { "400":"ErrorResponse", "401":"ErrorResponse", "403":"ErrorResponse", "404":"ErrorResponse", "409":"ErrorResponse" }
+    requestParameters: [{name:"intentId",in:"path",schema:{type:"string",format:"uuid"}}], additionalResponses: { "400":"ErrorResponse", "401":"ErrorResponse", "403":"ErrorResponse", "404":"ErrorResponse", "409":"ErrorResponse" }
   },
   "parameterFiles.acknowledgeMemberAdditionIntent": {
     summary: "Acknowledge a terminal configuration operation without removing its fence", tags: ["parameter-files"], requestBody: "MemberAdditionIntentActionRequest", responseBody: "MemberAdditionIntentResponse",
-    requestParameters: [{name:"organizationId",in:"query",schema:{type:"string"}}], additionalResponses: { "400":"ErrorResponse", "401":"ErrorResponse", "403":"ErrorResponse", "404":"ErrorResponse", "409":"ErrorResponse" }
+    requestParameters: [{name:"intentId",in:"path",schema:{type:"string",format:"uuid"}}], additionalResponses: { "400":"ErrorResponse", "401":"ErrorResponse", "403":"ErrorResponse", "404":"ErrorResponse", "409":"ErrorResponse" }
   },
   "parameterFiles.applyAdministratorMemberRemoval": {
     summary: "Atomically apply a confirmed Canonical member removal as the current human administrator",
