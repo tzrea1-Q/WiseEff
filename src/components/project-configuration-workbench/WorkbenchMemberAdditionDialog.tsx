@@ -20,7 +20,8 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import "./workbench-member-addition-dialog.css";
 
 const roleLabels = { base: "基础", overlay: "覆盖层", charging: "充电", thermal: "温控", misc: "其他 / include" };
-export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences }: {
+export type RecoveredMemberOperation=MemberAdditionBody & {proofToken:string;reason:string;clientMutationId:string};
+export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences, onOperationStart, onOperationResolved }: {
   projectId: string; configSets: Array<{ id: string; name: string }>; initialConfigSetId: string;
   availableFiles: ProjectParameterFile[]; client?: ReturnType<typeof createCanonicalMemberAdditionClient>;
   switchReference?: {resourceId:string;versionId:string;version:number};
@@ -38,6 +39,8 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   targetProjectName?: string;
   onUncertainDismiss?: () => void;
   refreshExistingReferences?: () => Promise<Array<{resourceId:string;versionId?:string;direct?:boolean}>>;
+  onOperationStart?:(operation:RecoveredMemberOperation)=>void;
+  onOperationResolved?:()=>void;
 }) {
   const reference=removeReference??switchReference;
   const client = useMemo(() => suppliedClient ?? createCanonicalMemberAdditionClient(), [suppliedClient]);
@@ -142,17 +145,19 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   }
   async function apply() {
     if (busy || !preview || !preparedBody || !mutationId.current || !reason.trim()) return;
-    setBusy(true); setError(""); setErrorDiagnostics([]);
     mutationReason.current??=reason.trim();
+    try{onOperationStart?.({...preparedBody,proofToken:preview.proofToken,reason:mutationReason.current,clientMutationId:mutationId.current});}
+    catch{setError("无法保存本次操作的恢复信息，请检查浏览器存储后重试。");return;}
+    setBusy(true); setError(""); setErrorDiagnostics([]);
     try {
       const result = await client.apply(projectId, configSetId, { ...preparedBody, proofToken: preview.proofToken, reason: mutationReason.current, clientMutationId: mutationId.current });
-      if (mounted.current) onApplied(configSetId, result.fileId);
+      if (mounted.current) {onOperationResolved?.();onApplied(configSetId, result.fileId);}
     } catch (failure) { if (mounted.current) {
       if((sharedOnly||preserveUncertain) && (uncertain || !(failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500))){
         setUncertain(true);setError(uncertain && failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500
           ? "应用结果尚未确认，本次重试被拒绝。请返回列表核对项目配置，或稍后重试同一操作。"
           : "应用结果尚未确认。请重试同一操作，或返回列表核对项目配置。");
-      }else{setPreview(null);setPreparedBody(null);mutationReason.current=null;showError(failure, "未能确认结果，请重新预览；选择与原因已保留。");
+      }else{onOperationResolved?.();setPreview(null);setPreparedBody(null);mutationReason.current=null;showError(failure, "未能确认结果，请重新预览；选择与原因已保留。");
         if(sharedOnly && refreshExistingReferences && failure instanceof WiseEffApiError && (failure.code==="CONFLICT"||[401,403,404].includes(failure.status??0))) {setRefreshRequired(true);await refreshReferences();}}
     } } finally { if (mounted.current) setBusy(false); }
   }

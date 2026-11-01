@@ -11,12 +11,37 @@ const versionOne = "b0000000-0000-4000-8000-000000000001";
 const versionTwo = "b0000000-0000-4000-8000-000000000002";
 
 describe("shared DTSI project usage", () => {
+  it.each([200,503])("retains the original operation for its user when an in-flight apply returns %s after an identity change",async status=>{
+    sessionStorage.clear();const user=userEvent.setup();let complete!:(response:Response)=>void;let submitted:unknown;let calls=0;
+    const row={projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,
+      references:[{resourceId:resourceOne,resourceName:"公共电源",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:false,requiredBy:[]}]};
+    const preview={proofToken:"a".repeat(64),configSetId:"c1",fileName:"board.dts",format:"dts",members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],
+      sharedRemoval:{resourceId:resourceOne,versionId:versionOne,version:1,name:"公共电源"},sharedSwitch:{beforeVersion:1,afterVersion:null,dependencies:{before:[],after:[]},sources:[],effective:[],build:{mode:"release",passed:true,includeSearchPaths:[],defines:{}}},
+      impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}};
+    const success={item:{requestId:"r",fileId:"f",fileVersionId:"v",configRevisionId:"rev"}};
+    const fetchImpl=vi.fn(async(url:string|URL|Request,init?:RequestInit)=>{
+      const path=String(url);if(path.includes("project-usages"))return new Response(JSON.stringify({items:[row],total:1,visibility:"organization"}));
+      if(path.includes("/preview"))return new Response(JSON.stringify({item:preview}));
+      if(path.includes("/apply")){calls++;const body=JSON.parse(String(init?.body));if(calls===1){submitted=body;return new Promise<Response>(resolve=>{complete=resolve;});}expect(body).toEqual(submitted);return new Response(JSON.stringify(success));}
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const apiClient=createApiClient({baseUrl:"",fetchImpl});const props={apiClient,canWrite:true,organizationId:"org-a",search:"?view=projects",onNavigate:()=>{}};
+    const view=render(<SharedDtsiPage {...props} currentUserId="user-a"/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"移除引用"}));
+    await user.type(screen.getByRole("textbox",{name:"变更说明"}),"移除引用");await user.click(screen.getByRole("button",{name:"预览移除引用"}));await user.click(await screen.findByRole("button",{name:"确认移除引用"}));
+    await waitFor(()=>expect(calls).toBe(1));view.rerender(<SharedDtsiPage {...props} currentUserId="user-b"/>);
+    await screen.findByRole("button",{name:"配置资源包"});expect(screen.queryByText("上次应用结果尚未确认")).not.toBeInTheDocument();
+    await act(async()=>complete(new Response(JSON.stringify(status===200?success:{error:{code:"INTERNAL_ERROR",message:"failure"}}),{status})));
+    expect(screen.queryByText("上次操作已确认。")).not.toBeInTheDocument();view.rerender(<SharedDtsiPage {...props} currentUserId="user-a"/>);
+    await user.click(await screen.findByRole("button",{name:"核对上次操作"}));await user.click(screen.getByRole("button",{name:"重试同一操作"}));
+    expect(await screen.findByText("上次操作已确认。")).toBeVisible();expect(calls).toBe(2);sessionStorage.clear();
+  });
   it("offers version switching and removal once per direct resource, never for an indirect dependency", async () => {
     const user=userEvent.setup();
     const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,
       references:[{resourceId:resourceOne,resourceName:"公共电源",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:true,requiredBy:[]},
         {resourceId:resourceTwo,resourceName:"公共基础",versionId:versionTwo,version:1,direct:false,state:"active",upgradeAvailable:false,requiredBy:[{resourceId:resourceOne,resourceName:"公共电源"}]}]}],total:1,visibility:"organization"})));
-    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     await user.click(await screen.findByRole("button",{name:"配置资源包"}));
     const dialog=screen.getByRole("dialog",{name:"配置资源包"});
     expect(within(dialog).getAllByRole("button",{name:"切换版本"})).toHaveLength(1);
@@ -45,7 +70,7 @@ describe("shared DTSI project usage", () => {
       else throw new Error(`Unexpected request: ${path}`);
       return new Response(JSON.stringify(body),{status:200,headers:{"Content-Type":"application/json"}});
     });
-    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl})} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"切换版本"}));
     await user.click(await screen.findByRole("combobox",{name:"固定版本"}));expect(screen.getByRole("option",{name:"版本 1 · 版本1"})).toHaveAttribute("aria-disabled","true");
     await user.click(screen.getByRole("option",{name:"版本 2 · 版本2"}));await user.click(screen.getByRole("button",{name:"预览版本切换"}));
@@ -86,7 +111,7 @@ describe("shared DTSI project usage", () => {
     const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,
       references:[{resourceId:resourceOne,resourceName:"公共电源",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:false,requiredBy:[]}]}],total:1,visibility:"organization"})));
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
-    render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    render(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     await user.click(await screen.findByRole("button",{name:"配置资源包"}));
     const dialog=screen.getByRole("dialog",{name:"配置资源包"});
     expect(within(dialog).getByText("项目甲 · 默认配置")).toBeVisible();
@@ -109,7 +134,7 @@ describe("shared DTSI project usage", () => {
       return new Response(JSON.stringify(body),{status:200,headers:{"Content-Type":"application/json"}});
     });
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
-    render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    render(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
     expect(screen.getByRole("dialog",{name:"添加资源包"})).toHaveTextContent("项目甲 · 默认配置");
     await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"公共电源"}));
@@ -127,12 +152,12 @@ describe("shared DTSI project usage", () => {
     const row=(projectId:string,ready:boolean,allowed:boolean)=>({projectId,projectName:projectId,projectCode:projectId,configSetId:`${projectId}-set`,configSetName:"default",configurationReady:ready,canConfigure:allowed,references:[]});
     const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({items:[row("可配置",true,true),row("无权限",true,false),row("待初始化",false,true)],total:3,visibility:"authorized-projects"})));
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
-    const view=render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    const view=render(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     expect(await screen.findByText("可配置")).toBeVisible();
     expect(within(screen.getByText("无权限").closest("tr")!).queryByRole("button",{name:"配置资源包"})).not.toBeInTheDocument();
     expect(within(screen.getByText("待初始化").closest("tr")!).getByText("请先完成配置初始化")).toBeVisible();
     await user.click(screen.getByRole("button",{name:"配置资源包"}));expect(screen.getByRole("dialog",{name:"配置资源包"})).toBeVisible();
-    view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-b" search="?view=projects" onNavigate={()=>{}}/>);
+    view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-b" search="?view=projects" onNavigate={()=>{}}/>);
     expect(screen.queryByRole("dialog",{name:"配置资源包"})).not.toBeInTheDocument();
   });
 
@@ -163,7 +188,7 @@ describe("shared DTSI project usage", () => {
       return new Response(JSON.stringify(body),{status});
     });
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
-    render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects&usageStatus=unreferenced" onNavigate={()=>{}}/>);
+    render(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects&usageStatus=unreferenced" onNavigate={()=>{}}/>);
     await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
     await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"公共电源"}));
     await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · 初版"}));
@@ -193,7 +218,7 @@ describe("shared DTSI project usage", () => {
       return new Response(JSON.stringify(body),{status});
     });
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
-    render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    render(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
     await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"公共电源"}));
     await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · 初版"}));
@@ -228,7 +253,7 @@ describe("shared DTSI project usage", () => {
       return new Response(JSON.stringify(body),{status});
     });
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
-    const view=render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    const view=render(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
     await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"公共电源"}));
     await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · 初版"}));
@@ -242,9 +267,9 @@ describe("shared DTSI project usage", () => {
     if(failure==="permission"){
       restored=true;hold=true;await user.click(await screen.findByRole("button",{name:"重新核对"}));
       expect(screen.getByRole("button",{name:"正在核对…"})).toBeDisabled();
-      view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-b" search="?view=projects" onNavigate={()=>{}}/>);
+      view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-b" search="?view=projects" onNavigate={()=>{}}/>);
       await screen.findByRole("button",{name:"配置资源包"});
-      view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+      view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
       await screen.findByRole("button",{name:"重新核对"});
       await act(async()=>release(new Response(JSON.stringify({items:[row],total:1,visibility:"organization"}))));
       expect(screen.queryByRole("button",{name:"配置资源包"})).not.toBeInTheDocument();
@@ -272,7 +297,7 @@ describe("shared DTSI project usage", () => {
       return new Response(JSON.stringify(body),{status});
     });
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
-    const view=render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    const view=render(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
     await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"公共电源"}));
     await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · 初版"}));
@@ -281,9 +306,9 @@ describe("shared DTSI project usage", () => {
     expect(await screen.findByRole("button",{name:"重新加载列表"})).toBeVisible();
     expect(screen.queryByText("项目甲")).not.toBeInTheDocument();
     hold=true;await user.click(screen.getByRole("button",{name:"重新加载列表"}));
-    view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-b" search="?view=projects" onNavigate={()=>{}}/>);
+    view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-b" search="?view=projects" onNavigate={()=>{}}/>);
     await waitFor(()=>expect(fetchImpl.mock.calls.some(([url])=>String(url).includes("organizationId=org-b"))).toBe(true));
-    hold=false;view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    hold=false;view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     expect(await screen.findByRole("button",{name:"重新加载列表"})).toBeVisible();
     await act(async()=>release(new Response(JSON.stringify({items:[row],total:1,visibility:"authorized-projects"}))));
     expect(screen.queryByText("项目甲")).not.toBeInTheDocument();
@@ -301,7 +326,7 @@ describe("shared DTSI project usage", () => {
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
     function Harness() {
       const [search,setSearch]=useState("");
-      return <SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search={search} onNavigate={path=>setSearch(new URL(path,"http://localhost").search)} />;
+      return <SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search={search} onNavigate={path=>setSearch(new URL(path,"http://localhost").search)} />;
     }
     render(<Harness />);
     await user.click(await screen.findByRole("radio",{name:"项目使用"}));
@@ -324,9 +349,9 @@ describe("shared DTSI project usage", () => {
     const row=(name:string)=>({items:[{projectId:name,projectName:name,projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:[]}],total:1,visibility:"authorized-projects"});
     const fetchImpl=vi.fn((url:string|URL|Request)=>String(url).includes("organizationId=org-a")?pending:Promise.resolve(new Response(JSON.stringify(row("新组织项目")))));
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
-    const view=render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    const view=render(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     await waitFor(()=>expect(fetchImpl).toHaveBeenCalled());
-    view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-b" search="?view=projects" onNavigate={()=>{}}/>);
+    view.rerender(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-b" search="?view=projects" onNavigate={()=>{}}/>);
     expect(await screen.findByText("新组织项目")).toBeVisible();
     await act(async()=>release(new Response(JSON.stringify(row("旧组织项目")))));
     expect(screen.queryByText("旧组织项目")).not.toBeInTheDocument();
@@ -335,7 +360,7 @@ describe("shared DTSI project usage", () => {
 
   it("surfaces loading failures rather than claiming no references", async () => {
     const apiClient=createApiClient({baseUrl:"",fetchImpl:vi.fn(async()=>new Response(JSON.stringify({error:{message:"服务不可用"}}),{status:503}))});
-    render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    render(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
     expect(await screen.findByRole("alert")).toHaveTextContent("服务不可用");
     expect(screen.queryByText("未引用共享资源包")).not.toBeInTheDocument();
     expect(screen.getByRole("button",{name:"重试"})).toBeVisible();
@@ -349,7 +374,7 @@ describe("shared DTSI project usage", () => {
           {resourceId:resourceTwo,resourceName:"基础",versionId:versionTwo,version:2,direct:false,state:"retired",upgradeAvailable:false,requiredBy:[{resourceId:resourceOne,resourceName:"电源"}]}]}],total:21,visibility:"organization"
     }:{items:[],total:0})));
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
-    render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects&usageQuery=电源&usageStatus=referenced&usagePage=2" onNavigate={()=>{}}/>);
+    render(<SharedDtsiPage apiClient={apiClient} canWrite currentUserId="user-a" organizationId="org-a" search="?view=projects&usageQuery=电源&usageStatus=referenced&usagePage=2" onNavigate={()=>{}}/>);
     expect(await screen.findByText("电源 · v1")).toBeVisible();
     expect(screen.getByRole("searchbox",{name:"搜索项目使用"})).toHaveValue("电源");
     await user.click(screen.getByText("依赖关系（1）"));
