@@ -134,7 +134,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
       setPreparedBody(body); setPreview(result); mutationId.current = crypto.randomUUID();
     } catch (failure) { if (mounted.current) {
       showError(failure, "无法预览文件组成，请检查文件后重试。");
-      if(sharedOnly && refreshExistingReferences && failure instanceof WiseEffApiError && failure.code==="CONFLICT") {setRefreshRequired(true);await refreshReferences();}
+      if(sharedOnly && refreshExistingReferences && failure instanceof WiseEffApiError && (failure.code==="CONFLICT"||[401,403,404].includes(failure.status??0))) {setRefreshRequired(true);await refreshReferences();}
     } } finally { if (mounted.current) setBusy(false); }
   }
   async function apply() {
@@ -150,7 +150,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
           ? "应用结果尚未确认，本次重试被拒绝。请返回列表核对项目配置，或稍后重试同一操作。"
           : "应用结果尚未确认。请重试同一操作，或返回列表核对项目配置。");
       }else{setPreview(null);setPreparedBody(null);mutationReason.current=null;showError(failure, "未能确认结果，请重新预览；选择与原因已保留。");
-        if(sharedOnly && refreshExistingReferences && failure instanceof WiseEffApiError && failure.code==="CONFLICT") {setRefreshRequired(true);await refreshReferences();}}
+        if(sharedOnly && refreshExistingReferences && failure instanceof WiseEffApiError && (failure.code==="CONFLICT"||[401,403,404].includes(failure.status??0))) {setRefreshRequired(true);await refreshReferences();}}
     } } finally { if (mounted.current) setBusy(false); }
   }
   const dismiss=()=>{if(uncertain && onUncertainDismiss)onUncertainDismiss();else onDismiss();};
