@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { createApiClient, WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
-import { WorkbenchMemberAdditionDialog } from "./WorkbenchMemberAdditionDialog";
+import { WorkbenchMemberAdditionDialog, type RecoveredMemberOperation } from "./WorkbenchMemberAdditionDialog";
 import type { ParameterCatalogRepository, CatalogSubjectListResponse, CatalogDefinitionListResponse } from "@/application/ports/ParameterCatalogRepository";
 import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistration";
 import { invalidateSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
@@ -76,8 +76,8 @@ it.each(["stopped","failed","applied"] as const)("handles the first definitive r
 it.each(["shared","conversion","private"] as const)("protects the actual %s source without changing private file behavior",async kind=>{
   const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
   const version={id:versionId,resourceId,version:1,name:"Power",changeDescription:"Initial",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
-  const register=vi.fn(async(_operation:unknown,_id:string,_target:string)=>"server-mutation"),checkPending=vi.fn(async()=>false);
-  const client={upload:vi.fn(),apply:vi.fn(async(_projectId:string,_configSetId:string,_body:unknown)=>({requestId:"r",fileId:"f",fileVersionId:"v",configRevisionId:"rev"})),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
+  const register=vi.fn<(operation:RecoveredMemberOperation,registrationId:string,configSetId:string)=>Promise<string>>(async()=>"server-mutation"),checkPending=vi.fn(async()=>false);
+  const client={upload:vi.fn(),apply:vi.fn<ReturnType<typeof createCanonicalMemberAdditionClient>["apply"]>(async()=>({requestId:"r",fileId:"f",fileVersionId:"v",configRevisionId:"rev"})),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}))};
   render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"},{id:"set-b",name:"Other config"}]} initialConfigSetId="set" availableFiles={[{id:"private",projectId:"project",fileName:"private.dts",format:"dts",enabled:true,currentVersionId:"v1",updatedAt:""}]}
     conversionSource={kind==="conversion"?{configRevisionId:"rev",fileId:"private",fileVersionId:"v1",sourceName:"private.dts"}:undefined}
     client={client} sharedClient={{list:vi.fn(async()=>({items:[{resourceId,name:"Power",sourceName:"power.dtsi",draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1})),versions:vi.fn(async()=>({items:[version],total:1}))}}
