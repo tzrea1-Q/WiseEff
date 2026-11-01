@@ -98,7 +98,7 @@ export type MemberAdditionPreview = {
   sharedConversion?:import("../contracts/dtoSchemas/canonicalMemberAddition").MemberAdditionPreviewResponse["item"]["sharedConversion"];
   sharedRemoval?:Proof["sharedRemoval"];
   rootEdit?: Proof["rootEdit"];
-  diagnostics: Array<{ severity: "error" | "warning"; code: string; message: string }>;
+  diagnostics: Array<{ severity: "error" | "warning"; code: string; message: string; rawMessage?:string } & Partial<Omit<SharedSwitchConflict,"message">>>;
   impact: { parameterChanges: number; nodeAdditions: number; nodeRemovals: number; retainedBindings: number; sourceReplacements: number; restoredParameters?: number };
 };
 function conflict(message: string): never { throw new ApiError("CONFLICT", message, { reason: "configuration-addition-stale" }); }
@@ -271,6 +271,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     role: shared ? "include" : input.role, sortOrder: additionSortOrder+index, checksum: row.checksum, sizeBytes: row.sizeBytes })) : [])].sort((a, b) => a.sortOrder - b.sortOrder || a.fileId.localeCompare(b.fileId));
   if(conversion)afterMembers=members.map(({fileId,fileVersionId,sourceName,format,role,sortOrder,checksum,sizeBytes})=>({fileId,fileVersionId,sourceName,format,role,sortOrder,checksum,sizeBytes}));
   let rootEdit: Proof["rootEdit"];
+  let rootInsertion:{fileId:string;start:number;end:number}|undefined;
   if ((shared||removing) && !conversion) {
     const root = members.find(member => member.sourceName === revision.entry_file && member.role === "base" && member.format === "dts");
     if (!root) throw new ApiError("VALIDATION_FAILED", "请先提供真实项目根文件并解析配置，再添加共享引用。");
@@ -333,6 +334,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const after = includes?`${rootSource.slice(0, offset)}\n${includes}\n${rootSource.slice(offset)}`:rootSource;
     if (Buffer.byteLength(after) > MAX_PARAMETER_SOURCE_BYTES) throw new ApiError("VALIDATION_FAILED", "项目根文件加入引用后超过源码容量。");
     rootEdit = { fileId: root.fileId, baseFileVersionId: root.fileVersionId, sourceName: root.sourceName, before, after };
+    if(!recomposing&&includes)rootInsertion={fileId:root.fileId,start:offset,end:offset+after.length-before.length};
     contents.set(root.fileId, after);
     afterMembers = afterMembers.map(member => member.fileId === root.fileId ? { ...member,
       fileVersionId: `shared_root_${sourceRevisionDigest([root.fileVersionId, shared?.id??removing])}`, checksum: `sha256:${sourceRevisionDigest(Buffer.from(after))}`, sizeBytes: Buffer.byteLength(after) } : member);
@@ -365,21 +367,20 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const member=members.find(source=>source.sourceName===sourceName);
     const historical=beforeSources.find(source=>source.sourceName===sourceName);
     const historicalReference=currentReferences.find(reference=>reference.id===historical?.referenceId);
-    return {message,sourceName,...(offset===undefined?{}:{line:(contents.get(sharedSource?.fileId??member?.fileId??"")??"").slice(0,offset).split("\n").length}),
+    const inserted=member?.fileId===rootInsertion?.fileId&&offset!==undefined&&offset>=rootInsertion!.start&&offset<rootInsertion!.end;
+    const originalOffset=member?.fileId===rootInsertion?.fileId&&offset!==undefined&&offset>=rootInsertion!.end?offset-(rootInsertion!.end-rootInsertion!.start):offset;
+    const text=member?.fileId===rootInsertion?.fileId?rootEdit!.before:contents.get(sharedSource?.fileId??member?.fileId??"");
+    return {message,sourceName,...(originalOffset===undefined||inserted||text===undefined?{}:{line:text.slice(0,originalOffset).split("\n").length}),
       ...(node?{node}:{}),...(property?{property}:{}),...(identity?{identity:true}:{}),
       ...(sharedSource?{resourceId:sharedSource.resourceId,versionId:sharedResources.find(resource=>resource.resourceId===sharedSource.resourceId)!.versionId,memberId:sharedSource.memberId}
         :historical&&historicalReference?{resourceId:historicalReference.resourceId,versionId:historicalReference.versionId,memberId:historical.memberId}
-        :member?{fileId:member.fileId,fileVersionId:member.fileVersionId}:{})};
+        :member&&!inserted?{fileId:member.fileId,fileVersionId:member.fileVersionId}:{})};
   };
   const refuseSwitch=(error:unknown,locations:SharedSwitchConflict[]):never=>{
     if(recomposing && error instanceof ApiError)throw new ApiError(error.code,error.message,{...error.details,switchConflicts:locations});
-    if(error instanceof ApiError && Array.isArray(error.details.diagnostics)){
-      const diagnostics=error.details.diagnostics.map(item=>{
-        if(!item || typeof item!=="object" || !("message" in item))return item;
-        const location=locations.find(candidate=>candidate.message===item.message);
-        return location?{...item,...location}:item;
-      });
-      throw new ApiError(error.code,error.message,{...error.details,diagnostics});
+    if(error instanceof ApiError && locations.length && !Array.isArray(error.details.diagnostics)){
+      const code=typeof error.details.reason==="string"?error.details.reason:"source-conflict";
+      throw new ApiError(error.code,error.message,{...error.details,diagnostics:locations.map(location=>({...location,severity:"error",code}))});
     }
     throw error;
   };
@@ -399,8 +400,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       || !dts.some((row) => row.sourceName === entryFile && row.role === "base")) conflict("DTS 配置需要唯一可用的基础入口，请检查文件用途。");
     const files = new Map(dts.map((row) => [row.sourceName, { content: contents.get(row.fileId)!, fileVersionId: row.fileVersionId }]));
     resolved = await resolveDtsConfigSetAsync({ entryFile, includeSearchPaths, defines, overlayOrder, requireExactOrigins: true, files });
-    diagnostics.push(...resolved.diagnostics.map(({ severity, code, message, fileName }) => ({ severity, code,
-      message: input.setAsRoot||removing ? rootDiagnosticMessage(code, message, fileName) : message })));
+    diagnostics.push(...resolved.diagnostics.map(({ severity, code, message, fileName,offset }) => ({ ...switchSource(message,fileName,offset),severity,code,rawMessage:message,
+      message: rootDiagnosticMessage(code,message,input.setAsRoot||removing?fileName:undefined).replace(/^配置：/,"") })));
     if (diagnostics.some((row) => row.severity === "error" || /dangling|unresolved/.test(row.code))) {
       refuseSwitch(new ApiError("VALIDATION_FAILED", removing?"移除后仍有项目 include/overlay 使用该来源，请修正项目源码，再返回移除任务重新预览。":"配置包含未解决的 include/overlay 引用，请修正来源后重试。", { diagnostics }),
         resolved.diagnostics.filter(row=>row.severity==="error"||/dangling|unresolved/.test(row.code)).map(row=>switchSource(removing?rootDiagnosticMessage(row.code,row.message).replace(/^配置：/,""):row.message,row.fileName,row.offset)));
@@ -475,9 +476,11 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const files=new Map(dts.map(row=>[row.sourceName,{content:contents.get(row.fileId)!,fileVersionId:row.fileVersionId}]));
     const formerRootOverlayFiles = await loadFormerRootOverlayFiles(tx, input.configSetId, afterMembers, overlayOrder);
     const validated = await (toolchain ?? createDtsToolchainRunner()).validate({ entryFile, includeSearchPaths, defines, overlayOrder, files, formerRootOverlayFiles, preparedSources: resolved?.preprocessing }, { mode: "release" });
-    diagnostics.push(...validated.diagnostics.map((row) => ({ severity: row.severity, code: row.code ?? "toolchain",
-      message: input.setAsRoot ? rootDiagnosticMessage(row.code ?? "toolchain", row.message,
-        `${row.file}${row.line ? `，第 ${row.line} 行` : ""}`) : row.message })));
+    diagnostics.push(...validated.diagnostics.map((row) => {const source=sharedTargets.find(member=>member.sourceName===row.file)??members.find(member=>member.sourceName===row.file);
+      const text=source?contents.get(source.fileId):undefined,lines=text?.split("\n");
+      const offset=row.line&&lines&&row.line<=lines.length?lines.slice(0,row.line-1).reduce((sum,line)=>sum+line.length+1,0):undefined;
+      return { ...switchSource(row.message,row.file,offset),severity: row.severity, code: row.code ?? "toolchain",rawMessage:row.message,
+      message: rootDiagnosticMessage(row.code ?? "toolchain",row.message,input.setAsRoot?`${row.file}${row.line?`，第 ${row.line} 行`:""}`:undefined).replace(/^配置：/,"") };}));
     if (!validated.ok || validated.mode !== "release") refuseSwitch(new ApiError("VALIDATION_FAILED", "DTS 工具链未通过，当前组成未改变。", { diagnostics }),
       validated.diagnostics.map(row=>({...switchSource(row.message,row.file),...(row.line?{line:row.line}:{})})));
   }

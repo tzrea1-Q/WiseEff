@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "@/infrastructure/http/apiClient";
 import { SharedDtsiPage } from "./SharedDtsiPage";
+import { invalidateSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
 
 const resourceOne = "a0000000-0000-4000-8000-000000000001";
 const resourceTwo = "a0000000-0000-4000-8000-000000000002";
@@ -17,6 +18,34 @@ function clientFor(fetchImpl:typeof fetch){return createApiClient({baseUrl:"",fe
 }});}
 
 describe("shared DTSI project usage", () => {
+  it("restores only the same user's chosen source, target, reason and mount path after correction",async()=>{
+    sessionStorage.clear();const user=userEvent.setup(),navigate=vi.fn(),version={id:versionOne,resourceId:resourceOne,version:1,name:"公共电源",changeDescription:"首次",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
+    const row={projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:[]};
+    const fetchImpl=vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{const path=String(input);let body:unknown,status=200;
+      if(path.includes("/api/v1/member-addition-intents"))body={items:[],total:0};
+      else if(path.includes("/member-addition/intents"))body={item:{id:"d0000000-0000-4000-8000-000000000001",clientMutationId:"d0000000-0000-4000-8000-000000000002",projectId:"p1",projectName:"项目甲",configSetId:"c1",configSetName:"default",status:path.includes("/stop")||path.includes("/ack")?"stopped":"pending"}};
+      else if(path.includes("project-usages"))body={items:[row],total:1,visibility:"organization"};
+      else if(path.includes("/member-addition/preview"))body={item:{proofToken:"a".repeat(64),configSetId:"c1",fileName:"board.dts",format:"dts",members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}}};
+      else if(path.includes("/member-addition/apply")){status=400;body={error:{code:"VALIDATION_FAILED",message:"源码有误",details:{diagnostics:[{severity:"error",code:"unresolved",message:"缺少引用",sourceName:"board.dts",line:4,fileId:"file-a"}]}}};}
+      else if(path.includes("/detail"))body={item:{resourceId:resourceOne,name:"公共电源",updatedAt:"today",state:"active",lifecycleRevision:1,draftRevision:null,currentVersion:version}};
+      else if(path.includes(`/versions/${versionOne}`))body={item:{...version,members:[{id:versionTwo,sourceName:"power.dtsi",content:"/ {};",checksum:"fixed",sizeBytes:5}],manifest:{schemaVersion:"shared-dtsi/v1",members:[{id:versionTwo,sourceName:"power.dtsi",checksum:"fixed",sizeBytes:5,role:"include"}],externalReferences:[]}}};
+      else if(path.includes("/versions"))body={items:[version],total:1};
+      else body={items:[{resourceId:resourceOne,name:"公共电源",sourceName:"power.dtsi",updatedAt:"today",draftRevision:null,currentVersion:version}],total:1};
+      return new Response(JSON.stringify(body),{status});});
+    const api=createApiClient({baseUrl:"",fetchImpl}),props={apiClient:api,canWrite:true,organizationId:"org-a",onNavigate:navigate};
+    const view=render(<SharedDtsiPage {...props} currentUserId="user-a" search="?view=projects"/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
+    await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(screen.getByRole("option",{name:"公共电源"}));await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(screen.getByRole("option",{name:"版本 1 · 首次"}));
+    await user.click(screen.getByText("挂载目录（按需）"));await user.type(screen.getByLabelText("项目挂载目录"),"lib/shared");await user.click(screen.getByRole("button",{name:"预览加入配置"}));
+    await user.type(await screen.findByLabelText("加入原因"),"保留操作原因");await user.click(screen.getByRole("button",{name:"确认加入配置"}));await user.click(await screen.findByRole("button",{name:"修正项目源码"}));
+    const project=new URL(navigate.mock.calls.at(-1)![0],"http://localhost"),returned=new URL(project.searchParams.get("returnTo")!,"http://localhost").search;
+    expect(Object.values(sessionStorage).some(value=>value.includes("保留操作原因")||value.includes("a".repeat(64)))).toBe(false);
+    view.unmount();const other=render(<SharedDtsiPage {...props} currentUserId="user-b" search={returned}/>);
+    await user.click(await screen.findByRole("button",{name:"引用到此配置"}));await user.click(screen.getByText("挂载目录（按需）"));expect(screen.getByLabelText("项目挂载目录")).toHaveValue("");other.unmount();
+    const restored=render(<SharedDtsiPage {...props} currentUserId="user-a" search={returned}/>);await user.click(await screen.findByRole("button",{name:"引用到此配置"}));
+    await user.click(screen.getByText("挂载目录（按需）"));expect(screen.getByLabelText("项目挂载目录")).toHaveValue("lib/shared");await user.click(screen.getByRole("button",{name:"预览加入配置"}));expect(await screen.findByLabelText("加入原因")).toHaveValue("保留操作原因");
+    restored.unmount();invalidateSharedOperationSession();render(<SharedDtsiPage {...props} currentUserId="user-a" search={returned}/>);await user.click(await screen.findByRole("button",{name:"引用到此配置"}));await user.click(screen.getByText("挂载目录（按需）"));expect(screen.getByLabelText("项目挂载目录")).toHaveValue("");
+  });
   it("preserves the chosen project and source when an addition diagnostic opens project correction",async()=>{
     const user=userEvent.setup(),navigate=vi.fn(),version={id:versionOne,resourceId:resourceOne,version:1,name:"公共电源",changeDescription:"首次",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
     const fetchImpl=vi.fn(async(input:string|URL|Request)=>{const path=String(input);

@@ -2,7 +2,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import type { Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
@@ -16,6 +16,7 @@ import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { createLocalObjectStore, type ObjectStore } from "../logs/objectStore";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
+import * as catalogValueSync from "../parameter-bindings/catalogProjectValueSync";
 import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
 import { registerParameterTopologyRoutes } from "../parameter-topology/routes";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
@@ -29,7 +30,8 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import { getAuthContext } from "../auth/repository";
 import type { SourceRevisionPreview } from "./sourceRevisionService";
 import type { TopologyTree } from "../../../src/domain/parameter-topology/types";
-import { createDtsToolchainRunner } from "./dtsToolchain";
+import { createDtsToolchainRunner, type DtsToolchainRunner } from "./dtsToolchain";
+import { previewCanonicalMemberAddition } from "./canonicalMemberAddition";
 import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
 import { sharedDtsiProjectUsagesSchema } from "../contracts/dtoSchemas/sharedDtsi";
 
@@ -117,7 +119,65 @@ describe("fixed shared references through the real API role", () => {
     const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"unresolved-addition-location"});expect(version.status,version.bodyText).toBe(201);
     const result=await post<{error:{details:{diagnostics:Array<{message:string;sourceName?:string;resourceId?:string;versionId?:string;line?:number}>}}}>(`/api/v1/projects/${A}/config-sets/${sets[A]}/member-addition/preview`,{sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:1});
     expect(result.status,result.bodyText).toBe(400);
-    expect(result.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({sourceName:"external.dtsi",resourceId,versionId:version.body.item.id,line:1})]));
+    expect(result.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({sourceName:"external.dtsi",resourceId,versionId:version.body.item.id,line:1,message:"找不到覆盖目标节点（&not_in_project）。",rawMessage:expect.stringContaining("Overlay target")})]));
+  });
+
+  it("reports the real source when a catalog identity disagreement blocks addition",async()=>{
+    const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Identity conflict",sourceName:"identity.dtsi",content:'/ { unrelated {}; };',changeDescription:"Conflicting identity"});
+    expect(draft.status,draft.bodyText).toBe(201);const resourceId=draft.body.item.resourceId;
+    const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});expect(preview.status,preview.bodyText).toBe(201);
+    const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"identity-conflict-addition"});expect(version.status,version.bodyText).toBe(201);
+    const original=catalogValueSync.resolveObservedSubject;
+    const lookup=vi.spyOn(catalogValueSync,"resolveObservedSubject").mockImplementation((snapshot,input)=>input.nodeName==="charger"?{subjectId:"other-subject",subjectKind:"driver"}:original(snapshot,input));
+    try{const result=await post(`/api/v1/projects/${A}/config-sets/${sets[A]}/member-addition/preview`,{sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:2});
+      expect(result.status,result.bodyText).toBe(409);expect(result.body).toMatchObject({error:{details:{reason:"shared-version-identity",diagnostics:expect.arrayContaining([expect.objectContaining({fileId:privateRoots[A]!.fileId,sourceName:"board.dts",node:"/charger",property:"compatible",identity:true})])}}});
+    }finally{lookup.mockRestore();}
+  });
+
+  it("maps a diagnostic after an inserted include back to the original project root",async()=>{
+    const project="diagnostic-root-project",root='/dts-v1/;\n/ {\n  x { flag = <1>; };\n};\n';
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Root diagnostic','ROOT-DIAG','initialized')",[project,ORG]);
+    const configSetId=(await createConfigSet(db,admin,{projectId:project,name:"Root diagnostic"})).id;
+    const rootFile=await uploadProjectParameterFile(db,storage,admin,{projectId:project,fileName:"board.dts",bytes:Buffer.from(root)});
+    await addConfigSetFile(db,admin,{configSetId,fileId:rootFile.file.id,role:"base",sortOrder:0});
+    await ingestConfigRevision(db,{organizationId:ORG,projectId:project,configSetId,entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],members:[
+      {fileId:rootFile.file.id,fileVersionId:rootFile.version.id,fileName:"board.dts",role:"base",sortOrder:0,content:root}]},admin);
+    const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Diagnostic source",sourceName:"shared.dtsi",content:'/ { shared_node {}; };',changeDescription:"Diagnostic source"});
+    expect(draft.status,draft.bodyText).toBe(201);const resourceId=draft.body.item.resourceId;
+    const preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});expect(preview.status,preview.bodyText).toBe(201);
+    const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"root-diagnostic-source"});expect(version.status,version.bodyText).toBe(201);
+    const toolchain:DtsToolchainRunner={probe:async()=>({dtc:{path:null,version:null},fdtoverlay:{path:null,version:null},dtschema:{path:null,version:null}}),validate:async()=>({ok:false,mode:"release",compiler:{dtc:null,fdtoverlay:null,dtschema:null},artifacts:{},diagnostics:[
+      {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:1},
+      {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:2},
+      {severity:"error",code:"same",message:"Same diagnostic",file:"board.dts",line:5},
+      {severity:"error",code:"same",message:"Same diagnostic",file:"shared.dtsi",line:1}]})};
+    const security={invocation:createUserInvocation(admin),requestId:"root-diagnostic",refusalSink:createTrustedRefusalAuditSink(db)};
+    const failure=await previewCanonicalMemberAddition(api,storage,admin,{projectId:project,configSetId,sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:1},security,{toolchain}).catch(error=>error);
+    const errors=failure.details.diagnostics as Array<{sourceName:string;fileId?:string;resourceId?:string;line?:number}>;
+    expect(errors).toHaveLength(4);expect(errors[0]).toMatchObject({sourceName:"board.dts",fileId:rootFile.file.id,line:1});
+    expect(errors[1]).toMatchObject({sourceName:"board.dts"});expect(errors[1]!.fileId).toBeUndefined();expect(errors[1]!.line).toBeUndefined();
+    expect(errors[2]).toMatchObject({sourceName:"board.dts",fileId:rootFile.file.id,line:3});expect(errors[3]).toMatchObject({sourceName:"shared.dtsi",resourceId,line:1});
+  });
+
+  it("reports the original root line when a shared overlay invalidates a later project overlay",async()=>{
+    const project="diagnostic-overlay-project",root='/dts-v1/;\n/include/ "base.dtsi"\n/ { model = "Overlay diagnostic"; };\n&x { flag = <1>; };\n',base='/ { x: x { flag = <0>; }; };';
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Overlay diagnostic','OVERLAY-DIAG','initialized')",[project,ORG]);
+    const configSetId=(await createConfigSet(db,admin,{projectId:project,name:"Overlay diagnostic"})).id;
+    const file=await uploadProjectParameterFile(db,storage,admin,{projectId:project,fileName:"board.dts",bytes:Buffer.from(root)}),baseFile=await uploadProjectParameterFile(db,storage,admin,{projectId:project,fileName:"base.dtsi",bytes:Buffer.from(base)});
+    await addConfigSetFile(db,admin,{configSetId,fileId:file.file.id,role:"base",sortOrder:0});await addConfigSetFile(db,admin,{configSetId,fileId:baseFile.file.id,role:"misc",sortOrder:1});
+    const revision=await ingestConfigRevision(db,{organizationId:ORG,projectId:project,configSetId,entryFile:"board.dts",includeSearchPaths:["."],overlayOrder:[],members:[{fileId:file.file.id,fileVersionId:file.version.id,fileName:"board.dts",role:"base",sortOrder:0,content:root},{fileId:baseFile.file.id,fileVersionId:baseFile.version.id,fileName:"base.dtsi",role:"include",sortOrder:1,content:base}]},admin);
+    const imported=await post<{item:{resourceId:string;revision:number;name:string;members:Array<{id:string;sourceName:string;content:string}>;buildInputs:unknown;dependencies:unknown}}>(`/api/v2/projects/${project}/config-sets/${configSetId}/shared-dtsi`,{name:"Existing overlay base",configRevisionId:revision.id,fileId:baseFile.file.id,fileVersionId:baseFile.version.id});expect(imported.status,imported.bodyText).toBe(201);
+    const importedId=imported.body.item.resourceId,save=await requestJson<{item:{revision:number}}>(server(),`/api/v2/shared-dtsi/${importedId}/draft`,{method:"PUT",body:JSON.stringify({name:imported.body.item.name,members:imported.body.item.members,buildInputs:imported.body.item.buildInputs,dependencies:imported.body.item.dependencies,changeDescription:"Shared base",expectedRevision:imported.body.item.revision})});expect(save.status,save.bodyText).toBe(200);
+    const basePreview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${importedId}/publication-preview`,{expectedRevision:save.body.item.revision});expect(basePreview.status,basePreview.bodyText).toBe(201);
+    const baseVersion=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${importedId}/publications`,{previewId:basePreview.body.item.id,idempotencyKey:"overlay-base-publication"});expect(baseVersion.status,baseVersion.bodyText).toBe(201);
+    const conversion={sharedReference:{resourceId:importedId,versionId:baseVersion.body.item.id,convertPrivate:{configRevisionId:revision.id,fileId:baseFile.file.id,fileVersionId:baseFile.version.id}},role:"misc",sortOrder:1};
+    const convertPreview=await post<Preview>(`/api/v1/projects/${project}/config-sets/${configSetId}/member-addition/preview`,conversion);expect(convertPreview.status,convertPreview.bodyText).toBe(200);
+    const converted=await post(`/api/v1/projects/${project}/config-sets/${configSetId}/member-addition/apply`,{...conversion,proofToken:convertPreview.body.item.proofToken,reason:"Prepare shared base",clientMutationId:"overlay-base-conversion"});expect(converted.status,converted.bodyText).toBe(200);
+    const draft=await post<{item:{resourceId:string}}>("/api/v2/shared-dtsi",{name:"Delete overlay target",sourceName:"delete.dtsi",content:'/ { /delete-node/ x; };',changeDescription:"Remove overlay target"});expect(draft.status,draft.bodyText).toBe(201);
+    const resourceId=draft.body.item.resourceId,preview=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publication-preview`,{expectedRevision:1});expect(preview.status,preview.bodyText).toBe(201);
+    const version=await post<{item:{id:string}}>(`/api/v2/shared-dtsi/${resourceId}/publications`,{previewId:preview.body.item.id,idempotencyKey:"overlay-location"});expect(version.status,version.bodyText).toBe(201);
+    const result=await post<{error:{details:{diagnostics:Array<{sourceName?:string;fileId?:string;line?:number}>}}}>(`/api/v1/projects/${project}/config-sets/${configSetId}/member-addition/preview`,{sharedReference:{resourceId,versionId:version.body.item.id},role:"misc",sortOrder:1});
+    expect(result.status,result.bodyText).toBe(400);expect(result.body.error.details.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({sourceName:"board.dts",fileId:file.file.id,line:4})]));
   });
 
   it("distinguishes a missing project root from changed source composition",async()=>{

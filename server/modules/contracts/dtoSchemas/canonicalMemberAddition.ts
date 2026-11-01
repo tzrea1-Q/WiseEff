@@ -18,7 +18,7 @@ export const sharedSwitchConflictSchema=z.object({
   identity:z.boolean().optional(),projectCorrection:z.boolean().optional()
 });
 export type SharedSwitchConflict=z.infer<typeof sharedSwitchConflictSchema>;
-export const memberAdditionDiagnosticSchema=sharedSwitchConflictSchema.partial().extend({severity:z.enum(["error","warning"]),code:z.string(),message:z.string()});
+export const memberAdditionDiagnosticSchema=sharedSwitchConflictSchema.partial().extend({severity:z.enum(["error","warning"]),code:z.string(),message:z.string(),rawMessage:z.string().optional()});
 
 const additionFields = {
   candidateId: z.string().min(1).optional(), fileId: z.string().min(1).optional(),

@@ -80598,6 +80598,9 @@
                     },
                     "code": {
                       "type": "string"
+                    },
+                    "rawMessage": {
+                      "type": "string"
                     }
                   },
                   "required": [

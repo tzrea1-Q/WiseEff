@@ -12,12 +12,15 @@ import { SharedMemberPendingOperations } from "@/components/project-configuratio
 import { createMemberAdditionIntentClient, type MemberAdditionIntent } from "@/infrastructure/http/memberAdditionIntentClient";
 import { createCanonicalMemberAdditionClient } from "@/infrastructure/http/canonicalMemberAdditionClient";
 import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
+import { currentSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
 import type { SharedSwitchConflict } from "@wiseeff/dto-schemas";
 import { ArrowLeft } from "lucide-react";
 
 type Result=SharedDtsiProjectUsages;
 type Row=Result["items"][number];
 type Action={kind:"switch"|"remove";reference:Row["references"][number]};
+// Correction returns through other routes; keep user input only in memory, never the proof or mutation identity.
+const additionDrafts=new Map<string,{reason:string;mountPath:string}>();
 
 export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,canWrite,search,onNavigate,header}:{
   apiClient:ApiClient;organizationId?:string;currentUserId?:string;canWrite:boolean;search:string;onNavigate:(path:string)=>void;header:ReactNode;
@@ -26,7 +29,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
     status=requestedStatus==="referenced"||requestedStatus==="unreferenced"?requestedStatus:"all";
   const pageValue=Number(params.get("usagePage")??"1"),page=Number.isSafeInteger(pageValue)&&pageValue>0&&pageValue<=5001?pageValue:1;
   const [reload,setReload]=useState(0);
-  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;instance:string;organizationId?:string;currentUserId?:string;action?:Action}|null>(null);
+  const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;instance:string;organizationId?:string;currentUserId?:string;action?:Action;additionDraft?:{reason:string;mountPath:string}}|null>(null);
   const [appliedNotice,setAppliedNotice]=useState("");
   const [uncertainNotice,setUncertainNotice]=useState(false);
   const [unavailableTargets,setUnavailableTargets]=useState<Set<string>>(()=>new Set());
@@ -66,6 +69,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
   selectionInstance.current=selection?.instance??null;
   const current=loaded?.key===key&&loaded.client===apiClient&&loaded.canWrite===canWrite?loaded:null;
   const targetKey=(row:Row)=>JSON.stringify([organizationId,currentUserId,row.projectId,row.configSetId]);
+  const additionDraftKey=(row:Row,resourceId:string,versionId:string)=>JSON.stringify([currentSharedOperationSession(),organizationId,currentUserId,row.projectId,row.configSetId,resourceId,versionId]);
   const openConfiguration=async(row:Row,element:HTMLElement)=>{
     if(!intentClient||!currentUserId||!row.configSetId||openingRef.current)return;
     const target=targetKey(row);openingRef.current=true;setOpening(target);setRecheckError("");
@@ -75,7 +79,8 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
       if(source){const updated=await readTarget(row);if(activeScope.current!==scope)return;if(!updated||!updated.canConfigure||!updated.configurationReady)throw new Error("目标配置不可用");targetRow=updated;}
       const existing=source?targetRow.references.find(ref=>ref.resourceId===source.resourceId):undefined;
       if(existing&&(!existing.direct||existing.versionId===source?.versionId)){setReload(value=>value+1);return;}
-      setPendingFocus(undefined);trigger.current=element;setAppliedNotice("");setUncertainNotice(false);setSelected({row:targetRow,adding:Boolean(source),scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID(),...(source&&existing?{action:{kind:"switch" as const,reference:existing}}:{})});
+      const additionDraft=source&&!existing?additionDrafts.get(additionDraftKey(targetRow,source.resourceId,source.versionId)):undefined;
+      setPendingFocus(undefined);trigger.current=element;setAppliedNotice("");setUncertainNotice(false);setSelected({row:targetRow,adding:Boolean(source),scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID(),...(additionDraft?{additionDraft}:{}),...(source&&existing?{action:{kind:"switch" as const,reference:existing}}:{})});
     }catch{if(activeScope.current===scope)setRecheckError(source?"无法核对目标配置或权限，请稍后重试。":"无法核对待处理操作，请稍后重试。");}
     finally{if(activeScope.current===scope){openingRef.current=false;setOpening(null);}}
   };
@@ -154,12 +159,13 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
     if(row.configSetId){target.set("configSet",row.configSetId);target.set("tab",row.configurationReady?"effective":"source");}
     return `/parameter-admin/projects/${encodeURIComponent(row.projectId)}/configuration?${target}`;
   };
-  const recoverReference=(location:SharedSwitchConflict,draft:{resourceId?:string;versionId:string;reason:string})=>{
+  const recoverReference=(location:SharedSwitchConflict,draft:{resourceId?:string;versionId:string;reason:string;mountPath?:string})=>{
     if(!selection?.row.configSetId || !currentUserId || !organizationId)throw new Error("无法确定项目上下文，请返回工作台后重试。");
     const {row,action}=selection;
     const configSetId=row.configSetId!;
     if(!action){
       if(!draft.resourceId||!draft.versionId)throw new Error("无法确定所选资源版本，请返回列表重新选择。");
+      additionDrafts.set(additionDraftKey(row,draft.resourceId,draft.versionId),{reason:draft.reason,mountPath:draft.mountPath??""});
       const resume=new URLSearchParams(search);resume.set("view","projects");resume.set("referenceResource",draft.resourceId);resume.set("referenceVersion",draft.versionId);
       resume.set("referenceTargetProject",row.projectId);resume.set("referenceTargetConfig",configSetId);
       if(!referenceResource)resume.set("referenceReturn",usageReturn);
@@ -167,7 +173,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
       if(location.fileId&&!location.resourceId)next.set("file",location.fileId);
       if(location.node)next.set("node",location.node);if(location.property)next.set("property",location.property);if(location.line)next.set("line",String(location.line));
       const project=`/parameter-admin/projects/${encodeURIComponent(row.projectId)}/configuration?${next}`;
-      if(location.resourceId&&location.versionId){const shared=new URLSearchParams({organization:organizationId,resource:location.resourceId,version:location.versionId,projectContext:project});
+      if(location.resourceId&&location.versionId){const shared=new URLSearchParams({organization:organizationId,resource:location.resourceId,version:location.versionId,tab:location.identity?"recognition":"source",projectContext:project});
         if(location.memberId)shared.set("member",location.memberId);if(location.line)shared.set("line",String(location.line));onNavigate(`/parameter-admin/sources?${shared}`);
       }else onNavigate(project);
       return;
@@ -250,6 +256,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
       configSets={[{id:selection.row.configSetId,name:selection.row.configSetName??""}]} initialConfigSetId={selection.row.configSetId} availableFiles={[]}
       client={additionClient} sharedClient={sharedClient} sharedOnly existingReferences={selection.row.references} targetProjectName={selection.row.projectName}
       initialSharedSource={source} switchDraft={source&&selection.action?.kind==="switch"?{versionId:source.versionId,reason:""}:undefined}
+      initialAdditionDraft={selection.additionDraft}
       canContinueOperation={()=>selectionInstance.current===selection.instance}
       switchReference={selection.action?.kind==="switch"?selection.action.reference:undefined}
       removeReference={selection.action?.kind==="remove"?selection.action.reference:undefined}
@@ -258,7 +265,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
       onOperationResolved={()=>{const done=intent.current;if(done&&intentClient&&selectionInstance.current===selection.instance)void intentClient.acknowledge(done).catch(()=>{}).finally(()=>setIntentRefresh(value=>value+1));}}
       onDefinitiveRejection={async()=>{const current=intent.current;if(!current||!intentClient||selectionInstance.current!==selection.instance)throw new Error("Missing operation");const stopped=await intentClient.stop(current);if(selectionInstance.current!==selection.instance||stopped.status==="pending")throw new Error("Unconfirmed operation");if(stopped.status==="stopped")await intentClient.acknowledge(stopped);setIntentRefresh(value=>value+1);return stopped.status;}}
       refreshExistingReferences={()=>refreshTarget(selection.row,selection.instance)}
-      onDismiss={()=>{if(referenceMode||pendingFocus||unavailableTargets.has(targetKey(selection.row)))close();else setSelected({...selection,adding:false,action:undefined});}} onUncertainDismiss={()=>{setUncertainNotice(true);close();setIntentRefresh(value=>value+1);setReload(value=>value+1);}}
-      onApplied={()=>{if(selectionInstance.current!==selection.instance)return;setAppliedNotice(selection.action?.kind==="remove"?"已移除资源包引用。":selection.action?.kind==="switch"?"已切换资源包版本。":"资源包已加入配置。");close();setReload(value=>value+1);}} />:null}
+      onDismiss={()=>{if(source)additionDrafts.delete(additionDraftKey(selection.row,source.resourceId,source.versionId));if(referenceMode||pendingFocus||unavailableTargets.has(targetKey(selection.row)))close();else setSelected({...selection,adding:false,action:undefined});}} onUncertainDismiss={()=>{setUncertainNotice(true);close();setIntentRefresh(value=>value+1);setReload(value=>value+1);}}
+      onApplied={()=>{if(selectionInstance.current!==selection.instance)return;if(source)additionDrafts.delete(additionDraftKey(selection.row,source.resourceId,source.versionId));setAppliedNotice(selection.action?.kind==="remove"?"已移除资源包引用。":selection.action?.kind==="switch"?"已切换资源包版本。":"资源包已加入配置。");close();setReload(value=>value+1);}} />:null}
   </div>;
 }

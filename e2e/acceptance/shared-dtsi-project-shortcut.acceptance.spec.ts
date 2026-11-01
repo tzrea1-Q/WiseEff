@@ -58,6 +58,8 @@ test("references exact published versions from the resource list and historical 
   const blocked=page.getByRole("row").filter({hasText:name});await blocked.getByRole("button",{name:"引用到此配置"}).click();
   const diagnostic=page.getByRole("dialog",{name:"添加资源包"});await diagnostic.getByRole("button",{name:"预览加入配置"}).click();
   await expect(diagnostic.getByText("external.dtsi:1",{exact:true})).toBeVisible();
+  await expect(diagnostic.getByText("找不到覆盖目标节点（&not_in_project）。",{exact:true})).toBeVisible();
+  await expect(diagnostic.getByText(/Overlay target/)).toBeHidden();await diagnostic.getByText("查看原始诊断",{exact:true}).click();await expect(diagnostic.getByText(/Overlay target/)).toBeVisible();await diagnostic.getByText("查看原始诊断",{exact:true}).click();
   for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){await page.setViewportSize(viewport);await expect(diagnostic.getByRole("button",{name:"核对共享来源"})).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath(`shortcut-diagnostic-${viewport.width}.png`),fullPage:true});}
   await diagnostic.getByRole("button",{name:"核对共享来源"}).click();
   expect(new URL(page.url()).searchParams.get("version")).toBe(unresolvedVersion.id);
@@ -65,5 +67,19 @@ test("references exact published versions from the resource list and historical 
   await page.getByRole("link",{name:"返回项目节点"}).click();await page.getByRole("button",{name:"项目使用",exact:true}).click();
   await expect(page.getByText("资源包：缺少外部标签的资源 · v1",{exact:true})).toBeVisible();
   await expect(page.getByRole("row").filter({hasText:name}).getByText("上次选择的配置")).toBeVisible();
+  const createPublished=async(resourceName:string,fileName:string,content:string,key:string)=>{const source=await post("/api/v2/shared-dtsi",{name:resourceName,sourceName:fileName,content,changeDescription:"Recovery test"});const preview=await post(`/api/v2/shared-dtsi/${source.resourceId}/publication-preview`,{expectedRevision:source.revision});const version=await post(`/api/v2/shared-dtsi/${source.resourceId}/publications`,{previewId:preview.id,idempotencyKey:key});return {resourceId:source.resourceId,versionId:version.id};};
+  const recoverable=await createPublished("恢复草稿资源","recovery.dtsi",'/ { recovery_node {}; };',"shortcut-recovery"),concurrent=await createPublished("并发配置资源","concurrent.dtsi",'/ { concurrent_node {}; };',"shortcut-concurrent");
+  await page.goto(catalogAppUrl(`/parameter-admin/sources?resource=${recoverable.resourceId}&version=${recoverable.versionId}`));await page.getByRole("button",{name:"引用到项目",exact:true}).click();
+  await page.getByRole("row").filter({hasText:name}).getByRole("button",{name:"引用到此配置"}).click();
+  const recoveryDialog=page.getByRole("dialog",{name:"添加资源包"});await recoveryDialog.getByText("挂载目录（按需）").click();await recoveryDialog.getByLabel("项目挂载目录").fill("lib/recovery");
+  await recoveryDialog.getByRole("button",{name:"预览加入配置"}).click();await recoveryDialog.getByLabel("加入原因").fill("保留原因以修正项目来源");
+  const concurrentInput={sharedReference:concurrent,role:"misc",sortOrder:10};
+  const concurrentPreview=await post(`/api/v1/projects/${id}/config-sets/${config.configSetId}/member-addition/preview`,concurrentInput);
+  await post(`/api/v1/projects/${id}/config-sets/${config.configSetId}/member-addition/apply`,{...concurrentInput,proofToken:concurrentPreview.proofToken,reason:"Concurrent test",clientMutationId:"shortcut-concurrent-apply"});
+  await recoveryDialog.getByRole("button",{name:"确认加入配置"}).click();await recoveryDialog.getByRole("button",{name:"前往项目工作台处理"}).click();
+  expect(await page.evaluate(()=>Object.values(sessionStorage).some(value=>value.includes("保留原因以修正项目来源")))).toBe(false);
+  await page.getByRole("button",{name:"项目使用",exact:true}).click();await expect(page.getByText("资源包：恢复草稿资源 · v1",{exact:true})).toBeVisible();
+  await page.getByRole("row").filter({hasText:name}).getByRole("button",{name:"引用到此配置"}).click();const resumed=page.getByRole("dialog",{name:"添加资源包"});
+  await resumed.getByText("挂载目录（按需）").click();await expect(resumed.getByLabel("项目挂载目录")).toHaveValue("lib/recovery");await resumed.getByRole("button",{name:"预览加入配置"}).click();await expect(resumed.getByLabel("加入原因")).toHaveValue("保留原因以修正项目来源");
   expect(first.id).not.toBe(second.id);
 });
