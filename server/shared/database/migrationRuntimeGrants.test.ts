@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 function missingRuntimeGrants(sql: string): string[] {
@@ -36,6 +37,9 @@ function missingRuntimeGrants(sql: string): string[] {
       // Intent identities are retained fences: API writers may update only
       // state columns; deletion is reserved for the migration owner.
       if (table === "member_addition_intents") {
+        // 0318 also rewrites erasure functions through dynamic SQL. Accept only
+        // the reviewed immutable migration so another dynamic grant cannot hide.
+        if (createHash("sha256").update(sql).digest("hex") !== "836c0cb67545bcad14aaf7c42376e3261d3e385d767d4499a1eb89a509f6098f") return false;
         const afterCreate = uncommented.slice(create.index! + create[0].length).replace(/\s+|"/g, "").toLowerCase();
         const grants = [...afterCreate.matchAll(/grant[^;]*on(?:table)?[^;]*member_addition_intents[^;]*;/g)].map(([grant]) => grant);
         const expected = "declarerole_nametext;beginforrole_nameinselectrolnamefrompg_roleswherenotrolsuperandhas_table_privilege(oid,'public.users','update')andpg_has_role(oid,'catalog_publication_coordinator_role','member')loopexecuteformat('grantselect,insert,update(status,acknowledged,stop_audit_id,ack_audit_id)onpublic.member_addition_intentsto%i',role_name);executeformat('revokedeleteonpublic.member_addition_intentsfrom%i',role_name);endloop;end";
@@ -383,6 +387,10 @@ describe("public table runtime grants (0185 onward)", () => {
       sql + "\ngrant update(mutation_id) on public.member_addition_intents to public;",
       sql + "\ngrant delete on public.users, public.member_addition_intents to public;",
       sql + "\ngrant all on all tables in schema public to public;",
+      sql + `\ndo $$ declare target text := 'member_addition_intents'; begin
+        execute format('grant delete on public.%I to public', target); end $$;`,
+      sql + `\ndo $$ declare relation_name text := 'member_addition_intents'; begin
+        execute format('grant delete on public.%I to public', relation_name); end $$;`,
       "-- runtime-acl: owner-only member_addition_intents exception\n" + sql,
       "-- runtime-acl: owner-only member_addition_intents exception\n" + sql.replace("revoke delete", "revoke insert"),
       sql.replace("revoke delete", "revoke insert") + `\ndo $$ begin
