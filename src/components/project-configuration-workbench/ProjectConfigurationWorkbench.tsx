@@ -2270,6 +2270,7 @@ export function ProjectConfigurationWorkbench({
         switchReference={activeSwitchTask?.operation==="remove"?undefined:activeSwitchTask?.reference??switchSharedMember?.sharedReference}
         removeReference={activeSwitchTask?.operation==="remove"?activeSwitchTask.reference:undefined}
         conversionSource={conversionSource}
+        preserveUncertain={Boolean(activeSwitchTask)} onUncertainDismiss={()=>{dismissSwitchTask();workspaceLoadSession.retryFiles();workspaceLoadSession.retryMembers();workspaceLoadSession.retrySource();workspaceLoadSession.retryStructure();toast({tone:"danger",message:"应用结果尚未确认，请核对项目配置后再操作。"});}}
         switchDraft={activeSwitchTask?.draft} onSwitchDraftChange={updateSwitchDraft} onRecoverSwitch={recoverSwitch}
         projectRoot={selectedMembers.find(member=>member.role==="base")?{fileId:selectedMembers.find(member=>member.role==="base")!.fileId,sourceName:selectedMembers.find(member=>member.role==="base")!.fileName}:undefined}
         catalogRepository={memberRemovalRepository} fileRepository={fileRepository}

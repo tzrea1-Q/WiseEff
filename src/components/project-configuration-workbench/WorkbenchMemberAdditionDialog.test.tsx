@@ -9,6 +9,18 @@ import { jsonLeafPaths } from "@/application/project-configuration/jsonRegistrat
 
 afterEach(cleanup);
 
+it("describes the actual shared-resource action and retains its target context",()=>{
+  const resourceId="11111111-1111-4111-8111-111111111111",versionId="22222222-2222-4222-8222-222222222222";
+  const props={projectId:"project",targetProjectName:"项目甲",configSets:[{id:"set",name:"default"}],initialConfigSetId:"set",availableFiles:[],sharedOnly:true,
+    sharedClient:{list:vi.fn(async()=>({items:[],total:0})),versions:vi.fn(async()=>({items:[],total:0}))},onDismiss:vi.fn(),onApplied:vi.fn()};
+  const view=render(<WorkbenchMemberAdditionDialog {...props}/>);
+  expect(screen.getByRole("dialog",{name:"添加资源包"})).toHaveTextContent("项目甲 · 默认配置：选择已发布资源和固定版本。");
+  view.rerender(<WorkbenchMemberAdditionDialog {...props} switchReference={{resourceId,versionId,version:1}}/>);
+  expect(screen.getByRole("dialog",{name:"切换共享版本"})).toHaveTextContent("项目甲 · 默认配置：预览版本切换，确认后保留项目覆盖。");
+  view.rerender(<WorkbenchMemberAdditionDialog {...props} removeReference={{resourceId,versionId,version:1}}/>);
+  expect(screen.getByRole("dialog",{name:"移除共享引用"})).toHaveTextContent("项目甲 · 默认配置：预览移除影响，确认后解除引用。");
+});
+
 it("explains and disables existing direct and indirect packages in the shared chooser",async()=>{
   const user=userEvent.setup(),direct="11111111-1111-4111-8111-111111111111",indirect="22222222-2222-4222-8222-222222222222",versionId="33333333-3333-4333-8333-333333333333";
   const make=(resourceId:string,name:string)=>({resourceId,name,sourceName:"source.dtsi",draftRevision:null,state:"active" as const,lifecycleRevision:1,updatedAt:"today",currentVersion:{id:versionId,resourceId,version:1,name,changeDescription:"First",digest:"fixed",createdAt:"today",createdByUserId:"admin"}});
@@ -209,6 +221,22 @@ it("keeps the original operation identity when a shared version switch has an un
   await user.click(screen.getByRole("button",{name:"重试同一操作"}));expect(await screen.findByRole("alert")).toHaveTextContent("结果尚未确认");
   expect(client.apply.mock.calls[0]).toEqual(client.apply.mock.calls[1]);expect(screen.queryByRole("button",{name:"取消版本切换"})).not.toBeInTheDocument();
   await user.click(screen.getByRole("button",{name:"返回列表核对"}));expect(onUncertainDismiss).toHaveBeenCalledOnce();expect(onDismiss).not.toHaveBeenCalled();
+});
+
+it("retains proof and identity when a resumed workbench switch has an uncertain result",async()=>{
+  const user=userEvent.setup(),resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",next="33333333-3333-4333-8333-333333333333";
+  const version={id:next,resourceId,version:2,name:"Limits",changeDescription:"Next",digest:"fixed",createdAt:"today",createdByUserId:"author"};
+  const client={upload:vi.fn(),preview:vi.fn(async()=>({proofToken:"a".repeat(64),configSetId:"set",fileName:"board.dts",format:"dts" as const,members:[],entryFile:"board.dts",includeSearchPaths:[],overlayOrder:[],diagnostics:[],impact:{parameterChanges:0,nodeAdditions:0,nodeRemovals:0,retainedBindings:0,sourceReplacements:0}})),
+    apply:vi.fn().mockRejectedValueOnce(new Error("network unavailable")).mockRejectedValueOnce(new WiseEffApiError("FORBIDDEN","权限已撤销",{},"request",403))};
+  const dismiss=vi.fn();
+  render(<WorkbenchMemberAdditionDialog projectId="project" configSets={[{id:"set",name:"Config"}]} initialConfigSetId="set" availableFiles={[]} preserveUncertain
+    switchReference={{resourceId,versionId:old,version:1}} switchDraft={{versionId:next,reason:"修正后重试"}} client={client}
+    sharedClient={{list:vi.fn(),versions:vi.fn(async()=>({items:[version],total:1}))}} onDismiss={vi.fn()} onUncertainDismiss={dismiss} onApplied={vi.fn()}/>);
+  await user.click(await screen.findByRole("button",{name:"预览版本切换"}));await screen.findByRole("button",{name:"确认切换版本"});
+  await user.click(screen.getByRole("button",{name:"确认切换版本"}));await screen.findByRole("button",{name:"重试同一操作"});
+  await user.click(screen.getByRole("button",{name:"重试同一操作"}));expect(await screen.findByRole("alert")).toHaveTextContent("结果尚未确认");
+  expect(client.apply.mock.calls[0]).toEqual(client.apply.mock.calls[1]);expect(screen.queryByRole("button",{name:"取消版本切换"})).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"返回列表核对"}));expect(dismiss).toHaveBeenCalledOnce();
 });
 
 it("requires an explicit published version and clears its proof when the version changes", async () => {

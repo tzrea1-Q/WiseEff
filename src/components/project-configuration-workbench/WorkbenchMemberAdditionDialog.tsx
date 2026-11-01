@@ -20,7 +20,7 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import "./workbench-member-addition-dialog.css";
 
 const roleLabels = { base: "基础", overlay: "覆盖层", charging: "充电", thermal: "温控", misc: "其他 / include" };
-export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences }: {
+export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialConfigSetId, availableFiles, switchReference, removeReference, conversionSource, switchDraft, projectRoot, onSwitchDraftChange, onRecoverSwitch, client: suppliedClient, sharedClient: suppliedSharedClient, catalogRepository, fileRepository, onDismiss, onApplied, sharedOnly=false, preserveUncertain=false, existingReferences=[], targetProjectName, onUncertainDismiss, refreshExistingReferences }: {
   projectId: string; configSets: Array<{ id: string; name: string }>; initialConfigSetId: string;
   availableFiles: ProjectParameterFile[]; client?: ReturnType<typeof createCanonicalMemberAdditionClient>;
   switchReference?: {resourceId:string;versionId:string;version:number};
@@ -34,7 +34,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   catalogRepository?: Pick<ParameterCatalogRepository, "listSubjects" | "listSubjectDefinitions">;
   fileRepository?: Pick<ParameterFileRepository, "downloadVersion">;
   onDismiss: () => void; onApplied: (configSetId: string, fileId: string) => void;
-  sharedOnly?: boolean; existingReferences?: Array<{resourceId:string;direct:boolean;requiredBy:Array<{resourceName:string}>}>;
+  sharedOnly?: boolean; preserveUncertain?:boolean; existingReferences?: Array<{resourceId:string;direct:boolean;requiredBy:Array<{resourceName:string}>}>;
   targetProjectName?: string;
   onUncertainDismiss?: () => void;
   refreshExistingReferences?: () => Promise<Array<{resourceId:string;versionId?:string;direct?:boolean}>>;
@@ -148,7 +148,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
       const result = await client.apply(projectId, configSetId, { ...preparedBody, proofToken: preview.proofToken, reason: mutationReason.current, clientMutationId: mutationId.current });
       if (mounted.current) onApplied(configSetId, result.fileId);
     } catch (failure) { if (mounted.current) {
-      if(sharedOnly && (uncertain || !(failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500))){
+      if((sharedOnly||preserveUncertain) && (uncertain || !(failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500))){
         setUncertain(true);setError(uncertain && failure instanceof WiseEffApiError && failure.status!==undefined && failure.status<500
           ? "应用结果尚未确认，本次重试被拒绝。请返回列表核对项目配置，或稍后重试同一操作。"
           : "应用结果尚未确认。请重试同一操作，或返回列表核对项目配置。");
@@ -164,7 +164,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
   return <ModalDialog open onDismiss={busy ? undefined : dismiss} initialFocusRef={closeRef} describedBy
     className="workbench-member-addition-dialog" backdropClassName="param-admin-modal-backdrop">
     {({ titleId, descriptionId }) => <>
-      <header><div><h2 id={titleId}>{removeReference?"移除共享引用":conversionSource?"转换为共享引用":switchReference?"切换共享版本":sharedOnly?"添加资源包":"加入配置文件"}</h2><p id={descriptionId}>{sharedOnly?`${targetProjectName??projectId} · ${configSets.find(set=>set.id===configSetId)?.name==="default"?"默认配置":configSets.find(set=>set.id===configSetId)?.name}：选择已发布资源和固定版本。`:removeReference?"预览此项目的文件、节点、覆盖及参数来源变化；确认后创建新配置修订，历史来源保留。":conversionSource?"选择已发布版本。完整来源和生效配置一致后，确认转换所选私有源码及依赖。":switchReference?"选择新版本或旧版本，保留当前项目覆盖；确认后创建新配置修订。":source === "shared"
+      <header><div><h2 id={titleId}>{removeReference?"移除共享引用":conversionSource?"转换为共享引用":switchReference?"切换共享版本":sharedOnly?"添加资源包":"加入配置文件"}</h2><p id={descriptionId}>{sharedOnly?`${targetProjectName??projectId} · ${configSets.find(set=>set.id===configSetId)?.name==="default"?"默认配置":configSets.find(set=>set.id===configSetId)?.name}：${removeReference?"预览移除影响，确认后解除引用。":switchReference?"预览版本切换，确认后保留项目覆盖。":"选择已发布资源和固定版本。"}`:removeReference?"预览此项目的文件、节点、覆盖及参数来源变化；确认后创建新配置修订，历史来源保留。":conversionSource?"选择已发布版本。完整来源和生效配置一致后，确认转换所选私有源码及依赖。":switchReference?"选择新版本或旧版本，保留当前项目覆盖；确认后创建新配置修订。":source === "shared"
         ? "选择共享资源及固定版本，预览配置变化后确认引用。"
         : source === "upload" ? "上传仅保存候选；预览并确认后，文件组成及参数状态一起生效。" : "选择项目文件，预览配置变化后确认加入。"}</p></div>
         <Button ref={closeRef} type="button" variant="outline" disabled={busy} onClick={dismiss}>{uncertain?"返回列表核对":"关闭"}</Button></header>
@@ -310,7 +310,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         {preview?<div>{!uncertain?<Button type="button" variant="outline" disabled={busy} onClick={invalidate}>取消本次预览</Button>:null}
         <Button type="button" disabled={busy || !reason.trim()} onClick={() => void apply()}>{busy ? "正在应用…" : uncertain?"重试同一操作":removeReference?"确认移除引用":conversionSource?"确认转换引用":switchReference?"确认切换版本":"确认加入配置"}</Button></div>:null}
       </footer> : null}
-      {sharedOnly?<SettingsLeaveGuard dirty={busy} saving={busy} />:null}
+      {sharedOnly||preserveUncertain?<SettingsLeaveGuard dirty={busy} saving={busy} />:null}
     </>}
   </ModalDialog>;
 }
