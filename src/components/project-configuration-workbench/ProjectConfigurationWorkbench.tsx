@@ -71,7 +71,7 @@ import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
 import { WorkbenchSetupGate } from "./WorkbenchSetupGate";
 import { WorkbenchPackageImportDialog } from "./WorkbenchPackageImportDialog";
 import { createConfigSetPackageClient } from "@/infrastructure/http/configSetPackageClient";
-import { resolveParamAdminProjectsReturnPath } from "@/hooks/useParamAdminProjectsSearch";
+import { resolveParamAdminProjectsReturnPath, resolveSharedDtsiUsageReturnPath } from "@/hooks/useParamAdminProjectsSearch";
 import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitrationDock";
 import { WorkbenchTaskDock } from "./WorkbenchTaskDock";
 import {
@@ -1649,7 +1649,8 @@ export function ProjectConfigurationWorkbench({
     setTasksOpen(true);
   }, [structuredEditSession]);
 
-  const workbenchReturnPath = canAdmin ? resolveParamAdminProjectsReturnPath(search) : `/parameters?project=${encodeURIComponent(project.id)}`;
+  const sharedUsageReturnPath=resolveSharedDtsiUsageReturnPath(search);
+  const workbenchReturnPath = sharedUsageReturnPath ?? (canAdmin ? resolveParamAdminProjectsReturnPath(search) : `/parameters?project=${encodeURIComponent(project.id)}`);
   const handleLeaveWorkbench = useCallback(() => {
     sourceFlushRef.current?.();
     if (sessionDraftsDirty || sourceDraftsDirty) {
@@ -1998,6 +1999,7 @@ export function ProjectConfigurationWorkbench({
           <WorkbenchCommandBar primaryAction={primaryAction}
         project={project}
         onLeave={handleLeaveWorkbench}
+        returnLabel={sharedUsageReturnPath?"项目使用":undefined}
         configSets={configSets}
         selectedConfigSet={selectedConfigSet ?? null}
         configSetsLoading={configSetsLoading}
