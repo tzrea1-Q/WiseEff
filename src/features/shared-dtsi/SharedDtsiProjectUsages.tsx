@@ -24,6 +24,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
   const [selected,setSelected]=useState<{row:Row;adding:boolean;scope:string;client:ApiClient;canWrite:boolean;instance:string;organizationId?:string}|null>(null);
   const [appliedNotice,setAppliedNotice]=useState(false);
   const [uncertainNotice,setUncertainNotice]=useState(false);
+  const [unavailableTargets,setUnavailableTargets]=useState<Set<string>>(()=>new Set());
   const trigger=useRef<HTMLElement|null>(null);
   const additionClient=useMemo(()=>createCanonicalMemberAdditionClient(apiClient),[apiClient]);
   const sharedClient=useMemo(()=>createSharedDtsiClient(apiClient),[apiClient]);
@@ -31,15 +32,26 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
   const [loaded,setLoaded]=useState<{key:string;client:ApiClient;canWrite:boolean;result?:Result;error?:string}|null>(null);
   const key=JSON.stringify([organizationId,query,status,page,reload]);
   const selection=selected?.scope===search&&selected.client===apiClient&&selected.canWrite===canWrite&&selected.organizationId===organizationId?selected:null;
+  const selectionInstance=useRef<string|null>(null);
+  selectionInstance.current=selection?.instance??null;
   const current=loaded?.key===key&&loaded.client===apiClient&&loaded.canWrite===canWrite?loaded:null;
+  const targetKey=(row:Row)=>JSON.stringify([organizationId,row.projectId,row.configSetId]);
   const close=()=>{setSelected(null);requestAnimationFrame(()=>{if(trigger.current?.isConnected)trigger.current.focus();else document.querySelector<HTMLInputElement>('[aria-label="搜索项目使用"]')?.focus();});};
   const refreshTarget=async(row:Row,instance:string)=>{
     if(!row.configSetId)throw new Error("目标配置不存在，请返回列表核对。");
     const request=new URLSearchParams({projectId:row.projectId,configSetId:row.configSetId,status:"all",limit:"1"});
     if(organizationId)request.set("organizationId",organizationId);
-    const result=sharedDtsiProjectUsagesSchema.parse(await apiClient.get<unknown>(`/api/v2/shared-dtsi/project-usages?${request}`));
+    const invalidateTarget=()=>{
+      if(selectionInstance.current!==instance)return;
+      setUnavailableTargets(previous=>new Set(previous).add(targetKey(row)));setReload(value=>value+1);
+    };
+    let result:Result;
+    try{result=sharedDtsiProjectUsagesSchema.parse(await apiClient.get<unknown>(`/api/v2/shared-dtsi/project-usages?${request}`));}
+    catch(failure){if(failure instanceof WiseEffApiError && [401,403,404].includes(failure.status??0))invalidateTarget();throw failure;}
     const updated=result.items.find(item=>item.projectId===row.projectId&&item.configSetId===row.configSetId);
-    if(!updated || !updated.canConfigure || !updated.configurationReady)throw new Error("配置不可用或权限已变化，请返回列表核对。");
+    if(!updated || !updated.canConfigure || !updated.configurationReady){invalidateTarget();throw new Error("配置不可用或权限已变化，请返回列表核对。");}
+    if(selectionInstance.current!==instance)return updated.references;
+    setUnavailableTargets(previous=>{const next=new Set(previous);next.delete(targetKey(row));return next;});
     setSelected(previous=>previous?.instance===instance&&previous.client===apiClient&&previous.organizationId===organizationId&&previous.scope===search&&previous.row.projectId===row.projectId&&previous.row.configSetId===row.configSetId
       ? {...previous,row:updated}:previous);
     setReload(value=>value+1);
@@ -97,7 +109,8 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
               {ref.requiredBy.length?<span> · 由 {ref.requiredBy.map(item=>item.resourceName).join("、")} 引入</span>:null}</li>)}</ul></details>:null}</div>;}},
         {key:"action",header:"操作",render:row=>{const target=projectPath(row);return <div className="shared-dtsi-usage-action">
           {!row.configSetId?<span>请先创建配置</span>:!row.configurationReady?<span>请先完成配置初始化</span>:null}
-          {row.configSetId && row.configurationReady && row.canConfigure?<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice(false);setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId,instance:crypto.randomUUID()});}}>配置资源包</Button>:null}
+          {unavailableTargets.has(targetKey(row))?<span>配置不可用，请核对权限或初始化状态</span>:null}
+          {row.configSetId && row.configurationReady && row.canConfigure&&!unavailableTargets.has(targetKey(row))?<Button variant="outline" size="sm" onClick={event=>{trigger.current=event.currentTarget;setAppliedNotice(false);setUncertainNotice(false);setSelected({row,adding:false,scope:search,client:apiClient,canWrite,organizationId,instance:crypto.randomUUID()});}}>配置资源包</Button>:null}
           <a href={target} onClick={event=>follow(event,target)}>{row.configSetId&&row.configurationReady?"查看生效配置":"前往配置工作台"}</a></div>;}}
       ]}} />
     {current?.result && current.result.total>20?<nav className="shared-dtsi-pagination" aria-label="项目使用分页">

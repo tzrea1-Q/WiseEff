@@ -123,6 +123,36 @@ describe("shared DTSI project usage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("目标位置已有文件，请调整挂载目录");
     expect(screen.getByRole("combobox",{name:"共享资源"})).toHaveAttribute("data-value",resourceOne);
     expect(screen.getByRole("combobox",{name:"固定版本"})).toHaveAttribute("data-value",versionOne);
+    await user.click(screen.getByRole("button",{name:"关闭"}));await user.click(screen.getByRole("button",{name:"关闭"}));
+    expect(await screen.findByRole("button",{name:"配置资源包"})).toBeVisible();
+  });
+
+  it.each(["permission", "unready", "missing", "forbidden"] as const)("does not offer a stale target after refresh reports %s",async(failure)=>{
+    const user=userEvent.setup();
+    const version={id:versionOne,resourceId:resourceOne,version:1,name:"公共电源",changeDescription:"初版",digest:"fixed",createdAt:"today",createdByUserId:"admin"};
+    const row={projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,references:[]};
+    const fetchImpl=vi.fn(async(url:string|URL|Request)=>{
+      const path=String(url);let body:unknown,status=200;
+      if(path.includes("project-usages")&&path.includes("projectId=")){
+        if(failure==="forbidden"){status=403;body={error:{code:"FORBIDDEN",message:"权限已撤销"}};}
+        else body={items:failure==="missing"?[]:[{...row,canConfigure:failure!=="permission",configurationReady:failure!=="unready"}],total:failure==="missing"?0:1,visibility:"organization"};
+      }else if(path.includes("project-usages"))body={items:[row],total:1,visibility:"organization"};
+      else if(path.includes("/member-addition/preview")){status=409;body={error:{code:"CONFLICT",message:"配置已变化"}};}
+      else if(path.includes("/versions"))body={items:[version],total:1};
+      else body={items:[{resourceId:resourceOne,name:"公共电源",sourceName:"power.dtsi",draftRevision:null,state:"active",lifecycleRevision:1,updatedAt:"today",currentVersion:version}],total:1};
+      return new Response(JSON.stringify(body),{status});
+    });
+    const apiClient=createApiClient({baseUrl:"",fetchImpl});
+    render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects" onNavigate={()=>{}}/>);
+    await user.click(await screen.findByRole("button",{name:"配置资源包"}));await user.click(screen.getByRole("button",{name:"添加资源包"}));
+    await user.click(await screen.findByRole("combobox",{name:"共享资源"}));await user.click(await screen.findByRole("option",{name:"公共电源"}));
+    await user.click(await screen.findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · 初版"}));
+    await user.click(screen.getByRole("button",{name:"预览加入配置"}));
+    await waitFor(()=>expect(screen.getByRole("button",{name:"重新核对配置"})).toBeEnabled());
+    expect(screen.getByRole("button",{name:"预览加入配置"})).toBeDisabled();
+    await user.click(screen.getByRole("button",{name:"关闭"}));await user.click(screen.getByRole("button",{name:"关闭"}));
+    await waitFor(()=>expect(screen.queryByRole("button",{name:"配置资源包"})).not.toBeInTheDocument());
+    expect(screen.queryByText("资源包已加入配置。")).not.toBeInTheDocument();
   });
   it("shows fixed references by configuration and preserves the selected view", async () => {
     const user = userEvent.setup();
