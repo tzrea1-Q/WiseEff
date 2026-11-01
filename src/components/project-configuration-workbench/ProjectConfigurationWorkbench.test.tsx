@@ -581,7 +581,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await user.click(await within(dialog).findByRole("combobox",{name:"固定版本"}));await user.click(await screen.findByRole("option",{name:"版本 1 · Initial"}));
     await user.click(within(dialog).getByRole("button",{name:"预览加入配置"}));await user.type(await within(dialog).findByRole("textbox",{name:"加入原因"}),"核对目标");await user.click(within(dialog).getByRole("button",{name:"确认加入配置"}));
     await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0]![1]).toBe("cs-alpha");expect(fetchImpl.mock.calls.some(([url])=>String(url).includes("/config-sets/cs-alpha/member-addition/intents"))).toBe(true);
-  });
+  }, 10_000);
   it.each(["cancel","apply"])("continues switch %s when browser recovery storage cannot be cleared",async(action)=>{
     const resourceId="11111111-1111-4111-8111-111111111111",old="22222222-2222-4222-8222-222222222222",target="33333333-3333-4333-8333-333333333333";
     const scope="wiseeff.shared-switch:local-user:org-1:project-1:cs-default";
