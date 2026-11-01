@@ -233,7 +233,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
           </div>
         </section>:null}
         {!switchConflicts.length && errorDiagnostics.length ? <ul aria-label="来源校验诊断">{errorDiagnostics.map((message, index) => <li key={index}>{message}</li>)}</ul> : null}
-        {preview ? <section aria-label={conversionSource?"共享转换预览":removeReference?"移除引用预览":switchReference?"版本切换预览":"加入配置预览"} className={preview.sharedSwitch?"workbench-member-addition-dialog__switch-preview":undefined}>
+        {preview ? <section aria-label={conversionSource?"共享转换预览":removeReference?"移除引用预览":switchReference?"版本切换预览":"加入配置预览"} className={preview.sharedSwitch?"workbench-member-addition-dialog__switch-preview":sharedOnly?"workbench-member-addition-dialog__shared-preview":undefined}>
           {preview.sharedConversion?<>
             <p role="status" className="workbench-member-addition-dialog__switch-status">完整生效配置与构建校验通过，文件、节点及参数关联身份保留。</p>
             <details><summary>转换文件及来源证明</summary>
