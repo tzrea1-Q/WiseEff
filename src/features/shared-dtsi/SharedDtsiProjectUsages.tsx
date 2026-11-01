@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { z } from "zod";
+import { sharedDtsiProjectUsagesSchema, type SharedDtsiProjectUsages } from "@wiseeff/dto-schemas";
 import { AdminListPage } from "@/components/layout/AdminListPage";
 import { SearchField } from "@/components/common/SearchField";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
@@ -7,12 +7,7 @@ import { SelectControl } from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
 import { WiseEffApiError, type ApiClient } from "@/infrastructure/http/apiClient";
 
-const referenceSchema=z.object({resourceId:z.string(),resourceName:z.string(),versionId:z.string(),version:z.number(),direct:z.boolean(),
-  state:z.enum(["active","retired"]),upgradeAvailable:z.boolean(),requiredBy:z.array(z.object({resourceId:z.string(),resourceName:z.string()}))});
-const responseSchema=z.object({items:z.array(z.object({projectId:z.string(),projectName:z.string(),projectCode:z.string(),
-  configSetId:z.string().nullable(),configSetName:z.string().nullable(),configurationReady:z.boolean(),canConfigure:z.boolean(),references:z.array(referenceSchema)})),
-  total:z.number().int().nonnegative(),visibility:z.enum(["organization","authorized-projects"])});
-type Result=z.infer<typeof responseSchema>;
+type Result=SharedDtsiProjectUsages;
 type Row=Result["items"][number];
 
 export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,search,onNavigate,header}:{
@@ -30,7 +25,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
     const request=new URLSearchParams({q:query,status,offset:String((page-1)*20),limit:"20"});
     if(organizationId)request.set("organizationId",organizationId);
     void apiClient.get<unknown>(`/api/v2/shared-dtsi/project-usages?${request}`).then(value=>{
-      const result=responseSchema.parse(value);
+      const result=sharedDtsiProjectUsagesSchema.parse(value);
       if(!cancelled)setLoaded({key,client:apiClient,canWrite,result});
     }).catch(error=>{if(!cancelled)setLoaded({key,client:apiClient,canWrite,error:error instanceof WiseEffApiError?error.message:"无法读取项目使用情况，请重试。"});});
     return()=>{cancelled=true;};
@@ -54,7 +49,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,canWrite,searc
     if(row.configSetId){target.set("configSet",row.configSetId);target.set("tab","effective");}
     return `/parameter-admin/projects/${encodeURIComponent(row.projectId)}/configuration?${target}`;
   };
-  const resource=(ref:z.infer<typeof referenceSchema>)=>{
+  const resource=(ref:Row["references"][number])=>{
     const target=sourcePath(ref.resourceId,ref.versionId);
     return <span className="shared-dtsi-usage-resource" key={ref.resourceId}><a href={target} onClick={event=>follow(event,target)}>{ref.resourceName} · v{ref.version}</a>
       {ref.state==="retired"?<span>已停用</span>:null}{ref.upgradeAvailable?<span>有新版本</span>:null}</span>;

@@ -5,12 +5,17 @@ import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "@/infrastructure/http/apiClient";
 import { SharedDtsiPage } from "./SharedDtsiPage";
 
+const resourceOne = "a0000000-0000-4000-8000-000000000001";
+const resourceTwo = "a0000000-0000-4000-8000-000000000002";
+const versionOne = "b0000000-0000-4000-8000-000000000001";
+const versionTwo = "b0000000-0000-4000-8000-000000000002";
+
 describe("shared DTSI project usage", () => {
   it("shows fixed references by configuration and preserves the selected view", async () => {
     const user = userEvent.setup();
     const fetchImpl = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(String(url).includes("project-usages") ? {
       items: [{ projectId: "p1", projectName: "项目甲", projectCode: "A", configSetId: "c1", configSetName: "default", configurationReady: true, canConfigure: true,
-        references: [{resourceId:"r1",resourceName:"公共电源",versionId:"v1",version:1,direct:true,state:"active",upgradeAvailable:true,requiredBy:[]}] },
+        references: [{resourceId:resourceOne,resourceName:"公共电源",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:true,requiredBy:[]}] },
         {projectId:"p2",projectName:"项目乙",projectCode:"B",configSetId:null,configSetName:null,configurationReady:false,canConfigure:true,references:[]}],
       total:2,visibility:"organization"
     } : {items:[],total:0}), {headers:{"Content-Type":"application/json"}}));
@@ -25,7 +30,7 @@ describe("shared DTSI project usage", () => {
     const row=screen.getByText("项目甲").closest("tr")!;
     expect(within(row).getByText("公共电源 · v1")).toBeVisible();
     expect(within(row).getByText("有新版本")).toBeVisible();
-    expect(within(row).getByRole("link",{name:"公共电源 · v1"})).toHaveAttribute("href",expect.stringContaining("version=v1"));
+    expect(within(row).getByRole("link",{name:"公共电源 · v1"})).toHaveAttribute("href",expect.stringContaining(`version=${versionOne}`));
     const target=new URL(within(row).getByRole("link",{name:"查看生效配置"}).getAttribute("href")!,"http://localhost");
     expect(target.pathname).toBe("/parameter-admin/projects/p1/configuration");
     expect(target.searchParams.get("configSet")).toBe("c1");
@@ -61,8 +66,8 @@ describe("shared DTSI project usage", () => {
     const user=userEvent.setup();
     const fetchImpl=vi.fn(async(url:string|URL|Request)=>new Response(JSON.stringify(String(url).includes("project-usages")?{
       items:[{projectId:"p1",projectName:"项目甲",projectCode:"A",configSetId:"c1",configSetName:"default",configurationReady:true,canConfigure:true,
-        references:[{resourceId:"r1",resourceName:"电源",versionId:"v1",version:1,direct:true,state:"active",upgradeAvailable:false,requiredBy:[]},
-          {resourceId:"r2",resourceName:"基础",versionId:"v2",version:2,direct:false,state:"retired",upgradeAvailable:false,requiredBy:[{resourceId:"r1",resourceName:"电源"}]}]}],total:21,visibility:"organization"
+        references:[{resourceId:resourceOne,resourceName:"电源",versionId:versionOne,version:1,direct:true,state:"active",upgradeAvailable:false,requiredBy:[]},
+          {resourceId:resourceTwo,resourceName:"基础",versionId:versionTwo,version:2,direct:false,state:"retired",upgradeAvailable:false,requiredBy:[{resourceId:resourceOne,resourceName:"电源"}]}]}],total:21,visibility:"organization"
     }:{items:[],total:0})));
     const apiClient=createApiClient({baseUrl:"",fetchImpl});
     render(<SharedDtsiPage apiClient={apiClient} canWrite organizationId="org-a" search="?view=projects&usageQuery=电源&usageStatus=referenced&usagePage=2" onNavigate={()=>{}}/>);
