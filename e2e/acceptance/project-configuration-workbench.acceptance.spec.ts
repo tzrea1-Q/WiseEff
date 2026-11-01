@@ -4331,7 +4331,9 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         finally{expectedBrowserApiFailures.splice(expectedBrowserApiFailures.indexOf(logout404),1);}
         await signInBrowserAsRole(page,"admin",disposablePageUrl(disposableRuntime,usagePath));await dismissXiaozeHint(page);
         const pending=page.getByRole("region",{name:"待核对操作"});await expect(pending).toContainText("已应用");await pending.getByRole("button",{name:"核对"}).click();
-        const recovery=page.getByRole("dialog",{name:"核对操作"});await expect(recovery).toContainText("操作已应用。");await recovery.getByRole("button",{name:"知道了"}).click();
+        const recovery=page.getByRole("dialog",{name:"核对操作"});await expect(recovery).toContainText("操作已应用。");
+        for(const viewport of [{width:1440,height:900},{width:1280,height:800}]){await page.setViewportSize(viewport);await expect(recovery.getByRole("button",{name:"知道了"})).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const shot=testInfo.outputPath(`usage-recovery-${viewport.width}.png`);await page.screenshot({path:shot});await testInfo.attach(`Usage recovery ${viewport.width}`,{path:shot,contentType:"image/png"});}
+        await recovery.getByRole("button",{name:"知道了"}).click();
       }else{
         const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));
         await dialog.getByRole("button",{name:"确认切换版本"}).focus();await page.keyboard.press("Enter");const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);currentRevision=(await applied.json()).item.configRevisionId;
