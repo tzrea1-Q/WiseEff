@@ -36,10 +36,10 @@ function missingRuntimeGrants(sql: string): string[] {
         const afterCreate = uncommented.slice(create.index! + create[0].length).replace(/\s+|"/g, "").toLowerCase();
         const grants = [...afterCreate.matchAll(/grant[^;]*on(?:table)?[^;]*member_addition_intents[^;]*;/g)].map(([grant]) => grant);
         const expected = "declarerole_nametext;beginforrole_nameinselectrolnamefrompg_roleswherenotrolsuperandhas_table_privilege(oid,'public.users','update')andpg_has_role(oid,'catalog_publication_coordinator_role','member')loopexecuteformat('grantselect,insert,update(status,acknowledged,stop_audit_id,ack_audit_id)onpublic.member_addition_intentsto%i',role_name);executeformat('revokedeleteonpublic.member_addition_intentsfrom%i',role_name);endloop;end";
-        if (compact === expected && JSON.stringify(grants) === JSON.stringify([
+        return compact === expected && JSON.stringify(grants) === JSON.stringify([
           "grantselect,deleteonpublic.member_addition_intentstocatalog_migration_owner;",
           "grantselect,insert,update(status,acknowledged,stop_audit_id,ack_audit_id)onpublic.member_addition_intentsto%i',role_name);"
-        ]) && !/grant[^;]*onalltablesinschema[^;]*public/.test(afterCreate)) return true;
+        ]) && !/grant[^;]*onalltablesinschema[^;]*public/.test(afterCreate);
       }
       if (table === "parameter_object_writes") {
         const afterCreate = uncommented.slice(create.index! + create[0].length).replace(/\s+|"/g, "").toLowerCase();
@@ -379,7 +379,16 @@ describe("public table runtime grants (0185 onward)", () => {
       sql + "\ngrant delete on public.member_addition_intents to public;",
       sql + "\ngrant update(mutation_id) on public.member_addition_intents to public;",
       sql + "\ngrant delete on public.users, public.member_addition_intents to public;",
-      sql + "\ngrant all on all tables in schema public to public;"]) {
+      sql + "\ngrant all on all tables in schema public to public;",
+      sql.replace("revoke delete", "revoke insert") + `\ndo $$ begin
+        if has_table_privilege(oid, 'public.log_domains', 'INSERT') then
+          execute 'grant select,insert,update,delete on public.member_addition_intents to public';
+        end if; end $$;`,
+      sql.replace("revoke delete", "revoke insert") + `\ndo $$ begin
+        perform 'member_addition_intents';
+        if has_table_privilege(oid, 'public.log_domains', 'INSERT') then
+          execute 'grant select,insert,update,delete on public.unrelated to public';
+        end if; end $$;`]) {
       expect(missingRuntimeGrants(invalid)).toEqual(["member_addition_intents"]);
     }
   });
