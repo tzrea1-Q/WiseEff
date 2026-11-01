@@ -3412,7 +3412,9 @@ test.describe("project configuration workbench post-cutover semantic identity", 
       const applying=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).pathname.endsWith("/member-addition/apply"));
       await dialog.getByRole("button",{name:"确认切换版本",exact:true}).focus();await page.keyboard.press("Enter");
       const applied=await applying;expect(applied.status(),await applied.text()).toBe(200);revisions.push((await applied.json()).item.configRevisionId);
-      await expect(dialog).toHaveCount(0);await page.getByRole("tab",{name:"生效配置",exact:true}).click();
+      await expect(dialog).toHaveCount(0);
+      if(await composition.isVisible())await composition.getByRole("button",{name:"关闭配置组成",exact:true}).click();
+      await page.getByRole("tab",{name:"生效配置",exact:true}).click();
       await page.getByRole("treeitem",{name:"节点 /board",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText('"PrivateChoice", "keep"');
       await page.getByRole("treeitem",{name:"节点 /inherited",exact:true}).click();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText(index===0?'"SharedNew", "keep"':'"SharedOld", "keep"');
       await page.reload();await expect(page.getByLabel("rx_fod_cond 最终值",{exact:true})).toHaveText(index===0?'"SharedNew", "keep"':'"SharedOld", "keep"');
