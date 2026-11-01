@@ -86,3 +86,14 @@ export function resolveParamAdminProjectsReturnPath(search: string): string {
     ? buildParamAdminProjectsPath(parseParamAdminProjectsSearch(url.search))
     : "/parameter-admin/projects";
 }
+
+/** Restore only the shared usage list, never an arbitrary caller-supplied URL. */
+export function resolveSharedDtsiUsageReturnPath(search: string): string | null {
+  const returnTo=new URLSearchParams(search).get("returnTo")??"";
+  if(!returnTo.startsWith("/parameter-admin/sources?"))return null;
+  const url=new URL(returnTo,"http://local");
+  if(url.pathname!=="/parameter-admin/sources"||url.hash||url.searchParams.get("view")!=="projects")return null;
+  const allowed=new Set(["view","organization","usageQuery","usageStatus","usagePage"]),params=new URLSearchParams();
+  for(const [key,value] of url.searchParams)if(allowed.has(key)&&!params.has(key))params.set(key,value);
+  return `/parameter-admin/sources?${params}`;
+}

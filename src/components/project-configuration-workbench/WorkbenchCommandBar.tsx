@@ -20,6 +20,7 @@ export type WorkbenchCommandBarProps = {
     statusLabel: string;
   };
   onLeave: () => void;
+  returnLabel?: string;
   configSets: DtsConfigSet[];
   selectedConfigSet: DtsConfigSet | null;
   configSetsLoading: boolean;
@@ -43,7 +44,7 @@ export type WorkbenchCommandBarProps = {
 
 
 export function WorkbenchCommandBar({
-  primaryAction, project, onLeave, configSets, selectedConfigSet, configSetsLoading,
+  primaryAction, project, onLeave, returnLabel, configSets, selectedConfigSet, configSetsLoading,
   configSetsError, onSelectConfigSet, canAdmin, canSyncFile, onInspectorToggle,
   onOpenInspector, candidateFileInputRef, onCandidateFileChange,
   pendingAction, onOpenActivity, onExportConfigSet, onImportPackage,
@@ -64,7 +65,7 @@ export function WorkbenchCommandBar({
   const openDetails = (level: InspectorLevel) => onOpenInspector ? onOpenInspector(level) : onInspectorToggle();
   return <>
     <header className="configuration-workbench__command" aria-label="配置命令栏">
-      <Button type="button" variant="ghost" size="sm" onClick={onLeave}><ChevronLeft aria-hidden="true" />{canAdmin ? "项目清单" : "项目参数"}</Button>
+      <Button type="button" variant={returnLabel ? "outline" : "ghost"} size="sm" onClick={onLeave}><ChevronLeft aria-hidden="true" />{returnLabel ?? (canAdmin ? "项目清单" : "项目参数")}</Button>
       <strong className="configuration-workbench__project" title={project.name}>{project.name}</strong>
       <div className="configuration-workbench__config-select">
         <DropdownMenu.Root modal={false}>
