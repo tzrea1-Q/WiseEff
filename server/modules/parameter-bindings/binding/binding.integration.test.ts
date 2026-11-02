@@ -805,16 +805,16 @@ describe("canonical Binding identity", () => {
   });
 
   it("enforces an organization singleton override before admitting another canonical instance", async () => {
-    await pool.query(`insert into public.module_recognition_rules
-      (organization_id,module_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
+    await pool.query(`insert into public.registration_recognition_rules
+      (organization_id,registration_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
       values ($1,$2,$3,array['acme,power'],'logical-service','singleton-per-project')`,
-    [ORG_A,MODULE_A,SUBJECT_ID]);
+    [ORG_A,registrationA,SUBJECT_ID]);
     const before = await catalogCounts();
     const result = await service.stabilize({snapshot:snapshot1,organizationId:ORG_A,projectId:PROJECT_A,
       logicalNodeId:NODE_LATEST,registrationId:registrationA,definitionId:DEFINITION_ID,
       effectiveRevisionId:REVISION_1,expectedEffectiveRevisionId:null});
     expect(result).toEqual({ok:false,error:{kind:"agreement-conflict",reason:"singleton-cardinality"}});
     expect(await catalogCounts()).toEqual(before);
-    await pool.query("delete from public.module_recognition_rules where organization_id=$1 and module_id=$2",[ORG_A,MODULE_A]);
+    await pool.query("delete from public.registration_recognition_rules where organization_id=$1 and registration_id=$2",[ORG_A,registrationA]);
   });
 });

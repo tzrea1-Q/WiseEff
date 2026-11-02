@@ -22,6 +22,11 @@ begin
 end;
 $$;
 
+-- The offline comparison reader has column-only Placement access. Preserve
+-- its narrow capture boundary while allowing registry attribution reads.
+grant select (organization_id, registration_id, module_id)
+  on parameter_catalog.registration_effective_module to wiseeff_mod_d02_source_reader;
+
 create table public.registration_recognition_rules (
   organization_id text not null,
   registration_id text not null,
@@ -103,3 +108,37 @@ begin
   end loop;
 end;
 $$;
+
+-- Recognition is organization-owned parameter data and follows the same
+-- lifecycle fence, inventory, locking and erasure closure as module rules.
+grant select, delete on public.registration_recognition_rules, public.registration_recognition_migration_map to catalog_migration_owner;
+
+create trigger organization_lifecycle_guard before insert or update or delete on public.registration_recognition_rules
+  for each row execute function public.guard_organization_lifecycle();
+create trigger organization_lifecycle_guard before insert or update or delete on public.registration_recognition_migration_map
+  for each row execute function public.guard_organization_lifecycle();
+
+do $$ declare installed text; changed text; begin
+  select pg_get_functiondef('parameter_catalog.preview_organization_deletion_0276(text,text)'::regprocedure) into strict installed;
+  changed:=replace(installed, '(''public.module_recognition_rules'',''organization-parameters'',''r.organization_id=$1'')',
+    '(''public.registration_recognition_rules'',''organization-parameters'',''r.organization_id=$1''),'
+    || '(''public.registration_recognition_migration_map'',''organization-parameters'',''r.organization_id=$1''),'
+    || '(''public.module_recognition_rules'',''organization-parameters'',''r.organization_id=$1'')');
+  if changed=installed then raise exception 'Organization recognition inventory seam missing'; end if; execute changed;
+
+  select pg_get_functiondef('parameter_catalog.purge_organization_parameter_assets(text,text,text)'::regprocedure) into strict installed;
+  changed:=replace(installed,'  -- Fixed ownership closure, never recursive FK discovery or arbitrary tables.',
+    '  lock table public.registration_recognition_rules,public.registration_recognition_migration_map in share row exclusive mode;'
+    || E'\n  -- Fixed ownership closure, never recursive FK discovery or arbitrary tables.');
+  if changed=installed then raise exception 'Organization recognition lock seam missing'; end if; installed:=changed;
+  changed:=replace(installed, '(''parameter_catalog.subject_placements'',''organization_id=$1'')',
+    '(''public.registration_recognition_migration_map'',''organization_id=$1''),'
+    || '(''public.registration_recognition_rules'',''organization_id=$1''),'
+    || '(''parameter_catalog.subject_placements'',''organization_id=$1'')');
+  if changed=installed then raise exception 'Organization recognition purge seam missing'; end if; execute changed;
+
+  select pg_get_functiondef('public.guard_organization_lifecycle()'::regprocedure) into strict installed;
+  changed:=replace(installed, '''module_recognition_rules'',''identity_mapping_tasks''',
+    '''module_recognition_rules'',''registration_recognition_rules'',''registration_recognition_migration_map'',''identity_mapping_tasks''');
+  if changed=installed then raise exception 'Organization recognition lifecycle seam missing'; end if; execute changed;
+end $$;

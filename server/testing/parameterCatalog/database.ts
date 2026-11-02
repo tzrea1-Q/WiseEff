@@ -226,7 +226,7 @@ export const S2_SCH_0321_FINGERPRINT =
   "db6dc5711969d07a73e58c9f0595fd48f57ee71770beda6b63e5dcd9c520f067";
 /** 0322 adds effective-module and registration recognition relations. */
 export const S2_SCH_0322_FINGERPRINT =
-  "87e8aa0e5037663f9f1436bd2c3147df16e05b8d967e361dbdf70b8c5503d363";
+  "865eb41ba26de6f15326f72c2a664c4f4bccb2ee6e572501c4d22e945e48751f";
 
 export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0322_FINGERPRINT;
 
