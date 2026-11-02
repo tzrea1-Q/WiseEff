@@ -260,7 +260,12 @@ test.describe("Issue 897 canonical module ownership", () => {
         ["issue897-canonical-a", "Canonical source", "driver-group", "issue897-canonical-only-attr"],
         ["issue897-canonical-b", "Canonical destination", "driver-group", "issue897-canonical-only-attr"],
         ["issue897-node", "Fixture node", "node-type", "issue897-node-attr"],
-        ["issue897-config", "JSON settings", "business", null]
+        ["issue897-config", "JSON settings", "business", null],
+        ["issue897-placement-a", "Input business", "business", null],
+        ["issue897-placement-b", "Output business", "business", null],
+        ["issue897-canonical-placement-a", "Canonical category source", "business", null],
+        ["issue897-canonical-placement-b", "Canonical category destination", "business", null],
+        ["issue897-node-placement", "Node category", "business", null]
       ]) {
         await client.query(`insert into parameter_modules(id,organization_id,name,parent_id,path,depth,kind,origin,attribution_subject_id)
           values ($1,$2,$3,'issue897-root','issue897-root/'||$1,2,$4,'curated',$5)`, [id, organizationId, name, kind, attributionId]);
@@ -277,13 +282,15 @@ test.describe("Issue 897 canonical module ownership", () => {
       await client.query("insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality) values ('issue897-foreign-attr','physical-device','multiple')");
       await client.query(`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
         values ('issue897-foreign-module','issue897-foreign-org','Foreign module','issue897-foreign-module',1,'driver-group','curated','issue897-foreign-attr')`);
+      await client.query(`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin)
+        values ('issue897-foreign-business','issue897-foreign-org','Foreign business','issue897-foreign-business',1,'business','curated')`);
       await client.query(`insert into projects(id,organization_id,name,code,status) values ($1,$2,'Issue 897 Project','I897','initialized')`, [projectId, organizationId]);
       await client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('issue897-reader',$1,$2,$3,'software-user')`, [acceptanceCast.liuMin.userId, organizationId, projectId]);
     });
     const headers = authHeadersForRole("admin");
     const registration = await request.post(apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations`), {
       headers: { ...headers, "X-WiseEff-Catalog-Release": releaseId, "Idempotency-Key": "issue897-driver-registration" },
-      data: { subjectId: "csub_acme_power", destinationModuleId: "issue897-driver-a", placement: { mode: "use-default" } }
+      data: { subjectId: "csub_acme_power", destinationModuleId: "issue897-placement-a", placement: { mode: "use-default" } }
     });
     expect(registration.status(), await registration.text()).toBe(201);
     driverRegistrationId = (await registration.json()).item.id;
@@ -297,7 +304,7 @@ test.describe("Issue 897 canonical module ownership", () => {
         },
         data: {
           subjectId: "csub_issue897_canonical_driver",
-          destinationModuleId: "issue897-canonical-a",
+          destinationModuleId: "issue897-canonical-placement-a",
           placement: { mode: "use-default" }
         }
       }
@@ -374,7 +381,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     });
     expect(initialPlacementResponse.status(), await initialPlacementResponse.text()).toBe(200);
     const initialPlacement = (await initialPlacementResponse.json()).item;
-    expect(initialPlacement).toMatchObject({ moduleId: "issue897-canonical-a" });
+    expect(initialPlacement).toMatchObject({ moduleId: "issue897-canonical-placement-a" });
 
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/modules`);
     const dismiss = page.getByRole("button", { name: "不再提示" });
@@ -400,7 +407,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     const canonicalPanel = page.locator("#canonical-subject-placement");
     await expect(canonicalPanel).toBeFocused();
     const canonicalSubject = page.locator('[data-canonical-subject-id="csub_issue897_canonical_driver"]');
-    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical source", { exact: true })).toBeVisible();
+    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical category source", { exact: true })).toBeVisible();
     await expect(page.locator(".parameter-module-mapping-panel__error[role='alert']")).toHaveCount(0);
     expect(browserResponses.some(response =>
       response.path.startsWith("/api/v2/parameter-modules/driver-registry/issue897-canonical-a/")
@@ -458,9 +465,9 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(await readHistoricalState()).toEqual(historicalBefore);
     await historicalEditor.getByRole("button", { name: "取消" }).click();
 
-    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical source", { exact: true })).toBeVisible();
+    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical category source", { exact: true })).toBeVisible();
     await canonicalSubject.getByRole("button", { name: "调整归属：issue897,canonical-only", exact: true }).click();
-    await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-canonical-b");
+    await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-canonical-placement-b");
     await page.getByRole("button", { name: "继续确认", exact: true }).click();
     await page.getByRole("checkbox", { name: "我已确认放置选择与当前目录发布" }).check();
     const canonicalMove = page.waitForResponse(response =>
@@ -470,21 +477,21 @@ test.describe("Issue 897 canonical module ownership", () => {
     await page.getByRole("button", { name: "确认调整放置", exact: true }).click();
     const canonicalMoveResponse = await canonicalMove;
     expect(canonicalMoveResponse.status(), await canonicalMoveResponse.text()).toBe(200);
-    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical destination", { exact: true })).toBeVisible();
+    await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical category destination", { exact: true })).toBeVisible();
     const finalPlacementResponse = await request.get(canonicalPlacementUrl, {
       headers: authHeadersForRole("admin")
     });
     expect(finalPlacementResponse.status(), await finalPlacementResponse.text()).toBe(200);
     const finalPlacement = (await finalPlacementResponse.json()).item;
-    expect(finalPlacement).toMatchObject({ moduleId: "issue897-canonical-b" });
+    expect(finalPlacement).toMatchObject({ moduleId: "issue897-canonical-placement-b" });
     const finalRegistry = await request.get(apiRoute("/api/v2/parameter-modules"), {
       headers: authHeadersForRole("admin")
     });
     expect(finalRegistry.status(), await finalRegistry.text()).toBe(200);
     const finalModules = (await finalRegistry.json()).item.modules;
-    expect(finalModules.find((module: { id: string }) => module.id === "issue897-canonical-a"))
+    expect(finalModules.find((module: { id: string }) => module.id === "issue897-canonical-placement-a"))
       .toMatchObject({ parameterCount: 0, definitionCount: 0 });
-    expect(finalModules.find((module: { id: string }) => module.id === "issue897-canonical-b"))
+    expect(finalModules.find((module: { id: string }) => module.id === "issue897-canonical-placement-b"))
       .toMatchObject({ parameterCount: 0, definitionCount: 1 });
     await page.getByRole("tree", { name: "模块归属树" }).scrollIntoViewIfNeeded();
     await page.screenshot({
@@ -568,7 +575,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     });
     const registry = await request.get(apiRoute("/api/v2/parameter-modules"), { headers: authHeadersForRole("admin") });
     expect(registry.status(), await registry.text()).toBe(200);
-    expect((await registry.json()).item.modules.find((module: { id: string }) => module.id === "issue897-driver-a"))
+    expect((await registry.json()).item.modules.find((module: { id: string }) => module.id === "issue897-placement-a"))
       .toMatchObject({ parameterCount: 1, definitionCount: 121 });
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-admin/modules`);
     const dismiss = page.getByRole("button", { name: "不再提示" });
@@ -603,7 +610,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     await driver.getByRole("button", { name: "收起参数" }).click();
     for (const [subjectName, moduleId] of [
       ["wiseeff.issue897.settings", "issue897-config"],
-      ["issue897-node", "issue897-node"]
+      ["issue897-node", "issue897-node-placement"]
     ]) {
       await page.getByRole("button", { name: `登记主体：${subjectName}`, exact: true }).click();
       await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), moduleId);
@@ -621,13 +628,13 @@ test.describe("Issue 897 canonical module ownership", () => {
     const expectPlacementImpact = async (destination: string) => {
       await expect(placementImpact.getByRole("heading", { name: "当前主体 acme,power", exact: true })).toBeVisible();
       await expect(placementImpact.getByText("121 个有效定义、1 个参数绑定、1 个项目", { exact: true })).toBeVisible();
-      await expect(placementImpact.getByText("当前归属", { exact: true }).locator("..").getByRole("definition")).toHaveText("Issue 897 Modules / Input hardware");
+      await expect(placementImpact.getByText("当前归属", { exact: true }).locator("..").getByRole("definition")).toHaveText("Issue 897 Modules / Input business");
       await expect(placementImpact.getByText("调整至", { exact: true }).locator("..").getByRole("definition")).toHaveText(destination);
       await expect(placementImpact.getByText("仅调整归属，不改参数值。", { exact: true })).toBeVisible();
     };
-    await expectPlacementImpact("Issue 897 Modules / Input hardware");
-    await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-driver-b");
-    await expectPlacementImpact("Issue 897 Modules / Output hardware");
+    await expectPlacementImpact("Issue 897 Modules / Input business");
+    await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-placement-b");
+    await expectPlacementImpact("Issue 897 Modules / Output business");
     await page.screenshot({ path: info.outputPath("canonical-placement-impact.png"), animations: "disabled" });
     await page.getByRole("button", { name: "继续确认", exact: true }).click();
     await page.getByRole("checkbox", { name: "我已确认放置选择与当前目录发布" }).check();
@@ -643,13 +650,13 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(replay.status(), await replay.text()).toBe(200);
     expect(replay.headers().etag).toBe(moved.headers().etag);
     expect((await replay.json()).item).toEqual((await moved.json()).item);
-    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output business", { exact: true })).toBeVisible();
     await page.reload();
-    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output business", { exact: true })).toBeVisible();
     await page.getByRole("tab", { name: "来源识别" }).click();
     await expect(discovery.getByText(/已识别主体：acme,power/)).toBeVisible();
     await page.getByRole("tab", { name: "模块", exact: true }).click();
-    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output business", { exact: true })).toBeVisible();
     expect(moduleRequests.filter(path => path.includes("/driver-compatible-discovery")).length).toBeGreaterThanOrEqual(4);
     expect(moduleRequests.filter(path => /discovery-hints|recompute|\/mappings(?:\/|$)/.test(path))).toEqual([]);
     await withPgClient(async client => {
@@ -663,19 +670,19 @@ test.describe("Issue 897 canonical module ownership", () => {
     await writeFile(info.outputPath("canonical-module-network.json"), JSON.stringify(moduleResponses, null, 2));
     const movedRegistry = await request.get(apiRoute("/api/v2/parameter-modules"), { headers: authHeadersForRole("admin") });
     const modules = (await movedRegistry.json()).item.modules;
-    expect(modules.find((module: { id: string }) => module.id === "issue897-driver-b")).toMatchObject({ parameterCount: 1, definitionCount: 121 });
-    expect(modules.find((module: { id: string }) => module.id === "issue897-driver-a")).toMatchObject({ parameterCount: 0, definitionCount: 0 });
+    expect(modules.find((module: { id: string }) => module.id === "issue897-placement-b")).toMatchObject({ parameterCount: 1, definitionCount: 121 });
+    expect(modules.find((module: { id: string }) => module.id === "issue897-placement-a")).toMatchObject({ parameterCount: 0, definitionCount: 0 });
     expect(modules.find((module: { id: string }) => module.id === "issue897-config")).toMatchObject({ parameterCount: 0, definitionCount: 1 });
     const currentBindings = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers: authHeadersForRole("admin") });
-    expect((await currentBindings.json()).items.find((row: { id: string }) => row.id === bindingId)).toMatchObject({ moduleId: "issue897-driver-b" });
+    expect((await currentBindings.json()).items.find((row: { id: string }) => row.id === bindingId)).toMatchObject({ moduleId: "issue897-placement-b" });
     const stale = await request.patch(placementUrl, {
       headers: { ...authHeadersForRole("admin"), "X-WiseEff-Catalog-Release": releaseId, "Idempotency-Key": "issue897-stale", "If-Match": priorEtag },
-      data: { destinationModuleId: "issue897-driver-a", placement: { mode: "use-default" } }
+      data: { destinationModuleId: "issue897-placement-a", placement: { mode: "use-default" } }
     });
     expect(stale.status(), await stale.text()).toBe(409);
     const current = await request.get(placementUrl, { headers: authHeadersForRole("admin") });
-    expect((await current.json()).item.moduleId).toBe("issue897-driver-b");
-    for (const destinationModuleId of ["issue897-config", "issue897-foreign-module"]) {
+    expect((await current.json()).item.moduleId).toBe("issue897-placement-b");
+    for (const destinationModuleId of ["issue897-driver-a", "issue897-foreign-business"]) {
       const rejected = await request.patch(placementUrl, {
         headers: { ...authHeadersForRole("admin"), "X-WiseEff-Catalog-Release": releaseId, "Idempotency-Key": `reject-${destinationModuleId}`, "If-Match": current.headers().etag },
         data: { destinationModuleId, placement: { mode: "use-default" } }
@@ -684,7 +691,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     }
     const forbidden = await request.patch(placementUrl, {
       headers: { ...authHeadersForRole("software-user"), "X-WiseEff-Catalog-Release": releaseId, "Idempotency-Key": "issue897-forbidden", "If-Match": current.headers().etag },
-      data: { destinationModuleId: "issue897-driver-a", placement: { mode: "use-default" } }
+      data: { destinationModuleId: "issue897-placement-a", placement: { mode: "use-default" } }
     });
     expect(forbidden.status(), await forbidden.text()).toBe(403);
     const scopedRegistration = await request.get(apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations/${driverRegistrationId}`), { headers: authHeadersForRole("software-user") });
@@ -698,7 +705,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     const beforeDeleteRefusals = await request.get(apiRoute("/api/v2/parameter-modules"), { headers: authHeadersForRole("admin") });
     expect(beforeDeleteRefusals.status(), await beforeDeleteRefusals.text()).toBe(200);
     const retainedModules = (await beforeDeleteRefusals.json()).item.modules;
-    for (const moduleId of ["issue897-config", "issue897-driver-b"]) {
+    for (const moduleId of ["issue897-config", "issue897-placement-b"]) {
       const blockedDelete = await request.delete(apiRoute(`/api/v1/parameter-modules/${moduleId}`), { headers: authHeadersForRole("software-user") });
       expect(blockedDelete.status(), await blockedDelete.text()).toBe(403);
     }
@@ -723,7 +730,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     await page.screenshot({ path: info.outputPath("canonical-module-query-error.png"), animations: "disabled" });
     await page.unroute("**/api/v2/catalog/subjects?*");
     await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
-    await expect(driver.getByText("归属：Issue 897 Modules / Output hardware", { exact: true })).toBeVisible();
+    await expect(driver.getByText("归属：Issue 897 Modules / Output business", { exact: true })).toBeVisible();
     await page.getByRole("tree", { name: "模块归属树" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("canonical-module-tree-after-move.png"), animations: "disabled" });
     await page.getByRole("button", { name: "修改模块 Input hardware", exact: true }).click();
@@ -736,15 +743,15 @@ test.describe("Issue 897 canonical module ownership", () => {
     expect(moduleRequests.filter(call => call.includes("organization-driver-schemas"))).toEqual([]);
     await page.goto(`${runtime.frontendUrl}/parameter-admin/specs?q=extra_119`);
     const lastDefinitionRow = page.getByRole("table", { name: "参数定义列表" }).getByRole("row").filter({ hasText: "extra_119" });
-    await expect(lastDefinitionRow).toContainText("Output hardware");
+    await expect(lastDefinitionRow).toContainText("Output business");
     await page.screenshot({ path: info.outputPath("canonical-definition-page-two.png"), animations: "disabled" });
     await page.goto(`${runtime.frontendUrl}/parameter-admin/specs?q=iin_max`);
     const definitionRow = page.getByRole("table", { name: "参数定义列表" }).getByRole("row").filter({ hasText: "iin_max" });
-    await expect(definitionRow).toContainText("Output hardware");
+    await expect(definitionRow).toContainText("Output business");
     await page.screenshot({ path: info.outputPath("canonical-definition-module.png"), animations: "disabled" });
     await page.goto(`${runtime.frontendUrl}/parameters?project=${projectId}`);
     await expect(page.locator(`[data-binding-id="${bindingId}"]`)).toBeVisible();
-    await expect(page.getByText("Output hardware", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Output business", { exact: true }).first()).toBeVisible();
     await page.screenshot({ path: info.outputPath("canonical-project-module.png"), animations: "disabled" });
   });
 

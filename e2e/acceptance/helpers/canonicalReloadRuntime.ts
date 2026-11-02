@@ -74,8 +74,8 @@ export async function startCanonicalReloadRuntime(
        values ('attr-reload-acme','physical-device','multiple')`
     );
     await client.query(
-      `insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-       values ('pmod-reload-acme',$1,'Acme power','pmod-reload-acme',1,'driver-group','curated','attr-reload-acme')`,
+      `insert into parameter_modules(id,organization_id,name,path,depth,kind,origin)
+       values ('pmod-reload-acme',$1,'Acme power','pmod-reload-acme',1,'business','curated')`,
       [organizationId]
     );
   });
@@ -101,7 +101,7 @@ export async function startCanonicalReloadRuntime(
       "X-WiseEff-Catalog-Release": compiled.value.release.id,
       "Idempotency-Key": "reload-acme-registration"
     },
-    data: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, reason: "Canonical reload fixture" }
+    data: { subjectId: "csub_acme_power", destinationModuleId: "pmod-reload-acme", placement: { mode: "use-default" }, reason: "Canonical reload fixture" }
   });
   expect(registration.status(), await registration.text()).toBe(201);
   const config = await request.post(api(`/api/v1/projects/${projectId}/config-sets`), {

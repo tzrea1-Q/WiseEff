@@ -27,10 +27,10 @@ export async function installMemberAdditionErasureCatalogFixture(db: Database, a
     source_kind,target_release_id,target_release_digest,toolchain) values ('cart_add_erasure',$1,$2,$3,'repository-bundle',$4,$1,$5)`,
   [compiled.value.aggregateDigest, sha256Digest(bytes), Buffer.from(bytes), release.manifest.release.id, release.manifest.toolchain]);
   const business = await createParameterModuleForAuth(db, auth, { name: "Erasure", kind: "business" });
-  const driver = await createParameterModule(db, { organizationId: auth.organization.id, name: "Erasure driver", kind: "driver-group", parentId: business.id, sourceKey: "compatible:acme,power" });
+  await createParameterModule(db, { organizationId: auth.organization.id, name: "Erasure driver", kind: "driver-group", parentId: business.id, sourceKey: "compatible:acme,power" });
   const registration = await executeRegistration(getRootPostgresPool(db)!, { kind: "register", organizationId: auth.organization.id,
     subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver", expectedRelease: compiled.value.release,
-    destinationModuleId: driver.id, placement: { mode: "use-default" }, method: "explicit", proof: { reason: "Addition erasure regression" },
+    destinationModuleId: business.id, placement: { mode: "use-default" }, method: "explicit", proof: { reason: "Addition erasure regression" },
     idempotencyKey: "add-erasure-register", context: { actorKind: "org-admin", principalId: auth.user.id } });
   if (!registration.ok) throw new Error(JSON.stringify(registration.error));
 }

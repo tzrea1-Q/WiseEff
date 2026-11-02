@@ -313,10 +313,10 @@ async function seedCatalogPlacementModules(pool: pg.Pool): Promise<void> {
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
        ) values
-         ($1, $3, 'Driver', $1, 1, 'driver-group', 'curated', $4),
-         ($2, $3, 'Node type', $2, 1, 'node-type', 'curated', $4)
+         ($1, $3, 'Driver', $1, 1, 'business', 'curated', null),
+         ($2, $3, 'Node type', $2, 1, 'business', 'curated', null)
        on conflict (id) do nothing`,
-      [org.moduleDriver, org.moduleNode, org.organizationId, org.attr]
+      [org.moduleDriver, org.moduleNode, org.organizationId]
     );
   }
 }

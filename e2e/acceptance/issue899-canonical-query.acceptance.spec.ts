@@ -53,13 +53,13 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
         values ('issue899-attr',$1,'driver-registration','Acme power','compatible:acme,power')`, [organizationId]);
       await client.query(`insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)
         values ('issue899-attr','physical-device','multiple')`);
-      await client.query(`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-        values ('issue899-module',$1,'Acme power','issue899-module',1,'driver-group','curated','issue899-attr')`, [organizationId]);
+      await client.query(`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin)
+        values ('issue899-module',$1,'Acme power','issue899-module',1,'business','curated')`, [organizationId]);
     });
     const headers = authHeadersForRole("admin");
     const registered = await request.post(apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations`), {
       headers: { ...headers, "X-WiseEff-Catalog-Release": compiled.value.release.id, "Idempotency-Key": "issue899-registration" },
-      data: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, reason: "Issue 899 isolated fixture" }
+      data: { subjectId: "csub_acme_power", destinationModuleId: "issue899-module", placement: { mode: "use-default" }, reason: "Issue 899 isolated fixture" }
     });
     expect(registered.status(), await registered.text()).toBe(201);
     for (const [id, name, values] of [

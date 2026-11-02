@@ -228,9 +228,7 @@ export async function registerCatalogDriverSubjects(
   if (!current.ok()) throw new Error(`read current Catalog failed: ${current.status()} ${await current.text()}`);
   const releaseId = ((await current.json()) as { item: { catalogReleaseId: string } }).item.catalogReleaseId;
   for (const { subjectId, canonicalName } of subjects) {
-    // Fixture-only setup in the disposable database: the destination driver-group
-    // module and its attribution subject, exactly as the canonical value workflow
-    // spec provisions them before registering a Catalog driver Subject.
+    // Fixture-only business destination in the disposable database.
     const destinationModuleId = `topology-pmod-${canonicalName.replace(/[^a-z0-9]+/gi, "-")}`;
     await withPgClient(async (client) => {
       const attributionId = `topology-attr-${canonicalName.replace(/[^a-z0-9]+/gi, "-")}`;
@@ -245,9 +243,9 @@ export async function registerCatalogDriverSubjects(
         [attributionId]
       );
       await client.query(
-        `insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-         values ($1,$2,$3,$1,1,'driver-group','curated',$4) on conflict (id) do nothing`,
-        [destinationModuleId, organizationId, canonicalName, attributionId]
+        `insert into parameter_modules(id,organization_id,name,path,depth,kind,origin)
+         values ($1,$2,$3,$1,1,'business','curated') on conflict (id) do nothing`,
+        [destinationModuleId, organizationId, canonicalName]
       );
     });
     const response = await request.post(

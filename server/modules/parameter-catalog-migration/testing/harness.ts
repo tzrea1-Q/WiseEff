@@ -383,14 +383,12 @@ export async function createMigrationHarness(options: { readonly objectStore?: O
       );
     }
     await pool.query(
-      `insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id)
-       values ($1, $2, $3, $1, 1, $4, 'curated', $5) on conflict (id) do nothing`,
+      `insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin)
+       values ($1, $2, $3, $1, 1, 'business', 'curated') on conflict (id) do nothing`,
       [
         input.moduleId,
         input.organizationId,
         input.moduleId,
-        input.subjectKind === "driver" ? "driver-group" : "node-type",
-        attributionId,
       ],
     );
     const command: RegisterSubjectCommand = {

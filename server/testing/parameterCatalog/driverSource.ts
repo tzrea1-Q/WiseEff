@@ -85,7 +85,7 @@ export async function installDriverSourceFixture(
     subjectKind: "driver",
     expectedRelease: compiled.value.release,
     placement: { mode: "use-default" },
-    destinationModuleId: driver.id,
+    destinationModuleId: business.id,
     method: "explicit",
     proof: { reason: input.reason },
     idempotencyKey: input.idempotencyKey,

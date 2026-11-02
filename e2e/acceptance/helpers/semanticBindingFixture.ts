@@ -305,8 +305,8 @@ export async function seedIsolatedBindings(
         values ($1,$2,'driver-registration',$1,$1) on conflict (id) do nothing`, [subjectId, organizationId]);
       await client.query(`insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)
         values ($1,'physical-device','multiple') on conflict (attribution_subject_id) do nothing`, [subjectId]);
-      await client.query(`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-        values ($1,$2,$1,$1,1,'driver-group','curated',$3) on conflict (id) do nothing`, [moduleId, organizationId, subjectId]);
+      await client.query(`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin)
+        values ($1,$2,$1,$1,1,'business','curated') on conflict (id) do nothing`, [moduleId, organizationId]);
     });
     const registration = await request.post(apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations`), {
       headers: { ...adminHeaders(), "X-WiseEff-Catalog-Release": SEMANTIC_BINDING_FIXTURE_RELEASE_ID,
