@@ -290,6 +290,18 @@ describe("S4-REG public command contract", () => {
 });
 
 describe("S4-REG production Catalog isolation", () => {
+  it("keeps owner discovery read-only and acquires the bounded shared pointer before the organization fence", () => {
+    const owners = readFileSync(path.join(dir, "../../catalog-kernel/ownerSchema.ts"), "utf8");
+    expect(owners).toContain("listOwnedCatalogSubjects");
+    expect(owners).toContain("readCatalogSubjectOwner");
+    expect(owners).not.toMatch(/\b(?:insert\s+into|update|delete\s+from)\s+parameter_catalog\.catalog_/i);
+    const locks = readFileSync(path.join(dir, "../../parameter-modules/recognitionLock.ts"), "utf8");
+    expect(locks).toContain("pg_advisory_xact_lock_shared(688004000041::bigint)");
+    expect(locks).toContain("'2s'");
+    expect(locks).toContain("PCAT-GUARD-SYNCHRONIZATION-BUSY");
+    expect(locks.indexOf("pg_advisory_xact_lock_shared(688004000041::bigint)"))
+      .toBeLessThan(locks.indexOf("`subject-registration:${organizationId}`"));
+  });
   it("never selects or inserts Catalog structural rows and only calls the scalar guard", () => {
     const sources = productionFiles.map((file) => ({
       file,

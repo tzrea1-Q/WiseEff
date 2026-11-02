@@ -27,11 +27,15 @@ export function modulePath(id: string, modules: readonly { id: string; name: str
 
 export async function listUnregisteredSubjects(pool: pg.Pool, organizationId: string, releaseId: string, source: "organization" | "all") {
   const [subjects, modules] = await Promise.all([
-    pool.query<{ id: string; canonicalName: string; kind: "driver" | "node-type" | "configuration-schema" }>(
-      `select subject.id, subject.canonical_key as "canonicalName", subject.kind
+    pool.query<{ id: string; canonicalName: string; kind: "driver" | "node-type" | "configuration-schema"; childCount: number }>(
+      `select subject.id, subject.canonical_key as "canonicalName", subject.kind,
+         (select count(*)::int from parameter_catalog.catalog_subjects child
+          join parameter_catalog.catalog_release_subjects child_membership on child_membership.subject_id=child.id
+          where child.owner_subject_id=subject.id and child_membership.release_id=$1 and child_membership.lifecycle='active') as "childCount"
        from parameter_catalog.catalog_release_subjects membership
        join parameter_catalog.catalog_subjects subject on subject.id = membership.subject_id
        where membership.release_id = $1 and membership.lifecycle = 'active'
+         and subject.owner_subject_id is null
          and not exists (select 1 from parameter_catalog.organization_subject_registrations registration
                          where registration.organization_id = $2 and registration.subject_id = subject.id)
          and ($3 = 'all' or exists (

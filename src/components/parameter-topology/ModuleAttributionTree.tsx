@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { ModuleCreateDialog, type ModuleCreateSaveDraft } from "@/components/admin/ModuleCreateDialog";
@@ -43,6 +43,7 @@ import {
 export type ModuleTreeSubject = {
   id: string; moduleId: string; name: string;
   kind: "driver" | "node-type" | "configuration-schema"; definitionCount: number;
+  ownerSubjectId?: string;
 };
 
 export type ModuleAttributionTreeProps = {
@@ -192,6 +193,13 @@ function ModuleAttributionTreeRow({
   if (!module) return null;
 
   const subjectChildren = subjects.filter((subject) => subject.moduleId === module.id);
+  const subjectIds = new Set(subjectChildren.map((subject) => subject.id));
+  const ownedBySubject = new Map<string, ModuleTreeSubject[]>();
+  for (const subject of subjectChildren) if (subject.ownerSubjectId) {
+    const owned = ownedBySubject.get(subject.ownerSubjectId) ?? [];
+    owned.push(subject);
+    ownedBySubject.set(subject.ownerSubjectId, owned);
+  }
   const hasChildren = node.children.length > 0 || subjectChildren.length > 0;
   const isExpanded = expandedIds.has(node.id);
   const compatibleCount = mappingsForModule(mappings, module.id).filter(
@@ -200,6 +208,27 @@ function ModuleAttributionTreeRow({
   const coverageSummary =
     module.kind === "driver-group" ? driverCoverage?.get(module.id) : undefined;
   const coverageChip = coverageSummary ? formatCoverageChip(coverageSummary) : null;
+  const renderSubject = (subject: ModuleTreeSubject, subjectDepth: number): ReactNode => {
+    const owned = ownedBySubject.get(subject.id) ?? [];
+    return <li key={subject.id} role="treeitem" aria-level={subjectDepth + 1}
+      aria-expanded={owned.length ? true : undefined}
+      aria-selected={selectedSubjectId === subject.id} data-module-tree-id={`subject:${subject.id}`}
+      tabIndex={focusedModuleId === `subject:${subject.id}` ? 0 : -1}
+      className="module-attribution-tree__item is-child"
+      style={{ ["--mod-attr-depth" as string]: String(subjectDepth) }}
+      onFocus={(event) => { if (event.target === event.currentTarget) onFocusModule(`subject:${subject.id}`); }}
+      onKeyDown={(event) => { if (event.target === event.currentTarget) onSubjectKeyDown(event, subject); }}>
+      <div className="module-attribution-tree__row"><div className="module-attribution-tree__identity">
+        <DepthGuides depth={subjectDepth} /><span className="module-attribution-tree__toggle is-spacer" aria-hidden="true" />
+        <button type="button" className="module-attribution-tree__label module-attribution-tree__select"
+          aria-label={`查看主体：${subject.name}`} tabIndex={-1}
+          onClick={(event) => { event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus();
+            onSelectSubject?.(subject.id, subject.moduleId); }}>{subject.name}</button>
+        <span className="module-attribution-tree__kind">{{ driver: "驱动", "node-type": "节点类型", "configuration-schema": "配置规范" }[subject.kind]}</span>
+      </div><div className="module-attribution-tree__meta"><span className="module-attribution-tree__count">{subject.definitionCount} 定义</span></div></div>
+      {owned.length ? <ul role="group">{owned.map((child) => renderSubject(child, subjectDepth + 1))}</ul> : null}
+    </li>;
+  };
 
   return (
     <li
@@ -334,22 +363,8 @@ function ModuleAttributionTreeRow({
               onSubjectKeyDown={onSubjectKeyDown}
             />
           ))}
-          {subjectChildren.map((subject) => <li key={subject.id} role="treeitem" aria-level={depth + 2}
-            aria-selected={selectedSubjectId === subject.id} data-module-tree-id={`subject:${subject.id}`}
-            tabIndex={focusedModuleId === `subject:${subject.id}` ? 0 : -1}
-            className="module-attribution-tree__item is-child"
-            style={{ ["--mod-attr-depth" as string]: String(depth + 1) }}
-            onFocus={(event) => { if (event.target === event.currentTarget) onFocusModule(`subject:${subject.id}`); }}
-            onKeyDown={(event) => { if (event.target === event.currentTarget) onSubjectKeyDown(event, subject); }}>
-            <div className="module-attribution-tree__row"><div className="module-attribution-tree__identity">
-              <DepthGuides depth={depth + 1} /><span className="module-attribution-tree__toggle is-spacer" aria-hidden="true" />
-              <button type="button" className="module-attribution-tree__label module-attribution-tree__select"
-                aria-label={`查看主体：${subject.name}`} tabIndex={-1}
-                onClick={(event) => { event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus();
-                  onSelectSubject?.(subject.id, subject.moduleId); }}>{subject.name}</button>
-              <span className="module-attribution-tree__kind">{{ driver: "驱动", "node-type": "节点类型", "configuration-schema": "配置规范" }[subject.kind]}</span>
-            </div><div className="module-attribution-tree__meta"><span className="module-attribution-tree__count">{subject.definitionCount} 定义</span></div></div>
-          </li>)}
+          {subjectChildren.filter((subject) => !subject.ownerSubjectId || !subjectIds.has(subject.ownerSubjectId))
+            .map((subject) => renderSubject(subject, depth + 1))}
         </ul>
       ) : null}
     </li>
@@ -476,7 +491,18 @@ export function ModuleAttributionTree({
       visibleIds.push(node.id);
       if (visibleExpandedIds.has(node.id)) {
         collectVisible(node.children);
-        visibleIds.push(...subjects.filter(subject => subject.moduleId === node.id).map(subject => `subject:${subject.id}`));
+        const moduleSubjects = subjects.filter((subject) => subject.moduleId === node.id);
+        const moduleSubjectIds = new Set(moduleSubjects.map((subject) => subject.id));
+        const ownedBySubject = new Map<string, ModuleTreeSubject[]>();
+        for (const subject of moduleSubjects) if (subject.ownerSubjectId) {
+          const owned = ownedBySubject.get(subject.ownerSubjectId) ?? [];
+          owned.push(subject);
+          ownedBySubject.set(subject.ownerSubjectId, owned);
+        }
+        for (const subject of moduleSubjects.filter((item) => !item.ownerSubjectId || !moduleSubjectIds.has(item.ownerSubjectId))) {
+          visibleIds.push(`subject:${subject.id}`);
+          visibleIds.push(...(ownedBySubject.get(subject.id) ?? []).map((child) => `subject:${child.id}`));
+        }
       }
     }
   };
@@ -518,10 +544,15 @@ export function ModuleAttributionTree({
   };
   const handleSubjectKeyDown = (event: KeyboardEvent<HTMLLIElement>, subject: ModuleTreeSubject) => {
     const index = visibleIds.indexOf(`subject:${subject.id}`);
-    if (["ArrowDown", "ArrowUp", "ArrowLeft", "Home", "End", "Enter", " "].includes(event.key)) event.preventDefault();
+    if (["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End", "Enter", " "].includes(event.key)) event.preventDefault();
     if (event.key === "ArrowDown") focusModule(visibleIds[Math.min(index + 1, visibleIds.length - 1)]);
     else if (event.key === "ArrowUp") focusModule(visibleIds[Math.max(0, index - 1)]);
-    else if (event.key === "ArrowLeft") focusModule(subject.moduleId);
+    else if (event.key === "ArrowLeft") focusModule(subject.ownerSubjectId && visibleIds.includes(`subject:${subject.ownerSubjectId}`)
+      ? `subject:${subject.ownerSubjectId}` : subject.moduleId);
+    else if (event.key === "ArrowRight") {
+      const child = subjects.find((item) => item.moduleId === subject.moduleId && item.ownerSubjectId === subject.id);
+      if (child) focusModule(`subject:${child.id}`);
+    }
     else if (event.key === "Home") focusModule(visibleIds[0]);
     else if (event.key === "End") focusModule(visibleIds.at(-1));
     else if (event.key === "Enter" || event.key === " ") onSelectSubject?.(subject.id, subject.moduleId);

@@ -261,6 +261,7 @@ const executeResolution = async (
     resolutionType: command.resolution,
     fingerprint,
     principalId,
+    ...(registration?.cascadedRegistrations ? { cascadedRegistrations: registration.cascadedRegistrations } : {}),
     invocation: command.invocation,
     requestId: command.requestId,
   });

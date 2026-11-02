@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { lockOrganizationModuleRecognition } from "./recognitionLock";
+export { lockOrganizationModuleRecognition } from "./recognitionLock";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
@@ -45,10 +47,6 @@ type ModuleRecognitionRow = {
   legacy_nature: DriverNature | null;
   legacy_cardinality: InstanceCardinality | null;
 };
-
-export async function lockOrganizationModuleRecognition(db: Queryable, organizationId: string) {
-  await db.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-recognition:${organizationId}`]);
-}
 
 const validCompatibles = (values: readonly string[]): string[] => [...new Set(values.flatMap(value => {
   const parsed = parseCanonicalCompatibleSelector(value);

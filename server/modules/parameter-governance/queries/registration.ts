@@ -35,6 +35,7 @@ type RegistrationJoinRow = {
   id: string;
   organization_id: string;
   subject_id: string;
+  owner_subject_id: string | null;
   status: string;
   registration_method: string;
   current_placement_id: string;
@@ -128,6 +129,7 @@ const registrationSelect = `
     registration.id,
     registration.organization_id,
     registration.subject_id,
+    subject.owner_subject_id,
     registration.status,
     registration.registration_method,
     registration.current_placement_id,
@@ -138,6 +140,7 @@ const registrationSelect = `
     module.name as module_name,
     parent_placement.id as parent_placement_id
   from parameter_catalog.organization_subject_registrations registration
+  join parameter_catalog.catalog_subjects subject on subject.id = registration.subject_id
   left join parameter_catalog.subject_placements placement
     on placement.id = registration.current_placement_id
    and placement.organization_id = registration.organization_id
@@ -174,6 +177,7 @@ const mapPlacement = (
       id: row.placement_id,
       displayName: row.module_name ?? "未设置模块 (unset)",
       parentPlacementId: row.parent_placement_id,
+      ...(row.owner_subject_id ? { ownerSubjectId: row.owner_subject_id, structural: true as const } : {}),
       ...(row.module_id ? { moduleId: row.module_id } : {}),
     },
   };
@@ -198,6 +202,7 @@ const mapRecord = (
       id: row.id,
       organizationId: row.organization_id,
       subjectId: CatalogSubjectId(row.subject_id),
+      ...(row.owner_subject_id ? { ownerSubjectId: row.owner_subject_id, structural: true as const } : {}),
       status,
       method,
       placement: placement.value,

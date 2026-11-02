@@ -292,6 +292,14 @@ export function CanonicalSubjectPlacementPanel({
     }
     return map;
   }, [registrations]);
+  const subjectIndexes = useMemo(() => new Map(subjects.map((subject, index) => [subject.id, index])), [subjects]);
+  const childCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const subject of subjects) if (subject.ownerSubjectId && subject.membership.status === "active") {
+      counts.set(subject.ownerSubjectId, (counts.get(subject.ownerSubjectId) ?? 0) + 1);
+    }
+    return counts;
+  }, [subjects]);
 
   useEffect(() => {
     if (!onTreeSubjectsChange) return;
@@ -299,7 +307,7 @@ export function CanonicalSubjectPlacementPanel({
       const registration = registrationBySubjectId.get(subject.id);
       const moduleId = registration?.status === "active" ? registration.placement.moduleId : undefined;
       return moduleId ? [{ id: subject.id, moduleId, name: subject.canonicalName,
-        kind: subject.type, definitionCount: subject.definitionCounts.active }] : [];
+        kind: subject.type, definitionCount: subject.definitionCounts.active, ...(subject.ownerSubjectId ? { ownerSubjectId: subject.ownerSubjectId } : {}) }] : [];
     }));
   }, [onTreeSubjectsChange, subjects, registrationBySubjectId]);
 
@@ -312,6 +320,7 @@ export function CanonicalSubjectPlacementPanel({
     return subjects.filter((subject) => {
       if (selectedSubjectId) return subject.id === selectedSubjectId;
       const registration = registrationBySubjectId.get(subject.id);
+      if (subject.ownerSubjectId && !registration && subject.registration.status === "unregistered") return false;
       const placement = registration?.status === "active" ? registration.placement
         : subject.registration.status !== "unregistered" ? subject.registration.placement : undefined;
       if (selectedModuleIds && (!placement?.moduleId || !selectedModuleIds.has(placement.moduleId))) return false;
@@ -330,14 +339,29 @@ export function CanonicalSubjectPlacementPanel({
         .join(" ")
         .toLowerCase()
         .includes(token);
+    }).sort((left, right) => {
+      const leftIndex = subjectIndexes.get(left.ownerSubjectId ?? left.id) ?? subjectIndexes.get(left.id)!;
+      const rightIndex = subjectIndexes.get(right.ownerSubjectId ?? right.id) ?? subjectIndexes.get(right.id)!;
+      return leftIndex - rightIndex || Number(Boolean(left.ownerSubjectId)) - Number(Boolean(right.ownerSubjectId)) ||
+        subjectIndexes.get(left.id)! - subjectIndexes.get(right.id)!;
     });
-  }, [search, subjects, typeFilter, registrationBySubjectId, selectedModuleIds, selectedSubjectId, registrationFilter, definitionsFilter, visibleModuleIds]);
-  const subjectPageCount = Math.max(1, Math.ceil(filteredSubjects.length / SUBJECTS_PER_PAGE));
+  }, [search, subjects, subjectIndexes, typeFilter, registrationBySubjectId, selectedModuleIds, selectedSubjectId, registrationFilter, definitionsFilter, visibleModuleIds]);
+  const subjectGroups = useMemo(() => {
+    const groups = new Map<string, SubjectRow[]>();
+    for (const subject of filteredSubjects) {
+      const key = subject.ownerSubjectId ?? subject.id;
+      const group = groups.get(key) ?? [];
+      group.push(subject);
+      groups.set(key, group);
+    }
+    return [...groups.values()];
+  }, [filteredSubjects]);
+  const subjectPageCount = Math.max(1, Math.ceil(subjectGroups.length / SUBJECTS_PER_PAGE));
   const subjectPage = Math.min(requestedPage, subjectPageCount - 1);
-  const visibleSubjects = filteredSubjects.slice(
+  const visibleSubjects = subjectGroups.slice(
     subjectPage * SUBJECTS_PER_PAGE,
     (subjectPage + 1) * SUBJECTS_PER_PAGE
-  );
+  ).flat();
   const moduleLabels = useMemo(() => {
     const flat = toAttributionFlatNodes(modules);
     return new Map(flat.map((module) => [module.id, modulePathSegments(module, flat).join(" / ")]));
@@ -418,6 +442,7 @@ export function CanonicalSubjectPlacementPanel({
       subject,
       subjectImpact: {
         activeDefinitionCount: subject.definitionCounts.active,
+        childCount: childCounts.get(subject.id) ?? 0,
         bindingCount: null,
         projectCount: null
       }
@@ -460,6 +485,7 @@ export function CanonicalSubjectPlacementPanel({
         ifMatch,
         subjectImpact: {
           activeDefinitionCount: subject.definitionCounts.active,
+          childCount: childCounts.get(subject.id) ?? 0,
           bindingCount: impact.bindingCount,
           projectCount: impact.projectCount
         },
@@ -483,7 +509,9 @@ export function CanonicalSubjectPlacementPanel({
     if (!subject) throw new Error("当前发布中找不到该主体，请关闭后重新选择。");
     if (!source.registrationId) {
       if (generation === placementGeneration.current) setPlacementDialog((current) => current ? { ...current, subject,
-        subjectImpact: { activeDefinitionCount: subject.definitionCounts.active, bindingCount: null, projectCount: null } } : null);
+        subjectImpact: { activeDefinitionCount: subject.definitionCounts.active,
+          childCount: refreshed.subjects.filter((child) => child.ownerSubjectId === subject.id && child.membership.status === "active").length,
+          bindingCount: null, projectCount: null } } : null);
       return;
     }
       const [registration, placement] = await Promise.all([
@@ -503,7 +531,8 @@ export function CanonicalSubjectPlacementPanel({
           const path = moduleLabels.get(placement.item.moduleId ?? "") ?? placement.item.displayName;
           return path && (module?.kind === "driver-group" || module?.kind === "node-type") ? `${path}（遗留技术模块）` : path;
         })(),
-        subjectImpact: { activeDefinitionCount: subject.definitionCounts.active, ...impact } } : null);
+        subjectImpact: { activeDefinitionCount: subject.definitionCounts.active,
+          childCount: refreshed.subjects.filter((child) => child.ownerSubjectId === subject.id && child.membership.status === "active").length, ...impact } } : null);
   };
 
   const selectedRegistration = placementDialog
@@ -649,20 +678,23 @@ export function CanonicalSubjectPlacementPanel({
                       : subject.registration.id);
                   const registrationAllowed =
                     canAdmin &&
+                    !subject.ownerSubjectId &&
                     subject.membership.status === "active" &&
                     isCatalogActionEnabled(actor, "register-subject", domainState, sessionPermissions) &&
                     (modulesForSubject.length > 0 || newDestinationParents.length > 0);
                   const placementAllowed =
                     canAdmin &&
+                    !subject.ownerSubjectId &&
                     subject.membership.status === "active" &&
                     registration?.status === "active" &&
                     Boolean(registrationId) &&
                     isCatalogActionEnabled(actor, "update-placement", domainState, sessionPermissions);
                   const registrationStatus = registration?.status ?? subject.registration.status;
                   const lifecycleIntent = registrationStatus === "retired" ? "restore-registration" : "retire-registration";
-                  const lifecycleAllowed = canAdmin && (registrationStatus === "unregistered" ? subject.membership.status === "active" : Boolean(registrationId)) &&
+                  const lifecycleAllowed = canAdmin && !subject.ownerSubjectId && (registrationStatus === "unregistered" ? subject.membership.status === "active" : Boolean(registrationId)) &&
                     isCatalogActionEnabled(actor, lifecycleIntent, domainState, sessionPermissions);
                   const subjectLabel = subjectTypeLabel(subject.type);
+                  const childCount = childCounts.get(subject.id) ?? 0;
                   return (
                     <li
                       key={subject.id}
@@ -670,6 +702,8 @@ export function CanonicalSubjectPlacementPanel({
                       aria-label={`${subject.canonicalName}（${subjectTypeLabel(subject.type)}）`}
                       data-canonical-subject-id={subject.id}
                       data-canonical-subject-kind={subject.type}
+                      data-owner-subject-id={subject.ownerSubjectId}
+                      style={subject.ownerSubjectId ? { marginLeft: "1.5rem" } : undefined}
                     >
                       <div className="parameter-module-mapping-panel__tree-label canonical-subject-identity">
                         <strong>{subject.canonicalName}</strong>
@@ -679,6 +713,8 @@ export function CanonicalSubjectPlacementPanel({
                       </div>
                       <span className="canonical-subject-meta">
                         {subject.definitionCounts.active} 个有效定义{subject.definitionCounts.deprecated > 0 ? ` · ${subject.definitionCounts.deprecated} 个已废弃定义` : ""}
+                        {childCount ? <span>含 {childCount} 个子节点</span> : null}
+                        {childCount && registrationStatus === "unregistered" ? <span>，将随驱动一同登记</span> : null}
                       </span>
                       <span className="canonical-subject-meta">
                         {registrationStatus === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">已停用 · </span> : null}
@@ -715,7 +751,7 @@ export function CanonicalSubjectPlacementPanel({
                             登记主体
                           </button>
                         ) : null}
-                        {canAdmin &&
+                        {canAdmin && !subject.ownerSubjectId &&
                         subject.registration.status === "unregistered" &&
                         modulesForSubject.length === 0 && newDestinationParents.length === 0 ? (
                           <span className="muted">请先新建业务分类，再创建目标模块并登记。

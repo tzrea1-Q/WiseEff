@@ -52,6 +52,8 @@ export type RegistrationHttpStatus = "active" | "retired";
 export type ObservationRecognition = "unknown" | "ambiguous" | "matched" | "retired";
 
 export type GovernancePlacementRecord = {
+  readonly ownerSubjectId?: string;
+  readonly structural?: true;
   readonly id: string;
   /** Conditional-write token, returned only by getPlacement, not the public DTO. */
   readonly version?: string;
@@ -66,6 +68,8 @@ export type GovernancePlacementRecord = {
 };
 
 export type GovernanceRegistrationRecord = {
+  readonly ownerSubjectId?: string;
+  readonly structural?: true;
   readonly impact?: { readonly bindingCount: number; readonly projectCount: number;
     readonly projects?: readonly { readonly id: string; readonly name: string; readonly bindingCount: number }[] };
   readonly id: string;

@@ -83,6 +83,8 @@ export type CatalogGovernanceAuthResult =
   | { readonly ok: false; readonly status: 401 | 403 };
 
 export type RegistrationRecord = {
+  readonly ownerSubjectId?: string;
+  readonly structural?: true;
   readonly id: string;
   readonly impact?: { readonly bindingCount: number; readonly projectCount: number };
   readonly organizationId: string;
@@ -90,6 +92,8 @@ export type RegistrationRecord = {
   readonly status: "active" | "retired";
   readonly method: "explicit" | "automatic" | "review";
   readonly placement: {
+    readonly ownerSubjectId?: string;
+    readonly structural?: true;
     readonly id: string;
     readonly moduleId?: string;
     readonly version?: string;

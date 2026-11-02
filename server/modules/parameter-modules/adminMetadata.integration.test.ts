@@ -1,5 +1,5 @@
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createPostgresDatabase, getRootPostgresPool, type Database, type Queryable, type RootDatabase } from "../../shared/database/client";
 import { createCheckedEmptyDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog";
@@ -662,40 +662,40 @@ describe("administrator module metadata through the API database role", () => {
       .toBe("unknown");
   });
 
-  it("rejects a stale release after publication wins the recognition lock race", async () => {
+  it("rejects a stale release after publication wins the pointer lock race", async () => {
     const f = await fixture("recognition-release-race", "node-type", "curated");
     const current = await readRegistrationRecognitionSettings(apiDb, f.auth.organization.id, f.registrationId);
     if (!current) throw new Error("Recognition settings unavailable");
     const gate = await pool.connect();
     await gate.query("begin");
-    await gate.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-recognition:${f.auth.organization.id}`]);
-    const pending = updateRegistrationRecognitionSettings(apiDb, { organizationId: f.auth.organization.id, registrationId: f.registrationId,
-      body: { nodeTypeName: "stale-charger" }, invocation: createUserInvocation(f.auth), requestId: "recognition-release-race",
-      ifMatch: registrationRecognitionEtag(current), idempotencyKey: "recognition-release-race", catalogReleaseId: release.id })
-      .then(value => ({ value, error: null }), error => ({ value: null, error }));
+    await gate.query("select pg_advisory_xact_lock(688004000041::bigint)");
+    const gatePid = (await gate.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
+    const bundle = retiredPowerAliasSuccessorBundle();
+    const compiled = compileCatalogRelease(bundle);
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+    const publication = installPublishedRelease(pool, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
+      expectedCurrent: release, expectedTargetDigest: compiled.value.aggregateDigest });
+    let pending: ReturnType<typeof updateRegistrationRecognitionSettings> | undefined;
     try {
-      let waiting = false;
-      const deadline = Date.now() + 10_000;
-      while (!waiting && Date.now() < deadline) {
-        const result = await pool.query<{ waiting: boolean }>(`select exists (
-          select 1 from pg_stat_activity where usename = $1 and wait_event_type = 'Lock' and wait_event = 'advisory'
-            and query like '%pg_advisory_xact_lock(hashtextextended%') as waiting`, [runtime.apiRole]);
-        waiting = result.rows[0]?.waiting === true;
-        if (!waiting) await new Promise(resolve => setTimeout(resolve, 10));
-      }
-      expect(waiting).toBe(true);
-      const bundle = retiredPowerAliasSuccessorBundle();
-      const compiled = compileCatalogRelease(bundle);
-      if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
-      const installed = await installPublishedRelease(pool, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
-        expectedCurrent: release, expectedTargetDigest: compiled.value.aggregateDigest });
-      expect(installed.ok).toBe(true);
+      await vi.waitFor(async () => {
+        expect((await pool.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [gatePid])).rows.length).toBeGreaterThan(0);
+      }, { timeout: 1500, interval: 10 });
+      pending = updateRegistrationRecognitionSettings(apiDb, { organizationId: f.auth.organization.id, registrationId: f.registrationId,
+        body: { nodeTypeName: "stale-charger" }, invocation: createUserInvocation(f.auth), requestId: "recognition-release-race",
+        ifMatch: registrationRecognitionEtag(current), idempotencyKey: "recognition-release-race", catalogReleaseId: release.id });
+      const outcome = pending.then(value => ({ value, error: null }), error => ({ value: null, error }));
+      await vi.waitFor(async () => {
+        expect((await pool.query("select pid from pg_stat_activity where usename=$1 and wait_event='advisory'", [runtime.apiRole])).rows.length).toBeGreaterThan(0);
+      }, { timeout: 1500, interval: 10 });
+      await gate.query("commit");
+      expect((await publication).ok).toBe(true);
+      expect((await outcome).error).toMatchObject({ code: "CONFLICT" });
     } finally {
       await gate.query("rollback");
       gate.release();
+      await publication.catch(() => undefined);
+      await pending?.catch(() => undefined);
     }
-    const outcome = await pending;
-    expect(outcome.error).toMatchObject({ code: "CONFLICT" });
     const after = await readRegistrationRecognitionSettings(apiDb, f.auth.organization.id, f.registrationId);
     expect(after && registrationRecognitionEtag(after)).toBe(registrationRecognitionEtag(current));
     expect((await apiDb.query(`select registration_id from public.registration_recognition_rules where organization_id=$1`,

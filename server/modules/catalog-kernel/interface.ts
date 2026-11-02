@@ -187,6 +187,7 @@ export interface CatalogSubjectSnapshot {
   readonly id: CatalogSubjectId;
   readonly kind: CatalogSubjectKind;
   readonly canonicalKey: CatalogCanonicalKey;
+  readonly owner?: CatalogSubjectId;
   readonly membership: CatalogSubjectMembershipSnapshot;
 }
 
@@ -197,7 +198,6 @@ export interface DefinitionLifecycleCounts {
 }
 
 export interface CatalogSubjectDetailSnapshot extends CatalogSubjectSnapshot {
-  readonly owner?: CatalogSubjectId;
   readonly aliases: readonly SubjectAliasSnapshot[];
   readonly definitionCounts: DefinitionLifecycleCounts;
 }

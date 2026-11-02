@@ -67,6 +67,16 @@ const mappings: ParameterModuleMapping[] = [
 ];
 
 describe("ModuleAttributionTree", () => {
+  it("nests owned node leaves beneath their driver", () => {
+    render(<ModuleAttributionTree modules={modules} mappings={[]} subjects={[
+      { id: "driver", moduleId: "mod-power", name: "Driver", kind: "driver", definitionCount: 1 },
+      { id: "child", moduleId: "mod-power", name: "battery", kind: "node-type", ownerSubjectId: "driver", definitionCount: 1 },
+    ]} onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+    const driver = screen.getByRole("button", { name: "查看主体：Driver" }).closest<HTMLElement>('[role="treeitem"]')!;
+    const child = within(driver).getByRole("button", { name: "查看主体：battery" }).closest<HTMLElement>('[role="treeitem"]')!;
+    expect(child).toHaveAttribute("aria-level", String(Number(driver.getAttribute("aria-level")) + 1));
+    expect(within(child).getByText("节点类型")).toBeInTheDocument();
+  });
   it.each([
     ["mod-group", "驱动", "legacy-driver", "旧驱动"],
     ["mod-node-type", "节点类型", "legacy-node", "旧节点"],

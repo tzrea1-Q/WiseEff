@@ -300,7 +300,9 @@ export const catalogPlacementDtoSchema = catalogObject({
    * a projection that cannot name the module stays valid; the read surface then
    * falls back to the placement identity rather than inventing a module.
    */
-  moduleId: z.string().optional()
+  moduleId: z.string().optional(),
+  ownerSubjectId: z.string().optional(),
+  structural: z.literal(true).optional()
 });
 
 export const catalogRegistrationProjectionSchema = z.union([
@@ -315,6 +317,7 @@ export const catalogRegistrationProjectionSchema = z.union([
 
 export const catalogSubjectDtoSchema = catalogObject({
   id: z.string(),
+  ownerSubjectId: z.string().optional(),
   type: catalogSubjectTypeSchema,
   canonicalName: z.string(),
   aliases: z.array(z.string()),
@@ -396,6 +399,8 @@ export const catalogRegistrationDtoSchema = catalogObject({
   id: z.string(),
   organizationId: z.string(),
   subjectId: z.string(),
+  ownerSubjectId: z.string().optional(),
+  structural: z.literal(true).optional(),
   status: catalogRegistrationStatusSchema,
   method: catalogRegistrationMethodSchema,
   placement: catalogPlacementDtoSchema,
@@ -442,11 +447,11 @@ export const catalogBatchRegistrationResponseSchema = catalogObject({
 });
 export const catalogBatchRegistrationFailureResponseSchema = z.object({
   error: z.object({ code: z.string(), message: z.string(), requestId: z.string(),
-    details: z.object({ retryable: z.boolean(), rows: z.array(z.object({ index: z.number().int().nonnegative(), subjectId: z.string(), code: z.enum(["category-missing", "name-invalid", "name-taken", "already-registered", "subject-inactive", "release-drift", "conflict"]), field: z.enum(["category", "name", "subject"]) })).optional() }).passthrough() })
+    details: z.object({ retryable: z.boolean(), rows: z.array(z.object({ index: z.number().int().nonnegative(), subjectId: z.string(), code: z.enum(["category-missing", "name-invalid", "name-taken", "already-registered", "subject-inactive", "owned-child", "release-drift", "conflict"]), field: z.enum(["category", "name", "subject"]) })).optional() }).passthrough() })
 });
 export const catalogUnregisteredSubjectsResponseSchema = catalogObject({
   catalogReleaseId: z.string(),
-  items: z.array(catalogObject({ id: z.string(), canonicalName: z.string(), kind: z.enum(["driver", "node-type", "configuration-schema"]), availableModuleIds: z.array(z.string()) })),
+  items: z.array(catalogObject({ id: z.string(), canonicalName: z.string(), kind: z.enum(["driver", "node-type", "configuration-schema"]), availableModuleIds: z.array(z.string()), childCount: z.number().int().nonnegative().optional() })),
   modules: z.array(catalogObject({ id: z.string(), name: z.string(), parentId: z.string().nullable(), kind: z.string(), occupied: z.boolean() }))
 });
 

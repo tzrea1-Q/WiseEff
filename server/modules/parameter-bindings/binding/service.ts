@@ -1,6 +1,7 @@
 import pg from "pg";
 import type { Queryable } from "../../../shared/database/client";
 import { loadOrganizationRecognitionRules, lockOrganizationModuleRecognition } from "../../parameter-modules/recognitionSettings";
+import { lockOrganizationSubjectRegistration } from "../../parameter-modules/recognitionLock";
 
 import {
   CatalogSubjectId,
@@ -13,6 +14,7 @@ import {
 
 import {
   casEffectiveRevision,
+  activeOwnerRegistered,
   deriveBindingId,
   derivePlaceholderValueId,
   insertBinding,
@@ -278,6 +280,7 @@ export const writeCanonicalBinding = async (
     return await withBindingUnitOfWork(session, async (client) => {
       // The same organization fence protects recognition edits and source admission.
       await lockOrganizationModuleRecognition(client as unknown as Queryable, command.organizationId);
+      await lockOrganizationSubjectRegistration(client as unknown as Queryable, command.organizationId);
       const projectOwned = await loadProjectOwner(
         client,
         command.projectId,
@@ -294,6 +297,9 @@ export const writeCanonicalBinding = async (
 
       const agreed = agreeBindingIdentity(command, registration);
       if (!agreed.ok) return agreed;
+      if (!await activeOwnerRegistered(client, command.organizationId, registration.subject_id)) {
+        return fail({ kind: "agreement-conflict", reason: "registration-inactive" });
+      }
 
       const rules = await loadOrganizationRecognitionRules(client as unknown as Queryable, command.organizationId);
       const singleton = rules.some((rule) => rule.canonical_subject_id === agreed.value.subjectId

@@ -256,6 +256,21 @@ function createPorts() {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it("nests registered owned nodes under their driver without independent lifecycle actions", async () => {
+    const ports = createPorts();
+    const driver = (await ports.catalog.listSubjects()).items[0]!;
+    const child = { ...driver, id: "owned-node", canonicalName: "battery1", type: "node-type" as const,
+      ownerSubjectId: driver.id, registration: { ...driver.registration, id: "owned-registration" } };
+    ports.listSubjects.mockResolvedValue({ items: [child, driver], totalCount: 2, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID } as never);
+    const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
+    ports.listRegistrations.mockResolvedValue({ ...registrations, totalCount: 2, items: [...registrations.items,
+      { ...registrations.items[0]!, id: "owned-registration", subjectId: child.id, ownerSubjectId: driver.id, structural: true }] });
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+    const childRow = await screen.findByRole("listitem", { name: "battery1（节点类型）" });
+    expect(childRow).toHaveAttribute("data-owner-subject-id", driver.id);
+    expect(within(childRow).queryByRole("button", { name: /登记主体|调整归属|移除节点类型|恢复节点类型/ })).not.toBeInTheDocument();
+    expect(screen.getByText("含 1 个子节点")).toBeInTheDocument();
+  });
   it("edits recognition rules on a registered subject", async () => {
     const ports = createPorts();
     const item = { kind: "driver" as const, recognitionSubjectId: "subject-driver", compatibles: ["vendor,driver"],

@@ -3,6 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { selectControlOption } from "@/test/selectControlOption";
 import { BatchRegistrationTable } from "./BatchRegistrationTable";
+
+it("explains that a driver's children are registered with it", async () => {
+  const repository = { listUnregisteredSubjects: vi.fn().mockResolvedValue({ catalogReleaseId: "release-1",
+    items: [{ id: "driver", kind: "driver", canonicalName: "driver", availableModuleIds: [], childCount: 2 }], modules: [] }),
+    createBatchRegistration: vi.fn() };
+  render(<BatchRegistrationTable repository={repository} organizationId="org" catalogReleaseId="release-1" />);
+  expect(await screen.findByText("含 2 个子节点，将随驱动一同登记。")).toBeInTheDocument();
+});
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockParameterCatalogGovernanceRepository } from "@/application/parameter-catalog/mockAdapter";
 

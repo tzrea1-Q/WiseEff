@@ -420,6 +420,9 @@ function mapRegistrationFailure(
     case "permission-denied":
       return forbidden(requestId);
     case "invalid-command":
+      if (["请登记其所属驱动", "请操作其所属驱动", "请调整其所属驱动的归属"].includes(error.reason)) {
+        return catalogGovernanceError({ status: 400, code: "VALIDATION_FAILED", message: error.reason, requestId, details: { retryable: false } });
+      }
       return validationFailed(requestId, error.reason);
     case "registration-not-found":
       return notFound(requestId);
@@ -1648,7 +1651,9 @@ export async function handleCatalogGovernance(
       const result = await ports.executeBatchRegistration({ organizationId: scopedRequest.params.organizationId!, rows: parsed.data.rows,
         expectedRelease: pin.pin, idempotencyKey: idempotencyKeyHeader(request.headers)!, actorKind: context.actorKind,
         principalId: context.principalId, invocation: context.invocation, requestId: request.requestId });
-      if (!result.ok) return catalogGovernanceError({ status: 409, code: "CONFLICT", message: "Batch registration failed.", requestId: request.requestId, details: { rows: result.error } });
+      if (!result.ok) return catalogGovernanceError({ status: 409, code: "CONFLICT",
+        message: result.error.some((item) => item.code === "owned-child") ? "请登记其所属驱动" : "Batch registration failed.",
+        requestId: request.requestId, details: { rows: result.error } });
       return catalogGovernanceOk({ status: 201, body: { batchId: result.batchId,
         items: result.items.map((item) => mapRegistrationResult(item, placementFromResult(item))) }, requestId: request.requestId, catalogReleaseId: pin.pin.id });
     }
