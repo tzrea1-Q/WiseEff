@@ -1602,7 +1602,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameter-admin",
     roles: ["Hardware User", "Admin"],
-    action: "Reject non-admin module tree mutations and block deleting modules that still have children or canonical Catalog placements.",
+    action: "Reject non-admin module tree mutations and deleting a parent with children; deleting a business leaf unsets its canonical Placements while retaining values.",
     coverage: "automated",
     acceptanceIds: ["MOD-TREE-AUTHZ-001"],
     specFiles: ["e2e/acceptance/hierarchical-modules.acceptance.spec.ts"],

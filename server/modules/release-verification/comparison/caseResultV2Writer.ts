@@ -157,12 +157,16 @@ const assertCaseContribution = (
   const legacyValue = item.legacyObservation.status === "value" ? item.legacyObservation.value : null;
   const subject = subjectFrom(item.canonicalObservation);
   if (legacyValue && (legacyValue.id !== item.protectedReference.id ||
-      legacyValue.kind !== "driver-group" && legacyValue.kind !== "node-type")) {
+      legacyValue.kind !== "driver-group" && legacyValue.kind !== "node-type" &&
+      legacyValue.kind !== "business" && legacyValue.kind !== "unclassified")) {
     failClosed(`D02 legacy observation is not a supported module identity for ${item.caseId}`);
   }
   if (subject && legacyValue) {
-    const expectedKind = legacyValue.kind === "driver-group" ? "driver" : "node-type";
-    if (subject.type !== expectedKind) failClosed(`D02 module/Subject kind mismatch for ${item.caseId}`);
+    if (!["driver", "node-type", "configuration-schema"].includes(subject.type)) {
+      failClosed(`D02 unsupported Subject kind for ${item.caseId}`);
+    }
+    const expectedKind = legacyValue.kind === "driver-group" ? "driver" : legacyValue.kind === "node-type" ? "node-type" : null;
+    if (expectedKind && subject.type !== expectedKind) failClosed(`D02 module/Subject kind mismatch for ${item.caseId}`);
   }
 
   if (item.result === "unqueryable/protected-reference-missing") {

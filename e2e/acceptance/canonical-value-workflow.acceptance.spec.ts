@@ -141,8 +141,8 @@ test.describe("canonical value workflow on real sources", () => {
         values ('attr-local-acme',$1,'driver-registration','Acme power','compatible:acme,power')`, [organizationId]);
       await client.query(`insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)
         values ('attr-local-acme','physical-device','multiple')`);
-      await client.query(`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-        values ('pmod-local-acme',$1,'Acme power','pmod-local-acme',1,'driver-group','curated','attr-local-acme')`, [organizationId]);
+      await client.query(`insert into parameter_modules(id,organization_id,name,path,depth,kind,origin)
+        values ('pmod-local-acme',$1,'Acme power','pmod-local-acme',1,'business','curated')`, [organizationId]);
     });
     const bundle = firstReleaseBundle();
     const compiled = compileCatalogRelease(bundle);
@@ -159,7 +159,7 @@ test.describe("canonical value workflow on real sources", () => {
     const headers = authHeadersForRole("admin");
     const registration = await request.post(apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations`), {
       headers: { ...headers, "X-WiseEff-Catalog-Release": compiled.value.release.id, "Idempotency-Key": "local-acme-registration" },
-      data: { subjectId: "csub_acme_power", placement: { mode: "use-default" }, reason: "Local canonical workflow fixture" }
+      data: { subjectId: "csub_acme_power", destinationModuleId: "pmod-local-acme", placement: { mode: "use-default" }, reason: "Local canonical workflow fixture" }
     });
     expect(registration.status(), await registration.text()).toBe(201);
     const config = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {

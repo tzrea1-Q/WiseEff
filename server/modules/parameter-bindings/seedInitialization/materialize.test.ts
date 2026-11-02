@@ -19,6 +19,7 @@ import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { CatalogSubjectId } from "../../parameter-catalog-contract/index";
 import { executeRegistration } from "../../parameter-governance/registration/service";
+import { deleteParameterModuleForAuth } from "../../parameters/service";
 import { materializeSeedSources, orderSeedSourceFiles, type SeedProjectSources } from "./materialize";
 import { getSeedInitializationRun, recordSeedInitializationRun } from "./plan";
 import {
@@ -385,14 +386,14 @@ describe("seed source materialization", () => {
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
        ) values
-         ('pmod-seed-module-a', $1, 'Seed module A', 'pmod-seed-module-a', 1, 'driver-group', 'curated', 'asub-seed-module-a'),
+         ('pmod-seed-module-a', $1, 'Seed module A', 'pmod-seed-module-a', 1, 'business', 'curated', null),
          ('pmod-seed-module-b', $1, 'Seed module B', 'pmod-seed-module-b', 1, 'driver-group', 'curated', 'asub-seed-module-b')`,
       [ORG]
     );
     const occupied = await executeRegistration(pool, {
       kind: "register",
       organizationId: ORG,
-      subjectId: CatalogSubjectId("csub_acme_occupied"),
+      subjectId: CatalogSubjectId("csub_acme_charger"),
       subjectKind: "driver",
       expectedRelease: {
         id: compiled.value.release.id,
@@ -401,11 +402,12 @@ describe("seed source materialization", () => {
       placement: { mode: "use-default" },
       destinationModuleId: "pmod-seed-module-a",
       method: "explicit",
-      proof: { reason: "reserve one of two modules for the fail-closed fixture" },
+      proof: { reason: "retain an earlier registration before its category is removed" },
       idempotencyKey: "seed-materialize-blocked:occupy",
       context: { actorKind: "org-admin", principalId: "user-seed-admin" }
     });
     expect(occupied.ok, JSON.stringify(occupied)).toBe(true);
+    await deleteParameterModuleForAuth(root, adminAuth, "pmod-seed-module-a");
 
     await expect(
       materializeSeedSources(root, persistentObjectStore, adminAuth, {

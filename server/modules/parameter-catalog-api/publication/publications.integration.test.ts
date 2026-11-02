@@ -327,7 +327,7 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
       await pool.query("insert into public.projects(id,organization_id,name,code) values ($1,$2,$1,$1)", [`project-${org}`, org]);
       await pool.query("insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,source_key) values ($1,$2,'driver-registration','Driver','compatible:acme,power')", [`attr-${org}`, org]);
       await pool.query("insert into public.driver_registrations(attribution_subject_id,driver_nature,instance_cardinality) values ($1,'physical-device','multiple')", [`attr-${org}`]);
-      await pool.query("insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id) values ($1,$2,'Driver',$1,1,'driver-group','curated',$3)", [`module-${org}`, org, `attr-${org}`]);
+      await pool.query("insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin) values ($1,$2,'Driver',$1,1,'business','curated')", [`module-${org}`, org]);
       const registration = await createRegistrationService(pool).execute({ kind: "register", organizationId: org,
         subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver", expectedRelease: pointer.current,
         placement: { mode: "use-default" }, destinationModuleId: `module-${org}`, method: "explicit", proof: { reason: "fixture" },
@@ -361,7 +361,7 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     await pool.query(`insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key)
       values ('asub1450', $1, 'driver-registration', '既有设备', 'curated', 'acme,power')`, [org]);
     await pool.query(`insert into public.parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin, attribution_subject_id)
-      values ('p1450-driver', $1, 'p1450-a', '既有设备', 'p1450-driver', 2, 'driver-group', 'curated', 'asub1450')`, [org]);
+      values ('p1450-driver', $1, 'p1450-a', '既有设备', 'p1450-driver', 2, 'business', 'curated', null)`, [org]);
     const registrationClient = await pool.connect();
     try {
       await registrationClient.query("begin");

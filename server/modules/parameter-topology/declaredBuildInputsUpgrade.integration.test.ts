@@ -21,7 +21,7 @@ describe("populated declared build-input upgrade", () => {
         await applyMigrations(db,migrationsDir,{before:"0301_dts_declared_build_inputs.sql"});
         await seedCoreGraph(db,{organization:{id:organizationId},projects:[{id:projectId}],users:[{id:userId}]});
         const auth=makeTestAuthContext({organizationId,userId,roleId:"admin"});
-        await installDriverSourceFixture(db,auth,{subjectId:"csub_acme_power",compatible:"acme,power",businessName:"Upgrade",driverName:"Upgrade source",idempotencyKey:"cpp-input-upgrade",reason:"Prove populated source upgrade"});
+        await installDriverSourceFixture(db,auth,{subjectId:"csub_acme_power",compatible:"acme,power",businessName:"Upgrade",driverName:"Upgrade source",idempotencyKey:"cpp-input-upgrade",reason:"Prove populated source upgrade",legacyPlacement:true});
         const storage=createLocalObjectStore(directory);
         const {object}=await seedHistoricalPinnedSourceFixture(db,storage,{organizationId,projectId,source});
         await expect(db.query("update dts_config_revisions set include_search_paths='[]'::jsonb where id='cpp-revision'")).rejects.toMatchObject({code:"55000"});

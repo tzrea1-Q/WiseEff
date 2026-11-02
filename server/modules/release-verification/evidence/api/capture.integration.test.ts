@@ -107,8 +107,8 @@ describe("S10-API HTTP evidence against real PostgreSQL", () => {
     await pool.query(
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
-       ) values ($1, $2, 'Driver', $1, 1, 'driver-group', 'curated', $3)`,
-      [MODULE_ID, ORG_ID, ATTR_ID],
+       ) values ($1, $2, 'Unclassified', $1, 1, 'unclassified', 'curated', null)`,
+      [MODULE_ID, ORG_ID],
     );
 
     rootDb = createPostgresDatabase(catalogDb.url);

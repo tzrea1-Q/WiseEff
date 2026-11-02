@@ -244,8 +244,8 @@ describe("immutable ProjectValue history", () => {
     await pool.query(
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
-       ) values ($1, $2, 'Driver', $1, 1, 'driver-group', 'curated', $3)`,
-      [MODULE, ORG, ATTR],
+       ) values ($1, $2, 'Driver', $1, 1, 'business', 'curated', null)`,
+      [MODULE, ORG],
     );
 
     const pin = { id: first.release.id, digest: first.release.digest };
@@ -735,6 +735,7 @@ describe("immutable ProjectValue history", () => {
         }
       };
 
+      if (!binding.sourceOccurrenceId) throw new Error("fixture Binding has no source occurrence");
       const occurrenceProbe = await probe(
         `select id from parameter_catalog.project_parameter_source_occurrences where id = $1 for key share nowait`,
         binding.sourceOccurrenceId,

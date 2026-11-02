@@ -70,10 +70,7 @@ function availableSubjects(item: ReviewItem, subjects: CatalogSubjectListRespons
 }
 
 function hasRegistrationTarget(item: ReviewItem, subjects: CatalogSubjectListResponse["items"], modules: RegistrationModuleOption[]) {
-  return availableSubjects(item, subjects).some((candidate) => {
-    const kind = subjects.find((entry) => entry.id === candidate.subjectId)?.type ?? candidate.kind;
-    return modules.some((module) => module.kind === (kind === "driver" ? "driver-group" : "node-type"));
-  });
+  return availableSubjects(item, subjects).length > 0 && modules.some((module) => module.kind === "business" || module.kind === "unclassified");
 }
 
 function firstResolution(item: ReviewItem, subjects: CatalogSubjectListResponse["items"], modules: RegistrationModuleOption[]) {
@@ -165,9 +162,8 @@ export function ReviewResolutionDialog({
   const selectedSubject = subjects.find((subject) => subject.id === subjectId);
   const candidates = availableSubjects(item, subjects);
   const selectedCandidate = candidates.find((candidate) => candidate.subjectId === subjectId);
-  const subjectType = selectedSubject?.type ?? selectedCandidate?.kind;
   const subjectName = selectedSubject?.canonicalName ?? selectedCandidate?.canonicalName ?? "未选择主体";
-  const targetModules = moduleOptions.filter((module) => module.kind === (subjectType === "driver" ? "driver-group" : subjectType === "node-type" ? "node-type" : "unknown"));
+  const targetModules = moduleOptions.filter((module) => module.kind === "business" || module.kind === "unclassified");
   const targetModule = targetModules.find((module) => module.id === destinationModuleId);
   const restoreTarget = item.restorableRegistrations?.find((entry) => entry.id === registrationId);
   const reasonReady = reason.trim().length > 0;
@@ -358,11 +354,11 @@ export function ReviewResolutionDialog({
         !allowed ? "当前目录状态暂不支持处理审核。返回页面时会自动核对最新状态。" : undefined;
   const blockingHint = !allowedResolutions.includes(resolutionType) ? "当前没有可直接执行的处理方式，请先准备主体或登记，返回后自动更新。" :
     !subjectReady ? "请选择与来源证据一致的候选主体。" :
-      !placementReady ? (selectedCandidate && targetModules.length === 0 ? "缺少同类型目标模块，请准备模块后返回此页。" : "请选择目标模块。") :
+      !placementReady ? (selectedCandidate && targetModules.length === 0 ? "缺少业务分类，请准备分类后返回此页。" : "请选择目标模块。") :
         !restoreReady ? "请选择此来源对应的可恢复登记。" : !reasonReady ? "请填写处理原因后继续确认。" : undefined;
   const actionUnavailable = (resolution: ResolutionType) => resolution === "register-subject" && candidates.length === 0 ?
     "未找到可登记的有效主体。请先在模块管理准备主体，返回后自动更新。" :
-    resolution === "register-subject" && !hasRegistrationTarget(item, subjects, moduleOptions) ? "缺少同类型目标模块。请在模块管理准备目标，返回后自动更新。" :
+    resolution === "register-subject" && !hasRegistrationTarget(item, subjects, moduleOptions) ? "缺少业务分类。请在模块管理准备目标，返回后自动更新。" :
     resolution === "restore-registration" && !item.restorableRegistrations?.length ? "没有与此来源匹配的可恢复登记。" : undefined;
   const affectedTarget = resolutionType === "restore-registration" ? restoreTarget?.canonicalName : subjectName;
   const impact = resolutionCopy[resolutionType].result;
@@ -415,7 +411,7 @@ export function ReviewResolutionDialog({
                 <h3>登记目标</h3>
                 {candidates.length > 1 ? <label className="review-resolution__field">选择候选主体 <span>必选</span><SelectControl ariaLabel="选择候选主体" ariaRequired value={subjectId} onValueChange={(value) => { setSubjectId(value); setDestinationModuleId(""); setDraftChanged(true); }} disabled={busy || !allowed} options={[{ value: "", label: "请选择候选主体" }, ...candidates.map((candidate, index) => ({ value: candidate.subjectId, label: subjects.find((entry) => entry.id === candidate.subjectId)?.canonicalName ?? candidate.canonicalName ?? `候选主体 ${index + 1}` }))]} /></label> : <p>主体：{subjectName}</p>}
                 <label className="review-resolution__field">目标模块 <span>必选</span><SelectControl ariaLabel="审核登记目标模块" ariaRequired ariaDescribedBy={`${generatedId}-target-help`} value={destinationModuleId} disabled={busy || !allowed || !selectedCandidate} onValueChange={(value) => { setDestinationModuleId(value); setDraftChanged(true); }} options={[{ value: "", label: "请选择目标模块" }, ...targetModules.map((module) => ({ value: module.id, label: module.displayName }))]} /></label>
-                <p id={`${generatedId}-target-help`} className="review-resolution__hint">{targetModule ? `${targetModule.displayName}。${targetModule.impactSummary ?? "将作为此主体的组织归属。"}` : selectedCandidate && !targetModules.length ? "当前没有可用的同类型模块。请先准备目标模块，返回后自动更新；输入会保留。" : "请明确选择归属模块，不会自动使用首个模块。"}</p>
+                <p id={`${generatedId}-target-help`} className="review-resolution__hint">{targetModule ? `${targetModule.displayName}。${targetModule.impactSummary ?? "将作为此主体的组织归属。"}` : selectedCandidate && !targetModules.length ? "当前没有可用的业务分类。请先准备目标分类，返回后自动更新；输入会保留。" : "请明确选择归属模块，不会自动使用首个模块。"}</p>
                 {selectedCandidate && !targetModules.length ? <Button asChild variant="outline" size="sm"><a href="/parameter-admin/modules" target="_blank" rel="noreferrer">前往模块管理准备目标</a></Button> : null}
                 <p className="review-resolution__hint">{selectedSubject ? `将关联该主体的 ${selectedSubject.definitionCounts.active} 条当前有效定义。` : "将关联该主体的当前有效定义。"}项目参数值和源文件保持不变。</p>
               </section> : null}

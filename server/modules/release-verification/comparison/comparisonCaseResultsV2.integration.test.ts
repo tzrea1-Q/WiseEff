@@ -154,13 +154,13 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
     const moduleA = await createParameterModule(ownerDatabase, {
       organizationId,
       name: "amba",
-      kind: "driver-group",
+      kind: "business",
       sourceKey: "compatible:acme,power",
     });
     const moduleB = await createParameterModule(ownerDatabase, {
       organizationId,
       name: "MOD D02 driver B",
-      kind: "driver-group",
+      kind: "business",
       sourceKey: "compatible:mod-page-0",
     });
     await registerParameterModuleComparisonDriver(ownerPool, {
@@ -215,7 +215,7 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
       modules: modules.map((module) => ({
         id: module.id,
         organizationId,
-        kind: "driver-group" as const,
+        kind: "business" as const,
         origin: "curated" as const,
         name: module.name,
         attributionSubjectId: module.attributionSubjectId ?? null,
@@ -319,7 +319,7 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
     const foreignSameSourceModule = await createParameterModule(ownerDatabase, {
       organizationId: otherOrganizationId,
       name: "Other organization same compatible",
-      kind: "driver-group",
+      kind: "business",
       sourceKey: "compatible:acme,power",
     });
     await registerParameterModuleComparisonDriver(ownerPool, {

@@ -276,7 +276,7 @@ function canonicalDriverFixture(suffix: string, releaseSequence: number): Canoni
 async function commitCanonicalDriverCatalog(
   client: pg.Client,
   fixture: CanonicalDriverFixture,
-  options: { includePlacement: boolean; includeBinding: boolean },
+  options: { includePlacement: boolean; includeBinding: boolean; legacyModule?: boolean },
 ): Promise<void> {
   const name = sqlText(`S2-RBAC ${fixture.releaseVersion}`);
   const statements = [
@@ -296,7 +296,7 @@ async function commitCanonicalDriverCatalog(
        id, organization_id, name, path, depth, kind, origin, attribution_subject_id
      ) values (
        ${sqlText(fixture.moduleId)}, ${sqlText(fixture.orgId)}, ${name},
-       ${sqlText(fixture.moduleId)}, 1, 'driver-group', 'curated', ${sqlText(fixture.attributionId)}
+       ${sqlText(fixture.moduleId)}, 1, ${options.legacyModule ? "'driver-group'" : "'business'"}, 'curated', ${options.legacyModule ? sqlText(fixture.attributionId) : "null"}
      )`,
     `insert into parameter_catalog.catalog_releases (
        id, release_sequence, release_version, release_digest,
@@ -2169,6 +2169,7 @@ describe("0138 Catalog role migration paths", () => {
           await commitCanonicalDriverCatalog(admin, prior, {
             includePlacement: true,
             includeBinding: false,
+            legacyModule: true,
           });
           const before = await admin.query<{ security_definer: boolean }>(`
             select prosecdef as security_definer
@@ -2285,8 +2286,8 @@ describe("0138 Catalog role migration paths", () => {
             await admin.query("set constraints all immediate");
           });
 
-          await admin.query("update public.parameter_modules set kind = 'node-type' where id = $1", [
-            next.moduleId,
+          await admin.query("update public.parameter_modules set kind = 'node-type', attribution_subject_id = $2 where id = $1", [
+            next.moduleId, next.attributionId,
           ]);
           await withLocalRole(admin, PARAMETER_GOVERNANCE_WRITER_ROLE, async () => {
             await admin.query(`

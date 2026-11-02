@@ -47,15 +47,6 @@ const SUBJECT_KIND_LABEL: Record<CatalogSubjectResponse["item"]["type"], string>
   "configuration-schema": "配置规范"
 };
 
-const SUBJECT_KIND_MODULE_KIND: Record<
-  CatalogSubjectResponse["item"]["type"],
-  ParameterModule["kind"]
-> = {
-  driver: "driver-group",
-  "node-type": "node-type",
-  "configuration-schema": "business"
-};
-
 const SUBJECTS_PER_PAGE = 10;
 
 export { listAllCanonicalPages } from "@/application/parameter-catalog/listAllCanonicalPages";
@@ -331,54 +322,29 @@ export function CanonicalSubjectPlacementPanel({
   }, [modules]);
 
   const moduleImpactById = useMemo(() => {
-    const summary = new Map<string, { subjects: number; definitions: number }>();
-    for (const subject of subjects) {
-      const registration = registrationBySubjectId.get(subject.id);
-      if (registration?.status !== "active") continue;
+    const summary = new Map<string, { subjects: number; definitions: number | null }>();
+    const subjectsById = new Map(subjects.map((subject) => [subject.id, subject]));
+    for (const registration of registrations) {
       const moduleId = registration.placement.moduleId;
       if (!moduleId) continue;
       const current = summary.get(moduleId) ?? { subjects: 0, definitions: 0 };
       current.subjects += 1;
-      current.definitions += subject.definitionCounts.active;
+      const subject = subjectsById.get(registration.subjectId);
+      current.definitions = subject && current.definitions !== null ? current.definitions + subject.definitionCounts.active : null;
       summary.set(moduleId, current);
     }
     return summary;
-  }, [registrationBySubjectId, subjects]);
+  }, [registrations, subjects]);
 
-  const moduleOptionsByType = useMemo(() => {
-    const result = new Map<SubjectRow["type"], RegistrationModuleOption[]>();
-    const occupants = new Map(registrations.filter((item) => item.placement.moduleId)
-      .map((item) => [item.placement.moduleId!, item]));
-    for (const type of Object.keys(SUBJECT_KIND_MODULE_KIND) as SubjectRow["type"][]) {
-      const expectedKind = SUBJECT_KIND_MODULE_KIND[type];
-      result.set(
-        type,
-        modules
-          .filter((module) => module.kind === expectedKind)
-          .map((module) => {
-            const impact = moduleImpactById.get(module.id);
-            const registration = occupants.get(module.id);
-            const owner = registration ? subjects.find((item) => item.id === registration.subjectId) : undefined;
-            return {
-              id: module.id,
-              displayName: moduleLabels.get(module.id) ?? module.name,
-              kind: module.kind,
-              impactSummary: impact
-                ? `当前 ${impact.subjects} 个主体、${impact.definitions} 个有效定义`
-                : registration ? (registration.status === "retired" ? "保留已停用主体的归属" : "已有主体登记，定义统计暂不可用") : "当前无主体",
-              ...(registration ? { occupant: {
-                registrationId: registration.id, subjectId: registration.subjectId,
-                displayName: owner?.canonicalName ?? registration.subjectId,
-                status: registration.status,
-                activeDefinitionCount: owner?.definitionCounts.active ?? null
-              } } : {})
-            };
-          })
-          .sort((left, right) => left.displayName.localeCompare(right.displayName, "zh-Hans"))
-      );
-    }
-    return result;
-  }, [moduleImpactById, modules, moduleLabels, registrations, subjects]);
+  const moduleOptions = useMemo<RegistrationModuleOption[]>(() => modules
+    .filter((module) => module.kind === "business" || (module.kind === "unclassified" && module.parentId === null))
+    .map((module) => {
+      const impact = moduleImpactById.get(module.id);
+      return { id: module.id, displayName: moduleLabels.get(module.id) ?? module.name, kind: module.kind,
+        impactSummary: impact ? `当前 ${impact.subjects} 个主体、${impact.definitions === null ? "有效定义统计暂不可用" : `${impact.definitions} 个有效定义`}` : "当前无主体" };
+    })
+    .sort((left, right) => left.displayName.localeCompare(right.displayName, "zh-Hans")),
+  [moduleImpactById, modules, moduleLabels]);
 
   const activeSubjectCount = useMemo(
     () => filteredSubjects.filter((subject) => subject.membership.status === "active" &&
@@ -454,10 +420,12 @@ export function CanonicalSubjectPlacementPanel({
       }
       const placementModuleId = placement.item.moduleId;
       const placementDisplayName = placement.item.displayName;
-      const currentModuleName =
-        moduleLabels.get(placementModuleId ?? "") ??
+      const currentModule = modules.find((module) => module.id === placementModuleId);
+      const currentPath = moduleLabels.get(placementModuleId ?? "") ??
         placementDisplayName ??
         placementModuleId;
+      const currentModuleName = currentPath && (currentModule?.kind === "driver-group" || currentModule?.kind === "node-type")
+        ? `${currentPath}（遗留技术模块）` : currentPath;
       const impact = registration.item.impact;
       if (!impact) {
         setRowErrors((current) => ({ ...current, [subject.id]: "当前主体缺少影响数据，无法安全调整归属；请刷新后重试。" }));
@@ -508,25 +476,29 @@ export function CanonicalSubjectPlacementPanel({
       if (!impact) throw new Error("刷新后缺少主体影响数据，未发送写入。");
       setPlacementDialog((current) => current ? { ...current, subject, ifMatch,
         currentModuleId: placement.item.moduleId ?? undefined,
-        currentModuleName: moduleLabels.get(placement.item.moduleId ?? "") ?? placement.item.displayName,
+        currentModuleName: (() => {
+          const module = modules.find((item) => item.id === placement.item.moduleId);
+          const path = moduleLabels.get(placement.item.moduleId ?? "") ?? placement.item.displayName;
+          return path && (module?.kind === "driver-group" || module?.kind === "node-type") ? `${path}（遗留技术模块）` : path;
+        })(),
         subjectImpact: { activeDefinitionCount: subject.definitionCounts.active, ...impact } } : null);
   };
 
   const selectedRegistration = placementDialog
     ? registrationBySubjectId.get(placementDialog.subject.id)
     : undefined;
-  const selectedModuleOptions = placementDialog
-    ? moduleOptionsByType.get(placementDialog.subject.type) ?? []
-    : [];
-  const newDestinationParents = modules.filter((module) => module.kind === "business")
+  const selectedModuleOptions = placementDialog ? moduleOptions : [];
+  const newDestinationParents = modules.filter((module) => module.kind === "business" || (module.kind === "unclassified" && module.parentId === null))
     .map((module) => ({ id: module.id, displayName: moduleLabels.get(module.id) ?? module.name, kind: module.kind }));
-  const selectedDestinationModuleId =
+  const currentDestinationModuleId =
     placementDialog?.currentModuleId ??
     selectedRegistration?.placement.moduleId ??
     (placementDialog?.subject.registration.status === "unregistered"
       ? undefined
       : placementDialog?.subject.registration.placement?.moduleId) ??
     (placementDialog?.intent === "update-placement" ? "" : undefined);
+  const selectedDestinationModuleId = selectedModuleOptions.some((option) => option.id === currentDestinationModuleId)
+    ? currentDestinationModuleId : "";
 
   const handleCompleted = async () => {
     setPlacementDialog(null);
@@ -647,7 +619,7 @@ export function CanonicalSubjectPlacementPanel({
                       ? subject.registration.placement
                       : undefined);
                   const definitionState = definitionStates.get(subject.id) ?? { status: "idle" };
-                  const modulesForSubject = moduleOptionsByType.get(subject.type) ?? [];
+                  const modulesForSubject = moduleOptions;
                   const registrationId =
                     registration?.id ??
                     (subject.registration.status === "unregistered"

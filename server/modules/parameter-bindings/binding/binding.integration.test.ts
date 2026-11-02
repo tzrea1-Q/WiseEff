@@ -268,9 +268,9 @@ describe("canonical Binding identity", () => {
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
        ) values
-         ($1, $3, 'Driver A', $1, 1, 'driver-group', 'curated', $5),
-         ($2, $4, 'Driver B', $2, 1, 'driver-group', 'curated', $6)`,
-      [MODULE_A, MODULE_B, ORG_A, ORG_B, ATTR_A, ATTR_B],
+         ($1, $3, 'Driver A', $1, 1, 'business', 'curated', null),
+         ($2, $4, 'Driver B', $2, 1, 'business', 'curated', null)`,
+      [MODULE_A, MODULE_B, ORG_A, ORG_B],
     );
 
     const registeredA = await seedRegistration(registerCommand(ORG_A, MODULE_A, firstPin));

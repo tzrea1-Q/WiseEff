@@ -182,8 +182,8 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     await pool.query(
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
-       ) values ($1, $2, 'Driver', $1, 1, 'driver-group', 'curated', $3)`,
-      [MODULE_ID, ORG_ID, ATTR_ID],
+       ) values ($1, $2, 'Driver', $1, 1, 'business', 'curated', null)`,
+      [MODULE_ID, ORG_ID],
     );
 
     scope = {
@@ -305,7 +305,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     await pool.query("insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin) values ($1,$2,'未分类',$1,1,'unclassified','auto')", ["batch-root", organizationId]);
     await pool.query("insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin) values ('batch-category',$1,'电源分类','batch-category',1,'business','curated')", [organizationId]);
     await pool.query("insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key) values ('batch-used-attr',$1,'driver-registration','重名','curated','batch-used')", [organizationId]);
-    await pool.query("insert into public.parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin, attribution_subject_id) values ('batch-used',$1,'batch-category','重名','batch-category/batch-used',2,'driver-group','curated','batch-used-attr')", [organizationId]);
+    await pool.query("insert into public.parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin) values ('batch-used',$1,'batch-category','重名','batch-category/batch-used',2,'business','curated')", [organizationId]);
     const previous = scope;
     scope = { ...scope, organizationId, principalId: userId, trustedActor: createUserInvocation(makeTestAuthContext({ organizationId, userId })) };
     try {
@@ -344,7 +344,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
       const stored = await pool.query<{ name: string; parent_id: string; kind: string }>(
         `select module.name, module.parent_id, module.kind from parameter_catalog.subject_placements placement
          join public.parameter_modules module on module.id = placement.module_id where placement.organization_id = $1`, [organizationId]);
-      expect(stored.rows).toEqual(expect.arrayContaining([{ name: "电源", parent_id: "batch-root", kind: "driver-group" }, { name: "第二个", parent_id: "batch-root", kind: "driver-group" }]));
+      expect(stored.rows).toEqual(expect.arrayContaining([{ name: "电源", parent_id: "batch-root", kind: "business" }, { name: "第二个", parent_id: "batch-root", kind: "business" }]));
       const audits = await pool.query<{ batch_id: string }>("select metadata->>'batchId' as batch_id from public.audit_events where organization_id = $1 and action = 'registration-register'", [organizationId]);
       expect(audits.rows).toEqual([{ batch_id: batchId }, { batch_id: batchId }]);
       const registrationId = (success.body as { items: Array<{ id: string }> }).items[1]!.id;
@@ -362,14 +362,14 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     } finally { scope = previous; }
   });
 
-  it("rejects the entire batch when a subject was auto-registered or its target became occupied", async () => {
+  it("rejects the entire batch when a subject was auto-registered or a target is missing", async () => {
     const organizationId = "org-batch-race";
     const userId = "user-batch-race";
     await pool.query("insert into public.organizations (id, name) values ($1, 'Race')", [organizationId]);
     await pool.query("insert into public.users (id, organization_id, name, title, is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
     await pool.query("insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin) values ('race-root',$1,'未分类','race-root',1,'unclassified','auto')", [organizationId]);
     await pool.query("insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key) values ('race-attr',$1,'driver-registration','Occupied','curated','race')", [organizationId]);
-    await pool.query("insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id) values ('race-module',$1,'Occupied','race-module',1,'driver-group','curated','race-attr')", [organizationId]);
+    await pool.query("insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin) values ('race-module',$1,'Occupied','race-module',1,'business','curated')", [organizationId]);
     const previous = scope;
     scope = { ...scope, organizationId, principalId: userId, trustedActor: createUserInvocation(makeTestAuthContext({ organizationId, userId })) };
     try {
@@ -381,7 +381,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
       const good = { subjectId: SUBJECT_ID, target: { type: "unclassified", name: "有效行" } };
       for (const bad of [
         { subjectId: "csub_batch_second", target: { type: "existing-module", moduleId: "race-module" } },
-        { subjectId: "csub_batch_third", target: { type: "existing-module", moduleId: "race-module" } },
+        { subjectId: "csub_batch_third", target: { type: "existing-module", moduleId: "missing" } },
       ]) {
         const result = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
           headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [good, bad] },
@@ -414,7 +414,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
       expect(wrongOrg.status).toBe(403);
       await pool.query("insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin) values ('race-category',$1,'电源','race-category',1,'business','curated')", [organizationId]);
       await pool.query("insert into public.attribution_subjects (id,organization_id,subject_kind,display_name,origin,source_key) values ('race-free-attr',$1,'driver-registration','Free','curated','race-free')", [organizationId]);
-      await pool.query("insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin,attribution_subject_id) values ('race-free',$1,'Free','race-free',1,'driver-group','curated','race-free-attr')", [organizationId]);
+      await pool.query("insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin) values ('race-free',$1,'Free','race-free',1,'business','curated')", [organizationId]);
       const success = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
         headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [
           { subjectId: SUBJECT_ID, target: { type: "new-module", parentModuleId: "race-category", name: "新模块" } },
@@ -761,14 +761,14 @@ describe("registration pagination through public HTTP and real PostgreSQL", () =
     await pool.query(`insert into public.driver_registrations (attribution_subject_id, driver_nature, instance_cardinality)
       values ('attr-registration-pages', 'physical-device', 'multiple')`);
     await pool.query(`insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id)
-      values ('pmod-registration-pages', $1, 'Pages', 'pmod-registration-pages', 1, 'driver-group', 'curated', 'attr-registration-pages')`, [organizationId]);
+      values ('pmod-registration-pages', $1, 'Pages', 'pmod-registration-pages', 1, 'business', 'curated', null)`, [organizationId]);
     scope = { principalId: "user-registration-pages", organizationId, actorKind: "org-admin", canReadGovernance: true,
       canMutateOrganization: true, canReviewProposals: false, defaultDestinationModuleId: "pmod-registration-pages", defaultSubjectKind: "driver" };
     for (const document of release.documents) {
       if (document.kind !== "subject") continue;
       const moduleId = `pmod_${document.content.id}`;
       await pool.query(`insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id)
-        values ($1, $2, $1, $1, 1, 'driver-group', 'curated', 'attr-registration-pages')`, [moduleId, organizationId]);
+        values ($1, $2, $1, $1, 1, 'business', 'curated', null)`, [moduleId, organizationId]);
       const result = await executeRegistration(pool, {
         kind: "register", organizationId, subjectId: CatalogSubjectId(document.content.id), subjectKind: "driver",
         expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: moduleId,

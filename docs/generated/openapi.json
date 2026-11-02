@@ -86834,7 +86834,6 @@
                             "category-missing",
                             "name-invalid",
                             "name-taken",
-                            "module-occupied",
                             "already-registered",
                             "subject-inactive",
                             "release-drift",
@@ -87191,6 +87190,22 @@
           },
           "destinationModuleId": {
             "type": "string"
+          },
+          "newDestination": {
+            "type": "object",
+            "properties": {
+              "parentModuleId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "parentModuleId",
+              "name"
+            ],
+            "additionalProperties": false
           },
           "replacement": {
             "type": "object",

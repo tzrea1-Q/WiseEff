@@ -22,7 +22,7 @@ import { installPublishedRelease } from "../../catalog-kernel/install/installer"
 import { vendorDirectoryHash } from "../../catalog-publication/import/vendorYaml";
 import { parseDtsValue } from "../../dts/valueAst";
 import { createLocalObjectStore } from "../../logs/objectStore";
-import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId } from "../../parameter-catalog-contract";
+import { CatalogReleaseDigest, CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId } from "../../parameter-catalog-contract";
 import { writeGuardedRegistration } from "../../parameter-governance/registration/internalGuardedRegistrationWriter";
 import { createSourceBackedBindingService, appendSourceCommittedValue } from "../binding/__fixtures__/sourceBackedBinding";
 import type { Binding } from "../binding";
@@ -97,12 +97,12 @@ describe("published vendor constraint enforcement", () => {
     const compiled = compileConstrainedVendorCatalogSuccessor();
     const bootstrap = await installPublishedRelease(pool, {
       mode: "bootstrap", source: jsonCatalogReleaseSource(firstReleaseBundle()),
-      expectedTargetDigest: FIRST_ACME_RELEASE_DIGEST,
+      expectedTargetDigest: CatalogReleaseDigest(FIRST_ACME_RELEASE_DIGEST),
     });
     expect(bootstrap, JSON.stringify(bootstrap)).toMatchObject({ ok: true });
     const previous = await installPublishedRelease(pool, {
       mode: "advance", source: jsonCatalogReleaseSource(compiled.previous.bundle),
-      expectedTargetDigest: VENDOR_SUCCESSOR_AGGREGATE_DIGEST, expectedCurrent: compiled.previous.predecessor,
+      expectedTargetDigest: CatalogReleaseDigest(VENDOR_SUCCESSOR_AGGREGATE_DIGEST), expectedCurrent: compiled.previous.predecessor,
     });
     expect(previous.ok).toBe(true);
     const current = await seedPublishedCatalog(pool);
@@ -113,7 +113,7 @@ describe("published vendor constraint enforcement", () => {
     await pool.query("insert into projects (id,organization_id,name,code) values ($1,$2,'Vendor constraints','V1057')", [projectId, organizationId]);
     await pool.query("insert into attribution_subjects (id,organization_id,subject_kind,display_name,source_key) values ('attr-vendor-constraints',$1,'driver-registration','Vendor constraints','compatible:sc8562')", [organizationId]);
     await pool.query("insert into driver_registrations (attribution_subject_id,driver_nature,instance_cardinality) values ('attr-vendor-constraints','physical-device','multiple')");
-    await pool.query("insert into parameter_modules (id,organization_id,name,path,depth,kind,origin,attribution_subject_id) values ('pmod-vendor-constraints',$1,'Vendor constraints','pmod-vendor-constraints',1,'driver-group','curated','attr-vendor-constraints')", [organizationId]);
+    await pool.query("insert into parameter_modules (id,organization_id,name,path,depth,kind,origin) values ('pmod-vendor-constraints',$1,'Vendor constraints','pmod-vendor-constraints',1,'business','curated')", [organizationId]);
     const client = await pool.connect();
     try {
       await client.query("begin");
@@ -173,7 +173,7 @@ describe("published vendor constraint enforcement", () => {
     });
     await expect(append("<&gpio13 29>")).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
     await expect(append('"a", "b", "c"')).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
-    const current = await db.query("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [binding.id]);
+    const current = await db.query<{ current_value_id: string | null }>("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [binding.id]);
     expect(current.rows[0]?.current_value_id).toBe(binding.currentValueId);
     const accepted = await append("<&gpio13 29 0>");
     expect(accepted).toMatchObject({ ok: true, value: { outcome: "committed" } });
@@ -200,7 +200,7 @@ describe("published vendor constraint enforcement", () => {
       roles: [{ projectId: null, roleId: "admin" }],
       permissions: ["parameter:view", "parameter:edit", "admin:access"],
     });
-    const counts = async () => (await freshDb.query(`select
+    const counts = async () => (await freshDb.query<{ releases: number; revisions: number; bindings: number; values: number; history: number }>(`select
       (select count(*)::int from parameter_catalog.catalog_releases) as releases,
       (select count(*)::int from parameter_catalog.definition_revisions) as revisions,
       (select count(*)::int from parameter_catalog.project_parameter_bindings) as bindings,

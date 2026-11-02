@@ -60,7 +60,7 @@ describe("Organization erasure preview through real HTTP and PostgreSQL", () => 
     const { pinA } = await installPublishedReleaseA(pool);
     await db.query("insert into attribution_subjects(id,organization_id,subject_kind,display_name,source_key) values('preview-attribution','preview-target','driver-registration','Driver','compatible:acme,power')");
     await db.query("insert into driver_registrations(attribution_subject_id,driver_nature,instance_cardinality) values('preview-attribution','physical-device','multiple')");
-    await db.query("insert into parameter_modules(id,organization_id,name,path,kind,sort_order,attribution_subject_id) values('preview-driver','preview-target','Driver','/driver','driver-group',0,'preview-attribution')");
+    await db.query("insert into parameter_modules(id,organization_id,name,path,kind,sort_order) values('preview-driver','preview-target','Driver','/driver','business',0)");
     const writer = await pool.connect();
     try {
       await writer.query("begin");

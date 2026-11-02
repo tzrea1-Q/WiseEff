@@ -105,6 +105,7 @@ export function RegistrationDialog({
   const [destinationModuleId, setDestinationModuleId] = useState(initialDestinationModuleId);
   const [newParentId, setNewParentId] = useState("");
   const [newModuleName, setNewModuleName] = useState("");
+  const [createNew, setCreateNew] = useState(false);
   const [reason, setReason] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -147,6 +148,7 @@ export function RegistrationDialog({
     setDestinationModuleId(initialDestinationModuleId);
     setNewParentId("");
     setNewModuleName("");
+    setCreateNew(moduleOptions.length === 0 && newDestinationParents.length > 0);
     setReason("");
     setConfirmOpen(false);
     setPending(false);
@@ -220,11 +222,10 @@ export function RegistrationDialog({
   const placementReady =
     choice.mode === "use-default" ||
     (choice.parentPlacementId.trim().length > 0 && choice.displayName.trim().length > 0);
-  const initializing = intent === "register-subject" && moduleOptions.length === 0 && newDestinationParents.length > 0;
+  const initializing = createNew && newDestinationParents.length > 0;
   const destinationReady = initializing
     ? newDestinationParents.some((option) => option.id === newParentId) && Boolean(newModuleName.trim())
-    : moduleOptions.length === 0 || moduleOptions.some((option) => option.id === destinationModuleId &&
-      (intent !== "register-subject" || !option.occupant));
+    : moduleOptions.length === 0 || moduleOptions.some((option) => option.id === destinationModuleId);
   const selectedDestinationName =
     (initializing ? `${newDestinationParents.find((option) => option.id === newParentId)?.displayName ?? "未选择业务分类"} / ${newModuleName.trim() || "未填写模块名称"}` : moduleOptions.find((option) => option.id === destinationModuleId)?.displayName) ??
     (destinationModuleId || "未选择目标模块");
@@ -370,7 +371,13 @@ export function RegistrationDialog({
                         </label>
                       </>
                     ) : null}
-                    {moduleOptions.length > 0 ? (
+                    {newDestinationParents.length > 0 ? <label>
+                      归属方式
+                      <SelectControl ariaLabel="归属方式" value={initializing ? "new" : "existing"} disabled={inputDisabled}
+                        onValueChange={(value) => { setCreateNew(value === "new"); setConfirmOpen(false); }}
+                        options={[{ value: "existing", label: "选择业务分类" }, { value: "new", label: "新建业务分类" }]} />
+                    </label> : null}
+                    {moduleOptions.length > 0 && !initializing ? (
                       <label>
                         目标模块
                         <SelectControl
@@ -380,17 +387,13 @@ export function RegistrationDialog({
                           onValueChange={(value) => { setDestinationModuleId(value); setConfirmOpen(false); setAcceptedReplacement(null); }}
                           options={[{ value: "", label: "请选择目标模块" }, ...moduleOptions.map((option) => ({
                             value: option.id,
-                            label: `${option.displayName}${option.impactSummary ? ` · ${option.impactSummary}` : ""}${option.occupant && option.occupant.registrationId !== registrationId ? " · 已关联主体" : ""}`,
-                            disabled: intent === "register-subject" && Boolean(option.occupant)
+                            label: `${option.displayName}${option.impactSummary ? ` · ${option.impactSummary}` : ""}`
                           }))]}
                         />
                       </label>
                     ) : null}
-                    {intent === "register-subject" && selectedModule?.occupant ? <p role="status">
-                      此模块已有主体登记。新登记请选择空闲模块；替换归属请从已登记主体发起。
-                    </p> : null}
                     {initializing ? <>
-                      <p>当前没有同类型目标模块。选择业务分类并命名，确认后将创建模块并完成登记。</p>
+                      <p>选择上级分类并命名，确认后将新建业务分类。</p>
                       <label>业务分类<SelectControl ariaLabel="新模块业务分类" value={newParentId} disabled={inputDisabled}
                         onValueChange={setNewParentId} options={[{ value: "", label: "请选择业务分类" }, ...newDestinationParents.map((option) => ({ value: option.id, label: option.displayName }))]} /></label>
                       <label>模块名称<Input aria-label="新模块名称" value={newModuleName} maxLength={120} onChange={(event) => setNewModuleName(event.target.value)} /></label>

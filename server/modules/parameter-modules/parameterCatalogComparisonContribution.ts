@@ -471,9 +471,11 @@ export async function provideModParameterCatalogComparisonContribution(
     ]),
   );
   const canonicalByIdentity = new Map<string, ComparisonGovernanceRegistration>();
+  const canonicalByModule = new Map<string, ComparisonGovernanceRegistration>();
+  const ambiguousModules = new Set<string>();
   for (const [org, rows] of registrations) {
     for (const registration of rows) {
-      for (const id of [registration.id, registration.placement.id, registration.placement.moduleId]) {
+      for (const id of [registration.id, registration.placement.id]) {
         if (!id) continue;
         const key = `${org}\0${id}`;
         const existing = canonicalByIdentity.get(key);
@@ -484,11 +486,28 @@ export async function provideModParameterCatalogComparisonContribution(
       }
     }
   }
+  for (const [org, rows] of registrations) {
+    for (const registration of rows) {
+      const moduleId = registration.placement.moduleId;
+      if (!moduleId) continue;
+      const key = `${org}\0${moduleId}`;
+      const identity = canonicalByIdentity.get(key);
+      if (identity && identity.id !== registration.id) {
+        throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: canonical identity collision in ${org}`);
+      }
+      if (ambiguousModules.has(key)) continue;
+      const existing = canonicalByModule.get(key);
+      if (existing && existing.id !== registration.id) {
+        canonicalByModule.delete(key);
+        ambiguousModules.add(key);
+      } else canonicalByModule.set(key, registration);
+    }
+  }
   const subjectIdsByOrganization = new Map<string, Set<CatalogSubjectId>>();
   for (const record of moduleRecords) {
     if (record.kind !== "parameter-module") continue;
     if (!record.organizationId) throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: module organization missing`);
-    const registration = canonicalByIdentity.get(`${record.organizationId}\0${record.id}`);
+    const registration = canonicalByModule.get(`${record.organizationId}\0${record.id}`);
     if (registration?.placement.moduleId !== record.id) continue;
     const ids = subjectIdsByOrganization.get(record.organizationId) ?? new Set<CatalogSubjectId>();
     ids.add(CatalogSubjectId(registration.subjectId));
@@ -540,18 +559,20 @@ export async function provideModParameterCatalogComparisonContribution(
       );
       let canonicalObservation: ModQueryObservation;
       if (comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY") {
-        const match = canonicalByIdentity.get(`${legacyOrganizationId}\0${record.id}`);
+        const moduleKey = `${legacyOrganizationId}\0${record.id}`;
+        const match = canonicalByModule.get(moduleKey);
         const subjectRows = catalogSubjects.get(legacyOrganizationId);
         const subject = match && subjectRows?.get(match.subjectId);
         const legacyKind = legacyObservation.status === "value" ? legacyObservation.value.kind : undefined;
         const expectedKind = legacyKind === "driver-group" ? "driver"
           : legacyKind === "node-type" ? "node-type" : null;
         let detail: string | null = null;
-        if (!match || match.placement.moduleId !== record.id) detail = "no-exact-subject-association";
+        if (ambiguousModules.has(moduleKey)) detail = "multiple-subject-associations-for-module";
+        else if (!match || match.placement.moduleId !== record.id) detail = "no-exact-subject-association";
         else if (!subjectRows || !subjectRows.has(match.subjectId)) detail = "canonical-subject-response-missing";
         else if (!subject) detail = "canonical-subject-not-published";
         else if (subject.id !== match.subjectId) detail = "canonical-subject-identity-mismatch";
-        else if (expectedKind !== subject.kind) detail = "canonical-subject-kind-mismatch";
+        else if (expectedKind && expectedKind !== subject.kind) detail = "canonical-subject-kind-mismatch";
         canonicalObservation = detail
           ? { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE, detail }
           : {
@@ -579,8 +600,11 @@ export async function provideModParameterCatalogComparisonContribution(
       } else {
         const rows = registrations.get(legacyOrganizationId);
         if (!rows) throw new Error(`${MOD_UNQUERYABLE_FAILURE_CODE}: organization scope missing`);
-        const match = canonicalByIdentity.get(`${legacyOrganizationId}\0${record.id}`);
-        canonicalObservation = {
+        const identityKey = `${legacyOrganizationId}\0${record.id}`;
+        const match = canonicalByIdentity.get(identityKey) ?? canonicalByModule.get(identityKey);
+        canonicalObservation = ambiguousModules.has(identityKey) && !canonicalByIdentity.has(identityKey)
+          ? { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE, detail: "multiple-subject-associations-for-module" }
+          : {
           status: "value",
           value: {
             catalogReleaseId: expectedPin.id,
@@ -901,7 +925,7 @@ export async function provideModParameterCatalogComparisonCaseBatchV2(
     } else {
       const expectedKind = module.kind === "driver-group" ? "driver"
         : module.kind === "node-type" ? "node-type" : null;
-      if (!expectedKind || expectedKind !== subject.kind) {
+      if (expectedKind && expectedKind !== subject.kind) {
         canonicalObservation = { status: "query-failure", code: MOD_UNQUERYABLE_FAILURE_CODE,
           detail: "canonical-subject-kind-mismatch" };
       } else {

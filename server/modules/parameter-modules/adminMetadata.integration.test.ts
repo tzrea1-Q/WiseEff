@@ -2,7 +2,9 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase, getRootPostgresPool, type Database, type Queryable, type RootDatabase } from "../../shared/database/client";
-import { createManagedInstanceTestDatabase, type EphemeralTestDatabase } from "../../testing/testDatabase";
+import { createCheckedEmptyDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog";
+import { seedLegacySubjectPlacement } from "../../testing/parameterCatalog/driverSource";
+import { applyMigrations, migrationsDir } from "../../testing/tempDatabase";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins, type ProvisionedRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { compileCatalogRelease } from "../catalog-kernel/compiler";
 import { installPublishedRelease } from "../catalog-kernel/install/installer";
@@ -23,14 +25,20 @@ import { createSourceBackedBindingService } from "../parameter-bindings/binding/
 import { DefinitionRevisionId, ParameterDefinitionId } from "../parameter-catalog-contract";
 
 describe("administrator module metadata through the API database role", () => {
-  let database: EphemeralTestDatabase;
+  let database: ParameterCatalogDatabase;
   let pool: pg.Pool;
+  let ownerDb: RootDatabase;
   let apiDb: RootDatabase;
   let runtime: ProvisionedRuntimeLogins;
   let release: CatalogReleasePin;
+  const legacyFixtures = new Map<string, { auth: AuthContext; parent: Awaited<ReturnType<typeof createParameterModule>>;
+    target: Awaited<ReturnType<typeof createParameterModule>>; module: Awaited<ReturnType<typeof createParameterModule>>;
+    registrationId: ReturnType<typeof SubjectRegistrationId> }>();
 
   beforeAll(async () => {
-    database = await createManagedInstanceTestDatabase("moduleadminmetadata");
+    database = await createCheckedEmptyDatabase("moduleadminmetadata");
+    ownerDb = createPostgresDatabase(database.url);
+    await applyMigrations(ownerDb, migrationsDir, { before: "0320_placement_business_modules.sql" });
     pool = new pg.Pool({ connectionString: database.url, max: 4 });
     const chain = await installPublishedCatalogChain(pool);
     const bundle = nodeTypeAndSecondDriverSuccessorBundle();
@@ -41,6 +49,18 @@ describe("administrator module metadata through the API database role", () => {
     });
     if (!installed.ok) throw new Error(JSON.stringify(installed.error));
     release = { id: compiled.value.release.id, digest: compiled.value.release.digest };
+    // These tests exercise technical modules and recognition rules retained from before 0320.
+    for (const [key, kind, origin] of [
+      ["auto-driver", "driver-group", "auto"], ["manual-driver", "driver-group", "curated"],
+      ["auto-node", "node-type", "auto"], ["manual-node", "node-type", "curated"],
+      ["boundaries", "driver-group", "auto"], ["foreign", "node-type", "curated"],
+      ["overlapping-edits", "node-type", "auto"], ["reciprocal-moves", "node-type", "auto"],
+      ["overlapping-move-audit", "node-type", "auto"], ["driver-recognition", "driver-group", "auto"],
+      ["local-rule-boundaries", "node-type", "auto"], ["foreign-rule-boundaries", "driver-group", "curated"],
+      ["existing-capacity", "driver-group", "curated"], ["recognition-placement-move", "driver-group", "curated"],
+      ["recognition-late-registration", "node-type", "auto"],
+    ] as const) await prepareLegacyFixture(key, kind, origin);
+    await applyMigrations(ownerDb, migrationsDir);
     runtime = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken: `modadmin${process.pid}` });
     apiDb = createPostgresDatabase(runtime.apiUrl);
   }, 120_000);
@@ -52,10 +72,11 @@ describe("administrator module metadata through the API database role", () => {
       const cleanup = await dropLabRuntimeLogins(database.url, runtime.runToken);
       if (cleanup.failed.length) throw new Error(cleanup.failed.join(","));
     }
-    await database?.drop();
+    await ownerDb?.close();
+    await database?.close();
   });
 
-  async function fixture(key: string, kind: "driver-group" | "node-type", origin: "auto" | "curated") {
+  async function prepareLegacyFixture(key: string, kind: "driver-group" | "node-type", origin: "auto" | "curated") {
     const organizationId = `org-module-admin-${key}`;
     const userId = `user-module-admin-${key}`;
     await pool.query(`insert into public.organizations (id, name) values ($1, 'Module admin')`, [organizationId]);
@@ -71,21 +92,21 @@ describe("administrator module metadata through the API database role", () => {
     const parent = await createParameterModule(pool, { organizationId, name: "Parent", importance: "high" });
     const target = await createParameterModule(pool, { organizationId, name: "Target", importance: "low" });
     const module = await createParameterModule(pool, { organizationId, name: "Original", parentId: parent.id, kind, origin });
-    const registration = await createRegistrationService(getRootPostgresPool(apiDb)!).execute({
-      kind: "register", organizationId,
-      subjectId: CatalogSubjectId(kind === "driver-group" ? "csub_acme_power" : "csub_acme_charger"),
-      subjectKind: kind === "driver-group" ? "driver" : "node-type", expectedRelease: release,
-      placement: { mode: "use-default" }, destinationModuleId: module.id, method: "explicit",
-      proof: { reason: "Administrator metadata regression" }, idempotencyKey: `register-${key}`,
-      context: { actorKind: "org-admin", principalId: userId },
-    });
-    if (!registration.ok) throw new Error(JSON.stringify(registration.error));
-    const registrationId = SubjectRegistrationId(registration.value.registrationId);
-    const placementQuery = { organizationId, registrationId, observedCatalogReleaseId: release.id,
-      authScope: { organizationId, principalId: userId } };
+    const registrationId = await seedLegacySubjectPlacement(pool, { organizationId,
+      subjectId: kind === "driver-group" ? "csub_acme_power" : "csub_acme_charger", moduleId: module.id,
+      reason: "Administrator metadata migration fixture" });
+    legacyFixtures.set(key, { auth, parent, target, module, registrationId });
+  }
+
+  async function fixture(key: string, _kind: "driver-group" | "node-type", _origin: "auto" | "curated") {
+    const prepared = legacyFixtures.get(key);
+    if (!prepared) throw new Error(`Missing legacy fixture ${key}`);
+    const { auth, registrationId } = prepared;
+    const placementQuery = { organizationId: auth.organization.id, registrationId, observedCatalogReleaseId: release.id,
+      authScope: { organizationId: auth.organization.id, principalId: auth.user.id } };
     const placement = await getPlacement(getRootPostgresPool(apiDb)!, placementQuery);
     if (!placement.ok) throw new Error(JSON.stringify(placement.error));
-    return { auth, parent, target, module, registrationId, placementQuery, placement: placement.value };
+    return { ...prepared, placementQuery, placement: placement.value };
   }
 
   it.each([
@@ -333,42 +354,48 @@ describe("administrator module metadata through the API database role", () => {
     expect((await apiDb.query(`select id from public.audit_events where target_id=$1 and kind='parameter-module-admin-update'`, [f.module.id])).rows).toHaveLength(0);
   });
 
-  it("keeps recognition rules with modules when a canonical Subject moves to another placement", async () => {
+  it("keeps legacy recognition rules separate when a Subject moves to a business category", async () => {
     const f = await fixture("recognition-placement-move", "driver-group", "curated");
     const catalog = await captureModuleRecognitionCatalog(apiDb);
     if (!catalog) throw new Error("Catalog is unavailable");
     await updateParameterModuleForAuth(apiDb, f.auth, f.module.id, { compatibles: ["local,old-module"] });
-    const destination = await createParameterModule(pool, {
+    const legacyDestination = await createParameterModule(pool, {
       organizationId: f.auth.organization.id, name: "Destination driver", kind: "driver-group", parentId: f.target.id,
     });
+    const rejected = await createRegistrationService(getRootPostgresPool(apiDb)!).execute({
+      kind: "move-placement", organizationId: f.auth.organization.id, registrationId: f.registrationId,
+      expectedRelease: release, destinationModuleId: legacyDestination.id, idempotencyKey: "reject-typed-recognition-placement",
+      context: { actorKind: "org-admin", principalId: f.auth.user.id },
+    });
+    expect(rejected).toMatchObject({ ok: false, error: { kind: "invalid-placement-parent" } });
     const moved = await createRegistrationService(getRootPostgresPool(apiDb)!).execute({
       kind: "move-placement", organizationId: f.auth.organization.id, registrationId: f.registrationId,
-      expectedRelease: release, destinationModuleId: destination.id, idempotencyKey: "move-subject-recognition-placement",
+      expectedRelease: release, destinationModuleId: f.target.id, idempotencyKey: "move-subject-recognition-placement",
       context: { actorKind: "org-admin", principalId: f.auth.user.id },
     });
     expect(moved).toMatchObject({ ok: true });
     const settings = await loadModuleRecognitionSettings(apiDb, f.auth.organization.id, catalog);
     expect(settings.get(f.module.id)).toMatchObject({ recognitionSubjectId: null, compatibles: ["local,old-module"] });
-    expect(settings.get(destination.id)).toMatchObject({ recognitionSubjectId: "csub_acme_power", compatibles: expect.arrayContaining(["acme,power"]) });
+    expect(settings.get(legacyDestination.id)).toMatchObject({ recognitionSubjectId: null });
     const selector = (value: string) => ({ driverCompatibles: [DriverCompatible(value)], nodeTypeFallback: { kind: "absent" as const } });
     const afterMove = await loadOrganizationCatalogSnapshot(apiDb, f.auth.organization.id, catalog);
     expect(afterMove.resolveSubject(selector("local,old-module")).status).toBe("unknown");
     expect(afterMove.resolveSubject(selector("acme,power")).status).toBe("matched");
-    await expect(updateParameterModuleForAuth(apiDb, f.auth, destination.id, { compatibles: ["local,new-module"] }))
-      .resolves.toMatchObject({ recognitionSubjectId: "csub_acme_power" });
+    await expect(updateParameterModuleForAuth(apiDb, f.auth, legacyDestination.id, { compatibles: ["local,new-module"] }))
+      .resolves.toMatchObject({ recognitionSubjectId: null });
     const afterSave = await loadOrganizationCatalogSnapshot(apiDb, f.auth.organization.id, afterMove);
-    expect(afterSave.resolveSubject(selector("local,new-module")).status).toBe("matched");
+    expect(afterSave.resolveSubject(selector("local,new-module")).status).toBe("unknown");
     expect(afterSave.resolveSubject(selector("local,old-module")).status).toBe("unknown");
   });
 
-  it("applies a local rule after later registration and edits a canonical node's actual fallback selector", async () => {
+  it("keeps an unregistered legacy rule separate from later business placement and edits a legacy node selector", async () => {
     const f = await fixture("recognition-late-registration", "node-type", "auto");
     const localDriver = await createParameterModule(pool, { organizationId: f.auth.organization.id,
       name: "Previously unregistered", kind: "driver-group" });
     await updateParameterModuleForAuth(apiDb, f.auth, localDriver.id, { compatibles: ["local,later-registration"], instanceCardinality: "singleton-per-project" });
     const registered = await createRegistrationService(getRootPostgresPool(apiDb)!).execute({
       kind: "register", organizationId: f.auth.organization.id, subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver",
-      expectedRelease: release, placement: { mode: "use-default" }, destinationModuleId: localDriver.id, method: "explicit",
+      expectedRelease: release, placement: { mode: "use-default" }, destinationModuleId: f.parent.id, method: "explicit",
       proof: { reason: "Register after local rule" }, idempotencyKey: "late-register-local-rule",
       context: { actorKind: "org-admin", principalId: f.auth.user.id },
     });
@@ -377,6 +404,8 @@ describe("administrator module metadata through the API database role", () => {
     if (!catalog) throw new Error("Catalog is unavailable");
     const effective = await loadOrganizationCatalogSnapshot(apiDb, f.auth.organization.id, catalog);
     expect(effective.resolveSubject({ driverCompatibles: [DriverCompatible("local,later-registration")], nodeTypeFallback: { kind: "absent" } }))
+      .toMatchObject({ status: "unknown" });
+    expect(effective.resolveSubject({ driverCompatibles: [DriverCompatible("acme,power")], nodeTypeFallback: { kind: "absent" } }))
       .toMatchObject({ status: "matched", subject: { id: "csub_acme_power" } });
     await updateParameterModuleForAuth(apiDb, f.auth, f.module.id, { nodeTypeName: "local-charger" });
     const nodeEffective = await loadOrganizationCatalogSnapshot(apiDb, f.auth.organization.id, effective);

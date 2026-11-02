@@ -77,7 +77,7 @@ describe.skipIf(!databaseAvailable)("canonical registration guards through the a
       organizationId, name: "Driver", kind: "driver-group",
     })).id;
     foreignModuleId = (await createParameterModule(root, {
-      organizationId: foreignOrganizationId, name: "Foreign driver", kind: "driver-group",
+      organizationId: foreignOrganizationId, name: "Foreign category", kind: "business",
     })).id;
     server = createWiseEffServer({
       db: root,
@@ -134,13 +134,13 @@ describe.skipIf(!databaseAvailable)("canonical registration guards through the a
       }),
     });
 
-  it.each(["missing module", "business module", "node-type module", "cross-tenant module"] as const)(
+  it.each(["missing module", "driver-group module", "node-type module", "cross-tenant module"] as const)(
     "rejects a %s without persisting registration or placement",
     async (target) => {
       await assertNoRegistrationOrPlacement();
       const destinationModuleId = {
         "missing module": "missing-b4-module",
-        "business module": businessModuleId,
+        "driver-group module": driverModuleId,
         "node-type module": nodeModuleId,
         "cross-tenant module": foreignModuleId,
       }[target];
@@ -155,7 +155,7 @@ describe.skipIf(!databaseAvailable)("canonical registration guards through the a
 
   it.each(["viewer"] as const)("rejects %s-only registration authority", async (actor) => {
     await assertNoRegistrationOrPlacement();
-    const response = await register(actor, driverModuleId);
+    const response = await register(actor, businessModuleId);
     expect(response.status, response.bodyText).toBe(403);
     expect(response.body).toMatchObject({
       error: { code: "FORBIDDEN", details: { reason: "forbidden", retryable: false } },
@@ -174,7 +174,7 @@ describe.skipIf(!databaseAvailable)("canonical registration guards through the a
   });
 
   it("registers as the real platform administrator and records that actor", async () => {
-    const response = await register("platform", driverModuleId);
+    const response = await register("platform", businessModuleId);
     expect(response.status, response.bodyText).toBe(201);
     expect(response.body).toMatchObject({ item: { organizationId, subjectId: "csub_acme_power", status: "active" } });
     expect((await root.query("select actor_user_id,organization_id from audit_events where kind='parameter-catalog-registration' and action='registration-register'")).rows)

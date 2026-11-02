@@ -57,10 +57,9 @@ export async function createDefinitionDeletionFixture(prefix = "definition_delet
   for (const [index, organizationId] of DELETION_ORGANIZATIONS.entries()) {
     const userId = index === 0 ? DELETION_ACTORS.admin : DELETION_ACTORS.other;
     const business = await createParameterModule(root, { organizationId, name: `Business ${index}` });
-    const module = await createParameterModule(root, { organizationId, name: `Driver ${index}`, parentId: business.id, kind: "driver-group" });
     const registration = await createRegistrationService(pool).execute({ kind: "register", organizationId,
       subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver", expectedRelease: chain.pinC,
-      placement: { mode: "use-default" }, destinationModuleId: module.id, method: "explicit", proof: {},
+      placement: { mode: "use-default" }, destinationModuleId: business.id, method: "explicit", proof: {},
       idempotencyKey: `delete-registration-${index}`, context: { actorKind: "org-admin", principalId: userId } });
     if (!registration.ok) throw new Error(JSON.stringify(registration.error));
     const bindings = [];

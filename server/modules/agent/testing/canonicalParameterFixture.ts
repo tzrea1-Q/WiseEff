@@ -224,7 +224,7 @@ async function seedCatalogRegistration(
       subjectKind: "driver",
       expectedRelease,
       placement: { mode: "use-default" },
-      destinationModuleId: fixture.driverModuleId,
+      destinationModuleId: fixture.categoryModuleId,
       method: "explicit",
       proof: { reason: "issue-905-canonical-fixture" },
       idempotencyKey: `issue-905-registration-${randomUUID()}`,

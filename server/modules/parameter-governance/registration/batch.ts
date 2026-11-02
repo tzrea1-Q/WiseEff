@@ -14,12 +14,11 @@ import type { RegistrationResult } from "./result";
 type Rows = z.infer<typeof catalogBatchRegistrationRequestSchema>["rows"];
 export type BatchRegistrationInput = { organizationId: string; rows: Rows; expectedRelease: CatalogReleasePin; idempotencyKey: string;
   actorKind: "org-admin" | "platform-admin"; principalId: string; invocation: UserInvocationContext; requestId: string };
-export type BatchRowFailure = { index: number; subjectId: string; code: "category-missing" | "name-invalid" | "name-taken" | "module-occupied" | "already-registered" | "subject-inactive" | "release-drift" | "conflict"; field: "category" | "name" | "subject" };
+export type BatchRowFailure = { index: number; subjectId: string; code: "category-missing" | "name-invalid" | "name-taken" | "already-registered" | "subject-inactive" | "release-drift" | "conflict"; field: "category" | "name" | "subject" };
 
 function failureReason(failure: RegistrationFailure): Pick<BatchRowFailure, "code" | "field"> {
   if (failure.kind === "placement-conflict" && failure.placementId === "parameter_modules_org_parent_name_unique_idx") return { code: "name-taken", field: "name" };
   switch (failure.kind) {
-    case "placement-occupied": return { code: "module-occupied", field: "subject" };
     case "registration-conflict": case "restore-required": case "auto-restore-forbidden": return { code: "already-registered", field: "subject" };
     case "invalid-placement-parent": return { code: "category-missing", field: "category" };
     case "subject-retired": case "subject-not-published": return { code: "subject-inactive", field: "subject" };

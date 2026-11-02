@@ -59,7 +59,7 @@ describe("CatalogOrganizationSurface Organization Review Queue permission", () =
     });
     const moduleRegistry = { getRegistry: vi.fn().mockResolvedValue({ mappings: [], modules: [
       module("root-a", "充电", null, "business"), module("root-b", "电池", null, "business"),
-      module("target-a", "控制器", "root-a", "driver-group"), module("target-b", "控制器", "root-b", "driver-group")
+      module("target-a", "控制器", "root-a", "business"), module("target-b", "控制器", "root-b", "business")
     ] }) };
     render(<CatalogOrganizationSurface {...ports} actor="org-admin" search="?review=open" moduleRegistry={moduleRegistry}
       organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="admin" onAnchorChange={vi.fn()} />);

@@ -4,9 +4,6 @@ import type { RegistrationCommand, RegisterSubjectCommand } from "./command";
 import { registrationCommandFamily } from "./command";
 import type { RegistrationMethod, RegistrationResult } from "./result";
 
-export const moduleKindForSubject = (kind: RegisterSubjectCommand["subjectKind"]): string =>
-  kind === "driver" ? "driver-group" : kind === "node-type" ? "node-type" : "business";
-
 export type RegistrationWriterClient = {
   query: pg.PoolClient["query"];
 };
@@ -65,7 +62,7 @@ export const lockOrganizationRegistrations = async (
 /** Canonical initialization shares the registration transaction and rollback. */
 export const createRegistrationDestination = async (
   client: RegistrationWriterClient,
-  command: RegisterSubjectCommand,
+  command: Pick<RegisterSubjectCommand, "organizationId" | "destinationModuleId" | "newDestination">,
 ): Promise<DestinationModuleRow | null> => {
   const choice = command.newDestination;
   if (!choice) return null;
@@ -76,23 +73,12 @@ export const createRegistrationDestination = async (
   );
   const business = parent.rows[0];
   if (!business) return null;
-  const kind = moduleKindForSubject(command.subjectKind);
-  const attributionId = kind === "business" ? null : `asub:canonical:${command.destinationModuleId}`;
-  if (attributionId) {
-    // The retained module constraint requires this compatibility projection;
-    // Catalog Subject + organization registration remain the only identity owner.
-    await client.query(
-      `insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key)
-       values ($1,$2,$3,$4,'curated',$5)`,
-      [attributionId, command.organizationId, kind === "driver-group" ? "driver-registration" : "node-type-definition", choice.name, `catalog-subject:${command.subjectId}`],
-    );
-  }
   const result = await client.query<DestinationModuleRow>(
-    `insert into public.parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin, attribution_subject_id)
-     values ($1,$2,$3,$4,$5,$6,$7,'curated',$8)
+    `insert into public.parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin)
+     values ($1,$2,$3,$4,$5,$6,'business','curated')
      returning id, organization_id, parent_id, kind`,
     [command.destinationModuleId, command.organizationId, business.id, choice.name,
-      `${business.path}/${command.destinationModuleId}`, business.depth + 1, kind, attributionId],
+      `${business.path}/${command.destinationModuleId}`, business.depth + 1],
   );
   return result.rows[0] ?? null;
 };
@@ -305,22 +291,6 @@ export const updatePlacementModule = async (
     return finalized.rows[0]!;
   }
   return result.rows[0]!;
-};
-
-/** Occupancy includes retired registrations, whose durable placement is retained. */
-export const findPlacementForModule = async (
-  client: RegistrationWriterClient,
-  organizationId: string,
-  moduleId: string,
-): Promise<PlacementRow | null> => {
-  const result = await client.query<PlacementRow>(
-    `select id, registration_id, organization_id, module_id, origin,
-            (extract(epoch from updated_at) * 1000000)::bigint::text as version
-     from parameter_catalog.subject_placements
-     where organization_id = $1 and module_id = $2`,
-    [organizationId, moduleId],
-  );
-  return result.rows[0] ?? null;
 };
 
 export const lockDestinationModule = async (

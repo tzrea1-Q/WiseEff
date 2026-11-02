@@ -84,8 +84,8 @@ it("seeds twice through canonical owners without legacy rows and serves seeded h
     where binding.project_id = 'aurora'`);
   expect(placement.rows.length).toBeGreaterThan(0);
   expect(placement.rows.every((row) => row.module_id !== null)).toBe(true);
-  expect(new Set(placement.rows.map((row) => row.kind))).toEqual(new Set(["driver-group", "node-type"]));
-  expect(new Set(placement.rows.map((row) => row.module_id)).size).toBeGreaterThan(1);
+  expect(placement.rows.every((row) => row.kind === "business" || row.kind === "unclassified")).toBe(true);
+  expect(new Set(placement.rows.map((row) => row.module_id)).size).toBe(1);
   const instances = await db.query<{ module_id: string; logical_node_id: string }>(`select distinct
     placement.module_id, binding.logical_node_id
     from parameter_catalog.current_project_parameter_bindings binding

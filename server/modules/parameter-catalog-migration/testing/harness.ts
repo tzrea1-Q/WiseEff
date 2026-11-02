@@ -50,6 +50,7 @@ import {
   type Database,
 } from "../../../shared/database/client";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
+import { seedLegacySubjectPlacement } from "../../../testing/parameterCatalog/driverSource";
 
 import {
   createParameterCatalogMigrationService,
@@ -112,6 +113,7 @@ export type MigrationHarness = {
     readonly subjectKind: "driver" | "node-type";
     readonly moduleId: string;
     readonly principalId?: string;
+    readonly legacyPlacement?: boolean;
   }) => Promise<string>;
   readonly seedBindingValue: (input: {
     readonly organizationId: string;
@@ -389,10 +391,14 @@ export async function createMigrationHarness(options: { readonly objectStore?: O
         input.moduleId,
         input.organizationId,
         input.moduleId,
-        input.subjectKind === "driver" ? "driver-group" : "node-type",
-        attributionId,
+        input.legacyPlacement ? (input.subjectKind === "driver" ? "driver-group" : "node-type") : "business",
+        input.legacyPlacement ? attributionId : null,
       ],
     );
+    if (input.legacyPlacement) return seedLegacySubjectPlacement(pool, {
+      organizationId: input.organizationId, subjectId: input.subjectId, moduleId: input.moduleId,
+      reason: "historical definition-replacement fixture",
+    });
     const command: RegisterSubjectCommand = {
       kind: "register",
       organizationId: input.organizationId,

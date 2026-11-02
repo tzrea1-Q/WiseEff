@@ -175,9 +175,9 @@ describe("CP-10 definition revision and new-subject PG", () => {
       );
       await client.query(
         `insert into public.parameter_modules (
-           id, organization_id, name, path, depth, kind, origin, attribution_subject_id
-         ) values ($1, $2, 'Driver', $1, 1, 'driver-group', 'curated', $3)`,
-        [moduleId, orgId, attributionId],
+           id, organization_id, name, path, depth, kind, origin
+         ) values ($1, $2, 'Driver', $1, 1, 'business', 'curated')`,
+        [moduleId, orgId],
       );
       await client.query(
         `insert into parameter_catalog.organization_subject_registrations (
@@ -717,8 +717,8 @@ describe("CP-10 definition revision and new-subject PG", () => {
       await client.query("insert into public.organizations(id,name) values ($1,'Standalone')", [organizationId]);
       await client.query(`insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,origin,source_key)
         values ($1,$2,'driver-registration','Standalone','curated',$1)`, [`attr-${token}`, organizationId]);
-      await client.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-        values ($1,$2,'Standalone',$1,1,'driver-group','curated',$3)`, [moduleId, organizationId, `attr-${token}`]);
+      await client.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin)
+        values ($1,$2,'Standalone',$1,1,'business','curated')`, [moduleId, organizationId]);
       const service = createRegistrationService(api);
       const expectedRelease = { id: result.built.artifact.targetReleaseId, digest: result.built.artifact.targetReleaseDigest };
       const context = { actorKind: "org-admin" as const, principalId: REVIEWER };

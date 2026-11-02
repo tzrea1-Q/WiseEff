@@ -38,6 +38,9 @@ import {
 import { createReviewItemResolver } from "./index";
 import type { RegisterSubjectResolutionCommand } from "./command";
 
+type DeepMutable<T> = T extends readonly (infer Item)[] ? DeepMutable<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: DeepMutable<T[Key]> } : T;
+
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
   throw new Error(
@@ -86,7 +89,7 @@ const firstReleaseBundle = (): CatalogReleaseBundle => {
   };
 };
 
-const refreshReleaseSource = (release: CatalogReleaseNode): void => {
+const refreshReleaseSource = (release: DeepMutable<CatalogReleaseNode>): void => {
   for (const document of release.documents) {
     if (document.kind === "definition") {
       const revision = document.content.revision;
@@ -141,7 +144,7 @@ const refreshReleaseSource = (release: CatalogReleaseNode): void => {
 };
 
 const retiringSuccessorBundle = (): CatalogReleaseBundle => {
-  const bundle = structuredClone(validCatalogReleaseBundle());
+  const bundle = structuredClone(validCatalogReleaseBundle()) as DeepMutable<CatalogReleaseBundle>;
   const current = bundle.releases.find(
     (release) => release.manifest.release.id === bundle.targetReleaseId,
   );
@@ -157,10 +160,10 @@ const retiringSuccessorBundle = (): CatalogReleaseBundle => {
   };
 
   const subject = target.documents.find(
-    (document): document is CatalogReleaseSubjectDocument => document.kind === "subject",
+    (document): document is DeepMutable<CatalogReleaseSubjectDocument> => document.kind === "subject",
   );
   const alias = target.documents.find(
-    (document): document is CatalogReleaseAliasDocument => document.kind === "alias",
+    (document): document is DeepMutable<CatalogReleaseAliasDocument> => document.kind === "alias",
   );
   if (!subject || !alias) throw new Error("successor subject/alias missing");
 
@@ -350,9 +353,9 @@ describe("atomic resolveReviewItem coordinator", () => {
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
        ) values
-         ($1, $3, 'Driver', $1, 1, 'driver-group', 'curated', $4),
-         ($2, $3, 'Driver B', $2, 1, 'driver-group', 'curated', $5)`,
-      [MODULE_ID, MODULE_ID_B, ORG_ID, ATTR_ID, ATTR_ID_B],
+         ($1, $3, 'Driver', $1, 1, 'business', 'curated', null),
+         ($2, $3, 'Driver B', $2, 1, 'business', 'curated', null)`,
+      [MODULE_ID, MODULE_ID_B, ORG_ID],
     );
     ingest = createEvidenceIngest(pool);
     reader = createReviewQueueReader(pool);

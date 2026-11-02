@@ -283,7 +283,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         summarizeApiResponse(placementMoveResponse, {
           method: "POST",
           path: `/api/v1/parameter-modules/${placementModuleId}/move`,
-          responseSummary: `canonical driver leaf moved under ${child.item.id}`
+          responseSummary: `business leaf holding the subject moved under ${child.item.id}`
         }),
         summarizeApiResponse(listResponse, {
           method: "GET",
@@ -311,7 +311,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         }
       ],
       notes:
-        "The admin move API positions the canonical driver leaf beneath the child. The API-returned tree and persisted Placement identify the Binding in the parent subtree, but not its direct members."
+        "The admin move API positions the business leaf holding the subject beneath the child. The API-returned tree and persisted Placement identify the Binding in the parent subtree, but not its direct members."
     });
   });
 
@@ -374,7 +374,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         summarizeApiResponse(placementMoveResponse, {
           method: "POST",
           path: `/api/v1/parameter-modules/${placementModuleId}/move`,
-          responseSummary: `canonical driver leaf moved under ${child.item.id}`
+          responseSummary: `business leaf holding the subject moved under ${child.item.id}`
         }),
         summarizeApiResponse(moveResponse, {
           method: "POST",
@@ -392,7 +392,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
           responseSummary: "CONFLICT cycle rejected"
         })
       ],
-      notes: "The admin move API positions the driver leaf beneath a business child, then reparents the subtree while preserving the canonical Binding's leaf; the cycle move returns 409."
+      notes: "The admin move API positions the subject's business leaf beneath a business child, then reparents the subtree while preserving the canonical Binding's leaf; the cycle move returns 409."
     });
   });
 
@@ -463,7 +463,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     });
   });
 
-  test("module tree mutations require admin and deleting a canonical driver leaf unsets Placement while retaining values", async ({
+  test("module tree mutations require admin and deleting a business leaf unsets Placement while retaining values", async ({
     page,
     request
   }, testInfo) => {
@@ -483,7 +483,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     const parent = await createParameterModule(request, { name: parentName });
     await createParameterModule(request, { name: childName, parentId: parent.item.id });
     const leaf = await createParameterModule(request, { name: leafName });
-    const binding = await seedAssignableBinding(request, "MOD-TREE-AUTHZ-001 populated canonical driver leaf");
+    const binding = await seedAssignableBinding(request, "MOD-TREE-AUTHZ-001 populated business leaf");
     const seededBindings = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), {
       headers: adminHeaders()
     });
@@ -651,9 +651,9 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
       ],
       db: [
         { table: "parameter_catalog.subject_placements", predicate: `id=${placement.id}`,
-          observed: `registration_id=${registrationId}; module_id=null; typed module repository returns null`, rowCount: persisted.placements.length }
+          observed: `registration_id=${registrationId}; module_id=null; module repository returns null`, rowCount: persisted.placements.length }
       ],
-      notes: "Non-admin module create, move and delete returned 403; deleting a parent with children returned 409. Admin deletion of a populated driver leaf returned 204, retained its Placement with module_id=null, and preserved Registration identity, every placed Binding's current value/source pin and complete change-history API responses. Project Binding IDs remain unchanged. An empty taxonomy leaf also returned 204."
+      notes: "Non-admin module create, move and delete returned 403; deleting a parent with children returned 409. Admin deletion of a populated business leaf returned 204, retained its Placement with module_id=null, and preserved Registration identity, every placed Binding's current value/source pin and complete change-history API responses. Project Binding IDs remain unchanged. An empty taxonomy leaf also returned 204."
     });
   });
 });

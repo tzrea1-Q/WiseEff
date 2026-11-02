@@ -4,14 +4,13 @@
  *
  * This drives the real chain - a real published release lineage (`crel_acme_1` ->
  * `crel_vendor_catalog_1`, acme retired), the real demonstration DTS slice read
- * from disk, and the real seed materializer. The reviewed slice currently lacks
- * one free driver module for `csub_drv_sc8562`; B6 requires the whole run to stop
- * before any canonical binding sync instead of completing partially.
+ * from disk, and the real seed materializer. Subjects share a business destination
+ * instead of requiring a free module for each subject.
  *
  * The observed-property assertions are the positive half: the source plane
  * (config set, resolved revision, per-property occurrence effects) is complete and
  * attributed to the vendor subjects, and the definitions the DTS names exist in
- * the installed release, so the gate really is placement capacity.
+ * the installed release.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -221,33 +220,14 @@ describe("canonical binding materialization from a published release", () => {
     await database?.drop();
   });
 
-  it("stages the real DTS slice but writes no bindings when placement capacity is short", async () => {
+  it("materializes the real DTS slice with shared business placement", async () => {
     await expect(
       materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
         organizationId: ORG,
         seedDigest: DIGEST,
         sources: await realSeedSources(),
       }),
-    ).rejects.toMatchObject({
-      name: "SeedInitializationBlockedError",
-      blocks: expect.arrayContaining([
-        expect.objectContaining({
-          projectId: "atlas",
-          subjectId: "csub_drv_sc8562",
-          reason: "missing-placement-module",
-        }),
-        expect.objectContaining({
-          projectId: "aurora",
-          subjectId: "csub_drv_sc8562",
-          reason: "missing-placement-module",
-        }),
-        expect.objectContaining({
-          projectId: "nebula",
-          subjectId: "csub_drv_sc8562",
-          reason: "missing-placement-module",
-        }),
-      ]),
-    });
+    ).resolves.toMatchObject({ status: "completed" });
 
     const revisions = await pool.query<{ project_id: string; id: string }>(
       `select distinct on (project_id) project_id, id
@@ -315,8 +295,7 @@ describe("canonical binding materialization from a published release", () => {
       expect(available, `definition ${propertyKey}`).toContain(propertyKey);
     }
 
-    // Registration proceeds during preflight, but one missing placement blocks the
-    // run before the second phase writes any canonical project value.
+    // Registration proceeds before canonical project values are written.
     const registrations = await pool.query<{ count: string }>(
       `select count(*)::text as count
          from parameter_catalog.organization_subject_registrations
@@ -331,14 +310,14 @@ describe("canonical binding materialization from a published release", () => {
         where organization_id = $1`,
       [ORG],
     );
-    expect(bindings.rows[0]?.count).toBe("0");
+    expect(Number(bindings.rows[0]?.count)).toBeGreaterThan(0);
 
     const run = await getSeedInitializationRun(root, {
       organizationId: ORG,
       seedDigest: DIGEST,
     });
-    expect(run?.status).toBe("failed");
-    expect(run?.blocked).toHaveLength(3);
+    expect(run?.status).toBe("completed");
+    expect(run?.blocked).toHaveLength(0);
 
     const pointer = await pool.query<{ current_catalog_release_id: string }>(
       "select current_catalog_release_id from parameter_catalog.catalog_state",

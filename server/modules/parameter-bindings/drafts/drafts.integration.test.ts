@@ -328,9 +328,9 @@ describe("canonical pending value drafts", () => {
     );
     await pool.query(
       `insert into public.parameter_modules (
-         id, organization_id, name, path, depth, kind, origin, attribution_subject_id
-       ) values ($1, $2, 'Driver', $1, 1, 'driver-group', 'curated', $3)`,
-      [MODULE, ORG, ATTR]
+         id, organization_id, name, path, depth, kind, origin
+       ) values ($1, $2, 'Driver', $1, 1, 'business', 'curated')`,
+      [MODULE, ORG]
     );
     await pool.query(
       `insert into dts_config_set (id, organization_id, project_id, name, description)

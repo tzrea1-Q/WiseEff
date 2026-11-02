@@ -25,7 +25,7 @@ describe("MOD D02 production Subject comparison", () => {
       const business = await createParameterModule(pool, { organizationId: "mod-d02-org", name: "Business" });
       const driver = await createParameterModule(pool, {
         organizationId: "mod-d02-org", parentId: business.id, name: "Driver",
-        kind: "driver-group", sourceKey: "compatible:acme,power",
+        kind: "business", sourceKey: "compatible:acme,power",
       });
       await registerParameterModuleComparisonDriver(pool, {
         organizationId: "mod-d02-org", destinationModuleId: driver.id,
@@ -36,7 +36,7 @@ describe("MOD D02 production Subject comparison", () => {
       const otherBusiness = await createParameterModule(pool, { organizationId: "mod-d02-other", name: "Other business" });
       const otherDriver = await createParameterModule(pool, {
         organizationId: "mod-d02-other", parentId: otherBusiness.id, name: "Other driver",
-        kind: "driver-group", sourceKey: "compatible:mod-page-0",
+        kind: "business", sourceKey: "compatible:mod-page-0",
       });
       await registerParameterModuleComparisonDriver(pool, {
         organizationId: "mod-d02-other", destinationModuleId: otherDriver.id,
@@ -115,6 +115,19 @@ describe("MOD D02 production Subject comparison", () => {
         .rejects.toThrow("canonical Subject read failed: controlled Subject query unavailable");
       unavailable.mockRestore();
       expect(await state()).toEqual(before);
+
+      await registerParameterModuleComparisonDriver(pool, {
+        organizationId: "mod-d02-org", destinationModuleId: driver.id,
+        subjectId: additionalSubjectIds[0]!, release: pin,
+        idempotencyKey: "mod-d02-shared-register", principalId: "mod-d02-owner",
+      });
+      const shared = await provideModParameterCatalogComparisonContribution(input);
+      const sharedCase = shared.cases.find((item) =>
+        item.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY" && item.protectedReference.id === driver.id);
+      expect(sharedCase?.canonicalObservation).toMatchObject({
+        status: "query-failure", detail: "multiple-subject-associations-for-module",
+      });
+      expect(sharedCase?.expectedDifference).toBeNull();
     } finally {
       await database.close();
       await fixture.close();

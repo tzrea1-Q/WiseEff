@@ -8,10 +8,8 @@
  * `actorKind: "trusted-system"` with `placement.mode: "use-default"`, gives the
  * placement `origin: "auto"`, and refuses auto-restoring a retired registration.
  *
- * What the contract does *not* provide is the module: a registration still needs a
- * `destinationModuleId`, the placement guard requires the module kind to match the
- * subject kind (`driver-group` for drivers, `node-type` for node types, `business`
- * for configuration schemas), and the module tree is curated, user-visible structure.
+ * A registration still needs a `destinationModuleId`; the module tree is curated,
+ * user-visible business structure.
  * So this module resolves an existing suitable module and reports the subjects it
  * could not place instead of inventing modules. ADR-0046 keeps that user-visible
  * module curation operator-owned and requires seed initialization to fail closed.
@@ -23,13 +21,6 @@ import { executeRegistration } from "../../parameter-governance/registration/ser
 import type { CatalogSnapshot } from "../../catalog-kernel/interface";
 import { parseCompatibles, resolveObservedSubject } from "../catalogProjectValueSync";
 import { getRootPostgresPool } from "../../../shared/database/client";
-
-/** The module kind `assert_subject_placement_kind` requires for each subject kind. */
-const REQUIRED_MODULE_KIND: Record<string, string> = {
-  driver: "driver-group",
-  "node-type": "node-type",
-  "configuration-schema": "business"
-};
 
 export type ObservedSubject = { readonly subjectId: string; readonly subjectKind: string };
 
@@ -83,29 +74,20 @@ const activeRegistrationExists = async (
   return Boolean(result.rows[0]);
 };
 
-/**
- * An existing module of the required kind that does not already host a placement, so
- * one module is never asked to hold two subjects (`unique (organization_id, module_id)`
- * on `subject_placements`).
- */
+/** Deterministically reuse a business category for all seed subjects. */
 const availableModuleId = async (
   db: Queryable,
-  organizationId: string,
-  moduleKind: string
+  organizationId: string
 ): Promise<string | null> => {
   const result = await db.query<{ id: string }>(
     `select pm.id
        from public.parameter_modules pm
       where pm.organization_id = $1
-        and pm.kind = $2
-        and not exists (
-          select 1 from parameter_catalog.subject_placements sp
-           where sp.organization_id = pm.organization_id and sp.module_id = pm.id
-        )
+        and (pm.kind = 'business' or (pm.kind = 'unclassified' and pm.parent_id is null))
       order by case when pm.origin = 'curated' then 0 else 1 end,
                coalesce(pm.source_key, pm.name) collate "C", pm.name collate "C", pm.id
       limit 1`,
-    [organizationId, moduleKind]
+    [organizationId]
   );
   return result.rows[0]?.id ?? null;
 };
@@ -135,12 +117,11 @@ export async function ensureSeedSubjectRegistrations(
       alreadyRegistered.push(subject.subjectId);
       continue;
     }
-    const moduleKind = REQUIRED_MODULE_KIND[subject.subjectKind];
-    if (!moduleKind) {
+    if (!["driver", "node-type", "configuration-schema"].includes(subject.subjectKind)) {
       unregistered.push(subject.subjectId);
       continue;
     }
-    const destinationModuleId = await availableModuleId(root, input.organizationId, moduleKind);
+    const destinationModuleId = await availableModuleId(root, input.organizationId);
     if (!destinationModuleId) {
       unregistered.push(subject.subjectId);
       continue;

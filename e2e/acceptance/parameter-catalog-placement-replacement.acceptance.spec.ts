@@ -3,7 +3,7 @@ import pg from "pg";
 import { expect } from "playwright/test";
 import { catalogAppUrl, catalogRuntimeTest as test } from "./helpers/catalogFixtureRuntime";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
-import { selectControlOption } from "./helpers/selectControl";
+import { readSelectControlOptions, selectControlOption } from "./helpers/selectControl";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { CATALOG_EXPECTED_API_FAILURES, catalogJson, catalogScreenshot, confirmGovernanceDialog } from "./helpers/catalogBrowser";
 import { SUBJECT_ID as sourceSubjectId } from "../../server/modules/catalog-kernel/runtime/catalogChain.fixture";
@@ -30,7 +30,7 @@ const source = `/dts-v1/;
 // This spec owns a fresh Catalog rather than the OP-08 A-to-F history. Both
 // drivers and their definitions stay active, and actual source uploads create
 // bindings/values/history for both sides before the browser edits any placement.
-test("explicitly replaces an occupied placement after a stale preview without changing values or history", async ({ page, catalogRuntime }, testInfo) => {
+test("shares an occupied business category after a stale placement retry without changing values or history", async ({ page, catalogRuntime }, testInfo) => {
   // @acceptance PCAT-UI-07
   // @operation PCAT-REGISTRATION-001
   test.setTimeout(180_000);
@@ -48,8 +48,8 @@ test("explicitly replaces an occupied placement after a stale preview without ch
         values ($1,$2,'driver-registration',$3,$4)`, [attributionId, organizationId, name, `compatible:${compatible}`]);
       await pool.query(`insert into public.driver_registrations(attribution_subject_id,driver_nature,instance_cardinality)
         values ($1,'physical-device','multiple')`, [attributionId]);
-      await pool.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-        values ($1,$2,$3,$1,1,'driver-group','curated',$4)`, [id, organizationId, name, attributionId]);
+      await pool.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin)
+        values ($1,$2,$3,$1,1,'business','curated')`, [id, organizationId, name]);
     }
     const bundle = placementReplacementBundle();
     const compiled = compileCatalogRelease(bundle);
@@ -120,41 +120,32 @@ test("explicitly replaces an occupied placement after a stale preview without ch
     page.on("request", (request) => { if (request.method() === "PATCH" && new URL(request.url()).pathname === path) writes.push(request.url()); });
     await row.getByRole("button", { name: /^调整归属：/ }).click();
     const dialog = page.getByRole("dialog", { name: "调整放置", exact: true });
+    const options = await readSelectControlOptions(dialog.getByRole("combobox", { name: "目标模块" }));
+    expect(options.find((option) => option.value === targetModuleId)?.label).toContain("当前 1 个主体、1 个有效定义");
     await selectControlOption(dialog.getByRole("combobox", { name: "目标模块" }), targetModuleId);
-    const preview = dialog.getByRole("region", { name: "替换归属影响" });
-    await expect(preview).toContainText("未分配模块");
-    await expect(dialog.getByRole("button", { name: "继续确认" })).toBeDisabled();
-    await dialog.getByRole("checkbox", { name: /替换目标模块原有归属/ }).check();
-    await expect(preview).toContainText(`${impact.bindingCount} 个参数绑定`);
-    await dialog.getByRole("textbox", { name: "替换原因" }).fill("修正已有主体与模块的错误对应");
+    await expect(dialog.getByRole("region", { name: "替换归属影响" })).toHaveCount(0);
+    await expect(dialog.getByText("仅调整归属，不改参数值。")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "继续确认" })).toBeEnabled();
     for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]) {
       await page.setViewportSize(viewport);
       const layout = await dialog.evaluate((card) => {
         const scroll = card.querySelector<HTMLElement>(".confirm-dialog__scroll")!;
-        const textarea = card.querySelector<HTMLTextAreaElement>("textarea")!;
         const bounds = card.getBoundingClientRect();
-        const field = textarea.getBoundingClientRect();
-        const style = getComputedStyle(textarea);
         return { width: scroll.clientWidth, contentWidth: scroll.scrollWidth,
-          top: bounds.top, bottom: bounds.bottom, left: bounds.left, right: bounds.right,
-          fieldLeft: field.left, fieldRight: field.right, fieldWidth: field.width,
-          borderWidth: parseFloat(style.borderTopWidth), radius: parseFloat(style.borderTopLeftRadius) };
+          top: bounds.top, bottom: bounds.bottom, left: bounds.left, right: bounds.right };
       });
       expect(layout.contentWidth).toBeLessThanOrEqual(layout.width + 1);
       expect(layout.top).toBeGreaterThanOrEqual(0);
       expect(layout.bottom).toBeLessThanOrEqual(viewport.height);
-      expect(layout.fieldLeft).toBeGreaterThanOrEqual(layout.left);
-      expect(layout.fieldRight).toBeLessThanOrEqual(layout.right);
-      expect(layout.fieldWidth).toBeGreaterThan(400);
-      expect(layout.borderWidth).toBeGreaterThan(0);
-      expect(layout.radius).toBeGreaterThan(0);
+      expect(layout.left).toBeGreaterThanOrEqual(0);
+      expect(layout.right).toBeLessThanOrEqual(viewport.width);
       await expect(dialog.getByRole("button", { name: "继续确认" })).toBeInViewport();
       await catalogScreenshot(page, testInfo, `placement-replacement-editor-${viewport.width}x${viewport.height}`);
     }
     await page.setViewportSize({ width: 1440, height: 900 });
     await dialog.getByRole("button", { name: "继续确认" }).click();
-    const confirmation = page.getByRole("dialog", { name: "确认替换归属", exact: true });
-    await expect(confirmation).toContainText("未分配模块");
+    const confirmation = page.getByRole("dialog", { name: "确认调整放置", exact: true });
+    await expect(confirmation).toContainText("目标模块");
     await confirmation.evaluate(async (card) => {
       const backdrop = card.parentElement ?? card;
       await Promise.all(backdrop.getAnimations({ subtree: true }).map((animation) => animation.finished));
@@ -163,25 +154,22 @@ test("explicitly replaces an occupied placement after a stale preview without ch
     await confirmation.getByRole("button", { name: "取消", exact: true }).click();
     expect(writes).toHaveLength(0);
     expect(await snapshot()).toEqual(before);
-    await pool.query(`update parameter_catalog.subject_placements set updated_at=updated_at + interval '1 microsecond' where id=$1`, [target.placement.id]);
-    const changedTarget = await json("GET", `${registrationPath}/${target.id}/placement`);
-    expect(changedTarget.status).toBe(200);
+    await pool.query(`update parameter_catalog.subject_placements set updated_at=updated_at + interval '1 microsecond' where id=$1`, [current.placement.id]);
+    const changedSource = await json("GET", path);
+    expect(changedSource.status).toBe(200);
     await dialog.getByRole("button", { name: "继续确认" }).click();
     const staleResponse = page.waitForResponse((response) => response.request().method() === "PATCH" && new URL(response.url()).pathname === path);
-    await confirmGovernanceDialog(page, "确认替换归属");
+    await confirmGovernanceDialog(page, "确认调整放置");
     const stale = await staleResponse;
     expect(stale.status()).toBe(409);
     expect(await stale.json()).toMatchObject({ error: { details: { reason: "placement-conflict" } } });
     await expect(dialog.getByRole("alert")).toContainText("输入已保留");
     expect(writes).toHaveLength(1);
     expect(await snapshot()).toEqual(before);
-    await expect(dialog.getByRole("textbox", { name: "替换原因" })).toHaveValue("修正已有主体与模块的错误对应");
+    await expect(dialog.getByRole("combobox", { name: "目标模块" })).toHaveAttribute("data-value", targetModuleId);
     await dialog.getByRole("button", { name: "刷新证据" }).click();
-    const acknowledgement = dialog.getByRole("checkbox", { name: /替换目标模块原有归属/ });
-    await expect(acknowledgement).not.toBeChecked();
-    await acknowledgement.check();
     await dialog.getByRole("button", { name: "继续确认" }).click();
-    const confirm = confirmation.getByRole("button", { name: "确认替换归属", exact: true });
+    const confirm = confirmation.getByRole("button", { name: "确认调整放置", exact: true });
     await expect(confirm).toBeDisabled();
     await confirmation.getByRole("checkbox").focus();
     await page.keyboard.press("Space");
@@ -189,27 +177,26 @@ test("explicitly replaces an occupied placement after a stale preview without ch
     await confirm.press("Enter");
     const response = await saved;
     expect(response.status(), await response.text()).toBe(200);
-    expect(response.request().headers()["if-match"]).toBe(sourceBefore.headers.etag);
-    expect(response.request().postDataJSON()).toMatchObject({ destinationModuleId: targetModuleId, replacement: {
-      registrationId: target.id, reason: "修正已有主体与模块的错误对应",
-      placementEtag: changedTarget.headers.etag, registrationEtag: targetBefore.headers.etag
-    } });
+    expect(response.request().headers()["if-match"]).toBe(changedSource.headers.etag);
+    expect(response.request().postDataJSON()).toEqual({ destinationModuleId: targetModuleId, placement: { mode: "use-default" } });
     expect(writes).toHaveLength(2);
     await expect(dialog).toHaveCount(0);
     const sourceAfter = await json("GET", path);
     expect((sourceAfter.body as { item: { id: string; moduleId: string } }).item).toMatchObject({ id: current.placement.id, moduleId: targetModuleId });
     const targetAfter = await json("GET", `${registrationPath}/${target.id}`);
-    const displaced = (targetAfter.body as { item: { status: string; placement: { id: string; moduleId?: string } } }).item;
-    expect(displaced.status).toBe(target.status);
-    expect(displaced.placement.id).toBe(target.placement.id);
-    expect(displaced.placement.moduleId ?? null).toBeNull();
+    const retained = (targetAfter.body as { item: { status: string; placement: { id: string; moduleId?: string } } }).item;
+    expect(retained.status).toBe(target.status);
+    expect(retained.placement.id).toBe(target.placement.id);
+    expect(retained.placement.moduleId).toBe(targetModuleId);
+    const shared = await pool.query(`select registration_id from parameter_catalog.subject_placements where organization_id=$1 and module_id=$2 order by registration_id`, [organizationId, targetModuleId]);
+    expect(shared.rows.map((row) => row.registration_id).sort()).toEqual([current.id, target.id].sort());
     const oldModule = await pool.query(`select id from parameter_catalog.subject_placements where organization_id=$1 and module_id=$2`, [organizationId, sourceModuleId]);
     expect(oldModule.rows).toEqual([]);
     expect(await snapshot()).toEqual(before);
     await page.reload();
     await expect(row.getByRole("button", { name: /^调整归属：/ })).toBeVisible();
     const reread = await json("GET", `${registrationPath}/${target.id}/placement`);
-    expect((reread.body as { item: { moduleId?: string } }).item.moduleId ?? null).toBeNull();
+    expect((reread.body as { item: { moduleId?: string } }).item.moduleId).toBe(targetModuleId);
     await catalogScreenshot(page, testInfo, "placement-replacement-persisted-1440x900");
   } finally {
     await pool.end();

@@ -235,7 +235,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       "insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality) values ('attr-r2-818', 'physical-device', 'multiple')"
     );
     await pool.query(
-      "insert into parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id) values ('pmod-r2-818', $1, 'R2 driver', 'pmod-r2-818', 1, 'driver-group', 'curated', 'attr-r2-818')",
+      "insert into parameter_modules (id, organization_id, name, path, depth, kind, origin) values ('pmod-r2-818', $1, 'R2 driver', 'pmod-r2-818', 1, 'business', 'curated')",
       [ORG]
     );
 
@@ -324,7 +324,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     const registration = await json<{ item: { id: string } }>(
       "POST",
       `/api/v2/organizations/${ORG}/subject-registrations`,
-      { subjectId: SUBJECT_ID, placement: { mode: "use-default" }, reason: "R2 exact pin fixture" },
+      { subjectId: SUBJECT_ID, placement: { mode: "use-default" }, destinationModuleId: "pmod-r2-818", reason: "R2 exact pin fixture" },
       { "X-WiseEff-Catalog-Release": chain.pinC.id, "Idempotency-Key": randomUUID() }
     );
     expect(registration.status, JSON.stringify(registration.body)).toBe(201);

@@ -330,15 +330,15 @@ describe("#897 C1 authenticated current DTS discovery", () => {
       .toMatchObject({kind:"review-required",reason:"unknown"});
   });
 
-  it("uses organization replacements for real current-source matching while retaining historical observations", async () => {
+  it("keeps legacy module rules separate from a Subject registered in a business category", async () => {
     await db.query(`insert into public.module_recognition_rules
       (organization_id,module_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
       values ($1,$2,'csub_acme_power',array['local,power'],'physical-device','multiple')`, [ORG,driverModuleId]);
     const source = await createSource("organization-alias",PROJECT,'"local,power", "acme,power"');
     const result = await listDriverCompatibleDiscovery({db,objectStore:storage,auth:viewer,observationId:source.observationId});
     expect(result).toMatchObject({status:"ready",items:[{compatibles:[
-      {compatible:"local,power",candidate:{kind:"recognized",subjectId:"csub_acme_power"}},
-      {compatible:"acme,power",candidate:{kind:"review-required",reason:"unknown"}},
+      {compatible:"local,power",candidate:{kind:"review-required",reason:"unknown"}},
+      {compatible:"acme,power",candidate:{kind:"recognized",subjectId:"csub_acme_power"}},
     ]}]});
     const pool = getRootPostgresPool(db)!;
     const pin = await captureCurrentCatalogPin(pool);

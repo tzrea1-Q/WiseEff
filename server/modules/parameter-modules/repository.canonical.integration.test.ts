@@ -99,7 +99,7 @@ describe.skipIf(!databaseAvailable)("Issue #897 canonical registry projection", 
       organizationId: ORG,
       parentId: root.id,
       name: "Issue 897 driver",
-      kind: "driver-group",
+      kind: "business",
       sourceKey: "compatible:acme,power",
     });
     moduleDriverId = driver.id;

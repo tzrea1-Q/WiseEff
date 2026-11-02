@@ -306,7 +306,7 @@ async function installCatalogAndRegistration(
       subjectKind: "driver",
       expectedRelease: compiled.value.release,
       placement: { mode: "use-default" },
-      destinationModuleId: DRIVER_MODULE_ID,
+      destinationModuleId: "mod-dts-reload-service-root",
       method: "explicit",
       proof: { reason: "dts-reload-service-canonical-fixture" },
       idempotencyKey: `dts-reload-service-registration-${randomUUID()}`,

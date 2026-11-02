@@ -178,7 +178,7 @@ export function CatalogOrganizationSurface({
     void moduleRegistry.getRegistry().then((registry) => {
       if (!cancelled) {
         const nodes = toAttributionFlatNodes(registry.modules);
-        setReviewModules(registry.modules.map((module) => ({
+        setReviewModules(registry.modules.filter((module) => module.kind === "business" || (module.kind === "unclassified" && module.parentId === null)).map((module) => ({
           id: module.id, displayName: modulePathSegments(module, nodes).join(" / "), kind: module.kind,
           impactSummary: `该模块已有 ${module.definitionCount ?? 0} 条定义。`
         })));
@@ -486,7 +486,7 @@ export function CatalogOrganizationSurface({
                     setSubjectLoad("ready");
                     if (registry) {
                       const nodes = toAttributionFlatNodes(registry.modules);
-                      setReviewModules(registry.modules.map((module) => ({
+                      setReviewModules(registry.modules.filter((module) => module.kind === "business" || (module.kind === "unclassified" && module.parentId === null)).map((module) => ({
                         id: module.id, displayName: modulePathSegments(module, nodes).join(" / "), kind: module.kind,
                         impactSummary: `该模块已有 ${module.definitionCount ?? 0} 条定义。`
                       })));

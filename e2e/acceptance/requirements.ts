@@ -760,7 +760,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "MOD-TREE-AUTHZ-001",
     workflow: "C",
-    title: "Non-admin cannot mutate module trees and deleting non-empty modules returns 409.",
+    title: "Non-admin cannot mutate module trees; deleting a parent with children is rejected and deleting a business leaf retains its subject Placement and values.",
     required: true
   },
   {

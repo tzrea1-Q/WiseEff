@@ -29,6 +29,7 @@ import {
   installPublishedCatalogChain,
 } from "../catalog-kernel/runtime/catalogChain.fixture";
 import { createEvidenceIngest } from "../parameter-governance/evidence";
+import { CatalogReleaseId } from "../parameter-catalog-contract";
 import type { AuthContext } from "../auth/types";
 import {
   createPostgresDatabase,
@@ -185,9 +186,9 @@ describe("OP-06 production Catalog composition", () => {
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
        ) values
-         ($1, $3, 'Driver', $1, 1, 'driver-group', 'curated', $4),
-         ($2, $3, 'Driver B', $2, 1, 'driver-group', 'curated', $5)`,
-      [MODULE_A, MODULE_A2, ORG_A, ATTR_A, `${ATTR_A}-b`],
+         ($1, $3, 'Unclassified', $1, 1, 'unclassified', 'curated', null),
+         ($2, $3, 'Driver B', $2, 1, 'business', 'curated', null)`,
+      [MODULE_A, MODULE_A2, ORG_A],
     );
 
     server = createWiseEffServer({
@@ -226,6 +227,7 @@ describe("OP-06 production Catalog composition", () => {
     const current = await json("GET", "/api/v2/catalog");
     expect(current.status, JSON.stringify(current.body)).toBe(200);
     const currentBody = catalogDocumentResponseSchema.parse(current.body);
+    if (!currentBody.item) throw new Error("Current Catalog document is missing");
     expect(currentBody.item.catalogReleaseId).toBe(pinC.id);
     expect(currentBody.item.digest).toBe(currentDigest);
     expect(currentBody.item.releaseSequence).toBeGreaterThan(0);
@@ -236,6 +238,7 @@ describe("OP-06 production Catalog composition", () => {
     const pinned = await json("GET", `/api/v2/catalog?catalogReleaseId=${pinA.id}`);
     expect(pinned.status, JSON.stringify(pinned.body)).toBe(200);
     const pinnedBody = catalogDocumentResponseSchema.parse(pinned.body);
+    if (!pinnedBody.item) throw new Error("Pinned Catalog document is missing");
     expect(pinnedBody.item.catalogReleaseId).toBe(pinA.id);
     expect(pinnedBody.item.digest).toBe(pinA.digest);
     expect(pinnedBody.item.digest).not.toBe(currentDigest);
@@ -354,7 +357,7 @@ describe("OP-06 production Catalog composition", () => {
     const observation = await ingest.ingest({
       organizationId: ORG_A,
       sourceIdentity: `obs:${randomUUID()}`,
-      catalogReleaseId: currentReleaseId,
+      catalogReleaseId: CatalogReleaseId(currentReleaseId),
       matcherRevision: "matcher-op06",
       matcherOutput: { status: "matched" },
       provenance: {

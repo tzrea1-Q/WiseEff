@@ -1,5 +1,4 @@
 import type pg from "pg";
-import { moduleKindForSubject } from "./repositories";
 
 export async function readPlacementHintEvidence(pool: Pick<pg.Client, "query">, organizationId: string) {
   const [modules, registrations] = await Promise.all([
@@ -51,6 +50,6 @@ export async function listUnregisteredSubjects(pool: pg.Pool, organizationId: st
        from public.parameter_modules module where module.organization_id = $1 order by module.path, module.id`, [organizationId]),
   ]);
   return { catalogReleaseId: releaseId, items: subjects.rows.map((subject) => ({ ...subject,
-    availableModuleIds: modules.rows.filter((module) => !module.occupied && module.kind === moduleKindForSubject(subject.kind)).map((module) => module.id),
+    availableModuleIds: modules.rows.filter((module) => module.kind === "business" || (module.kind === "unclassified" && module.parentId === null)).map((module) => module.id),
   })), modules: modules.rows };
 }

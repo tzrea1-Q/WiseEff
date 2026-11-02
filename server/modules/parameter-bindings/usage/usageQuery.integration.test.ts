@@ -131,8 +131,8 @@ describe("CATFIX-QUERY usage summaries", () => {
     await pool.query(
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
-       ) values ($1, $2, 'Driver', $1, 1, 'driver-group', 'curated', $3)`,
-      [MODULE, ORG, ATTR],
+       ) values ($1, $2, 'Driver', $1, 1, 'business', 'curated', null)`,
+      [MODULE, ORG],
     );
     const command: RegisterSubjectCommand = {
       kind: "register",
