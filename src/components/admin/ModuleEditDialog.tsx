@@ -92,8 +92,6 @@ export function ModuleEditDialog({
   const [nature, setNature] = useState<DriverNature>(initialNature);
   const [cardinality, setCardinality] = useState<InstanceCardinality>(initialCardinality);
   const [nodeTypeName, setNodeTypeName] = useState(initialNodeTypeName);
-  const compatibles = [...new Set(compatibleText.split(/\r?\n/).map((value) => value.trim()).filter(Boolean))];
-  const compatiblesChanged = JSON.stringify(compatibles) !== JSON.stringify(initialCompatibles);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const moduleDetailsReadOnly = readOnly;
   const showCanonicalPlacementEntry =
@@ -119,9 +117,7 @@ export function ModuleEditDialog({
     draft.name.trim() !== module.name ||
     draft.description.trim() !== (module.description ?? "").trim() ||
     draft.scope.trim() !== (module.scope ?? "").trim() ||
-    (importanceVisible && importance !== initialImportance) ||
-    (module.kind === "driver-group" && (compatiblesChanged || nature !== initialNature || cardinality !== initialCardinality)) ||
-    (module.kind === "node-type" && nodeTypeName.trim() !== initialNodeTypeName);
+    (importanceVisible && importance !== initialImportance);
   const canSave = !moduleDetailsReadOnly && canSubmit && isDirty;
   const requestClose = () => {
     if (busy) return;
@@ -175,36 +171,37 @@ export function ModuleEditDialog({
               <div className="module-edit-section__head">
                 <h3>驱动属性</h3>
                 <p className="muted">
-                  当前组织内生效的驱动识别与实例规则。
+                  当前组织内生效的驱动识别与实例规则。请在主体详情中修改。
                 </p>
               </div>
               <div className="organization-driver-schema-dialog__field-grid">
                 <label>
                   驱动性质
-                  <SelectControl ariaLabel="驱动性质" value={nature} disabled={moduleDetailsReadOnly || busy}
+                  <SelectControl ariaLabel="驱动性质" value={nature} disabled
                     onValueChange={setNature} options={["physical-device", "logical-service"].map((value) => ({
                       value: value as DriverNature, label: formatDriverNatureLabel(value as DriverNature)
                     }))} />
                 </label>
                 <label>
                   实例基数
-                  <SelectControl ariaLabel="实例基数" value={cardinality} disabled={moduleDetailsReadOnly || busy}
+                  <SelectControl ariaLabel="实例基数" value={cardinality} disabled
                     onValueChange={setCardinality} options={["multiple", "singleton-per-project"].map((value) => ({
                       value: value as InstanceCardinality, label: formatInstanceCardinalityLabel(value as InstanceCardinality)
                     }))} />
                 </label>
               </div>
               <div className="param-module-def-form"><label>compatible 匹配规则
-                <textarea aria-label="compatible 匹配规则" rows={3} value={compatibleText} readOnly={moduleDetailsReadOnly || busy}
+                <textarea aria-label="compatible 匹配规则" rows={3} value={compatibleText} readOnly
                   onChange={(event) => setCompatibleText(event.target.value)} placeholder="每行一条，例如 vendor,device" />
               </label></div>
-              <p className="muted">每行一条完整 compatible；保存后替换此模块在当前组织内的识别规则。</p>
+              <p className="muted">每行一条完整 compatible。</p>
             </section>
           ) : null}
 
           {module.kind === "node-type" ? <section className="module-edit-section" aria-label="节点识别规则">
             <h3>节点识别规则</h3>
-            <div className="param-module-def-form"><label>节点类型名<input aria-label="节点类型名" value={nodeTypeName} readOnly={moduleDetailsReadOnly || busy}
+            <p className="muted">请在主体详情中修改识别规则。</p>
+            <div className="param-module-def-form"><label>节点类型名<input aria-label="节点类型名" value={nodeTypeName} readOnly
               onChange={(event) => setNodeTypeName(event.target.value)} placeholder="例如 charger，不含 @ 地址" /></label></div>
           </section> : null}
 
@@ -269,10 +266,6 @@ export function ModuleEditDialog({
                     scope: draft.scope.trim(),
 
                     ...(importanceVisible && importance !== initialImportance ? { importance } : {}),
-                    ...(module.kind === "driver-group" && compatiblesChanged ? { compatibles } : {}),
-                    ...(module.kind === "driver-group" && nature !== initialNature ? { driverNature: nature } : {}),
-                    ...(module.kind === "driver-group" && cardinality !== initialCardinality ? { instanceCardinality: cardinality } : {}),
-                    ...(module.kind === "node-type" && nodeTypeName.trim() !== initialNodeTypeName ? { nodeTypeName: nodeTypeName.trim() } : {}),
 
                   });
                 }}

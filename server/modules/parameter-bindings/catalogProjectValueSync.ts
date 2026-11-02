@@ -769,11 +769,8 @@ export async function listCanonicalInitializationBindingCandidates(
     inner join parameter_catalog.definition_revisions revision
       on revision.id = b.effective_revision_id
      and revision.definition_id = b.definition_id
-    left join parameter_catalog.organization_subject_registrations registration
-      on registration.id = b.registration_id
-     and registration.organization_id = b.organization_id
-    left join parameter_catalog.subject_placements placement
-      on placement.id = registration.current_placement_id
+    left join parameter_catalog.registration_effective_module placement
+      on placement.registration_id = b.registration_id
      and placement.organization_id = b.organization_id
     inner join project_parameter_files file
       on file.id = pin.file_id
@@ -999,10 +996,8 @@ async function readBoundedCatalogParameters(
               b.registration_id, b.subject_id, b.definition_id, b.effective_revision_id, b.current_value_id
        from parameter_catalog.current_project_parameter_bindings b
        join parameter_catalog.project_parameter_values value on value.id = b.current_value_id and value.binding_id = b.id
-       left join parameter_catalog.organization_subject_registrations registration
-         on registration.id = b.registration_id and registration.organization_id = b.organization_id
-       left join parameter_catalog.subject_placements placement
-         on placement.id = registration.current_placement_id and placement.organization_id = b.organization_id
+       left join parameter_catalog.registration_effective_module placement
+         on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
        left join public.parameter_modules module on module.id = placement.module_id and module.organization_id = b.organization_id
        where b.organization_id = $1 and b.project_id = $2 and b.id > $3
          and value.source_ref <> 'canonical-binding-identity'
@@ -1163,12 +1158,10 @@ async function listCatalogBindingRowsInSnapshot(
       left join dts_logical_node_revisions lnr
         on lnr.logical_node_id = b.logical_node_id
        and lnr.config_revision_id = source_pin.config_revision_id
-      left join parameter_catalog.organization_subject_registrations registration
-        on registration.id = b.registration_id
-      left join parameter_catalog.subject_placements placement
-        on placement.id = registration.current_placement_id
+      left join parameter_catalog.registration_effective_module placement
+        on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
       left join public.parameter_modules module
-        on module.id = placement.module_id
+        on module.id = placement.module_id and module.organization_id = b.organization_id
       where b.organization_id = $5 and b.project_id = $6
       order by b.id, lnr.config_revision_id desc nulls last
       `,

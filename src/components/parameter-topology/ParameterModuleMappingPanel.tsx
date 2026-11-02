@@ -16,7 +16,7 @@ import type {
   DriverRegistryEntry,
   ParameterModuleRegistryRepository
 } from "@/application/ports/ParameterModuleRegistryRepository";
-import { ModuleAttributionTree } from "@/components/parameter-topology/ModuleAttributionTree";
+import { ModuleAttributionTree, type ModuleTreeSubject } from "@/components/parameter-topology/ModuleAttributionTree";
 import {
   summarizeDriverCoverage, MODULE_TREE_QUERY_KEYS
 } from "@/components/parameter-topology/moduleAttributionTreeUtils";
@@ -101,8 +101,12 @@ export function ParameterModuleMappingPanel({
   const [registryRefresh, setRegistryRefresh] = useState(0);
   const [localSubView, setLocalSubView] = useState<{ location: string; value: ParameterAdminModulesSubView } | null>(null);
   const [localSelection, setLocalSelection] = useState<{ location: string; value: string | null } | null>(null);
+  const [treeSubjects, setTreeSubjects] = useState<ModuleTreeSubject[]>([]);
+  const [localSubjectSelection, setLocalSubjectSelection] = useState<{ location: string; value: string | null } | null>(null);
   const selectedModuleId = localSelection?.location === pathname + search
     ? localSelection.value : new URLSearchParams(search).get("moduleId");
+  const selectedSubjectId = localSubjectSelection?.location === pathname + search
+    ? localSubjectSelection.value : new URLSearchParams(search).get("selectedSubject");
   const requestedSubView = parseParameterAdminModulesSubView(pathname, search) ?? "tree";
   const activeSubView = localSubView?.location === pathname + search ? localSubView.value : requestedSubView;
   const activeTab = moduleTabs.find((tab) => tab.value === activeSubView)!;
@@ -115,6 +119,7 @@ export function ParameterModuleMappingPanel({
   const [localHistorySearch, setLocalHistorySearch] = useState<{ location: string; params: string } | null>(null);
   useEffect(() => {
     setLocalSelection(null);
+    setLocalSubjectSelection(null);
     setLocalHistorySearch(null);
   }, [pathname, search]);
   const historyParams = new URLSearchParams(localHistorySearch?.location === pathname + search ? localHistorySearch.params : search);
@@ -192,11 +197,29 @@ export function ParameterModuleMappingPanel({
     else setLocalSubView({ location: pathname + search, value });
   };
   const selectModule = (value: string | null) => {
-    if (value === selectedModuleId) value = null;
+    if (value === selectedModuleId && !selectedSubjectId) value = null;
     setLocalSelection({ location: pathname + search, value });
+    setLocalSubjectSelection({ location: pathname + search, value: null });
     const params = new URLSearchParams(search);
+    params.delete("selectedSubject");
+    params.delete("expandedSubject");
     if (value) params.set("moduleId", value);
     else params.delete("moduleId");
+    if (onNavigate) onNavigate(buildParameterAdminModulesPath("tree", params.toString()));
+    else setLocalSubView({ location: pathname + search, value: "tree" });
+  };
+  const selectSubject = (subjectId: string, moduleId: string) => {
+    setLocalSelection({ location: pathname + search, value: moduleId });
+    setLocalSubjectSelection({ location: pathname + search, value: subjectId });
+    const params = new URLSearchParams(search);
+    params.set("moduleId", moduleId);
+    params.set("selectedSubject", subjectId);
+    params.set("expandedSubject", subjectId);
+    params.delete("subjectPage");
+    params.delete("subjectQ");
+    params.delete("subjectKind");
+    params.delete("subjectRegistration");
+    params.delete("subjectDefinitions");
     if (onNavigate) onNavigate(buildParameterAdminModulesPath("tree", params.toString()));
     else setLocalSubView({ location: pathname + search, value: "tree" });
   };
@@ -242,7 +265,10 @@ export function ParameterModuleMappingPanel({
   const moduleTree = (
     <ModuleAttributionTree
       modules={registry.modules}
-      selectedModuleId={selectedModuleId}
+      subjects={treeSubjects}
+      selectedSubjectId={selectedSubjectId}
+      onSelectSubject={selectSubject}
+      selectedModuleId={selectedSubjectId ? null : selectedModuleId}
       onVisibleModuleIdsChange={setVisibleModuleIds}
       createRootRequest={createRootRequest}
       showRootCreateAction={false}
@@ -395,7 +421,8 @@ export function ParameterModuleMappingPanel({
         currentPersonId={currentPersonId}
         catalog={canonicalCatalog} governance={canonicalGovernance} organizationId={canonicalOrganizationId}
         actor={canonicalActor} sessionPermissions={canonicalSessionPermissions} canAdmin={canAdmin} modules={registry.modules}
-        onChanged={refreshAfterCanonicalChange} selectedModuleId={selectedModuleId} visibleModuleIds={visibleModuleScope}
+        onChanged={refreshAfterCanonicalChange} selectedModuleId={selectedModuleId} selectedSubjectId={selectedSubjectId}
+        onTreeSubjectsChange={setTreeSubjects} visibleModuleIds={visibleModuleScope}
         search={search} refreshKey={canonicalDiscoveryRefresh} managedRefresh onNavigate={onNavigate}
         onCreateBusinessModule={canManageTaxonomy ? () => setCreateRootRequest((value) => value + 1) : undefined} />
         : canonicalEnabled ? <p role="alert">规范目录发现服务不可用，请检查组织与治理接口。</p>

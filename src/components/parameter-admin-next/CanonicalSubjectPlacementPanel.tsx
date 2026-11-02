@@ -39,7 +39,9 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { buildCatalogHref, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
 import { collectSubtreeModuleIds } from "@/domain/modules/moduleTree";
 import { toAttributionFlatNodes } from "@/components/parameter-topology/moduleAttributionTreeUtils";
+import type { ModuleTreeSubject } from "@/components/parameter-topology/ModuleAttributionTree";
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
+import { SubjectRecognitionDialog } from "./SubjectRecognitionDialog";
 
 const SUBJECT_KIND_LABEL: Record<CatalogSubjectResponse["item"]["type"], string> = {
   driver: "驱动",
@@ -83,6 +85,8 @@ export type CanonicalSubjectPlacementPanelProps = {
   modules?: readonly ParameterModule[];
   onChanged?: () => void | Promise<void>;
   selectedModuleId?: string | null;
+  selectedSubjectId?: string | null;
+  onTreeSubjectsChange?: (subjects: ModuleTreeSubject[]) => void;
   refreshKey?: number;
   managedRefresh?: boolean;
   onNavigate?: (path: string) => void;
@@ -108,6 +112,8 @@ export function CanonicalSubjectPlacementPanel({
   modules = [],
   onChanged,
   selectedModuleId,
+  selectedSubjectId,
+  onTreeSubjectsChange,
   refreshKey = 0,
   managedRefresh = false,
   onNavigate,
@@ -130,6 +136,7 @@ export function CanonicalSubjectPlacementPanel({
   const [localSearch, setLocalSearch] = useState("");
   const params = useMemo(() => new URLSearchParams(searchProp ?? localSearch), [searchProp, localSearch]);
   const [createSubjectOpen, setCreateSubjectOpen] = useState(false);
+  const [recognitionSubject, setRecognitionSubject] = useState<{ registrationId: string; name: string } | null>(null);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationError, setPublicationError] = useState("");
   const canAuthorSubject = canAdmin && catalogActionsForSession({ actor, permissions: sessionPermissions }).includes("preview-publication");
@@ -159,7 +166,11 @@ export function CanonicalSubjectPlacementPanel({
   const definitionsFilter = ["with", "without"].includes(params.get("subjectDefinitions") ?? "") ? params.get("subjectDefinitions")! : "all";
   const pageParameter = Number(params.get("subjectPage"));
   const requestedPage = Number.isSafeInteger(pageParameter) && pageParameter > 0 ? pageParameter - 1 : 0;
-  const expandedSubjectId = params.get("expandedSubject");
+  const [localExpandedSubject, setLocalExpandedSubject] = useState<string | null>(selectedSubjectId ?? null);
+  useEffect(() => setLocalExpandedSubject(selectedSubjectId ?? null), [selectedSubjectId]);
+  const expandedSubjectId = selectedSubjectId && !onNavigate
+    ? localExpandedSubject
+    : params.get("expandedSubject");
   const updateQuery = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
     for (const [key, value] of Object.entries(patch)) {
@@ -282,6 +293,16 @@ export function CanonicalSubjectPlacementPanel({
     return map;
   }, [registrations]);
 
+  useEffect(() => {
+    if (!onTreeSubjectsChange) return;
+    onTreeSubjectsChange(subjects.flatMap((subject) => {
+      const registration = registrationBySubjectId.get(subject.id);
+      const moduleId = registration?.status === "active" ? registration.placement.moduleId : undefined;
+      return moduleId ? [{ id: subject.id, moduleId, name: subject.canonicalName,
+        kind: subject.type, definitionCount: subject.definitionCounts.active }] : [];
+    }));
+  }, [onTreeSubjectsChange, subjects, registrationBySubjectId]);
+
   const selectedModuleIds = useMemo(() => {
     if (!selectedModuleId) return null;
     return collectSubtreeModuleIds(toAttributionFlatNodes(modules), [selectedModuleId]);
@@ -289,6 +310,7 @@ export function CanonicalSubjectPlacementPanel({
   const filteredSubjects = useMemo(() => {
     const token = search.trim().toLowerCase();
     return subjects.filter((subject) => {
+      if (selectedSubjectId) return subject.id === selectedSubjectId;
       const registration = registrationBySubjectId.get(subject.id);
       const placement = registration?.status === "active" ? registration.placement
         : subject.registration.status !== "unregistered" ? subject.registration.placement : undefined;
@@ -309,7 +331,7 @@ export function CanonicalSubjectPlacementPanel({
         .toLowerCase()
         .includes(token);
     });
-  }, [search, subjects, typeFilter, registrationBySubjectId, selectedModuleIds, registrationFilter, definitionsFilter, visibleModuleIds]);
+  }, [search, subjects, typeFilter, registrationBySubjectId, selectedModuleIds, selectedSubjectId, registrationFilter, definitionsFilter, visibleModuleIds]);
   const subjectPageCount = Math.max(1, Math.ceil(filteredSubjects.length / SUBJECTS_PER_PAGE));
   const subjectPage = Math.min(requestedPage, subjectPageCount - 1);
   const visibleSubjects = filteredSubjects.slice(
@@ -665,11 +687,18 @@ export function CanonicalSubjectPlacementPanel({
                           : "未登记"}
                       </span>
                       <div className="parameter-module-mapping-panel__actions canonical-subject-actions">
+                        {registrationId && subject.type !== "configuration-schema" ? <button type="button" className="button subtle"
+                          aria-label={`识别规则：${subject.canonicalName}`}
+                          onClick={() => setRecognitionSubject({ registrationId, name: subject.canonicalName })}>识别规则</button> : null}
                         {subject.definitionCounts.active > 0 ? <button
                           type="button"
                           className="button subtle"
                           aria-expanded={expandedSubjectId === subject.id}
-                          onClick={() => updateQuery({ expandedSubject: expandedSubjectId === subject.id ? null : subject.id })}
+                          onClick={() => {
+                            if (selectedSubjectId && !onNavigate) {
+                              setLocalExpandedSubject(expandedSubjectId === subject.id ? null : subject.id);
+                            } else updateQuery({ expandedSubject: expandedSubjectId === subject.id ? null : subject.id });
+                          }}
                         >
                           {expandedSubjectId === subject.id ? "收起参数" : "查看参数"}
                         </button> : canCreateSubject && onNavigate && subject.membership.status === "active" && registrationStatus !== "retired" ? <button
@@ -793,6 +822,9 @@ export function CanonicalSubjectPlacementPanel({
           closeSubjectCreation();
           onNavigate(`${buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, subjectId })}&createDefinition=1`);
         } : undefined }} /> : null}
+      {recognitionSubject ? <SubjectRecognitionDialog governance={governance} organizationId={organizationId}
+        registrationId={recognitionSubject.registrationId} catalogReleaseId={catalogReleaseId} name={recognitionSubject.name} canAdmin={canAdmin}
+        onClose={() => setRecognitionSubject(null)} onChanged={onChanged} /> : null}
       {placementDialog && catalogReleaseId ? (
         <RegistrationDialog
           open

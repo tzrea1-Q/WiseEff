@@ -62,8 +62,7 @@ import {
 } from "../parameter-kernel/sensitiveNode";
 import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import { captureModuleRecognitionCatalog, hasModuleRecognitionUpdate, lockOrganizationModuleRecognition,
-  updateModuleRecognitionSettings } from "../parameter-modules/recognitionSettings";
+import { hasModuleRecognitionUpdate } from "../parameter-modules/recognitionSettings";
 import type { InitializationSuggestionDto } from "./types";
 import {
   bindParameterSource,
@@ -2364,8 +2363,9 @@ export async function updateParameterModuleForAuth(
   if (body.kind !== undefined && body.kind !== current.kind) {
     throw legacyStructuralWriteRetirementError();
   }
-  const recognitionChanged = hasModuleRecognitionUpdate(body);
-  const recognitionCatalog = recognitionChanged ? await captureModuleRecognitionCatalog(db) : null;
+  if (hasModuleRecognitionUpdate(body)) {
+    throw new ApiError("CONFLICT", "请在主体详情中修改识别规则。");
+  }
   if (nextName !== current.name) {
     const conflict = await getParameterModuleByName(db, {
       organizationId,
@@ -2381,7 +2381,6 @@ export async function updateParameterModuleForAuth(
   }
 
   return db.transaction(async (tx) => {
-    if (recognitionChanged) await lockOrganizationModuleRecognition(tx, organizationId);
     const lockedCurrent = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true });
     if (!lockedCurrent) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
@@ -2395,15 +2394,10 @@ export async function updateParameterModuleForAuth(
       sortOrder: body.sortOrder,
       importance: body.importance,
       kind: body.kind,
-      promoteToCurated: recognitionChanged,
     });
     if (!module) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
     }
-    const recognition = recognitionChanged ? await updateModuleRecognitionSettings(tx, {
-      organizationId, moduleId, kind: lockedCurrent.kind, body, catalog: recognitionCatalog,
-    }) : null;
-
     await createParameterModuleAudit(
       asAuditTx(tx),
       parameterInvocation(auth) ?? createUserInvocation(auth),
@@ -2414,13 +2408,12 @@ export async function updateParameterModuleForAuth(
         metadata: {
           previousName: lockedCurrent.name,
           previousKind: lockedCurrent.kind,
-          ...(recognition ? { recognition } : {}),
         }
       },
       context
     );
 
-    return recognition ? { ...module, ...recognition } : module;
+    return module;
   }).catch((error: unknown) => {
     if (error instanceof pg.DatabaseError
       && error.code === "23505"

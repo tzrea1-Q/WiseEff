@@ -198,13 +198,14 @@ describe("driver-scoped child ownership", () => {
   });
 
   it("checks claims against each organization's effective driver recognition", async () => {
-    await pool.query(`insert into module_recognition_rules (organization_id,module_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
-      values ($1,'module-csub_acme_power','csub_acme_power',array['vendor,unrelated'],'physical-device','multiple')`, [ORG]);
+    await pool.query(`insert into registration_recognition_rules (organization_id,registration_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
+      select organization_id,id,subject_id,array['vendor,unrelated'],'physical-device','multiple'
+      from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_power'`, [ORG]);
     try {
       const report = await claimCatalogChildOwners(root, schemasRoot);
       expect(report.candidates.find((item) => item.name === "claim_good")).toMatchObject({ status: "conflict" });
     } finally {
-      await pool.query(`delete from module_recognition_rules where organization_id=$1 and module_id='module-csub_acme_power'`, [ORG]);
+      await pool.query(`delete from registration_recognition_rules where organization_id=$1 and canonical_subject_id='csub_acme_power'`, [ORG]);
     }
   });
 
@@ -212,8 +213,9 @@ describe("driver-scoped child ownership", () => {
     const client = await pool.connect();
     try {
       await client.query("begin isolation level repeatable read");
-      await client.query(`insert into module_recognition_rules (organization_id,module_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
-        values ($1,'module-csub_acme_power','csub_acme_power',array['vendor,unrelated'],'physical-device','multiple')`, [ORG]);
+      await client.query(`insert into registration_recognition_rules (organization_id,registration_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
+        select organization_id,id,subject_id,array['vendor,unrelated'],'physical-device','multiple'
+        from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_power'`, [ORG]);
       const binding = (await client.query<{ id: string }>(`select id from parameter_catalog.project_parameter_bindings
         where organization_id=$1 and subject_id='owner-claim-good'`, [ORG])).rows[0]!;
       expect((await client.query(`select id from parameter_catalog.parameter_observation_matches where binding_id=$1`, [binding.id])).rows).toEqual([]);
@@ -246,8 +248,9 @@ describe("driver-scoped child ownership", () => {
     try {
       await client.query("begin");
       await client.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-recognition:${ORG}`]);
-      await client.query(`insert into module_recognition_rules (organization_id,module_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
-        values ($1,'module-csub_acme_power','csub_acme_power',array['vendor,unrelated'],'physical-device','multiple')`, [ORG]);
+      await client.query(`insert into registration_recognition_rules (organization_id,registration_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
+        select organization_id,id,subject_id,array['vendor,unrelated'],'physical-device','multiple'
+        from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_power'`, [ORG]);
       const pid = (await client.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
       pending = claimCatalogChildOwners(root, schemasRoot, true);
       await vi.waitFor(async () => {
@@ -263,7 +266,7 @@ describe("driver-scoped child ownership", () => {
     } finally {
       await client.query("rollback");
       if (pending) await pending.catch(() => undefined);
-      await pool.query(`delete from module_recognition_rules where organization_id=$1 and module_id='module-csub_acme_power'`, [ORG]);
+      await pool.query(`delete from registration_recognition_rules where organization_id=$1 and canonical_subject_id='csub_acme_power'`, [ORG]);
       client.release();
     }
   });
@@ -297,9 +300,9 @@ describe("driver-scoped child ownership", () => {
   });
 
   it("keeps organization node-name overrides scoped to the ancestor driver", async () => {
-    await pool.query(`insert into module_recognition_rules (organization_id,module_id,canonical_subject_id,node_type_name)
-      values ($1,'module-owner-battery-a','owner-battery-a','custom_battery'),
-             ($1,'module-owner-battery-b','owner-battery-b','custom_battery')`, [ORG]);
+    await pool.query(`insert into registration_recognition_rules (organization_id,registration_id,canonical_subject_id,node_type_name)
+      select organization_id,id,subject_id,'custom_battery' from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id in ('owner-battery-a','owner-battery-b')`, [ORG]);
     const snapshot = await loadPublishedCatalog(pool);
     if (!snapshot) throw new Error("missing Catalog");
     const effective = await loadOrganizationCatalogSnapshot(root, ORG, snapshot);
@@ -314,8 +317,9 @@ describe("driver-scoped child ownership", () => {
     const before = (await pool.query(`select id,subject_id,current_value_id from parameter_catalog.project_parameter_bindings
       where organization_id=$1 and subject_id='owner-claim-good'`, [ORG])).rows;
     expect(before).toHaveLength(1);
-    await pool.query(`insert into module_recognition_rules (organization_id,module_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
-      values ($1,'module-csub_acme_power','csub_acme_power',array['vendor,unrelated'],'physical-device','multiple')`, [ORG]);
+    await pool.query(`insert into registration_recognition_rules (organization_id,registration_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
+      select organization_id,id,subject_id,array['vendor,unrelated'],'physical-device','multiple'
+      from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_power'`, [ORG]);
     const snapshot = await loadPublishedCatalog(pool);
     if (!snapshot) throw new Error("missing Catalog");
     const effective = await loadOrganizationCatalogSnapshot(root, ORG, snapshot);

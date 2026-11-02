@@ -759,6 +759,9 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       "public.users.external_tokens_revoked_at",
       "parameter_catalog.catalog_state.subject_owner_epoch",
       "parameter_catalog.catalog_subjects.owner_subject_id",
+      "parameter_catalog.registration_effective_module.organization_id",
+      "parameter_catalog.registration_effective_module.registration_id",
+      "parameter_catalog.registration_effective_module.module_id",
     ].sort();
     expect(expectedColumns.length).toBeGreaterThan(0);
     const actualColumns = await client.query<{ identity: string }>(`

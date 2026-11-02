@@ -52,6 +52,8 @@ import {
   catalogRegisterSubjectRequestSchema,
   catalogRegistrationListResponseSchema,
   catalogRegistrationResponseSchema,
+  catalogRegistrationRecognitionUpdateSchema,
+  catalogRegistrationRecognitionResponseSchema,
   catalogRejectProposalRequestSchema,
   catalogResolveReviewItemRequestSchema,
   catalogRestoreRegistrationRequestSchema,
@@ -116,6 +118,7 @@ import type {
   CatalogListQuery,
   CatalogDriverCompatibleDiscoveryQuery,
   CatalogRegisterSubjectRequest,
+  CatalogRegistrationRecognitionUpdate,
   CatalogRejectProposalRequest,
   CatalogResolveReviewItemRequest,
   CatalogRestoreRegistrationRequest,
@@ -474,6 +477,13 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         "CatalogPlacementResponse",
         { preserveEtag: true }
       ),
+    getRegistrationRecognition: (organizationId: string, registrationId: string) =>
+      request("GET", canonical("catalog.getRegistrationRecognition", { organizationId, registrationId }),
+        catalogRegistrationRecognitionResponseSchema, "CatalogRegistrationRecognitionResponse", { preserveEtag: true }),
+    updateRegistrationRecognition: (organizationId: string, registrationId: string, body: CatalogRegistrationRecognitionUpdate, context: CatalogWriteContext) =>
+      request("PATCH", canonical("catalog.updateRegistrationRecognition", { organizationId, registrationId }),
+        catalogRegistrationRecognitionResponseSchema, "CatalogRegistrationRecognitionResponse",
+        { body: catalogRegistrationRecognitionUpdateSchema.parse(body), context, preserveEtag: true }),
     updatePlacement: (
       organizationId: string,
       registrationId: string,
@@ -1035,6 +1045,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.restoreRegistration": "restoreRegistration",
     "catalog.getPlacement": "getPlacement",
     "catalog.updatePlacement": "updatePlacement",
+    "catalog.getRegistrationRecognition": "getRegistrationRecognition",
+    "catalog.updateRegistrationRecognition": "updateRegistrationRecognition",
     "catalog.listObservations": "listObservations",
     "catalog.listDriverCompatibleDiscovery": "listDriverCompatibleDiscovery",
     "catalog.getObservation": "getObservation",

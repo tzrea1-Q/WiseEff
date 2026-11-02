@@ -111,8 +111,10 @@ test("Issue 1067: historical provenance remains separate from editable organizat
   }
   await page.getByRole("button", { name: `修改模块 ${historical.name}`, exact: true }).click();
   const dialog = page.getByRole("dialog", { name: historical.name, exact: true });
-  await expect(dialog.getByRole("combobox", { name: "驱动性质", exact: true })).toBeEnabled();
-  await expect(dialog.getByRole("combobox", { name: "实例基数", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("combobox", { name: "驱动性质", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("combobox", { name: "实例基数", exact: true })).toBeDisabled();
+  await expect(dialog.getByLabel("compatible 匹配规则", { exact: true })).toHaveAttribute("readonly");
+  await expect(dialog.getByText(/请在主体详情中修改/)).toBeVisible();
   await expect(dialog.getByLabel("模块名称", { exact: true })).toBeEditable();
   await expect(dialog.getByLabel("默认业务分类", { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "从注册回放放置" })).toHaveCount(0);
@@ -424,7 +426,10 @@ test.describe("Issue 897 canonical module ownership", () => {
     await expect(historicalEditor.getByRole("region", { name: "历史 compatible 溯源" })).not.toContainText("acme,power");
     await expect(historicalEditor.getByRole("region", { name: "历史 compatible 溯源" }))
       .toContainText("历史驱动注册表记录，仅供读取，不代表当前规范主体身份或匹配规则。");
-    await expect(historicalEditor.getByRole("combobox", { name: "驱动性质", exact: true })).toBeEnabled();
+    await expect(historicalEditor.getByRole("combobox", { name: "驱动性质", exact: true })).toBeDisabled();
+    await expect(historicalEditor.getByRole("combobox", { name: "实例基数", exact: true })).toBeDisabled();
+    await expect(historicalEditor.getByLabel("compatible 匹配规则", { exact: true })).toHaveAttribute("readonly");
+    await expect(historicalEditor.getByText(/请在主体详情中修改/)).toBeVisible();
     await expect(historicalEditor.getByLabel("默认业务分类")).toHaveCount(0);
     await expect(historicalEditor.getByRole("button", { name: "从注册回放放置" })).toHaveCount(0);
     await expect(historicalEditor.getByRole("region", { name: "规范主体放置" })).toBeVisible();
@@ -464,6 +469,27 @@ test.describe("Issue 897 canonical module ownership", () => {
     });
     expect(await readHistoricalState()).toEqual(historicalBefore);
     await historicalEditor.getByRole("button", { name: "取消" }).click();
+
+    const recognitionPath = `/api/v2/organizations/${organizationId}/subject-registrations/${canonicalOnlyRegistrationId}/recognition`;
+    await canonicalSubject.getByRole("button", { name: "识别规则：issue897,canonical-only", exact: true }).click();
+    const recognitionDialog = page.getByRole("dialog", { name: "识别规则：issue897,canonical-only", exact: true });
+    const driverNature = recognitionDialog.getByRole("combobox", { name: "驱动性质", exact: true });
+    await expect(driverNature).toHaveAttribute("data-value", "physical-device");
+    await selectControlOption(driverNature, "logical-service");
+    const recognitionSave = page.waitForResponse(response =>
+      response.request().method() === "PATCH" && new URL(response.url()).pathname === recognitionPath
+    );
+    await recognitionDialog.getByRole("button", { name: "保存", exact: true }).click();
+    const recognitionSaveResponse = await recognitionSave;
+    expect(recognitionSaveResponse.status(), await recognitionSaveResponse.text()).toBe(200);
+    await expect(recognitionDialog).toHaveCount(0);
+    const savedRecognition = await request.get(apiRoute(recognitionPath), { headers: authHeadersForRole("admin") });
+    expect(savedRecognition.status(), await savedRecognition.text()).toBe(200);
+    expect((await savedRecognition.json()).item).toMatchObject({ driverNature: "logical-service" });
+    await canonicalSubject.getByRole("button", { name: "识别规则：issue897,canonical-only", exact: true }).click();
+    await expect(driverNature).toHaveAttribute("data-value", "logical-service");
+    await recognitionDialog.getByRole("button", { name: "关闭", exact: true }).click();
+    expect(await readHistoricalState()).toEqual(historicalBefore);
 
     await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical category source", { exact: true })).toBeVisible();
     await canonicalSubject.getByRole("button", { name: "调整归属：issue897,canonical-only", exact: true }).click();

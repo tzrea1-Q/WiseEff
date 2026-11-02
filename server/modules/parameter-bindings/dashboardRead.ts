@@ -116,11 +116,9 @@ const ACTIVE_SOURCE_BACKED_BINDINGS = `
    and source_pin.source_occurrence_id = b.source_occurrence_id
    and source_pin.config_revision_id = value.config_revision_id
   join public.projects p on p.id = b.project_id and p.organization_id = b.organization_id
-  left join parameter_catalog.organization_subject_registrations registration
-    on registration.id = b.registration_id
-  left join parameter_catalog.subject_placements placement
-    on placement.id = registration.current_placement_id
-  left join public.parameter_modules module on module.id = placement.module_id
+  left join parameter_catalog.registration_effective_module placement
+    on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
+  left join public.parameter_modules module on module.id = placement.module_id and module.organization_id = b.organization_id
   join parameter_catalog.parameter_definitions definition on definition.id = b.definition_id
   join parameter_catalog.definition_revisions revision
     on revision.id = b.effective_revision_id and revision.definition_id = b.definition_id`;

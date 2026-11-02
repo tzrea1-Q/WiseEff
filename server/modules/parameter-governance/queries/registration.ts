@@ -63,9 +63,8 @@ export async function countCurrentBindingsForModule(
   const result = await client.query<{ count: string }>(
     `select count(*)::text as count
        from parameter_catalog.organization_subject_registrations registration
-       join parameter_catalog.subject_placements placement
-         on placement.id = registration.current_placement_id
-        and placement.registration_id = registration.id
+       join parameter_catalog.registration_effective_module placement
+         on placement.registration_id = registration.id
         and placement.organization_id = registration.organization_id
        join parameter_catalog.current_project_parameter_bindings binding
          on binding.registration_id = registration.id
@@ -103,15 +102,14 @@ export async function listModuleRegistryFacts(
     `with registered_modules as (
            select registration.id as registration_id,
                   registration.subject_id,
-                  placement.module_id
+                  effective.module_id
              from parameter_catalog.organization_subject_registrations registration
-             join parameter_catalog.subject_placements placement
-               on placement.id = registration.current_placement_id
-              and placement.registration_id = registration.id
-              and placement.organization_id = registration.organization_id
+             join parameter_catalog.registration_effective_module effective
+               on effective.registration_id = registration.id
+              and effective.organization_id = registration.organization_id
             where registration.organization_id = $1
               and registration.status = 'active'
-              and placement.module_id is not null
+              and effective.module_id is not null
          )
          select registered.module_id,
                 registered.subject_id,
@@ -136,19 +134,28 @@ const registrationSelect = `
     (extract(epoch from registration.updated_at) * 1000000)::bigint::text as registration_version,
     placement.id as placement_id,
     (extract(epoch from placement.updated_at) * 1000000)::bigint::text as placement_version,
-    placement.module_id,
+    effective.module_id,
     module.name as module_name,
     parent_placement.id as parent_placement_id
   from parameter_catalog.organization_subject_registrations registration
   left join parameter_catalog.subject_placements placement
     on placement.id = registration.current_placement_id
    and placement.organization_id = registration.organization_id
+  left join parameter_catalog.registration_effective_module effective
+    on effective.registration_id = registration.id
+   and effective.organization_id = registration.organization_id
   left join public.parameter_modules module
-    on module.id = placement.module_id
-   and module.organization_id = placement.organization_id
-  left join parameter_catalog.subject_placements parent_placement
-    on parent_placement.module_id = module.parent_id
-   and parent_placement.organization_id = registration.organization_id
+    on module.id = effective.module_id
+   and module.organization_id = registration.organization_id
+  left join lateral (
+    select min(parent.id) as id
+    from parameter_catalog.registration_effective_module parent_effective
+    join parameter_catalog.subject_placements parent
+      on parent.registration_id = parent_effective.registration_id
+     and parent.organization_id = parent_effective.organization_id
+    where parent_effective.module_id = module.parent_id and parent_effective.organization_id = registration.organization_id
+    having count(*) = 1
+  ) parent_placement on true
 `;
 
 const mapPlacement = (
@@ -425,10 +432,10 @@ export const selectPlacementSubtreeSubjectIds = async (
        )
        select distinct registration.subject_id
          from parameter_catalog.organization_subject_registrations registration
-         join parameter_catalog.subject_placements placement
-           on placement.registration_id = registration.id
-          and placement.organization_id = registration.organization_id
-         join subtree on subtree.id = placement.module_id
+         join parameter_catalog.registration_effective_module effective
+           on effective.registration_id = registration.id
+          and effective.organization_id = registration.organization_id
+         join subtree on subtree.id = effective.module_id
         where registration.organization_id = $2
           and registration.status = 'active'
         order by registration.subject_id`,

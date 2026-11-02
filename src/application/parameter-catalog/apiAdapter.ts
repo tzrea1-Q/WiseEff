@@ -114,6 +114,8 @@ export function createApiParameterCatalogGovernanceRepository(
       client.restoreRegistration(organizationId, registrationId, body, conditionalContext(context)),
     getPlacement: (organizationId, registrationId) =>
       client.getPlacement(organizationId, registrationId),
+    getRegistrationRecognition: (organizationId, registrationId) => client.getRegistrationRecognition(organizationId, registrationId),
+    updateRegistrationRecognition: (organizationId, registrationId, body, context) => client.updateRegistrationRecognition(organizationId, registrationId, body, conditionalContext(context)),
     updatePlacement: async (organizationId, registrationId, body, context) =>
       client.updatePlacement(organizationId, registrationId, body, conditionalContext(context)),
     listObservations: (organizationId, query) => client.listObservations(organizationId, query),

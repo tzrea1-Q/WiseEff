@@ -256,6 +256,23 @@ function createPorts() {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it("edits recognition rules on a registered subject", async () => {
+    const ports = createPorts();
+    const item = { kind: "driver" as const, recognitionSubjectId: "subject-driver", compatibles: ["vendor,driver"],
+      driverNature: "physical-device" as const, instanceCardinality: "multiple" as const, nodeTypeName: null, overridden: false };
+    const getRecognition = vi.fn().mockResolvedValue({ item, etag: '"recognition-1"' });
+    const updateRecognition = vi.fn().mockResolvedValue({ item: { ...item, compatibles: ["vendor,updated"], overridden: true } });
+    const governance = { ...ports.governance, getRegistrationRecognition: getRecognition, updateRegistrationRecognition: updateRecognition };
+    render(<CanonicalSubjectPlacementPanel catalog={ports.catalog} governance={governance} modules={ports.modules}
+      organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+    await userEvent.click(await screen.findByRole("button", { name: "识别规则：vendor,driver" }));
+    const dialog = await screen.findByRole("dialog", { name: "识别规则：vendor,driver" });
+    await userEvent.clear(within(dialog).getByLabelText("compatible 匹配规则"));
+    await userEvent.type(within(dialog).getByLabelText("compatible 匹配规则"), "vendor,updated");
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(updateRecognition).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID, "registration-driver",
+      expect.objectContaining({ compatibles: ["vendor,updated"] }), expect.objectContaining({ ifMatch: '"recognition-1"', catalogReleaseId: CATALOG_RELEASE_ID })));
+  });
   it("hands the newly published subject to the Catalog batch registration view", async () => {
     const ports = createPorts();
     const publication = createMockCatalogPorts({ publicationOutcome: "active" });
@@ -492,6 +509,34 @@ describe("CanonicalSubjectPlacementPanel", () => {
     await userEvent.clear(screen.getByRole("searchbox", { name: "筛选规范主体" }));
     expect(new URL(navigate.mock.calls.at(-1)![0], window.location.origin).searchParams.get("moduleId")).toBe("scope");
     expect(screen.getByLabelText("筛选登记状态")).toHaveAttribute("data-value", "registered");
+  });
+  it("collapses and reopens definitions without clearing the selected subject", async () => {
+    const ports = createPorts();
+    function Harness() {
+      const [search, setSearch] = useState("?selectedSubject=subject-driver&expandedSubject=subject-driver");
+      return <CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin"
+        selectedSubjectId="subject-driver" search={search}
+        onNavigate={(path) => setSearch(new URL(path, window.location.origin).search)} />;
+    }
+    render(<Harness />);
+    const row = await screen.findByRole("listitem", { name: /vendor,driver/ });
+    expect(await within(row).findByRole("region", { name: "vendor,driver 的有效参数" })).toBeVisible();
+    await userEvent.click(within(row).getByRole("button", { name: "收起参数" }));
+    expect(within(row).queryByRole("region", { name: "vendor,driver 的有效参数" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("listitem", { name: /vendor,node/ })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: "查看参数" }));
+    expect(await within(row).findByRole("region", { name: "vendor,driver 的有效参数" })).toBeVisible();
+  });
+  it("collapses a locally selected subject when navigation is unavailable", async () => {
+    const ports = createPorts();
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin"
+      selectedSubjectId="subject-driver" />);
+    const row = await screen.findByRole("listitem", { name: /vendor,driver/ });
+    expect(await within(row).findByRole("region", { name: "vendor,driver 的有效参数" })).toBeVisible();
+    await userEvent.click(within(row).getByRole("button", { name: "收起参数" }));
+    expect(within(row).queryByRole("region", { name: "vendor,driver 的有效参数" })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: "查看参数" }));
+    expect(await within(row).findByRole("region", { name: "vendor,driver 的有效参数" })).toBeVisible();
   });
   it("pages a large subject list and searches across every page", async () => {
     const ports = createPorts();

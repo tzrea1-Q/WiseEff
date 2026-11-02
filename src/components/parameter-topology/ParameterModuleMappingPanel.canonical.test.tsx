@@ -119,8 +119,8 @@ describe("canonical module page request boundary", () => {
     fireEvent.click(await screen.findByRole("button", { name: "修改模块 Historical driver" }));
     const dialog = screen.getByRole("dialog", { name: "Historical driver" });
     if (moduleKind === "driver-group") {
-      expect(within(dialog).getByLabelText("驱动性质")).toBeEnabled();
-      expect(within(dialog).getByLabelText("实例基数")).toBeEnabled();
+      expect(within(dialog).getByLabelText("驱动性质")).toBeDisabled();
+      expect(within(dialog).getByLabelText("实例基数")).toBeDisabled();
       expect(within(dialog).getByLabelText("compatible 匹配规则")).toHaveValue("vendor,device");
     }
     for (const label of ["模块名称", "模块展示描述", "适用范围"]) {

@@ -69,6 +69,8 @@ import type {
   catalogRegisterSubjectRequestSchema,
   catalogRegistrationListResponseSchema,
   catalogRegistrationResponseSchema,
+  catalogRegistrationRecognitionUpdateSchema,
+  catalogRegistrationRecognitionResponseSchema,
   catalogRejectProposalRequestSchema,
   catalogResolveReviewItemRequestSchema,
   catalogRestoreRegistrationRequestSchema,
@@ -126,6 +128,8 @@ export type CatalogUnregisteredSubjectsResponse = z.infer<typeof catalogUnregist
 export type CatalogRetireRegistrationRequest = z.infer<typeof catalogRetireRegistrationRequestSchema>;
 export type CatalogRestoreRegistrationRequest = z.infer<typeof catalogRestoreRegistrationRequestSchema>;
 export type CatalogPlacementResponse = z.infer<typeof catalogPlacementResponseSchema>;
+export type CatalogRegistrationRecognitionUpdate = z.infer<typeof catalogRegistrationRecognitionUpdateSchema>;
+export type CatalogRegistrationRecognitionResponse = z.infer<typeof catalogRegistrationRecognitionResponseSchema>;
 export type CatalogUpdatePlacementRequest = z.infer<typeof catalogUpdatePlacementRequestSchema>;
 export type CatalogObservationListResponse = z.infer<typeof catalogObservationListResponseSchema>;
 export type CatalogDriverCompatibleDiscoveryResponse = z.infer<typeof catalogDriverCompatibleDiscoveryResponseSchema>;

@@ -26,6 +26,10 @@ import { executeClaimedPublicationJob } from "../catalog-publication/jobs/execut
 import { createCatalogInstaller } from "../catalog-kernel/install/installer";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { getAuthContext } from "../auth/repository";
+import { createParameterModule } from "../parameters/parameterModuleRepository";
+import { writeGuardedRegistration } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
+import { CatalogSubjectId } from "../parameter-catalog-contract";
+import { captureCurrentCatalogPin } from "../catalog-publication/runtime";
 
 describe("Organization project/parameter erasure through HTTP and native PostgreSQL", () => {
   let lane: Awaited<ReturnType<typeof createEphemeralTestDatabase>>, db: ReturnType<typeof createPostgresDatabase>;
@@ -58,6 +62,49 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
       { method, headers: { "x-wiseeff-user": "parameter-platform" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   }
   it("keeps completed domain progress when later management fails, then retries only unfinished work", async () => {
+    const pool = getRootPostgresPool(db)!;
+    const pin = await captureCurrentCatalogPin(pool);
+    if (!pin) throw new Error("Missing Catalog release");
+    const foreignModule = await createParameterModule(db, { organizationId: "parameter-home", name: "Foreign recognition", kind: "business" });
+    const foreignClient = await pool.connect();
+    let foreignRegistration: string;
+    try {
+      await foreignClient.query("begin");
+      const result = await writeGuardedRegistration(foreignClient, { kind: "register", organizationId: "parameter-home",
+        subjectId: CatalogSubjectId("csub_org1395"), subjectKind: "configuration-schema", expectedRelease: pin,
+        placement: { mode: "use-default" }, destinationModuleId: foreignModule.id, method: "explicit",
+        proof: { reason: "Foreign erasure control" }, idempotencyKey: "foreign-recognition-erasure",
+        context: { actorKind: "org-admin", principalId: "parameter-platform" } });
+      if (!result.ok) throw new Error(JSON.stringify(result.error));
+      foreignRegistration = result.value.registrationId;
+      await foreignClient.query("commit");
+    } catch (error) { await foreignClient.query("rollback"); throw error; }
+    finally { foreignClient.release(); }
+    await db.query(`insert into public.module_recognition_rules (organization_id,module_id,canonical_subject_id,node_type_name)
+      values ('parameter-home',$1,'csub_org1395','foreign-node')`, [foreignModule.id]);
+    await db.query(`insert into public.registration_recognition_rules (organization_id,registration_id,canonical_subject_id,node_type_name)
+      values ('parameter-home',$1,'csub_org1395','foreign-node')`, [foreignRegistration]);
+    await db.query(`insert into public.registration_recognition_migration_map (organization_id,module_id,registration_id)
+      values ('parameter-home',$1,$2)`, [foreignModule.id, foreignRegistration]);
+    const placement = (await db.query<{ registration_id: string; module_id: string }>(`select r.id as registration_id, p.module_id
+      from parameter_catalog.organization_subject_registrations r
+      join parameter_catalog.subject_placements p on p.id=r.current_placement_id and p.organization_id=r.organization_id
+      where r.organization_id='parameter-target' and r.subject_id='csub_org1395'`)).rows[0]!;
+    await db.query(`insert into public.module_recognition_rules (organization_id,module_id,canonical_subject_id,node_type_name)
+      values ('parameter-target',$1,'csub_org1395','legacy-node')`, [placement.module_id]);
+    await db.query(`insert into public.registration_recognition_rules (organization_id,registration_id,canonical_subject_id,node_type_name)
+      values ('parameter-target',$1,'csub_org1395','legacy-node')`, [placement.registration_id]);
+    await db.query(`insert into public.registration_recognition_migration_map (organization_id,module_id,registration_id)
+      values ('parameter-target',$1,$2)`, [placement.module_id, placement.registration_id]);
+    await db.query("update organizations set status='suspended' where id='parameter-target'");
+    try {
+      await expect(db.query("update public.registration_recognition_rules set node_type_name='blocked' where organization_id='parameter-target'"))
+        .rejects.toMatchObject({ code: "55000" });
+      await expect(db.query("delete from public.registration_recognition_migration_map where organization_id='parameter-target'"))
+        .rejects.toMatchObject({ code: "55000" });
+    } finally {
+      await db.query("update organizations set status='active' where id='parameter-target'");
+    }
     // Real legacy cross-domain FK: knowledge must release its own reference
     // before the parameter adapter can remove this Organization Spec.
     await db.query("insert into parameter_specs(id,organization_id,source_kind,specification_key,definition_lifecycle) values('parameter-knowledge-spec','parameter-target','manual','parameter-knowledge-spec','active')");
@@ -67,13 +114,25 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
     await db.query("insert into organization_teams(id,organization_id,name) values('parameter-team','parameter-target','Erase team')");
     await db.query(`create function fail_parameter_management() returns trigger language plpgsql as $$ begin raise exception 'temporary management failure'; end $$;
       create trigger parameter_management_failure before delete on organization_teams for each row execute function fail_parameter_management()`);
-    const preview = await request<{ item: { stateDigest: string } }>(`${target}/deletion-preview`);
+    const preview = await request<{ item: { stateDigest: string; inventory: { key: string; category: string; count: number }[] } }>(`${target}/deletion-preview`);
     expect(preview.status, preview.bodyText).toBe(200);
+    expect(preview.body.item.inventory).toEqual(expect.arrayContaining([
+      { key: "public.registration_recognition_rules", category: "organization-parameters", count: 1 },
+      { key: "public.registration_recognition_migration_map", category: "organization-parameters", count: 1 },
+    ]));
     const started = await request<{ item: { id: string; status: string; domains: Record<string, { status: string; attempts: number }> } }>(`${target}/deletions`, "POST",
       { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: "parameter-target" });
     expect(started.status, started.bodyText).toBe(202);
     expect(started.body.item.status).toBe("failed");
     expect(started.body.item.domains["projects-parameters"]).toMatchObject({ status: "complete", attempts: 1 });
+    expect((await db.query("select registration_id from public.registration_recognition_rules where organization_id='parameter-target'")).rows).toEqual([]);
+    expect((await db.query("select registration_id from public.registration_recognition_migration_map where organization_id='parameter-target'")).rows).toEqual([]);
+    expect((await db.query("select registration_id from public.registration_recognition_rules where organization_id='parameter-home'")).rows)
+      .toEqual([{ registration_id: foreignRegistration }]);
+    expect((await db.query("select registration_id from public.registration_recognition_migration_map where organization_id='parameter-home'")).rows)
+      .toEqual([{ registration_id: foreignRegistration }]);
+    expect((await db.query("select module_id from public.module_recognition_rules where organization_id='parameter-home'")).rows)
+      .toEqual([{ module_id: foreignModule.id }]);
     expect((await db.query("select id from projects where id='parameter-project'")).rows).toEqual([]);
     expect((await db.query("select id from knowledge_parameter_references where parameter_spec_id='parameter-knowledge-spec'")).rows).toEqual([]);
     await db.query("drop trigger parameter_management_failure on organization_teams");

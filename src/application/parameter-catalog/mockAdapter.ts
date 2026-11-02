@@ -32,6 +32,7 @@ import type {
   CatalogPublicationJobResponse,
   CatalogRegisterSubjectRequest,
   CatalogRegistrationResponse,
+  CatalogRegistrationRecognitionResponse,
   CatalogReviewItemResponse,
   CatalogSubjectResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
@@ -307,6 +308,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
   governance: ParameterCatalogGovernanceRepository;
 } {
   const store = createStore(options);
+  let recognition: CatalogRegistrationRecognitionResponse["item"] = { kind: "driver", recognitionSubjectId: store.subject.id,
+    compatibles: [], driverNature: "physical-device", instanceCardinality: "multiple", nodeTypeName: null, overridden: false };
+  let recognitionVersion = 0;
 
   const catalog: ParameterCatalogRepository = {
     async getCatalog(query) {
@@ -807,6 +811,24 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         throw catalogApiFailure("registration-required", { subjectId: CATALOG_SUBJECT_ID });
       }
       return { item: clone(store.registration.placement) };
+    },
+    async getRegistrationRecognition(organizationId, registrationId) {
+      assertReadyForRead(store);
+      assertOrganizationScope(organizationId);
+      if (!store.registration || store.registration.id !== registrationId) throw catalogApiFailure("registration-required");
+      return { item: clone(recognition), etag: `"mock-recognition-${recognitionVersion}"` };
+    },
+    async updateRegistrationRecognition(organizationId, registrationId, body, context) {
+      await governance.getRegistrationRecognition(organizationId, registrationId);
+      assertReadyForWrite(store);
+      const write = requireConditionalWriteContext(context);
+      assertRelease(store, write.catalogReleaseId);
+      return replayOrStore(store, "updateRegistrationRecognition", write, { registrationId, body, ifMatch: write.ifMatch }, () => {
+        if (write.ifMatch !== `"mock-recognition-${recognitionVersion}"`) throw catalogApiFailure("revision-conflict");
+        recognition = { ...recognition, ...body, overridden: true };
+        recognitionVersion += 1;
+        return { item: clone(recognition), etag: `"mock-recognition-${recognitionVersion}"` };
+      });
     },
     async updatePlacement(organizationId, registrationId, body, context) {
       const write = requireConditionalWriteContext(context);

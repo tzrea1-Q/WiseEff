@@ -5,10 +5,8 @@ export async function readPlacementHintEvidence(pool: Pick<pg.Client, "query">, 
     pool.query<{ id: string; name: string; parentId: string | null; kind: string }>(
       `select id, name, parent_id as "parentId", kind from public.parameter_modules where organization_id = $1`, [organizationId]),
     pool.query<{ subjectId: string; moduleId: string }>(
-      `select registration.subject_id as "subjectId", placement.module_id as "moduleId"
-       from parameter_catalog.organization_subject_registrations registration
-       join parameter_catalog.subject_placements placement on placement.id = registration.current_placement_id
-       where registration.organization_id = $1`, [organizationId]),
+      `select subject_id as "subjectId", module_id as "moduleId"
+       from parameter_catalog.registration_effective_module where organization_id = $1`, [organizationId]),
   ]);
   return { modules: modules.rows, registrations: registrations.rows };
 }
@@ -45,7 +43,7 @@ export async function listUnregisteredSubjects(pool: pg.Pool, organizationId: st
        order by subject.canonical_key, subject.id`, [releaseId, organizationId, source]),
     pool.query<{ id: string; name: string; parentId: string | null; kind: string; occupied: boolean }>(
       `select module.id, module.name, module.parent_id as "parentId", module.kind,
-         exists (select 1 from parameter_catalog.subject_placements placement
+         exists (select 1 from parameter_catalog.registration_effective_module placement
                  where placement.organization_id = module.organization_id and placement.module_id = module.id) as occupied
        from public.parameter_modules module where module.organization_id = $1 order by module.path, module.id`, [organizationId]),
   ]);

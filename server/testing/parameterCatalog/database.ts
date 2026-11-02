@@ -224,7 +224,11 @@ export const S2_SCH_0320_FINGERPRINT =
 /** 0321 adds permanent Catalog child ownership and scoped selector roots. */
 export const S2_SCH_0321_FINGERPRINT =
   "db6dc5711969d07a73e58c9f0595fd48f57ee71770beda6b63e5dcd9c520f067";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0321_FINGERPRINT;
+/** 0322 adds effective-module and registration recognition relations. */
+export const S2_SCH_0322_FINGERPRINT =
+  "865eb41ba26de6f15326f72c2a664c4f4bccb2ee6e572501c4d22e945e48751f";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0322_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
