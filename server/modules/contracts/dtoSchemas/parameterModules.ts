@@ -29,6 +29,10 @@ export const parameterModuleDtoSchema = z.object({
   instanceCardinality: z.enum(["multiple", "singleton-per-project"]).nullable().optional(),
   nodeTypeName: z.string().nullable().optional(),
   recognitionSubjectId: z.string().nullable().optional(),
+  unmigratedRecognition: z.object({ compatibles: z.array(z.string()),
+    driverNature: z.enum(["physical-device", "logical-service"]).nullable(),
+    instanceCardinality: z.enum(["multiple", "singleton-per-project"]).nullable(),
+    nodeTypeName: z.string().nullable() }).optional(),
   /** Subtree bindings (measured occurrences). */
   parameterCount: z.number().int().nonnegative(),
   /** Distinct specs in the same subtree (definition count). */

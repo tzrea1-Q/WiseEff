@@ -103,41 +103,34 @@ describe("assembled module governance and retired legacy writers on PostgreSQL",
     await expectTrustedRefusal("retired-reclassify");
   });
 
-  it("lets admins maintain historical module metadata and placement while retaining subject identity", async () => {
+  it("rejects historical module metadata, placement and deletion while retaining subject identity", async () => {
     const subject = (await db.query("select * from attribution_subjects where id='subject-t1067'")).rows;
     const registration = (await db.query("select * from driver_registrations where attribution_subject_id='subject-t1067'")).rows;
     const mapping = (await db.query("select * from parameter_module_mappings where id='mapping-t1067'")).rows;
+    const module = (await db.query("select * from parameter_modules where id='module-t1067'")).rows;
     const renamed = await requestJson(harness.server, "/api/v1/parameter-modules/module-t1067", {
       method: "PATCH", headers: { ...headers, "X-Request-Id": "module-maintenance-rename" },
       body: JSON.stringify({ name: "Maintained historical driver", description: "Current module details" }),
     });
-    expect(renamed.status, renamed.bodyText).toBe(200);
-    expect(renamed.body).toMatchObject({ item: { id: "module-t1067", name: "Maintained historical driver",
-      description: "Current module details", kind: "driver-group", attributionSubjectId: "subject-t1067" } });
+    expect(renamed.status, renamed.bodyText).toBe(410);
     const moved = await requestJson(harness.server, "/api/v1/parameter-modules/module-t1067/move", {
       method: "POST", headers: { ...headers, "X-Request-Id": "module-maintenance-move" },
       body: JSON.stringify({ parentId: "category-t1067" }),
     });
-    expect(moved.status, moved.bodyText).toBe(200);
-    expect(moved.body).toMatchObject({ item: { id: "module-t1067", parentId: "category-t1067",
-      path: "category-t1067/module-t1067", kind: "driver-group", attributionSubjectId: "subject-t1067" } });
+    expect(moved.status, moved.bodyText).toBe(410);
     expect((await db.query("select * from attribution_subjects where id='subject-t1067'")).rows).toEqual(subject);
     expect((await db.query("select * from driver_registrations where attribution_subject_id='subject-t1067'")).rows).toEqual(registration);
     expect((await db.query("select * from parameter_module_mappings where id='mapping-t1067'")).rows).toEqual(mapping);
-    expect((await db.query(`select kind, actor_user_id from audit_events where trace_id in
-      ('module-maintenance-rename','module-maintenance-move') order by kind`)).rows).toEqual([
-      { kind: "parameter-module-admin-move", actor_user_id: "user-t1067" },
-      { kind: "parameter-module-admin-update", actor_user_id: "user-t1067" },
-    ]);
     const deleted = await requestJson(harness.server, "/api/v1/parameter-modules/module-t1067", {
       method: "DELETE", headers: { ...headers, "X-Request-Id": "module-maintenance-delete" },
     });
-    expect(deleted.status, deleted.bodyText).toBe(204);
-    expect((await db.query("select id from parameter_modules where id='module-t1067'")).rows).toEqual([]);
+    expect(deleted.status, deleted.bodyText).toBe(410);
+    expect((await db.query("select * from parameter_modules where id='module-t1067'")).rows).toEqual(module);
     expect((await db.query("select * from attribution_subjects where id='subject-t1067'")).rows).toEqual(subject);
     expect((await db.query("select * from driver_registrations where attribution_subject_id='subject-t1067'")).rows).toEqual(registration);
-    expect((await db.query("select kind, actor_user_id from audit_events where trace_id='module-maintenance-delete'")).rows)
-      .toEqual([{ kind: "parameter-module-admin-delete", actor_user_id: "user-t1067" }]);
+    expect((await db.query(`select kind from audit_events where trace_id in
+      ('module-maintenance-rename','module-maintenance-move','module-maintenance-delete')
+      and kind in ('parameter-module-admin-update','parameter-module-admin-move','parameter-module-admin-delete')`)).rows).toEqual([]);
   });
 
   it("keeps shared business taxonomy CRUD available", async () => {

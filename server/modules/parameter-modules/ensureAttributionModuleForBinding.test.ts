@@ -7,8 +7,9 @@ import {
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import { createParameterModule } from "../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../testing/legacyParameterModuleFixture";
 import { resolveAttributionModuleForBinding } from "./ensureAttributionModuleForBinding";
+import { ensureDriverRegistrationPlacement } from "./driverRegistrationPlacement";
 import { nodeTypeSourceKey } from "./modulePlacement";
 import { unclassifiedModuleId } from "./resolveModuleForBinding";
 
@@ -37,7 +38,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
     await db?.rollback();
   });
 
-  it("reuses edited recognition rules and prevents the old selector from rediscovering the module", async () => {
+  it("ignores legacy recognition rules but resolves retained mappings to their business ancestor", async () => {
     const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const module = await createParameterModule(db, { organizationId:"org-1",name:"Editable driver",
       parentId: business.id, kind:"driver-group",origin:"auto",sourceKey:"compatible:vendor,old" });
@@ -49,20 +50,19 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       values ('org-1',$1,array['Vendor,new'],'physical-device','multiple')`,[module.id]);
     const before = (await db.query("select id from parameter_modules where kind='driver-group' order by id")).rows;
     const input = {organizationId:"org-1",driverModule:"editable",instanceName:"device",nodeLocator:"/device"};
-    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"Vendor,new"})).toBe(business.id);
-    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"vendor,old"})).toBe(unclassifiedModuleId("org-1"));
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"Vendor,new"})).toBe(unclassifiedModuleId("org-1"));
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"vendor,old"})).toBe(business.id);
     expect((await db.query("select id from parameter_modules where kind='driver-group' order by id")).rows).toEqual(before);
     const duplicate = await createParameterModule(db, {organizationId:"org-1",name:"Other manual driver",parentId: business.id,kind:"driver-group"});
     await db.query(`insert into public.module_recognition_rules
       (organization_id,module_id,compatibles,driver_nature,instance_cardinality)
       values ('org-1',$1,array['Vendor,new'],'physical-device','multiple')`,[duplicate.id]);
-    await expect(resolveAttributionModuleForBinding(db,{...input,compatible:"Vendor,new"}))
-      .rejects.toMatchObject({code:"CONFLICT",details:{reason:"ambiguous-module-recognition"}});
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"Vendor,new"})).toBe(unclassifiedModuleId("org-1"));
     const nodeType = await createParameterModule(db,{organizationId:"org-1",name:"Editable type",parentId: business.id,kind:"node-type",
       sourceKey:"nodetype:oldnode"});
     await db.query(`insert into public.module_recognition_rules (organization_id,module_id,node_type_name)
       values ('org-1',$1,'NewNode')`,[nodeType.id]);
-    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:null,instanceName:"NewNode"})).toBe(business.id);
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:null,instanceName:"NewNode"})).toBe(unclassifiedModuleId("org-1"));
     expect(await resolveAttributionModuleForBinding(db,{...input,compatible:null,instanceName:"oldnode"}))
       .toBe(unclassifiedModuleId("org-1"));
   });
@@ -94,7 +94,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
     return result.rows;
   }
 
-  it("resolves a compatible mapping to the driver group's business parent", async () => {
+  it("resolves a legacy driver-group mapping to its business ancestor", async () => {
     const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const group = await createParameterModule(db, {
       organizationId: "org-1",
@@ -122,7 +122,24 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
     expect(moduleId).toBe(business.id);
   });
 
-  it("resolves bindings through a node-type mapping", async () => {
+  it("does not infer a binding destination from a legacy technical module's parent", async () => {
+    const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
+    const group = await createParameterModule(db, {
+      organizationId: "org-1", name: "Old driver", parentId: business.id,
+      kind: "driver-group", sourceKey: "compatible:vendor,old-driver",
+    });
+    expect(group.attributionSubjectId).toBeTruthy();
+    await ensureDriverRegistrationPlacement(db, {
+      organizationId: "org-1", attributionSubjectId: group.attributionSubjectId!,
+      driverGroupModuleId: group.id, defaultBusinessCategoryModuleId: business.id,
+    });
+    expect(await resolveAttributionModuleForBinding(db, {
+      organizationId: "org-1", driverModule: "old-driver", compatible: "vendor,old-driver",
+      instanceName: "device", attributionSubjectId: group.attributionSubjectId,
+    })).toBe(unclassifiedModuleId("org-1"));
+  });
+
+  it("resolves a legacy node-type mapping to its business ancestor", async () => {
     const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const nodeType = await createParameterModule(db, {
       organizationId: "org-1",

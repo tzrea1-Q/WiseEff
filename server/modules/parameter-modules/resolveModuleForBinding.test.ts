@@ -8,6 +8,7 @@ import {
 import { seedCoreGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { createParameterModule } from "../parameters/parameterModuleRepository";
+import { createLegacyParameterModule } from "../../testing/legacyParameterModuleFixture";
 import { resolveModuleIdForBinding, unclassifiedModuleId } from "./resolveModuleForBinding";
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -31,14 +32,15 @@ describe.skipIf(!databaseAvailable)("resolveModuleIdForBinding", () => {
     matchKind: "compatible" | "node-type";
     matchValue: string;
     priority?: number;
+    moduleId?: string;
   }): Promise<string> {
-    const module = await createParameterModule(db, { organizationId: "org-1", name: input.name });
+    const moduleId = input.moduleId ?? (await createParameterModule(db, { organizationId: "org-1", name: input.name })).id;
     await db.query(
       `insert into parameter_module_mappings (id, organization_id, parameter_module_id, match_kind, match_value, priority)
        values ($1, 'org-1', $2, $3, $4, $5)`,
-      [`map-${input.name}`, module.id, input.matchKind, input.matchValue, input.priority ?? 0]
+      [`map-${input.name}`, moduleId, input.matchKind, input.matchValue, input.priority ?? 0]
     );
-    return module.id;
+    return moduleId;
   }
 
   async function moduleRow(moduleId: string) {
@@ -84,6 +86,24 @@ describe.skipIf(!databaseAvailable)("resolveModuleIdForBinding", () => {
     });
 
     expect(moduleId).toBe(nodeTypeModuleId);
+  });
+
+  it("rejects equally ranked legacy mappings that lead to different business categories", async () => {
+    const left = await createParameterModule(db, { organizationId: "org-1", name: "Left" });
+    const right = await createParameterModule(db, { organizationId: "org-1", name: "Right" });
+    const legacyA = await createLegacyParameterModule(db, { organizationId: "org-1", name: "Legacy A", parentId: left.id, kind: "node-type" });
+    const legacyB = await createLegacyParameterModule(db, { organizationId: "org-1", name: "Legacy B", parentId: right.id, kind: "node-type" });
+    await seedMappedModule({ name: "ambiguous-a", moduleId: legacyA.id, matchKind: "node-type", matchValue: "shared", priority: 20 });
+    await seedMappedModule({ name: "ambiguous-b", moduleId: legacyB.id, matchKind: "node-type", matchValue: "SHARED", priority: 20 });
+    await expect(resolveModuleIdForBinding(db, { organizationId: "org-1", driverModule: null, compatible: null, nodeType: "shared" }))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("falls through a root legacy mapping without migration evidence or business ancestor", async () => {
+    const legacy = await createLegacyParameterModule(db, { organizationId: "org-1", name: "Root legacy", kind: "driver-group" });
+    await seedMappedModule({ name: "root-legacy", moduleId: legacy.id, matchKind: "compatible", matchValue: "vendor,root" });
+    await expect(resolveModuleIdForBinding(db, { organizationId: "org-1", driverModule: null, compatible: "vendor,root", nodeType: null }))
+      .resolves.toBe(unclassifiedModuleId("org-1"));
   });
 
   it("treats DTS-quoted compatible as equal to an unquoted mapping value", async () => {
@@ -143,6 +163,15 @@ describe.skipIf(!databaseAvailable)("resolveModuleIdForBinding", () => {
       kind: "unclassified",
       origin: "auto"
     });
+  });
+
+  it("rejects a technical module occupying the reserved unclassified id", async () => {
+    await createLegacyParameterModule(db, {
+      id: unclassifiedModuleId("org-1"), organizationId: "org-1", name: "Legacy driver", kind: "driver-group",
+    });
+    await expect(resolveModuleIdForBinding(db, {
+      organizationId: "org-1", driverModule: null, compatible: null, nodeType: null,
+    })).rejects.toThrow("未分类根模块不可用");
   });
 
   it("never returns null/undefined even when driver/compatible/nodeType are all null", async () => {

@@ -77,7 +77,7 @@ export function ModuleAttributionRowActions({
   const focusLast = useRef(false);
 
   const showView = canViewUnclassifiedRoot(module) && Boolean(onView);
-  const detailsReadOnly = !canAdmin;
+  const detailsReadOnly = !canAdmin || module.kind !== "business";
   const showEdit = !showView && !detailsReadOnly;
   const showDetails = !showView && detailsReadOnly;
   const addChildDecision = addChildModuleDecision(module);
@@ -85,7 +85,7 @@ export function ModuleAttributionRowActions({
   const deleteDecision = deleteModuleDecision(module, modules);
   const canMoveUp = Boolean(onReorder && sortOrderSwapUpdates(module, "up", modules));
   const canMoveDown = Boolean(onReorder && sortOrderSwapUpdates(module, "down", modules));
-  const canManageTaxonomy = canAdmin && !canViewUnclassifiedRoot(module);
+  const canManageTaxonomy = canAdmin && module.kind === "business";
   const showReorder = canManageTaxonomy && Boolean(onReorder);
   const showAddChild = canManageTaxonomy && module.kind === "business";
   const showMove = canManageTaxonomy;

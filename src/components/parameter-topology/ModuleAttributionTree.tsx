@@ -374,7 +374,7 @@ function ModuleAttributionTreeRow({
 }
 
 /**
- * Kind-scoped module attribution tree: business → driver-group → node-type.
+ * Business taxonomy with retained legacy module rows and canonical subject leaves.
  */
 export function ModuleAttributionTree({
   modules,
@@ -792,7 +792,7 @@ export function ModuleAttributionTree({
           }}
           onSave={handleSaveEdit}
           canAdmin={canAdmin}
-          readOnly={!canAdmin}
+          readOnly={!canAdmin || editingModule.kind !== "business"}
           driverNature={editingDriverRegistration?.driverNature ?? null}
           instanceCardinality={editingDriverRegistration?.instanceCardinality ?? null}
           historicalCompatibles={editingDriverRegistration?.compatibles}
@@ -810,9 +810,9 @@ export function ModuleAttributionTree({
         />
       ) : null}
 
-      {movingModule ? (
+      {movingModule?.kind === "business" ? (
         <ModuleMoveDialog
-          module={movingModule}
+          module={{ ...movingModule, kind: "business" }}
           modules={modules}
           busy={busy || dialogMutationBusy}
           error={dialogMutationError}

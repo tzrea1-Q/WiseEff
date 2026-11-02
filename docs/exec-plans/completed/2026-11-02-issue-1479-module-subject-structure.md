@@ -1,6 +1,6 @@
 # #1479 落地方案：业务模块直接容纳主体，节点主体归属驱动
 
-Status: 已确认（2026-11-02，采用 §5 全部推荐项），按 S1–S5 实施。决策记录：[ADR-0053](../../adr/0053-business-modules-hold-subjects-and-drivers-own-child-nodes.md)。基线：`origin/main` `e297e65ef`（与 issue 静态核查基线 `24184e843` 仅差 #1478 的 shared-DTSI 修复，不影响本方案涉及的代码）。
+Status: 已完成（2026-11-03）。S1–S5 已合并：#1480（S1）、#1481（S3a）、#1482（S2）、#1483（S3b）、#1484（S4）、#1485（S5）。决策记录：[ADR-0053](../../adr/0053-business-modules-hold-subjects-and-drivers-own-child-nodes.md)。存量组织需按 runbook 先运行子节点认领、再运行模块结构迁移（本计划的 PR 均未对任何部署执行）。
 
 Issue：[#1479](https://github.com/tzrea1-Q/WiseEff/issues/1479)。修订对象：[ADR-0042](../../adr/0042-organizations-register-canonical-subjects-once.md) 中“placement 节点类型”与“一模块一主体”部分、#1447 批量登记的“创建同类型模块 / 选择空闲模块”契约。
 

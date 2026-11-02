@@ -5,17 +5,22 @@ describe("createMockParameterModuleRegistryRepository", () => {
   it("refuses identity writes through taxonomy CRUD", async () => {
     const repo = createMockParameterModuleRegistryRepository();
     const before = await repo.getRegistry();
+    // @ts-expect-error verify the untyped runtime boundary
     await expect(repo.createModule({ name: "Driver", kind: "driver-group" }))
       .rejects.toMatchObject({ code: "LEGACY_SURFACE_RETIRED" });
+    // @ts-expect-error verify the untyped runtime boundary
     await expect(repo.updateModule("mod-charging", { kind: "node-type" }))
       .rejects.toMatchObject({ code: "LEGACY_SURFACE_RETIRED" });
     expect(await repo.getRegistry()).toEqual(before);
     const history = createMockParameterModuleRegistryRepository({
       modules: [{ ...before.modules[0]!, id: "historical-driver", kind: "driver-group" }]
     });
-    const edited = await history.updateModule("historical-driver", { name: "Custom display name" });
-    expect(edited.modules[0]).toMatchObject({ id: "historical-driver", kind: "driver-group", name: "Custom display name" });
-    expect((await history.deleteModule("historical-driver")).modules).toEqual([]);
+    const retained = await history.getRegistry();
+    await expect(history.updateModule("historical-driver", { name: "Custom display name" }))
+      .rejects.toMatchObject({ code: "LEGACY_SURFACE_RETIRED" });
+    await expect(history.deleteModule("historical-driver"))
+      .rejects.toMatchObject({ code: "LEGACY_SURFACE_RETIRED" });
+    expect(await history.getRegistry()).toEqual(retained);
   });
   it("seeds business taxonomy without identity teaching fixtures", async () => {
     const repo = createMockParameterModuleRegistryRepository();

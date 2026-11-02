@@ -15,16 +15,15 @@ import type { RegistrationResult } from "./result";
 type Rows = z.infer<typeof catalogBatchRegistrationRequestSchema>["rows"];
 export type BatchRegistrationInput = { organizationId: string; rows: Rows; expectedRelease: CatalogReleasePin; idempotencyKey: string;
   actorKind: "org-admin" | "platform-admin"; principalId: string; invocation: UserInvocationContext; requestId: string };
-export type BatchRowFailure = { index: number; subjectId: string; code: "category-missing" | "name-invalid" | "name-taken" | "already-registered" | "subject-inactive" | "owned-child" | "release-drift" | "conflict"; field: "category" | "name" | "subject" };
+export type BatchRowFailure = { index: number; subjectId: string; code: "category-missing" | "name-invalid" | "already-registered" | "subject-inactive" | "owned-child" | "release-drift" | "conflict"; field: "category" | "name" | "subject" };
 
 function failureReason(failure: RegistrationFailure): Pick<BatchRowFailure, "code" | "field"> {
-  if (failure.kind === "placement-conflict" && failure.placementId === "parameter_modules_org_parent_name_unique_idx") return { code: "name-taken", field: "name" };
   switch (failure.kind) {
     case "registration-conflict": case "restore-required": case "auto-restore-forbidden": return { code: "already-registered", field: "subject" };
     case "invalid-placement-parent": return { code: "category-missing", field: "category" };
     case "subject-retired": case "subject-not-published": return { code: "subject-inactive", field: "subject" };
     case "release-drift": case "catalog-drift": return { code: "release-drift", field: "subject" };
-    case "invalid-command": if (failure.reason === "newDestination") return { code: "name-invalid", field: "name" }; break;
+    case "invalid-command": if (failure.reason === "displayAlias") return { code: "name-invalid", field: "name" }; break;
   }
   return { code: "conflict", field: "subject" };
 }
@@ -56,20 +55,11 @@ export async function executeBatchRegistration(pool: pg.Pool, input: BatchRegist
         else if (prior.rows[0]?.registered && !prior.rows[0]?.replay) failure = { code: "already-registered", field: "subject" };
         else {
           const target = row.target;
-          let parentId: string | undefined;
-          if (target.type !== "existing-module") {
-            const parent = target.type === "unclassified"
-              ? await client.query<{ id: string }>("select id from public.parameter_modules where organization_id=$1 and kind='unclassified' and parent_id is null for update", [input.organizationId])
-              : await client.query<{ id: string }>("select id from public.parameter_modules where organization_id=$1 and id=$2 and kind='business' for update", [input.organizationId, target.parentModuleId]);
-            parentId = parent.rows[0]?.id;
-            if (!parentId) failure = { code: "category-missing", field: "category" };
-          }
           if (!failure) {
-            const moduleId = target.type === "existing-module" ? target.moduleId : `pmod_canonical_${createHash("sha256").update(JSON.stringify([input.organizationId, rowKey])).digest("hex").slice(0, 32)}`;
             const command: RegisterSubjectCommand = { kind: "register", organizationId: input.organizationId,
               subjectId: CatalogSubjectId(row.subjectId), subjectKind: kind, expectedRelease: input.expectedRelease,
-              placement: { mode: "use-default" }, destinationModuleId: moduleId,
-              ...(target.type === "existing-module" ? {} : { newDestination: { parentModuleId: parentId!, name: target.name } }),
+              placement: { mode: "use-default" }, destinationModuleId: target.moduleId,
+              ...(row.displayAlias ? { displayAlias: row.displayAlias } : {}),
               method: "explicit", proof: { reason: "batch-registration", batchFingerprint: fingerprint }, idempotencyKey: rowKey,
               context: { actorKind: input.actorKind, principalId: input.principalId, invocation: input.invocation, requestId: input.requestId } };
             const validated = validateRegistrationCommand(command);

@@ -425,6 +425,7 @@ export async function listDriverRegistry(
       defaultBusinessCategoryId: string | null;
     }
   >();
+  // The driver registry is a bounded historical read of retained technical modules.
   const registrationRows = await db.query<{
     module_id: string;
     driver_nature: DriverNature;

@@ -124,7 +124,7 @@ npm run db:seed:m3
 - `db:seed:m2`：日志分析演示数据。
 - `db:seed:m3`：模拟器调试设备与目录。
 
-同一 commit 的全新数据库应生成一致的 canonical 模块计数、Subject registrations/placements、Binding 到模块的归属与当前值，quality visual seed 后也应一致。种子 placement 保留 curated 模块优先级，并按稳定的 source key（没有时使用名称）选择空闲模块，不按随机 UUID 排序；不会移动已有 registration。真实 PostgreSQL 回归命令为 `npm run test:server -- server/scripts/seed-all.determinism.integration.test.ts`，需要设置 `DATABASE_URL` 与 `TEST_DATABASE_URL`。比较使用自然键，不比较新生成的行 ID 或审计时间戳。
+同一 commit 的全新数据库应生成一致的 canonical 模块计数、Subject registrations/placements、Binding 到模块的归属与当前值，quality visual seed 后也应一致。种子 placement 保留 curated 模块优先级，并按稳定的 source key（没有时使用名称）选择可用业务模块，不按随机 UUID 排序；不会移动已有 registration。真实 PostgreSQL 回归命令为 `npm run test:server -- server/scripts/seed-all.determinism.integration.test.ts`，需要设置 `DATABASE_URL` 与 `TEST_DATABASE_URL`。比较使用自然键，不比较新生成的行 ID 或审计时间戳。
 
 **全新 canonical 种子不需要语义身份 cutover。** M1 不运行旧语义身份迁移，也不调用 `ensureLocalPostCutoverIdentity`。API 启动时，干净且所有来源 pin 完整的 canonical 安装会跳过 legacy finalize；该状态下启动不会调用旧迁移。
 

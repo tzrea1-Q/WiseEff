@@ -264,6 +264,9 @@ function makeRecomputeDb(input: {
     if (text.includes("insert into parameter_modules")) {
       return { rows: [], rowCount: 1 };
     }
+    if (text.includes("kind = 'unclassified'") && text.includes("parent_id is null")) {
+      return { rows: [{ id: values[0] }], rowCount: 1 };
+    }
     if (text.includes("from project_parameter_bindings") && text.includes("id <>")) {
       const bindingId = values[values.length - 1] as string;
       return input.conflicts?.has(bindingId)
@@ -405,23 +408,23 @@ describe("recomputeBindingModules", () => {
 
 describe("taxonomy leaf deletion", () => {
   it("allows deleting a leaf with a retained canonical Placement", async () => {
-    const groupId = "dg-canonical";
+    const groupId = "biz-canonical";
     const query = vi.fn()
       .mockResolvedValueOnce({
         rows: [{
           id: groupId,
           organization_id: "org-1",
           parent_id: "biz-1",
-          name: "Canonical driver",
+          name: "Canonical category",
           path: `biz-1/${groupId}`,
           depth: 2,
           sort_order: 0,
           description: "",
           scope: "org",
           importance: null,
-          kind: "driver-group",
+          kind: "business",
           origin: "curated",
-          source_key: "compatible:canonical",
+          source_key: null,
         }],
         rowCount: 1,
       })

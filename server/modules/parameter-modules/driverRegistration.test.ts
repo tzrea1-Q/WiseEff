@@ -22,10 +22,8 @@ import {
   CATALOG_RELEASE_HEADER,
   catalogRegistrationListResponseSchema,
 } from "../contracts/dtoSchemas/parameterCatalog";
-import {
-  countCanonicalPlacementsForModules,
-  createParameterModule,
-} from "../parameters/parameterModuleRepository";
+import { countCanonicalPlacementsForModules } from "../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../testing/legacyParameterModuleFixture";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 const organizationId = "org-b4-registration";

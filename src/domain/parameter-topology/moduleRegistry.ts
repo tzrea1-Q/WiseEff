@@ -12,6 +12,7 @@ export type ModuleMatchKind = "compatible" | "node-type";
 export type ModuleImportance = "high" | "medium" | "low";
 
 export type ModuleKind = "business" | "driver-group" | "node-type" | "unclassified";
+export type WritableModuleKind = "business" | "unclassified";
 
 export type ModuleOrigin = "curated" | "auto";
 export type DriverNature = "physical-device" | "logical-service";
@@ -42,6 +43,8 @@ export type ParameterModule = {
   instanceCardinality?: InstanceCardinality | null;
   nodeTypeName?: string | null;
   recognitionSubjectId?: string | null;
+  unmigratedRecognition?: { compatibles: string[]; driverNature: DriverNature | null;
+    instanceCardinality: InstanceCardinality | null; nodeTypeName: string | null };
 };
 
 export type ParameterModuleMapping = {

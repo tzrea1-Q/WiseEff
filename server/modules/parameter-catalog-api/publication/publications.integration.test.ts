@@ -199,11 +199,16 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     });
     authenticateAs(publisherScope());
     const hinted = await post({ markdownImport: { ...markdownImport,
-      document: document.replace("# Driver `acme,power`", "# Driver `acme,new`\nnature: physical-device · cardinality: multiple · 业务分类：不存在 · 模块名称：设备") } });
+      document: document.replace("# Driver `acme,power`", "# Driver `acme,new`\nnature: physical-device · cardinality: multiple · 业务分类：不存在 · 展示别名：设备") } });
     expect(hinted.status).toBe(201);
     expect(hinted.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [
-      { selector: "acme,new", categoryPath: "不存在", moduleName: "设备", warnings: [expect.stringContaining("不存在")] },
+      { selector: "acme,new", categoryPath: "不存在", displayAlias: "设备", warnings: [expect.objectContaining({ message: expect.stringContaining("不存在") })] },
     ] } });
+    const separateLines = await post({ markdownImport: { ...markdownImport,
+      document: document.replace("# Driver `acme,power`", "# Driver `acme,new`\nmoduleName: 设备\ncategoryPath: 不存在\nnature: physical-device · cardinality: multiple") } });
+    expect(separateLines.body).toMatchObject({ item: { placementHints: [{ warnings: [
+      { message: expect.stringContaining("已弃用"), line: 3 }, { message: "业务分类不存在。", line: 4 },
+    ] }] } });
     expect((await post({ markdownImport, changeSet: changeSetFor("ambiguous") })).status).toBe(400);
     const before = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
     const invalid = await post({ markdownImport: { ...markdownImport, document: document.replace("integer", "enum") } });
@@ -376,21 +381,23 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     const post = (text: string) => request("POST", "/api/v2/catalog/publication-candidates", {
       headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { markdownImport: { document: text, fileName: "placement.md" } },
     });
-    const base = "# NodeType `new-subject`\n业务分类：电源 · 模块名称：设备\n## `one` 参数\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |";
+    const base = "# NodeType `new-subject`\n业务分类：电源 · 展示别名：设备\n## `one` 参数\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |";
     authenticateAs(publisherScope(org));
+    const beforeModules = (await pool.query("select id from parameter_modules where organization_id=$1 order by id", [org])).rows;
     const collision = await post(base);
-    expect(collision.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ warnings: ["同一分类下已有同名模块。"] }] } });
-    expect((await post(base.replace(" · 模块名称：设备", ""))).body)
-      .toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ warnings: ["同一分类下已有同名模块。"] }] } });
+    expect(collision.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ displayAlias: "设备", warnings: [] }] } });
+    expect((await post(base.replace("展示别名：设备", "模块名称：设备"))).body)
+      .toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ displayAlias: "设备", warnings: [expect.objectContaining({ message: expect.stringContaining("已弃用") })] }] } });
+    expect((await pool.query("select id from parameter_modules where organization_id=$1 order by id", [org])).rows).toEqual(beforeModules);
     const ambiguous = await post(base.replace("业务分类：电源", "业务分类：电源 / 充电"));
-    expect(ambiguous.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ warnings: ["业务分类路径不唯一。"] }] } });
+    expect(ambiguous.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ warnings: [expect.objectContaining({ message: "业务分类路径不唯一。" })] }] } });
     authenticateAs(publisherScope(OTHER_ORG));
-    expect((await post(base)).body).toMatchObject({ item: { placementHints: [{ warnings: ["业务分类不存在。"] }] } });
+    expect((await post(base)).body).toMatchObject({ item: { placementHints: [{ warnings: [expect.objectContaining({ message: "业务分类不存在。" })] }] } });
     authenticateAs(publisherScope(org));
     const existing = "# Driver `acme,power`\n业务分类：不存在\n## `iin_max` Input current limit\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n| 单位 | mA |\n| 最小值 | 0 |\n\nMaximum accepted input current.";
     const skipped = await post(existing);
     expect(skipped.body).toMatchObject({ item: { candidate: null, noChange: true, entries: [{ outcome: "skip" }],
-      placementHints: [{ warnings: ["已登记于 电源 / 既有设备，未改动"] }] } });
+      placementHints: [{ warnings: [expect.objectContaining({ message: "已登记于 电源 / 既有设备，未改动" })] }] } });
     expect((await post(existing.replace("Input current limit", "Changed"))).body)
       .toMatchObject({ item: { candidate: null, noChange: false, entries: [{ outcome: "conflict" }] } });
     expect((await post(existing.replace("integer", "enum"))).body)

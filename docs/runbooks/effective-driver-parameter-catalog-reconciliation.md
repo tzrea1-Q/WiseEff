@@ -2,6 +2,8 @@
 
 > Chinese: [中文运行手册](../zh-CN/runbooks/effective-driver-parameter-catalog-reconciliation.md)
 
+> Historical procedure: the legacy reconciliation `--apply` writer is retired and returns `410 GONE`. The driver-group placement contract below predates ADR-0053. For the current structure cutover, [claim child owners before migrating technical modules](self-hosted-runtime.md#claim-existing-catalog-child-node-owners).
+
 Maintenance-window procedure for Issue #649. It repairs organization draft/platform
 active twins without deleting history and leaves the release gate fail-closed until
 every effective driver definition has a canonical subject, current active version,

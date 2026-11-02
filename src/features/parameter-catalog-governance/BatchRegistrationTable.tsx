@@ -12,18 +12,17 @@ import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils
 import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
 import { catalogErrorCopy } from "@/features/parameter-catalog/copy";
 
-export type BatchRegistrationEntry = { subjectIds?: readonly string[]; hints?: Readonly<Record<string, { categoryPath?: string | readonly string[]; moduleName?: string }>> };
+export type BatchRegistrationEntry = { subjectIds?: readonly string[]; hints?: Readonly<Record<string, { categoryPath?: string | readonly string[]; displayAlias?: string }>> };
 type Item = CatalogUnregisteredSubjectsResponse["items"][number];
 type Module = CatalogUnregisteredSubjectsResponse["modules"][number];
 type RowError = { field: "category" | "name" | "subject"; message: string };
-type Row = { subject: Item; selected: boolean; inBatch: boolean; category: string; name: string; moduleId: string; error: RowError | null };
+type Row = { subject: Item; selected: boolean; inBatch: boolean; displayAlias: string; moduleId: string; error: RowError | null };
 type Props = { repository: Pick<ParameterCatalogGovernanceRepository, "listUnregisteredSubjects" | "createBatchRegistration">;
   organizationId: string; catalogReleaseId: string; initial?: BatchRegistrationEntry; onCompleted?: () => void; onRefreshEvidence?: () => Promise<string>;
   onClose?: () => void };
 const rowCopy: Record<string, RowError> = {
   "category-missing": { field: "category", message: "业务分类不存在或不可用。" },
-  "name-invalid": { field: "name", message: "请输入有效的模块名称（最多 120 字）。" },
-  "name-taken": { field: "name", message: "同一分类下已有同名模块。" },
+  "name-invalid": { field: "name", message: "请输入有效的展示别名（最多 128 字）。" },
   "already-registered": { field: "subject", message: "主体已登记，请刷新。" },
   "subject-inactive": { field: "subject", message: "主体在当前目录中未生效。" },
   "owned-child": { field: "subject", message: "请登记其所属驱动。" },
@@ -78,14 +77,15 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
       setEditedSubjects((current) => new Set([...current].filter((id) => visibleIds.has(id))));
       setRows((previous) => data.items.map((subject) => {
         const retained = previous.find((row) => row.subject.id === subject.id);
-        if (retained) return { ...retained, subject, category: retained.category === "unclassified" || categories.some((item) => `category:${item.id}` === retained.category) ? retained.category : "", error: retained.moduleId && retained.moduleId !== "__new__" && (!subject.availableModuleIds.includes(retained.moduleId) || !data.modules.some((module) => module.id === retained.moduleId)) ? { field: "subject", message: "目标模块已不可用，请重新选择。" } : null };
+        if (retained) return { ...retained, subject, error: retained.moduleId && (!subject.availableModuleIds.includes(retained.moduleId) || !data.modules.some((module) => module.id === retained.moduleId)) ? { field: "subject", message: "目标模块已不可用，请重新选择。" } : null };
         const hint = entry.current?.hints?.[subject.id];
         const hintPath = Array.isArray(hint?.categoryPath) ? hint.categoryPath.join(" / ") : hint?.categoryPath;
         const matches = categories.filter((category) => modulePathSegments(category, data.modules).join(" / ") === hintPath);
         const inBatch = entry.current?.subjectIds ? entry.current.subjectIds.includes(subject.id) : source === "organization";
-        return { subject, selected: inBatch, inBatch,
-          category: hintPath === "未分类" ? "unclassified" : matches.length === 1 ? `category:${matches[0]!.id}` : "",
-          name: hint?.moduleName ?? subject.canonicalName, moduleId: subject.availableModuleIds.length ? "" : "__new__", error: null };
+        const hinted = hintPath === "未分类" ? data.modules.find((module) => module.kind === "unclassified" && module.parentId === null)
+          : matches.length === 1 ? matches[0] : undefined;
+        return { subject, selected: inBatch, inBatch, displayAlias: hint?.displayAlias ?? "",
+          moduleId: hinted && subject.availableModuleIds.includes(hinted.id) ? hinted.id : "", error: null };
       }));
       setEvidenceFresh(true);
     } catch (reason) {
@@ -118,17 +118,17 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
   const categories = modules.filter((module) => module.kind === "business");
   const options = [{ value: "", label: "请选择业务分类" }, { value: "unclassified", label: "未分类" },
     ...categories.map((category) => ({ value: `category:${category.id}`, label: modulePathSegments(category, modules).join(" / ") }))];
-  const categoryLabel = (category: string) => category === "unclassified" ? "未分类" : modulePathSegments(categories.find((item) => `category:${item.id}` === category)!, modules).join(" / ");
   const prepare = () => {
     if (!batch.length) { setError("请选择待登记主体。"); return; }
     if (batch.length > 128) { setError("每批最多登记 128 个主体。"); return; }
     const rowError = (row: Row): RowError | null => {
-      if (row.moduleId && row.moduleId !== "__new__") {
-        if (!row.subject.availableModuleIds.includes(row.moduleId) || !modules.some((module) => module.id === row.moduleId)) return { field: "subject", message: "目标模块已不可用，请重新选择。" };
+      if (/[\u0000-\u001f\u007f-\u009f]/u.test(row.displayAlias) || Array.from(row.displayAlias.trim()).length > 128) return rowCopy["name-invalid"]!;
+      if (row.moduleId) {
+        if (!row.subject.availableModuleIds.includes(row.moduleId) || !modules.some((module) => module.id === row.moduleId
+          && (module.kind === "business" || (module.kind === "unclassified" && module.parentId === null)))) return { field: "subject", message: "目标模块已不可用，请重新选择。" };
         return null;
       }
-      if (!row.moduleId) return { field: "subject", message: "请选择登记目标。" };
-      return !row.category ? { field: "category", message: "请选择业务分类。" } : !row.name.trim() ? { field: "name", message: "请输入模块名称。" } : null;
+      return { field: "category", message: "请选择业务分类。" };
     };
     const invalid = batch.some((row) => rowError(row));
     if (invalid) {
@@ -142,9 +142,8 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
     submitGate.current = true; setPending(true); setSuccessCount(null);
     try {
       const body = { rows: batch.map((row) => ({ subjectId: row.subject.id,
-        target: row.moduleId !== "__new__" ? { type: "existing-module" as const, moduleId: row.moduleId }
-          : row.category === "unclassified" ? { type: "unclassified" as const, name: row.name.trim() }
-          : { type: "new-module" as const, parentModuleId: row.category.slice("category:".length), name: row.name.trim() } })) };
+        target: { type: "existing-module" as const, moduleId: row.moduleId },
+        ...(row.displayAlias.trim() ? { displayAlias: row.displayAlias.trim() } : {}) })) };
       const fingerprint = JSON.stringify([release, body]);
       if (requestKey.current?.fingerprint !== fingerprint) requestKey.current = { fingerprint, key: createGovernanceIdempotencyKey() };
       await repository.createBatchRegistration(organizationId, body, { catalogReleaseId: release, idempotencyKey: requestKey.current.key });
@@ -165,8 +164,8 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
   };
   const groups = new Map<string, number>();
   for (const row of batch) {
-    const module = row.moduleId !== "__new__" ? modules.find((item) => item.id === row.moduleId) : undefined;
-    const label = module ? modulePathSegments(module, modules).join(" / ") : row.category ? categoryLabel(row.category) : null;
+    const module = modules.find((item) => item.id === row.moduleId);
+    const label = module ? modulePathSegments(module, modules).join(" / ") : null;
     if (label) groups.set(label, (groups.get(label) ?? 0) + 1);
   }
   const content = (descriptionId?: string) => <>
@@ -181,35 +180,32 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
       <button type="button" className="button subtle" disabled={!bulkCategory || !selected.length || loading || pending} onClick={() => {
         setEditedSubjects((current) => new Set([...current, ...selected.map((row) => row.subject.id)]));
         const moduleId = bulkCategory === "unclassified" ? modules.find((module) => module.kind === "unclassified" && module.parentId === null)?.id ?? "" : bulkCategory.slice("category:".length);
-        setRows((current) => current.map((row) => row.selected ? { ...row, category: bulkCategory,
-          moduleId: moduleId && row.subject.availableModuleIds.includes(moduleId) ? moduleId : "__new__", error: null } : row));
+        setRows((current) => current.map((row) => row.selected ? { ...row,
+          moduleId: moduleId && row.subject.availableModuleIds.includes(moduleId) ? moduleId : "", error: null } : row));
       }}>设置业务分类</button></div>
-    <div className="definition-editor__table-wrap"><table className="definition-editor__table"><thead><tr><th><input type="checkbox" aria-label="全选" checked={rows.length > 0 && selected.length === rows.length} onChange={(event) => setRows((current) => current.map((row) => ({ ...row, selected: event.target.checked })))} /></th><th>主体</th><th>登记目标</th><th>业务分类</th><th>模块名称</th><th>本批</th></tr></thead><tbody>
+    <div className="definition-editor__table-wrap"><table className="definition-editor__table"><thead><tr><th><input type="checkbox" aria-label="全选" checked={rows.length > 0 && selected.length === rows.length} onChange={(event) => setRows((current) => current.map((row) => ({ ...row, selected: event.target.checked })))} /></th><th>主体</th><th>业务分类</th><th>展示别名（可选）</th><th>本批</th></tr></thead><tbody>
       {rows.map((row) => {
         const errorId = `${rowPrefix}-${row.subject.id}-error`;
         return <tr key={row.subject.id} className={row.inBatch ? undefined : "opacity-50"}><td><input type="checkbox" aria-label={`选择 ${row.subject.canonicalName}`} checked={row.selected} onChange={(event) => update(row.subject.id, { selected: event.target.checked })} /></td>
           <td>{row.subject.canonicalName} · {catalogSubjectTypeLabel(row.subject.kind)}{row.subject.childCount ? <p>含 {row.subject.childCount} 个子节点，将随驱动一同登记。</p> : null}{row.error?.field === "subject" ? <p className="field-error" role="alert">{row.error.message}</p> : null}</td>
-          <td><SelectControl ariaLabel={`${row.subject.canonicalName} 的登记目标`} value={row.moduleId} onValueChange={(moduleId) => update(row.subject.id, { moduleId })} options={[
+          <td><SelectControl ariaLabel={`${row.subject.canonicalName} 的业务分类`} value={row.moduleId} onValueChange={(moduleId) => update(row.subject.id, { moduleId })}
+            ariaInvalid={row.error?.field === "category"} ariaDescribedBy={row.error?.field === "category" ? errorId : undefined} options={[
             { value: "", label: "请选择业务分类" },
-            { value: "__new__", label: "新建业务分类" },
-            ...modules.filter((module) => row.subject.availableModuleIds.includes(module.id)).map((module) => ({ value: module.id, label: modulePathSegments(module, modules).join(" / ") })),
-            ...(row.moduleId && row.moduleId !== "__new__" && (!row.subject.availableModuleIds.includes(row.moduleId) || !modules.some((module) => module.id === row.moduleId)) ? [{ value: row.moduleId, label: "目标模块已不可用", hidden: true }] : []),
-          ]} /></td>
-          <td><SelectControl ariaLabel={`${row.subject.canonicalName} 的业务分类`} value={row.category} onValueChange={(category) => update(row.subject.id, { category })} options={options} disabled={row.moduleId !== "__new__"}
-            ariaInvalid={row.error?.field === "category"} ariaDescribedBy={row.error?.field === "category" ? errorId : undefined} />
-            {row.error?.field === "category" ? <p id={errorId} className="field-error" role="alert">{row.error.message}</p> : null}</td>
-          <td><Input aria-label={`${row.subject.canonicalName} 的模块名称`} value={row.name} onChange={(event) => update(row.subject.id, { name: event.target.value })} disabled={row.moduleId !== "__new__"}
+            ...modules.filter((module) => (module.kind === "business" || (module.kind === "unclassified" && module.parentId === null)) && row.subject.availableModuleIds.includes(module.id)).map((module) => ({ value: module.id, label: modulePathSegments(module, modules).join(" / ") })),
+            ...(row.moduleId && (!row.subject.availableModuleIds.includes(row.moduleId) || !modules.some((module) => module.id === row.moduleId)) ? [{ value: row.moduleId, label: "目标模块已不可用", hidden: true }] : []),
+          ]} />{row.error?.field === "category" ? <p id={errorId} className="field-error" role="alert">{row.error.message}</p> : null}</td>
+          <td><Input aria-label={`${row.subject.canonicalName} 的展示别名`} value={row.displayAlias} onChange={(event) => update(row.subject.id, { displayAlias: event.target.value })} maxLength={128}
             aria-invalid={row.error?.field === "name"} aria-describedby={row.error?.field === "name" ? errorId : undefined} />
             {row.error?.field === "name" ? <p id={errorId} className="field-error" role="alert">{row.error.message}</p> : null}</td><td><button type="button" className="button subtle" onClick={() => update(row.subject.id, { inBatch: !row.inBatch })}>{row.inBatch ? "移出本批" : "加入本批"}</button></td></tr>;
       })}
-      {!loading && !rows.length && !error ? <tr><td colSpan={6}>{source === "organization" ? "本组织发布引入的主体都已登记。可切换来源查看全部 Catalog 主体。" : "当前目录中没有待登记主体。"}</td></tr> : null}
+      {!loading && !rows.length && !error ? <tr><td colSpan={5}>{source === "organization" ? "本组织发布引入的主体都已登记。可切换来源查看全部 Catalog 主体。" : "当前目录中没有待登记主体。"}</td></tr> : null}
     </tbody></table></div>
     </section></div>
     <div className="dialog-actions">{onClose ? <button type="button" className="button subtle" onClick={requestClose} disabled={pending}>关闭</button> : null}
       <button type="button" className="button primary" onClick={prepare} disabled={loading || pending || !evidenceFresh || !batch.length}>继续确认（{batch.length}）</button></div>
     <ConfirmDialog open={confirm} title="确认批量登记" confirmLabel="确认登记" pending={pending} onCancel={() => setConfirm(false)} onConfirm={() => void submit()}
-      description={<><p>登记 {batch.length} 个主体，新建 {batch.filter((row) => row.moduleId === "__new__").length} 个模块。</p>{[...groups].map(([name, count]) => <p key={name}>{name}：{count} 个</p>)}</>} />
-    <ConfirmDialog open={leaveOpen} title="放弃未保存的登记修改？" description="关闭将丢失当前选择、业务分类和模块名称。"
+      description={<><p>登记 {batch.length} 个主体。</p>{[...groups].map(([name, count]) => <p key={name}>{name}：{count} 个</p>)}</>} />
+    <ConfirmDialog open={leaveOpen} title="放弃未保存的登记修改？" description="关闭将丢失当前选择、业务分类和展示别名。"
       confirmLabel="放弃修改" cancelLabel="继续编辑" onConfirm={() => { setLeaveOpen(false); onClose?.(); }} onCancel={() => setLeaveOpen(false)} />
   </>;
   return onClose ? <ModalDialog open onDismiss={pending ? undefined : requestClose}

@@ -8,7 +8,7 @@ import { installPublishedRelease } from "../../modules/catalog-kernel/install/in
 import { encodeBundleBytes, sha256Digest } from "../../modules/catalog-publication/builder/bundleCodec";
 import { CatalogSubjectId } from "../../modules/parameter-catalog-contract";
 import { executeRegistration } from "../../modules/parameter-governance/registration";
-import { createParameterModule } from "../../modules/parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../legacyParameterModuleFixture";
 import { createParameterModuleForAuth } from "../../modules/parameters/service";
 
 export async function installMemberAdditionErasureCatalogFixture(db: Database, auth: AuthContext) {

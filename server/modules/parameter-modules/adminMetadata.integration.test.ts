@@ -13,7 +13,8 @@ import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { CatalogSubjectId, SubjectRegistrationId, type CatalogReleasePin } from "../parameter-catalog-contract";
 import { createRegistrationService } from "../parameter-governance/registration";
 import { getPlacement, getRegistration } from "../parameter-governance/queries/registration";
-import { createParameterModule, getParameterModuleById, updateParameterModule } from "../parameters/parameterModuleRepository";
+import { getParameterModuleById, updateParameterModule } from "../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule, seedLegacyModuleMapping } from "../../testing/legacyParameterModuleFixture";
 import { updateParameterModuleForAuth, moveParameterModuleForAuth } from "../parameters/service";
 import type { AuthContext } from "../auth/types";
 import { readRegistry } from "./repository";
@@ -27,6 +28,10 @@ import { createSourceBackedBindingService } from "../parameter-bindings/binding/
 import { aggregateBindingDashboardHotspots } from "../parameter-bindings/dashboardRead";
 import { DefinitionRevisionId, ParameterDefinitionId } from "../parameter-catalog-contract";
 import { CATALOG_IDEMPOTENCY_HEADER, CATALOG_IF_MATCH_HEADER, CATALOG_RELEASE_HEADER } from "../contracts/dtoSchemas/parameterCatalog";
+import { resolveModuleIdForBinding } from "./resolveModuleForBinding";
+import { migrateModuleStructure } from "../../../scripts/migrate-module-structure";
+import { runV05 } from "../release-verification/gates/postgres/countGates";
+import { queryOf } from "../release-verification/gates/postgres/session";
 
 describe("administrator module metadata through the API database role", () => {
   let database: ParameterCatalogDatabase;
@@ -80,6 +85,7 @@ describe("administrator module metadata through the API database role", () => {
       ["recognition-old-endpoint", "driver-group", "curated"],
       ["recognition-release-lock", "node-type", "curated"],
       ["recognition-release-race", "node-type", "curated"],
+      ["legacy-runtime-mapping", "driver-group", "curated"],
     ] as const) await prepareLegacyFixture(key, kind, origin);
     const upgrade = legacyFixtures.get("recognition-upgrade")!;
     await pool.query(`insert into public.module_recognition_rules
@@ -193,6 +199,20 @@ describe("administrator module metadata through the API database role", () => {
     const result = await apiDb.query(`select registration_id, compatibles from public.registration_recognition_rules
       where organization_id = $1`, [f.auth.organization.id]);
     expect(result.rows).toEqual([{ registration_id: f.registrationId, compatibles: ["local,upgrade"] }]);
+    expect((await readRegistry(apiDb, f.auth.organization.id, null)).modules.find(module => module.id === f.module.id)?.unmigratedRecognition)
+      .toBeUndefined();
+  });
+
+  it("resolves legacy mapping evidence through the API role before and after organization migration", async () => {
+    const f = await fixture("legacy-runtime-mapping", "driver-group", "curated");
+    await seedLegacyModuleMapping(pool, { id: "api-legacy-mapping", organizationId: f.auth.organization.id,
+      moduleId: f.module.id, matchKind: "compatible", matchValue: "legacy,runtime" });
+    const input = { organizationId: f.auth.organization.id, driverModule: null, compatible: "legacy,runtime", nodeType: null };
+    expect(await resolveModuleIdForBinding(apiDb, input)).toBe(f.parent.id);
+    const applied = await migrateModuleStructure(ownerDb, f.auth.organization.id, true);
+    expect(applied.changes).toContainEqual(expect.objectContaining({ action: "move-placement", moduleId: f.module.id }));
+    expect(await resolveModuleIdForBinding(apiDb, input)).toBe(f.parent.id);
+    expect(await runV05(queryOf(apiDb))).toMatchObject({ gateId: "PCAT-DB-V05" });
   });
 
   it.each(["recognition-mismatch", "recognition-unproven"])("keeps %s legacy rules unresolved during upgrade", async key => {
@@ -203,10 +223,14 @@ describe("administrator module metadata through the API database role", () => {
     expect(mappings.rows).toEqual([]);
     const legacy = await apiDb.query(`select module_id from public.module_recognition_rules where organization_id = $1`, [f.auth.organization.id]);
     expect(legacy.rows).toEqual([{ module_id: f.module.id }]);
+    const displayed = (await readRegistry(apiDb, f.auth.organization.id, null)).modules.find(module => module.id === f.module.id);
+    const savedSelector = key === "recognition-mismatch" ? "local,misattributed" : "local,unproven";
+    expect(displayed?.unmigratedRecognition?.compatibles).toEqual([savedSelector]);
     expect(migrationNotices.some(notice => notice.includes(f.auth.organization.id) && notice.includes(f.module.id))).toBe(true);
     const catalog = await captureModuleRecognitionCatalog(apiDb);
     if (!catalog) throw new Error("Catalog is unavailable");
     const snapshot = await loadOrganizationCatalogSnapshot(apiDb, f.auth.organization.id, catalog);
+    expect(snapshot.resolveSubject({ driverCompatibles: [DriverCompatible(savedSelector)], nodeTypeFallback: { kind: "absent" } }).status).toBe("unknown");
     expect(snapshot.resolveSubject({ driverCompatibles: [], nodeTypeFallback: { kind: "present", name: NormalizedNodeTypeName("charger") } }))
       .toMatchObject({ status: "matched", subject: { id: "csub_acme_charger" } });
   });
@@ -219,6 +243,13 @@ describe("administrator module metadata through the API database role", () => {
     expect(rules.rows).toEqual([]);
     expect(mappings.rows).toEqual([]);
     expect(legacy.rows).toEqual([{ module_id: f.target.id }]);
+    const displayed = (await readRegistry(apiDb, f.auth.organization.id, null)).modules.find(module => module.id === f.target.id);
+    expect(displayed?.unmigratedRecognition?.compatibles).toEqual(["local,shared-upgrade"]);
+    const catalog = await captureModuleRecognitionCatalog(apiDb);
+    if (!catalog) throw new Error("Catalog is unavailable");
+    const snapshot = await loadOrganizationCatalogSnapshot(apiDb, f.auth.organization.id, catalog);
+    expect(snapshot.resolveSubject({ driverCompatibles: [DriverCompatible("local,shared-upgrade")], nodeTypeFallback: { kind: "absent" } }).status)
+      .toBe("unknown");
     expect(migrationNotices.some(notice => notice.includes(f.auth.organization.id) && notice.includes(f.target.id))).toBe(true);
   });
 
@@ -293,7 +324,7 @@ describe("administrator module metadata through the API database role", () => {
     expect(updated.status, updated.bodyText).toBe(200);
     const stale = await requestJson(server, `/api/v1/parameter-modules/${f.module.id}`, { method: "PATCH",
       headers: { "X-WiseEff-User": f.auth.user.id }, body: JSON.stringify({ name: "Stale name", compatibles: ["local,stale"] }) });
-    expect(stale.status).toBe(409);
+    expect(stale.status).toBe(410);
     const after = await requestJson<{ item: { compatibles: string[] } }>(server, path, { headers: { "X-WiseEff-User": f.auth.user.id } });
     expect(after.body.item.compatibles).toEqual(["local,newer"]);
     expect((await getParameterModuleById(apiDb, { organizationId: f.auth.organization.id, moduleId: f.module.id }))?.name).toBe(f.module.name);
@@ -365,43 +396,31 @@ describe("administrator module metadata through the API database role", () => {
   it.each([
     ["auto-driver", "driver-group", "auto"], ["manual-driver", "driver-group", "curated"],
     ["auto-node", "node-type", "auto"], ["manual-node", "node-type", "curated"],
-  ] as const)("saves and reloads %s details, importance and parent without changing subject identity", async (key, kind, origin) => {
+  ] as const)("keeps %s legacy metadata and placement read-only", async (key, kind, origin) => {
     const f = await fixture(key, kind, origin);
     const organizationId = f.auth.organization.id;
     expect((await readRegistry(apiDb, organizationId, null)).modules.find(m => m.id === f.module.id)?.effectiveImportance).toBe("high");
-    await updateParameterModuleForAuth(apiDb, f.auth, f.module.id, { description: "Description only" });
-    expect((await readRegistry(apiDb, organizationId, null)).modules.find(m => m.id === f.module.id))
-      .toMatchObject({ origin: "curated", effectiveImportance: "high" });
+    await expect(updateParameterModuleForAuth(apiDb, f.auth, f.module.id, { description: "Description only" }))
+      .rejects.toMatchObject({ code: "GONE" });
     const server = createWiseEffServer({ db: apiDb });
     const savedResponse = await requestJson<{ item: typeof f.module }>(server, `/api/v1/parameter-modules/${f.module.id}`, {
       method: "PATCH", headers: { "X-WiseEff-User": f.auth.user.id },
       body: JSON.stringify({ name: "Edited", description: "Details", scope: "Scope", sortOrder: 7, importance: "low", kind }),
     });
-    expect(savedResponse.status, savedResponse.bodyText).toBe(200);
-    const saved = savedResponse.body.item;
-    expect(saved).toMatchObject({ name: "Edited", description: "Details", scope: "Scope", sortOrder: 7, importance: "low", origin: "curated", kind });
+    expect(savedResponse.status, savedResponse.bodyText).toBe(410);
     const movedResponse = await requestJson<{ item: typeof f.module }>(server, `/api/v1/parameter-modules/${f.module.id}/move`, {
       method: "POST", headers: { "X-WiseEff-User": f.auth.user.id }, body: JSON.stringify({ parentId: f.target.id }),
     });
-    expect(movedResponse.status, movedResponse.bodyText).toBe(200);
-    const moved = movedResponse.body.item;
-    expect(moved).toMatchObject({ parentId: f.target.id, path: `${f.target.id}/${f.module.id}`, depth: 2 });
+    expect(movedResponse.status, movedResponse.bodyText).toBe(410);
     const reloaded = (await readRegistry(apiDb, organizationId, null)).modules.find(m => m.id === f.module.id);
-    expect(reloaded).toMatchObject({ name: "Edited", description: "Details", scope: "Scope", sortOrder: 7,
-      importance: "low", kind, origin: "curated", parentId: f.target.id, effectiveImportance: "low" });
+    expect(reloaded).toMatchObject({ name: "Original", kind, origin, parentId: f.parent.id, effectiveImportance: "high" });
     const registration = await getRegistration(getRootPostgresPool(apiDb)!, f.placementQuery);
-    expect(registration).toMatchObject({ ok: true, value: { id: f.registrationId, placement: { moduleId: f.module.id, displayName: "Edited" } } });
+    expect(registration).toMatchObject({ ok: true, value: { id: f.registrationId, placement: { moduleId: f.module.id, displayName: "Original" } } });
     const placement = await getPlacement(getRootPostgresPool(apiDb)!, f.placementQuery);
     if (!placement.ok) throw new Error(JSON.stringify(placement.error));
-    expect(placement.value.version).not.toBe(f.placement.version);
-    const stale = await registrationService().execute({
-      kind: "move-placement", organizationId, registrationId: f.registrationId, expectedRelease: release,
-      destinationModuleId: f.module.id, expectedPlacementVersion: f.placement.version,
-      idempotencyKey: `stale-${key}`, context: { actorKind: "org-admin", principalId: f.auth.user.id },
-    });
-    expect(stale).toMatchObject({ ok: false, error: { kind: "placement-conflict" } });
+    expect(placement.value.version).toBe(f.placement.version);
     expect((await apiDb.query(`select kind from public.audit_events where target_id = $1 and kind like 'parameter-module-admin-%'`, [f.module.id])).rows)
-      .toHaveLength(3);
+      .toHaveLength(0);
   });
 
   it("preserves tenant, role, kind, cycle and transactional rollback boundaries", async () => {
@@ -411,21 +430,25 @@ describe("administrator module metadata through the API database role", () => {
     await expect(moveParameterModuleForAuth(apiDb, viewer, f.module.id, { parentId: null })).rejects.toMatchObject({ code: "FORBIDDEN" });
     const foreign = await fixture("foreign", "node-type", "curated");
     await expect(updateParameterModuleForAuth(apiDb, foreign.auth, f.module.id, { name: "Denied" })).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(moveParameterModuleForAuth(apiDb, f.auth, f.module.id, { parentId: foreign.parent.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(moveParameterModuleForAuth(apiDb, f.auth, f.parent.id, { parentId: foreign.parent.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    // @ts-expect-error exercise a legacy kind at the runtime service boundary
     await expect(updateParameterModuleForAuth(apiDb, f.auth, f.module.id, { kind: "node-type" })).rejects.toMatchObject({ code: "GONE" });
     await expect(moveParameterModuleForAuth(apiDb, f.auth, f.parent.id, { parentId: f.module.id })).rejects.toMatchObject({ code: "CONFLICT" });
     const node = await createParameterModule(pool, { organizationId: f.auth.organization.id, name: "Node", kind: "node-type" });
     const system = await createParameterModule(pool, { organizationId: f.auth.organization.id, name: "Unclassified", kind: "unclassified" });
-    await expect(moveParameterModuleForAuth(apiDb, f.auth, f.module.id, { parentId: node.id })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(moveParameterModuleForAuth(apiDb, f.auth, f.module.id, { parentId: node.id })).rejects.toMatchObject({ code: "GONE" });
     await expect(moveParameterModuleForAuth(apiDb, f.auth, system.id, { parentId: f.parent.id })).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(moveParameterModuleForAuth(apiDb, f.auth, node.id, { parentId: system.id })).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(moveParameterModuleForAuth(apiDb, f.auth, node.id, { parentId: f.module.id })).resolves.toMatchObject({ parentId: f.module.id });
-    await expect(moveParameterModuleForAuth(apiDb, f.auth, f.module.id, { parentId: node.id })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(moveParameterModuleForAuth(apiDb, f.auth, node.id, { parentId: system.id })).rejects.toMatchObject({ code: "GONE" });
+    await expect(moveParameterModuleForAuth(apiDb, f.auth, node.id, { parentId: f.module.id })).rejects.toMatchObject({ code: "GONE" });
+    await expect(moveParameterModuleForAuth(apiDb, f.auth, f.module.id, { parentId: node.id })).rejects.toMatchObject({ code: "GONE" });
+    await expect(moveParameterModuleForAuth(apiDb, f.auth, f.parent.id, { parentId: f.target.id })).rejects.toMatchObject({ code: "CONFLICT" });
+    const business = await createParameterModule(pool, { organizationId: f.auth.organization.id, name: "Rollback business" });
     await expect(apiDb.transaction(async tx => {
-      await updateParameterModuleForAuth(tx, f.auth, f.module.id, { name: "Rolled back", importance: "low" });
-      await moveParameterModuleForAuth(tx, f.auth, f.module.id, { parentId: f.target.id });
+      await updateParameterModuleForAuth(tx, f.auth, business.id, { name: "Rolled back", importance: "low" });
+      await moveParameterModuleForAuth(tx, f.auth, business.id, { parentId: f.target.id });
       throw new Error("injected-after-module-edits");
     })).rejects.toThrow("injected-after-module-edits");
+    expect(await getParameterModuleById(apiDb, { organizationId: f.auth.organization.id, moduleId: business.id })).toMatchObject(business);
     expect(await getParameterModuleById(apiDb, { organizationId: f.auth.organization.id, moduleId: f.module.id })).toMatchObject(f.module);
     const placement = await getPlacement(getRootPostgresPool(apiDb)!, f.placementQuery);
     expect(placement).toEqual({ ok: true, value: f.placement });
@@ -434,43 +457,47 @@ describe("administrator module metadata through the API database role", () => {
 
   it("does not restore a stale name when a metadata-only update overlaps a rename", async () => {
     const f = await fixture("overlapping-edits", "node-type", "auto");
+    const module = await createParameterModule(pool, { organizationId: f.auth.organization.id, name: "Original business" });
     let renamed = false;
     const interleaved: Queryable = {
       async query<Row>(sql: string, values?: unknown[]) {
         const result = await apiDb.query<Row>(sql, values);
         if (!renamed && sql.includes("from parameter_modules") && sql.includes("id = $2")) {
           renamed = true;
-          await updateParameterModuleForAuth(apiDb, f.auth, f.module.id, { name: "Concurrent rename" });
+          await updateParameterModuleForAuth(apiDb, f.auth, module.id, { name: "Concurrent rename" });
         }
         return result;
       },
     };
     await expect(updateParameterModule(interleaved, {
-      organizationId: f.auth.organization.id, moduleId: f.module.id, description: "Concurrent details",
+      organizationId: f.auth.organization.id, moduleId: module.id, description: "Concurrent details",
     })).resolves.toMatchObject({ name: "Concurrent rename", description: "Concurrent details" });
     const audits = await apiDb.query<{ metadata: { previousName: string } }>(
-      `select metadata from public.audit_events where target_id = $1 and kind = 'parameter-module-admin-update'`, [f.module.id],
+      `select metadata from public.audit_events where target_id = $1 and kind = 'parameter-module-admin-update'`, [module.id],
     );
     expect(audits.rows).toHaveLength(1);
-    expect(audits.rows[0]!.metadata.previousName).toBe("Original");
+    expect(audits.rows[0]!.metadata.previousName).toBe("Original business");
   });
 
-  it("serializes reciprocal node moves before reading the tree and rejects the second cycle", async () => {
+  it("serializes reciprocal business module moves before reading the tree and rejects the second cycle", async () => {
     const f = await fixture("reciprocal-moves", "node-type", "auto");
+    const module = await createParameterModule(pool, {
+      organizationId: f.auth.organization.id, name: "First", parentId: f.parent.id,
+    });
     const sibling = await createParameterModule(pool, {
-      organizationId: f.auth.organization.id, name: "Sibling", kind: "node-type", parentId: f.parent.id,
+      organizationId: f.auth.organization.id, name: "Sibling", parentId: f.parent.id,
     });
     let firstMoved!: () => void;
     let releaseFirst!: () => void;
     const moved = new Promise<void>(resolve => { firstMoved = resolve; });
     const release = new Promise<void>(resolve => { releaseFirst = resolve; });
     const first = apiDb.transaction(async tx => {
-      await moveParameterModuleForAuth(tx, f.auth, f.module.id, { parentId: sibling.id });
+      await moveParameterModuleForAuth(tx, f.auth, module.id, { parentId: sibling.id });
       firstMoved();
       await release;
     });
     await moved;
-    const second = moveParameterModuleForAuth(apiDb, f.auth, sibling.id, { parentId: f.module.id })
+    const second = moveParameterModuleForAuth(apiDb, f.auth, sibling.id, { parentId: module.id })
       .then(value => ({ ok: true as const, value }), error => ({ ok: false as const, error }));
     try {
       await expect.poll(async () => (await apiDb.query<{ waiting: boolean }>(
@@ -484,14 +511,17 @@ describe("administrator module metadata through the API database role", () => {
     }
     expect(await second).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     const registry = await readRegistry(apiDb, f.auth.organization.id, null);
-    expect(registry.modules.find(m => m.id === f.module.id)?.parentId).toBe(sibling.id);
+    expect(registry.modules.find(m => m.id === module.id)?.parentId).toBe(sibling.id);
     expect(registry.modules.find(m => m.id === sibling.id)?.parentId).toBe(f.parent.id);
   });
 
   it("audits the actual previous parent after another move invalidates its preflight read", async () => {
     const f = await fixture("overlapping-move-audit", "node-type", "auto");
+    const module = await createParameterModule(pool, {
+      organizationId: f.auth.organization.id, name: "First", parentId: f.parent.id,
+    });
     const sibling = await createParameterModule(pool, {
-      organizationId: f.auth.organization.id, name: "Sibling", kind: "node-type", parentId: f.parent.id,
+      organizationId: f.auth.organization.id, name: "Sibling", parentId: f.parent.id,
     });
     let moved = false;
     const interleaved: Database = {
@@ -500,14 +530,14 @@ describe("administrator module metadata through the API database role", () => {
         const result = await apiDb.query<Row>(sql, values);
         if (!moved && sql.includes("from parameter_modules") && sql.includes("id = $2")) {
           moved = true;
-          await moveParameterModuleForAuth(apiDb, f.auth, f.module.id, { parentId: sibling.id });
+          await moveParameterModuleForAuth(apiDb, f.auth, module.id, { parentId: sibling.id });
         }
         return result;
       },
     };
-    await moveParameterModuleForAuth(interleaved, f.auth, f.module.id, { parentId: f.target.id });
+    await moveParameterModuleForAuth(interleaved, f.auth, module.id, { parentId: f.target.id });
     const audits = await apiDb.query<{ metadata: { previousParentId: string } }>(
-      `select metadata from public.audit_events where target_id = $1 and kind = 'parameter-module-admin-move'`, [f.module.id],
+      `select metadata from public.audit_events where target_id = $1 and kind = 'parameter-module-admin-move'`, [module.id],
     );
     expect(audits.rows).toHaveLength(2);
     expect(audits.rows.map(row => row.metadata.previousParentId)).toEqual(expect.arrayContaining([f.parent.id, sibling.id]));
@@ -522,10 +552,10 @@ describe("administrator module metadata through the API database role", () => {
       driverNature: "physical-device", instanceCardinality: "multiple" });
     const legacy = (await apiDb.query(`select to_jsonb(driver) as row from public.driver_registrations driver
       where attribution_subject_id = $1`, [f.module.attributionSubjectId])).rows;
-    await updateParameterModuleForAuth(apiDb, f.auth, f.module.id, { name: "Locally maintained" });
+    await expect(updateParameterModuleForAuth(apiDb, f.auth, f.module.id, { name: "Locally maintained" })).rejects.toMatchObject({ code: "GONE" });
     await updateRecognition(apiDb, f, { compatibles: ["local,first", "local,second"], driverNature: "logical-service", instanceCardinality: "singleton-per-project" });
     const saved = (await readRegistry(apiDb, f.auth.organization.id, catalog)).modules.find(module => module.id === f.module.id)!;
-    expect(saved).toMatchObject({ name: "Locally maintained", origin: "curated", recognitionSubjectId: "csub_acme_power",
+    expect(saved).toMatchObject({ name: "Original", origin: "auto", recognitionSubjectId: "csub_acme_power",
       compatibles: ["local,first", "local,second"], driverNature: "logical-service", instanceCardinality: "singleton-per-project" });
     const selector = (compatible: string) => ({ driverCompatibles: [DriverCompatible(compatible)], nodeTypeFallback: { kind: "absent" as const } });
     const local = await loadOrganizationCatalogSnapshot(apiDb, f.auth.organization.id, catalog);
@@ -555,9 +585,9 @@ describe("administrator module metadata through the API database role", () => {
     const localNode = await createParameterModule(pool, { organizationId: f.auth.organization.id, name: "Unknown node", kind: "node-type" });
     await expect(updateParameterModuleForAuth(apiDb, f.auth, localDriver.id, {
       compatibles: ["private,local"], driverNature: "logical-service", instanceCardinality: "multiple",
-    })).rejects.toMatchObject({ code: "CONFLICT" });
+    })).rejects.toMatchObject({ code: "GONE" });
     await expect(updateParameterModuleForAuth(apiDb, f.auth, localNode.id, { nodeTypeName: "private-controller" }))
-      .rejects.toMatchObject({ code: "CONFLICT" });
+      .rejects.toMatchObject({ code: "GONE" });
     const loaded = (await loadModuleRecognitionSettings(apiDb, f.auth.organization.id)).get(localDriver.id);
     expect(loaded).toMatchObject({ recognitionSubjectId: null, compatibles: [], overridden: false });
     await expect(updateRecognition(apiDb, f, { nodeTypeName: "controller@0" }))
@@ -571,7 +601,7 @@ describe("administrator module metadata through the API database role", () => {
     await expect(updateParameterModuleForAuth(apiDb, foreign.auth, localDriver.id, { compatibles: ["denied,value"] }))
       .rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(apiDb.transaction(async tx => {
-      await updateParameterModuleForAuth(tx, f.auth, f.module.id, { name: "Should roll back" });
+      await updateParameterModuleForAuth(tx, f.auth, f.parent.id, { name: "Should roll back" });
       await updateRecognition(tx, f, { nodeTypeName: "local-charger" });
       throw new Error("injected-after-recognition-edit");
     })).rejects.toThrow("injected-after-recognition-edit");
@@ -634,7 +664,7 @@ describe("administrator module metadata through the API database role", () => {
     expect(afterMove.resolveSubject(selector("local,old-module")).status).toBe("matched");
     expect(afterMove.resolveSubject(selector("acme,power")).status).toBe("unknown");
     await expect(updateParameterModuleForAuth(apiDb, f.auth, legacyDestination.id, { compatibles: ["local,new-module"] }))
-      .rejects.toMatchObject({ code: "CONFLICT" });
+      .rejects.toMatchObject({ code: "GONE" });
     const afterSave = await loadOrganizationCatalogSnapshot(apiDb, f.auth.organization.id, afterMove);
     expect(afterSave.resolveSubject(selector("local,new-module")).status).toBe("unknown");
     expect(afterSave.resolveSubject(selector("local,old-module")).status).toBe("matched");
@@ -645,7 +675,7 @@ describe("administrator module metadata through the API database role", () => {
     const localDriver = await createParameterModule(pool, { organizationId: f.auth.organization.id,
       name: "Previously unregistered", kind: "driver-group" });
     await expect(updateParameterModuleForAuth(apiDb, f.auth, localDriver.id, { compatibles: ["local,later-registration"], instanceCardinality: "singleton-per-project" }))
-      .rejects.toMatchObject({ code: "CONFLICT" });
+      .rejects.toMatchObject({ code: "GONE" });
     const registered = await registrationService().execute({
       kind: "register", organizationId: f.auth.organization.id, subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver",
       expectedRelease: release, placement: { mode: "use-default" }, destinationModuleId: f.parent.id, method: "explicit",

@@ -33,7 +33,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
   }
   const entries: ImportEntry[] = [];
   const changes: CatalogChange[] = [];
-  const placementHints: { kind: string; selector: string; subjectId?: string; categoryPath?: string; moduleName?: string; line: number }[] = [];
+  const placementHints: { kind: string; selector: string; subjectId?: string; categoryPath?: string; displayAlias?: string; line: number; warnings: { message: string; line: number }[] }[] = [];
   const seen = new Set<string>();
   const newSubjects = new Map<string, ReturnType<typeof resolveSubject>>();
   for (const issue of syntax.diagnostics.filter((item) => item.subjectLine === undefined)) {
@@ -44,7 +44,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
     if (section.kind && resolved.hintLine !== undefined) placementHints.push({ kind: section.kind, selector: section.selector,
       ...(resolved.subject ? { subjectId: resolved.subject.content.id } : {}),
       ...(resolved.categoryPath ? { categoryPath: resolved.categoryPath } : {}),
-      ...(resolved.moduleName ? { moduleName: resolved.moduleName } : {}), line: resolved.hintLine });
+      ...(resolved.displayAlias ? { displayAlias: resolved.displayAlias } : {}), line: resolved.hintLine, warnings: resolved.warnings });
     if (!resolved.subject && section.kind) {
       const subjectKey = `${resolved.ownerSubjectId ?? ""}\0${section.selector}`;
       const previous = newSubjects.get(subjectKey);

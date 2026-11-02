@@ -103,6 +103,8 @@ export function createMockParameterModuleRegistryRepository(
       if ((input.kind && input.kind !== "business") || input.sourceKey || input.compatibles?.length) {
         throw mockApiError("LEGACY_SURFACE_RETIRED", "Mock mode supports business taxonomy only.");
       }
+      const parent = input.parentId && store.modules.find((module) => module.id === input.parentId);
+      if (input.parentId && (!parent || parent.kind !== "business")) throw mockApiError("CONFLICT", "Target must be a business category.");
       moduleSeq += 1;
       const kind = "business";
       const origin = input.origin ?? "curated";
@@ -131,6 +133,9 @@ export function createMockParameterModuleRegistryRepository(
       if (!target) {
         throw mockApiError("NOT_FOUND", `Module not found: ${moduleId}`, { moduleId });
       }
+      if (target.kind === "driver-group" || target.kind === "node-type") {
+        throw mockApiError("LEGACY_SURFACE_RETIRED", "Legacy technical modules are read-only.");
+      }
       if (input.kind && input.kind !== target.kind) {
         throw mockApiError("LEGACY_SURFACE_RETIRED", "Module identity kind cannot be changed.");
       }
@@ -146,6 +151,8 @@ export function createMockParameterModuleRegistryRepository(
       if (input.instanceCardinality !== undefined) target.instanceCardinality = input.instanceCardinality;
       if (input.nodeTypeName !== undefined) target.nodeTypeName = input.nodeTypeName;
       if (input.parentId !== undefined) {
+        const parent = input.parentId && store.modules.find((module) => module.id === input.parentId);
+        if (input.parentId && (!parent || parent.kind !== "business")) throw mockApiError("CONFLICT", "Target must be a business category.");
         target.parentId = input.parentId;
       }
       if (input.sortOrder !== undefined) target.sortOrder = input.sortOrder;
@@ -158,6 +165,7 @@ export function createMockParameterModuleRegistryRepository(
 
     async deleteModule(moduleId: string) {
       const target = store.modules.find((module) => module.id === moduleId);
+      if (target?.kind === "driver-group" || target?.kind === "node-type") throw mockApiError("LEGACY_SURFACE_RETIRED", "Legacy technical modules are read-only.");
       if (target?.kind === "unclassified" && target.parentId === null) throw mockApiError("CONFLICT", "The unclassified root is read-only.");
       if (store.modules.some((module) => module.parentId === moduleId)) throw mockApiError("CONFLICT", "Remove child modules first.");
       store.modules = store.modules.filter((module) => module.id !== moduleId);

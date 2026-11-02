@@ -296,7 +296,7 @@ describe("createParameterModuleBodySchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts node-type kind and rejects instance kind", () => {
+  it("rejects node-type and instance kinds", () => {
     expect(
       createParameterModuleBodySchema.safeParse({
         name: "usb0",
@@ -304,7 +304,7 @@ describe("createParameterModuleBodySchema", () => {
         parentId: "biz-power",
         sourceKey: "nodetype:usb0"
       }).success
-    ).toBe(true);
+    ).toBe(false);
     expect(
       createParameterModuleBodySchema.safeParse({
         name: "usb0",
@@ -332,6 +332,7 @@ describe("createParameterModuleForAuth", () => {
     const before = structuredClone([...modules.values()]);
     await expect(createParameterModuleForAuth(db, makeAuth(), {
       name: "hl7603",
+      // @ts-expect-error exercise the runtime boundary with an invalid legacy kind
       kind: "driver-group",
       parentId: "biz-power",
       compatibles: ["huawei,bypass_bst_hl7603"],
@@ -341,6 +342,7 @@ describe("createParameterModuleForAuth", () => {
 
     await expect(createParameterModuleForAuth(db, makeAuth(), {
       name: "regulator-dummy",
+      // @ts-expect-error exercise the runtime boundary with an invalid legacy kind
       kind: "node-type",
       parentId: "biz-power",
       sourceKey: "nodetype:regulator-dummy"
@@ -354,6 +356,7 @@ describe("createParameterModuleForAuth", () => {
     await expect(
       createParameterModuleForAuth(db, makeAuth(), {
         name: "bad-dg",
+        // @ts-expect-error exercise the runtime boundary with an invalid legacy kind
         kind: "driver-group",
         parentId: "dg-sc8562",
         compatibles: ["huawei,x"]
@@ -362,6 +365,7 @@ describe("createParameterModuleForAuth", () => {
 
     await expect(createParameterModuleForAuth(db, makeAuth(), {
       name: "nested-under-driver",
+      // @ts-expect-error exercise the runtime boundary with an invalid legacy kind
       kind: "node-type",
       parentId: "dg-sc8562",
       sourceKey: "nodetype:usb0"
@@ -370,6 +374,7 @@ describe("createParameterModuleForAuth", () => {
     await expect(
       createParameterModuleForAuth(db, makeAuth(), {
         name: "bad-node-type-root",
+        // @ts-expect-error exercise the runtime boundary with an invalid legacy kind
         kind: "node-type",
         parentId: null,
         sourceKey: "nodetype:regulator-dummy"
@@ -395,6 +400,7 @@ describe("createParameterModuleForAuth", () => {
     const before = structuredClone([...modules.values()]);
     await expect(createParameterModuleForAuth(db, makeAuth(), {
       name: "sc8562-claimed",
+      // @ts-expect-error exercise the runtime boundary with an invalid legacy kind
       kind: "driver-group",
       parentId: "biz-power",
       compatibles: ["huawei,sc8562"]

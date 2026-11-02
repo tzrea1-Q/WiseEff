@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
 import { createPostgresDatabase, type RootDatabase } from "../../../shared/database/client";
-import { createParameterModule } from "../../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../../testing/legacyParameterModuleFixture";
 import { curateReviewedSeedPlacementCapacity } from "./placementCapacity";
 
 describe("seed business placement", () => {

@@ -3,12 +3,21 @@ import type { Queryable } from "../../shared/database/client";
 import { loadModuleRecognitionSettings, loadOrganizationRecognitionRules } from "./recognitionSettings";
 
 describe("recognition rules on historical schemas", () => {
-  it("returns no overrides without issuing a failing table read when migration 0212 is absent", async () => {
+  it("returns no overrides on schemas before registration recognition rules", async () => {
     const query = vi.fn().mockResolvedValue({ rows: [{ available: false }] });
     await expect(loadOrganizationRecognitionRules({ query } satisfies Queryable, "org-historical")).resolves.toEqual([]);
     expect(query).toHaveBeenCalledExactlyOnceWith(
-      "select to_regclass('public.module_recognition_rules') is not null as available",
+      "select to_regclass('public.registration_recognition_rules') is not null as available",
     );
+  });
+
+  it("reads only registration-scoped rules for the organization overlay", async () => {
+    const rule = { module_id: "business", canonical_subject_id: "subject", compatibles: ["vendor,new"],
+      driver_nature: "physical-device", instance_cardinality: "multiple", node_type_name: null };
+    const query = vi.fn().mockResolvedValueOnce({ rows: [{ available: true }] }).mockResolvedValueOnce({ rows: [rule] });
+    await expect(loadOrganizationRecognitionRules({ query } satisfies Queryable, "org-current")).resolves.toEqual([rule]);
+    expect(query.mock.calls[1]?.[0]).toContain("public.registration_recognition_rules");
+    expect(query.mock.calls.every(([sql]) => !sql.includes("public.module_recognition_rules"))).toBe(true);
   });
 
   it.each(["42501", "42P01"])("propagates SQLSTATE %s from an existing feature table", async code => {
@@ -28,6 +37,6 @@ describe("recognition rules on historical schemas", () => {
     const settings = await loadModuleRecognitionSettings({ query } satisfies Queryable, "org-historical");
     expect(settings.get("legacy-module")).toMatchObject({ recognitionSubjectId: null, compatibles: ["legacy,device"],
       instanceCardinality: "singleton-per-project", overridden: false });
-    expect(query.mock.calls[1]?.[0]).not.toContain("module_recognition_rules");
+    expect(query.mock.calls.every(([sql]) => !sql.includes("public.module_recognition_rules"))).toBe(true);
   });
 });

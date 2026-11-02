@@ -31,7 +31,7 @@ import { fixtureCutoverIdentities } from "../../catalog-cutover/identities";
 import { fixtureObservedQuiescence } from "../../catalog-cutover/quiescence";
 import { fixtureObservedRecoveryPoint } from "../../catalog-cutover/recoveryPointObservation";
 import { CatalogSubjectId } from "../../parameter-catalog-contract";
-import { createParameterModule } from "../../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../../testing/legacyParameterModuleFixture";
 import { captureOfflineModD02PreP11, captureOfflineModD02PreP11FromUrls } from "./offlineModD02Capture";
 import { createOfflineModD02SourceReader } from "./offlineModD02SourceReader";
 import { serializeCanonical } from "./corpusContributionSchema";

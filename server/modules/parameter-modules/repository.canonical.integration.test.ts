@@ -18,14 +18,8 @@ import {
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
 } from "../../testing/testDatabase";
-import {
-  countCanonicalPlacementsForModule,
-  countParametersForModule,
-  createParameterModule,
-  deleteParameterModule,
-  moveParameterModule,
-  updateParameterModule,
-} from "../parameters/parameterModuleRepository";
+import { countCanonicalPlacementsForModule, countParametersForModule, deleteParameterModule, moveParameterModule, updateParameterModule } from "../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../testing/legacyParameterModuleFixture";
 import { readRegistry } from "./repository";
 import { deleteParameterModuleForAuth } from "../parameters/service";
 import { getRegistration } from "../parameter-governance/queries/registration";
@@ -266,7 +260,7 @@ describe.skipIf(!databaseAvailable)("Issue #897 canonical registry projection", 
     await expect(deleteParameterModuleForAuth(apiDb, auth, moduleDriverId)).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("detaches a populated legacy driver placement through the API role while retaining legacy rows", async () => {
+  it("keeps a populated legacy driver placement read-only through the API role", async () => {
     const subjectId = "subject-delete-legacy";
     await pool.query(`insert into public.attribution_subjects (id, organization_id, subject_kind, display_name, source_key)
                       values ($1, $2, 'driver-registration', 'Legacy retained', 'legacy:delete-test')`, [subjectId, ORG]);
@@ -278,11 +272,11 @@ describe.skipIf(!databaseAvailable)("Issue #897 canonical registry projection", 
     await pool.query(`insert into public.parameter_definitions
       (id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk, parameter_module_id)
       values ('definition-legacy-retained', $1, 'retained', '', '', 'ENV', 'Legacy leaf', '', '', 'Low', $2)`, [ORG, module.id]);
-    await deleteParameterModuleForAuth(apiDb, auth, module.id);
+    await expect(deleteParameterModuleForAuth(apiDb, auth, module.id)).rejects.toMatchObject({ code: "GONE" });
     expect((await apiDb.query(`select driver_group_module_id from public.driver_registration_placements where id = 'legacy-placement-retained'`)).rows)
-      .toEqual([{ driver_group_module_id: null }]);
+      .toEqual([{ driver_group_module_id: module.id }]);
     expect((await apiDb.query(`select parameter_module_id, module from public.parameter_definitions where id = 'definition-legacy-retained'`)).rows)
-      .toEqual([{ parameter_module_id: null, module: "unset" }]);
+      .toEqual([{ parameter_module_id: module.id, module: "Legacy leaf" }]);
     expect((await apiDb.query(`select attribution_subject_id from public.driver_registrations where attribution_subject_id = $1`, [subjectId])).rows)
       .toHaveLength(1);
   });

@@ -5,7 +5,7 @@ import type { catalogPublicationCommandByRouteId } from "./mapping";
 import type { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
 import type { UsageProjectScope } from "../../parameter-bindings/usage";
 
-export type PlacementHintWithWarnings = ReturnType<typeof planMarkdownImport>["placementHints"][number] & { warnings: string[] };
+export type PlacementHintWithWarnings = ReturnType<typeof planMarkdownImport>["placementHints"][number];
 
 export type CatalogPublicationRouteId = keyof typeof catalogPublicationCommandByRouteId;
 
