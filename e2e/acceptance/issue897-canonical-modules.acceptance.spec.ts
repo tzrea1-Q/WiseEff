@@ -389,7 +389,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     const dismiss = page.getByRole("button", { name: "不再提示" });
     if (await dismiss.isVisible()) await dismiss.click();
 
-    await page.getByRole("button", { name: "修改模块 Canonical source", exact: true }).click();
+    await page.getByRole("button", { name: "查看模块 Canonical source", exact: true }).click();
     const canonicalEditor = page.getByRole("dialog", { name: "Canonical source" });
     await expect(canonicalEditor.getByRole("region", { name: "规范主体放置" })).toBeVisible();
     await expect(canonicalEditor.getByRole("button", { name: "管理规范主体与归属" })).toBeVisible();
@@ -419,7 +419,7 @@ test.describe("Issue 897 canonical module ownership", () => {
       animations: "disabled"
     });
 
-    await page.getByRole("button", { name: "修改模块 Input hardware", exact: true }).click();
+    await page.getByRole("button", { name: "查看模块 Input hardware", exact: true }).click();
     const historicalEditor = page.getByRole("dialog", { name: "Input hardware" });
     await expect(historicalEditor.getByRole("region", { name: "历史驱动登记" })).toHaveCount(0);
     await expect(historicalEditor.getByRole("region", { name: "历史 compatible 溯源" })).toContainText("issue897,uncovered");
@@ -759,9 +759,13 @@ test.describe("Issue 897 canonical module ownership", () => {
     await expect(driver.getByText("归属：Issue 897 Modules / Output business", { exact: true })).toBeVisible();
     await page.getByRole("tree", { name: "模块归属树" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("canonical-module-tree-after-move.png"), animations: "disabled" });
-    await page.getByRole("button", { name: "修改模块 Input hardware", exact: true }).click();
+    await page.getByRole("button", { name: "查看模块 Input hardware", exact: true }).click();
     const historicalDetails = page.getByRole("dialog", { name: "Input hardware", exact: true });
     await expect(historicalDetails.getByRole("region", { name: "历史 compatible 溯源" })).toContainText("issue897,uncovered");
+    await expect(historicalDetails.getByLabel("模块名称")).toHaveAttribute("readonly");
+    await expect(historicalDetails.getByLabel("compatible 匹配规则")).toHaveAttribute("readonly");
+    await expect(historicalDetails.getByText(/请在主体详情中修改/)).toBeVisible();
+    await expect(historicalDetails.getByRole("button", { name: "保存", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "配置组织级解析", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "添加参数定义", exact: true })).toHaveCount(0);
     await expect(page.getByRole("dialog", { name: "选择参数定义", exact: true })).toHaveCount(0);

@@ -383,6 +383,10 @@ describe("ModuleAttributionTree", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看模块 SC8562" }));
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).getByRole("region", { name: "历史 compatible 溯源" })).toHaveTextContent("vendor,sc8562");
+    expect(within(dialog).getByLabelText("模块名称")).toHaveAttribute("readonly");
+    expect(within(dialog).getByLabelText("compatible 匹配规则")).toHaveAttribute("readonly");
+    expect(within(dialog).getByText(/请在主体详情中修改/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText("驱动性质")).toBeDisabled();
     expect(within(dialog).getByLabelText("实例基数")).toBeDisabled();
     expect(within(dialog).queryByLabelText("默认业务分类")).not.toBeInTheDocument();
@@ -506,6 +510,7 @@ describe("ModuleAttributionTree", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
     const editDialog = screen.getByRole("dialog", { name: "Power" });
+    expect(within(editDialog).getByLabelText("模块名称")).not.toHaveAttribute("readonly");
     await selectControlOption(within(editDialog).getByLabelText("模块重要性"), "low");
     fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
 
