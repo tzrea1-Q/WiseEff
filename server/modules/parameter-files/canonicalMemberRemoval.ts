@@ -12,7 +12,7 @@ import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitio
 import type { ObjectStore } from "../logs/objectStore";
 import { DefinitionRevisionId, ParameterDefinitionId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
-import { asValueClient, listObservedProperties, rawTextToPayload, syncPublishedCatalogProjectValuesInTransaction,
+import { asValueClient, listObservedProperties, nearestAncestorCompatibles, rawTextToPayload, syncPublishedCatalogProjectValuesInTransaction,
   resolveObservedSubject, parseCompatibles, loadActiveOrganizationSourceRegistrations, lockSourceCatalogGovernance } from "../parameter-bindings/catalogProjectValueSync";
 import { loadSourceBindingCohortReadOnly, hasSourceConfigurationDrafts, readOwnedCurrentBinding } from "../parameter-bindings/values";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
@@ -256,7 +256,8 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
       const registrations = new Map((await loadActiveOrganizationSourceRegistrations(tx, { organizationId: parameterOrganizationId(auth) })).map((row) => [row.subjectId, row.id]));
       for (const node of resolved.effective.nodesByLocator.values()) {
         if (node.deleted) continue;
-        const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name });
+        const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name,
+          ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator) });
         const registrationId = subject && registrations.get(subject.subjectId);
         if (!subject || !registrationId) continue;
         const logical = configuration.continuity.nodes.find((row) => row.nodeLocator === node.nodeLocator)!;
@@ -295,7 +296,8 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
       const property = node?.properties.get(String(pin.locator.propertyName));
       const origin = survivors.find((member) => member.sourceName === property?.sourceChain.at(-1)?.fileName);
       const matched = node && resolveObservedSubject(await loadOrganizationCatalogSnapshot(tx, parameterOrganizationId(auth), pinned), {
-        compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name
+        compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name,
+        ownerCompatibles: nearestAncestorCompatibles(effective!.nodesByLocator, node.nodeLocator)
       });
       if (node && !node.deleted && property && !property.deleted && origin && matched?.subjectId === currentBinding.binding.subjectId) {
         const definition = pinned.getDefinitionRevision({ definitionId: ParameterDefinitionId(row.definitionId), revisionId: DefinitionRevisionId(row.effectiveRevisionId) });

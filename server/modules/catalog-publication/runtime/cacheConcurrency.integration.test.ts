@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createCatalogKernel } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
+import { CatalogSubjectId } from "../../catalog-kernel/interface";
+import { CHARGER_SUBJECT_ID, SUBJECT_ID, installPublishedCatalogMatchChain } from "../../catalog-kernel/runtime/catalogChain.fixture";
 import {
   connect,
   provisionOnlineActivation,
@@ -62,6 +64,24 @@ describe("digest-keyed catalog cache concurrency", () => {
     await poolA?.end().catch(() => undefined);
     await poolB?.end().catch(() => undefined);
     await database?.drop();
+  });
+
+  it("invalidates current and historical cached ownership after a one-time claim", async () => {
+    const chain = await installPublishedCatalogMatchChain(poolA);
+    const runtime = createPinCapturingCatalogRuntime(poolA, createCatalogKernel(poolA));
+    const current = await captureCurrentCatalogPin(poolA);
+    if (!current) throw new Error("missing catalog pointer");
+    const before = await runtime.loadCurrentCatalog(current);
+    const historical = await runtime.loadPinnedCatalog(chain.pinD);
+    if (!before.ok || !historical.ok) throw new Error("missing catalog snapshots");
+    expect(before.value.getSubject(CatalogSubjectId(CHARGER_SUBJECT_ID))).toMatchObject({ subject: { id: CHARGER_SUBJECT_ID } });
+    expect(historical.value.getSubject(CatalogSubjectId(CHARGER_SUBJECT_ID))).toMatchObject({ subject: { id: CHARGER_SUBJECT_ID } });
+    await observer.query(`select parameter_catalog.claim_catalog_subject_owner($1, $2)`, [CHARGER_SUBJECT_ID, SUBJECT_ID]);
+    const after = await runtime.loadCurrentCatalog(current);
+    const pinnedAfter = await runtime.loadPinnedCatalog(chain.pinD);
+    if (!after.ok || !pinnedAfter.ok) throw new Error("missing refreshed snapshots");
+    expect(after.value.getSubject(CatalogSubjectId(CHARGER_SUBJECT_ID))).toMatchObject({ subject: { owner: SUBJECT_ID } });
+    expect(pinnedAfter.value.getSubject(CatalogSubjectId(CHARGER_SUBJECT_ID))).toMatchObject({ subject: { owner: SUBJECT_ID } });
   });
 
   it("re-reads the current pointer so a process that missed invalidation still sees the new head", async () => {

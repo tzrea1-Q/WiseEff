@@ -19,6 +19,7 @@ import type { AuthContext } from "../../auth/types";
 import { CatalogSubjectId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
 import { executeRegistration } from "../../parameter-governance/registration/service";
 import type { CatalogSnapshot } from "../../catalog-kernel/interface";
+import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
 import { parseCompatibles, resolveObservedSubject } from "../catalogProjectValueSync";
 import { getRootPostgresPool } from "../../../shared/database/client";
 
@@ -41,6 +42,7 @@ export const observedSubjectsWithDefinitions = (
   snapshot: CatalogSnapshot,
   rows: readonly {
     readonly compatible: string | null;
+    readonly ownerCompatible?: string | null;
     readonly name: string | null;
     readonly propertyKey: string;
   }[]
@@ -48,7 +50,8 @@ export const observedSubjectsWithDefinitions = (
   const byId = new Map<string, ObservedSubject>();
   for (const row of rows) {
     const compatibles = parseCompatibles(row.compatible);
-    const subject = resolveObservedSubject(snapshot, { compatibles, nodeName: row.name });
+    const subject = resolveObservedSubject(snapshot, { compatibles, nodeName: row.name,
+      ownerCompatibles: parseCompatibles(row.ownerCompatible ?? null) });
     if (!subject) continue;
     const definition = snapshot.getDefinition({
       subjectId: CatalogSubjectId(subject.subjectId),
@@ -139,7 +142,8 @@ export async function ensureSeedSubjectRegistrations(
         source: "seed-initialization",
         seedDigest: input.seedDigest,
         projectId: input.projectId,
-        subjectKind: subject.subjectKind
+        subjectKind: subject.subjectKind,
+        matcherRevision: subjectMatcherRevision
       },
       idempotencyKey: `seed-register:${input.seedDigest}:${input.projectId}:${subject.subjectId}`,
       // `RegistrationCommand` carries its own invocation shape (actorKind +

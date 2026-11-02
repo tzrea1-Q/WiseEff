@@ -4,6 +4,7 @@ import { getRootPostgresPool, type Database, type Queryable } from "../../shared
 import {
   loadPublishedCatalog,
   loadOrganizationRegisteredSubjectSelection,
+  nearestAncestorCompatibles,
   parseCompatibles,
   resolveObservedSubject,
 } from "../parameter-bindings/catalogProjectValueSync";
@@ -56,17 +57,28 @@ export async function loadOrganizationNavigationScope(
   return {
     status: "ready",
     catalogReleaseId: snapshot.release.id,
-    matchNodePaths: (nodes) => nodes.filter((node) => {
+    matchNodePaths: (nodes) => {
+      const absolutePath = (nodePath: string) => nodePath.startsWith("/") || nodePath.startsWith("&") ? nodePath : `/${nodePath}`;
+      const effective = new Map(nodes.map((node) => [absolutePath(node.nodePath), {
+        deleted: false,
+        properties: new Map<string, { rawText: string; deleted: boolean }>([
+          ...(node.compatible ? [["compatible", { rawText: JSON.stringify(node.compatible), deleted: false }] as const] : []),
+          ...(node.properties?.map((property) => [property.name, { ...property, deleted: false }] as const) ?? []),
+        ]),
+      }]));
+      return nodes.filter((node) => {
       // dts_nodes.compatible stores only the first string; the property preserves fallback selectors.
       const raw = node.properties?.find((property) => property.name === "compatible")?.rawText;
       const compatibles = raw !== undefined ? parseCompatibles(raw) : node.compatible ? [node.compatible] : [];
-      const selector = JSON.stringify([compatibles, compatibles.length ? null : node.name]);
+      const ownerCompatibles = nearestAncestorCompatibles(effective, absolutePath(node.nodePath));
+      const selector = JSON.stringify([compatibles, compatibles.length ? null : node.name, ownerCompatibles]);
       if (!matches.has(selector)) {
-        const subject = resolveObservedSubject(snapshot, { compatibles, nodeName: node.name });
+        const subject = resolveObservedSubject(snapshot, { compatibles, nodeName: node.name, ownerCompatibles });
         matches.set(selector, subject !== null && registered.has(subject.subjectId));
       }
       return matches.get(selector) === true;
-    }).map((node) => node.nodePath),
+      }).map((node) => node.nodePath);
+    },
   };
 }
 

@@ -16,8 +16,8 @@ import type {
   CompileCatalogReleaseResult,
   CompiledCatalogReleaseModel,
 } from "./types";
-import { catalogCompilerContractFingerprint } from "./contract";
-import { s1BundleContractArtifactDigest } from "./contractArtifacts";
+import { catalogCompilerContractFingerprint, catalogCompilerOwnerContractFingerprint } from "./contract";
+import { ownerBundleContractArtifactDigest, s1BundleContractArtifactDigest } from "./contractArtifacts";
 import {
   firstFailedPhase,
   isCatalogReleaseBundle,
@@ -138,10 +138,15 @@ export const compileCatalogRelease = (
 
   if (!target) throw new Error("validated target release disappeared");
 
+  const compilerFingerprint = releases.some((release) => release.documents.some((document) =>
+    document.kind === "subject" && document.content.ownerSubjectId !== undefined))
+    ? catalogCompilerOwnerContractFingerprint : catalogCompilerContractFingerprint;
+  const schemaDigest = compilerFingerprint === catalogCompilerOwnerContractFingerprint
+    ? ownerBundleContractArtifactDigest : s1BundleContractArtifactDigest;
   const toolchainDigest = hash(
     serializeContract({
-      compilerContractFingerprint: catalogCompilerContractFingerprint,
-      s1BundleContractArtifactDigest,
+      compilerContractFingerprint: compilerFingerprint,
+      s1BundleContractArtifactDigest: schemaDigest,
       releases: releases.map(({ release, toolchain }) => ({
         releaseId: release.id,
         toolchain,
@@ -150,7 +155,7 @@ export const compileCatalogRelease = (
   );
   const model: CompiledCatalogReleaseModel = {
     schemaVersion: "1.0.0",
-    compilerContractFingerprint: catalogCompilerContractFingerprint,
+    compilerContractFingerprint: compilerFingerprint,
     targetReleaseId: authoritativeBundle.targetReleaseId,
     toolchainDigest,
     releases,

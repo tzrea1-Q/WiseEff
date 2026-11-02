@@ -15,7 +15,7 @@ const preparationSchema = z.object({
     candidateId: text, artifactId: text, releaseId: text, releaseVersion: text, publishedAt: z.string().datetime({ precision: 0 }),
     toolchain: z.object({ compiler: text, jsonSchemaDialect: text, sourceFormat: text }).strict(),
     definitions: z.array(z.object({ subjectId: text, propertyKey: text, definitionId: text, revisionId: text }).strict()),
-    subjects: z.array(z.object({ canonicalKey: text, subjectId: text }).strict()).optional(),
+    subjects: z.array(z.object({ canonicalKey: text, subjectId: text, ownerSubjectId: text.optional() }).strict()).optional(),
   }).strict(),
   pins: z.object({ expectedCurrent: z.object({ id: text, digest, version: text.optional() }).strict(),
     predecessorArtifactDigest: digest, expectedArtifactDigest: digest,

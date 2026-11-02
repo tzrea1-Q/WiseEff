@@ -11,6 +11,7 @@ export const DEFINITION_IMPORT_GUIDE = `# WiseEff 定义导入填写说明
 - 主体种类、准确标识及是否已存在。Driver 用驱动的 compatible 标识（如 example,charger）；NodeType 用不含 @地址 的节点类型名（如 battery）；ConfigurationSchema 用已约定的配置规范标识（如 example/charging-policy），不是文件名、文件路径或项目名称。已有标识从目录复制，不能凭名称猜测。
 - 每个参数的真实属性键、显示名，以及有来源依据的类型、单位、约束和说明。修订还需要当前定义内容（优先由用户导出修订文档），并明确哪些字段要改。
 - 新建 Driver 还需确认性质和实例基数。physical-device 表示物理设备，logical-service 表示逻辑服务；multiple 表示项目中可有多个实例，singleton-per-project 表示每项目最多一个实例。已有 Driver 可省略这行；填写时必须与目录一致。其他主体不填这行。
+- 所属驱动的子节点在 NodeType 标题下填写 \`parent: 驱动的 compatible\`，该 Driver 必须已存在于当前目录；独立节点省略。驱动归属是永久身份，不可用它移动现有主体。
 - 业务分类和模块名称仅在用户明确提供时填写。业务分类使用本组织已有完整路径；它们是发布后组织登记的可选提示，不是定义字段，不会自动创建分类、完成登记或启用项目节点。
 
 缺少必需事实时，先列出具体问题并等待补充，不生成可发布的半成品。缺少可选事实时省略，不猜测，不用空白、-、null 或示例数值表示未知。null 是真实的数据类型/值。

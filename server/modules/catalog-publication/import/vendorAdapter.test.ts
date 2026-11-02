@@ -178,6 +178,80 @@ describe("inventoryVendorCatalog", () => {
 });
 
 describe("importVendorCatalog", () => {
+  it("publishes childNodes as owned node types in the frozen artifact", async () => {
+    const predecessor = firstAcmePredecessor();
+    const schemasRoot = writeTree({ "charger.yaml": chargerYaml.replace("properties:\n", "childNodes:\n  - test-board\nproperties:\n"), "board.yaml": boardYaml },
+      ["vendor/wiseeff/charger.yaml", "vendor/wiseeff/board.yaml"]);
+    const result = await importVendorCatalog({ predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot, ...importOpts("owned") });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor" || result.value.built.kind !== "successor") return;
+    const documents = result.value.built.artifact.bundle.releases.at(-1)!.documents;
+    const driver = documents.find((item) => item.kind === "subject" && item.content.canonicalKey === "driver:acme,test-charger");
+    const child = documents.find((item) => item.kind === "subject" && item.content.canonicalKey === "node-type:test-board");
+    expect(child?.content).toMatchObject({ ownerSubjectId: driver!.content.id });
+    expect(result.value.built.capabilityContract.revision).toBe("catalog-capability/v6");
+  });
+
+  it("declares ownership of a previously published owner-less subject without allocating a new identity", async () => {
+    const predecessor = firstAcmePredecessor();
+    const paths = ["vendor/wiseeff/charger.yaml", "vendor/wiseeff/board.yaml"];
+    const first = await importVendorCatalog({ predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot: writeTree({ "charger.yaml": chargerYaml, "board.yaml": boardYaml }, paths), ...importOpts("preclaim") });
+    if (!first.ok || first.value.kind !== "successor" || first.value.built.kind !== "successor") throw new Error("missing predecessor");
+    const artifact = first.value.built.artifact;
+    const next = await importVendorCatalog({ predecessorArtifact: { digest: artifact.artifactDigest, bytes: artifact.artifactBytes },
+      schemasRoot: writeTree({ "charger.yaml": chargerYaml.replace("properties:\n", "childNodes:\n  - test-board\nproperties:\n"), "board.yaml": boardYaml }, paths),
+      ...importOpts("owner_claim", "1.3.0") });
+    expect(next.ok).toBe(true);
+    if (!next.ok || next.value.kind !== "successor" || next.value.built.kind !== "successor") return;
+    expect(next.value.changeSet).toContainEqual({ op: "declare-subject-owner", subjectId: "csub_preclaim_2", ownerSubjectId: "csub_preclaim_1" });
+    expect(next.value.built.impact.subjects.changed).toEqual(["csub_preclaim_2"]);
+    expect(next.value.built.impact.matcher.fallbackImpact).toBe(true);
+    expect(next.value.built.artifact.bundle.releases.at(-1)!.documents.find((item) => item.content.id === "csub_preclaim_2")?.content)
+      .toMatchObject({ ownerSubjectId: "csub_preclaim_1" });
+  });
+
+  it("allocates a separate same-name child when its existing namesake belongs to another driver", async () => {
+    const predecessor = firstAcmePredecessor();
+    const paths = ["vendor/wiseeff/charger.yaml", "vendor/wiseeff/board.yaml"];
+    const driver = chargerYaml.replace("properties:\n", "childNodes:\n  - test-board\nproperties:\n");
+    const first = await importVendorCatalog({ predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot: writeTree({ "charger.yaml": driver, "board.yaml": boardYaml }, paths), ...importOpts("first_owner") });
+    if (!first.ok || first.value.kind !== "successor" || first.value.built.kind !== "successor") throw new Error("missing predecessor");
+    const artifact = first.value.built.artifact;
+    const next = await importVendorCatalog({ predecessorArtifact: { digest: artifact.artifactDigest, bytes: artifact.artifactBytes },
+      schemasRoot: writeTree({ "charger.yaml": driver.replaceAll("test-charger", "second-charger"), "board.yaml": boardYaml }, paths),
+      ...importOpts("second_owner", "1.3.0") });
+    expect(next.ok).toBe(true);
+    if (!next.ok || next.value.kind !== "successor" || next.value.built.kind !== "successor") return;
+    const children = next.value.built.artifact.bundle.releases.at(-1)!.documents.filter((item) =>
+      item.kind === "subject" && item.content.canonicalKey === "node-type:test-board");
+    expect(children).toHaveLength(2);
+    expect(new Set(children.map((item) => item.kind === "subject" ? item.content.ownerSubjectId : null)).size).toBe(2);
+  });
+
+  it.each(["missing", "duplicate"])("blocks %s child declarations", async (kind) => {
+    const predecessor = firstAcmePredecessor();
+    const driver = chargerYaml.replace("properties:\n", "childNodes:\n  - test-board\nproperties:\n");
+    const files: Record<string, string> = kind === "missing" ? { "charger.yaml": driver }
+      : { "charger.yaml": driver, "other.yaml": driver.replaceAll("test-charger", "other-charger"), "board.yaml": boardYaml };
+    const schemasRoot = writeTree(files, Object.keys(files).map((name) => `vendor/wiseeff/${name}`));
+    const result = await importVendorCatalog({ predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot, ...importOpts(`child_${kind}`) });
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.kind === "import-blocked") expect(result.error.reason).toMatch(/[\u4e00-\u9fff]/u);
+  });
+
+  it("blocks child declarations on a node type", async () => {
+    const predecessor = firstAcmePredecessor();
+    const schemasRoot = writeTree({ "board.yaml": boardYaml.replace("properties:\n", "childNodes:\n  - test-board\nproperties:\n") }, ["vendor/wiseeff/board.yaml"]);
+    const result = await importVendorCatalog({ predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot, ...importOpts("node_child") });
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.kind === "import-blocked") expect(result.error.reason).toMatch(/[\u4e00-\u9fff]/u);
+  });
+
   it.each(['""', '" "', "123", "null"])("rejects an invalid authored displayName: %s", async (displayName) => {
     const predecessor = firstAcmePredecessor();
     const schemasRoot = writeTree(
@@ -545,6 +619,9 @@ properties:
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok) return;
     expect(result.value.kind).toBe("successor");
+    if (result.value.kind !== "successor") return;
+    expect(result.value.built.kind).toBe("successor");
+    if (result.value.built.kind !== "successor") return;
     expect(result.value.changeSet.length).toBeGreaterThan(32);
     expect(result.value.changeSet.length).toBeLessThanOrEqual(128);
     expect(
@@ -555,13 +632,14 @@ properties:
           change.canonicalKey === "node-type:charging_core",
       ),
     ).toBe(true);
-    const propertyKeys = result.value.changeSet.flatMap((change) =>
-      change.op === "create-subject-with-definitions" || change.op === "create-definition"
-        ? change.definitions.map((definition) => definition.propertyKey)
-        : change.op === "revise-definition"
-          ? [change.propertyKey]
-          : [],
-    );
+    const definitions = result.value.built.artifact.bundle.releases.at(-1)!.documents;
+    const propertyKeys = result.value.changeSet.flatMap((change) => {
+      if (change.op === "create-subject-with-definitions") return change.definitions.map((definition) => definition.propertyKey);
+      if (change.op === "create-definition") return [change.propertyKey];
+      if (change.op !== "revise-definition") return [];
+      const document = definitions.find((entry) => entry.kind === "definition" && entry.content.id === change.definitionId);
+      return document?.kind === "definition" ? [document.content.propertyKey] : [];
+    });
     expect(propertyKeys).toEqual(expect.arrayContaining([
       "fast-charge-profile-matrix",
       "battery-thermal-derate-curve",
@@ -767,8 +845,9 @@ properties:
       );
     }
 
+    const targetReleaseId = result.value.built.artifact.targetReleaseId;
     const target = result.value.built.artifact.bundle.releases.find(
-      (release) => release.manifest.release.id === result.value.built.artifact.targetReleaseId,
+      (release) => release.manifest.release.id === targetReleaseId,
     );
     expect(target).toBeDefined();
     if (!target) return;

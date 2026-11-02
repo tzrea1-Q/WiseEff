@@ -166,11 +166,19 @@ export function parsePublicationChangeSet(
       });
       continue;
     }
+    if (entry.op === "declare-subject-owner") {
+      if (typeof entry.subjectId !== "string" || typeof entry.ownerSubjectId !== "string") {
+        return { error: { kind: "invalid-input", reason: "changeSet" } };
+      }
+      changes.push({ op: entry.op, subjectId: entry.subjectId, ownerSubjectId: entry.ownerSubjectId });
+      continue;
+    }
     if (entry.op === "create-subject-with-definitions" || entry.op === "create-subject") {
       const selector = parseSelector(entry.selector, entry.op === "create-subject");
       if (
         (entry.kind !== "driver" && entry.kind !== "node-type" && !(entry.op === "create-subject" && entry.kind === "configuration-schema")) ||
         typeof entry.canonicalKey !== "string" ||
+        (entry.ownerSubjectId !== undefined && typeof entry.ownerSubjectId !== "string") ||
         selector === null ||
         (entry.op === "create-subject" ? "definitions" in entry : !Array.isArray(entry.definitions))
       ) {
@@ -198,6 +206,7 @@ export function parsePublicationChangeSet(
       const subject = {
         kind: entry.kind,
         canonicalKey: entry.canonicalKey,
+        ...(typeof entry.ownerSubjectId === "string" ? { ownerSubjectId: entry.ownerSubjectId } : {}),
         selector,
         ...(nature ? { nature } : {}),
         ...(cardinality ? { cardinality } : {}),
@@ -258,7 +267,7 @@ export function publicationImpactFacts(
       impact.selectors.changed.length > 0 ||
       impact.selectors.removed.length > 0,
     changesAlias: impact.aliases.added.length > 0 || impact.aliases.changed.length > 0,
-    changesFallback: impact.matcher.fallbackImpact,
+    changesFallback: impact.matcher.fallbackImpact || changeSet.some((change) => change.op === "declare-subject-owner"),
     tightensExistingContract: impact.existingContractsTighten,
     changesUnitOrSemantic: impact.definitions.changed.some((entry) => entry.contentClass === "semantic"),
     retiresIdentity: changeSet.some(
@@ -320,7 +329,8 @@ const mintFrozenIdentity = (
     }
     if (change.op === "create-subject-with-definitions" || change.op === "create-subject") {
       const subjectId = `csub_${mintToken()}`;
-      subjects.push({ canonicalKey: change.canonicalKey, subjectId });
+      subjects.push({ canonicalKey: change.canonicalKey, subjectId,
+        ...(change.ownerSubjectId ? { ownerSubjectId: change.ownerSubjectId } : {}) });
       for (const nested of change.op === "create-subject" ? [] : change.definitions) {
         const token = mintToken();
         definitions.push({
@@ -332,6 +342,7 @@ const mintFrozenIdentity = (
       }
       continue;
     }
+    if (change.op === "declare-subject-owner") continue;
     const current = predecessorDefinitions.find(
       (document) => document.kind === "definition" && document.content.id === change.definitionId,
     );

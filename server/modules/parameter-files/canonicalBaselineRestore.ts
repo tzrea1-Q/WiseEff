@@ -8,7 +8,7 @@ import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import type { CatalogSnapshot } from "../catalog-kernel/interface";
 import { resolveDtsConfigSet, resolveDtsConfigSetAsync } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
-import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, parseCompatibles, rawTextToPayload, resolveObservedSubject } from "../parameter-bindings/catalogProjectValueSync";
+import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, nearestAncestorCompatibles, parseCompatibles, rawTextToPayload, resolveObservedSubject } from "../parameter-bindings/catalogProjectValueSync";
 import { appendProjectValue, loadConfigurationRestoreCohort, loadOwnedProjectValueSourcePin, lockSourceConfigurationBindings, readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
 import { deriveHistoryEventId } from "../parameter-bindings/values/repositories";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
@@ -266,7 +266,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       const property = node?.properties.get(propertyName);
       const origin = members.find((member) => member.sourceName === property?.sourceChain.at(-1)?.fileName);
       if (!node || node.deleted || !property || property.deleted || !origin) conflict("保留成员与快照组合使参数来源缺失，请在配置编辑器修正后重新预览。");
-      if (snapshot && resolveObservedSubject(snapshot,{ compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null),nodeName: node.name })?.subjectId !== row.subjectId) conflict("恢复节点识别与参数身份不一致，请在配置编辑器核对。");
+      if (snapshot && resolveObservedSubject(snapshot,{ compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null),nodeName: node.name,
+        ownerCompatibles: nearestAncestorCompatibles(resolved!.effective.nodesByLocator, node.nodeLocator) })?.subjectId !== row.subjectId) conflict("恢复节点识别与参数身份不一致，请在配置编辑器核对。");
       fileId = origin.fileId; payload = rawTextToPayload(propertyName,property.rawText); locator = pin.locator;
     }
     assertCanonicalValueConstraints(definition.revision,payload,pin.format === "dts");

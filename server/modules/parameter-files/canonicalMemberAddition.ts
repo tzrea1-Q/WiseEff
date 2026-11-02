@@ -17,7 +17,7 @@ import type { DtsBuildInputs } from "../contracts/dtoSchemas/dtsPreprocessing";
 import { inspectDtsCppIncludes, type DtsPreprocessingReceipt } from "../dts/cppSources";
 import type { SharedReferenceSwitchPreview, SharedSwitchConflict } from "../contracts/dtoSchemas/canonicalMemberAddition";
 import type { ObjectStore } from "../logs/objectStore";
-import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, parseCompatibles, rawTextToPayload,
+import { asValueClient, listObservedProperties, lockSourceCatalogGovernance, nearestAncestorCompatibles, parseCompatibles, rawTextToPayload,
   resolveObservedSubject, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { appendProjectValue, loadOwnedProjectValueSourcePin, loadSourceBindingCohortReadOnly,
   lockSourceConfigurationBindings, readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
@@ -442,7 +442,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     const property = node?.properties.get(propertyName);
     const origin = afterMembers.find((row) => row.sourceName === property?.sourceChain.at(-1)?.fileName);
     if (node && !node.deleted && snapshot && resolveObservedSubject(snapshot, {
-      compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name
+      compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name,
+      ownerCompatibles: nearestAncestorCompatibles(resolved!.effective.nodesByLocator, node.nodeLocator)
     })?.subjectId !== current.binding.subjectId) refuseSwitch(new ApiError("CONFLICT","当前节点识别与已有参数关联不一致，请核对来源后重新预览。",{reason:"shared-version-identity"}),[nodeSource("compatible 标识与原参数关联的主体不一致。",logical!.nodeLocator,"compatible",true)]);
     if (!property || property.deleted || node?.deleted || !origin) {
       const previousLocator=logical?.nodeLocator??(await tx.query<{nodeLocator:string}>("select node_locator as \"nodeLocator\" from public.dts_logical_node_revisions where config_revision_id=$1 and logical_node_id=$2",[revision.id,pin.logicalNodeId])).rows[0]?.nodeLocator;
@@ -461,7 +462,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   }
   if (snapshot && resolved && continuity) for (const node of resolved.effective.nodesByLocator.values()) {
     if (node.deleted) continue;
-    const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name });
+    const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name,
+      ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator) });
     const registration = subject && await readSourceRegistrationAgreement(tx, { organizationId: parameterOrganizationId(auth), subjectId: subject.subjectId });
     if (!subject || !registration) continue;
     const logical = continuity.nodes.find((row) => row.nodeLocator === node.nodeLocator)!;

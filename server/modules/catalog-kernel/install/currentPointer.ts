@@ -1,4 +1,5 @@
 import pg from "pg";
+import { catalogOwnersAvailable } from "../ownerSchema";
 
 import {
   CatalogReleaseDigest,
@@ -17,6 +18,7 @@ export type CatalogPointerState =
       readonly kind: "installed";
       readonly current: CatalogReleaseIdentity;
       readonly predecessorReleaseId: string | null;
+      readonly subjectOwnerEpoch: string;
     };
 
 export const readCurrentCatalogPointer = async (
@@ -41,6 +43,9 @@ export const readCurrentCatalogPointer = async (
   if (!row) {
     return { kind: "empty" };
   }
+  const epoch = await catalogOwnersAvailable(client)
+    ? (await client.query<{ subject_owner_epoch: string }>(`select subject_owner_epoch::text from parameter_catalog.catalog_state`)).rows[0]?.subject_owner_epoch
+    : undefined;
   return {
     kind: "installed",
     current: {
@@ -49,6 +54,7 @@ export const readCurrentCatalogPointer = async (
       digest: CatalogReleaseDigest(row.release_digest),
     },
     predecessorReleaseId: row.predecessor_release_id,
+    subjectOwnerEpoch: epoch ?? "0",
   };
 };
 

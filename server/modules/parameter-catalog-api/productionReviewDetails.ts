@@ -7,6 +7,7 @@ import type { ReviewQueueItem } from "../parameter-governance/review/types";
 import { reviewEvidenceSourceIsOwned } from "../parameter-governance/resolveReviewItem/unitOfWork";
 import type { ReviewItemDetails } from "./governance/types";
 import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitionSettings";
+import { parseCompatibles } from "../parameter-bindings/catalogProjectValueSync";
 
 const token = (value: unknown): value is string => typeof value === "string" && value.length > 0
   && value.trim() === value && !/[\u0000-\u001f\u007f-\u009f]/u.test(value);
@@ -59,9 +60,9 @@ export async function readReviewItemDetails(
       const compatible = token(body.payload.compatible) ? body.payload.compatible : undefined;
       const nodeType = [body.payload.nodeType, body.payload.nodeTypeName].find(token);
       const facts = (await client.query<{ projectId: string; projectName: string; fileId: string | null;
-        fileName: string | null; nodeLocator: string | null }>(
+        fileName: string | null; nodeLocator: string | null; ownerCompatible: string | null }>(
         `select project.id as "projectId", project.name as "projectName", file.id as "fileId",
-           file.file_name as "fileName", logical.node_locator as "nodeLocator"
+           file.file_name as "fileName", logical.node_locator as "nodeLocator", owner.compatible as "ownerCompatible"
          from public.projects project
          left join public.project_parameter_files file
            on file.project_id = project.id and file.organization_id = project.organization_id and file.id = $3
@@ -69,6 +70,18 @@ export async function readReviewItemDetails(
            on node.project_id = project.id and node.organization_id = project.organization_id and node.id = $4
          left join public.dts_logical_node_revisions logical
            on logical.logical_node_id = node.id and logical.config_revision_id = $5
+         left join lateral (
+           with recursive parents as (
+             select p.logical_node_id,p.parent_logical_node_id,p.compatible,1 as depth,array[logical.logical_node_id,p.logical_node_id] as visited
+             from public.dts_logical_node_revisions p where p.config_revision_id=logical.config_revision_id
+               and p.logical_node_id=logical.parent_logical_node_id
+             union all
+             select p.logical_node_id,p.parent_logical_node_id,p.compatible,parents.depth+1,parents.visited||p.logical_node_id
+             from parents join public.dts_logical_node_revisions p on p.config_revision_id=logical.config_revision_id
+               and p.logical_node_id=parents.parent_logical_node_id
+             where not p.logical_node_id=any(parents.visited)
+           ) select compatible from parents where compatible is not null order by depth limit 1
+         ) owner on true
          where project.organization_id = $1 and (project.id = $2 or ($2::text is null and exists (
            select 1 from public.dts_config_revisions revision where revision.id = $5
              and revision.organization_id = project.organization_id and revision.project_id = project.id)))`,
@@ -95,6 +108,7 @@ export async function readReviewItemDetails(
           sourceRef: { kind: row.observationId ? "observation" : "review-evidence", id: row.observationId ?? row.id } };
       }
       const matched = compatible || nodeType ? catalog.resolveSubject({ driverCompatibles: compatible ? [DriverCompatible(compatible)] : [],
+        ownerContext: parseCompatibles(facts?.ownerCompatible ?? null).map(DriverCompatible),
         nodeTypeFallback: nodeType ? { kind: "present", name: NormalizedNodeTypeName(nodeType) } : { kind: "absent" } }) : null;
       const subjects: readonly CatalogSubjectSnapshot[] = matched?.status === "ambiguous" ? matched.candidates
         : matched?.status === "matched" || matched?.status === "retired" ? [matched.subject] : [];

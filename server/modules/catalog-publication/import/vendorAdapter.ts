@@ -110,6 +110,7 @@ export type VendorIdentityOptions = {
 
 export type ClaimedVendorIdentity = {
   readonly canonicalKey: string;
+  readonly ownerSubjectId?: string;
   readonly subjectId?: string;
   readonly propertyKey?: string;
   readonly definitionId?: string;
@@ -224,6 +225,7 @@ const bumpReleaseVersion = (version: string): string => {
 
 const naturalKey = (subjectId: string, propertyKey: string): string =>
   `${subjectId}\0${propertyKey}`;
+const scopedSelector = (owner: string | undefined, selector: string): string => `${owner ?? ""}\0${selector}`;
 
 const contentFingerprint = (content: SupportedDefinitionContent): string =>
   serializeContract({
@@ -272,13 +274,13 @@ const indexPredecessor = (target: CatalogReleaseNode): Omit<
   const aliasesBySelector = new Map<string, CatalogReleaseAliasDocument>();
   const definitionsByNaturalKey = new Map<string, CatalogReleaseDefinitionDocument>();
   const definitionsById = new Map<string, CatalogReleaseDefinitionDocument>();
+  for (const document of target.documents) if (document.kind === "subject") subjectsById.set(document.content.id, document);
   for (const document of target.documents) {
     if (document.kind === "subject") {
-      subjectsByCanonicalKey.set(document.content.canonicalKey, document);
-      subjectsById.set(document.content.id, document);
-      subjectsBySelector.set(document.content.selector.value, document);
+      subjectsByCanonicalKey.set(scopedSelector(document.content.ownerSubjectId, document.content.canonicalKey), document);
+      subjectsBySelector.set(scopedSelector(document.content.ownerSubjectId, document.content.selector.value), document);
     } else if (document.kind === "alias") {
-      aliasesBySelector.set(document.content.normalizedSelector, document);
+      aliasesBySelector.set(scopedSelector(subjectsById.get(document.content.subjectId)?.content.ownerSubjectId, document.content.normalizedSelector), document);
     } else if (document.kind === "definition") {
       definitionsByNaturalKey.set(
         naturalKey(document.content.subjectId, document.content.propertyKey),
@@ -538,13 +540,6 @@ const fileFieldDispositions = (
       ]),
     );
   }
-  if (document.childNodes !== undefined) {
-    rows.push(
-      disposition(`${relativePath}.childNodes`, "structural-non-param", "DTS child topology is not a parameter", [
-        "childNodes",
-      ]),
-    );
-  }
   if (document.compatible !== undefined) {
     rows.push(
       disposition(`${relativePath}.compatible`, "mapped", "driver selector source", ["compatible"]),
@@ -572,12 +567,14 @@ const claimedFor = (
   claimed: readonly ClaimedVendorIdentity[],
   canonicalKey: string,
   propertyKey?: string,
+  ownerSubjectId?: string,
 ): ClaimedVendorIdentity | undefined =>
   claimed.find(
     (entry) =>
       entry.canonicalKey === canonicalKey &&
+      entry.ownerSubjectId === ownerSubjectId &&
       (propertyKey === undefined ? entry.propertyKey === undefined : entry.propertyKey === propertyKey),
-  ) ?? claimed.find((entry) => entry.canonicalKey === canonicalKey && entry.propertyKey === undefined);
+  ) ?? claimed.find((entry) => entry.canonicalKey === canonicalKey && entry.ownerSubjectId === ownerSubjectId && entry.propertyKey === undefined);
 
 export function vendorImpactFacts(
   authorPrincipalId: string,
@@ -600,7 +597,7 @@ export function vendorImpactFacts(
     introducesNewSubject,
     changesSelector: introducesNewSubject,
     changesAlias: false,
-    changesFallback: introducesNewSubject,
+    changesFallback: introducesNewSubject || changeSet.some((change) => change.op === "declare-subject-owner"),
     tightensExistingContract: false,
     changesUnitOrSemantic,
     retiresIdentity: false,
@@ -677,12 +674,28 @@ export async function importVendorCatalog(
   }
 
   const inputFiles = inventory.files.filter((file) => file.disposition === "input");
+  const parsedInputs = new Map(inputFiles.map((file) => [file.relativePath, parseVendorYamlFile(path.join(input.schemasRoot, file.relativePath))]));
+  const declaredOwners = new Map<string, string[]>();
+  for (const file of inputFiles) {
+    const doc = parsedInputs.get(file.relativePath)!;
+    if ("error" in doc || (doc.lifecycle && doc.lifecycle !== "active") || !doc.compatible?.length || !Array.isArray(doc.childNodes)) continue;
+    for (const name of doc.childNodes) if (typeof name === "string") {
+      const owners = declaredOwners.get(name) ?? [];
+      owners.push(doc.compatible[0]!);
+      declaredOwners.set(name, owners);
+    }
+  }
+  inputFiles.sort((left, right) => {
+    const a = parsedInputs.get(left.relativePath)!;
+    const b = parsedInputs.get(right.relativePath)!;
+    return Number(!("error" in a) && !!a.compatible?.length) < Number(!("error" in b) && !!b.compatible?.length) ? 1
+      : Number(!("error" in a) && !!a.compatible?.length) > Number(!("error" in b) && !!b.compatible?.length) ? -1 : 0;
+  });
   for (const file of inputFiles) {
     if (file.basename === POWER_MANAGEMENT_BASENAME || isExcludedSchemaBasename(file.basename)) {
       continue;
     }
-    const absolute = path.join(input.schemasRoot, file.relativePath);
-    const parsed = parseVendorYamlFile(absolute);
+    const parsed = parsedInputs.get(file.relativePath)!;
     if ("error" in parsed) {
       dispositions.push(
         disposition(file.relativePath, "unsupported", `unreadable:${parsed.error}`, ["source"]),
@@ -746,9 +759,16 @@ export async function importVendorCatalog(
       extraSelectors.push(extraParsed.value);
     }
 
-    const existingByKey = index.subjectsByCanonicalKey.get(canonicalKey) ?? null;
-    const existingBySelector = index.subjectsBySelector.get(parsedSelector.value) ?? null;
-    const aliasOwner = index.aliasesBySelector.get(parsedSelector.value) ?? null;
+    const declaredDriver = !isDriver ? nodenames.flatMap((name) => declaredOwners.get(name) ?? []) : [];
+    const desiredOwner = declaredDriver.length === 1
+      ? preparedSubjects.find((subject) => subject.kind === "driver" && subject.selectorValue === declaredDriver[0])?.subjectId
+      : undefined;
+    const scoped = (value: string) => scopedSelector(desiredOwner, value);
+    const existingByKey = index.subjectsByCanonicalKey.get(scoped(canonicalKey))
+      ?? (desiredOwner ? index.subjectsByCanonicalKey.get(scopedSelector(undefined, canonicalKey)) : undefined) ?? null;
+    const existingBySelector = index.subjectsBySelector.get(scoped(parsedSelector.value))
+      ?? (existingByKey && !existingByKey.content.ownerSubjectId ? index.subjectsBySelector.get(scopedSelector(undefined, parsedSelector.value)) : undefined) ?? null;
+    const aliasOwner = index.aliasesBySelector.get(scoped(parsedSelector.value)) ?? null;
     if (aliasOwner) {
       const owner = index.subjectsById.get(aliasOwner.content.subjectId);
       if (!owner || owner.content.canonicalKey !== canonicalKey) {
@@ -782,7 +802,7 @@ export async function importVendorCatalog(
       continue;
     }
 
-    const claimedSubject = claimedFor(claimed, canonicalKey);
+    const claimedSubject = claimedFor(claimed, canonicalKey, undefined, desiredOwner);
     let existing = existingByKey;
     if (claimedSubject?.subjectId) {
       const published = existingByKey;
@@ -798,7 +818,8 @@ export async function importVendorCatalog(
         continue;
       }
       const sameId = index.subjectsById.get(claimedSubject.subjectId);
-      if (sameId && sameId.content.canonicalKey !== canonicalKey) {
+      if (sameId && (sameId.content.canonicalKey !== canonicalKey
+        || (sameId.content.ownerSubjectId && sameId.content.ownerSubjectId !== desiredOwner))) {
         dispositions.push(
           disposition(file.relativePath, "conflict", "same-id-different-content", ["subjectId"]),
         );
@@ -852,8 +873,9 @@ export async function importVendorCatalog(
     }
 
     for (const extra of extraSelectors) {
-      const existingAlias = index.aliasesBySelector.get(extra);
-      const existingSubjectSelector = index.subjectsBySelector.get(extra);
+      const existingScope = existing ? existing.content.ownerSubjectId : desiredOwner;
+      const existingAlias = index.aliasesBySelector.get(scopedSelector(existingScope, extra));
+      const existingSubjectSelector = index.subjectsBySelector.get(scopedSelector(existingScope, extra));
       if (existingSubjectSelector && existingSubjectSelector.content.id !== subjectId) {
         dispositions.push(
           disposition(`${file.relativePath}#alias:${extra}`, "conflict", "alias-owner-change", [
@@ -986,7 +1008,7 @@ export async function importVendorCatalog(
         ? index.definitionsByNaturalKey.get(naturalKey(existing.content.id, parsedKey.value))
         : undefined;
       const claimedDef = claimed.find(
-        (entry) => entry.canonicalKey === canonicalKey && entry.propertyKey === parsedKey.value,
+        (entry) => entry.canonicalKey === canonicalKey && entry.ownerSubjectId === desiredOwner && entry.propertyKey === parsedKey.value,
       );
       if (claimedDef?.definitionId && existingDefinition) {
         if (claimedDef.definitionId !== existingDefinition.content.id) {
@@ -1144,6 +1166,38 @@ export async function importVendorCatalog(
     });
   }
 
+  const childOwners = new Map<string, string>();
+  for (const driver of preparedSubjects) {
+    const source = parsedInputs.get(driver.relativePath)!;
+    if ("error" in source || source.childNodes === undefined) continue;
+    if (driver.kind !== "driver") {
+      dispositions.push(disposition(`${driver.relativePath}.childNodes`, "unsupported", "子节点只能由驱动声明。", ["childNodes"]));
+      continue;
+    }
+    if (!Array.isArray(source.childNodes) || source.childNodes.some((child) => typeof child !== "string" || !parseCanonicalNodeName(child).ok)) {
+      dispositions.push(disposition(`${driver.relativePath}.childNodes`, "unsupported", "子节点声明格式无效。", ["childNodes"]));
+      continue;
+    }
+    for (const childName of source.childNodes as string[]) {
+      const matches = preparedSubjects.filter((subject) => subject.kind === "node-type"
+        && [subject.selectorValue, ...subject.extraSelectors].includes(childName));
+      if (matches.length !== 1) {
+        dispositions.push(disposition(`${driver.relativePath}.childNodes`, "conflict", `子节点 ${childName} 必须对应且仅对应一个 nodename 规范。`, ["childNodes"]));
+      } else if (childOwners.has(matches[0]!.subjectId)) {
+        dispositions.push(disposition(`${driver.relativePath}.childNodes`, "conflict", `子节点 ${childName} 被多个驱动或重复声明。`, ["childNodes"]));
+      } else {
+        childOwners.set(matches[0]!.subjectId, driver.subjectId);
+        dispositions.push(disposition(`${driver.relativePath}.childNodes`, "mapped", `子节点 ${childName} 归属于该驱动。`, ["childNodes"]));
+      }
+    }
+  }
+  for (const subject of preparedSubjects) {
+    const owner = childOwners.get(subject.subjectId);
+    if (owner && subject.existing?.content.ownerSubjectId && subject.existing.content.ownerSubjectId !== owner) {
+      dispositions.push(disposition(subject.relativePath, "conflict", "现有节点主体尚未由该驱动认领，请先完成所有权预检与认领。", ["childNodes"]));
+    }
+  }
+
   const blocking = dispositions.filter(
     (row) => row.kind === "unsupported" || row.kind === "conflict" || row.kind === "listed-missing",
   );
@@ -1171,13 +1225,19 @@ export async function importVendorCatalog(
       op: "create-subject-with-definitions" as const,
       kind: subject.kind,
       canonicalKey: subject.canonicalKey,
+      ...(childOwners.has(subject.subjectId) ? { ownerSubjectId: childOwners.get(subject.subjectId)! } : {}),
       selector: { kind: subject.selectorKind, value: subject.selectorValue },
       ...(subject.kind === "driver" && subject.nature && subject.cardinality
         ? { nature: subject.nature, cardinality: subject.cardinality }
         : {}),
       definitions: subject.definitions,
     }));
-  const changeSet: CatalogChange[] = [...subjectChanges, ...createOnExisting, ...revises];
+  const ownerChanges: CatalogChange[] = preparedSubjects.flatMap((subject) => {
+    const ownerSubjectId = childOwners.get(subject.subjectId);
+    return ownerSubjectId && subject.existing && !subject.existing.content.ownerSubjectId
+      ? [{ op: "declare-subject-owner" as const, subjectId: subject.subjectId, ownerSubjectId }] : [];
+  });
+  const changeSet: CatalogChange[] = [...subjectChanges, ...ownerChanges, ...createOnExisting, ...revises];
   if (changeSet.length === 0) {
     return ok({
       kind: "unchanged",
@@ -1205,7 +1265,8 @@ export async function importVendorCatalog(
       sourceFormat: toolchain.sourceFormat,
     },
     definitions: definitionAllocations,
-    subjects: subjectAllocations,
+    subjects: subjectAllocations.map((allocation) => ({ ...allocation,
+      ...(childOwners.has(allocation.subjectId) ? { ownerSubjectId: childOwners.get(allocation.subjectId)! } : {}) })),
   };
   const facts = vendorImpactFacts(authorPrincipalId, changeSet);
   const classified = classifyImpact(facts);

@@ -84,6 +84,7 @@ export type SeedCatalogFrozenIdentity = {
   readonly subjects?: readonly {
     readonly canonicalKey: string;
     readonly subjectId: string;
+    readonly ownerSubjectId?: string;
   }[];
 };
 
@@ -405,7 +406,7 @@ const loadPredecessor = async (
   return ok(loaded.value);
 };
 
-const canonicalKeyBySubjectId = (bytes: Uint8Array): Map<string, string> => {
+const subjectIdentityById = (bytes: Uint8Array): Map<string, { canonicalKey: string; ownerSubjectId?: string }> => {
   const parsed = parseBundleBytes(bytes);
   if (!parsed.ok) return new Map();
   const target = parsed.bundle.releases.find((release) => release.manifest.release.id === parsed.bundle.targetReleaseId);
@@ -413,7 +414,8 @@ const canonicalKeyBySubjectId = (bytes: Uint8Array): Map<string, string> => {
   return new Map(
     target.documents
       .filter((document) => document.kind === "subject")
-      .map((document) => [document.content.id, document.content.canonicalKey]),
+      .map((document) => [document.content.id, { canonicalKey: document.content.canonicalKey,
+        ...(document.content.ownerSubjectId ? { ownerSubjectId: document.content.ownerSubjectId } : {}) }]),
   );
 };
 
@@ -421,18 +423,19 @@ const vendorClaims = (
   identity: SeedCatalogIdentity,
   predecessorBytes: Uint8Array,
 ): readonly ClaimedVendorIdentity[] => {
-  const keyBySubjectId = canonicalKeyBySubjectId(predecessorBytes);
+  const subjectsById = subjectIdentityById(predecessorBytes);
   const claims: ClaimedVendorIdentity[] = (identity.subjects ?? []).map((subject) => ({
     canonicalKey: subject.canonicalKey,
     subjectId: subject.subjectId,
+    ...(subject.ownerSubjectId ? { ownerSubjectId: subject.ownerSubjectId } : {}),
   }));
   for (const definition of identity.definitions) {
-    const canonicalKey =
-      (identity.subjects ?? []).find((subject) => subject.subjectId === definition.subjectId)?.canonicalKey ??
-      keyBySubjectId.get(definition.subjectId);
-    if (!canonicalKey) continue;
+    const subject = (identity.subjects ?? []).find((item) => item.subjectId === definition.subjectId)
+      ?? subjectsById.get(definition.subjectId);
+    if (!subject) continue;
     claims.push({
-      canonicalKey,
+      canonicalKey: subject.canonicalKey,
+      ...(subject.ownerSubjectId ? { ownerSubjectId: subject.ownerSubjectId } : {}),
       propertyKey: definition.propertyKey,
       definitionId: definition.definitionId,
       subjectId: definition.subjectId,

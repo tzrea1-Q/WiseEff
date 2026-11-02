@@ -746,6 +746,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     `, [maintenanceRoles])).rows).toEqual([]);
 
     // Preserve the checksum-pinned 0180 list and the exact forward auth reads.
+    // 0321 extends the capture reader for the owner-aware Catalog snapshot and epoch.
     const migration = await fs.readFile(path.join(migrationsDir, "0180_mod_d02_offline_capture.sql"), "utf8");
     expect(createHash("sha256").update(migration).digest("hex"))
       .toBe("3c7f39c3d5866b0a61be8ccd3b1a5f5c2d44514e9d77857634b303b7237caffb");
@@ -756,6 +757,8 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       "public.project_members.organization_id", "public.project_members.project_id",
       "public.project_members.roles", "public.project_members.user_id",
       "public.users.external_tokens_revoked_at",
+      "parameter_catalog.catalog_state.subject_owner_epoch",
+      "parameter_catalog.catalog_subjects.owner_subject_id",
     ].sort();
     expect(expectedColumns.length).toBeGreaterThan(0);
     const actualColumns = await client.query<{ identity: string }>(`

@@ -36,7 +36,7 @@ import {
   powerConfigFrozenIdentity,
   powerConfigImpactFacts,
 } from "../../catalog-publication/import/configurationSchemaSuccessor";
-import { PublicationJobId } from "../../parameter-catalog-contract/index";
+import { CatalogReleaseDigest, CatalogReleaseId, PublicationJobId } from "../../parameter-catalog-contract/index";
 import {
   createDatabase,
   createPostgresDatabase,
@@ -53,6 +53,7 @@ import { createCanonicalValueDraft } from "../drafts/service";
 import { submitCanonicalValueChange } from "../drafts/changeService";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
+import { parseCompatibles } from "../catalogProjectValueSync";
 import { materializeSeedSources } from "./materialize";
 import { getSeedInitializationRun } from "./plan";
 import { curateReviewedSeedPlacementCapacity } from "./placementCapacity";
@@ -272,8 +273,8 @@ describe("T1.3 complete successor and B2 materialization", () => {
         candidateId: candidate.id,
         authorizationId: authorized.value.authorization.id,
         expectedCurrent: {
-          id: current.rows[0]!.id,
-          digest: current.rows[0]!.digest,
+          id: CatalogReleaseId(current.rows[0]!.id),
+          digest: CatalogReleaseDigest(current.rows[0]!.digest),
         },
         fencingToken: job.value.fencingToken,
         trustedActor: userActor(REVIEWER, reviewerPermissions),
@@ -334,7 +335,7 @@ describe("T1.3 complete successor and B2 materialization", () => {
     if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
   });
 
-  it("materializes 124 bindings per project including JSON after reviewed placement", async () => {
+  it("materializes scoped seed bindings and leaves a child without its driver ancestor unmatched", async () => {
     const customBefore = await pool.query(
       `select project.id, project.organization_id, project.name, project.code, project.status,
               role.id as role_binding_id, role.user_id, role.role_id
@@ -386,8 +387,9 @@ describe("T1.3 complete successor and B2 materialization", () => {
     await curateReviewedSeedPlacementCapacity(root, { organizationId: ORG });
     const sources = (await reviewedSeedProjectSources(REPO_ROOT, { board: true, json: true })).map((project) => ({
       ...project,
-      // Deliberately exercise the order-independent materializer contract.
-      files: project.files.slice().reverse(),
+      // Exercise order independence and an extra child without a driver ancestor.
+      files: project.files.map((file) => file.name === "board.dts" ? { ...file,
+        content: file.content.replace("/ {", "/ {\n\tscharger_v800 { gpios = <&gpio5 31 0>; };") } : file).reverse(),
     }));
     const seedDigest = canonicalSeedInitializationDigest({
       organizationId: ORG,
@@ -478,6 +480,27 @@ describe("T1.3 complete successor and B2 materialization", () => {
       }),
     ).toEqual({ atlas: 124, aurora: 124, nebula: 124 });
 
+    const ownerParents = await pool.query<{ project_id: string; compatible: string | null }>(
+      `select distinct revision.project_id, node.compatible from public.dts_logical_node_revisions node
+       join public.dts_config_revisions revision on revision.id=node.config_revision_id
+       where revision.organization_id=$1 and node.node_locator='/spmi1' order by revision.project_id`, [ORG],
+    );
+    expect(ownerParents.rows.map((row) => ({ project_id: row.project_id, compatibles: parseCompatibles(row.compatible) }))).toEqual([
+      { project_id: "atlas", compatibles: ["hisilicon,spmi"] }, { project_id: "aurora", compatibles: ["hisilicon,spmi"] },
+      { project_id: "nebula", compatibles: ["hisilicon,spmi"] },
+    ]);
+    const unmatched = await pool.query<{ project_id: string; bindings: string }>(
+      `select revision.project_id, count(binding.id)::text as bindings from public.dts_logical_node_revisions node
+       join public.dts_config_revisions revision on revision.id=node.config_revision_id
+       left join parameter_catalog.project_parameter_bindings binding on binding.logical_node_id=node.logical_node_id
+         and binding.organization_id=revision.organization_id
+       where revision.organization_id=$1 and node.node_locator='/scharger_v800'
+       group by revision.project_id order by revision.project_id`, [ORG],
+    );
+    expect(unmatched.rows).toEqual([
+      { project_id: "atlas", bindings: "0" }, { project_id: "aurora", bindings: "0" }, { project_id: "nebula", bindings: "0" },
+    ]);
+
     const archiveRows = await pool.query<{
       project_id: string;
       object_ref: string;
@@ -530,9 +553,10 @@ describe("T1.3 complete successor and B2 materialization", () => {
     const reviewedBoard = reviewedBoardOccurrences();
     const expectedByProject = new Map<string, string[]>();
     for (const projectId of ["atlas", "aurora", "nebula"]) {
-      const board = reviewedBoard
-        .filter((entry) => entry.board === projectId && entry.scope === "current")
-        .map((entry) => [
+      const reviewed = reviewedBoard.filter((entry) => entry.board === projectId && entry.scope === "current");
+      expect(reviewed).toHaveLength(120);
+      expect(reviewed.filter((entry) => entry.nodePath === "spmi1/scharger_v800" && entry.propertyKey === "gpios")).toHaveLength(1);
+      const board = reviewed.map((entry) => [
           projectId,
           "dts",
           canonicalDtsLocator("board.dts", entry.nodePath),

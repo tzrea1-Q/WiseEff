@@ -26,6 +26,12 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("accepts a parent driver directive for node-type sections", () => {
+    const input = document.replace("# Driver `acme,power`", "# NodeType `battery1`\nparent: acme,power");
+    const plan = planMarkdownImport(input, "owned.md", firstAcmePredecessor().first);
+    expect(plan.changeSet).toMatchObject([{ op: "create-subject-with-definitions", kind: "node-type", ownerSubjectId: "csub_acme_power" }]);
+    expect(planMarkdownImport(input.replace("acme,power", "unknown,driver"), "owned.md", firstAcmePredecessor().first).changeSet).toBeNull();
+  });
   it("reports only the missing target when a revision omits its type", () => {
     const input = "# Driver `acme,power`\n\n## `no_such_key` 不存在\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 单位 | V |";
     const plan = planMarkdownImport(input, "revision.md", firstAcmePredecessor().first);

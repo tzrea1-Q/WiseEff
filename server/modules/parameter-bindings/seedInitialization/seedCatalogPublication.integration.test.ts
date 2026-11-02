@@ -31,12 +31,14 @@ import {
 import { revisePublicationPolicy } from "../../catalog-publication/authorization/policy";
 import { MANAGED_INSTANCE_POLICY_CONFIRMATION } from "../../catalog-publication/authorization/types";
 import { CATALOG_MIGRATION_OWNER } from "../../catalog-kernel/security/catalogRoleManifest";
+import { CatalogReleaseDigest, CatalogReleaseId } from "../../parameter-catalog-contract";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
 import {
   freezeSeedCatalogIdentity,
   prepareSeedCatalog,
   publishSeedCatalog,
 } from "../../../../scripts/lib/seedCatalogPublication";
+import { parseSeedRebuildPreparation } from "../../../../scripts/lib/seedRebuildJournal";
 
 await requirePgvectorTestDatabase();
 
@@ -100,8 +102,8 @@ describe("reviewed seed publication against isolated PostgreSQL", () => {
       );
       const adopted = await adoptPreexistingCatalog(getRootPostgresPool(db)!, {
         expectedCurrent: {
-          id: current.currentReleaseId!,
-          digest: current.currentReleaseDigest!,
+          id: CatalogReleaseId(current.currentReleaseId!),
+          digest: CatalogReleaseDigest(current.currentReleaseDigest!),
         },
         actorPrincipalId: authorUserId,
         sourceBytes: predecessor.bytes,
@@ -172,6 +174,16 @@ describe("reviewed seed publication against isolated PostgreSQL", () => {
     });
     expect(frozen.ok, JSON.stringify(frozen)).toBe(true);
     if (!frozen.ok) return;
+    expect(frozen.value.identity.subjects?.filter((subject) => "ownerSubjectId" in subject)).toHaveLength(5);
+    expect(parseSeedRebuildPreparation(JSON.parse(JSON.stringify(frozen.value)))).toEqual(frozen.value);
+    const badHash = await prepareSeedCatalog({ ...frozen.value, db,
+      pins: { ...frozen.value.pins, expectedVendorContentHash: "0".repeat(64) } });
+    expect(badHash).toEqual({ ok: false, error: { kind: "stale", message: "vendor source digest drifted" } });
+    const altered = await prepareSeedCatalog({ ...frozen.value, db, identity: { ...frozen.value.identity,
+      subjects: frozen.value.identity.subjects!.map((subject) => subject.canonicalKey === "node-type:battery1"
+        ? { ...subject, ownerSubjectId: "changed-owner" } : subject),
+    } });
+    expect(altered.ok).toBe(false);
 
     const prepared = await prepareSeedCatalog({ ...frozen.value, db });
     expect(prepared.ok, JSON.stringify(prepared)).toBe(true);

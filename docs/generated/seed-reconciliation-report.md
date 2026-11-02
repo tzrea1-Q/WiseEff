@@ -36,7 +36,7 @@ Binding counts are PLANNED counts derived from the manifest, not achieved runtim
 | compatibilityCurrent | merge | 2 |
 | compatibilityCurrent | preserve | 2 |
 | compatibilityDeferred | defer | 8 |
-| boardOccurrences | exclude | 297 |
+| boardOccurrences | exclude | 300 |
 | boardOccurrences | merge | 21 |
 | boardOccurrences | preserve | 339 |
 
@@ -69,9 +69,9 @@ create no seeded binding or value this round.
 
 | Board | Nodes | Raw property occurrences | Business | Structural | Merge occurrences |
 | --- | --- | --- | --- | --- | --- |
-| aurora | 58 | 219 | 120 | 99 | 7 |
-| nebula | 58 | 219 | 120 | 99 | 7 |
-| atlas | 58 | 219 | 120 | 99 | 7 |
+| aurora | 58 | 220 | 120 | 100 | 7 |
+| nebula | 58 | 220 | 120 | 100 | 7 |
+| atlas | 58 | 220 | 120 | 100 | 7 |
 
 Business vs structural is decided by `isStructuralPropertyKey` (src/domain/parameter-topology/parameterSurface.ts).
 Each board records 18 phandle references.
@@ -123,10 +123,10 @@ npx vitest run --config vitest.scripts.config.ts scripts/seed-reconciliation-man
 | vendorRawEqualsCanonicalPlusStructural | true |
 | vendorInventoryItemsRecorded | 137 |
 | compatibilityItemsRecorded | 12 |
-| boardOccurrencesRecorded | 657 |
+| boardOccurrencesRecorded | 660 |
 | boardBusinessOccurrencesRecorded | 360 |
-| boardStructuralOccurrencesRecorded | 297 |
-| boardOccurrencesPerProject | 219 |
+| boardStructuralOccurrencesRecorded | 300 |
+| boardOccurrencesPerProject | 220 |
 | everyInputRecordedExactlyOnce | true |
 | everyBoardOccurrenceRecordedExactlyOnce | true |
 | everyBoardBusinessOccurrenceRecordedExactlyOnce | true |

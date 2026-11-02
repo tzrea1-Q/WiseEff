@@ -35,7 +35,8 @@ describe("golden power fixture", () => {
     expect(resolved.nodes).toHaveLength(58);
 
     const propertyCount = resolved.nodes.reduce((count, node) => count + node.properties.length, 0);
-    expect(propertyCount).toBe(219);
+    expect(propertyCount).toBe(220);
+    expect(resolved.nodes.find((node) => node.nodePath === "spmi1")?.properties.some((property) => property.name === "compatible")).toBe(true);
 
     const phandleCount = resolved.nodes.reduce((count, node) => count + node.phandleRefs.length, 0);
     expect(phandleCount).toBe(18);

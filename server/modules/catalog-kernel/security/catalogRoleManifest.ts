@@ -24,14 +24,17 @@ export const EXCLUSIVE_LOCK_FUNCTION_IDENTITY =
 
 export const SYNCHRONIZER_EXECUTE_FUNCTION_NAMES = [
   "acquire_current_pointer_lock_exclusive",
+  "claim_catalog_subject_owner",
   "is_canonical_compatible_selector",
   "is_canonical_node_type_name",
   "is_canonical_property_key",
 ] as const;
 
 export const TRIGGER_SECURITY_DEFINER_FUNCTION_IDENTITIES = [
+  "parameter_catalog.assert_catalog_alias_owner()",
   "parameter_catalog.assert_subject_placement_kind()",
   "parameter_catalog.assert_observation_match_binding_revision()",
+  "parameter_catalog.set_catalog_alias_owner()",
 ] as const;
 
 // Concatenate retired flat-identity tokens so the activity-runtime guard does

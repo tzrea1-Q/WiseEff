@@ -1,4 +1,5 @@
 import pg from "pg";
+import { readCatalogSubjectOwners } from "../ownerSchema";
 
 import type {
   CatalogDriftViolation,
@@ -816,6 +817,7 @@ const loadProjection = async (
      where membership.release_id = $1`,
     [releaseId],
   );
+  const subjectOwners = await readCatalogSubjectOwners(client, releaseId);
   const aliases = await client.query<AliasRow>(
     `select
        alias.id,
@@ -952,6 +954,7 @@ const loadProjection = async (
       id: CatalogSubjectId(subject.id),
       kind: subject.kind,
       canonicalKey: CatalogCanonicalKey(subject.canonical_key),
+      ...(subjectOwners.has(subject.id) ? { owner: CatalogSubjectId(subjectOwners.get(subject.id)!) } : {}),
       membership: {
         release: identity,
         lifecycle: subject.lifecycle,

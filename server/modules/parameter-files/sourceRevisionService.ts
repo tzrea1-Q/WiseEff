@@ -11,7 +11,7 @@ import { createCatalogKernel, PropertyKey, type CatalogSnapshot } from "../catal
 import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitionSettings";
 import { resolveDtsConfigSetAsync } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
-import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles,
+import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles, nearestAncestorCompatibles,
   lockSourceCatalogGovernance, loadActiveOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
 import { loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin,
   loadProjectBindingCatalogReleaseIds, readOwnedCurrentBinding, readOwnedProjectValueIdentity,
@@ -277,7 +277,8 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   if (snapshot) for (const node of resolved.effective.nodesByLocator.values()) {
     if (node.deleted) continue;
     const compatible = node.properties.get("compatible");
-    const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(compatible?.rawText ?? null), nodeName: node.name });
+    const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(compatible?.rawText ?? null), nodeName: node.name,
+      ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator) });
     if (!subject || !registered.has(subject.subjectId)) continue;
     const logical = continuity.nodes.find((row) => row.nodeLocator === node.nodeLocator)!;
     for (const [propertyName, property] of node.properties) {
@@ -340,7 +341,8 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
       matchingSnapshots.set(pinnedSnapshot.release.id, matchingSnapshot);
     }
     const resolvedSubject = node ? resolveObservedSubject(matchingSnapshot, {
-      compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name
+      compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name,
+      ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator)
     }) : null;
     const source = node && !node.deleted && property && !property.deleted && originMember && property.sourceChain.at(-1)?.origin
       && resolvedSubject?.subjectId === registration.subjectId

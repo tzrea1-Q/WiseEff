@@ -371,7 +371,10 @@ describe("seed reconciliation manifest", () => {
       const recorded = manifest.boardOccurrences.filter((entry) => entry.board === board);
       const recordedBusiness = recorded.filter((entry) => entry.scope === "current");
       expect(recordedBusiness).toHaveLength(120);
-      expect(recorded).toHaveLength(219);
+      expect(recorded).toHaveLength(220);
+      expect(recorded.find((entry) => entry.sourceLocator === "spmi1#compatible")).toMatchObject({
+        compatible: "hisilicon,spmi", scope: "excluded", formalSubject: { kind: "driver", value: "hisilicon,spmi" },
+      });
       expect(new Set(recordedBusiness.map((entry) => entry.sourceLocator)).size).toBe(120);
       expect(recordedBusiness.map((entry) => entry.sourceLocator).sort()).toEqual([...businessLocators].sort());
       expect(new Set(recorded.map((entry) => entry.sourceLocator))).toEqual(allResolvedLocators);
@@ -385,9 +388,9 @@ describe("seed reconciliation manifest", () => {
       deferredInputsRecorded: 8,
       vendorRawPropertyEntriesRecorded: 137,
       vendorRawEqualsCanonicalPlusStructural: true,
-      boardOccurrencesRecorded: 657,
+      boardOccurrencesRecorded: 660,
       boardBusinessOccurrencesRecorded: 360,
-      boardStructuralOccurrencesRecorded: 297,
+      boardStructuralOccurrencesRecorded: 300,
       everyInputRecordedExactlyOnce: true,
       everyBoardBusinessOccurrenceRecordedExactlyOnce: true,
     });

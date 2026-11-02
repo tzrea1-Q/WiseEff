@@ -26,6 +26,28 @@ import {
 } from "./predecessorHarness";
 
 describe("buildCompleteSuccessor", () => {
+  it("publishes equal node names under distinct drivers while retaining legacy artifacts", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await buildCompleteSuccessor({ productPath: "m2-core",
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      changeSet: [
+        { op: "create-subject", kind: "driver", canonicalKey: "driver:vendor,other", selector: { kind: "driver-compatible", value: "vendor,other" }, nature: "physical-device", cardinality: "multiple" },
+        { op: "create-subject", kind: "node-type", canonicalKey: "node-type:battery1", selector: { kind: "node-type-name", value: "battery1" }, ownerSubjectId: "csub_acme_power" },
+        { op: "create-subject", kind: "node-type", canonicalKey: "node-type:battery1", selector: { kind: "node-type-name", value: "battery1" }, ownerSubjectId: "csub_other" },
+      ],
+      frozenIdentity: { ...frozenPageIdentity([], "owned_scopes"), subjects: [
+        { canonicalKey: "driver:vendor,other", subjectId: "csub_other" },
+        { canonicalKey: "node-type:battery1", subjectId: "csub_battery_a", ownerSubjectId: "csub_acme_power" },
+        { canonicalKey: "node-type:battery1", subjectId: "csub_battery_b", ownerSubjectId: "csub_other" },
+      ] },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    expect(result.value.capabilityContract.revision).toBe("catalog-capability/v6");
+    expect(compileCatalogRelease(result.value.artifact.bundle).ok).toBe(true);
+    expect(compileCatalogRelease(predecessor.bundle)).toEqual({ ok: true, value: predecessor.compiled });
+  });
+
   it("publishes a standalone subject without inventing definitions and marks its new capability", async () => {
     const predecessor = firstAcmePredecessor();
     const result = await buildCompleteSuccessor({

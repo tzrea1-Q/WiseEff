@@ -197,6 +197,7 @@ export interface DefinitionLifecycleCounts {
 }
 
 export interface CatalogSubjectDetailSnapshot extends CatalogSubjectSnapshot {
+  readonly owner?: CatalogSubjectId;
   readonly aliases: readonly SubjectAliasSnapshot[];
   readonly definitionCounts: DefinitionLifecycleCounts;
 }
@@ -250,6 +251,8 @@ export interface CatalogDefinitionPublicationFact {
 
 export interface SubjectSelector {
   readonly driverCompatibles: readonly DriverCompatible[];
+  /** Compatibles declared by the nearest ancestor that has a compatible. */
+  readonly ownerContext?: readonly DriverCompatible[];
   /**
    * Governed software-configuration model identifiers observed on the source
    * (Issue #849 D09). Optional so device callers are unaffected.

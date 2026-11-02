@@ -19,6 +19,10 @@ function serialize(snapshot: CatalogReleaseNode, definitionIds: readonly string[
     if (subject.content.kind === "driver" && "nature" in subject.content.subtype) {
       blocks.push(`nature: ${subject.content.subtype.nature} · cardinality: ${subject.content.subtype.cardinality.kind}`);
     }
+    if (subject.content.ownerSubjectId) {
+      const owner = snapshot.documents.find((item) => item.kind === "subject" && item.content.id === subject.content.ownerSubjectId);
+      if (owner?.kind === "subject") blocks.push(`parent: ${owner.content.selector.value}`);
+    }
     for (const definition of definitions) {
       if (definition.kind !== "definition") continue;
       const { revision, propertyKey } = definition.content;

@@ -5,13 +5,14 @@ import type { Database } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
 import { getRootPostgresPool } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
-import { createCatalogKernel, DriverCompatible } from "../../catalog-kernel/interface";
+import { createCatalogKernel, DriverCompatible, NormalizedNodeTypeName } from "../../catalog-kernel/interface";
 import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } from "../../parameter-modules/recognitionSettings";
 import { PARAMETER_GOVERNANCE_WRITER_ROLE, quoteIdent } from "../../catalog-kernel/security/catalogRoleManifest";
 import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatch";
 import { captureCurrentCatalogPin, createPinCapturingCatalogRuntime } from "../../catalog-publication/runtime";
 import { parseDtsValue, type DtsValue } from "../../dts";
-import { parseCanonicalCompatibleSelector } from "../../parameter-catalog-contract";
+import { CatalogPageLimit, parseCanonicalCompatibleSelector } from "../../parameter-catalog-contract";
+import { parseCompatibles } from "../../dts/compatible";
 import { loadExactSourceRevisionForProof } from "../../parameter-files/sourceVersion";
 import { canAdminParameters } from "../../parameter-kernel/policy";
 import type { ObjectStore } from "../../logs/objectStore";
@@ -28,6 +29,7 @@ type Property = {
   projectId: string; configSetId: string; fileId: string; logicalNodeId: string;
   fileVersionId: string; nodeOccurrenceId: string; propertyOccurrenceId: string;
   rawText: string; propertyName: string; semanticValue:DtsValue|null;
+  nodeName: string; ownerCompatible: string | null;
 };
 
 /** File-activation producer. The caller's source revision and these writes commit or roll back together. */
@@ -51,6 +53,17 @@ export async function produceDtsReviewEvidenceInTransaction(
   const loaded = await createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool)).loadCurrentCatalog(pin);
   if (!loaded.ok) throw new Error(`Current Catalog snapshot unavailable: ${loaded.error.kind}`);
   const snapshot = await loadOrganizationCatalogSnapshot(tx, parameterOrganizationId(auth), loaded.value);
+  const listed = snapshot.listSubjects({ selection: { kind: "all" }, kinds: ["node-type"], lifecycles: [],
+    search: { kind: "absent" }, page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: { kind: "absent" } } });
+  if (listed.status !== "found") throw new Error("DTS owned node subjects unavailable");
+  const ownedNames: string[] = [...new Set(listed.page.items.flatMap((item) => {
+    const detail = snapshot.getSubject(item.id);
+    if ((detail.status !== "found" && detail.status !== "retired") || !detail.subject.owner) return [];
+    const selector = detail.subject.membership.selector;
+    return [...(selector.kind === "node-type-name" ? [selector.value] : []),
+      ...detail.subject.aliases.filter((alias) => alias.membership.lifecycle === "active" && alias.selector.kind === "node-type-name")
+        .map((alias) => alias.selector.value)];
+  }))];
 
   const continuityByCandidate = new Map<string, Array<{
     previous: LogicalNodeSnapshot; continuity: ContinuityAmbiguous;
@@ -75,15 +88,26 @@ export async function produceDtsReviewEvidenceInTransaction(
     }
   }
 
-  const properties = (await tx.query<Property>(
+  const candidates = (await tx.query<Property>(
     `select distinct on (logical.logical_node_id) revision.project_id as "projectId",revision.config_set_id as "configSetId",
        file.id as "fileId",logical.logical_node_id as "logicalNodeId",
        property.file_version_id as "fileVersionId",property.node_occurrence_id as "nodeOccurrenceId",
-       property.id as "propertyOccurrenceId",property.raw_text as "rawText",property.property_name as "propertyName",property.ast_json as "semanticValue"
+       property.id as "propertyOccurrenceId",property.raw_text as "rawText",property.property_name as "propertyName",property.ast_json as "semanticValue",
+       logical.name as "nodeName",owner.compatible as "ownerCompatible"
      from dts_occurrence_effects effect
      join dts_logical_node_revisions logical on logical.id=effect.logical_node_revision_id
        and logical.config_revision_id=effect.config_revision_id
      join dts_config_revisions revision on revision.id=effect.config_revision_id
+     left join lateral (
+       with recursive parents as (
+         select p.logical_node_id,p.parent_logical_node_id,p.compatible,1 as depth,array[logical.logical_node_id,p.logical_node_id] as visited
+         from dts_logical_node_revisions p where p.config_revision_id=logical.config_revision_id and p.logical_node_id=logical.parent_logical_node_id
+         union all
+         select p.logical_node_id,p.parent_logical_node_id,p.compatible,parents.depth+1,parents.visited||p.logical_node_id
+         from parents join dts_logical_node_revisions p on p.config_revision_id=logical.config_revision_id
+           and p.logical_node_id=parents.parent_logical_node_id where not p.logical_node_id=any(parents.visited)
+       ) select compatible from parents where compatible is not null order by depth limit 1
+     ) owner on true
      join dts_property_occurrences property on property.id=effect.property_occurrence_id
        and property.config_revision_id=effect.config_revision_id
      join project_parameter_file_versions version on version.id=property.file_version_id
@@ -93,15 +117,22 @@ export async function produceDtsReviewEvidenceInTransaction(
      join dts_config_revision_members member on member.config_revision_id=revision.id
        and member.file_id=file.id and member.file_version_id=version.id
      where effect.config_revision_id=$1 and revision.organization_id=$2
-       and (effect.property_name='compatible' or logical.logical_node_id=any($3::text[]))
+       and (effect.property_name='compatible' or logical.logical_node_id=any($3::text[])
+         or (logical.compatible is null and logical.name=any($4::text[])))
        and effect.effect_kind in ('set','override')
        and not exists (select 1 from dts_occurrence_effects later
          where later.config_revision_id=effect.config_revision_id
            and later.logical_node_revision_id=effect.logical_node_revision_id
            and later.property_name=effect.property_name and later.source_order>effect.source_order)
-     order by logical.logical_node_id,(property.property_name='compatible') desc,property.id limit 201`,
-    [configRevisionId,parameterOrganizationId(auth),[...continuityByCandidate.keys()]],
+     order by logical.logical_node_id,(property.property_name='compatible') desc,property.id`,
+    [configRevisionId,parameterOrganizationId(auth),[...continuityByCandidate.keys()],ownedNames],
   )).rows;
+  const isUnknownOwned = (property: Property) => property.propertyName !== "compatible"
+    && ownedNames.includes(property.nodeName) && snapshot.resolveSubject({ driverCompatibles: [],
+      ownerContext: parseCompatibles(property.ownerCompatible).map(DriverCompatible),
+      nodeTypeFallback: { kind: "present", name: NormalizedNodeTypeName(property.nodeName) } }).status === "unknown";
+  const properties = candidates.filter((property) => property.propertyName === "compatible"
+    || continuityByCandidate.has(property.logicalNodeId) || isUnknownOwned(property));
   const anchoredCandidates = new Set(properties.map((property) => property.logicalNodeId));
   const propertylessCandidates = [...continuityByCandidate.keys()].filter((candidate) => !anchoredCandidates.has(candidate));
   if (properties.length + propertylessCandidates.length > 200) throw new Error("DTS review evidence source limit exceeded");
@@ -144,6 +175,8 @@ export async function produceDtsReviewEvidenceInTransaction(
   for (const property of properties) {
     const compatibleProperty = property.propertyName === "compatible";
     if (!compatibleProperty && continuityProduced.has(property.logicalNodeId)) continue;
+    const unknownOwned = !continuityByCandidate.has(property.logicalNodeId) && isUnknownOwned(property);
+    if (!compatibleProperty && !continuityByCandidate.has(property.logicalNodeId) && !unknownOwned) continue;
     const parsed = property.semanticValue ?? parseDtsValue(property.propertyName,property.rawText).value;
     const compatibles = compatibleProperty && parsed.kind === "strings" ? parsed.values : [];
     if (compatibleProperty && (!compatibles.length
@@ -157,7 +190,7 @@ export async function produceDtsReviewEvidenceInTransaction(
       nodeTypeFallback:{kind:"absent"}});
     const statuses = [...matches.values()].map((match) => match.status === "matched" && match.subject.kind !== "driver"
       ? "unknown" : match.status);
-    const observationStatus = continuityByCandidate.has(property.logicalNodeId) || completeMatch.status === "ambiguous" ? "ambiguous"
+    const observationStatus = unknownOwned ? "unknown" : continuityByCandidate.has(property.logicalNodeId) || completeMatch.status === "ambiguous" ? "ambiguous"
       : statuses.every((status) => status === "matched") ? "matched"
       : statuses.includes("unknown") ? "unknown"
       : statuses.includes("ambiguous") ? "ambiguous"
@@ -174,7 +207,7 @@ export async function produceDtsReviewEvidenceInTransaction(
     )).rows[0];
     await tx.query("reset role");
     if (!occurrence) throw new Error("DTS compatible source occurrence is unavailable");
-    const sourceIdentity = `dts-${compatibleProperty ? "compatible" : "continuity"}-property:${configRevisionId}:${property.propertyOccurrenceId}`;
+    const sourceIdentity = `dts-${compatibleProperty ? "compatible" : unknownOwned ? "owned-node" : "continuity"}-property:${configRevisionId}:${property.propertyOccurrenceId}`;
     const observed = await ingestSourceBoundEvidenceInTransaction(tx,{
       organizationId:parameterOrganizationId(auth),sourceIdentity,catalogReleaseId:pin.id,
       matcherRevision:subjectMatcherRevision,matcherOutput:{status:observationStatus},
@@ -219,6 +252,13 @@ export async function produceDtsReviewEvidenceInTransaction(
       }, { purpose: "review-evidence" });
     }
     const relations = continuityByCandidate.get(property.logicalNodeId);
+    if (unknownOwned) {
+      await ingestSourceBoundEvidenceInTransaction(tx, {
+        organizationId: parameterOrganizationId(auth), sourceIdentity: `dts-owned-node:${observed.id}:${property.nodeName}`,
+        catalogReleaseId: pin.id, matcherRevision: subjectMatcherRevision, matcherOutput: { status: "unknown" },
+        evidence: { nodeType: property.nodeName, sourceProof: JSON.parse(JSON.stringify(proof)) },
+      }, { kind: "review", observationId: observed.id, projectId: property.projectId, configRevisionId });
+    }
     if (relations && !continuityProduced.has(property.logicalNodeId)) {
       await ingestSourceBoundEvidenceInTransaction(tx,{
         organizationId:parameterOrganizationId(auth),
