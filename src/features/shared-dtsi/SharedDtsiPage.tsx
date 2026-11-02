@@ -1,3 +1,4 @@
+import { createGovernanceIdempotencyKey as createUuid } from "@/features/parameter-catalog-governance/governanceState";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ArrowLeft } from "lucide-react";
@@ -144,7 +145,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const [reload, setReload] = useState(0);
   const editor = useRef<WorkbenchDtsEditorHandle>(null);
   const editorSessions=useRef<WorkbenchDtsEditorSessions>(new Map());
-  const memberKeys=useRef<string[]>([crypto.randomUUID()]);
+  const memberKeys=useRef<string[]>([createUuid()]);
   const resume=useRef<{resourceId:string;draftId:string;revision:number;savedDraft:SharedDtsiDraft;members:{id:string;content:string;key:string}[];activeId:string;client:typeof client;organizationId:typeof organizationId;canWrite:boolean;preview?:boolean}|null>(null);
   const previewButton = useRef<HTMLButtonElement>(null);
   const descriptionInput = useRef<HTMLTextAreaElement>(null);
@@ -232,7 +233,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     }
     const carry=resume.current?.resourceId===selected && resume.current.client===client && resume.current.organizationId===organizationId && tab==="source" && (!selectedVersion || selectedVersion==="draft")?resume.current:null;
     if(!carry)resume.current=null;
-    if(!carry){editorSessions.current.clear();memberKeys.current=[crypto.randomUUID()];setPreparing(false);setDescriptionMissing(false);setUncertainCreate(false);}
+    if(!carry){editorSessions.current.clear();memberKeys.current=[createUuid()];setPreparing(false);setDescriptionMissing(false);setUncertainCreate(false);}
     setError(""); setPreviewFailure(null); setConflict(false);setPostSaveChanged(false); setEditorDirty(false); setDraft(null); setPublished(null); setDetail(null); setPreview(null); setLeaving(false); setPending(false);setOperation(null); setMemberIndex(0);
     setSourceReady(selected !== "new"); setImporting(false); setIgnoredFiles([]); setReplacement(null); setAddition(null);setRemoveOpen(false);setNewFileOpen(false);nameTouched.current=false; setEditorVersion(++editorEpoch.current);
     if (!client) { setLoading(false); setLoadedScope(scope); return; }
@@ -252,7 +253,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
         const result = await client.get(selected);
         if (!cancelled && isCurrent(scope)) {
           const index=carry?Math.max(0,result.members.findIndex(member=>member.id===carry.activeId)):0;
-          memberKeys.current=result.members.map(member=>{const old=carry?.members.find(value=>value.id===member.id && value.content===member.content);return old?.key??crypto.randomUUID();});
+          memberKeys.current=result.members.map(member=>{const old=carry?.members.find(value=>value.id===member.id && value.content===member.content);return old?.key??createUuid();});
           if(carry){for(const old of carry.members)if(!memberKeys.current.includes(old.key))editorSessions.current.delete(old.key);if(carry.draftId!==result.id || carry.revision!==result.revision || metadata.draftRevision!==result.revision){setSaved(null);setPostSaveChanged(true);}}
           setDraft(result);setForm({...draftInput(result),sourceName:result.members[index]!.sourceName,content:result.members[index]!.content});setMemberIndex(index);setBuildText(buildTexts(result.buildInputs));
           if(carry?.preview && metadata.state==="retired")setError("资源已停用，请恢复后重新检查。");
@@ -262,7 +263,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
               const checked=await client.preview(result.resourceId,result.revision);
               if(!cancelled && isCurrent(scope)){
                 if(checked.resourceId!==result.resourceId || checked.draftRevision!==result.revision)throw new Error("检查结果已失效，请重新检查。");
-                setPreview({scope,data:checked,key:crypto.randomUUID()});
+                setPreview({scope,data:checked,key:createUuid()});
               }
             } catch(cause){if(!cancelled && isCurrent(scope)){setError(message(cause));setPreviewFailure(cause instanceof WiseEffApiError?cause:null);setConflict(staleDraft(cause));}}
             finally{scope.pending=false;if(!cancelled && isCurrent(scope)){setPending(false);setOperation(null);}}
@@ -307,7 +308,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
       }
     }
     if (isCurrent(operation)) {
-      const nextKeys=result.members.map(member=>{const index=submitted.findIndex(old=>old.id ? old.id===member.id : old.sourceName===member.sourceName);return keys[index]??crypto.randomUUID();});
+      const nextKeys=result.members.map(member=>{const index=submitted.findIndex(old=>old.id ? old.id===member.id : old.sourceName===member.sourceName);return keys[index]??createUuid();});
       const index=Math.max(0,nextKeys.indexOf(activeKey!));memberKeys.current=nextKeys;
       if(selected==="new")resume.current={resourceId:result.resourceId,draftId:result.id,revision:result.revision,savedDraft:result,members:result.members.map((member,at)=>({id:member.id,content:member.content,key:nextKeys[at]!})),activeId:result.members[index]!.id,client,organizationId,canWrite};
       setDraft(result);setForm({...draftInput(result),sourceName:result.members[index]!.sourceName,content:result.members[index]!.content});setBuildText(buildTexts(result.buildInputs));setMemberIndex(index);setEditorDirty(false);setSaved(result.resourceId);
@@ -336,12 +337,12 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
       const current = dirty || !draft ? await persist(scope) : draft;
       if (!isCurrent(scope)) return;
       if(selected==="new") {
-        if(!resume.current){const keys=memberKeys.current;const active=members[memberIndex]?.id;resume.current={resourceId:current.resourceId,draftId:current.id,revision:current.revision,savedDraft:current,members:current.members.map(member=>({id:member.id,content:member.content,key:keys[members.findIndex(value=>value.id===member.id)]??crypto.randomUUID()})),activeId:active??current.members[0]!.id,client,organizationId,canWrite};}
+        if(!resume.current){const keys=memberKeys.current;const active=members[memberIndex]?.id;resume.current={resourceId:current.resourceId,draftId:current.id,revision:current.revision,savedDraft:current,members:current.members.map(member=>({id:member.id,content:member.content,key:keys[members.findIndex(value=>value.id===member.id)]??createUuid()})),activeId:active??current.members[0]!.id,client,organizationId,canWrite};}
         resume.current.preview=true;leave(current.resourceId);return;
       }
       setOperation("checking");
       const result = await client.preview(current.resourceId, current.revision);
-      if (isCurrent(scope)) {if(result.resourceId!==current.resourceId || result.draftRevision!==current.revision)throw new Error("检查结果已失效，请重新检查。");setPreview({ scope, data: result, key: crypto.randomUUID() });}
+      if (isCurrent(scope)) {if(result.resourceId!==current.resourceId || result.draftRevision!==current.revision)throw new Error("检查结果已失效，请重新检查。");setPreview({ scope, data: result, key: createUuid() });}
     } catch (cause) {
       if (isCurrent(scope)) { setError(message(cause)); setPreviewFailure(cause instanceof WiseEffApiError ? cause : null);
         setConflict(staleDraft(cause)); }
@@ -371,7 +372,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   };
   const applyImport = (choice:NonNullable<typeof replacement>) => {
     if (!isCurrent(scope) || choice.edit !== edits.current || scope.pending) return;
-    setEditorVersion(++editorEpoch.current); edits.current += 1;memberKeys.current=choice.members.map(()=>crypto.randomUUID());
+    setEditorVersion(++editorEpoch.current); edits.current += 1;memberKeys.current=choice.members.map(()=>createUuid());
     setForm(current => ({...current,name:nameTouched.current||draft||sourceReady&&current.name?current.name:choice.name,
       sourceName:choice.members[0]!.sourceName,content:choice.members[0]!.content,archive:undefined,
       members:choice.members.map(member=>({...member,...(current.members?.find(old=>old.sourceName===member.sourceName)?.id
@@ -387,7 +388,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     const checked=sharedDtsiDraftInputSchema.safeParse({name:"导入预览",sourceName:merged[memberIndex]?.sourceName??merged[0]?.sourceName,content:merged[memberIndex]?.content??merged[0]?.content,members:merged});
     if(!checked.success || merged.reduce((size,member)=>size+new TextEncoder().encode(member.content).length,0)>sharedDtsiImportLimits.maxTotalBytes){setError(checked.success?"资源源码总量不能超过 16 MiB。":checked.error.issues[0]?.message??"文件数量或大小超出限制。");setAddition(null);return;}
     const activeChanged=previous[memberIndex]?.content!==merged[memberIndex]?.content;
-    memberKeys.current=merged.map((member,index)=>index>=previous.length||member.content!==previous[index]?.content?crypto.randomUUID():memberKeys.current[index]!);
+    memberKeys.current=merged.map((member,index)=>index>=previous.length||member.content!==previous[index]?.content?createUuid():memberKeys.current[index]!);
     if(activeChanged)setEditorVersion(++editorEpoch.current);
     edits.current+=1;setForm({...current,sourceName:merged[memberIndex]!.sourceName,content:merged[memberIndex]!.content,members:merged});setEditorDirty(true);setSaved(null);setIgnoredFiles(choice.ignored);setAddition(null);setError("");
   };
@@ -466,7 +467,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
   const createMember=()=>{
     if(newFileError || scope.pending || atMemberLimit)return;
     const current=withContent(form,memberIndex,editor.current?.flush()?.text??form.content);
-    const previous=sourceMembers(current);memberKeys.current=[...memberKeys.current,crypto.randomUUID()];
+    const previous=sourceMembers(current);memberKeys.current=[...memberKeys.current,createUuid()];
     edits.current+=1;setForm({...current,sourceName:newFilePath,content:"",members:[...previous,{sourceName:newFilePath,content:""}]});
     setMemberIndex(previous.length);setEditorDirty(true);setSaved(null);setNewFileOpen(false);
   };
@@ -683,7 +684,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
           setForm({ ...form, sourceName: event.target.value,...(form.members?{members:form.members.map((member,index)=>index===memberIndex?{...member,sourceName:event.target.value}:member)}:{}) }); setSaved(null); }} />{memberPathError(memberIndex) || fieldError("sourceName")?<span id="shared-member-path-error" role="alert">{memberPathError(memberIndex) || fieldError("sourceName")}</span>:null}</label>
         {canWrite?<><Button variant="outline" disabled={pending || atMemberLimit} aria-describedby={atMemberLimit?"shared-member-limit":undefined} onClick={()=>{setNewFilePath("");setNewFileOpen(true);}}>新建源码</Button><Button variant="outline" onClick={()=>setRemoveOpen(true)} disabled={pending}>移除当前文件</Button></>:null}</div>:null}
       {canWrite && atMemberLimit?<p id="shared-member-limit" className="shared-dtsi-hint">最多 128 个文件，请先移除文件。</p>:null}
-      {!members.length?<div><p role="status">暂无源码文件，请添加文件或新建源码。</p>{canWrite?<Button variant="outline" onClick={()=>{memberKeys.current=[crypto.randomUUID()];edits.current+=1;setForm(current=>({...current,sourceName:"common.dtsi",content:"",members:[{sourceName:"common.dtsi",content:""}]}));setEditorDirty(true);setSaved(null);}}>新建源码</Button>:null}</div>:form.archive?<p role="status">{form.archive.name} · 保存草稿后展开文件并检查路径。</p>:<div className="shared-dtsi-workspace">{memberNavigation(members,selectMember,true)}
+      {!members.length?<div><p role="status">暂无源码文件，请添加文件或新建源码。</p>{canWrite?<Button variant="outline" onClick={()=>{memberKeys.current=[createUuid()];edits.current+=1;setForm(current=>({...current,sourceName:"common.dtsi",content:"",members:[{sourceName:"common.dtsi",content:""}]}));setEditorDirty(true);setSaved(null);}}>新建源码</Button>:null}</div>:form.archive?<p role="status">{form.archive.name} · 保存草稿后展开文件并检查路径。</p>:<div className="shared-dtsi-workspace">{memberNavigation(members,selectMember,true)}
       <div className="shared-dtsi-source"><WorkbenchDtsEditor ref={editor} sessions={editorSessions.current} sessionKey={sessionKey} text={form.content} baseText={draft?.members.find(member=>member.id===members[memberIndex]?.id)?.content??""} baselineRevision={draft?.revision} resetKey={reloadEditor}
         ariaLabel="DTSI 源码" readOnly={!canWrite || pending} onDirtyChange={meta => { if (editorVersion===editorEpoch.current && meta.sessionKey === sessionKey && isCurrent(scope)) { if(meta.generation>0) edits.current+=1; setEditorDirty(meta.dirty); if (meta.dirty) setSaved(null); } }}
         onChange={snapshot => { if (editorVersion===editorEpoch.current && snapshot.sessionKey === sessionKey && isCurrent(scope)) setForm(current => {
