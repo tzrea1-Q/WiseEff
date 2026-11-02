@@ -288,6 +288,7 @@ try {
   const node = http("/api/v1/debugging/admin/nodes", "POST", { name: "Preserved node", module: "minimal",
     bindings: [{ protocol: "hdc", nodePath: "/minimal/node", accessMode: "RW", enabled: true }] }, 201).item;
   const business = http("/api/v1/parameter-modules", "POST", { name: "Legacy business", kind: "business" }, 201).item;
+  // This pre-upgrade fixture is written only to the old release for cutover verification.
   const driver = http("/api/v2/parameter-modules/driver-registry", "POST", { displayName: "Legacy driver", businessCategoryId: business.id, compatibles: ["wiseeff,minimal"] }, 201).item;
   const actualDriver = http("/api/v1/parameter-modules").items.find((item: { id: string }) => item.id === driver.id);
   http("/api/v2/parameter-specs", "POST", { attributionSubjectId: actualDriver.attributionSubjectId, propertyKey: "legacy-voltage",
@@ -439,16 +440,6 @@ try {
     await page.getByLabel('目录发布', {exact:true}).getByText(${JSON.stringify(first.targetReleaseId)}, {exact:true}).waitFor();
   }`);
   step = "page-register-published-subject";
-  const driverGroups = inApi(`
-    import{createPostgresDatabase}from'./server/shared/database/client.ts';
-    const db=createPostgresDatabase(process.env.DATABASE_URL);
-    try{const r=await db.query("select count(*)::int as c from parameter_modules where kind='driver-group'");console.log(JSON.stringify(Number(r.rows[0]?.c??0)>0))}finally{await db.close()}
-  `);
-  if (!driverGroups) {
-    http("/api/v2/parameter-modules/driver-registry", "POST", {
-      displayName: "Published driver", businessCategoryId: business.id, compatibles: ["acme,power"]
-    }, 201);
-  }
   const registered = browserJson(browserCode(`async page => {
     const dismiss = page.getByRole('button', {name:'不再提示'});
     if (await dismiss.isVisible().catch(() => false)) await dismiss.click({force:true});

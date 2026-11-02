@@ -15,6 +15,8 @@
 
 ## 关键阅读点
 
+- 模块结构切换先执行[子主体认领](../../runbooks/self-hosted-runtime.md#claim-existing-catalog-child-node-owners)，再执行[遗留技术模块迁移](../../runbooks/self-hosted-runtime.md#migrate-legacy-technical-modules)；两步均先预检并处理冲突。
+
 - 先确认该文档属于哪个决策面：runbook。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。

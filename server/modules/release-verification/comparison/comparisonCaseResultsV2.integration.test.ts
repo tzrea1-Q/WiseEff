@@ -40,10 +40,7 @@ import { executeCutover, planCutover } from "../../catalog-cutover/orchestrator"
 import { fixtureObservedQuiescence } from "../../catalog-cutover/quiescence";
 import { fixtureObservedRecoveryPoint } from "../../catalog-cutover/recoveryPointObservation";
 import { CatalogSubjectId } from "../../parameter-catalog-contract";
-import {
-  createParameterModule,
-  deleteParameterModule,
-} from "../../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../../testing/legacyParameterModuleFixture";
 import { provideModParameterCatalogComparisonCaseBatchV2 } from "../../parameter-modules/parameterCatalogComparisonContribution";
 import { getParameterModuleRegistry } from "../../parameter-modules/service";
 import { writeModParameterCatalogComparisonCasesV2 } from "./caseResultV2Writer";
@@ -574,11 +571,12 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
     const blockedWrite = writeModParameterCatalogComparisonCasesV2(writerInput);
     await expect(blockedWrite).rejects.toThrow("full organization inventory has 1 unqueryable case(s)");
     expect(await readComparisonResidue()).toEqual({ cases: "0", results: "0" });
-    const removedUnattachedModule = await deleteParameterModule(ownerDatabase, {
-      organizationId,
-      moduleId: unattachedModule.id,
-    });
-    expect(removedUnattachedModule).toBe(true);
+    // Remove the synthetic legacy blocker to continue testing comparison evidence.
+    const removedUnattachedModule = await client.query(
+      "delete from parameter_modules where organization_id = $1 and id = $2",
+      [organizationId, unattachedModule.id],
+    );
+    expect(removedUnattachedModule.rowCount).toBe(1);
 
     const captureBusinessRows = async () => {
       const users = await client.query<{ row: unknown }>(

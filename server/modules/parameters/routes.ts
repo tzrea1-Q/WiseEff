@@ -416,6 +416,11 @@ export function registerParameterRoutes(
   router.post("/api/v1/parameter-modules", async (request) => {
     const db = requireDb(options.db);
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
+    if (request.body && typeof request.body === "object" && "kind" in request.body
+      && (request.body.kind === "driver-group" || request.body.kind === "node-type")) {
+      requireCanAdmin(auth);
+      return retireModuleWrite(request, auth, "parameterModules.v1.create");
+    }
     const body = parseWithSchema(createParameterModuleBodySchema, request.body, "Invalid parameter module create payload.");
     let item;
     try {
@@ -434,6 +439,11 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     const params = parseWithSchema(parameterModuleParamsSchema, request.params);
+    if (request.body && typeof request.body === "object" && "kind" in request.body
+      && (request.body.kind === "driver-group" || request.body.kind === "node-type")) {
+      requireCanAdmin(auth);
+      return retireModuleWrite(request, auth, "parameterModules.v1.update");
+    }
     const body = parseWithSchema(updateParameterModuleBodySchema, request.body, "Invalid parameter module update payload.");
     let item;
     try {

@@ -207,15 +207,7 @@
     "server/modules/parameter-modules/adminMetadata.integration.test.ts": {
       "forbidden-catalog-internal-import": 5,
       "legacy-catalog-raw-read": 4,
-      "unresolved-boundary-expression": 4
-    },
-    "server/modules/parameter-modules/attributionSubjectRepository.ts": {
-      "legacy-catalog-raw-read": 1,
-      "legacy-catalog-sql-write": 4
-    },
-    "server/modules/parameter-modules/driverPlacement.test.ts": {
-      "legacy-catalog-raw-read": 2,
-      "legacy-catalog-sql-write": 1
+      "unresolved-boundary-expression": 3
     },
     "server/modules/parameter-modules/driverPlacement.ts": {
       "legacy-catalog-raw-read": 11,
@@ -255,14 +247,14 @@
     },
     "server/modules/parameter-modules/resolveAttributionSubject.ts": {
       "legacy-catalog-raw-read": 3,
-      "legacy-catalog-sql-write": 6
+      "legacy-catalog-sql-write": 5
     },
     "server/modules/parameter-modules/resolveModuleForBinding.test.ts": {
       "legacy-catalog-raw-read": 2,
       "legacy-catalog-sql-write": 2
     },
     "server/modules/parameter-modules/resolveModuleForBinding.ts": {
-      "legacy-catalog-raw-read": 4,
+      "legacy-catalog-raw-read": 3,
       "legacy-catalog-sql-write": 1
     },
     "server/modules/parameter-modules/routes.ts": {
@@ -589,8 +581,8 @@
       "legacy-catalog-sql-write": 11
     },
     "server/modules/parameters/parameterModuleRepository.ts": {
-      "legacy-catalog-raw-read": 10,
-      "legacy-catalog-sql-write": 10,
+      "legacy-catalog-raw-read": 8,
+      "legacy-catalog-sql-write": 6,
       "unresolved-boundary-expression": 3
     },
     "server/modules/parameters/repository.test.ts": {

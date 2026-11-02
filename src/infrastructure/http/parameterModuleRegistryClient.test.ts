@@ -37,6 +37,16 @@ it("saves current recognition settings and reads them back from the registry", a
   expect(registry.modules[0]).toMatchObject({ recognitionSubjectId: "subject", ...settings });
 });
 
+it("preserves unmigrated recognition evidence for the read-only module detail", async () => {
+  const evidence = { compatibles: ["legacy,device"], driverNature: "physical-device" as const,
+    instanceCardinality: "multiple" as const, nodeTypeName: null };
+  const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ item: { modules: [{
+    id: "driver", name: "Legacy", kind: "driver-group", unmigratedRecognition: evidence,
+  }], mappings: [] } }));
+  const repository = createHttpParameterModuleRegistryRepository(createApiClient({ baseUrl: "", fetchImpl }));
+  expect((await repository.getRegistry()).modules[0]?.unmigratedRecognition).toEqual(evidence);
+});
+
 it.each([
   ["HTTP", createHttpParameterModuleRegistryRepository(createApiClient({ baseUrl: "" }))],
   ["mock", createMockParameterModuleRegistryRepository()]

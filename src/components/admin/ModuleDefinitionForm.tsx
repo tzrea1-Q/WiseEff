@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { ModuleImportance, ModuleKind } from "@/domain/parameter-topology/moduleRegistry";
+import type { ModuleImportance } from "@/domain/parameter-topology/moduleRegistry";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { shouldShowFieldError } from "@/components/common/fieldValidation";
 import { SelectControl } from "@/components/common/SelectControl";
@@ -8,11 +8,6 @@ const IMPORTANCE_OPTIONS: Array<{ value: ModuleImportance; label: string }> = [
   { value: "high", label: "高" },
   { value: "medium", label: "中" },
   { value: "low", label: "低" }
-];
-
-const RECLASSIFY_KIND_OPTIONS: Array<{ value: "business" | "node-type"; label: string }> = [
-  { value: "business", label: "业务分类" },
-  { value: "node-type", label: "节点类型" }
 ];
 
 export function ModuleDefinitionForm({
@@ -25,9 +20,6 @@ export function ModuleDefinitionForm({
   showImportance = false,
   importance = "medium",
   onImportanceChange,
-  showKind = false,
-  kind = "business",
-  onKindChange,
   leading = null,
   trailing = null
 }: {
@@ -41,10 +33,6 @@ export function ModuleDefinitionForm({
   showImportance?: boolean;
   importance?: ModuleImportance;
   onImportanceChange?: (value: ModuleImportance) => void;
-  /** When true, show controlled kind reclassify (business / node-type). */
-  showKind?: boolean;
-  kind?: ModuleKind;
-  onKindChange?: (value: "business" | "node-type") => void;
   /** Extra fields rendered inside the same styled form (e.g. create kind / parent). */
   leading?: ReactNode;
   trailing?: ReactNode;
@@ -52,7 +40,7 @@ export function ModuleDefinitionForm({
   const [nameTouched, setNameTouched] = useState(false);
   const nameError = getModuleNameError(module.name, existingNames, currentName);
   const visibleNameError = shouldShowFieldError(nameError, { touched: nameTouched, submitted: showErrors });
-  const importanceVisible = showImportance && (!showKind || kind === "business");
+  const importanceVisible = showImportance;
 
   return (
     <form className="param-module-def-form" onSubmit={(event) => event.preventDefault()}>
@@ -69,18 +57,6 @@ export function ModuleDefinitionForm({
         />
         {visibleNameError ? <span className="field-error">{nameError}</span> : null}
       </label>
-      {showKind ? (
-        <label>
-          模块类型
-          <SelectControl
-            ariaLabel="模块类型"
-            value={kind === "driver-group" || kind === "unclassified" ? "business" : kind}
-            disabled={readOnly}
-            onValueChange={(value) => onKindChange?.(value)}
-            options={RECLASSIFY_KIND_OPTIONS}
-          />
-        </label>
-      ) : null}
       {importanceVisible ? (
         <label>
           重要性

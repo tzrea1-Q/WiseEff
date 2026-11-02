@@ -301,8 +301,8 @@ export function planInstanceModulePlacements(
 }
 
 /**
- * Attribution placement: driver groups (compatible) and node-type units (driverless
- * config blocks). Never emits per-device-instance modules.
+ * Legacy attribution evidence used to map seed observations to business categories;
+ * this plan does not create modules.
  */
 export function planAttributionModulePlacements(
   nodes: readonly ResolvedPlacementNode[],

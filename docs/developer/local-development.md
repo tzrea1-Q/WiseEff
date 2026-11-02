@@ -171,7 +171,7 @@ Seeds are ordered by milestone:
 - `db:seed:m2`: log-analysis sample data.
 - `db:seed:m3`: simulator debugging device and catalog.
 
-Fresh databases seeded from the same commit have identical canonical module counts, Subject registrations/placements, Binding-to-module assignments and current values, including after quality visual seeding. Seed placement keeps curated-module priority and orders available modules by their stable source key (or name), not generated UUIDs; existing registrations are never moved. The real-PostgreSQL regression is `npm run test:server -- server/scripts/seed-all.determinism.integration.test.ts` with `DATABASE_URL` and `TEST_DATABASE_URL` set. It compares natural-key outputs, not generated row IDs or audit timestamps.
+Fresh databases seeded from the same commit have identical canonical module counts, Subject registrations/placements, Binding-to-module assignments and current values, including after quality visual seeding. Seed placement keeps curated-module priority and orders available business modules by their stable source key (or name), not generated UUIDs; existing registrations are never moved. The real-PostgreSQL regression is `npm run test:server -- server/scripts/seed-all.determinism.integration.test.ts` with `DATABASE_URL` and `TEST_DATABASE_URL` set. It compares natural-key outputs, not generated row IDs or audit timestamps.
 
 ### Pinned vendor documentation
 

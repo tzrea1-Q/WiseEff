@@ -1,10 +1,11 @@
-import type { Queryable } from "../../shared/database/client";
+import type { Queryable } from "../shared/database/client";
 import {
   attributionSubjectIdForModule,
   defaultDriverRegistrationAttributes,
   type AttributionSubjectKind,
-} from "./attributionSubjects";
+} from "../modules/parameter-modules/attributionSubjects";
 
+/** Historical fixture helper; production module creation never materializes attribution subjects. */
 export async function insertAttributionSubjectForNewModule(
   db: Queryable,
   input: {

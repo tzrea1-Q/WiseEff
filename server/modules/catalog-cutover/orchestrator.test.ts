@@ -48,7 +48,7 @@ import { fixtureCutoverIdentities } from "./identities";
 import { fixtureObservedQuiescence } from "./quiescence";
 import { fixtureObservedRecoveryPoint } from "./recoveryPointObservation";
 import { parseMappingManifestV2 } from "./mappingManifest";
-import { createParameterModule } from "../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../testing/legacyParameterModuleFixture";
 
 const CATALOG_TEST_TIMEOUT_MS = 60_000;
 const CATALOG_HOOK_TIMEOUT_MS = 120_000;
@@ -1034,8 +1034,8 @@ describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TI
         sourceKey: "compatible:s7mod-r10",
       });
       const modGraph = s7ModR1R10ManifestGraph({
-        r1: { id: moduleR1.id, attributionSubjectId: moduleR1.attributionSubjectId },
-        r10: { id: moduleR10.id, attributionSubjectId: moduleR10.attributionSubjectId },
+        r1: { id: moduleR1.id, attributionSubjectId: moduleR1.attributionSubjectId ?? null },
+        r10: { id: moduleR10.id, attributionSubjectId: moduleR10.attributionSubjectId ?? null },
       });
       const classification = classifyFrozenP0Graph(modGraph);
       expect(classification.ok).toBe(true);

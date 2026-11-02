@@ -1695,6 +1695,7 @@ async function applyItem(
   return "applied";
 }
 
+/** Historical reconciliation exercised by upgrade tests; the operator apply route is retired. */
 export async function reconcileDriverParameterDefinitions(
   db: Database,
   options: {

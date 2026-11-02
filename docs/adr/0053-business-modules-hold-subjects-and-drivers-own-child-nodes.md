@@ -6,7 +6,7 @@ Date: 2026-11-02
 
 ## Status
 
-Accepted for [#1479](https://github.com/tzrea1-Q/WiseEff/issues/1479). Implementation plan: [module subject structure](../exec-plans/active/2026-11-02-issue-1479-module-subject-structure.md), delivered in slices S1–S5. This ADR amends [ADR-0042](0042-organizations-register-canonical-subjects-once.md); ADR-0040's identity, release and synchronizer rules stay in force.
+Accepted for [#1479](https://github.com/tzrea1-Q/WiseEff/issues/1479). Implementation plan: [module subject structure](../exec-plans/completed/2026-11-02-issue-1479-module-subject-structure.md), delivered in slices S1–S5. This ADR amends [ADR-0042](0042-organizations-register-canonical-subjects-once.md); ADR-0040's identity, release and synchronizer rules stay in force.
 
 ## Context
 

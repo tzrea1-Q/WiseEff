@@ -52,11 +52,11 @@ it("hands newly published subjects and placement hints to batch registration", a
         displayName: "参数", documentation: "", valueSchema: { type: "integer" },
       } }] }] }, context);
     return { item: { candidate: result.item, noChange: false, entries: [], source: { fileName: "d.md", sha256: "sha256:test", parserVersion: "v1" },
-      placementHints: [{ kind: "driver", selector: "acme,new", categoryPath: "Power / Charging", moduleName: "演示充电芯片A", line: 2, warnings: [] }] } };
+      placementHints: [{ kind: "driver", selector: "acme,new", categoryPath: "Power / Charging", displayAlias: "演示充电芯片A", line: 2, warnings: [] }] } };
   };
   vi.spyOn(ports.catalog, "getSubject").mockImplementation(async (id) => ({ item: { ...unregisteredSubject, id, canonicalName: "acme,new", registration: { status: "unregistered" } } }));
   const listUnregisteredSubjects = vi.spyOn(ports.governance, "listUnregisteredSubjects").mockResolvedValue({ catalogReleaseId: CATALOG_RELEASE_ID,
-    items: [{ id: "csub_new_1", kind: "driver", canonicalName: "acme,new", availableModuleIds: [] }],
+    items: [{ id: "csub_new_1", kind: "driver", canonicalName: "acme,new", availableModuleIds: ["charging"] }],
     modules: [{ id: "power", name: "Power", parentId: null, kind: "business", occupied: false },
       { id: "charging", name: "Charging", parentId: "power", kind: "business", occupied: false }] });
   render(<CatalogOrganizationSurface {...ports} runtimeMode="api" actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish", "catalog:register"]}
@@ -74,8 +74,8 @@ it("hands newly published subjects and placement hints to batch registration", a
   expect(within(subjectSection).getByRole("list")).toHaveClass("list-disc");
   expect(within(subjectSection).getByRole("list")).toHaveTextContent("acme,new");
   await user.click(within(subjectSection).getByRole("button", { name: "前往批量登记" }));
-  expect(await screen.findByLabelText("acme,new 的模块名称")).toHaveValue("演示充电芯片A");
-  expect(screen.getByRole("combobox", { name: "acme,new 的业务分类" })).toHaveAttribute("data-value", "category:charging");
+  expect(await screen.findByLabelText("acme,new 的展示别名")).toHaveValue("演示充电芯片A");
+  expect(screen.getByRole("combobox", { name: "acme,new 的业务分类" })).toHaveAttribute("data-value", "charging");
   expect(screen.getByRole("checkbox", { name: "选择 acme,new" })).toBeChecked();
   expect(screen.getByRole("combobox", { name: "来源" })).toHaveAttribute("data-value", "organization");
   expect(listUnregisteredSubjects).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID, "organization", CATALOG_RELEASE_ID);

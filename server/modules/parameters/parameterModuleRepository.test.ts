@@ -15,15 +15,9 @@ import {
 import { seedCoreGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { getProjectParameterForUpdate, listParameters } from "./repository";
-import {
-  countParametersForModule,
-  createParameterModule,
-  deleteParameterModule,
-  getParameterModuleById,
-  listParameterModules,
-  moveParameterModule,
-  reparentAutoParameterModule
-} from "./parameterModuleRepository";
+import { countParametersForModule, deleteParameterModule, getParameterModuleById, listParameterModules, moveParameterModule } from "./parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../testing/legacyParameterModuleFixture";
+import { resolveModuleIdForBinding, unclassifiedModuleId } from "../parameter-modules/resolveModuleForBinding";
 
 describe("deleteParameterModule leaf guard", () => {
   it("returns a typed conflict for a parent before issuing the delete", async () => {
@@ -40,7 +34,7 @@ describe("deleteParameterModule leaf guard", () => {
           description: "",
           scope: "",
           importance: "medium",
-          kind: "driver-group",
+          kind: "business",
           origin: "curated",
           source_key: null,
           attribution_subject_id: null,
@@ -84,6 +78,17 @@ describe.skipIf(!databaseAvailable)("parameterModuleRepository", () => {
 
   afterEach(async () => {
     await db?.rollback();
+  });
+
+  it("does not target an archived business module through an old mapping", async () => {
+    const archived = await createParameterModule(db, { organizationId: "org-1", name: "Archived" });
+    await db.query(`insert into parameter_module_mappings
+      (id, organization_id, parameter_module_id, match_kind, match_value)
+      values ('archived-map', 'org-1', $1, 'compatible', 'vendor,old')`, [archived.id]);
+    await db.query("update parameter_modules set archived_at = now() where id = $1", [archived.id]);
+    expect(await resolveModuleIdForBinding(db, {
+      organizationId: "org-1", driverModule: null, compatible: "vendor,old", nodeType: null,
+    })).toBe(unclassifiedModuleId("org-1"));
   });
 
   async function seedModule(input: {
@@ -263,38 +268,7 @@ describe.skipIf(!databaseAvailable)("parameterModuleRepository", () => {
     ).rejects.toThrow(/cycle/i);
   });
 
-  it("reparentAutoParameterModule moves an auto module without promoting it to curated", async () => {
-    await seedModule({ id: "pm-a", name: "Power", path: "pm-a" });
-    await seedModule({ id: "pm-x", name: "Charging", path: "pm-x", sortOrder: 1 });
-    // Driver-group placement nodes must carry their catalog subject (0082 check).
-    await db.query(
-      `insert into attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key)
-       values ('subject-1', 'org-1', 'driver-registration', 'AutoGroup', 'auto', 'compatible:x')`
-    );
-    await db.query(
-      `insert into parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin, source_key, attribution_subject_id)
-       values ('pm-auto', 'org-1', 'pm-a', 'AutoGroup', 'pm-a/pm-auto', 2, 'driver-group', 'auto', 'compatible:x', 'subject-1')`
-    );
 
-    const result = await reparentAutoParameterModule(db, {
-      organizationId: "org-1",
-      moduleId: "pm-auto",
-      parentId: "pm-x"
-    });
-
-    expect(result.status).toBe("moved");
-    if (result.status === "moved") {
-      expect(result.module).toMatchObject({ parentId: "pm-x", path: "pm-x/pm-auto", origin: "auto" });
-    }
-    await expect(
-      getParameterModuleById(db, { organizationId: "org-1", moduleId: "pm-auto" })
-    ).resolves.toMatchObject({ origin: "auto", kind: "driver-group" });
-
-    // Curated modules are skipped instead of moved.
-    await expect(
-      reparentAutoParameterModule(db, { organizationId: "org-1", moduleId: "pm-a", parentId: "pm-x" })
-    ).resolves.toEqual({ status: "skipped", reason: "curated" });
-  });
 });
 
 describe.skipIf(!databaseAvailable)("listParameters module tree filter", () => {

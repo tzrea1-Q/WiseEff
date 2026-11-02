@@ -16,7 +16,8 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
   cardinality?: "multiple" | "singleton-per-project";
   ownerSubjectId?: string;
   categoryPath?: string;
-  moduleName?: string;
+  displayAlias?: string;
+  warnings: { message: string; line: number }[];
   hintLine?: number;
 } {
   const diagnostics: ImportDiagnostic[] = [];
@@ -64,20 +65,31 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
   let nature: "physical-device" | "logical-service" | undefined;
   let cardinality: "multiple" | "singleton-per-project" | undefined;
   let categoryPath: string | undefined;
-  let moduleName: string | undefined;
+  let displayAlias: string | undefined;
+  let aliasSeen = false;
+  const warnings: { message: string; line: number }[] = [];
   let hintLine: number | undefined;
+  let categoryLine: number | undefined;
   for (const metadata of section.metadataLines) {
     const parts = metadata.text.split(/\s*·\s*/u);
-    const facts = parts.filter((part) => !/^(业务分类|模块名称)：/u.test(part) && !part.startsWith("parent:"));
+    const hintPattern = /^(业务分类|模块名称|展示别名)：|^(categoryPath|moduleName|displayAlias):/u;
+    const facts = parts.filter((part) => !hintPattern.test(part) && !part.startsWith("parent:"));
     const match = facts.length ? /^nature: (physical-device|logical-service)\s*·\s*cardinality: (multiple|singleton-per-project)$/u.exec(facts.join(" · ")) : null;
     let invalid = facts.length > 0 && (!match || section.kind !== "driver" || nature !== undefined);
-    for (const part of parts.filter((item) => /^(业务分类|模块名称)：/u.test(item))) {
-      const value = part.slice(part.indexOf("：") + 1).trim();
-      if (part.startsWith("业务分类：")) {
+    for (const part of parts.filter((item) => hintPattern.test(item))) {
+      const separator = part.search(/[：:]/u);
+      const key = part.slice(0, separator);
+      const value = part.slice(separator + 1).trim();
+      if (key === "业务分类" || key === "categoryPath") {
         if (categoryPath !== undefined || !value || value.split(" / ").some((segment) => !segment.trim() || segment.includes("/"))) invalid = true;
-        else categoryPath = value;
-      } else if (moduleName !== undefined || !value) invalid = true;
-      else moduleName = value;
+        else { categoryPath = value; categoryLine = metadata.line; }
+      } else {
+        if (key === "模块名称" || key === "moduleName") warnings.push({ message: "模块名称（moduleName）已弃用，请改用展示别名（displayAlias）。", line: metadata.line });
+        if (aliasSeen || !value) invalid = true;
+        else if (parents.length || subject?.content.ownerSubjectId) warnings.push({ message: "子主体继承所属驱动的展示位置，已忽略展示别名。", line: metadata.line });
+        else displayAlias = value;
+        aliasSeen = true;
+      }
       hintLine = metadata.line;
     }
     if (!metadata.text.trim() || (!facts.length && hintLine === undefined && !parts.some((part) => part.startsWith("parent:")))) invalid = true;
@@ -95,7 +107,7 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
   if (section.kind === "driver" && !subject && !nature) {
     diagnostics.push(diagnostic(section, null, "主体", "新建 Driver 必须填写 nature 和 cardinality。", section.line));
   }
-  return { subject, diagnostics, section, nature, cardinality, ownerSubjectId, categoryPath, moduleName, hintLine };
+  return { subject, diagnostics, section, nature, cardinality, ownerSubjectId, categoryPath, displayAlias, warnings, hintLine: categoryLine ?? hintLine };
 }
 
 /** Convert this subject's accepted definitions to existing publication operations. */

@@ -55,7 +55,7 @@
 
 组织级 `parameter_modules` 与调试域 `debug_node_modules` 为**独立树**；父级筛选默认包含子树。过渡期内仍保留扁平 `module` 文本列（TD-037 后续删除）。
 
-`ParameterModule` 行携带 `kind`（`business` | `driver-group` | `node-type` | `unclassified`）、`origin`（`curated` | `auto`）与可选稳定键 `source_key`（驱动组为 `compatible:{token}`，节点类型单元为 `nodetype:{name}`——非展示名）。驱动组与节点类型单元额外引用 `attribution_subject_id`（ADR-0013）：稳定编目身份是 `AttributionSubject`（`DriverRegistration` 带 `driverNature`/`instanceCardinality`/权威默认业务分类 `defaultBusinessCategoryModuleId`（D-AG-04 / TD-046），或 `NodeTypeDefinition`）；模块行只负责业务树中的放置与展示。**auto** 驱动组跟随注册默认业务分类，默认变更或显式回放时重挂；**curated** 放置冻结。关键词 `businessCategoryForNodePath` 仅作 seed/一次性 bootstrap。产品归属是**分类学**，不是拓扑副本：**业务分类 → {驱动组 | 节点类型单元} → 嵌套节点类型\***（总线/脚手架节点不进树）。绑定只挂在**驱动组**与**节点类型单元**上；器件实例身份在 binding 的 `logical_node_id`（ADR-0010）。**归属杠杆**（ADR-0010）：`compatible` 将器件型号解析到驱动组；`node-type` 将无 compatible 的配置节点解析到节点类型单元（匹配值为去掉单元地址后的裸节点名，经规范化）。优先级：compatible → node-type → 未分类根。管理员**纳入（adoption）**：对 `origin=auto` 的模块重命名或移动时提升为 `curated`。**`curated → auto` 不在领域范围内**：纳入是单向陈述事实（ADR-0004），反向改 origin 会让人工决策伪装成入库决策。注册表读取暴露 `effectiveImportance`，由最近业务祖先继承（驱动组与节点类型单元不单独存重要性）。归属树计数拆成**定义数**（`definitionCount`，子树互异规格）与**实测处数**（`parameterCount`，绑定）；定义库**引用数**（`referenceCount`）是同一绑定事实收窄到单定义，不是树上的第三列。
+`ParameterModule` 是组织的业务分类树。业务模块可以容纳多个根主体；所属子 NodeType 继承驱动的放置位置，保留的未分类根是明确的回退目标。主体登记与识别独立于模块身份，展示别名不改变 Catalog 身份（ADR-0053）。已有 `driver-group`、`node-type` 模块及其来源键保留为历史证据，当前写入不能创建、移动或选择它们。旧 Binding 保留历史引用；规范 Binding 从登记 placement 推导有效业务模块。注册表中的定义数与实测处数仍是不同事实。组织驱动 schema overlay 仍是独立解析证据（ADR-0008）。
 | `ProjectMember` | 预留通用项目成员与项目可见性 ACL（TD-121）。项目审核工作流角色（`hardware-committer`、`software-committer`、`software-user`）已通过项目审核角色治理交付，由项目管理入口独立配置，不折入组织管理（ADR-0037） |
 | `ProjectInitializationDraft` | 项目参数初始化草稿 |
 | `ProjectInitializationReview` | 初始化审阅记录 |
@@ -193,7 +193,7 @@ stateDiagram-v2
 | --- | --- |
 | 源码树 | 全部 DTS/DTSI/overlay occurrence 及其文件与 span 溯源 |
 | 生效树 | overlay 解析后的逻辑节点/属性，带有序 `sourceChain` |
-| `ParameterSpec` / `ParameterSpecVersion` | 稳定规格身份为归属范围 + `attribution_subject_id` + `property_key`。`parameter_specs.id` 是**代理键**（ADR-0017）：身份可就地纠错，不改行 id、不级联外键。`example_value` 仅作示例，不参与 DB 约束或发布策略。驱动属性要成为生效定义，还必须具备启用的定义层、启用的当前版本、带主体的驱动 schema（DTS 属性）及恰好一条组织级 `driver_registration_placements` 放置。组织 active 优先于平台 active；draft/deprecated 与被遮蔽的成对行只保留在治理历史中。 |
+| `ParameterSpec` / `ParameterSpecVersion` | 历史规格身份使用归属范围、`attribution_subject_id` 与 `property_key`；行 ID 是代理键。`example_value` 仅供示例。当前 Catalog 定义使用规范主体身份与组织登记 placement（ADR-0053）；历史版本及纠错记录保留用于审计。 |
 | Schema 默认 / 策略目标 / 生效值 | 分字段存储；遗留 `recommended_value` 仅作迁移证据，不得自动提升为 default/policy。策略目标仍有读取方，但今天没有生产写入（TD-055）。 |
 | `ProjectParameterBinding` | 稳定的 `project × logical-node × spec` 绑定，供历史/草稿/CR/导出使用 |
 | 身份映射 / 规格审核任务 | 只读的历史迁移/治理证据。旧 resolve/reopen 已退役，当前摄取、校验、就绪检查与治理不再生成身份映射任务。未知或歧义 DTS 证据进入规范审核队列。只有可精确类型映射的未决任务才能适配为规范队列项；选择先前逻辑节点的连续性任务没有规范等价项，需要明确的规范决策，不得按名称自动解决。历史决议仍可读取（ADR-0033）。 |
@@ -203,8 +203,9 @@ stateDiagram-v2
 | 已审核连续性 | 已审核身份映射与 matcher override 可跨后续 revison 复用；仅稳定 revison 可作为连续性基线。 |
 | Config Set manifest | 每个 revision 持久化 `entryFile`、`includeSearchPaths`、overlay 顺序与成员角色。历史行缺失时从钉住的 `dts_config_revision_members` 回填。`manifestState=needs_review` 对编辑、校验、发布、回写失败关闭，直至运维修复 manifest。 |
 | Matcher override 作用域 | 可复用 override 键为 `compatible` 指纹 + **节点 locator 指纹** + `propertyKey`。同一 compatible/属性在不同逻辑节点上不得串用，除非经审核显式决议。 |
-| 生效驱动定义目录 | 默认目录投影是服务端选择的生效视图：每个 `(组织、规范 DriverRegistration source key、property_key)` 只返回一行，优先级为组织 active > 平台 active。`view=governance` 暴露 draft、deprecated、被遮蔽成对行及待修复阻断。声明放置（`driver_registration_placements`）是权威；binding 实测模块仅作证据。未匹配或歧义的 ingest 证据只创建审核元数据，不创建已识别规格、binding 或生效 occurrence。既有 `0117_user_account_deletion.sql` 保持不变；Issue #649 使用 `0118`–`0124` 扩展、修正并加固图谱；经审计的 `parameter-definitions:reconcile` 执行数据修复，`parameter-definitions:check` 是只读发布门禁（ADR-0039）。 |
+| 生效驱动定义目录 | ADR-0039 的旧生效驱动定义投影与 `driver_registration_placements` 保留用于历史验证。当前 Catalog 定义和组织登记采用 ADR-0053 放置；未匹配或歧义观察进入审核，不创建已识别 Binding。旧对账 apply 写入已退役。 |
 | 目标 Subject registration 与 placement | 替代目录对每个 `(Organization, Catalog subject)` 使用一条持久 `active | retired` Subject registration。即使 retired，也通过非空 `current_placement_id`、`UNIQUE (registration_id)` 与 ADR-0040 的可延迟复合所有权外键始终保留且恰有一个 Subject placement。只有在当前 Catalog Release 中 membership 为 active 的 subject 才能显式注册或经唯一证明自动匹配。retirement 阻止新的 registration/matching，但保留 registration、placement、Binding、Project value、Parameter observation 与 history；后续 active membership 复用同一 Catalog subject 与既有 registration ID。新 Organization 从零个 Subject registration 开始。unknown/ambiguous Parameter observation 只进入 Review Queue，Parameter observation 与 module 都不能成为 Catalog subject 或 Parameter definition identity。definition 动态继承 placement；module move 保留 placement ID（ADR-0040、ADR-0041、ADR-0042）。 |
+| ADR-0053 结构 | 所属驱动永久拥有其子 NodeType；子主体的结构放置继承驱动所在业务模块。根主体可设置不改变身份的组织展示别名。技术模块指保留的遗留 driver-group 或 node-type 模块，不再作为新 placement 目标。 |
 | 审核阻断作用域 | 规格审核与映射阻断携带 `blocker_scope`（`revision` \| `project` \| `platform`）。校验/发布门禁按作用域生效——revision 级阻断不得 org 级误伤无关项目。 |
 | 全局厂商规格 | `organization_id IS NULL` 的 `ParameterSpec` 为平台全局厂商定义。租户可**读取并绑定** active 全局规格；组织 Admin **不得**经标准 Admin API 激活/修改/删除/再归属/改属性键全局 draft 或全局规格——仅本组织行（`organization_id === 调用者组织`）可变。平台全局规格通过 bootstrap/migration/独立平台治理（`platform-admin`）维护，包括对平台全局定义的废弃/恢复/身份纠错（ADR-0011 修订、ADR-0017 ID-R5）。 |
 | 手工规格身份 | 手工/组织 draft ID 在**铸造新行**时对原始语义键做**无损**规范哈希（`field:length:rawValue`）。查找按 `(organization_id, attribution_subject_id, property_key)` 解析，不再靠重算哈希判定是否存在（ADR-0017）。展示用 sanitize 不得作为唯一性哈希输入。`vendor,limit` 与 `vendor-limit` 等合法 DTS 键必须生成不同 ID。遗留 sanitize 碰撞仅 fail-closed 审计，不得静默重写已引用 ID。 |

@@ -36,6 +36,10 @@ export type ModuleRecognitionSettings = {
   instanceCardinality: InstanceCardinality | null;
   nodeTypeName: string | null;
   overridden: boolean;
+  unmigratedRecognition?: {
+    compatibles: string[]; driverNature: DriverNature | null;
+    instanceCardinality: InstanceCardinality | null; nodeTypeName: string | null;
+  };
 };
 
 type ModuleRecognitionRow = {
@@ -53,11 +57,11 @@ const validCompatibles = (values: readonly string[]): string[] => [...new Set(va
   return parsed.ok ? [parsed.value] : [];
 }))];
 
-async function moduleRecognitionRulesAvailable(db: Queryable): Promise<boolean> {
-  // Historical upgrade fixtures run current binding code before migration 0212.
+async function registrationRecognitionRulesAvailable(db: Queryable): Promise<boolean> {
+  // Historical upgrade fixtures run current binding code before registration rules exist.
   // Probe existence without issuing a failing statement inside their transaction.
   const result = await db.query<{ available: boolean }>(
-    "select to_regclass('public.module_recognition_rules') is not null as available",
+    "select to_regclass('public.registration_recognition_rules') is not null as available",
   );
   return result.rows[0]?.available === true;
 }
@@ -66,7 +70,7 @@ async function moduleRecognitionRulesAvailable(db: Queryable): Promise<boolean> 
 export async function loadModuleRecognitionSettings(
   db: Queryable, organizationId: string, catalog: Partial<CatalogSnapshot> | null = null,
 ): Promise<Map<string, ModuleRecognitionSettings>> {
-  const rulesAvailable = await moduleRecognitionRulesAvailable(db);
+  const rulesAvailable = await registrationRecognitionRulesAvailable(db);
   const rows = await db.query<ModuleRecognitionRow>(
     `select module.id, module.kind, module.source_key,
        coalesce((select array_agg(mapping.match_value order by mapping.match_value)
@@ -80,8 +84,18 @@ export async function loadModuleRecognitionSettings(
      where module.organization_id = $1 and module.kind in ('driver-group', 'node-type')`,
     [organizationId],
   );
-  if (rows.rows.length === 0) return new Map();
   const effectiveRules = rulesAvailable ? await loadOrganizationRecognitionRules(db, organizationId) : [];
+  // Unmigrated selectors are display-only evidence and never enter the Catalog overlay.
+  const unmigrated = rulesAvailable ? (await db.query<{
+    module_id: string; compatibles: string[]; driver_nature: DriverNature | null;
+    instance_cardinality: InstanceCardinality | null; node_type_name: string | null;
+  }>(`select rule.module_id,rule.compatibles,rule.driver_nature,rule.instance_cardinality,rule.node_type_name
+      from public.module_recognition_rules rule
+      left join public.registration_recognition_migration_map migrated
+        on migrated.organization_id=rule.organization_id and migrated.module_id=rule.module_id
+      where rule.organization_id=$1 and migrated.module_id is null`, [organizationId])).rows : [];
+  if (rows.rows.length === 0 && unmigrated.length === 0) return new Map();
+  const unmigratedByModule = new Map(unmigrated.map(rule => [rule.module_id, rule]));
   const rules = new Map(effectiveRules.filter(rule => rule.module_id !== null).map(rule => [rule.module_id, rule]));
   const placements = await listModuleRecognitionPlacements(db, organizationId);
   const settings = new Map<string, ModuleRecognitionSettings>();
@@ -108,13 +122,24 @@ export async function loadModuleRecognitionSettings(
       compatibles = rule.compatibles;
       nodeTypeName = rule.node_type_name;
     }
+    const legacyRule = unmigratedByModule.get(row.id);
     settings.set(row.id, {
       recognitionSubjectId: subjectId, compatibles: row.kind === "driver-group" ? compatibles : [],
       nodeTypeName: row.kind === "node-type" ? nodeTypeName : null,
       driverNature: row.kind === "driver-group" ? (rule?.driver_nature ?? row.legacy_nature ?? "physical-device") : null,
       instanceCardinality: row.kind === "driver-group" ? (rule?.instance_cardinality ?? row.legacy_cardinality ?? "multiple") : null,
       overridden: rule !== undefined,
+      ...(legacyRule ? { unmigratedRecognition: { compatibles: legacyRule.compatibles,
+        driverNature: legacyRule.driver_nature, instanceCardinality: legacyRule.instance_cardinality,
+        nodeTypeName: legacyRule.node_type_name } } : {}),
     });
+  }
+  for (const legacyRule of unmigrated) {
+    if (settings.has(legacyRule.module_id)) continue;
+    settings.set(legacyRule.module_id, { recognitionSubjectId: null, compatibles: [], nodeTypeName: null,
+      driverNature: null, instanceCardinality: null, overridden: false,
+      unmigratedRecognition: { compatibles: legacyRule.compatibles, driverNature: legacyRule.driver_nature,
+        instanceCardinality: legacyRule.instance_cardinality, nodeTypeName: legacyRule.node_type_name } });
   }
   const subjectIds = [...new Set([...settings.values()].flatMap(value => value.recognitionSubjectId ? [value.recognitionSubjectId] : []))];
   if (subjectIds.length === 0) return settings;
@@ -146,39 +171,17 @@ export type EffectiveModuleRecognitionRule = {
   driver_nature: DriverNature | null; instance_cardinality: InstanceCardinality | null; node_type_name: string | null;
 };
 
-async function readSavedModuleRecognitionRules(db: Queryable, organizationId: string): Promise<EffectiveModuleRecognitionRule[]> {
-  const rules = await db.query<EffectiveModuleRecognitionRule>(
-    `select module_id, canonical_subject_id, compatibles, driver_nature, instance_cardinality, node_type_name
-     from public.module_recognition_rules where organization_id = $1`, [organizationId],
-  );
-  return rules.rows;
-}
-
-/** Unmigrated module rules have no proven registration and cannot override a Subject. */
+/** Only registration-scoped rules can override a subject. */
 export async function loadOrganizationRecognitionRules(db: Queryable, organizationId: string): Promise<EffectiveModuleRecognitionRule[]> {
-  if (!await moduleRecognitionRulesAvailable(db)) return [];
-  let rules = await readSavedModuleRecognitionRules(db, organizationId);
-  const available = await db.query<{ available: boolean }>(
-    "select to_regclass('public.registration_recognition_rules') is not null as available",
-  );
-  const registrationRules = available.rows[0]?.available ? (await db.query<EffectiveModuleRecognitionRule>(
+  if (!await registrationRecognitionRulesAvailable(db)) return [];
+  return (await db.query<EffectiveModuleRecognitionRule>(
     `select effective.module_id, effective.subject_id as canonical_subject_id, rule.compatibles,
             rule.driver_nature, rule.instance_cardinality, rule.node_type_name
        from public.registration_recognition_rules rule
        join parameter_catalog.registration_effective_module effective
          on effective.registration_id = rule.registration_id and effective.organization_id = rule.organization_id
       where rule.organization_id = $1`, [organizationId],
-  )).rows : [];
-  if (available.rows[0]?.available) {
-    const migrated = await db.query<{ module_id: string }>(
-      `select module_id from public.registration_recognition_migration_map where organization_id = $1`, [organizationId],
-    );
-    const migratedModules = new Set(migrated.rows.map(row => row.module_id));
-    rules = rules.filter(rule => rule.module_id === null || !migratedModules.has(rule.module_id));
-  }
-  if (rules.length === 0) return registrationRules;
-  const legacy = rules.map(rule => ({ ...rule, canonical_subject_id: null }));
-  return [...registrationRules, ...legacy];
+  )).rows;
 }
 
 /** Overlay only current organization recognition; the underlying published snapshot remains unchanged. */

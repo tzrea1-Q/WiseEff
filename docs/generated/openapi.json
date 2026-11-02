@@ -37246,6 +37246,50 @@
                         "null"
                       ]
                     },
+                    "unmigratedRecognition": {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "driverNature",
+                        "instanceCardinality",
+                        "nodeTypeName"
+                      ],
+                      "additionalProperties": false
+                    },
                     "parameterCount": {
                       "type": "number"
                     },
@@ -86860,70 +86904,27 @@
                 "subjectId": {
                   "type": "string"
                 },
+                "displayAlias": {
+                  "type": "string"
+                },
                 "target": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "enum": [
-                            "existing-module"
-                          ]
-                        },
-                        "moduleId": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "moduleId"
-                      ],
-                      "additionalProperties": false
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "existing-module"
+                      ]
                     },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "enum": [
-                            "new-module"
-                          ]
-                        },
-                        "parentModuleId": {
-                          "type": "string"
-                        },
-                        "name": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "parentModuleId",
-                        "name"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "enum": [
-                            "unclassified"
-                          ]
-                        },
-                        "name": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "name"
-                      ],
-                      "additionalProperties": false
+                    "moduleId": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [
+                    "type",
+                    "moduleId"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -87122,7 +87123,6 @@
                           "enum": [
                             "category-missing",
                             "name-invalid",
-                            "name-taken",
                             "already-registered",
                             "subject-inactive",
                             "owned-child",
@@ -90271,7 +90271,7 @@
                         "categoryPath": {
                           "type": "string"
                         },
-                        "moduleName": {
+                        "displayAlias": {
                           "type": "string"
                         },
                         "line": {
@@ -90280,7 +90280,20 @@
                         "warnings": {
                           "type": "array",
                           "items": {
-                            "type": "string"
+                            "type": "object",
+                            "properties": {
+                              "message": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "message",
+                              "line"
+                            ],
+                            "additionalProperties": false
                           }
                         }
                       },
@@ -90567,7 +90580,7 @@
                     "categoryPath": {
                       "type": "string"
                     },
-                    "moduleName": {
+                    "displayAlias": {
                       "type": "string"
                     },
                     "line": {
@@ -90576,7 +90589,20 @@
                     "warnings": {
                       "type": "array",
                       "items": {
-                        "type": "string"
+                        "type": "object",
+                        "properties": {
+                          "message": {
+                            "type": "string"
+                          },
+                          "line": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "message",
+                          "line"
+                        ],
+                        "additionalProperties": false
                       }
                     }
                   },

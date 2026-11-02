@@ -95,15 +95,11 @@ describe("organization DTS navigation scope", () => {
       "soc", "soc/bus@1", "soc/bus@1/charger@0", "soc/bus@1/charger@1", "soc/power", "soc/power/battery",
     ]);
     expect(resolve.mock.calls.length).toBeLessThan(12);
-    expect(db.query).toHaveBeenCalledTimes(6);
+    expect(db.query).toHaveBeenCalledTimes(3);
     expect(db.query.mock.calls[0]?.[1]).toEqual(["org-a"]);
-    expect(db.query.mock.calls[1]?.[0]).toContain("module_recognition_rules");
-    expect(db.query.mock.calls[2]?.[0]).toContain("module_recognition_rules");
+    expect(db.query.mock.calls[1]?.[0]).toContain("registration_recognition_rules");
+    expect(db.query.mock.calls[2]?.[0]).toContain("registration_recognition_rules");
     expect(db.query.mock.calls[2]?.[1]).toEqual(["org-a"]);
-    expect(db.query.mock.calls[4]?.[0]).toContain("registration_recognition_rules");
-    expect(db.query.mock.calls[4]?.[1]).toEqual(["org-a"]);
-    expect(db.query.mock.calls[5]?.[0]).toContain("registration_recognition_migration_map");
-    expect(db.query.mock.calls[5]?.[1]).toEqual(["org-a"]);
     expect(loadPublishedCatalog).toHaveBeenCalledOnce();
   });
 

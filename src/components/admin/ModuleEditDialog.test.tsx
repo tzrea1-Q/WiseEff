@@ -6,6 +6,16 @@ import { ModuleEditDialog } from "./ModuleEditDialog";
 afterEach(() => cleanup());
 
 describe("ModuleEditDialog", () => {
+  it("shows unmigrated recognition as read-only migration evidence", () => {
+    render(<ModuleEditDialog module={{ name: "Legacy", kind: "node-type", nodeTypeName: "current",
+      unmigratedRecognition: { compatibles: [], driverNature: null, instanceCardinality: null, nodeTypeName: "old-node" } }}
+      existingNames={[]} readOnly onSave={vi.fn()} onCancel={vi.fn()} />);
+    const evidence = screen.getByRole("region", { name: "未迁移识别规则" });
+    expect(evidence).toHaveTextContent("old-node");
+    expect(evidence).toHaveTextContent("不参与匹配");
+    expect(evidence).toHaveTextContent("migrate-module-structure.ts --all --preflight");
+    expect(screen.getByLabelText("节点类型名")).toHaveValue("current");
+  });
   it("uses scoped help and preserves edits until discard is explicitly confirmed", () => {
     const onCancel = vi.fn();
     render(<ModuleEditDialog module={{ name: "Power" }} existingNames={[]} description="维护节点模块。" onSave={vi.fn()} onCancel={onCancel} />);

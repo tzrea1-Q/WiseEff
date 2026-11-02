@@ -259,6 +259,7 @@ export function bindCatalogPublicationCommands(input: {
         const snapshot = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
         plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot);
+        placementHints = plan.placementHints;
         const semanticIds = plan.entries.flatMap((entry) => {
           if (entry.outcome !== "revise" || entry.revisionClass !== "semantic" || !entry.definitionId) return [];
           return [ParameterDefinitionId(entry.definitionId)];
@@ -275,16 +276,13 @@ export function bindCatalogPublicationCommands(input: {
         if (plan.placementHints.length && pool) {
           const { modules, registrations } = await readPlacementHintEvidence(pool, command.organizationId);
           placementHints = plan.placementHints.map((hint) => {
-            const warnings: string[] = [];
+            const warnings = [...hint.warnings];
             const registered = registrations.find((item) => item.subjectId === hint.subjectId);
-            const subject = snapshot.documents.find((item) => item.kind === "subject" && item.content.id === hint.subjectId);
-            const canonicalName = subject?.kind === "subject" ? subject.content.canonicalKey : `${hint.kind}:${hint.selector}`;
-            if (registered) warnings.push(`已登记于 ${modulePath(registered.moduleId, modules)}，未改动`);
+            if (registered) warnings.push({ message: `已登记于 ${modulePath(registered.moduleId, modules)}，未改动`, line: hint.line });
             else if (hint.categoryPath) {
               const parents = modules.filter((item) => (item.kind === "business" || (item.kind === "unclassified" && hint.categoryPath === "未分类")) && modulePath(item.id, modules) === hint.categoryPath);
-              if (!parents.length) warnings.push("业务分类不存在。");
-              else if (parents.length > 1) warnings.push("业务分类路径不唯一。");
-              else if (modules.some((item) => item.parentId === parents[0]!.id && item.name === (hint.moduleName ?? canonicalName))) warnings.push("同一分类下已有同名模块。");
+              if (!parents.length) warnings.push({ message: "业务分类不存在。", line: hint.line });
+              else if (parents.length > 1) warnings.push({ message: "业务分类路径不唯一。", line: hint.line });
             }
             return { ...hint, warnings };
           });
