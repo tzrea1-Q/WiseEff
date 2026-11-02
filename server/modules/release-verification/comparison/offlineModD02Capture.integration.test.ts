@@ -11,15 +11,15 @@ import { hashLocalAccountPassword, hashLocalSessionToken } from "../../auth/loca
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
 import { seedOrganization, seedUser } from "../../../testing/fixtures";
 import {
-  createEphemeralTestDatabase,
   withTestClusterRoleCatalogLock,
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
-import { withAdminClient } from "../../../testing/tempDatabase";
+import { applyMigrations, migrationsDir, withAdminClient } from "../../../testing/tempDatabase";
+import { createCheckedEmptyDatabase } from "../../../testing/parameterCatalog";
+import { seedLegacySubjectPlacement } from "../../../testing/parameterCatalog/driverSource";
 import { populatedCutoverGraph, seedPopulatedCutover } from "../../../testing/parameterCatalog/cutoverPopulatedFixture";
 import {
   installParameterModuleComparisonCatalogFixture,
-  registerParameterModuleComparisonDriver,
 } from "../../../testing/parameterCatalog/registryProjection";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler";
 import { refreshAuthoritativeSource, validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
@@ -111,22 +111,20 @@ async function runCaptureFixture(fixture: EphemeralTestDatabase, injectFailureAf
     const moduleB = await createParameterModule(ownerDatabase, {
       organizationId, name: "MOD D02 driver B", kind: "driver-group", sourceKey: "compatible:mod-page-0",
     });
-    await registerParameterModuleComparisonDriver(ownerPool, {
-      organizationId, destinationModuleId: moduleA.id, subjectId: CatalogSubjectId("csub_acme_power"),
-      release: installed.pin, idempotencyKey: "mod-capture-register-a", principalId,
+    await seedLegacySubjectPlacement(ownerPool, {
+      organizationId, moduleId: moduleA.id, subjectId: CatalogSubjectId("csub_acme_power"), reason: "Historical capture A",
     });
-    await registerParameterModuleComparisonDriver(ownerPool, {
-      organizationId, destinationModuleId: moduleB.id, subjectId: installed.additionalSubjectIds[0]!,
-      release: installed.pin, idempotencyKey: "mod-capture-register-b", principalId,
+    await seedLegacySubjectPlacement(ownerPool, {
+      organizationId, moduleId: moduleB.id, subjectId: installed.additionalSubjectIds[0]!, reason: "Historical capture B",
     });
     const foreignModule = await createParameterModule(ownerDatabase, {
       organizationId: otherOrganizationId, name: "Other org", kind: "driver-group", sourceKey: "compatible:acme,power",
     });
-    await registerParameterModuleComparisonDriver(ownerPool, {
-      organizationId: otherOrganizationId, destinationModuleId: foreignModule.id,
-      subjectId: CatalogSubjectId("csub_acme_power"), release: installed.pin,
-      idempotencyKey: "mod-capture-register-other", principalId: otherPrincipalId,
+    await seedLegacySubjectPlacement(ownerPool, {
+      organizationId: otherOrganizationId, moduleId: foreignModule.id,
+      subjectId: CatalogSubjectId("csub_acme_power"), reason: "Historical foreign capture",
     });
+    await applyMigrations(ownerDatabase, migrationsDir);
 
     const baseGraph = populatedCutoverGraph();
     const graph = {
@@ -710,8 +708,16 @@ async function runCaptureFixture(fixture: EphemeralTestDatabase, injectFailureAf
   }
 }
 
+async function createHistoricalCaptureDatabase(label: string): Promise<EphemeralTestDatabase> {
+  const database = await createCheckedEmptyDatabase(label);
+  const db = createPostgresDatabase(database.url);
+  try { await applyMigrations(db, migrationsDir, { before: "0320_placement_business_modules.sql" }); }
+  finally { await db.close(); }
+  return { url: database.url, drop: () => database.close() };
+}
+
 it("captures real pre-P11 MOD D02 cases through fixed source and function-only logins", async () => {
-  const fixture = await createEphemeralTestDatabase("modcapture");
+  const fixture = await createHistoricalCaptureDatabase("modcapture");
   try {
     await runCaptureFixture(fixture);
   } finally {
@@ -720,7 +726,7 @@ it("captures real pre-P11 MOD D02 cases through fixed source and function-only l
 }, 180_000);
 
 it("restores fixed-role passwords and closes LOGIN backends after failure", async () => {
-  const fixture = await createEphemeralTestDatabase("modfail");
+  const fixture = await createHistoricalCaptureDatabase("modfail");
   try {
     await expect(runCaptureFixture(fixture, true))
       .rejects.toThrow("injected failure after fixed-role LOGIN");

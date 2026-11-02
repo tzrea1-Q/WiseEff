@@ -193,7 +193,7 @@ async function withLegacyApiLogin(
       const catalog = await installParameterModuleRegistryProjectionFixture(pool);
       const root = await createParameterModule(db, { organizationId: ORG, name: "API Root", kind: "business" });
       const module = await createParameterModule(db, {
-        organizationId: ORG, parentId: root.id, name: "API Driver", kind: "driver-group", sourceKey: "compatible:acme,power"
+        organizationId: ORG, parentId: root.id, name: "API Driver", kind: options.registered === false ? "driver-group" : "business", sourceKey: "compatible:acme,power"
       });
       if (options.registered !== false) {
         await registerParameterModuleRegistryProjectionDriver(pool, {

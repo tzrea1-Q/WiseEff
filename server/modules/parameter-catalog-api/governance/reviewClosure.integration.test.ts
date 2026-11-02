@@ -317,8 +317,8 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
       values ('review-driver',$1,'driver-registration','Review driver','compatible:acme,power')`, [ORG]);
     await pool.query(`insert into public.driver_registrations (attribution_subject_id,driver_nature,instance_cardinality)
       values ('review-driver','physical-device','multiple')`);
-    await pool.query(`insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-      values ('review-driver-module',$1,'Review driver','review-driver-module',1,'driver-group','curated','review-driver')`, [ORG]);
+    await pool.query(`insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin)
+      values ('review-driver-module',$1,'Review driver','review-driver-module',1,'business','curated')`, [ORG]);
     const evidenceId = await ingestFixture({ organizationId: ORG, sourceIdentity: `candidate:${randomUUID()}`,
       catalogReleaseId: pin.id, matcherRevision: MATCHER, matcherOutput: { status: "unknown" },
       evidence: { propertyKey: "candidate-key", compatible: "acme,power", privateValue: "not-for-the-browser" } });

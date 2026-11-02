@@ -87,7 +87,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     for (const organizationId of ["scope-org-a", "scope-org-b"]) {
       await pool.query("insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,source_key) values ($1,$2,'driver-registration','Scope driver','compatible:acme,power')", [`attr-${organizationId}`, organizationId]);
       await pool.query("insert into public.driver_registrations(attribution_subject_id,driver_nature,instance_cardinality) values ($1,'physical-device','multiple')", [`attr-${organizationId}`]);
-      await pool.query("insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id) values ($1,$2,'Scope driver',$1,1,'driver-group','curated',$3)", [`module-${organizationId}`, organizationId, `attr-${organizationId}`]);
+      await pool.query("insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin) values ($1,$2,'Scope driver',$1,1,'business','curated')", [`module-${organizationId}`, organizationId]);
       const registration = await createRegistrationService(pool).execute({ kind: "register", organizationId, subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver", expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: `module-${organizationId}`, method: "explicit", proof: { reason: "scope fixture" }, idempotencyKey: `registration-${organizationId}`, context: { actorKind: "org-admin", principalId: `fixture-${organizationId}` } });
       if (!registration.ok) throw new Error(`fixture registration failed: ${JSON.stringify(registration.error)}`);
       // Independent distribution: A=1 current, B=2 current, other-org C=4 current.

@@ -47,8 +47,8 @@ describe.skipIf(!databaseAvailable)("audit immutable value evidence", () => {
         values ($1, $2, 'driver-registration', 'Driver', 'compatible:acme,power')`, [`attr-${suffix}`, org]);
       await pool.query(`insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality)
         values ($1, 'physical-device', 'multiple')`, [`attr-${suffix}`]);
-      await pool.query(`insert into parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id)
-        values ($1, $2, 'Driver', $1, 1, 'driver-group', 'curated', $3)`, [module, org, `attr-${suffix}`]);
+      await pool.query(`insert into parameter_modules (id, organization_id, name, path, depth, kind, origin)
+        values ($1, $2, 'Driver', $1, 1, 'business', 'curated')`, [module, org]);
       const client = await pool.connect();
       let registrationId: Binding["registrationId"];
       try {

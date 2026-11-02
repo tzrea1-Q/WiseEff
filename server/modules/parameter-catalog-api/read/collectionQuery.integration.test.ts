@@ -74,9 +74,6 @@ describe("issue 847 collection contract", () => {
     await pool.query(`insert into public.organizations (id, name) values ($1, 'Issue 847 other')`, [
       OTHER_ORGANIZATION_ID,
     ]);
-    // `parameter_modules_subject_kind_check` requires a placement node of kind
-    // driver-group/node-type to carry the attribution subject it places, and
-    // that subject must exist in the taxonomy.
     await pool.query(
       `insert into attribution_subjects
          (id, organization_id, subject_kind, display_name, origin, source_key)
@@ -85,7 +82,7 @@ describe("issue 847 collection contract", () => {
     );
     // Root -> child -> grandchild, plus a sibling subtree that must stay excluded.
     for (const [id, parentId, name, path, depth, kind] of [
-      ["mod-847-root", null, "整车", "整车", 1, "driver-group"],
+      ["mod-847-root", null, "整车", "整车", 1, "business"],
       ["mod-847-child", "mod-847-root", "动力", "整车 / 动力", 2, "business"],
       ["mod-847-leaf", "mod-847-child", "电池", "整车 / 动力 / 电池", 3, "business"],
       ["mod-847-other", null, "其他", "其他", 1, "business"],
@@ -103,7 +100,7 @@ describe("issue 847 collection contract", () => {
           path,
           depth,
           kind,
-          kind === "driver-group" ? "asub-847-root" : null,
+          null,
         ],
       );
     }
@@ -126,7 +123,7 @@ describe("issue 847 collection contract", () => {
          (id, organization_id, parent_id, name, path, depth, sort_order, kind, origin,
           attribution_subject_id)
        values ('mod-847-other-driver', $1, 'mod-847-other-root', '其他驱动', '其他组织根 / 其他驱动', 2, 0,
-               'driver-group', 'curated', 'asub-847-other')`,
+               'business', 'curated', null)`,
       [OTHER_ORGANIZATION_ID],
     );
     // Registration and its current placement reference each other, so the

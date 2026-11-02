@@ -105,7 +105,7 @@ describe("live eleven-family comparison corpus", () => {
       const business = await createParameterModule(pool, { organizationId: "dcp-d02-org", name: "Business" });
       const driver = await createParameterModule(pool, {
         organizationId: "dcp-d02-org", parentId: business.id, name: "Driver",
-        kind: "driver-group", sourceKey: "compatible:acme,power",
+        kind: "business", sourceKey: "compatible:acme,power",
       });
       await registerParameterModuleComparisonDriver(pool, {
         organizationId: "dcp-d02-org", destinationModuleId: driver.id,

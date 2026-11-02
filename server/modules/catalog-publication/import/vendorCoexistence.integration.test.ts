@@ -291,9 +291,9 @@ describe("vendor import coexistence", () => {
       );
       await client.query(
         `insert into public.parameter_modules (
-           id, organization_id, name, path, depth, kind, origin, attribution_subject_id
-         ) values ($1, $2, $3, $1, 1, 'driver-group', 'curated', $4)`,
-        [moduleId, orgId, "CP-09 T19", attributionId],
+           id, organization_id, name, path, depth, kind, origin
+         ) values ($1, $2, $3, $1, 1, 'business', 'curated')`,
+        [moduleId, orgId, "CP-09 T19"],
       );
       await client.query(
         `insert into parameter_catalog.organization_subject_registrations (
@@ -465,6 +465,7 @@ describe("vendor import coexistence", () => {
     if (!built.ok || built.value.kind !== "successor" || built.value.persistence.kind !== "persisted") {
       throw new Error(`page ${input.propertyKey} failed: ${JSON.stringify(built)}`);
     }
+    const builtValue = { ...built.value, persistence: built.value.persistence };
     const policyRevision = await enablePublicationPolicy(client, {
       publicationEnabled: true,
       lowRiskSingleActorPublish: true,
@@ -473,17 +474,17 @@ describe("vendor import coexistence", () => {
       const capability = await client.query<{ digest: string }>(
         `select catalog_publication.digest_jsonb(capability_contract) as digest
            from catalog_publication.candidates where id = $1`,
-        [built.value.persistence.candidate.id],
+        [builtValue.persistence.candidate.id],
       );
       return authorizePublish(asQueryable(client), {
         trustedActor: userActor(PUBLISHER, publisherPermissions),
         candidate: {
-          candidateId: built.value.persistence.candidate.id,
-          artifactDigest: built.value.candidate.artifactDigest,
-          expectedBaseReleaseId: built.value.candidate.expectedBaseReleaseId,
-          expectedBaseReleaseDigest: built.value.candidate.expectedBaseReleaseDigest,
-          proposalRevisionId: built.value.candidate.proposalRevisionId,
-          impactReportDigest: built.value.candidate.impactReportDigest,
+          candidateId: builtValue.persistence.candidate.id,
+          artifactDigest: builtValue.candidate.artifactDigest,
+          expectedBaseReleaseId: builtValue.candidate.expectedBaseReleaseId,
+          expectedBaseReleaseDigest: builtValue.candidate.expectedBaseReleaseDigest,
+          proposalRevisionId: builtValue.candidate.proposalRevisionId,
+          impactReportDigest: builtValue.candidate.impactReportDigest,
           capabilityContractDigest: capability.rows[0]!.digest,
         },
         impactFacts: facts,
@@ -494,7 +495,7 @@ describe("vendor import coexistence", () => {
     const job = await asCoordinator(client, () =>
       createJob(asQueryable(client), {
         id: PublicationJobId(`cjob_${uniqueToken(input.label)}`),
-        candidateId: built.value.persistence.candidate.id,
+        candidateId: builtValue.persistence.candidate.id,
         authorizationId: authorized.value.authorization.id,
         requestScope: "instance:cp-09",
         idempotencyKey: `${input.label}-${uniqueToken("k")}`,
@@ -595,6 +596,7 @@ describe("vendor import coexistence", () => {
     if (!page.ok || page.value.kind !== "successor" || page.value.persistence.kind !== "persisted") {
       throw new Error("page successor failed");
     }
+    const pageValue = { ...page.value, persistence: page.value.persistence };
     const policyRevision = await enablePublicationPolicy(client, {
       publicationEnabled: true,
       lowRiskSingleActorPublish: true,
@@ -603,17 +605,17 @@ describe("vendor import coexistence", () => {
       const capability = await client.query<{ digest: string }>(
         `select catalog_publication.digest_jsonb(capability_contract) as digest
            from catalog_publication.candidates where id = $1`,
-        [page.value.persistence.kind === "persisted" ? page.value.persistence.candidate.id : ""],
+        [pageValue.persistence.candidate.id],
       );
       return authorizePublish(asQueryable(client), {
         trustedActor: userActor(PUBLISHER, publisherPermissions),
         candidate: {
-          candidateId: page.value.persistence.kind === "persisted" ? page.value.persistence.candidate.id : ("" as never),
-          artifactDigest: page.value.candidate.artifactDigest,
-          expectedBaseReleaseId: page.value.candidate.expectedBaseReleaseId,
-          expectedBaseReleaseDigest: page.value.candidate.expectedBaseReleaseDigest,
-          proposalRevisionId: page.value.candidate.proposalRevisionId,
-          impactReportDigest: page.value.candidate.impactReportDigest,
+          candidateId: pageValue.persistence.candidate.id,
+          artifactDigest: pageValue.candidate.artifactDigest,
+          expectedBaseReleaseId: pageValue.candidate.expectedBaseReleaseId,
+          expectedBaseReleaseDigest: pageValue.candidate.expectedBaseReleaseDigest,
+          proposalRevisionId: pageValue.candidate.proposalRevisionId,
+          impactReportDigest: pageValue.candidate.impactReportDigest,
           capabilityContractDigest: capability.rows[0]!.digest,
         },
         impactFacts: {
@@ -636,7 +638,7 @@ describe("vendor import coexistence", () => {
     const pageJob = await asCoordinator(client, () =>
       createJob(asQueryable(client), {
         id: PublicationJobId(`cjob_${uniqueToken("pagea")}`),
-        candidateId: page.value.persistence.kind === "persisted" ? page.value.persistence.candidate.id : ("" as never),
+        candidateId: pageValue.persistence.candidate.id,
         authorizationId: pageAuth.value.authorization.id,
         requestScope: "instance:cp-09",
         idempotencyKey: `pagea-${uniqueToken("k")}`,
@@ -708,6 +710,7 @@ describe("vendor import coexistence", () => {
     if (!pageA.ok || pageA.value.kind !== "successor" || pageA.value.persistence.kind !== "persisted") {
       throw new Error("page A failed");
     }
+    const pageAValue = { ...pageA.value, persistence: pageA.value.persistence };
     const policyA = await enablePublicationPolicy(client, {
       publicationEnabled: true,
       lowRiskSingleActorPublish: true,
@@ -716,17 +719,17 @@ describe("vendor import coexistence", () => {
       const capability = await client.query<{ digest: string }>(
         `select catalog_publication.digest_jsonb(capability_contract) as digest
            from catalog_publication.candidates where id = $1`,
-        [pageA.value.persistence.kind === "persisted" ? pageA.value.persistence.candidate.id : ""],
+        [pageAValue.persistence.candidate.id],
       );
       return authorizePublish(asQueryable(client), {
         trustedActor: userActor(PUBLISHER, publisherPermissions),
         candidate: {
-          candidateId: pageA.value.persistence.candidate.id,
-          artifactDigest: pageA.value.candidate.artifactDigest,
-          expectedBaseReleaseId: pageA.value.candidate.expectedBaseReleaseId,
-          expectedBaseReleaseDigest: pageA.value.candidate.expectedBaseReleaseDigest,
-          proposalRevisionId: pageA.value.candidate.proposalRevisionId,
-          impactReportDigest: pageA.value.candidate.impactReportDigest,
+          candidateId: pageAValue.persistence.candidate.id,
+          artifactDigest: pageAValue.candidate.artifactDigest,
+          expectedBaseReleaseId: pageAValue.candidate.expectedBaseReleaseId,
+          expectedBaseReleaseDigest: pageAValue.candidate.expectedBaseReleaseDigest,
+          proposalRevisionId: pageAValue.candidate.proposalRevisionId,
+          impactReportDigest: pageAValue.candidate.impactReportDigest,
           capabilityContractDigest: capability.rows[0]!.digest,
         },
         impactFacts: {
@@ -749,7 +752,7 @@ describe("vendor import coexistence", () => {
     const jobA = await asCoordinator(client, () =>
       createJob(asQueryable(client), {
         id: PublicationJobId(`cjob_${uniqueToken("pa")}`),
-        candidateId: pageA.value.persistence.candidate.id,
+        candidateId: pageAValue.persistence.candidate.id,
         authorizationId: authA.value.authorization.id,
         requestScope: "instance:cp-09",
         idempotencyKey: `pa-${uniqueToken("k")}`,
@@ -809,6 +812,7 @@ describe("vendor import coexistence", () => {
     if (!pageB.ok || pageB.value.kind !== "successor" || pageB.value.persistence.kind !== "persisted") {
       throw new Error("page B failed");
     }
+    const pageBValue = { ...pageB.value, persistence: pageB.value.persistence };
     const policyB = await enablePublicationPolicy(client, {
       publicationEnabled: true,
       lowRiskSingleActorPublish: true,
@@ -817,17 +821,17 @@ describe("vendor import coexistence", () => {
       const capability = await client.query<{ digest: string }>(
         `select catalog_publication.digest_jsonb(capability_contract) as digest
            from catalog_publication.candidates where id = $1`,
-        [pageB.value.persistence.candidate.id],
+        [pageBValue.persistence.candidate.id],
       );
       return authorizePublish(asQueryable(client), {
         trustedActor: userActor(PUBLISHER, publisherPermissions),
         candidate: {
-          candidateId: pageB.value.persistence.candidate.id,
-          artifactDigest: pageB.value.candidate.artifactDigest,
-          expectedBaseReleaseId: pageB.value.candidate.expectedBaseReleaseId,
-          expectedBaseReleaseDigest: pageB.value.candidate.expectedBaseReleaseDigest,
-          proposalRevisionId: pageB.value.candidate.proposalRevisionId,
-          impactReportDigest: pageB.value.candidate.impactReportDigest,
+          candidateId: pageBValue.persistence.candidate.id,
+          artifactDigest: pageBValue.candidate.artifactDigest,
+          expectedBaseReleaseId: pageBValue.candidate.expectedBaseReleaseId,
+          expectedBaseReleaseDigest: pageBValue.candidate.expectedBaseReleaseDigest,
+          proposalRevisionId: pageBValue.candidate.proposalRevisionId,
+          impactReportDigest: pageBValue.candidate.impactReportDigest,
           capabilityContractDigest: capability.rows[0]!.digest,
         },
         impactFacts: {
@@ -850,7 +854,7 @@ describe("vendor import coexistence", () => {
     const jobB = await asCoordinator(client, () =>
       createJob(asQueryable(client), {
         id: PublicationJobId(`cjob_${uniqueToken("pb")}`),
-        candidateId: pageB.value.persistence.candidate.id,
+        candidateId: pageBValue.persistence.candidate.id,
         authorizationId: authB.value.authorization.id,
         requestScope: "instance:cp-09",
         idempotencyKey: `pb-${uniqueToken("k")}`,

@@ -206,7 +206,7 @@ async function seedHistoricalReplacement(harness: MigrationHarness) {
   await harness.seedOrganization(organizationId);
   await harness.seedProject(organizationId, projectId, "Replacement root");
   const registrationId = await harness.registerSubject({ organizationId, subjectId: PREDECESSOR_SUBJECT_ID,
-    subjectKind: "driver", moduleId: "module-replacement-root" });
+    subjectKind: "driver", moduleId: "module-replacement-root", legacyPlacement: true });
   const snapshot = harness.snapshot();
   const old = await seedHistoricalBinding({ harness, snapshot, organizationId, projectId,
     logicalNodeId: "root-original", registrationId, definitionId: PREDECESSOR_DEFINITION_ID,

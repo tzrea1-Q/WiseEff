@@ -26,7 +26,7 @@ describe("populated historical-attribution upgrade", () => {
         const auth = makeTestAuthContext({ organizationId, userId, roleId: "admin" });
         const storage = createLocalObjectStore(directory);
         await installDriverSourceFixture(db, auth, { subjectId: "csub_acme_power", compatible: "acme,power", businessName: "History upgrade",
-          driverName: "Acme power", idempotencyKey: "history-upgrade-registration", reason: "Historical attribution upgrade" });
+          driverName: "Acme power", idempotencyKey: "history-upgrade-registration", reason: "Historical attribution upgrade", legacyPlacement: true });
         const source = '/dts-v1/; / { charger { compatible = "acme,power"; iin_max = <36>; }; };';
         const { fileId, fileVersionId } = await seedHistoricalPinnedSourceFixture(db, storage, {
           organizationId, projectId, source, createdByUserId: userId,

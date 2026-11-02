@@ -79,7 +79,7 @@ describe("Definition erasure preserves another Definition in an approved batch",
       source_kind,target_release_id,target_release_digest,toolchain) values ('cart_erasure_batch',$1,$2,$3,'repository-bundle',$4,$1,$5)`,
     [compiled.value.aggregateDigest, sha256Digest(bytes), Buffer.from(bytes), release.manifest.release.id, release.manifest.toolchain]);
     const business = await createParameterModuleForAuth(db, admin, { name: "Erasure batch", kind: "business" });
-    const driver = await createParameterModule(db, { organizationId: ORG, name: "Erasure driver", kind: "driver-group",
+    const driver = await createParameterModule(db, { organizationId: ORG, name: "Erasure driver", kind: "business",
       parentId: business.id, sourceKey: "compatible:acme,power" });
     const registered = await executeRegistration(getRootPostgresPool(db)!, { kind: "register", organizationId: ORG,
       subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver", expectedRelease: compiled.value.release,

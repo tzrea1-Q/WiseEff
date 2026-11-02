@@ -50,6 +50,7 @@ import {
   type Database,
 } from "../../../shared/database/client";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
+import { seedLegacySubjectPlacement } from "../../../testing/parameterCatalog/driverSource";
 
 import {
   createParameterCatalogMigrationService,
@@ -112,6 +113,7 @@ export type MigrationHarness = {
     readonly subjectKind: "driver" | "node-type";
     readonly moduleId: string;
     readonly principalId?: string;
+    readonly legacyPlacement?: boolean;
   }) => Promise<string>;
   readonly seedBindingValue: (input: {
     readonly organizationId: string;
@@ -383,14 +385,20 @@ export async function createMigrationHarness(options: { readonly objectStore?: O
       );
     }
     await pool.query(
-      `insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin)
-       values ($1, $2, $3, $1, 1, 'business', 'curated') on conflict (id) do nothing`,
+      `insert into public.parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id)
+       values ($1, $2, $3, $1, 1, $4, 'curated', $5) on conflict (id) do nothing`,
       [
         input.moduleId,
         input.organizationId,
         input.moduleId,
+        input.legacyPlacement ? (input.subjectKind === "driver" ? "driver-group" : "node-type") : "business",
+        input.legacyPlacement ? attributionId : null,
       ],
     );
+    if (input.legacyPlacement) return seedLegacySubjectPlacement(pool, {
+      organizationId: input.organizationId, subjectId: input.subjectId, moduleId: input.moduleId,
+      reason: "historical definition-replacement fixture",
+    });
     const command: RegisterSubjectCommand = {
       kind: "register",
       organizationId: input.organizationId,
