@@ -53,6 +53,7 @@ import { createCanonicalValueDraft } from "../drafts/service";
 import { submitCanonicalValueChange } from "../drafts/changeService";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
+import { parseCompatibles } from "../catalogProjectValueSync";
 import { materializeSeedSources } from "./materialize";
 import { getSeedInitializationRun } from "./plan";
 import { curateReviewedSeedPlacementCapacity } from "./placementCapacity";
@@ -386,8 +387,9 @@ describe("T1.3 complete successor and B2 materialization", () => {
     await curateReviewedSeedPlacementCapacity(root, { organizationId: ORG });
     const sources = (await reviewedSeedProjectSources(REPO_ROOT, { board: true, json: true })).map((project) => ({
       ...project,
-      // Deliberately exercise the order-independent materializer contract.
-      files: project.files.slice().reverse(),
+      // Exercise order independence and an extra child without a driver ancestor.
+      files: project.files.map((file) => file.name === "board.dts" ? { ...file,
+        content: file.content.replace("/ {", "/ {\n\tscharger_v800 { gpios = <&gpio5 31 0>; };") } : file).reverse(),
     }));
     const seedDigest = canonicalSeedInitializationDigest({
       organizationId: ORG,
@@ -476,15 +478,27 @@ describe("T1.3 complete successor and B2 materialization", () => {
           unregistered: project.unregisteredSubjectIds,
         })),
       }),
-    ).toEqual({ atlas: 123, aurora: 123, nebula: 123 });
+    ).toEqual({ atlas: 124, aurora: 124, nebula: 124 });
 
-    const ownerlessParents = await pool.query<{ project_id: string; compatible: string | null }>(
+    const ownerParents = await pool.query<{ project_id: string; compatible: string | null }>(
       `select distinct revision.project_id, node.compatible from public.dts_logical_node_revisions node
        join public.dts_config_revisions revision on revision.id=node.config_revision_id
        where revision.organization_id=$1 and node.node_locator='/spmi1' order by revision.project_id`, [ORG],
     );
-    expect(ownerlessParents.rows).toEqual([
-      { project_id: "atlas", compatible: null }, { project_id: "aurora", compatible: null }, { project_id: "nebula", compatible: null },
+    expect(ownerParents.rows.map((row) => ({ project_id: row.project_id, compatibles: parseCompatibles(row.compatible) }))).toEqual([
+      { project_id: "atlas", compatibles: ["hisilicon,spmi"] }, { project_id: "aurora", compatibles: ["hisilicon,spmi"] },
+      { project_id: "nebula", compatibles: ["hisilicon,spmi"] },
+    ]);
+    const unmatched = await pool.query<{ project_id: string; bindings: string }>(
+      `select revision.project_id, count(binding.id)::text as bindings from public.dts_logical_node_revisions node
+       join public.dts_config_revisions revision on revision.id=node.config_revision_id
+       left join parameter_catalog.project_parameter_bindings binding on binding.logical_node_id=node.logical_node_id
+         and binding.organization_id=revision.organization_id
+       where revision.organization_id=$1 and node.node_locator='/scharger_v800'
+       group by revision.project_id order by revision.project_id`, [ORG],
+    );
+    expect(unmatched.rows).toEqual([
+      { project_id: "atlas", bindings: "0" }, { project_id: "aurora", bindings: "0" }, { project_id: "nebula", bindings: "0" },
     ]);
 
     const archiveRows = await pool.query<{
@@ -516,15 +530,15 @@ describe("T1.3 complete successor and B2 materialization", () => {
       [ORG],
     );
     expect(counts.rows.map((row) => [row.project_id, Number(row.count)])).toEqual([
-      ["atlas", 123],
-      ["aurora", 123],
-      ["nebula", 123],
+      ["atlas", 124],
+      ["aurora", 124],
+      ["nebula", 124],
     ]);
     const total = await pool.query<{ count: string }>(
       `select count(*)::text as count from parameter_catalog.project_parameter_bindings where organization_id = $1`,
       [ORG],
     );
-    expect(total.rows[0]!.count).toBe("369");
+    expect(total.rows[0]!.count).toBe("372");
 
     const jsonBindings = await pool.query<{ count: string }>(
       `select count(*)::text as count
@@ -542,9 +556,7 @@ describe("T1.3 complete successor and B2 materialization", () => {
       const reviewed = reviewedBoard.filter((entry) => entry.board === projectId && entry.scope === "current");
       expect(reviewed).toHaveLength(120);
       expect(reviewed.filter((entry) => entry.nodePath === "spmi1/scharger_v800" && entry.propertyKey === "gpios")).toHaveLength(1);
-      const board = reviewed
-        .filter((entry) => !(entry.nodePath === "spmi1/scharger_v800" && entry.propertyKey === "gpios"))
-        .map((entry) => [
+      const board = reviewed.map((entry) => [
           projectId,
           "dts",
           canonicalDtsLocator("board.dts", entry.nodePath),
@@ -552,7 +564,7 @@ describe("T1.3 complete successor and B2 materialization", () => {
           canonicalSubjectKey(entry.formalSubject.kind, entry.formalSubject.value),
           entry.propertyKey,
         ].join("|"));
-      expect(board).toHaveLength(119);
+      expect(board).toHaveLength(120);
       expectedByProject.set(projectId, [
         ...board,
         `${projectId}|dts|${canonicalDtsLocator("charging-thermal.dts", "wiseeff_node_type_demo/charging_core")}|node-type|node-type:charging_core|fast-charge-profile-matrix`,
@@ -647,8 +659,8 @@ describe("T1.3 complete successor and B2 materialization", () => {
         );
       }
     }
-    expect(bindingIds.size).toBe(369);
-    expect(bindingIdsByTuple.size).toBe(369);
+    expect(bindingIds.size).toBe(372);
+    expect(bindingIdsByTuple.size).toBe(372);
     for (const projectId of ["atlas", "aurora", "nebula"]) {
       expect(actualByProject.get(projectId)?.slice().sort()).toEqual(expectedByProject.get(projectId));
     }
@@ -867,7 +879,7 @@ describe("T1.3 complete successor and B2 materialization", () => {
       `select count(*)::text as count from parameter_catalog.project_parameter_bindings where organization_id = $1`,
       [ORG],
     );
-    expect(afterReplay.rows[0]!.count).toBe("369");
+    expect(afterReplay.rows[0]!.count).toBe("372");
     const afterReplayBindings = await pool.query(
       `select b.id, b.current_value_id, b.effective_revision_id
          from parameter_catalog.current_project_parameter_bindings b

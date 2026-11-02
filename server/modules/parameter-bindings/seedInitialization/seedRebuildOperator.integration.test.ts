@@ -516,6 +516,20 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
         expectedRunId: input.runId, expectedStage: stage });
       expect(receipt.ok, JSON.stringify(receipt)).toBe(true);
       if (!receipt.ok || !receipt.value.receiptId) throw new Error(`receipt missing: ${JSON.stringify(receipt)}`);
+      if (stage === "vendor") {
+        const children = await db.query(`select child.canonical_key as child, owner.canonical_key as owner
+          from parameter_catalog.catalog_subjects child
+          join parameter_catalog.catalog_subjects owner on owner.id=child.owner_subject_id
+          join parameter_catalog.catalog_release_subjects membership on membership.subject_id=child.id
+          where membership.release_id=$1 order by child.canonical_key`, [receipt.value.releaseId]);
+        expect(children.rows).toEqual([
+          { child: "battery0", owner: "huawei,battery_charge_balance" },
+          { child: "battery1", owner: "huawei,battery_charge_balance" },
+          { child: "cccv_para0", owner: "huawei,battery_cccv" },
+          { child: "middle_cpu", owner: "hisilicon,hisi_vbat_drop_protect_v2" },
+          { child: "scharger_v800", owner: "hisilicon,spmi" },
+        ]);
+      }
       plan.publications[stage] = { candidateId: receipt.value.candidateId, artifactDigest: receipt.value.artifactDigest,
         releaseId: receipt.value.releaseId, releaseDigest: receipt.value.receiptReleaseDigest!, receiptId: receipt.value.receiptId };
     }

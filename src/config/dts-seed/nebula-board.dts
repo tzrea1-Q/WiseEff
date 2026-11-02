@@ -73,6 +73,7 @@
 	};
 
 	spmi1: spmi1 {
+		compatible = "hisilicon,spmi";
 		scharger_v800 {
 			gpios = <&gpio5 31 0>;
 			status = "ok";
