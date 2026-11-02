@@ -91,6 +91,7 @@ export type MovePlacementCommand = {
   readonly registrationId: SubjectRegistrationId;
   readonly expectedRelease: CatalogReleasePin;
   readonly destinationModuleId: string;
+  readonly newDestination?: { readonly parentModuleId: string; readonly name: string };
   /** Version captured from the current Placement ETag, when supplied by HTTP. */
   readonly expectedPlacementVersion?: string;
   /** Explicitly reviewed occupant that will retain its identity with an unset module. */
@@ -185,6 +186,7 @@ export const validateRegistrationCommand = (
     if (!controlFree(command.destinationModuleId)) {
       return invalid("destinationModuleId");
     }
+    if (command.newDestination && (!controlFree(command.newDestination.parentModuleId) || !controlFree(command.newDestination.name) || command.newDestination.name.length > 120 || command.replacement)) return invalid("newDestination");
     if (
       command.expectedPlacementVersion !== undefined &&
       !controlFree(command.expectedPlacementVersion)
@@ -259,6 +261,7 @@ const commandFingerprintModel = (command: RegistrationCommand): ContractJsonValu
         registrationId: command.registrationId,
         expectedRelease: release,
         destinationModuleId: command.destinationModuleId,
+        ...(command.newDestination ? { newDestination: { ...command.newDestination } } : {}),
         ...(command.expectedPlacementVersion !== undefined
           ? { expectedPlacementVersion: command.expectedPlacementVersion }
           : {}),

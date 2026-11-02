@@ -547,7 +547,7 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     const capacity = await curateReviewedSeedPlacementCapacity(db, { organizationId: org });
     expect(capacity.created).toEqual([]);
     expect((await db.query(`select module_id from parameter_catalog.subject_placements
-      where organization_id=$1 and module_id=$2`, [org, capacity.driverGroupModuleId])).rows).toHaveLength(1);
+      where organization_id=$1 and module_id=$2`, [org, capacity.businessModuleId])).rows.length).toBeGreaterThan(0);
     expect((await db.query("select * from parameter_modules where organization_id=$1 order by id", [org])).rows)
       .toEqual(modules.rows);
     expect(transitions).toContain("archiving");

@@ -231,10 +231,10 @@ describe("RegistrationDialog", () => {
     } });
   });
 
-  it("does not offer occupied modules as a hidden replacement during new registration", async () => {
+  it("allows registering another subject into an occupied business module", async () => {
     const fixture = replacementFixture();
     const { createRegistration } = renderDialog({ moduleOptions: fixture.options.moduleOptions, initialDestinationModuleId: "target" });
-    expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "继续确认" })).toBeEnabled();
     expect(screen.queryByRole("region", { name: "替换归属影响" })).not.toBeInTheDocument();
     expect(fixture.getPlacement).not.toHaveBeenCalled();
     expect(createRegistration).not.toHaveBeenCalled();
@@ -326,7 +326,7 @@ describe("RegistrationDialog", () => {
     });
   });
 
-  it("initializes a typed destination only after an explicit business parent, name and confirmation", async () => {
+  it("initializes a business destination only after an explicit parent, name and confirmation", async () => {
     const { createRegistration } = renderDialog({ newDestinationParents: [{ id: "parent-business", displayName: "电源 / 充电" }] });
     const user = userEvent.setup();
     expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
@@ -340,6 +340,20 @@ describe("RegistrationDialog", () => {
     await waitFor(() => expect(createRegistration).toHaveBeenCalled());
     expect(createRegistration.mock.calls[0][1]).toMatchObject({ newDestination: { parentModuleId: "parent-business", name: "充电驱动" } });
     expect(createRegistration.mock.calls[0][1]).not.toHaveProperty("destinationModuleId");
+  });
+
+  it("offers a new business category while moving an unset subject even when categories exist", async () => {
+    const { updatePlacement } = renderDialog({ intent: "update-placement", domainState: ready, ifMatch: "etag-reg",
+      moduleOptions: [{ id: "existing", displayName: "电源" }],
+      newDestinationParents: [{ id: "existing", displayName: "电源" }], initialDestinationModuleId: "" });
+    updatePlacement.mockResolvedValue({ item: catalogRegistration.placement } as never);
+    const user = userEvent.setup();
+    await selectControlOption(screen.getByLabelText("归属方式"), "new");
+    await selectControlOption(screen.getByLabelText("新模块业务分类"), "existing");
+    await user.type(screen.getByLabelText("新模块名称"), "充电测试");
+    await confirmWrite("确认调整放置");
+    await waitFor(() => expect(updatePlacement).toHaveBeenCalledOnce());
+    expect(updatePlacement.mock.calls[0]?.[2]).toMatchObject({ newDestination: { parentModuleId: "existing", name: "充电测试" } });
   });
 
   it("guards dirty dismissal and SPA navigation without discarding the selected target", async () => {

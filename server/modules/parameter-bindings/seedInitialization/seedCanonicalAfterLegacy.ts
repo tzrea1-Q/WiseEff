@@ -92,7 +92,7 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
         projectId,
         subjectId,
         reason: "missing-placement-module",
-        detail: "Required Catalog subject has no free placement module of the correct kind; operator curation is required.",
+        detail: "Required Catalog subject has no business placement module; operator curation is required.",
       });
     }
     staged.push({ projectId, configSetId: row.config_set_id, revisionId: row.id });

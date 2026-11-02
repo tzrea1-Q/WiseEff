@@ -60,7 +60,7 @@ it("keeps remaining edits and shows row rejections until evidence is reread", as
   ];
   const data = { catalogReleaseId: "release-1", items, modules: [] };
   const listUnregisteredSubjects = vi.fn().mockResolvedValueOnce(data).mockResolvedValueOnce({ ...data, items: items.slice(1) });
-  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, code: "already-registered", field: "subject" }, { index: 1, code: "module-occupied", field: "subject" }] }, "request"));
+  const createBatchRegistration = vi.fn().mockRejectedValue(new WiseEffApiError("CONFLICT", "登记失败", { rows: [{ index: 0, code: "already-registered", field: "subject" }, { index: 1, code: "conflict", field: "subject" }] }, "request"));
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration }} organizationId="org" catalogReleaseId="release-1" />);
   const user = userEvent.setup();
   await screen.findByRole("checkbox", { name: "选择 driver-a" });
@@ -70,7 +70,7 @@ it("keeps remaining edits and shows row rejections until evidence is reread", as
   await user.click(screen.getByRole("button", { name: "继续确认（2）" }));
   await user.click(within(screen.getByRole("dialog", { name: "确认批量登记" })).getByRole("button", { name: "确认登记" }));
   expect(await screen.findByText("主体已登记，请刷新。")).toBeInTheDocument();
-  expect(screen.getByText("目标模块已被占用。").closest("tr")).toHaveTextContent("driver-b");
+  expect(screen.getByText("登记失败，请刷新后重试。").closest("tr")).toHaveTextContent("driver-b");
   await user.click(screen.getByRole("button", { name: "重新读取" }));
   await waitFor(() => expect(screen.queryByText(/driver-a ·/)).not.toBeInTheDocument());
   expect(screen.getByRole("textbox", { name: "driver-b 的模块名称" })).toHaveValue("driver-b-编辑");
@@ -91,9 +91,9 @@ it("requires a new target when a chosen module becomes occupied after rereading"
   expect(screen.queryByRole("dialog", { name: "确认批量登记" })).not.toBeInTheDocument();
 });
 
-it("prevents two re-added rows from targeting the same existing module", async () => {
+it("allows two re-added rows to target the same business module", async () => {
   const items = ["a", "b"].map((id) => ({ id, kind: "driver" as const, canonicalName: id, availableModuleIds: ["free"] }));
-  const modules = [{ id: "free", name: "空闲驱动", parentId: null, kind: "driver-group", occupied: false }];
+  const modules = [{ id: "free", name: "业务分类", parentId: null, kind: "business", occupied: true }];
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects: vi.fn().mockResolvedValue({ catalogReleaseId: "release-1", items, modules }), createBatchRegistration: vi.fn() }} organizationId="org" catalogReleaseId="release-1" />);
   const user = userEvent.setup();
   await screen.findByRole("checkbox", { name: "选择 a" });
@@ -102,8 +102,7 @@ it("prevents two re-added rows from targeting the same existing module", async (
   await selectControlOption(screen.getByRole("combobox", { name: "b 的登记目标" }), "free");
   await user.click(within(screen.getByRole("row", { name: /a ·/ })).getByRole("button", { name: "加入本批" }));
   await user.click(screen.getByRole("button", { name: "继续确认（2）" }));
-  expect(screen.getAllByText("同一模块不能用于多个主体。")).toHaveLength(2);
-  expect(screen.queryByRole("dialog", { name: "确认批量登记" })).not.toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "确认批量登记" })).toBeVisible();
 });
 
 it.each([

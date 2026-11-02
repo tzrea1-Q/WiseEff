@@ -59,7 +59,7 @@ function renderDialog(options: {
       catalogReleaseId={CATALOG_RELEASE_ID}
       item={options.reviewItem ?? item()}
       placementOptions={[{ id: CATALOG_PLACEMENT_ID, displayName: "根放置" }]}
-      moduleOptions={[{ id: CATALOG_MODULE_ID, displayName: "充电驱动", kind: "driver-group" }]}
+      moduleOptions={[{ id: CATALOG_MODULE_ID, displayName: "充电分类", kind: "business" }]}
       subjects={(options.reviewItem ?? item()).candidates.map((candidate) => ({ ...unregisteredSubject, id: candidate.subjectId }))}
       onContinueDefinition={onContinueDefinition}
       defaultRegistrationId={CATALOG_REGISTRATION_ID}
@@ -105,7 +105,7 @@ describe("ReviewResolutionDialog", () => {
     renderDialog({ reviewItem: item({ allowedResolutions: ["register-subject", "mark-out-of-scope"] }), props: { moduleOptions: [], onRefreshEvidence: refresh } });
     expect(screen.getByRole("radio", { name: "登记主体" })).toBeDisabled();
     expect(screen.getByRole("radio", { name: "标为范围外" })).toBeChecked();
-    expect(screen.getByText(/缺少同类型目标模块/)).toBeVisible();
+    expect(screen.getByText(/缺少业务分类/)).toBeVisible();
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("button", { name: "刷新证据" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();

@@ -137,9 +137,9 @@ describe("idempotent replay and writer rollback", () => {
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
        ) values
-         ($1, $3, 'Driver', $1, 1, 'driver-group', 'curated', $5),
-         ($2, $4, 'Driver', $2, 1, 'driver-group', 'curated', $6)`,
-      [MODULE_ID, ROLLBACK_MODULE_ID, ORG_ID, ROLLBACK_ORG_ID, ATTR_ID, ROLLBACK_ATTR_ID],
+         ($1, $3, 'Driver', $1, 1, 'business', 'curated', null),
+         ($2, $4, 'Driver', $2, 1, 'business', 'curated', null)`,
+      [MODULE_ID, ROLLBACK_MODULE_ID, ORG_ID, ROLLBACK_ORG_ID],
     );
     service = createRegistrationService(pool);
   }, 60_000);

@@ -23,13 +23,11 @@ import {
   createRegistrationDestination,
   insertPlacement,
   insertRegistration,
-  findPlacementForModule,
   loadPlacementById,
   loadRegistrationById,
   loadRegistrationByOrgSubject,
   lockOrganizationRegistrations,
   lockDestinationModule,
-  moduleKindForSubject,
   reserveIdempotency,
   updatePlacementModule,
   updateRegistrationStatus,
@@ -96,7 +94,7 @@ const requireDestination = async (
   moduleId: string,
 ): Promise<Result<DestinationModuleRow, RegistrationFailure>> => {
   const destination = await lockDestinationModule(client, organizationId, moduleId);
-  if (!destination) {
+  if (!destination || !(destination.kind === "business" || (destination.kind === "unclassified" && destination.parent_id === null))) {
     return fail({ kind: "invalid-placement-parent", destinationModuleId: moduleId });
   }
   return { ok: true, value: destination };
@@ -117,12 +115,6 @@ const writeRegister = async (
     command.destinationModuleId,
   );
   if (!destination.ok) return destination;
-  if (destination.value.kind !== moduleKindForSubject(command.subjectKind)) {
-    return fail({
-      kind: "invalid-placement-parent",
-      destinationModuleId: command.destinationModuleId,
-    });
-  }
   if (command.placement.mode === "choose-parent") {
     const parent = await loadPlacementById(
       client,
@@ -175,11 +167,6 @@ const writeRegister = async (
       ok: true,
       value: toResult(existing, existingPlacement, command, fingerprint, "replayed"),
     };
-  }
-
-  const occupant = await findPlacementForModule(client, command.organizationId, command.destinationModuleId);
-  if (occupant) {
-    return fail({ kind: "placement-occupied", registrationId: occupant.registration_id, placementId: occupant.id });
   }
 
   const registrationId = `sreg_${randomUUID()}`;
@@ -295,19 +282,21 @@ const writeMove = async (
       placementId: pair.placement.id,
     });
   }
+  if (command.newDestination) {
+    const created = await createRegistrationDestination(client, command);
+    if (!created) return fail({ kind: "invalid-placement-parent", destinationModuleId: command.newDestination.parentModuleId });
+  }
   const destination = await requireDestination(
     client,
     command.organizationId,
     command.destinationModuleId,
   );
   if (!destination.ok) return destination;
-  const occupant = await findPlacementForModule(client, command.organizationId, command.destinationModuleId);
   let replacement: RegistrationResult["replacement"];
   if (command.replacement) {
     const expected = command.replacement;
     const displaced = await loadStoredPair(client, command.organizationId, expected.registrationId);
-    if (!displaced || !occupant || occupant.registration_id !== expected.registrationId ||
-        occupant.id !== expected.placementId || displaced.placement.id !== expected.placementId ||
+    if (!displaced || displaced.placement.id !== expected.placementId ||
         displaced.placement.registration_id !== displaced.registration.id ||
         displaced.placement.module_id !== command.destinationModuleId ||
         displaced.placement.version !== expected.expectedPlacementVersion ||
@@ -326,8 +315,6 @@ const writeMove = async (
       registrationVersion: displaced.registration.version,
       previousSourceModuleId: pair.placement.module_id,
     };
-  } else if (occupant && occupant.registration_id !== pair.registration.id) {
-    return fail({ kind: "placement-occupied", registrationId: occupant.registration_id, placementId: occupant.id });
   }
   const placement =
     pair.placement.module_id === command.destinationModuleId

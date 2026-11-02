@@ -61,3 +61,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0049](0049-knowledge-scope-is-an-explicit-binding-or-the-organization.md) | Knowledge scope is an explicit binding or the whole organization |
 | [0051](0051-organization-provisioning-and-member-admission.md) | Organization provisioning belongs to the platform; member admission belongs to the organization (accepted design) |
 | [0052](0052-shared-source-versions-pin-project-dependency-closures.md) | Shared source versions pin complete project dependency closures |
+| [0053](0053-business-modules-hold-subjects-and-drivers-own-child-nodes.md) | Business modules hold subjects; drivers own their child nodes |

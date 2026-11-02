@@ -442,7 +442,7 @@ export const catalogBatchRegistrationResponseSchema = catalogObject({
 });
 export const catalogBatchRegistrationFailureResponseSchema = z.object({
   error: z.object({ code: z.string(), message: z.string(), requestId: z.string(),
-    details: z.object({ retryable: z.boolean(), rows: z.array(z.object({ index: z.number().int().nonnegative(), subjectId: z.string(), code: z.enum(["category-missing", "name-invalid", "name-taken", "module-occupied", "already-registered", "subject-inactive", "release-drift", "conflict"]), field: z.enum(["category", "name", "subject"]) })).optional() }).passthrough() })
+    details: z.object({ retryable: z.boolean(), rows: z.array(z.object({ index: z.number().int().nonnegative(), subjectId: z.string(), code: z.enum(["category-missing", "name-invalid", "name-taken", "already-registered", "subject-inactive", "release-drift", "conflict"]), field: z.enum(["category", "name", "subject"]) })).optional() }).passthrough() })
 });
 export const catalogUnregisteredSubjectsResponseSchema = catalogObject({
   catalogReleaseId: z.string(),
@@ -461,6 +461,10 @@ export const catalogRestoreRegistrationRequestSchema = catalogObject({
 export const catalogUpdatePlacementRequestSchema = catalogObject({
   placement: catalogPlacementIntentSchema,
   destinationModuleId: z.string().min(1).optional(),
+  newDestination: catalogObject({
+    parentModuleId: z.string().trim().min(1),
+    name: z.string().trim().min(1).max(120).regex(/^[^\u0000-\u001f\u007f-\u009f]+$/u)
+  }).optional(),
   replacement: catalogObject({
     registrationId: z.string().trim().min(1),
     placementEtag: z.string().trim().min(1),
@@ -468,6 +472,9 @@ export const catalogUpdatePlacementRequestSchema = catalogObject({
     reason: z.string().trim().min(1).max(1000)
   }).optional()
 }).superRefine((value, context) => {
+  if (value.newDestination && (value.destinationModuleId || value.replacement || value.placement.mode !== "use-default")) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "A new destination requires an explicit business parent and no existing destination." });
+  }
   if (value.replacement && (!value.destinationModuleId || value.placement.mode !== "use-default")) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "A placement replacement requires an explicit destination module." });
   }

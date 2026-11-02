@@ -26,7 +26,6 @@ import {
   CatalogSubjectId,
   PublicationJobId,
   type CatalogReleasePin,
-  type CatalogSubjectKind,
   type PlacementIntent,
 } from "../parameter-catalog-contract/index";
 import { canViewParameters, parameterUsageProjectScope } from "../parameter-kernel/policy";
@@ -57,7 +56,6 @@ import {
 
 import { registerCatalogBatchRegistrationRoutes, registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
 import { listUnregisteredSubjects } from "../parameter-governance/registration/readRepository";
-import { moduleKindForSubject } from "../parameter-governance/registration/repositories";
 import { executeBatchRegistration } from "../parameter-governance/registration/batch";
 import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
 import { registerDefinitionDeletionRoutes } from "./definitionDeletion/routes";
@@ -632,16 +630,15 @@ const createKernelReadiness = (
 const lookupDefaultDestinationModule = async (
   pool: pg.Pool,
   organizationId: string,
-  subjectKind: CatalogSubjectKind,
 ): Promise<string | null> => {
   const result = await pool.query<{ id: string }>(
     `select id
        from public.parameter_modules
       where organization_id = $1
-        and kind = $2
+        and kind = 'unclassified' and parent_id is null
       order by depth asc, id asc
       limit 1`,
-    [organizationId, moduleKindForSubject(subjectKind)],
+    [organizationId],
   );
   return result.rows[0]?.id ?? null;
 };
@@ -660,6 +657,7 @@ const lookupChooseParentDestinationModule = async (
       where parent.id = $1
         and module.organization_id = $2
         and module.name = $3
+        and (module.kind = 'business' or (module.kind = 'unclassified' and module.parent_id is null))
       order by module.id asc
       limit 1`,
     [placement.parentPlacementId, organizationId, placement.displayName],
@@ -820,19 +818,19 @@ const createGovernancePorts = (
         }
       : undefined,
     resolveDestinationModuleId: pool
-      ? async ({ organizationId, subjectKind, placement, destinationModuleId }) => {
+      ? async ({ organizationId, placement, destinationModuleId }) => {
           if (destinationModuleId !== undefined) {
             const result = await pool.query<{ id: string }>(
               `select id from public.parameter_modules
-                where organization_id = $1 and id = $2 and kind = $3`,
-              [organizationId, destinationModuleId, moduleKindForSubject(subjectKind)],
+                where organization_id = $1 and id = $2 and (kind = 'business' or (kind = 'unclassified' and parent_id is null))`,
+              [organizationId, destinationModuleId],
             );
             return result.rows[0]?.id ?? null;
           }
           if (placement.mode === "choose-parent") {
             return lookupChooseParentDestinationModule(pool, organizationId, placement);
           }
-          return lookupDefaultDestinationModule(pool, organizationId, subjectKind);
+          return lookupDefaultDestinationModule(pool, organizationId);
         }
       : undefined,
     ...(queries ? bindGovernanceCatalogQueryPorts(queries) : unavailableGovernanceQueryPorts),

@@ -33,6 +33,8 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
   const targetSubject = CatalogSubjectId("csub_replacement_target");
   const thirdSubject = CatalogSubjectId("csub_replacement_third");
   const emptySubject = CatalogSubjectId("csub_removal_without_definitions");
+  const configSubject = CatalogSubjectId("csub_placement_configuration");
+  const nodeSubject = CatalogSubjectId("csub_placement_node");
   const context = { actorKind: "org-admin" as const, principalId: "lifecycle-admin" };
   const version = (result: RegistrationResult) => `${result.registrationStatus}:${result.registrationVersion}`;
   const lifecycle = (kind: "retire" | "restore", result = registration) => ({
@@ -47,16 +49,14 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
   };
   const createModule = async (name: string, organization = organizationId) => {
     const id = `${name}-${randomUUID()}`;
-    await admin.query(`insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,origin,source_key)
-      values ($1,$2,'driver-registration',$3,'curated',$1)`, [`attr-${id}`, organization, name]);
-    await admin.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-      values ($1,$2,$3,$1,1,'driver-group','curated',$4)`, [id, organization, name, `attr-${id}`]);
+    await admin.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin)
+      values ($1,$2,$3,$1,1,'business','curated')`, [id, organization, name]);
     return id;
   };
   const registerTarget = async (subjectId = targetSubject, destinationModuleId?: string) => {
     const targetModuleId = destinationModuleId ?? await createModule("Target");
     const written = await createRegistrationService(api).execute({ kind: "register", organizationId, subjectId,
-      subjectKind: "driver", expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: targetModuleId,
+      subjectKind: subjectId === nodeSubject ? "node-type" : "driver", expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: targetModuleId,
       method: "explicit", proof: {}, idempotencyKey: randomUUID(), context });
     if (!written.ok) throw new Error(JSON.stringify(written.error));
     return written.value;
@@ -112,7 +112,15 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
           revision: { ...structuredClone(definition.content.revision), id: `drev_${id}_iin_max_1` } } }]),
       ];
     });
-    const release = refreshSuccessorSource({ ...initial, documents: [...initial.documents, ...extra] }, initial.sources[0]!.path);
+    const configuration = { ...structuredClone(subject), content: { id: configSubject, kind: "configuration-schema" as const,
+      canonicalKey: "wiseeff.placement-config", lifecycle: "active" as const,
+      selector: { kind: "configuration-schema-id" as const, value: "wiseeff.placement-config", provenance: { source: initial.sources[0]!.path } },
+      subtype: {}, tombstone: null } };
+    const node = { ...structuredClone(subject), content: { id: nodeSubject, kind: "node-type" as const,
+      canonicalKey: "battery1", lifecycle: "active" as const,
+      selector: { kind: "node-type-name" as const, value: "battery1", provenance: { source: initial.sources[0]!.path } },
+      subtype: {}, tombstone: null } };
+    const release = refreshSuccessorSource({ ...initial, documents: [...initial.documents, ...extra, configuration, node] }, initial.sources[0]!.path);
     const first = { schemaVersion: bundle.schemaVersion, targetReleaseId: release.manifest.release.id, releases: [release] };
     const compiled = compileCatalogRelease(first);
     if (!compiled.ok) throw new Error("lifecycle fixture did not compile");
@@ -131,10 +139,8 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     organizationId = `org-${id}`;
     moduleId = `mod-${id}`;
     await admin.query("insert into public.organizations(id,name) values ($1,'Lifecycle')", [organizationId]);
-    await admin.query(`insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,origin,source_key)
-      values ($1,$2,'driver-registration','Driver','curated',$1)`, [`attr-${id}`, organizationId]);
-    await admin.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-      values ($1,$2,'Driver',$1,1,'driver-group','curated',$3)`, [moduleId, organizationId, `attr-${id}`]);
+    await admin.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin)
+      values ($1,$2,'Driver',$1,1,'business','curated')`, [moduleId, organizationId]);
     const result = await createRegistrationService(api).execute({ kind: "register", organizationId,
       subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver", expectedRelease: pin,
       placement: { mode: "use-default" }, destinationModuleId: moduleId, method: "explicit",
@@ -174,6 +180,84 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     expect(await service.execute(command)).toMatchObject({ ok: true, value: { registrationId: firstId, registrationStatus: "active" } });
     expect(await placements()).toEqual(afterRestore);
     expect(await service.execute({ ...command, idempotencyKey: randomUUID() })).toMatchObject({ ok: false, error: { kind: "registration-conflict" } });
+  });
+
+  it("registers two drivers and a configuration schema into the same business category", async () => {
+    const service = createRegistrationService(api);
+    const results = await Promise.all([targetSubject, thirdSubject].map((subjectId) => service.execute({
+      kind: "register", organizationId, subjectId, subjectKind: "driver", expectedRelease: pin,
+      placement: { mode: "use-default" }, destinationModuleId: moduleId, method: "explicit",
+      proof: {}, idempotencyKey: randomUUID(), context,
+    })));
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(await service.execute({ kind: "register", organizationId, subjectId: configSubject, subjectKind: "configuration-schema",
+      expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: moduleId, method: "explicit",
+      proof: {}, idempotencyKey: randomUUID(), context })).toMatchObject({ ok: true });
+    expect((await placements()).filter((row) => row.module_id === moduleId)).toHaveLength(4);
+  });
+
+  it("moves an unset driver to the business parent of an occupied legacy node and rejects typed or foreign targets", async () => {
+    const other = await registerTarget(nodeSubject);
+    const typed = `legacy-node-${randomUUID()}`;
+    const typedDriver = `legacy-driver-${randomUUID()}`;
+    const foreignOrg = `foreign-${randomUUID()}`;
+    const foreignModule = `foreign-module-${randomUUID()}`;
+    await admin.query(`insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,source_key)
+      values ($1,$2,'node-type-definition','Legacy node',$1)`, [`attr-${typed}`, organizationId]);
+    await admin.query(`insert into public.parameter_modules(id,organization_id,parent_id,name,path,depth,kind,origin,attribution_subject_id)
+      values ($1,$2,$3,'Legacy node',$4,2,'node-type','curated',$5)`, [typed, organizationId, moduleId, `${moduleId}/${typed}`, `attr-${typed}`]);
+    await admin.query(`insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,source_key)
+      values ($1,$2,'driver-registration','Legacy driver',$1)`, [`attr-${typedDriver}`, organizationId]);
+    await admin.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
+      values ($1,$2,'Legacy driver',$1,1,'driver-group','curated',$3)`, [typedDriver, organizationId, `attr-${typedDriver}`]);
+    await admin.query("insert into public.organizations(id,name) values ($1,'Foreign')", [foreignOrg]);
+    await admin.query("insert into public.parameter_modules(id,organization_id,name,path,kind,origin) values ($1,$2,'Foreign',$1,'business','curated')", [foreignModule, foreignOrg]);
+    await expect(admin.query("update parameter_catalog.subject_placements set module_id=$2 where id=$1", [other.placementId, typed]))
+      .rejects.toMatchObject({ code: "23514", constraint: "subject_placement_kind_ck" });
+    await expect(admin.query("update parameter_catalog.subject_placements set module_id=$2 where id=$1", [other.placementId, typedDriver]))
+      .rejects.toMatchObject({ code: "23514", constraint: "subject_placement_kind_ck" });
+    const client = await admin.connect();
+    try {
+      await client.query("begin");
+      await client.query(`insert into parameter_catalog.organization_subject_registrations
+        (id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
+        values ($1,$2,$3,'active','explicit','{}'::jsonb,$4)`, ["insert-typed-reg", organizationId, thirdSubject, "insert-typed-placement"]);
+      await client.query(`insert into parameter_catalog.subject_placements (id,registration_id,organization_id,module_id,origin)
+        values ($1,$2,$3,$4,'curated')`, ["insert-typed-placement", "insert-typed-reg", organizationId, typedDriver]);
+      await expect(client.query("set constraints all immediate")).rejects.toMatchObject({ code: "23514", constraint: "subject_placement_kind_ck" });
+    } finally {
+      await client.query("rollback");
+      client.release();
+    }
+    await expect(admin.query("update parameter_catalog.subject_placements set module_id=$2 where id=$1", [other.placementId, foreignModule])).rejects.toBeDefined();
+    // Model a placement retained from before migration 0320.
+    await admin.query("alter table parameter_catalog.subject_placements disable trigger subject_placement_kind_ck");
+    try {
+      await admin.query("update parameter_catalog.subject_placements set module_id=$2 where id=$1", [other.placementId, typed]);
+    } finally {
+      await admin.query("alter table parameter_catalog.subject_placements enable trigger subject_placement_kind_ck");
+    }
+    await expect(admin.query("update parameter_catalog.subject_placements set module_id=module_id, origin='auto' where id=$1", [other.placementId])).resolves.toBeDefined();
+    await admin.query("update parameter_catalog.subject_placements set module_id=null where id=$1", [registration.placementId]);
+    const service = createRegistrationService(api);
+    const move = { kind: "move-placement" as const, organizationId, registrationId: registration.registrationId,
+      expectedRelease: pin, destinationModuleId: moduleId, idempotencyKey: randomUUID(), context };
+    expect(await service.execute({ ...move, destinationModuleId: typed })).toMatchObject({ ok: false, error: { kind: "invalid-placement-parent" } });
+    expect(await service.execute({ ...move, destinationModuleId: foreignModule, idempotencyKey: randomUUID() })).toMatchObject({ ok: false, error: { kind: "invalid-placement-parent" } });
+    expect(await service.execute(move)).toMatchObject({ ok: true, value: { moduleId } });
+    expect((await placements()).find((row) => row.id === other.placementId)?.module_id).toBe(typed);
+  });
+
+  it("creates a business category in the same transaction as a placement move", async () => {
+    const destination = `new-business-${randomUUID()}`;
+    const command = { kind: "move-placement" as const, organizationId, registrationId: registration.registrationId,
+      expectedRelease: pin, destinationModuleId: destination, newDestination: { parentModuleId: moduleId, name: "Charging" },
+      expectedPlacementVersion: registration.placementVersion, idempotencyKey: randomUUID(), context };
+    const service = createRegistrationService(api);
+    expect(await service.execute(command)).toMatchObject({ ok: true, value: { moduleId: destination } });
+    expect(await service.execute(command)).toMatchObject({ ok: true, value: { outcome: "replayed", moduleId: destination } });
+    expect((await admin.query("select kind,parent_id,attribution_subject_id from public.parameter_modules where id=$1", [destination])).rows)
+      .toEqual([{ kind: "business", parent_id: moduleId, attribution_subject_id: null }]);
   });
 
   it("keeps other organizations independent, rejects stale releases, and never auto-restores a removed subject", async () => {
@@ -227,7 +311,7 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     expect((await api.query("select state from parameter_catalog.governance_command_idempotency where organization_id=$1 and idempotency_key=$2", [organizationId, idempotencyKey])).rows).toEqual([]);
   });
 
-  it("refuses occupied moves, then atomically replaces the explicitly reviewed occupant without swapping or deleting identities", async () => {
+  it("shares a business module, then atomically replaces the explicitly reviewed occupant without deleting identities", async () => {
     const target = await registerTarget();
     await seedBindingValueHistory(registration, "pdef_acme_power_iin_max", "drev_acme_power_iin_max_1");
     await seedBindingValueHistory(target, `pdef_${targetSubject}_iin_max`, `drev_${targetSubject}_iin_max_1`);
@@ -237,13 +321,16 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     expect(preserved.history.length).toBeGreaterThanOrEqual(2);
     expect(preserved.source_pins.length).toBeGreaterThanOrEqual(2);
     const command = replacement(target);
-    const before = await placements();
     const service = createRegistrationService(api);
-    expect(await service.execute({ ...command, replacement: undefined }))
-      .toMatchObject({ ok: false, error: { kind: "placement-occupied" } });
-    expect(await placements()).toEqual(before);
+    const shared = await service.execute({ ...command, replacement: undefined });
+    expect(shared).toMatchObject({ ok: true, value: { moduleId: target.moduleId } });
+    expect((await placements()).filter((row) => row.module_id === target.moduleId)).toHaveLength(2);
+    const back = await service.execute({ kind: "move-placement", organizationId, registrationId: registration.registrationId,
+      destinationModuleId: moduleId, expectedRelease: pin, idempotencyKey: randomUUID(), context });
+    expect(back.ok).toBe(true);
+    if (!back.ok) return;
     const actor = await auditedContext("audit-replace-placement");
-    const audited = { ...command, context: actor };
+    const audited = { ...command, expectedPlacementVersion: back.value.placementVersion, context: actor, idempotencyKey: randomUUID() };
     const written = await service.execute(audited);
     if (!written.ok) throw new Error(JSON.stringify(written.error));
     expect(written.value).toMatchObject({ registrationId: registration.registrationId, placementId: registration.placementId,

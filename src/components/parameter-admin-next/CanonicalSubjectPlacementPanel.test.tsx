@@ -247,8 +247,8 @@ function createPorts() {
     subjectQueries,
     definitionQueries,
     modules: [
-      module("issue897-driver-a", "Driver A", "driver-group"),
-      module("issue897-driver-b", "Driver B", "driver-group"),
+      module("issue897-driver-a", "Driver A", "business"),
+      module("issue897-driver-b", "Driver B", "business"),
       module("issue897-node", "Node", "node-type"),
       module("issue897-config", "Configuration", "business")
     ]
@@ -304,7 +304,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     expect(within(dialog).queryByLabelText("属性键")).not.toBeInTheDocument();
   });
 
-  it.each(["active", "retired"] as const)("keeps %s occupants visible to replacement preview even when their subject is absent from the current list", async (status) => {
+  it.each(["active", "retired"] as const)("counts %s registrations in shared business destinations even when their subject is absent from the current list", async (status) => {
     const ports = createPorts();
     const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
     const source = await ports.getRegistration(CATALOG_ORGANIZATION_ID, "registration-driver");
@@ -319,12 +319,11 @@ describe("CanonicalSubjectPlacementPanel", () => {
       ? { item: placement, etag: '"placement-retired-owner:300"' } : sourcePlacement);
     render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
     await userEvent.setup().click(await screen.findByRole("button", { name: "调整归属：vendor,driver" }));
-    await selectControlOption(screen.getByLabelText("目标模块"), "issue897-driver-b");
-    const preview = await screen.findByRole("region", { name: "替换归属影响" });
-    await waitFor(() => expect(preview).toHaveTextContent("8 个参数绑定、3 个项目"));
-    expect(preview).toHaveTextContent("subject-outside-list");
-    expect(preview).toHaveTextContent(`subject-outside-list（${status === "retired" ? "已停用" : "有效"}）`);
-    expect(preview).toHaveTextContent("有效定义数量暂不可用");
+    await userEvent.setup().click(screen.getByLabelText("目标模块"));
+    expect(screen.getByRole("option", { name: /Driver B.*当前 1 个主体、有效定义统计暂不可用/ })).toBeVisible();
+    expect(screen.queryByRole("option", { name: /Node/ })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("option", { name: /Driver B/ }));
+    expect(screen.queryByRole("region", { name: "替换归属影响" })).not.toBeInTheDocument();
     expect(ports.updatePlacement).not.toHaveBeenCalled();
   });
 
@@ -405,7 +404,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     });
     const view = render(<CanonicalSubjectPlacementPanel catalog={ports.catalog} governance={ports.governance}
       organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin
-      modules={[module("issue897-node", "Node", "node-type"), module("issue897-driver-a", "Driver A", "driver-group")]} />);
+      modules={[module("issue897-node", "Node", "node-type"), module("issue897-driver-a", "Driver A", "business")]} />);
     expect(await screen.findByText("vendor,node")).toBeVisible();
     expect(screen.getByText(/搜索与筛选仅覆盖已加载记录/)).toBeVisible();
     expect(screen.getByRole("button", { name: "登记主体：vendor,node" })).toBeDisabled();
@@ -608,7 +607,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     const user = userEvent.setup();
     await user.click(within(nodeRow).getByRole("button", { name: "登记主体：vendor,node" }));
     expect(screen.getByRole("button", { name: "继续确认" })).toBeDisabled();
-    await selectControlOption(screen.getByLabelText("目标模块"), "issue897-node");
+    await selectControlOption(screen.getByLabelText("目标模块"), "issue897-config");
     await user.click(screen.getByRole("button", { name: "继续确认" }));
     const confirmation = await screen.findByRole("dialog", { name: "确认登记主体" });
     await user.click(within(confirmation).getByRole("checkbox"));
@@ -618,7 +617,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
     expect(ports.createRegistration.mock.calls[0]?.[1]).toMatchObject({
       subjectId: "subject-node",
       placement: { mode: "use-default" },
-      destinationModuleId: "issue897-node"
+      destinationModuleId: "issue897-config"
     });
     expect(ports.createRegistration.mock.calls[0]?.[2]).toMatchObject({
       catalogReleaseId: CATALOG_RELEASE_ID,

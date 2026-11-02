@@ -735,7 +735,9 @@ async function handleUpdatePlacement(
   }
   const subjectKind = await resolveSubjectKind(ports, scope, existing.subjectId);
   if (!subjectKind) return validationFailed(request.requestId, "subjectId");
-  const destinationModuleId = await resolveDestinationModuleId(ports, scope, {
+  const destinationModuleId = parsed.data.newDestination
+    ? `pmod_canonical_${createHash("sha256").update(JSON.stringify([organizationId, registrationId, idempotencyKey])).digest("hex").slice(0, 32)}`
+    : await resolveDestinationModuleId(ports, scope, {
     organizationId,
     subjectKind,
     placement,
@@ -779,6 +781,7 @@ async function handleUpdatePlacement(
     registrationId,
     expectedRelease: pin.pin,
     destinationModuleId,
+    ...(parsed.data.newDestination ? { newDestination: parsed.data.newDestination } : {}),
     expectedPlacementVersion,
     ...(replacement ? { replacement } : {}),
     idempotencyKey,

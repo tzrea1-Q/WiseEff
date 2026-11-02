@@ -184,9 +184,9 @@ describe("CATFIX-QUERY real governance and usage projections", () => {
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
        ) values
-         ($1, $3, 'Driver', $1, 1, 'driver-group', 'curated', $4),
-         ($2, $3, 'Driver B', $2, 1, 'driver-group', 'curated', $5)`,
-      [MODULE_A, MODULE_B, ORG_A, ATTR_A, ATTR_B],
+         ($1, $3, 'Driver', $1, 1, 'business', 'curated', null),
+         ($2, $3, 'Driver B', $2, 1, 'business', 'curated', null)`,
+      [MODULE_A, MODULE_B, ORG_A],
     );
     const kernel = createCatalogKernel(pool);
     const loaded = await kernel.loadCurrentCatalog(pin);
