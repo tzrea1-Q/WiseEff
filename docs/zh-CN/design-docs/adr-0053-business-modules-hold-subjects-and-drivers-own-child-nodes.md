@@ -6,7 +6,7 @@
 
 ## 状态
 
-[#1479](https://github.com/tzrea1-Q/WiseEff/issues/1479) 已确认。实施方案见[模块主体结构](../../exec-plans/active/2026-11-02-issue-1479-module-subject-structure.md)，分 S1–S5 交付。本 ADR 修订 [ADR-0042](adr-0042-organizations-register-canonical-subjects-once.md)；ADR-0040 的身份、发布与同步器规则不变。
+[#1479](https://github.com/tzrea1-Q/WiseEff/issues/1479) 已确认。实施方案见[模块主体结构](../../exec-plans/completed/2026-11-02-issue-1479-module-subject-structure.md)，分 S1–S5 交付。本 ADR 修订 [ADR-0042](adr-0042-organizations-register-canonical-subjects-once.md)；ADR-0040 的身份、发布与同步器规则不变。
 
 ## 背景
 
