@@ -370,12 +370,25 @@ const documentSubjectId = (
     ? document.content.id
     : document.content.subjectId;
 
+const subjectOwners = (releases: readonly CatalogReleaseNode[]): Map<string, string> => {
+  const owners = new Map<string, string>();
+  for (const release of releases) for (const document of release.documents) {
+    if (document.kind === "subject" && document.content.ownerSubjectId) owners.set(document.content.id, document.content.ownerSubjectId);
+  }
+  return owners;
+};
+
+const selectorScope = (document: CatalogReleaseDocument, owners: ReadonlyMap<string, string>): string =>
+  document.kind === "subject" ? owners.get(document.content.id) ?? ""
+    : document.kind === "alias" ? owners.get(document.content.subjectId) ?? "" : "";
+
 const validateDuplicateIdentities = (
   releases: readonly CatalogReleaseNode[],
   rules: StableCatalogRules["identityRules"] = stableCatalogRules.identityRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
   for (const release of releases) {
+    const owners = subjectOwners([release]);
     for (const rule of rules) {
       if (!rule.uniquePerRelease) continue;
       const kind = rule.documentKind;
@@ -390,11 +403,12 @@ const validateDuplicateIdentities = (
         > => candidate.kind === kind,
       )) {
         const id = String(pointerValue(document, rule.idPointer));
-        const naturalKey = canonicalKey(
-          rule.naturalKeyPointers.map(
+        const naturalKey = canonicalKey([
+          ...(kind === "subject" || kind === "alias" ? [selectorScope(document, owners)] : []),
+          ...rule.naturalKeyPointers.map(
             (pointer) => pointerValue(document, pointer) as ContractJsonValue,
           ),
-        );
+        ]);
         const duplicateId = ids.has(id);
         const duplicateNaturalKey = naturalKeys.has(naturalKey);
         if (duplicateId || duplicateNaturalKey) {
@@ -821,6 +835,7 @@ const validateStableIdentityLineage = (
   rules: StableCatalogRules["identityRules"] = stableCatalogRules.identityRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
+  const owners = subjectOwners(orderedReleaseNodes(releases));
   for (const rule of rules) {
     const kind = rule.documentKind;
     const byId = new Map<
@@ -839,11 +854,12 @@ const validateStableIdentityLineage = (
       )) {
         const binding = {
           id: String(pointerValue(document, rule.idPointer)),
-          naturalKey: canonicalKey(
-            rule.naturalKeyPointers.map(
+          naturalKey: canonicalKey([
+            ...(kind === "subject" || kind === "alias" ? [selectorScope(document, owners)] : []),
+            ...rule.naturalKeyPointers.map(
               (pointer) => pointerValue(document, pointer) as ContractJsonValue,
             ),
-          ),
+          ]),
           immutable: canonicalKey(
             rule.immutableValuePointers.map(
               (pointer) => pointerValue(document, pointer) as ContractJsonValue,
@@ -909,8 +925,14 @@ function validateOwnershipAndLifecycle(
 
   const canonicalSelectors = new Map<string, string>();
   for (const subject of subjects.values()) {
+    if (subject.content.ownerSubjectId && (subject.content.kind !== "node-type"
+      || subjects.get(subject.content.ownerSubjectId)?.content.kind !== "driver")) {
+      violations.push(violation({ code: "stable-key-reassigned", location: `release:${releaseId}/subject:${subject.content.id}`,
+        subjectId: subject.content.id, detail: "subject-owner-must-be-driver" }));
+    }
     canonicalSelectors.set(
       canonicalKey([
+        subject.content.ownerSubjectId ?? "",
         subject.content.selector.kind,
         subject.content.selector.value,
       ]),
@@ -1022,6 +1044,7 @@ function validateOwnershipAndLifecycle(
         );
       }
       const selectorKey = canonicalKey([
+        subject.content.ownerSubjectId ?? "",
         document.content.selectorKind,
         document.content.normalizedSelector,
       ]);
@@ -1051,10 +1074,19 @@ const validatePermanentSelectorOwnership = (
   const violations: CatalogReleaseViolation[] = [];
   const canonicalOwners = new Map<string, string>();
   const aliasOwners = new Map<string, string>();
+  const owners = subjectOwners(orderedReleaseNodes(releases));
+  const claimedOwners = new Map<string, string>();
   for (const release of orderedReleaseNodes(releases)) {
     for (const document of release.documents) {
       if (document.kind === "subject") {
+        const previousOwner = claimedOwners.get(document.content.id);
+        if (previousOwner && previousOwner !== document.content.ownerSubjectId) {
+          violations.push(violation({ code: "stable-key-reassigned", location: `release:${release.manifest.release.id}/subject:${document.content.id}`,
+            subjectId: document.content.id, detail: "subject-owner-is-permanent" }));
+        }
+        if (document.content.ownerSubjectId) claimedOwners.set(document.content.id, document.content.ownerSubjectId);
         const key = canonicalKey([
+          selectorScope(document, owners),
           document.content.selector.kind,
           document.content.selector.value,
         ]);
@@ -1072,6 +1104,7 @@ const validatePermanentSelectorOwnership = (
         canonicalOwners.set(key, document.content.id);
       } else if (document.kind === "alias") {
         const key = canonicalKey([
+          selectorScope(document, owners),
           document.content.selectorKind,
           document.content.normalizedSelector,
         ]);

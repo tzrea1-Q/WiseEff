@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
+import { readCatalogSubjectOwners } from "../ownerSchema";
 
 import {
   CatalogEventTime,
@@ -442,6 +443,7 @@ export const compareCompiledProjection = async (
      where membership.release_id = $1`,
     [releaseId],
   );
+  const subjectOwners = await readCatalogSubjectOwners(client, releaseId);
   const subjectsById = new Map(subjectRows.rows.map((row) => [row.id, row]));
   for (const subject of subjects) {
     const row = subjectsById.get(subject.content.id);
@@ -456,7 +458,8 @@ export const compareCompiledProjection = async (
       );
       continue;
     }
-    if (row.kind !== subject.content.kind || row.canonical_key !== canonicalSubjectKey(subject)) {
+    if (row.kind !== subject.content.kind || row.canonical_key !== canonicalSubjectKey(subject)
+      || (subject.content.ownerSubjectId !== undefined && subjectOwners.get(subject.content.id) !== subject.content.ownerSubjectId)) {
       violations.push(
         violation(
           "subject-root-mismatch",

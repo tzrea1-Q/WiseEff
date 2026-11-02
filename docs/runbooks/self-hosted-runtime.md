@@ -105,6 +105,17 @@ If bootstrap reports that an admin already exists, use the governance UI or rese
 
 After `--parameter-data-mode new-empty` and the first fixture publication (`crel_acme_1`), compile `schemas/dts/catalog.json` and advance with `install-catalog-release.ts --mode advance` **only while `catalog_activation_receipts` is empty**. That D1 CLI contract is for untaken-over instances. After any activation Receipt exists, the same bootstrap/advance entry is refused; vendor reuse uses the CP-09 import adapter and CP-07 authorize/job/manager path. Do not bootstrap again, do not seed, and do not INSERT Catalog rows. Exact D1 commands live in [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md#vendor-catalog-successor).
 
+## Claim existing Catalog child-node owners
+
+After migration 0321 and an application upgrade supporting `catalog-capability/v6`, run the following from the reviewed repository checkout with `DATABASE_URL` set to the target database using the maintenance operator's authorized credentials:
+
+```bash
+npx tsx scripts/catalog-claim-child-owners.ts --preflight
+npx tsx scripts/catalog-claim-child-owners.ts --apply
+```
+
+Preflight is also the default when no flag is supplied. It reads the checked `schemas/dts/catalog.json` inventory and reports each unique driver/child declaration, current Catalog identity, and evidence conflicts across organizations. Review every conflict before deciding how to resolve it; a missing or contradictory nearest compatible ancestor is never claimed. Apply repeats the checks under locks and claims only ready subjects together in one audited transaction. It does not alter registrations, Bindings, values, or definitions. Repeating apply leaves claimed identities unchanged. Ownership is permanent; moving a child to another driver requires a new subject and the definition-replacement process. Publish the successor through the normal authorized Catalog pipeline after the claim; the claim itself is not a release activation.
+
 ## Import Demo Seed Data
 
 For internal staging or demo hosts only:

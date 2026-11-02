@@ -45,6 +45,8 @@ import {
 import { hasDeletedCurrentValue, type ProjectValuePayload } from "../parameter-bindings/values";
 import type { ValueClient } from "../parameter-bindings/values/repositories";
 import { parseDtsValue, renderDtsValue } from "../dts/valueAst";
+import { parseCompatibles } from "../dts/compatible";
+export { parseCompatibles } from "../dts/compatible";
 import { parseJsonSource, proveJsonSourceMemberAbsent, readJsonSourceValue } from "../parameter-files/jsonSource";
 import { deriveDtsSourceRef, isDtsSourceRef, sourcePathOf } from "../dts/sourceRef";
 import type { DtsValue } from "../dts/types";
@@ -298,7 +300,7 @@ export function publishedCatalogOwnsProperty(
  */
 export function resolveObservedSubject(
   snapshot: CatalogSnapshot,
-  input: { readonly compatibles: readonly string[]; readonly nodeName: string | null },
+  input: { readonly compatibles: readonly string[]; readonly nodeName: string | null; readonly ownerCompatibles?: readonly string[] },
 ): { readonly subjectId: string; readonly subjectKind: string } | null {
   let driverCompatibles: ReturnType<typeof DriverCompatible>[];
   if (input.compatibles.length > 0) {
@@ -320,7 +322,8 @@ export function resolveObservedSubject(
     const parsed = parseCanonicalNodeName(input.nodeName);
     if (parsed.ok) nodeTypeFallback = { kind: "present", name: NormalizedNodeTypeName(parsed.value) };
   }
-  const subject = snapshot.resolveSubject({ driverCompatibles, nodeTypeFallback });
+  const subject = snapshot.resolveSubject({ driverCompatibles, nodeTypeFallback,
+    ...(input.ownerCompatibles ? { ownerContext: input.ownerCompatibles.map(DriverCompatible) } : {}) });
   return subject.status === "matched"
     ? { subjectId: subject.subject.id, subjectKind: subject.subject.kind }
     : null;
@@ -332,6 +335,7 @@ type ObservedProperty = {
   /** DTS node name, used only as the node-type fallback when no compatible exists. */
   name: string | null;
   compatible: string | null;
+  ownerCompatible: string | null;
   propertyKey: string;
   rawText: string;
   fileName: string | null;
@@ -345,15 +349,23 @@ type ObservedProperty = {
   currentFileVersionId: string | null;
 };
 
-export const parseCompatibles = (raw: string | null): string[] => {
-  if (!raw) return [];
-  const quoted = [...raw.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
-  if (quoted.length > 0) return quoted;
-  return raw
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-};
+/** Resolve only effective, absolute ancestors; unresolved label stubs have no proven parent. */
+export function nearestAncestorCompatibles(
+  nodes: ReadonlyMap<string, { readonly deleted: boolean; readonly isLabelStub?: boolean; readonly properties: ReadonlyMap<string, { readonly deleted: boolean; readonly rawText: string }> }>,
+  locator: string,
+): string[] {
+  if (!locator.startsWith("/") || locator === "/") return [];
+  let parent = locator;
+  while (parent !== "/") {
+    const slash = parent.lastIndexOf("/");
+    parent = slash === 0 ? "/" : parent.slice(0, slash);
+    const node = nodes.get(parent);
+    const compatible = !node?.deleted && node?.properties.get("compatible");
+    if (compatible && !compatible.deleted) return parseCompatibles(compatible.rawText);
+    if (node?.isLabelStub) return [];
+  }
+  return [];
+}
 
 type WriteSession = pg.Pool | ValueClient;
 
@@ -381,6 +393,7 @@ export async function listObservedProperties(
       lnr.node_locator as locator,
       lnr.name,
       lnr.compatible,
+      owner.compatible as "ownerCompatible",
       oe.property_name as "propertyKey",
       po.raw_text as "rawText",
       revision.preprocessing is not null as expanded, po.ast_json as "expandedValue",
@@ -392,6 +405,24 @@ export async function listObservedProperties(
     from dts_occurrence_effects oe
     inner join dts_config_revisions revision on revision.id=oe.config_revision_id
     inner join dts_logical_node_revisions lnr on lnr.id = oe.logical_node_revision_id
+    left join lateral (
+      with recursive ancestors as (
+        select parent.logical_node_id, parent.parent_logical_node_id, parent.compatible,
+               1 as depth, array[lnr.logical_node_id, parent.logical_node_id] as visited
+        from dts_logical_node_revisions parent
+        where parent.config_revision_id = lnr.config_revision_id
+          and parent.logical_node_id = lnr.parent_logical_node_id
+        union all
+        select parent.logical_node_id, parent.parent_logical_node_id, parent.compatible,
+               ancestors.depth + 1, ancestors.visited || parent.logical_node_id
+        from ancestors
+        join dts_logical_node_revisions parent
+          on parent.config_revision_id = lnr.config_revision_id
+         and parent.logical_node_id = ancestors.parent_logical_node_id
+        where not parent.logical_node_id = any(ancestors.visited)
+      )
+      select compatible from ancestors where compatible is not null order by depth limit 1
+    ) owner on true
     inner join dts_property_occurrences po on po.id = oe.property_occurrence_id
     inner join project_parameter_file_versions version on version.id = po.file_version_id
     inner join project_parameter_files file on file.id = version.file_id
@@ -512,6 +543,7 @@ export async function syncPublishedCatalogProjectValuesInTransaction(
     const subject = resolveObservedSubject(snapshot, {
       compatibles,
       nodeName: row.name,
+      ownerCompatibles: parseCompatibles(row.ownerCompatible),
     });
     if (!subject) continue;
     const definition = snapshot.getDefinition({

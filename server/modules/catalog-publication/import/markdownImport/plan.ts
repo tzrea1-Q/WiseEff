@@ -46,11 +46,12 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       ...(resolved.categoryPath ? { categoryPath: resolved.categoryPath } : {}),
       ...(resolved.moduleName ? { moduleName: resolved.moduleName } : {}), line: resolved.hintLine });
     if (!resolved.subject && section.kind) {
-      const previous = newSubjects.get(section.selector);
+      const subjectKey = `${resolved.ownerSubjectId ?? ""}\0${section.selector}`;
+      const previous = newSubjects.get(subjectKey);
       if (previous && (previous.section.kind !== section.kind || previous.nature !== resolved.nature
         || previous.cardinality !== resolved.cardinality)) {
         resolved.diagnostics.push(diagnostic(section, null, "主体", "文档中主体的类型、性质或基数不一致。", section.line));
-      } else if (!previous) newSubjects.set(section.selector, resolved);
+      } else if (!previous) newSubjects.set(subjectKey, resolved);
     }
     const creations: { propertyKey: string; content: SupportedDefinitionContent }[] = [];
     const createdEntries: ImportEntry[] = [];
@@ -71,7 +72,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       const revise = isRevisionEntry(definition);
       const existing = resolved.subject ? snapshot.documents.find((item) => item.kind === "definition"
         && item.content.subjectId === resolved.subject!.content.id && item.content.propertyKey === definition.propertyKey) : undefined;
-      const naturalKey = `${resolved.subject?.content.id ?? `${section.kind}:${section.selector}`}\0${definition.propertyKey}`;
+      const naturalKey = `${resolved.subject?.content.id ?? `${section.kind}:${resolved.ownerSubjectId ?? ""}:${section.selector}`}\0${definition.propertyKey}`;
       const duplicate = seen.has(naturalKey);
       seen.add(naturalKey);
       const diagnostics = [
@@ -106,7 +107,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
     }
     for (const change of subjectChanges(resolved, creations)) {
       const previous = change.op === "create-subject-with-definitions"
-        ? changes.find((item) => item.op === "create-subject-with-definitions" && item.canonicalKey === change.canonicalKey)
+        ? changes.find((item) => item.op === "create-subject-with-definitions" && item.canonicalKey === change.canonicalKey && item.ownerSubjectId === change.ownerSubjectId)
         : undefined;
       const operationIndex = previous ? changes.indexOf(previous) : changes.length;
       if (previous?.op === "create-subject-with-definitions" && change.op === "create-subject-with-definitions") {

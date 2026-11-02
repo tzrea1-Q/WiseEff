@@ -31,6 +31,7 @@ const readArtifact = (
 };
 
 const catalogRelease = readArtifact("catalog-release.schema.json");
+const catalogOwnerRelease = readArtifact("catalog-release-owner-v6.schema.json");
 const manifest = readArtifact("manifest.schema.json");
 const stableRules = readArtifact("stable-id-rules.json");
 
@@ -43,6 +44,7 @@ const deepFreeze = <Value>(value: Value): Value => {
 };
 
 export const catalogReleaseSchema = catalogRelease.json;
+export const catalogOwnerReleaseSchema = catalogOwnerRelease.json;
 export const catalogManifestSchema = manifest.json;
 export const stableCatalogRules = deepFreeze(
   parseStableCatalogRules(stableRules.json),
@@ -67,6 +69,12 @@ export const fingerprintContractArtifacts = (
 
 export const s1BundleContractArtifactDigest = fingerprintContractArtifacts([
   catalogRelease,
+  manifest,
+  stableRules,
+]);
+
+export const ownerBundleContractArtifactDigest = fingerprintContractArtifacts([
+  catalogOwnerRelease,
   manifest,
   stableRules,
 ]);

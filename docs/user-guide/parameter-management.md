@@ -89,6 +89,8 @@ Definition import metadata can optionally specify a business category path and m
 
 The downloadable Markdown template includes instructions that can be handed directly to an agent: required source facts, a field dictionary, create/revise rules, and Driver / NodeType / ConfigurationSchema examples. Supply exact subject identities, parameter facts and the requested operation. Ask for missing required facts; omit unknown optional facts. Leading `>` instruction lines before the first subject are excluded from import; quotes after the first subject remain definition content. Replace the fictional example data with verified facts rather than publishing it unchanged. Final data has no conversational preface or enclosing code fence, and documentation headings use level three or below.
 
+For a NodeType owned by a driver, put `parent: <driver-compatible>` below its heading; the driver must already be active in the Catalog. Omit the directive for a standalone NodeType. Ownership is permanent, so moving a node to another driver requires a new subject and the governed replacement process.
+
 ### Batch revision of definitions
 
 In API mode, select up to 128 definitions in the Catalog list and choose Export as revision document to download a Markdown starting point. The document groups current definitions by subject; retired or unavailable selections and definitions that cannot round-trip are listed as skipped with reasons. Edit the fields you intend to change, then upload the document in the definition import dialog and review the preview before authorization and publication. An unchanged export is skipped as having no changes. Counts on inner arrays are retained and cannot be edited through the document.

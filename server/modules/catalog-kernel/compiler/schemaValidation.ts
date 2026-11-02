@@ -4,7 +4,7 @@ import { serializeContract, type ContractJsonValue } from "../../parameter-catal
 import type { CatalogReleaseBundle } from "./types";
 import {
   catalogManifestSchema,
-  catalogReleaseSchema,
+  catalogOwnerReleaseSchema,
 } from "./contractArtifacts";
 
 interface ValidateFunction {
@@ -29,7 +29,8 @@ const Ajv2020 = (
 
 const contractAjv = new Ajv2020({ allErrors: true, strict: true });
 contractAjv.addSchema(catalogManifestSchema);
-const validateBundle = contractAjv.compile(catalogReleaseSchema);
+// The v6 schema is additive; the original schema remains frozen for historical artifacts.
+const validateBundle = contractAjv.compile(catalogOwnerReleaseSchema);
 
 export const isCatalogReleaseBundle = (
   value: unknown,

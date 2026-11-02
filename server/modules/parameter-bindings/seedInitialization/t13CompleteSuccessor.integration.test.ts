@@ -36,7 +36,7 @@ import {
   powerConfigFrozenIdentity,
   powerConfigImpactFacts,
 } from "../../catalog-publication/import/configurationSchemaSuccessor";
-import { PublicationJobId } from "../../parameter-catalog-contract/index";
+import { CatalogReleaseDigest, CatalogReleaseId, PublicationJobId } from "../../parameter-catalog-contract/index";
 import {
   createDatabase,
   createPostgresDatabase,
@@ -272,8 +272,8 @@ describe("T1.3 complete successor and B2 materialization", () => {
         candidateId: candidate.id,
         authorizationId: authorized.value.authorization.id,
         expectedCurrent: {
-          id: current.rows[0]!.id,
-          digest: current.rows[0]!.digest,
+          id: CatalogReleaseId(current.rows[0]!.id),
+          digest: CatalogReleaseDigest(current.rows[0]!.digest),
         },
         fencingToken: job.value.fencingToken,
         trustedActor: userActor(REVIEWER, reviewerPermissions),
@@ -334,7 +334,7 @@ describe("T1.3 complete successor and B2 materialization", () => {
     if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
   });
 
-  it("materializes 124 bindings per project including JSON after reviewed placement", async () => {
+  it("materializes scoped seed bindings and leaves a child without its driver ancestor unmatched", async () => {
     const customBefore = await pool.query(
       `select project.id, project.organization_id, project.name, project.code, project.status,
               role.id as role_binding_id, role.user_id, role.role_id
@@ -476,7 +476,16 @@ describe("T1.3 complete successor and B2 materialization", () => {
           unregistered: project.unregisteredSubjectIds,
         })),
       }),
-    ).toEqual({ atlas: 124, aurora: 124, nebula: 124 });
+    ).toEqual({ atlas: 123, aurora: 123, nebula: 123 });
+
+    const ownerlessParents = await pool.query<{ project_id: string; compatible: string | null }>(
+      `select distinct revision.project_id, node.compatible from public.dts_logical_node_revisions node
+       join public.dts_config_revisions revision on revision.id=node.config_revision_id
+       where revision.organization_id=$1 and node.node_locator='/spmi1' order by revision.project_id`, [ORG],
+    );
+    expect(ownerlessParents.rows).toEqual([
+      { project_id: "atlas", compatible: null }, { project_id: "aurora", compatible: null }, { project_id: "nebula", compatible: null },
+    ]);
 
     const archiveRows = await pool.query<{
       project_id: string;
@@ -507,15 +516,15 @@ describe("T1.3 complete successor and B2 materialization", () => {
       [ORG],
     );
     expect(counts.rows.map((row) => [row.project_id, Number(row.count)])).toEqual([
-      ["atlas", 124],
-      ["aurora", 124],
-      ["nebula", 124],
+      ["atlas", 123],
+      ["aurora", 123],
+      ["nebula", 123],
     ]);
     const total = await pool.query<{ count: string }>(
       `select count(*)::text as count from parameter_catalog.project_parameter_bindings where organization_id = $1`,
       [ORG],
     );
-    expect(total.rows[0]!.count).toBe("372");
+    expect(total.rows[0]!.count).toBe("369");
 
     const jsonBindings = await pool.query<{ count: string }>(
       `select count(*)::text as count
@@ -530,8 +539,11 @@ describe("T1.3 complete successor and B2 materialization", () => {
     const reviewedBoard = reviewedBoardOccurrences();
     const expectedByProject = new Map<string, string[]>();
     for (const projectId of ["atlas", "aurora", "nebula"]) {
-      const board = reviewedBoard
-        .filter((entry) => entry.board === projectId && entry.scope === "current")
+      const reviewed = reviewedBoard.filter((entry) => entry.board === projectId && entry.scope === "current");
+      expect(reviewed).toHaveLength(120);
+      expect(reviewed.filter((entry) => entry.nodePath === "spmi1/scharger_v800" && entry.propertyKey === "gpios")).toHaveLength(1);
+      const board = reviewed
+        .filter((entry) => !(entry.nodePath === "spmi1/scharger_v800" && entry.propertyKey === "gpios"))
         .map((entry) => [
           projectId,
           "dts",
@@ -540,7 +552,7 @@ describe("T1.3 complete successor and B2 materialization", () => {
           canonicalSubjectKey(entry.formalSubject.kind, entry.formalSubject.value),
           entry.propertyKey,
         ].join("|"));
-      expect(board).toHaveLength(120);
+      expect(board).toHaveLength(119);
       expectedByProject.set(projectId, [
         ...board,
         `${projectId}|dts|${canonicalDtsLocator("charging-thermal.dts", "wiseeff_node_type_demo/charging_core")}|node-type|node-type:charging_core|fast-charge-profile-matrix`,
@@ -635,8 +647,8 @@ describe("T1.3 complete successor and B2 materialization", () => {
         );
       }
     }
-    expect(bindingIds.size).toBe(372);
-    expect(bindingIdsByTuple.size).toBe(372);
+    expect(bindingIds.size).toBe(369);
+    expect(bindingIdsByTuple.size).toBe(369);
     for (const projectId of ["atlas", "aurora", "nebula"]) {
       expect(actualByProject.get(projectId)?.slice().sort()).toEqual(expectedByProject.get(projectId));
     }
@@ -855,7 +867,7 @@ describe("T1.3 complete successor and B2 materialization", () => {
       `select count(*)::text as count from parameter_catalog.project_parameter_bindings where organization_id = $1`,
       [ORG],
     );
-    expect(afterReplay.rows[0]!.count).toBe("372");
+    expect(afterReplay.rows[0]!.count).toBe("369");
     const afterReplayBindings = await pool.query(
       `select b.id, b.current_value_id, b.effective_revision_id
          from parameter_catalog.current_project_parameter_bindings b

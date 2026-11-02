@@ -6,7 +6,7 @@ import {
   type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
 
-import { s1BundleContractArtifactDigest } from "./contractArtifacts";
+import { ownerBundleContractArtifactDigest, s1BundleContractArtifactDigest } from "./contractArtifacts";
 
 const deepFreeze = <Value>(value: Value): Value => {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
@@ -39,4 +39,11 @@ export const catalogCompilerContractFingerprint = `sha256:${createHash("sha256")
   .update(
     serializeContract(catalogCompilerContract as unknown as ContractJsonValue),
   )
+  .digest("hex")}`;
+
+/** v6 extends the frozen v1 contract; old artifacts retain their exact fingerprint. */
+export const catalogCompilerOwnerContractFingerprint = `sha256:${createHash("sha256")
+  .update(serializeContract({ ...catalogCompilerContract, contractVersion: "1.1.0",
+    input: { ...catalogCompilerContract.input, s1BundleContractArtifactDigest: ownerBundleContractArtifactDigest,
+      subjectOwnership: "driver-scoped-v1" } } as unknown as ContractJsonValue))
   .digest("hex")}`;

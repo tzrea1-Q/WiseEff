@@ -561,7 +561,7 @@ describe("published catalog project values", () => {
       [projectId, ORG, `FILTER-${randomUUID().slice(0, 8)}`],
     );
     const configSet = await createConfigSet(root, auth, { projectId, name: "filter" });
-    const sourceText = `/dts-v1/;\n/ {\n\tcharger@0 { compatible = "acme,power"; iin_max = <1000>; };\n\tcharger@1 { compatible = "acme,power"; iin_max = <1100>; };\n};\n`;
+    const sourceText = `/dts-v1/;\n/ {\n\tcharger@0 { compatible = "acme,power"; iin_max = <1000>; };\n\tcharger@1 { compatible = "acme,power"; iin_max = <1100>; };\n\tscope { compatible = "vendor,outer"; intermediate { battery1 { weight = <1>; }; nearer { compatible = "vendor,inner"; battery1 { weight = <2>; }; }; }; };\n\tbattery1 { weight = <3>; };\n};\n`;
     const file = await uploadProjectParameterFile(root, objectStore, auth, {
       projectId,
       fileName: "filtered.dts",
@@ -592,6 +592,13 @@ describe("published catalog project values", () => {
     const observed = (await listObservedProperties(asValueClient(pool), revision.id))
       .filter((row) => row.propertyKey === "iin_max");
     expect(observed).toHaveLength(2);
+    const children = (await listObservedProperties(asValueClient(pool), revision.id))
+      .filter((row) => row.propertyKey === "weight");
+    expect(children.map((row) => [row.locator, row.ownerCompatible]).sort()).toEqual([
+      ["/battery1", null],
+      ["/scope/intermediate/battery1", '"vendor,outer"'],
+      ["/scope/intermediate/nearer/battery1", '"vendor,inner"'],
+    ]);
     const snapshot = await loadPublishedCatalog(pool);
     if (!snapshot) throw new Error("Published fixture is unavailable");
     const selected = observed[0]!;

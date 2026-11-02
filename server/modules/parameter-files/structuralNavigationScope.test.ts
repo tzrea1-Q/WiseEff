@@ -62,6 +62,17 @@ describe("organization DTS navigation scope", () => {
     vi.mocked(loadPublishedCatalog).mockResolvedValue(snapshot());
   });
 
+  it("passes the nearest driver compatible for relative DTS node paths", async () => {
+    const catalog = snapshot();
+    const resolve = vi.spyOn(catalog, "resolveSubject");
+    vi.mocked(loadPublishedCatalog).mockResolvedValue(catalog);
+    const scope = await loadOrganizationNavigationScope(makeDb(), authScope);
+    if (scope.status !== "ready") throw new Error("expected ready scope");
+    scope.matchNodePaths(resolveDts(`/ { parent { compatible = "acme,power"; nested { battery {}; }; }; };`).nodes);
+    expect(resolve).toHaveBeenCalledWith(expect.objectContaining({ ownerContext: ["acme,power"],
+      nodeTypeFallback: { kind: "present", name: "battery" } }));
+  });
+
   it("keeps registered instances and ancestors in a 5,009-node DTS without parameter values", async () => {
     const source = `/dts-v1/; / { soc { bus@1 {
       charger@0 { compatible = "acme,unknown", "acme,power"; };

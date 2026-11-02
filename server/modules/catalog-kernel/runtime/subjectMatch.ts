@@ -250,7 +250,15 @@ export const resolveCatalogSubject = (
   if (nodeTypeName === null) {
     return { status: "unknown", reason: "no-candidate" };
   }
-  const nodeDecision = decideHits(collectHits(subjects, "node-type", [nodeTypeName]));
+  const ownerDecision = decideHits(
+    collectHits(subjects, "driver", parsedDriverCompatibles(selector.ownerContext ?? [])),
+  );
+  if (ownerDecision.kind === "result" && ownerDecision.result.status === "matched") {
+    const ownerId = ownerDecision.result.subject.id;
+    const ownedDecision = decideHits(collectHits(subjects.filter((subject) => subject.owner === ownerId), "node-type", [nodeTypeName]));
+    if (ownedDecision.kind === "result") return ownedDecision.result;
+  }
+  const nodeDecision = decideHits(collectHits(subjects.filter((subject) => subject.owner === undefined), "node-type", [nodeTypeName]));
   return nodeDecision.kind === "result"
     ? nodeDecision.result
     : { status: "unknown", reason: "no-candidate" };
@@ -261,7 +269,7 @@ export const subjectMatcherContract = Object.freeze({
   selectorParsing: "canonical-exact-compatible-node-name-configuration-schema-id",
   priority: ["driver", "configuration-schema", "node-type"],
   driver: "exact-full-selector-or-governed-alias",
-  nodeType: "explicit-fallback-only",
+  nodeType: "nearest-ancestor-driver-owned-then-ownerless-fallback",
   selection: "one-live-without-retired-conflict",
 } as const);
 

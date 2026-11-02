@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../shared/http/errors";
 import { serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
@@ -7,10 +7,45 @@ import {
   dtsValueToPayload,
   importTextToDtsValue,
   matchCatalogImportRow,
+  nearestAncestorCompatibles,
+  parseCompatibles,
   parseConfigSetSourceRef,
   payloadToBindingView,
+  resolveObservedSubject,
   rawTextToPayload
 } from "./catalogProjectValueSync";
+import type { CatalogSnapshot } from "../catalog-kernel/interface";
+
+describe("observed subject owner context", () => {
+  it("keeps an unquoted legacy compatible selector intact", () => {
+    expect(parseCompatibles("acme,power")).toEqual(["acme,power"]);
+  });
+  it("finds the nearest effective ancestor that declares compatible", () => {
+    const nodes = new Map([
+      ["/", { deleted: false, properties: new Map([["compatible", { deleted: false, rawText: '"vendor,root"' }]]) }],
+      ["/a", { deleted: false, properties: new Map([["compatible", { deleted: false, rawText: '"vendor,near", "vendor,alt"' }]]) }],
+      ["/a/middle", { deleted: false, properties: new Map() }],
+    ]);
+    expect(nearestAncestorCompatibles(nodes, "/a/middle/battery1")).toEqual(["vendor,near", "vendor,alt"]);
+    expect(nearestAncestorCompatibles(nodes, "/other")).toEqual(["vendor,root"]);
+    expect(nearestAncestorCompatibles(nodes, "/")).toEqual([]);
+  });
+  it("does not walk beyond an unresolved label anchor", () => {
+    const nodes = new Map([
+      ["/", { deleted: false, properties: new Map([["compatible", { deleted: false, rawText: '"vendor,root"' }]]) }],
+      ["/external", { deleted: false, isLabelStub: true as const, properties: new Map() }],
+    ]);
+    expect(nearestAncestorCompatibles(nodes, "/external/battery1")).toEqual([]);
+  });
+  it("passes ancestor compatibles to the catalog matcher", () => {
+    const resolveSubject = vi.fn().mockReturnValue({ status: "unknown", reason: "no-candidate" });
+    resolveObservedSubject({ resolveSubject } as unknown as CatalogSnapshot, {
+      compatibles: [], nodeName: "battery1", ownerCompatibles: ["vendor,charger"],
+    });
+    expect(resolveSubject).toHaveBeenCalledWith({ driverCompatibles: [], ownerContext: ["vendor,charger"],
+      nodeTypeFallback: { kind: "present", name: "battery1" } });
+  });
+});
 
 const candidate = (
   overrides: Partial<{

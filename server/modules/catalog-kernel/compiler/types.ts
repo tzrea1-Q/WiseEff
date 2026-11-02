@@ -38,6 +38,7 @@ export interface CatalogReleaseSubjectDocument {
     readonly id: string;
     readonly kind: "driver" | "node-type" | "configuration-schema";
     readonly canonicalKey: string;
+    readonly ownerSubjectId?: string;
     readonly lifecycle: "active" | "retired";
     readonly selector: {
       readonly kind:

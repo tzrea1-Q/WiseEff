@@ -36,6 +36,7 @@ import {
   CATALOG_CAPABILITY_ALLOW_LIST,
   CATALOG_CAPABILITY_CONTRACT_REVISION,
   CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION,
+  CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION,
   validateSupportedDefinitionContent,
 } from "./capabilities";
 import {
@@ -76,10 +77,12 @@ const CREATE_SUBJECT_KEYS = new Set([
   "definitions",
   "nature",
   "cardinality",
+  "ownerSubjectId",
 ]);
 const REVISE_KEYS = new Set(["op", "definitionId", "class", "content"]);
 const LIFECYCLE_CHANGE_KEYS = new Set(["op", "definitionId", "class", "content", "reason"]);
 const SELECTOR_KEYS = new Set(["kind", "value"]);
+const DECLARE_OWNER_KEYS = new Set(["op", "subjectId", "ownerSubjectId"]);
 const NESTED_DEFINITION_KEYS = new Set(["propertyKey", "content"]);
 const DRIVER_NATURES = new Set(["physical-device", "logical-service"]);
 const DRIVER_CARDINALITIES = new Set(["multiple", "singleton-per-project"]);
@@ -99,6 +102,7 @@ const changeSortKey = (change: CatalogChange): string => {
   if (change.op === "retire-definition" || change.op === "restore-definition") {
     return `revise\0${change.definitionId}`;
   }
+  if (change.op === "declare-subject-owner") return `zz-owner\0${change.subjectId}`;
   return `subject\0${change.canonicalKey}`;
 };
 
@@ -139,9 +143,10 @@ export function impactSummaryFromReport(impact: CatalogImpactReport): {
   };
 }
 
-const capabilityContract = (changeSet: readonly CatalogChange[]): CapabilityContract => {
+const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[]): CapabilityContract => {
   const identity = CATALOG_CAPABILITY_ALLOW_LIST;
-  const revision = changeSet.some((change) => change.op === "create-subject")
+  const revision = documents.some((document) => document.kind === "subject" && document.content.ownerSubjectId)
+    ? CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION : changeSet.some((change) => change.op === "create-subject")
     ? CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION : CATALOG_CAPABILITY_CONTRACT_REVISION;
   return {
     revision,
@@ -352,6 +357,12 @@ const buildImpact = (
   };
 
   const subjects = delta(collectIds(predecessor, "subject"), collectIds(successor, "subject"));
+  const changedSubjectOwners = subjects.unchanged.filter((id) => {
+    const before = predecessor.documents.find((document) => document.kind === "subject" && document.content.id === id);
+    const after = successor.documents.find((document) => document.kind === "subject" && document.content.id === id);
+    return before?.kind === "subject" && after?.kind === "subject"
+      && before.content.ownerSubjectId !== after.content.ownerSubjectId;
+  });
   const aliases = delta(collectIds(predecessor, "alias"), collectIds(successor, "alias"));
   const predSelectors = predecessor.documents.flatMap((document) => {
     if (document.kind === "subject") return [document.content.selector.value];
@@ -386,8 +397,8 @@ const buildImpact = (
     definitions: { added, changed, unchanged },
     subjects: {
       added: subjects.added,
-      changed: [],
-      unchanged: subjects.unchanged,
+      changed: changedSubjectOwners,
+      unchanged: subjects.unchanged.filter((id) => !changedSubjectOwners.includes(id)),
     },
     aliases: {
       added: aliases.added,
@@ -401,7 +412,7 @@ const buildImpact = (
     },
     matcher: {
       existingMatchRulesChanged,
-      fallbackImpact: newNodeType || selectorDelta.added.length > 0 || selectorDelta.removed.length > 0,
+      fallbackImpact: newNodeType || changedSubjectOwners.length > 0 || selectorDelta.added.length > 0 || selectorDelta.removed.length > 0,
       newMatchableProperties,
     },
     existingContractsTighten,
@@ -792,6 +803,21 @@ export async function buildCompleteSuccessor(
     if (productPath !== "m2-core" && change.op !== "create-definition") {
       return fail({ kind: "unsupported-change-op", op: change.op });
     }
+    if (change.op === "declare-subject-owner") {
+      if (extraKeys(change as unknown as Record<string, unknown>, DECLARE_OWNER_KEYS).length
+        || typeof change.subjectId !== "string" || typeof change.ownerSubjectId !== "string") {
+        return fail({ kind: "invalid-input", reason: "invalid subject owner declaration" });
+      }
+      const target = documents.find((document) => document.kind === "subject" && document.content.id === change.subjectId);
+      const owner = documents.find((document) => document.kind === "subject" && document.content.id === change.ownerSubjectId);
+      if (target?.kind !== "subject" || target.content.kind !== "node-type" || target.content.ownerSubjectId
+        || owner?.kind !== "subject" || owner.content.kind !== "driver" || owner.content.lifecycle !== "active") {
+        return fail({ kind: "invalid-input", reason: "owner declaration requires an unowned node type and active driver" });
+      }
+      const position = documents.indexOf(target);
+      documents[position] = { ...target, content: { ...target.content, ownerSubjectId: change.ownerSubjectId } };
+      continue;
+    }
     if (change.op === "revise-definition" || change.op === "retire-definition" || change.op === "restore-definition") {
       const definition = documents.find((document) => document.kind === "definition" && document.content.id === change.definitionId);
       if (definition?.kind === "definition") {
@@ -914,6 +940,12 @@ export async function buildCompleteSuccessor(
           reason: `${subjectChange.kind} must not declare driver nature or cardinality`,
         });
       }
+      if (subjectChange.ownerSubjectId !== undefined) {
+        const owner = documents.find((document) => document.kind === "subject" && document.content.id === subjectChange.ownerSubjectId);
+        if (subjectChange.kind !== "node-type" || owner?.kind !== "subject" || owner.content.kind !== "driver" || owner.content.lifecycle !== "active") {
+          return fail({ kind: "invalid-input", reason: "node owner must be an active driver" });
+        }
+      }
       const selectorParsed =
         subjectChange.selector.kind === "driver-compatible"
           ? parseCanonicalCompatibleSelector(subjectChange.selector.value)
@@ -926,7 +958,7 @@ export async function buildCompleteSuccessor(
         return fail({ kind: "invalid-input", reason: `selector-${selectorParsed.error}` });
       }
       const subjectAllocation = (frozen.subjects ?? []).find(
-        (entry) => entry.canonicalKey === subjectChange.canonicalKey,
+        (entry) => entry.canonicalKey === subjectChange.canonicalKey && entry.ownerSubjectId === subjectChange.ownerSubjectId,
       );
       if (!subjectAllocation) {
         return fail({
@@ -950,6 +982,7 @@ export async function buildCompleteSuccessor(
       const existingCanonicalKeys = new Set(
         documents
           .filter((document): document is CatalogReleaseSubjectDocument => document.kind === "subject")
+          .filter((document) => document.content.ownerSubjectId === subjectChange.ownerSubjectId)
           .map((document) => document.content.canonicalKey),
       );
       if (existingCanonicalKeys.has(subjectChange.canonicalKey)) {
@@ -961,8 +994,9 @@ export async function buildCompleteSuccessor(
       }
       const claimedSelectors = new Set(
         documents.flatMap((document) => {
-          if (document.kind === "subject") return [document.content.selector.value];
-          if (document.kind === "alias") return [document.content.normalizedSelector];
+          if (document.kind === "subject" && document.content.ownerSubjectId === subjectChange.ownerSubjectId) return [document.content.selector.value];
+          if (document.kind === "alias" && documents.some((subject) => subject.kind === "subject"
+            && subject.content.id === document.content.subjectId && subject.content.ownerSubjectId === subjectChange.ownerSubjectId)) return [document.content.normalizedSelector];
           return [];
         }),
       );
@@ -977,6 +1011,7 @@ export async function buildCompleteSuccessor(
         id: subjectAllocation.subjectId,
         kind: subjectChange.kind,
         canonicalKey: subjectChange.canonicalKey,
+        ...(subjectChange.ownerSubjectId ? { ownerSubjectId: subjectChange.ownerSubjectId } : {}),
         lifecycle: "active" as const,
         selector: {
           kind: subjectChange.selector.kind,
@@ -1095,7 +1130,7 @@ export async function buildCompleteSuccessor(
     });
   }
 
-  const contract = capabilityContract(input.changeSet);
+  const contract = capabilityContract(input.changeSet, successor.documents);
   const impact = { ...buildImpact(predecessorTarget, successor, requestedClasses), capabilityContractRevision: contract.revision };
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);
   const artifactBytes = encodeBundleBytes(bundle);
@@ -1120,6 +1155,7 @@ export async function buildCompleteSuccessor(
     subjects: (frozen.subjects ?? []).map((allocation) => ({
       canonicalKey: allocation.canonicalKey,
       subjectId: allocation.subjectId,
+      ...(allocation.ownerSubjectId ? { ownerSubjectId: allocation.ownerSubjectId } : {}),
     })),
     impactSummary: impactSummaryFromReport(impact),
   });

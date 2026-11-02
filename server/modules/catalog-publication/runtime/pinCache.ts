@@ -34,6 +34,19 @@ import {
 export class DigestKeyedCatalogRuntimeCache {
   private readonly current = new Map<string, CurrentCatalogSnapshot>();
   private readonly pinned = new Map<string, PinnedCatalogSnapshot>();
+  private subjectOwnerEpoch: string | undefined;
+
+  observeSubjectOwnerEpoch(epoch: string): boolean {
+    if (this.subjectOwnerEpoch !== undefined && BigInt(epoch) < BigInt(this.subjectOwnerEpoch)) return false;
+    if (this.subjectOwnerEpoch !== undefined && this.subjectOwnerEpoch !== epoch) {
+      this.current.clear();
+      this.pinned.clear();
+    }
+    this.subjectOwnerEpoch = epoch;
+    return true;
+  }
+
+  isSubjectOwnerEpoch(epoch: string): boolean { return this.subjectOwnerEpoch === epoch; }
 
   constructor(readonly payloadCache: CatalogSnapshotCache = createCatalogSnapshotCache()) {}
 
@@ -41,16 +54,16 @@ export class DigestKeyedCatalogRuntimeCache {
     return this.current.get(digest);
   }
 
-  putCurrent(digest: string, snapshot: CurrentCatalogSnapshot): void {
-    this.current.set(digest, snapshot);
+  putCurrent(digest: string, snapshot: CurrentCatalogSnapshot, epoch: string): void {
+    if (this.subjectOwnerEpoch === epoch) this.current.set(digest, snapshot);
   }
 
   getPinned(digest: string): PinnedCatalogSnapshot | undefined {
     return this.pinned.get(digest);
   }
 
-  putPinned(digest: string, snapshot: PinnedCatalogSnapshot): void {
-    this.pinned.set(digest, snapshot);
+  putPinned(digest: string, snapshot: PinnedCatalogSnapshot, epoch: string): void {
+    if (this.subjectOwnerEpoch === epoch) this.pinned.set(digest, snapshot);
   }
 
   discardReplacedRelease(pin: CatalogReleasePin): void {
@@ -89,45 +102,63 @@ export const createPinCapturingCatalogRuntime = (
   ...kernel,
   cache,
   async loadCurrentCatalog(expected) {
-    const pointer = await readCurrentCatalogPointer(pool);
-    if (pointer.kind !== "installed") {
-      return mismatch(expected, null);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const pointer = await readCurrentCatalogPointer(pool);
+      if (pointer.kind !== "installed") {
+        return mismatch(expected, null);
+      }
+      const actual = pointer.current;
+      if (!cache.observeSubjectOwnerEpoch(pointer.subjectOwnerEpoch)) continue;
+      cache.discardReplacedRelease(actual);
+      if (actual.id !== expected.id || actual.digest !== expected.digest) {
+        return mismatch(expected, actual);
+      }
+      const hit = cache.getCurrent(expected.digest);
+      if (hit && hit.release.id === expected.id && hit.release.digest === expected.digest) {
+        return { ok: true, value: hit };
+      }
+      const loaded = await kernel.loadCurrentCatalog(expected);
+      if (loaded.ok) {
+        const after = await readCurrentCatalogPointer(pool);
+        if (after.kind !== "installed" || after.subjectOwnerEpoch !== pointer.subjectOwnerEpoch
+          || after.current.id !== expected.id || after.current.digest !== expected.digest
+          || !cache.isSubjectOwnerEpoch(pointer.subjectOwnerEpoch)) continue;
+        cache.putCurrent(expected.digest, loaded.value, pointer.subjectOwnerEpoch);
+      }
+      return loaded;
     }
-    const actual = pointer.current;
-    cache.discardReplacedRelease(actual);
-    if (actual.id !== expected.id || actual.digest !== expected.digest) {
-      return mismatch(expected, actual);
-    }
-    const hit = cache.getCurrent(expected.digest);
-    if (hit && hit.release.id === expected.id && hit.release.digest === expected.digest) {
-      return { ok: true, value: hit };
-    }
-    const loaded = await kernel.loadCurrentCatalog(expected);
-    if (loaded.ok) {
-      cache.putCurrent(expected.digest, loaded.value);
-    }
-    return loaded;
+    return { ok: false, error: { kind: "storage-failure", operation: "loadCurrentCatalog", retryable: true } };
   },
   async loadPinnedCatalog(pin) {
-    // A privileged erasure replaces a release's bytes and digest while retaining
-    // its identity. A cached historical snapshot must not bypass the new pin.
-    const actual = await resolveCatalogReleasePin(pool, pin.id);
-    if (!actual.ok) return actual;
-    cache.discardReplacedRelease(actual.value);
-    if (actual.value.digest !== pin.digest) {
-      return {
-        ok: false,
-        error: { kind: "digest-conflict", releaseId: pin.id, expected: pin.digest, actual: actual.value.digest },
-      };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const pointer = await readCurrentCatalogPointer(pool);
+      const epoch = pointer.kind === "installed" ? pointer.subjectOwnerEpoch : "0";
+      if (!cache.observeSubjectOwnerEpoch(epoch)) continue;
+      // A privileged erasure replaces a release's bytes and digest while retaining
+      // its identity. A cached historical snapshot must not bypass the new pin.
+      const actual = await resolveCatalogReleasePin(pool, pin.id);
+      if (!actual.ok) return actual;
+      if (!cache.isSubjectOwnerEpoch(epoch)) continue;
+      cache.discardReplacedRelease(actual.value);
+      if (actual.value.digest !== pin.digest) {
+        return {
+          ok: false,
+          error: { kind: "digest-conflict", releaseId: pin.id, expected: pin.digest, actual: actual.value.digest },
+        };
+      }
+      const hit = cache.getPinned(pin.digest);
+      if (hit && hit.pin.id === pin.id && hit.pin.digest === pin.digest) {
+        return { ok: true, value: hit };
+      }
+      const loaded = await kernel.loadPinnedCatalog(pin);
+      if (loaded.ok) {
+        const after = await readCurrentCatalogPointer(pool);
+        if ((after.kind === "installed" ? after.subjectOwnerEpoch : "0") !== epoch
+          || !cache.isSubjectOwnerEpoch(epoch)) continue;
+        cache.putPinned(pin.digest, loaded.value, epoch);
+      }
+      return loaded;
     }
-    const hit = cache.getPinned(pin.digest);
-    if (hit && hit.pin.id === pin.id && hit.pin.digest === pin.digest) {
-      return { ok: true, value: hit };
-    }
-    const loaded = await kernel.loadPinnedCatalog(pin);
-    if (loaded.ok) {
-      cache.putPinned(pin.digest, loaded.value);
-    }
-    return loaded;
+    return { ok: false, error: { kind: "storage-failure", operation: "loadPinnedCatalog", retryable: true } };
   },
 });

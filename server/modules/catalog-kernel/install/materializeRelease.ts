@@ -229,17 +229,19 @@ const stageSubjects = async (
   );
   for (const subject of subjects) {
     if (!existingSubjects.has(subject.content.id)) {
-      await client.query(
-        `insert into parameter_catalog.catalog_subjects (
-           id, introduced_release_id, kind, canonical_key
-         ) values ($1,$2,$3,$4)`,
-        [
-          subject.content.id,
-          compiled.release.id,
-          subject.content.kind,
-          canonicalSubjectKey(subject),
-        ],
-      );
+      if (subject.content.ownerSubjectId) {
+        await client.query(
+          `insert into parameter_catalog.catalog_subjects (id, introduced_release_id, kind, canonical_key, owner_subject_id)
+           values ($1,$2,$3,$4,$5)`,
+          [subject.content.id, compiled.release.id, subject.content.kind, canonicalSubjectKey(subject), subject.content.ownerSubjectId],
+        );
+      } else {
+        await client.query(
+          `insert into parameter_catalog.catalog_subjects (id, introduced_release_id, kind, canonical_key)
+           values ($1,$2,$3,$4)`,
+          [subject.content.id, compiled.release.id, subject.content.kind, canonicalSubjectKey(subject)],
+        );
+      }
       if (subject.content.kind === "driver") {
         const subtype = subject.content.subtype as {
           nature: string;
@@ -264,6 +266,16 @@ const stageSubjects = async (
         throw new Error("unsupported catalog subject kind during materialization");
       }
       existingSubjects.add(subject.content.id);
+    } else if (subject.content.ownerSubjectId !== undefined) {
+      const existing = await client.query<{ owner_subject_id: string | null }>(
+        `select owner_subject_id from parameter_catalog.catalog_subjects where id=$1`, [subject.content.id],
+      );
+      if (existing.rows[0]?.owner_subject_id !== subject.content.ownerSubjectId) {
+        throw new CatalogKernelFailure({ kind: "invalid-release", phase: "install-preflight", violations: [{
+          code: "schema-invalid", location: { kind: "present", value: `subject:${subject.content.id}` },
+          subjectId: { kind: "absent" }, detail: "subject-owner-claim-required-or-conflicting",
+        }] });
+      }
     }
     await client.query(
       `insert into parameter_catalog.catalog_release_subjects (
