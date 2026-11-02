@@ -101,7 +101,7 @@ const requireDestination = async (
   return { ok: true, value: destination };
 };
 
-const registerOwnedChildren = async (client: RegistrationWriterClient, command: RegisterSubjectCommand) => {
+const registerOwnedChildren = async (client: RegistrationWriterClient, command: Pick<RegisterSubjectCommand, "subjectId" | "expectedRelease" | "organizationId" | "method" | "proof">) => {
   const children = await listOwnedCatalogSubjects(client, command.subjectId, command.expectedRelease.id);
   const cascadedRegistrations: { registrationId: string; subjectId: string }[] = [];
   for (const child of children) {
@@ -298,6 +298,8 @@ const writeRestore = async (
          and registration.status = 'retired' and registration.cascade_retired
        returning registration.id, registration.subject_id`, [command.organizationId, childIds]);
     cascadedRegistrations = children.rows.map((child) => ({ registrationId: child.id, subjectId: child.subject_id }));
+    cascadedRegistrations.push(...await registerOwnedChildren(client, { subjectId: CatalogSubjectId(pair.registration.subject_id),
+      expectedRelease: command.expectedRelease, organizationId: command.organizationId, method: "explicit", proof: { reason: command.reason } }));
   }
   await commitIdempotency(client, command, pair.registration.id);
   return {

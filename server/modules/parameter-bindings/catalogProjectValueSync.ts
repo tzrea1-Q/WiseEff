@@ -21,6 +21,7 @@ import {
 import { readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import { CURRENT_POINTER_LOCK_KEY } from "../catalog-kernel/install/lockProtocol";
 import { catalogReadTransaction, type CatalogReadTransaction } from "../catalog-kernel/runtime/readTransaction";
+import { subjectMatcherRevision } from "../catalog-kernel/runtime/subjectMatch";
 import { createPinCapturingCatalogRuntime } from "../catalog-publication/runtime";
 import { createGovernanceCatalogQueries } from "../parameter-governance/queries";
 import { writeGuardedRegistration, type RegistrationWriterClient } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
@@ -325,8 +326,9 @@ export function resolveObservedSubject(
     const parsed = parseCanonicalNodeName(input.nodeName);
     if (parsed.ok) nodeTypeFallback = { kind: "present", name: NormalizedNodeTypeName(parsed.value) };
   }
-  const subject = snapshot.resolveSubject({ driverCompatibles, nodeTypeFallback,
-    ...(input.ownerCompatibles ? { ownerContext: input.ownerCompatibles.map(DriverCompatible) } : {}) });
+  let ownerContext: ReturnType<typeof DriverCompatible>[] | undefined;
+  try { ownerContext = input.ownerCompatibles?.map(DriverCompatible); } catch { return null; }
+  const subject = snapshot.resolveSubject({ driverCompatibles, nodeTypeFallback, ...(ownerContext ? { ownerContext } : {}) });
   if (subject.status !== "matched") return null;
   return { subjectId: subject.subject.id, subjectKind: subject.subject.kind,
     ...(subject.subject.owner ? { ownerSubjectId: subject.subject.owner } : {}) };
@@ -505,6 +507,10 @@ export async function syncPublishedCatalogProjectValuesInTransaction(
   try {
   await write.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
   await lockOrganizationModuleRecognition(write as unknown as Queryable, input.organizationId);
+  await lockOrganizationSubjectRegistration(write as unknown as Queryable, input.organizationId);
+  const current = await createCatalogKernel(catalogReadTransaction(write as unknown as pg.PoolClient)).loadCurrentCatalog(snapshot.release);
+  if (!current.ok) throw new ApiError("CONFLICT", "规范目录已更新，请刷新后重试。");
+  snapshot = current.value;
   snapshot = await loadOrganizationCatalogSnapshot(write as unknown as Queryable, input.organizationId, snapshot);
   const sourceMembers = await write.query<{ fileId: string; fileVersionId: string }>(
     `select file_id as "fileId",file_version_id as "fileVersionId" from dts_config_revision_members
@@ -519,6 +525,17 @@ export async function syncPublishedCatalogProjectValuesInTransaction(
   [input.organizationId,input.projectId,input.configSetId,input.configRevisionId]);
   if (established.rows.length) throw new ApiError("CONFLICT", "Existing source values require a reviewed source change, not re-materialization.");
   const observed = await listObservedProperties(write, input.configRevisionId);
+  const ownerOccurrences = new Map<string, string[]>();
+  for (const row of observed) {
+    if (isStructuralPropertyKey(row.propertyKey)) continue;
+    const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(row.compatible), nodeName: row.name,
+      ownerCompatibles: parseCompatibles(row.ownerCompatible) });
+    if (!subject?.ownerSubjectId || !row.ownerCompatible) continue;
+    const occurrences = ownerOccurrences.get(subject.subjectId) ?? [];
+    occurrences.push(row.propertyOccurrenceId);
+    ownerOccurrences.set(subject.subjectId, occurrences);
+  }
+  for (const occurrences of ownerOccurrences.values()) occurrences.sort();
   const selectedPropertyOccurrenceIds = input.propertyOccurrenceIds === undefined
     ? null
     : new Set(input.propertyOccurrenceIds);
@@ -578,18 +595,23 @@ export async function syncPublishedCatalogProjectValuesInTransaction(
           expectedRelease: { id: snapshot.release.id, digest: snapshot.release.digest }, placement: { mode: "use-default" },
           destinationModuleId: destination.rows[0].id, method: "automatic",
           proof: { source: "dts-observation", ownerSubjectId: subject.ownerSubjectId, configRevisionId: input.configRevisionId,
-            propertyOccurrenceId: row.propertyOccurrenceId },
+            propertyOccurrenceIds: ownerOccurrences.get(subject.subjectId) ?? [], matcherRevision: subjectMatcherRevision },
           idempotencyKey: `observation:${input.configRevisionId}:${subject.subjectId}`,
           context: { actorKind: "trusted-system", principalId: "dts-observation",
             invocation: createSystemInvocation({ kind: "service", name: "dts-observation" }), requestId: `observation:${input.configRevisionId}:${subject.subjectId}` },
         } as const;
+        await write.query("savepoint observation_registration");
         const registered = await writeGuardedRegistration(write as unknown as RegistrationWriterClient, command);
         if (registered.ok) {
           await auditRegistration(write as unknown as pg.PoolClient, command, registered.value);
           registrationId = registered.value.registrationId;
         }
-        else if (registered.error.kind === "auto-restore-forbidden") registrationId = null;
+        else if (registered.error.kind === "auto-restore-forbidden") {
+          await write.query("rollback to savepoint observation_registration");
+          registrationId = null;
+        }
         else throw new ApiError("CONFLICT", "无法登记观测主体所属驱动。");
+        await write.query("release savepoint observation_registration");
       } else {
         registrationId = null;
       }

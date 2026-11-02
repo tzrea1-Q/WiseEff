@@ -315,6 +315,23 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       .toEqual([{ status: "active" }]);
   });
 
+  it("registers missing active children when restoring a previously unregistered driver", async () => {
+    const service = createRegistrationService(api);
+    const auditContext = await auditedContext("restore-missing-child");
+    const retired = await service.execute({ kind: "retire-unregistered", organizationId, subjectId: targetSubject,
+      expectedRelease: pin, idempotencyKey: randomUUID(), context: auditContext, reason: "driver not used" });
+    if (!retired.ok) throw new Error(JSON.stringify(retired.error));
+    expect((await service.execute({ ...lifecycle("restore", retired.value), context: auditContext })).ok).toBe(true);
+    const rows = await api.query(`select registration.status, placement.module_id
+      from parameter_catalog.organization_subject_registrations registration
+      join parameter_catalog.subject_placements placement on placement.id=registration.current_placement_id
+      where registration.organization_id=$1 and registration.subject_id=$2`, [organizationId, ownedNodeSubject]);
+    expect(rows.rows).toEqual([{ status: "active", module_id: null }]);
+    expect((await api.query(`select metadata from public.audit_events where organization_id=$1 and action='registration-restore'
+      and target_id=$2`, [organizationId, retired.value.registrationId])).rows[0]?.metadata.cascadedRegistrations)
+      .toEqual([expect.objectContaining({ subjectId: ownedNodeSubject })]);
+  });
+
   it("serializes concurrent registrations of a driver and its children", async () => {
     const service = createRegistrationService(api);
     const concurrentOrg = `concurrent-${randomUUID()}`;
@@ -1013,13 +1030,18 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     if (!retired.ok) throw new Error(JSON.stringify(retired.error));
     const base = initialBundle.releases[0]!;
     const nextId = "crel_owned_retired";
+    const childDocument = base.documents.find((document) => document.kind === "subject" && document.content.id === ownedNodeSubject);
+    if (!childDocument || childDocument.kind !== "subject") throw new Error("missing owned child fixture");
+    const addedChild = { ...structuredClone(childDocument), content: { ...structuredClone(childDocument.content),
+      id: "csub_owned_added_while_retired", canonicalKey: "owned_added_while_retired",
+      selector: { ...structuredClone(childDocument.content.selector), value: "owned_added_while_retired" } } };
     const next = refreshSuccessorSource({ ...structuredClone(base), manifest: { ...structuredClone(base.manifest),
       release: { ...base.manifest.release, id: nextId, version: "1.2.0", sequence: 2,
         publishedAt: "2026-09-02T00:00:00Z", predecessor: { id: pin.id, digest: pin.digest } } },
-    documents: base.documents.map((document) => document.kind === "subject" && document.content.id === ownedNodeSubject ? {
+    documents: [...base.documents.map((document) => document.kind === "subject" && document.content.id === ownedNodeSubject ? {
       ...structuredClone(document), content: { ...structuredClone(document.content), lifecycle: "retired" as const,
         tombstone: { reason: "withdrawn", withdrawnByReleaseId: nextId, previousSelector: "owned_lifecycle_node" } },
-    } : structuredClone(document)) }, base.sources[0]!.path);
+    } : structuredClone(document)), addedChild] }, base.sources[0]!.path);
     const bundle = { ...initialBundle, targetReleaseId: nextId, releases: [base, next] };
     const compiled = compileCatalogRelease(bundle);
     if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
@@ -1030,5 +1052,9 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     expect(restored.ok).toBe(true);
     expect((await api.query(`select status,cascade_retired from parameter_catalog.organization_subject_registrations
       where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows).toEqual([{ status: "retired", cascade_retired: true }]);
+    expect((await api.query(`select registration.status,placement.module_id from parameter_catalog.organization_subject_registrations registration
+      join parameter_catalog.subject_placements placement on placement.id=registration.current_placement_id
+      where registration.organization_id=$1 and registration.subject_id='csub_owned_added_while_retired'`, [organizationId])).rows)
+      .toEqual([{ status: "active", module_id: null }]);
   });
 });

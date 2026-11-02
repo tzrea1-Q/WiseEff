@@ -15,6 +15,7 @@ left join parameter_catalog.subject_placements placement
 left join parameter_catalog.organization_subject_registrations owner_registration
   on owner_registration.organization_id = registration.organization_id
  and owner_registration.subject_id = subject.owner_subject_id
+ and owner_registration.status = 'active'
 left join parameter_catalog.subject_placements owner_placement
   on owner_placement.id = owner_registration.current_placement_id
  and owner_placement.registration_id = owner_registration.id
@@ -52,3 +53,35 @@ begin
   return null;
 end;
 $$;
+
+grant select on parameter_catalog.organization_subject_registrations to catalog_migration_owner;
+
+create or replace function parameter_catalog.claim_catalog_subject_owner(subject_id text, owner_id text)
+returns boolean language plpgsql security definer
+set search_path = pg_catalog, parameter_catalog as $$
+declare current_owner text; subject_kind text;
+begin
+  perform pg_catalog.pg_advisory_xact_lock(688004000041::bigint);
+  perform pg_catalog.pg_advisory_xact_lock(688005000001::bigint);
+  select s.owner_subject_id, s.kind into current_owner, subject_kind
+    from parameter_catalog.catalog_subjects s where s.id = subject_id for update;
+  if not found or subject_kind <> 'node-type' or owner_id is null then
+    raise exception using errcode = '23514', message = 'Invalid Catalog subject owner claim';
+  end if;
+  if current_owner is not null then
+    if current_owner = owner_id then return false; end if;
+    raise exception using errcode = '55000', message = 'Catalog subject owner is permanent';
+  end if;
+  if exists (
+    select 1 from parameter_catalog.organization_subject_registrations child
+    left join parameter_catalog.organization_subject_registrations owner
+      on owner.organization_id = child.organization_id and owner.subject_id = owner_id and owner.status = 'active'
+    where child.subject_id = claim_catalog_subject_owner.subject_id and child.status = 'active' and owner.id is null
+  ) then
+    raise exception using errcode = '23514', message = 'Active child registration requires an active owner registration';
+  end if;
+  update parameter_catalog.catalog_subjects set owner_subject_id = owner_id where id = subject_id;
+  update parameter_catalog.catalog_subject_aliases set owner_subject_id = owner_id where catalog_subject_aliases.subject_id = claim_catalog_subject_owner.subject_id;
+  update parameter_catalog.catalog_state set subject_owner_epoch = subject_owner_epoch + 1 where singleton;
+  return true;
+end $$;

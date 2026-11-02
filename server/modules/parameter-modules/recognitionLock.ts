@@ -1,6 +1,7 @@
 import type { Queryable } from "../../shared/database/client";
 
 export async function lockOrganizationModuleRecognition(db: Queryable, organizationId: string) {
+  await db.query("select pg_catalog.pg_advisory_xact_lock_shared(688004000041::bigint)");
   await db.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-recognition:${organizationId}`]);
 }
 

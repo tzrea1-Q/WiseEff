@@ -135,6 +135,12 @@ export async function claimCatalogChildOwners(db: Database, schemasRoot: string,
         continue;
       }
       if (!subject.owner) {
+        const inactiveOwner = await tx.query<{ organization_id: string }>(`
+          select child.organization_id from parameter_catalog.organization_subject_registrations child
+          left join parameter_catalog.organization_subject_registrations owner
+            on owner.organization_id=child.organization_id and owner.subject_id=$2 and owner.status='active'
+          where child.subject_id=$1 and child.status='active' and owner.id is null`, [subject.id, ownerId ?? ""]);
+        for (const row of inactiveOwner.rows) conflicts.push(`组织 ${row.organization_id} 的所属驱动尚未登记或已停用。`);
         for (const item of evidence.filter((row) => row.subjectId === subject.id)) {
           const match = effectiveSnapshots.get(item.organizationId)!.resolveSubject({ driverCompatibles: parseCompatibles(item.ancestorCompatible).map(DriverCompatible), nodeTypeFallback: { kind: "absent" } });
           if (!item.ancestorCompatible || match.status !== "matched" || match.subject.id !== ownerId) {

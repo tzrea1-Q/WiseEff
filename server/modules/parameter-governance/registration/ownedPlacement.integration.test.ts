@@ -56,6 +56,28 @@ describe("owned subject placements", () => {
     expect((await read()).rows[0]).toEqual({ registration_id: "child-registration", module_id: "other-module", via_owner_registration_id: "driver-registration" });
   });
 
+  it("does not attribute an active child to a retired owner", async () => {
+    await client.query("update parameter_catalog.organization_subject_registrations set status='retired' where id='driver-registration'");
+    expect((await client.query(`select module_id,via_owner_registration_id from parameter_catalog.registration_effective_module
+      where registration_id='child-registration'`)).rows).toEqual([{ module_id: null, via_owner_registration_id: null }]);
+  });
+
+  it.each(["missing", "retired"])("refuses an ownership claim when an active child has a %s owner", async (ownerStatus) => {
+    await client.query("set constraints all deferred");
+    await client.query(`insert into parameter_catalog.catalog_subjects(id,introduced_release_id,kind,canonical_key)
+      values ('unclaimed-child','owned-release','node-type','unclaimed-child')`);
+    await client.query("insert into parameter_catalog.catalog_node_types(subject_id) values ('unclaimed-child')");
+    if (ownerStatus === "retired") await client.query("update parameter_catalog.organization_subject_registrations set status='retired' where id='driver-registration'");
+    const organizationId = ownerStatus === "retired" ? "owned-org" : "other-org";
+    await client.query(`insert into parameter_catalog.organization_subject_registrations
+      (id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
+      values ('unclaimed-registration',$1,'unclaimed-child','active','explicit','{}','unclaimed-placement')`, [organizationId]);
+    await client.query(`insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin)
+      values ('unclaimed-placement','unclaimed-registration',$1,null,'curated')`, [organizationId]);
+    await expect(client.query("select parameter_catalog.claim_catalog_subject_owner('unclaimed-child','owned-driver')"))
+      .rejects.toMatchObject({ code: "23514", message: expect.stringContaining("active owner") });
+  });
+
   it("rejects moving a child placement to a module", async () => {
     await expect(client.query("update parameter_catalog.subject_placements set module_id='other-module' where id='child-placement'"))
       .rejects.toMatchObject({ code: "23514", constraint: "subject_placement_kind_ck" });

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type pg from "pg";
 import type { Queryable } from "../../../shared/database/client";
+import { readCatalogSubjectOwner } from "../../catalog-kernel/ownerSchema";
 
 import {
   serializeContract,
@@ -130,7 +131,16 @@ export const loadSourceRegistrationAgreement = async (
         and registration.status = 'active'`,
     [input.organizationId, input.subjectId],
   );
-  return result.rows.length === 1 ? result.rows[0]! : null;
+  if (result.rows.length !== 1) return null;
+  return await activeOwnerRegistered(client as BindingWriterClient, input.organizationId, input.subjectId) ? result.rows[0]! : null;
+};
+
+export const activeOwnerRegistered = async (client: BindingWriterClient, organizationId: string, subjectId: string): Promise<boolean> => {
+  const owner = await readCatalogSubjectOwner(client as unknown as pg.Client, subjectId);
+  if (!owner) return true;
+  const result = await client.query(`select 1 from parameter_catalog.organization_subject_registrations
+    where organization_id=$1 and subject_id=$2 and status='active'`, [organizationId, owner]);
+  return result.rows.length === 1;
 };
 
 export const loadBindingByComposite = async (
