@@ -232,7 +232,11 @@ export const S2_SCH_0322_FINGERPRINT =
 export const S2_SCH_0323_FINGERPRINT =
   "1f960793cb9c513cee8b008cb8db25f7339717bebabc91959e2f59879c55f0b0";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0323_FINGERPRINT;
+/** 0324 adds archived modules, display aliases and the audited migration map. */
+export const S2_SCH_0324_FINGERPRINT =
+  "1459ae8ab364df7b3e4fef8be2b0f1820de2f2221b05ddf830e21b88108f7d96";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0324_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

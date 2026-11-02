@@ -70,6 +70,7 @@ export function mapRegistrationRecord(
     id: record.id,
     organizationId: record.organizationId,
     subjectId: record.subjectId,
+    ...(record.displayAlias ? { displayAlias: record.displayAlias } : {}),
     ...(record.ownerSubjectId ? { ownerSubjectId: record.ownerSubjectId, structural: true } : {}),
     status: record.status,
     method: record.method,

@@ -16,7 +16,8 @@ import { provisionChargingSkill } from "../server/modules/logs/provisionCharging
 import { ingestConfigRevisionInTransaction } from "../server/modules/parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../server/modules/parameter-topology/types";
 import { createPostgresDatabase, getRootPostgresPool, type Database, type RootDatabase } from "../server/shared/database/client";
-import { buildDtsPowerSeed, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile } from "./dts-power-seed";
+import { buildDtsPowerSeed, buildSeedModuleMappings, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile } from "./dts-power-seed";
+import { resolveDts } from "../server/modules/dts";
 import { loadCommittedDtsSeedFiles } from "./compile-dts-seed";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
 import { ensurePublishedVendorCatalog } from "./sync-vendor-property-docs";
@@ -750,6 +751,9 @@ async function main() {
     const canonical = await ensureCanonicalCatalogAfterLegacySeed(db, seedAuthContext(), {
       organizationId,
       seedDigest: "seed-m1-canonical",
+      moduleMappings: buildSeedModuleMappings(resolveDts(auroraPrimary)),
+      // Scaffolding subjects had no technical wrapper in the legacy seed.
+      defaultModuleName: "Board Identity",
     });
     await seedM1BindingRevisionHistory(db, createObjectStoreFromEnv(env), projectFiles);
     console.log(

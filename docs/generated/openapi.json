@@ -86607,6 +86607,9 @@
                 "subjectId": {
                   "type": "string"
                 },
+                "displayAlias": {
+                  "type": "string"
+                },
                 "ownerSubjectId": {
                   "type": "string"
                 },
@@ -86957,6 +86960,9 @@
                 "subjectId": {
                   "type": "string"
                 },
+                "displayAlias": {
+                  "type": "string"
+                },
                 "ownerSubjectId": {
                   "type": "string"
                 },
@@ -87261,6 +87267,9 @@
                 "type": "string"
               },
               "subjectId": {
+                "type": "string"
+              },
+              "displayAlias": {
                 "type": "string"
               },
               "ownerSubjectId": {

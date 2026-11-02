@@ -12,6 +12,8 @@ import {
 } from "../../../../scripts/compile-vendor-catalog-release";
 import { loadCommittedDtsSeedFiles } from "../../../../scripts/compile-dts-seed";
 import { parsePowerManagementConfig, seedM1Parameters, seedM1BindingRevisionHistory, seedM1DtsFiles, seedM1SemanticTopology } from "../../../../scripts/seed-m1-parameters";
+import { buildDtsPowerSeed, buildSeedModuleMappings } from "../../../../scripts/dts-power-seed";
+import { resolveDts } from "../../dts";
 import { seedM0Foundation } from "../../../../scripts/seed-m0";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../../shared/database/client";
 import { makeTestAuthContext } from "../../../testing/authContext";
@@ -209,16 +211,20 @@ describe("published vendor constraint enforcement", () => {
     try {
       const projectFiles = (await loadCommittedDtsSeedFiles(process.cwd()))
         .filter((file) => file.projectId === "aurora");
+      const source = projectFiles[0]!.source;
+      const moduleMappings = buildSeedModuleMappings(resolveDts(source));
       const seed = async () => {
         await seedM0Foundation(freshDb);
         const configPath = "src/config/power-management.json";
-        await seedM1Parameters(freshDb, parsePowerManagementConfig(configPath, readFileSync(configPath, "utf8")));
+        const config = parsePowerManagementConfig(configPath, readFileSync(configPath, "utf8"));
+        const modules = new Map([...(config.parameterModules ?? []), ...buildDtsPowerSeed(source).parameterModules].map((module) => [module.name, module]));
+        await seedM1Parameters(freshDb, { ...config, parameterModules: [...modules.values()] });
         const release = await seedPublishedCatalog(getRootPostgresPool(freshDb)!);
         expect(release.id).toBe(VENDOR_LOCALIZED_RELEASE_ID);
         await seedM1DtsFiles(freshDb, objectStore, projectFiles);
         await seedM1SemanticTopology(freshDb, projectFiles);
         await ensureCanonicalCatalogAfterLegacySeed(freshDb, seedAuth, {
-          organizationId: seedAuth.organization.id, seedDigest: "vendor-constraint-seed",
+          organizationId: seedAuth.organization.id, seedDigest: "vendor-constraint-seed", moduleMappings, defaultModuleName: "Board Identity",
         });
         await seedM1BindingRevisionHistory(freshDb, objectStore, projectFiles);
       };
@@ -230,6 +236,17 @@ describe("published vendor constraint enforcement", () => {
       expect(before[0]!.bindings).toBeGreaterThan(0);
       expect(before[0]!.values).toBeGreaterThan(0);
       expect(before[0]!.history).toBeGreaterThan(0);
+      const routed = await freshDb.query(`select subject.canonical_key,module.name from parameter_catalog.organization_subject_registrations registration
+        join parameter_catalog.catalog_subjects subject on subject.id=registration.subject_id
+        join parameter_catalog.registration_effective_module effective on effective.registration_id=registration.id
+        join public.parameter_modules module on module.id=effective.module_id
+        where registration.organization_id=$1 and subject.canonical_key in ('huawei,charging_core','huawei,battery_charge_balance')
+        order by subject.canonical_key`, [seedAuth.organization.id]);
+      expect(routed.rows).toEqual([{ canonical_key: "huawei,battery_charge_balance", name: "Battery Balance" },
+        { canonical_key: "huawei,charging_core", name: "Charging Policy" }]);
+      expect((await freshDb.query(`select count(*)::int as count from parameter_catalog.subject_placements placement
+        join public.parameter_modules module on module.id=placement.module_id
+        where placement.organization_id=$1 and module.kind in ('driver-group','node-type')`, [seedAuth.organization.id])).rows).toEqual([{ count: 0 }]);
       const pins = await freshDb.query<{ effective_revision_id: string }>(`select effective_revision_id
         from parameter_catalog.project_parameter_bindings
         where definition_id in ('pdef_drv_sc8562_gpio_int','pdef_drv_mt_mt5788_gpio_int')

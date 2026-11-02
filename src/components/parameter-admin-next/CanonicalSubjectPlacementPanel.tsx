@@ -307,6 +307,7 @@ export function CanonicalSubjectPlacementPanel({
       const registration = registrationBySubjectId.get(subject.id);
       const moduleId = registration?.status === "active" ? registration.placement.moduleId : undefined;
       return moduleId ? [{ id: subject.id, moduleId, name: subject.canonicalName,
+        ...(registration?.displayAlias ? { displayAlias: registration.displayAlias } : {}),
         kind: subject.type, definitionCount: subject.definitionCounts.active, ...(subject.ownerSubjectId ? { ownerSubjectId: subject.ownerSubjectId } : {}) }] : [];
     }));
   }, [onTreeSubjectsChange, subjects, registrationBySubjectId]);
@@ -707,6 +708,7 @@ export function CanonicalSubjectPlacementPanel({
                     >
                       <div className="parameter-module-mapping-panel__tree-label canonical-subject-identity">
                         <strong>{subject.canonicalName}</strong>
+                        {registration?.displayAlias ? <span className="canonical-subject-meta">{registration.displayAlias}</span> : null}
                         <span className="parameter-module-mapping-panel__auto-tag">
                           {subjectTypeLabel(subject.type)}
                         </span>

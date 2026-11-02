@@ -35,6 +35,7 @@ type RegistrationJoinRow = {
   id: string;
   organization_id: string;
   subject_id: string;
+  display_alias: string | null;
   owner_subject_id: string | null;
   status: string;
   registration_method: string;
@@ -129,6 +130,7 @@ const registrationSelect = `
     registration.id,
     registration.organization_id,
     registration.subject_id,
+    registration.display_alias,
     subject.owner_subject_id,
     registration.status,
     registration.registration_method,
@@ -202,6 +204,7 @@ const mapRecord = (
       id: row.id,
       organizationId: row.organization_id,
       subjectId: CatalogSubjectId(row.subject_id),
+      ...(row.display_alias ? { displayAlias: row.display_alias } : {}),
       ...(row.owner_subject_id ? { ownerSubjectId: row.owner_subject_id, structural: true as const } : {}),
       status,
       method,

@@ -24,7 +24,8 @@ import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatc
 import { parseCompatibles, resolveObservedSubject } from "../catalogProjectValueSync";
 import { getRootPostgresPool } from "../../../shared/database/client";
 
-export type ObservedSubject = { readonly subjectId: string; readonly subjectKind: string; readonly ownerSubjectId?: string };
+export type ObservedSubject = { readonly subjectId: string; readonly subjectKind: string; readonly ownerSubjectId?: string;
+  readonly destinationModuleId?: string | null };
 
 export type SeedRegistrationOutcome = {
   readonly registered: readonly string[];
@@ -87,6 +88,7 @@ const availableModuleId = async (
     `select pm.id
        from public.parameter_modules pm
       where pm.organization_id = $1
+        and pm.archived_at is null
         and (pm.kind = 'business' or (pm.kind = 'unclassified' and pm.parent_id is null))
       order by case when pm.origin = 'curated' then 0 else 1 end,
                coalesce(pm.source_key, pm.name) collate "C", pm.name collate "C", pm.id
@@ -126,7 +128,8 @@ export async function ensureSeedSubjectRegistrations(
       unregistered.push(subject.subjectId);
       continue;
     }
-    const destinationModuleId = await availableModuleId(root, input.organizationId);
+    const destinationModuleId = subject.destinationModuleId === undefined
+      ? await availableModuleId(root, input.organizationId) : subject.destinationModuleId;
     if (!destinationModuleId) {
       unregistered.push(subject.subjectId);
       continue;

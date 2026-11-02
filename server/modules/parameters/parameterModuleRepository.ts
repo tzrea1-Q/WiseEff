@@ -68,6 +68,7 @@ export async function listParameterModules(db: Queryable, query: { organizationI
     select ${parameterModuleColumns}
     from parameter_modules
     where organization_id = $1
+      and archived_at is null
     order by path asc
     `,
     [query.organizationId]
@@ -78,7 +79,7 @@ export async function listParameterModules(db: Queryable, query: { organizationI
 
 export async function getParameterModuleById(
   db: Queryable,
-  query: { organizationId: string; moduleId: string; forUpdate?: boolean }
+  query: { organizationId: string; moduleId: string; forUpdate?: boolean; activeOnly?: boolean }
 ): Promise<ParameterModuleDto | null> {
   const result = await db.query<ParameterModuleRow>(
     `
@@ -86,6 +87,7 @@ export async function getParameterModuleById(
     from parameter_modules
     where organization_id = $1
       and id = $2
+      ${query.activeOnly ? "and archived_at is null" : ""}
     limit 1
     ${query.forUpdate ? "for update" : ""}
     `,
@@ -263,7 +265,8 @@ export async function createParameterModule(
   if (input.parentId) {
     const parent = await getParameterModuleById(db, {
       organizationId: input.organizationId,
-      moduleId: input.parentId
+      moduleId: input.parentId,
+      activeOnly: true
     });
     if (!parent) {
       throw new Error("Parent parameter module not found");
@@ -514,7 +517,8 @@ async function reparentParameterModule(
   if (input.parentId) {
     const parent = await getParameterModuleById(db, {
       organizationId: input.organizationId,
-      moduleId: input.parentId
+      moduleId: input.parentId,
+      activeOnly: true
     });
     if (!parent) {
       throw new Error("Target parent parameter module not found");

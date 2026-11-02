@@ -3,7 +3,7 @@ import type pg from "pg";
 export async function readPlacementHintEvidence(pool: Pick<pg.Client, "query">, organizationId: string) {
   const [modules, registrations] = await Promise.all([
     pool.query<{ id: string; name: string; parentId: string | null; kind: string }>(
-      `select id, name, parent_id as "parentId", kind from public.parameter_modules where organization_id = $1`, [organizationId]),
+      `select id, name, parent_id as "parentId", kind from public.parameter_modules where organization_id = $1 and archived_at is null`, [organizationId]),
     pool.query<{ subjectId: string; moduleId: string }>(
       `select subject_id as "subjectId", module_id as "moduleId"
        from parameter_catalog.registration_effective_module where organization_id = $1`, [organizationId]),
@@ -49,7 +49,7 @@ export async function listUnregisteredSubjects(pool: pg.Pool, organizationId: st
       `select module.id, module.name, module.parent_id as "parentId", module.kind,
          exists (select 1 from parameter_catalog.registration_effective_module placement
                  where placement.organization_id = module.organization_id and placement.module_id = module.id) as occupied
-       from public.parameter_modules module where module.organization_id = $1 order by module.path, module.id`, [organizationId]),
+       from public.parameter_modules module where module.organization_id = $1 and module.archived_at is null order by module.path, module.id`, [organizationId]),
   ]);
   return { catalogReleaseId: releaseId, items: subjects.rows.map((subject) => ({ ...subject,
     availableModuleIds: modules.rows.filter((module) => module.kind === "business" || (module.kind === "unclassified" && module.parentId === null)).map((module) => module.id),

@@ -142,6 +142,7 @@ function runtimeDemoDriverGroupMatchSql(alias: string, definitionsTable: string 
     : "";
   return `
   ${alias}.origin <> 'curated'
+  and ${alias}.archived_at is null
   and (
     ${alias}.name = 'FoldRegistryTestDG'
     or ${alias}.source_key = 'compatible:vendor,fold_registry_test'
@@ -176,6 +177,7 @@ function runtimeDemoDriverGroupSubtreeIdsSql(definitionsTable: string | null): s
   from parameter_modules child
   join parameter_modules root on child.path = root.path or child.path like root.path || '/%'
   where ${runtimeDemoDriverGroupMatchSql("root", definitionsTable)}
+    and child.archived_at is null
 `;
 }
 
@@ -345,6 +347,7 @@ export async function pruneRuntimeDemoDriverGroupModules(tx: Queryable): Promise
       `
       delete from parameter_modules child
       where child.origin = 'auto'
+        and child.archived_at is null
         and exists (
           select 1
           from parameter_modules root

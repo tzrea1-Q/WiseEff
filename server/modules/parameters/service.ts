@@ -2274,7 +2274,7 @@ export async function createParameterModuleForAuth(
 
   let parent: ParameterModuleDto | null = null;
   if (parentId) {
-    parent = await getParameterModuleById(db, { organizationId, moduleId: parentId });
+    parent = await getParameterModuleById(db, { organizationId, moduleId: parentId, activeOnly: true });
     if (!parent) {
       throw new ApiError("NOT_FOUND", "Parent parameter module was not found.", { parentId });
     }
@@ -2443,7 +2443,7 @@ export async function moveParameterModuleForAuth(
 
   const parentId = body.parentId;
   if (parentId) {
-    const parent = await getParameterModuleById(db, { organizationId, moduleId: parentId });
+    const parent = await getParameterModuleById(db, { organizationId, moduleId: parentId, activeOnly: true });
     if (!parent) {
       throw new ApiError("NOT_FOUND", "Target parent parameter module was not found.", { parentId });
     }

@@ -42,6 +42,7 @@ import {
 
 export type ModuleTreeSubject = {
   id: string; moduleId: string; name: string;
+  displayAlias?: string;
   kind: "driver" | "node-type" | "configuration-schema"; definitionCount: number;
   ownerSubjectId?: string;
 };
@@ -224,6 +225,7 @@ function ModuleAttributionTreeRow({
           aria-label={`查看主体：${subject.name}`} tabIndex={-1}
           onClick={(event) => { event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus();
             onSelectSubject?.(subject.id, subject.moduleId); }}>{subject.name}</button>
+        {subject.displayAlias ? <span className="module-attribution-tree__kind">{subject.displayAlias}</span> : null}
         <span className="module-attribution-tree__kind">{{ driver: "驱动", "node-type": "节点类型", "configuration-schema": "配置规范" }[subject.kind]}</span>
       </div><div className="module-attribution-tree__meta"><span className="module-attribution-tree__count">{subject.definitionCount} 定义</span></div></div>
       {owned.length ? <ul role="group">{owned.map((child) => renderSubject(child, subjectDepth + 1))}</ul> : null}
