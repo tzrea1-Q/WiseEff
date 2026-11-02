@@ -58,8 +58,8 @@ select rule.organization_id, rule.module_id, min(effective.registration_id)
 from public.module_recognition_rules rule
 join parameter_catalog.registration_effective_module effective
   on effective.organization_id = rule.organization_id and effective.module_id = rule.module_id
-group by rule.organization_id, rule.module_id
-having count(*) = 1;
+group by rule.organization_id, rule.module_id, rule.canonical_subject_id
+having count(*) = 1 and min(effective.subject_id) = rule.canonical_subject_id;
 
 insert into public.registration_recognition_rules
   (organization_id, registration_id, canonical_subject_id, compatibles, driver_nature, instance_cardinality, node_type_name, updated_at)
@@ -75,14 +75,17 @@ do $$
 declare skipped record;
 begin
   for skipped in
-    select rule.organization_id, rule.module_id, count(effective.registration_id) as registration_count
+    select rule.organization_id, rule.module_id, rule.canonical_subject_id,
+           count(effective.registration_id) as registration_count, min(effective.subject_id) as placed_subject_id
     from public.module_recognition_rules rule
     left join parameter_catalog.registration_effective_module effective
       on effective.organization_id = rule.organization_id and effective.module_id = rule.module_id
-    group by rule.organization_id, rule.module_id having count(effective.registration_id) <> 1
+    group by rule.organization_id, rule.module_id, rule.canonical_subject_id
+    having count(effective.registration_id) <> 1
+       or rule.canonical_subject_id is distinct from min(effective.subject_id)
   loop
-    raise notice 'Recognition rule for organization %, module % retained in legacy table: % registrations',
-      skipped.organization_id, skipped.module_id, skipped.registration_count;
+    raise notice 'Recognition rule for organization %, module % retained in legacy table: % registrations, saved subject %, placed subject %',
+      skipped.organization_id, skipped.module_id, skipped.registration_count, skipped.canonical_subject_id, skipped.placed_subject_id;
   end loop;
 end;
 $$;

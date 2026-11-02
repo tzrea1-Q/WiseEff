@@ -6000,7 +6000,7 @@
     "/api/v1/parameter-modules/{moduleId}": {
       "patch": {
         "operationId": "parameters.updateModule",
-        "summary": "Update parameter module (shared business-category CRUD supported; structural writes return 410)",
+        "summary": "Update parameter module (recognition writes return 409; structural writes return 410)",
         "tags": [
           "parameters"
         ],

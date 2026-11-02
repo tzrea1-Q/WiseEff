@@ -67,6 +67,25 @@ const mappings: ParameterModuleMapping[] = [
 ];
 
 describe("ModuleAttributionTree", () => {
+  it.each([
+    ["mod-group", "驱动", "legacy-driver", "旧驱动"],
+    ["mod-node-type", "节点类型", "legacy-node", "旧节点"],
+  ] as const)("shows and selects retained subjects under legacy module %s", (moduleId, label, subjectId, name) => {
+    const onSelectSubject = vi.fn();
+    render(<ModuleAttributionTree modules={modules} mappings={[]} subjects={[
+      { id: subjectId, moduleId, name, kind: moduleId === "mod-group" ? "driver" : "node-type", definitionCount: 4 },
+    ]} onSelectSubject={onSelectSubject} onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /展开 SC8562/ }));
+    if (moduleId === "mod-node-type") fireEvent.click(screen.getByRole("button", { name: /展开 sc8562/ }));
+    const leaf = screen.getByRole("button", { name: `查看主体：${name}` }).closest<HTMLElement>('[role="treeitem"]')!;
+    expect(within(leaf).getByText(label)).toBeInTheDocument();
+    expect(within(leaf).getByText("4 定义")).toBeInTheDocument();
+    fireEvent.click(within(leaf).getByRole("button", { name: `查看主体：${name}` }));
+    expect(onSelectSubject).toHaveBeenCalledWith(subjectId, moduleId);
+    expect(leaf).toHaveFocus();
+    fireEvent.keyDown(leaf, { key: "ArrowLeft" });
+    expect(document.activeElement).toHaveAttribute("data-module-tree-id", moduleId);
+  });
   it("shows registered subjects after child modules and selects a subject", () => {
     const onSelectSubject = vi.fn();
     render(<ModuleAttributionTree modules={modules} mappings={[]} subjects={[
@@ -76,8 +95,8 @@ describe("ModuleAttributionTree", () => {
     const root = screen.getByRole("treeitem", { name: /Power/ });
     expect(within(root).getByText("驱动")).toBeInTheDocument();
     expect(within(root).getByText("节点类型")).toBeInTheDocument();
-    expect(within(screen.getByRole("button", { name: "查看主体：acme,power" }).closest('[role="treeitem"]')!).getByText("2 定义")).toBeInTheDocument();
-    expect(within(screen.getByRole("button", { name: "查看主体：battery1" }).closest('[role="treeitem"]')!).getByText("3 定义")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "查看主体：acme,power" }).closest<HTMLElement>('[role="treeitem"]')!).getByText("2 定义")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "查看主体：battery1" }).closest<HTMLElement>('[role="treeitem"]')!).getByText("3 定义")).toBeInTheDocument();
     fireEvent.click(within(root).getByRole("button", { name: "查看主体：acme,power" }));
     expect(onSelectSubject).toHaveBeenCalledWith("subject-a", "mod-power");
     const leaf = screen.getByRole("button", { name: "查看主体：acme,power" }).closest('[role="treeitem"]')!;
@@ -359,8 +378,8 @@ describe("ModuleAttributionTree", () => {
     fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).getByRole("region", { name: "历史 compatible 溯源" })).toHaveTextContent("vendor,sc8562");
-    expect(within(dialog).getByLabelText("驱动性质")).toBeEnabled();
-    expect(within(dialog).getByLabelText("实例基数")).toBeEnabled();
+    expect(within(dialog).getByLabelText("驱动性质")).toBeDisabled();
+    expect(within(dialog).getByLabelText("实例基数")).toBeDisabled();
     expect(within(dialog).queryByLabelText("默认业务分类")).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: "从注册回放放置" })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("region", { name: "规范主体放置" })).toBeInTheDocument();

@@ -166,7 +166,11 @@ export function CanonicalSubjectPlacementPanel({
   const definitionsFilter = ["with", "without"].includes(params.get("subjectDefinitions") ?? "") ? params.get("subjectDefinitions")! : "all";
   const pageParameter = Number(params.get("subjectPage"));
   const requestedPage = Number.isSafeInteger(pageParameter) && pageParameter > 0 ? pageParameter - 1 : 0;
-  const expandedSubjectId = selectedSubjectId ?? params.get("expandedSubject");
+  const [localExpandedSubject, setLocalExpandedSubject] = useState<string | null>(selectedSubjectId ?? null);
+  useEffect(() => setLocalExpandedSubject(selectedSubjectId ?? null), [selectedSubjectId]);
+  const expandedSubjectId = selectedSubjectId && !onNavigate
+    ? localExpandedSubject
+    : params.get("expandedSubject");
   const updateQuery = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
     for (const [key, value] of Object.entries(patch)) {
@@ -690,7 +694,11 @@ export function CanonicalSubjectPlacementPanel({
                           type="button"
                           className="button subtle"
                           aria-expanded={expandedSubjectId === subject.id}
-                          onClick={() => updateQuery({ expandedSubject: expandedSubjectId === subject.id ? null : subject.id })}
+                          onClick={() => {
+                            if (selectedSubjectId && !onNavigate) {
+                              setLocalExpandedSubject(expandedSubjectId === subject.id ? null : subject.id);
+                            } else updateQuery({ expandedSubject: expandedSubjectId === subject.id ? null : subject.id });
+                          }}
                         >
                           {expandedSubjectId === subject.id ? "收起参数" : "查看参数"}
                         </button> : canCreateSubject && onNavigate && subject.membership.status === "active" && registrationStatus !== "retired" ? <button

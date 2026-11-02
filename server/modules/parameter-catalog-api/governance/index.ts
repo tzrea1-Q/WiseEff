@@ -1,5 +1,6 @@
 export { handleCatalogGovernance, matchCatalogGovernanceRoute } from "./handlers";
 export {
+  lockCurrentRecognitionRelease,
   listModuleRecognitionPlacements,
   readModuleRecognitionSubjectDefaults,
   readRegistrationRecognitionSubject,

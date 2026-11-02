@@ -1,4 +1,13 @@
 import type { Queryable } from "../../../shared/database/client";
+import { CURRENT_POINTER_LOCK_KEY } from "../../catalog-kernel/install/lockProtocol";
+
+export async function lockCurrentRecognitionRelease(db: Queryable): Promise<string | null> {
+  await db.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
+  const result = await db.query<{ id: string }>(
+    "select current_catalog_release_id as id from parameter_catalog.catalog_state",
+  );
+  return result.rows[0]?.id ?? null;
+}
 
 export type ModuleRecognitionPlacementFact = {
   registration_id: string;

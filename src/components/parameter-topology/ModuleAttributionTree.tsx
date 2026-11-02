@@ -191,8 +191,7 @@ function ModuleAttributionTreeRow({
   const module = modulesById.get(node.id);
   if (!module) return null;
 
-  const subjectChildren = module.kind === "business" || module.kind === "unclassified"
-    ? subjects.filter((subject) => subject.moduleId === module.id) : [];
+  const subjectChildren = subjects.filter((subject) => subject.moduleId === module.id);
   const hasChildren = node.children.length > 0 || subjectChildren.length > 0;
   const isExpanded = expandedIds.has(node.id);
   const compatibleCount = mappingsForModule(mappings, module.id).filter(
@@ -477,10 +476,7 @@ export function ModuleAttributionTree({
       visibleIds.push(node.id);
       if (visibleExpandedIds.has(node.id)) {
         collectVisible(node.children);
-        const module = modulesById.get(node.id);
-        if (module?.kind === "business" || module?.kind === "unclassified") {
-          visibleIds.push(...subjects.filter(subject => subject.moduleId === node.id).map(subject => `subject:${subject.id}`));
-        }
+        visibleIds.push(...subjects.filter(subject => subject.moduleId === node.id).map(subject => `subject:${subject.id}`));
       }
     }
   };

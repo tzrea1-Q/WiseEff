@@ -402,7 +402,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "410": "CatalogLegacyGoneResponse" }
   },
   "parameters.updateModule": {
-    summary: "Update parameter module (shared business-category CRUD supported; structural writes return 410)",
+    summary: "Update parameter module (recognition writes return 409; structural writes return 410)",
     tags: ["parameters"],
     requestBody: "UpdateParameterModuleRequest",
     responseBody: "ParameterModuleResponse",

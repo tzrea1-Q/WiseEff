@@ -15,7 +15,7 @@ import { listModuleRecognitionInstances } from "./recognitionInstances";
 import { captureCurrentCatalogPin, createPinCapturingCatalogRuntime } from "../catalog-publication/runtime";
 import { listModuleRecognitionPlacements, readModuleRecognitionSubjectDefaults,
   hasMultipleCurrentModuleSubjectInstances, readRegistrationRecognitionSubject,
-  readRecognitionIdempotency, writeRecognitionIdempotency } from "../parameter-catalog-api/governance";
+  readRecognitionIdempotency, writeRecognitionIdempotency, lockCurrentRecognitionRelease } from "../parameter-catalog-api/governance";
 
 export async function captureModuleRecognitionCatalog(db: Database): Promise<CatalogSnapshot | null> {
   const pool = getRootPostgresPool(db);
@@ -89,8 +89,8 @@ export async function loadModuleRecognitionSettings(
   const settings = new Map<string, ModuleRecognitionSettings>();
   for (const row of rows.rows) {
     const subjectIds = [...new Set(placements.filter(placement => placement.module_id === row.id).map(placement => placement.subject_id))];
-    const rule = (subjectIds.length === 1 ? effectiveRules.find(value => value.canonical_subject_id === subjectIds[0]) : undefined)
-      ?? rules.get(row.id);
+    const rule = subjectIds.length === 1 ? effectiveRules.find(value => value.canonical_subject_id === subjectIds[0])
+      : subjectIds.length === 0 ? rules.get(row.id) : undefined;
     const sourceCompatible = row.source_key?.startsWith("compatible:") ? row.source_key.slice("compatible:".length) : "";
     let compatibles = validCompatibles([...row.legacy_compatibles, ...(sourceCompatible ? [sourceCompatible] : [])]);
     const sourceNodeType = row.source_key?.startsWith("nodetype:") ? row.source_key.slice("nodetype:".length) : "";
@@ -156,7 +156,7 @@ async function readSavedModuleRecognitionRules(db: Queryable, organizationId: st
   return rules.rows;
 }
 
-/** Placement is authoritative when a Subject is registered or moved after a local rule was saved. */
+/** Unmigrated module rules have no proven registration and cannot override a Subject. */
 export async function loadOrganizationRecognitionRules(db: Queryable, organizationId: string): Promise<EffectiveModuleRecognitionRule[]> {
   if (!await moduleRecognitionRulesAvailable(db)) return [];
   let rules = await readSavedModuleRecognitionRules(db, organizationId);
@@ -179,16 +179,8 @@ export async function loadOrganizationRecognitionRules(db: Queryable, organizati
     rules = rules.filter(rule => rule.module_id === null || !migratedModules.has(rule.module_id));
   }
   if (rules.length === 0) return registrationRules;
-  const placements = await listModuleRecognitionPlacements(db, organizationId);
-  const registeredSubjects = new Set(registrationRules.map(rule => rule.canonical_subject_id));
-  const legacy = rules.map(rule => {
-    const currentSubjects = [...new Set(placements.filter(placement => placement.module_id === rule.module_id).map(placement => placement.subject_id))];
-    const prior = placements.find(placement => placement.subject_id === rule.canonical_subject_id);
-    const subjectId = currentSubjects.length === 1 ? currentSubjects[0]!
-      : currentSubjects.length > 1 || (prior && prior.module_id !== rule.module_id) ? null : rule.canonical_subject_id;
-    return { ...rule, canonical_subject_id: subjectId };
-  });
-  return [...registrationRules, ...legacy.filter(rule => !registeredSubjects.has(rule.canonical_subject_id))];
+  const legacy = rules.map(rule => ({ ...rule, canonical_subject_id: null }));
+  return [...registrationRules, ...legacy];
 }
 
 /** Overlay only current organization recognition; the underlying published snapshot remains unchanged. */
@@ -285,6 +277,10 @@ export async function updateRegistrationRecognitionSettings(
       }
       return JSON.parse(prior.result_ref!) as ModuleRecognitionSettings & { kind: "driver" | "node-type" };
     }
+    const live = await lockCurrentRecognitionRelease(tx);
+    if (live !== input.catalogReleaseId) {
+      throw new ApiError("CONFLICT", "规范目录已更新，请刷新后重试。");
+    }
     const current = await readRegistrationRecognitionSettings(tx, input.organizationId, input.registrationId);
     if (!current) return null;
     if (registrationRecognitionEtag(current) !== input.ifMatch) throw new ApiError("CONFLICT", "识别规则已变化，请刷新后重试。");
@@ -325,49 +321,4 @@ export async function updateRegistrationRecognitionSettings(
     });
     return next;
   });
-}
-
-export async function updateModuleRecognitionSettings(
-  db: Queryable, input: { organizationId: string; moduleId: string; kind: string; body: UpdateModuleRecognition;
-    catalog: CatalogSnapshot | null },
-): Promise<ModuleRecognitionSettings> {
-  await lockOrganizationModuleRecognition(db, input.organizationId);
-  if ((input.kind !== "driver-group" && input.kind !== "node-type") ||
-    (input.kind === "driver-group" && input.body.nodeTypeName !== undefined) ||
-    (input.kind === "node-type" && (input.body.compatibles !== undefined || input.body.driverNature !== undefined || input.body.instanceCardinality !== undefined))) {
-    throw new ApiError("VALIDATION_FAILED", "识别规则与模块类型不匹配。");
-  }
-  const current = (await loadModuleRecognitionSettings(db, input.organizationId, input.catalog)).get(input.moduleId);
-  if (!current) throw new ApiError("NOT_FOUND", "未找到参数模块。");
-  if (input.body.compatibles?.some(value => !parseCanonicalCompatibleSelector(value).ok) ||
-    (input.body.nodeTypeName !== undefined && !parseCanonicalNodeName(input.body.nodeTypeName).ok)) {
-    throw new ApiError("VALIDATION_FAILED", "请输入完整的 compatible 或节点类型名。");
-  }
-  const next = { ...current, ...input.body, overridden: true };
-  if (input.body.compatibles) next.compatibles = validCompatibles(input.body.compatibles);
-  if (next.instanceCardinality === "singleton-per-project") {
-    const multipleBindings = await hasMultipleCurrentModuleSubjectInstances(db, input.organizationId, next.recognitionSubjectId);
-    const sourceInstances = await listModuleRecognitionInstances(db, input.organizationId, next);
-    const projects = new Map<string, Set<string>>();
-    for (const instance of sourceInstances) {
-      const nodes = projects.get(instance.projectId) ?? new Set<string>();
-      nodes.add(instance.logicalNodeId); projects.set(instance.projectId, nodes);
-    }
-    if (multipleBindings || [...projects.values()].some(nodes => nodes.size > 1)) {
-      throw new ApiError("CONFLICT", "已有项目实例超过单例容量。", { moduleId: input.moduleId });
-    }
-  }
-  const placement = (await listModuleRecognitionPlacements(db, input.organizationId))
-    .find(row => row.subject_id === next.recognitionSubjectId && row.module_id === input.moduleId);
-  if (!placement) throw new ApiError("VALIDATION_FAILED", "请先登记主体，再修改识别规则。");
-  await db.query(
-      `insert into public.registration_recognition_rules (organization_id, registration_id, canonical_subject_id,
-         compatibles, driver_nature, instance_cardinality, node_type_name)
-       values ($1,$2,$3,$4,$5,$6,$7)
-       on conflict (organization_id, registration_id) do update set canonical_subject_id = excluded.canonical_subject_id,
-         compatibles = excluded.compatibles, driver_nature = excluded.driver_nature,
-         instance_cardinality = excluded.instance_cardinality, node_type_name = excluded.node_type_name, updated_at = clock_timestamp()`,
-      [input.organizationId, placement.registration_id, next.recognitionSubjectId, next.compatibles, next.driverNature, next.instanceCardinality, next.nodeTypeName],
-  );
-  return next;
 }

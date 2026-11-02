@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ModuleEditDialog } from "./ModuleEditDialog";
-import { selectControlOption } from "@/test/selectControlOption";
 
 afterEach(() => cleanup());
 
@@ -31,7 +30,7 @@ describe("ModuleEditDialog", () => {
     expect(within(dialog).getByLabelText("驱动性质")).toHaveTextContent("物理设备");
     expect(within(dialog).getByLabelText("实例基数")).toHaveTextContent("单例/项目");
     for (const label of ["驱动性质", "实例基数"]) {
-      expect(within(dialog).getByLabelText(label)).toBeEnabled();
+      expect(within(dialog).getByLabelText(label)).toBeDisabled();
     }
     for (const label of ["模块名称", "模块展示描述", "适用范围"]) expect(within(dialog).getByLabelText(label)).not.toHaveAttribute("readonly");
     fireEvent.change(within(dialog).getByLabelText("模块名称"), { target: { value: "My Driver" } });
@@ -120,8 +119,8 @@ describe("ModuleEditDialog", () => {
 
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).getByRole("region", { name: "历史 compatible 溯源" })).toHaveTextContent("vendor,sc8562");
-    expect(within(dialog).getByLabelText("驱动性质")).toBeEnabled();
-    expect(within(dialog).getByLabelText("实例基数")).toBeEnabled();
+    expect(within(dialog).getByLabelText("驱动性质")).toBeDisabled();
+    expect(within(dialog).getByLabelText("实例基数")).toBeDisabled();
     expect(within(dialog).queryByRole("region", { name: "历史驱动登记" })).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText("默认业务分类")).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: "从注册回放放置" })).not.toBeInTheDocument();
@@ -130,26 +129,26 @@ describe("ModuleEditDialog", () => {
     expect(onManageCanonicalPlacement).toHaveBeenCalledOnce();
   });
 
-  it("saves current driver recognition rules through the same module form", async () => {
+  it("shows driver recognition as read-only and directs edits to the subject", () => {
     const onSave = vi.fn();
     render(<ModuleEditDialog module={{ name: "Driver", kind: "driver-group", compatibles: ["old,device"],
       driverNature: "physical-device", instanceCardinality: "multiple" }}
       canAdmin existingNames={[]} onSave={onSave} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText("compatible 匹配规则"), { target: { value: "new,device\nnew,alias\nnew,device" } });
-    await selectControlOption(screen.getByLabelText("驱动性质"), "logical-service");
-    await selectControlOption(screen.getByLabelText("实例基数"), "singleton-per-project");
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    expect(onSave).toHaveBeenCalledWith({ name: "Driver", description: "", scope: "", compatibles: ["new,device", "new,alias"],
-      driverNature: "logical-service", instanceCardinality: "singleton-per-project" });
+    expect(screen.getByLabelText("compatible 匹配规则")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("驱动性质")).toBeDisabled();
+    expect(screen.getByLabelText("实例基数")).toBeDisabled();
+    expect(screen.getByText(/请在主体详情中修改/)).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("saves node recognition independently from its display name", () => {
+  it("shows node recognition as read-only while allowing display name edits", () => {
     const onSave = vi.fn();
     render(<ModuleEditDialog module={{ name: "Node display", kind: "node-type", nodeTypeName: "old_node" }}
       canAdmin existingNames={[]} onSave={onSave} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText("节点类型名"), { target: { value: "new_node" } });
+    expect(screen.getByLabelText("节点类型名")).toHaveAttribute("readonly");
+    fireEvent.change(screen.getByLabelText("模块名称"), { target: { value: "Renamed" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    expect(onSave).toHaveBeenCalledWith({ name: "Node display", description: "", scope: "", nodeTypeName: "new_node" });
+    expect(onSave).toHaveBeenCalledWith({ name: "Renamed", description: "", scope: "" });
   });
 
   it("preserves current edits when optional historical provenance arrives", () => {
@@ -158,9 +157,8 @@ describe("ModuleEditDialog", () => {
       canAdmin: true, existingNames: [], onSave: vi.fn(), onCancel: vi.fn() };
     const { rerender } = render(<ModuleEditDialog {...props} />);
     fireEvent.change(screen.getByLabelText("模块名称"), { target: { value: "My edit" } });
-    fireEvent.change(screen.getByLabelText("compatible 匹配规则"), { target: { value: "edited,device" } });
     rerender(<ModuleEditDialog {...props} historicalCompatibles={["historical,device"]} driverNature="logical-service" />);
     expect(screen.getByLabelText("模块名称")).toHaveValue("My edit");
-    expect(screen.getByLabelText("compatible 匹配规则")).toHaveValue("edited,device");
+    expect(screen.getByLabelText("compatible 匹配规则")).toHaveValue("current,device");
   });
 });
