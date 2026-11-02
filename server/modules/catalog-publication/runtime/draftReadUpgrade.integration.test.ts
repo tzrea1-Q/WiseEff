@@ -23,14 +23,21 @@ describe("existing API LOGIN privilege refresh after a parameter schema upgrade"
         expect((await api.query(`select
           to_regclass('parameter_catalog.project_parameter_source_occurrences') as occurrences,
           to_regclass('parameter_catalog.project_value_source_pins') as pins,
+          to_regclass('parameter_catalog.module_structure_migration_map') as migration_map,
           to_regprocedure('parameter_catalog.resolve_current_binding_by_source_occurrence(text,text,text)') as resolver`
-        )).rows[0]).toEqual({ occurrences: null, pins: null, resolver: null });
+        )).rows[0]).toEqual({ occurrences: null, pins: null, migration_map: null, resolver: null });
         await db.query("insert into organizations (id,name) values ('org-draft-upgrade','Draft upgrade')");
         await db.query(`insert into users (id,organization_id,name,email,title)
           values ('user-draft-upgrade','org-draft-upgrade','Editor','draft-upgrade@example.com','Editor')`);
         await db.query(`insert into projects (id,organization_id,name,code,status)
           values ('project-draft-upgrade','org-draft-upgrade','Draft upgrade','DUP','initialized')`);
         await applyMigrations(db, migrationsDir);
+        // The existing NOINHERIT login must receive the 0324 grant without reprovisioning.
+        expect((await api.query(`select
+          bool_and(has_table_privilege(current_user,'parameter_catalog.module_structure_migration_map',privilege)) as api_access,
+          bool_or(has_table_privilege($1,'parameter_catalog.module_structure_migration_map',privilege)) as worker_access
+          from unnest(array['SELECT','INSERT','UPDATE','DELETE']) privilege`,
+        [login.workerRole])).rows).toEqual([{ api_access: true, worker_access: false }]);
         const refreshed = await provisionPublicationRuntimeLogins(connectionString, { mode: "lab", runToken: token });
         expect(refreshed.created).toEqual([]);
         expect(refreshed.passwordsDelivered).toBe(false);

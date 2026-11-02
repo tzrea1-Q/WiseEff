@@ -50,7 +50,7 @@ it("atomically refuses an existing incorrect JSON root digest when upgrading 015
       await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Digest author','Admin',true)",[USER,ORG]);
       await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Digest project','DUP','initialized')",[PROJECT,ORG]);
       const auth = makeTestAuthContext({ userId: USER,organizationId: ORG,permissions: ["parameter:view","parameter:edit","admin:access"] });
-      await installConfigurationSourceFixture(db,auth,{ subjectId: SUBJECT,schemaId: MODEL });
+      await installConfigurationSourceFixture(db,auth,{ subjectId: SUBJECT,schemaId: MODEL,historicalPlacement: true });
       const set = await createConfigSet(db,auth,{ projectId: PROJECT,name: "Digest upgrade" });
       await db.query(`insert into project_parameter_files(id,organization_id,project_id,file_name,format,config_set_id,config_set_role)
         values ('digest-upgrade-file',$1,$2,'settings.json','json',$3,'base')`,[ORG,PROJECT,set.id]);

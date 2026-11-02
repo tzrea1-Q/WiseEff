@@ -75,8 +75,8 @@ it("seeds twice through canonical owners without legacy rows and serves seeded h
   expect(source.rows[0]).toMatchObject({ version_number: 2, index_length: expect.any(Number) });
   expect(source.rows[0]!.index_length).toBeGreaterThan(2);
   expect((await createLocalObjectStore(storage).get(source.rows[0]!.storage_key)).toString("utf8")).toContain("watchdog_time = <6000>;");
-  const placement = await db.query<{ kind: string; module_id: string; logical_node_id: string }>(`select
-    module.kind, placement.module_id, binding.logical_node_id
+  const placement = await db.query<{ kind: string; name: string; module_id: string; logical_node_id: string }>(`select
+    module.kind, module.name, placement.module_id, binding.logical_node_id
     from parameter_catalog.current_project_parameter_bindings binding
     join parameter_catalog.organization_subject_registrations registration on registration.id = binding.registration_id
     left join parameter_catalog.subject_placements placement on placement.registration_id = registration.id
@@ -85,7 +85,11 @@ it("seeds twice through canonical owners without legacy rows and serves seeded h
   expect(placement.rows.length).toBeGreaterThan(0);
   expect(placement.rows.every((row) => row.module_id !== null)).toBe(true);
   expect(placement.rows.every((row) => row.kind === "business" || row.kind === "unclassified")).toBe(true);
-  expect(new Set(placement.rows.map((row) => row.module_id)).size).toBe(1);
+  expect(new Set(placement.rows.map((row) => row.module_id)).size).toBe(11);
+  expect([...new Set(placement.rows.map((row) => row.name))].sort()).toEqual([
+    "Battery Authentication", "Battery Balance", "Battery Gauge", "Battery Protection", "Battery Thermal",
+    "Board Identity", "Charge Pump IC", "Charger IC", "Charging Policy", "Direct Charging", "Wireless Charging",
+  ]);
   const instances = await db.query<{ module_id: string; logical_node_id: string }>(`select distinct
     placement.module_id, binding.logical_node_id
     from parameter_catalog.current_project_parameter_bindings binding

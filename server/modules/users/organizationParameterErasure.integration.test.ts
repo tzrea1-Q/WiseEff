@@ -92,6 +92,11 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
       from parameter_catalog.organization_subject_registrations r
       join parameter_catalog.subject_placements p on p.id=r.current_placement_id and p.organization_id=r.organization_id
       where r.organization_id='parameter-target' and r.subject_id='csub_org1395'`)).rows[0]!;
+    const child = await createParameterModule(db, { organizationId: "parameter-target", name: "Active child", kind: "business", parentId: placement.module_id });
+    const archived = await createParameterModule(db, { organizationId: "parameter-target", name: "Archived child", kind: "business", parentId: child.id });
+    await db.query("update public.parameter_modules set archived_at=now() where id=$1", [archived.id]);
+    await db.query("update parameter_catalog.organization_subject_registrations set display_alias='Target alias' where id=$1", [placement.registration_id]);
+    await db.query("update parameter_catalog.organization_subject_registrations set display_alias='Foreign alias' where id=$1", [foreignRegistration]);
     await db.query(`insert into public.module_recognition_rules (organization_id,module_id,canonical_subject_id,node_type_name)
       values ('parameter-target',$1,'csub_org1395','legacy-node')`, [placement.module_id]);
     await db.query(`insert into public.registration_recognition_rules (organization_id,registration_id,canonical_subject_id,node_type_name)
@@ -107,6 +112,10 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
       await expect(db.query("delete from public.registration_recognition_migration_map where organization_id='parameter-target'"))
         .rejects.toMatchObject({ code: "55000" });
       await expect(db.query("delete from parameter_catalog.module_structure_migration_map where organization_id='parameter-target'"))
+        .rejects.toMatchObject({ code: "55000" });
+      await expect(db.query("update parameter_catalog.organization_subject_registrations set display_alias='blocked' where id=$1", [placement.registration_id]))
+        .rejects.toMatchObject({ code: "55000" });
+      await expect(db.query("update public.parameter_modules set name='blocked' where id=$1", [archived.id]))
         .rejects.toMatchObject({ code: "55000" });
     } finally {
       await db.query("update organizations set status='active' where id='parameter-target'");
@@ -135,6 +144,9 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
     expect((await db.query("select registration_id from public.registration_recognition_rules where organization_id='parameter-target'")).rows).toEqual([]);
     expect((await db.query("select registration_id from public.registration_recognition_migration_map where organization_id='parameter-target'")).rows).toEqual([]);
     expect((await db.query("select registration_id from parameter_catalog.module_structure_migration_map where organization_id='parameter-target'")).rows).toEqual([]);
+    expect((await db.query("select id from public.parameter_modules where organization_id='parameter-target'")).rows).toEqual([]);
+    expect((await db.query("select display_alias from parameter_catalog.organization_subject_registrations where id=$1", [foreignRegistration])).rows)
+      .toEqual([{ display_alias: "Foreign alias" }]);
     expect((await db.query("select registration_id from parameter_catalog.module_structure_migration_map where organization_id='parameter-home'")).rows)
       .toEqual([{ registration_id: foreignRegistration }]);
     expect((await db.query("select registration_id from public.registration_recognition_rules where organization_id='parameter-home'")).rows)

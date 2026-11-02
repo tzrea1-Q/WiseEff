@@ -234,7 +234,7 @@ export const S2_SCH_0323_FINGERPRINT =
 
 /** 0324 adds archived modules, display aliases and the audited migration map. */
 export const S2_SCH_0324_FINGERPRINT =
-  "bca6823f8fc76c407426503a92bb0337375aab8a34ee48ac88c6d7b3feba5c09";
+  "b0e9b2e7d5a7082f4fd731353bcaba226496d55dfad30509f1af41733d118aa5";
 
 export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0324_FINGERPRINT;
 

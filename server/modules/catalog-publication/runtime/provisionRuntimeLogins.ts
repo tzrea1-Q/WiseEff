@@ -513,6 +513,10 @@ export async function provisionPublicationRuntimeLogins(
       await convergeCatalogWriteGrants(admin, names.worker);
       await convergeCatalogWriteGrants(admin, names.manager);
       for (const table of GOVERNANCE_RELATIONS) {
+        // 0324 grants this relation to already provisioned logins during upgrade.
+        if (table === "module_structure_migration_map" && !(await admin.query<{ exists: boolean }>(
+          "select to_regclass('parameter_catalog.module_structure_migration_map') is not null as exists",
+        )).rows[0]?.exists) continue;
         await admin.query(
           `grant insert, update, delete on table parameter_catalog.${quoteIdent(table)} to ${quoteIdent(names.api)}`,
         );

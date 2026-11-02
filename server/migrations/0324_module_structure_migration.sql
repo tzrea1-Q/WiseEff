@@ -62,7 +62,21 @@ do $$ declare installed text; changed text; begin
   changed:=replace(installed, '(''public.registration_recognition_migration_map'',''organization_id=$1'')',
     '(''parameter_catalog.module_structure_migration_map'',''organization_id=$1''),'
     || '(''public.registration_recognition_migration_map'',''organization_id=$1'')');
-  if changed=installed then raise exception 'Module migration purge seam missing'; end if; execute changed;
+  if changed=installed then raise exception 'Module migration purge seam missing'; end if; installed:=changed;
+  changed:=replace(installed, 'declare org text; project record;', 'declare removed integer; org text; project record;');
+  if changed=installed then raise exception 'Module purge declaration seam missing'; end if; installed:=changed;
+  changed:=replace(installed,
+    $purge$        execute format('delete from %s r where $1 @> jsonb_build_array(parameter_catalog.definition_purge_key(%L::regclass,to_jsonb(r)))',relation,relation) using targets->relation;$purge$,
+    $purge$        if relation='public.parameter_modules' then
+          delete from public.parameter_modules r where r.organization_id=org
+            and not exists(select 1 from public.parameter_modules child where child.parent_id=r.id);
+          get diagnostics removed = row_count;
+          if removed>0 then progress:=true; end if;
+          if exists(select 1 from public.parameter_modules where organization_id=org) then continue; end if;
+        else
+          execute format('delete from %s r where $1 @> jsonb_build_array(parameter_catalog.definition_purge_key(%L::regclass,to_jsonb(r)))',relation,relation) using targets->relation;
+        end if;$purge$);
+  if changed=installed then raise exception 'Module purge ordering seam missing'; end if; execute changed;
 
   select pg_get_functiondef('public.guard_organization_lifecycle()'::regprocedure) into strict installed;
   changed:=replace(installed, '''organization_subject_registrations'',''subject_placements'',',
