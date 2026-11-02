@@ -17,8 +17,8 @@ type Entry = { action: string; moduleId: string; registrationId?: string; fromMo
 export async function migrateModuleStructure(db: Database, organizationId: string, apply: boolean) {
   return db.transaction(async (tx) => {
     if (apply) {
-      await lockOrganizationRegistrations(tx as unknown as RegistrationWriterClient, organizationId);
       await lockOrganizationModuleRecognition(tx, organizationId);
+      await lockOrganizationRegistrations(tx as unknown as RegistrationWriterClient, organizationId);
       await lockParameterModuleTree(tx, organizationId);
     }
     const exists = await tx.query<{ id: string }>("select id from public.organizations where id=$1", [organizationId]);
@@ -119,7 +119,7 @@ export async function migrateModuleStructure(db: Database, organizationId: strin
           conflicts.push({ action: "no-business-ancestor", moduleId: child.id, fromModuleId: module.id });
           continue;
         }
-        if (modules.some((item) => item.id !== child.id && item.parent_id === ancestor!.id && item.name === child.name)) {
+        if (modules.some((item) => !item.archived_at && item.id !== child.id && item.parent_id === ancestor!.id && item.name === child.name)) {
           conflicts.push({ action: "business-name-conflict", moduleId: child.id, toModuleId: ancestor.id });
           continue;
         }
@@ -129,9 +129,9 @@ export async function migrateModuleStructure(db: Database, organizationId: strin
         if (apply) await tx.query(`update public.parameter_modules set parent_id=case when id=$2 then $3 else parent_id end,
           path=case when id=$2 then $4 else $4 || substring(path from length($5)+1) end,
           depth=depth+$6,updated_at=clock_timestamp()
-          where organization_id=$1 and (id=$2 or starts_with(path, $5 || '/'))`, [organizationId, child.id, ancestor.id, newPath, oldPath, delta]);
+          where organization_id=$1 and archived_at is null and (id=$2 or starts_with(path, $5 || '/'))`, [organizationId, child.id, ancestor.id, newPath, oldPath, delta]);
         await record({ action: "reparent-business", moduleId: child.id, fromModuleId: module.id, toModuleId: ancestor.id });
-        for (const descendant of modules.filter((item) => item.id === child.id || item.path.startsWith(`${oldPath}/`))) {
+        for (const descendant of modules.filter((item) => !item.archived_at && (item.id === child.id || item.path.startsWith(`${oldPath}/`)))) {
           const previousPath = descendant.path;
           descendant.path = newPath + descendant.path.slice(oldPath.length);
           descendant.depth += delta;
@@ -141,10 +141,11 @@ export async function migrateModuleStructure(db: Database, organizationId: strin
         }
         child.parent_id = ancestor.id;
       }
-      if (rules.some((rule) => rule.module_id === module.id)) conflicts.push({ action: "unmigrated-recognition-rule", moduleId: module.id });
-      if (placements.some((item) => item.module_id === module.id) || modules.some((item) => item.parent_id === module.id)) {
+      const hasRules = rules.some((rule) => rule.module_id === module.id);
+      if (hasRules) conflicts.push({ action: "unmigrated-recognition-rule", moduleId: module.id });
+      if (placements.some((item) => item.module_id === module.id) || modules.some((item) => item.parent_id === module.id && !item.archived_at)) {
         conflicts.push({ action: "module-not-empty", moduleId: module.id });
-      } else {
+      } else if (!hasRules) {
         if (apply) await tx.query("update public.parameter_modules set archived_at=clock_timestamp(),updated_at=clock_timestamp() where organization_id=$1 and id=$2", [organizationId, module.id]);
         module.archived_at = new Date();
         await record({ action: "archive-module", moduleId: module.id });

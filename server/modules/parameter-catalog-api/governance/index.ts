@@ -13,6 +13,8 @@ export {
 export {
   countCurrentBindingsForModule,
   countSubjectPlacementsForModules,
+  findEffectiveModuleForLegacyAttribution,
+  activeBusinessAncestor,
   listModuleRegistryFacts,
   type ModuleRegistryFact,
 } from "../../parameter-governance/queries/registration";

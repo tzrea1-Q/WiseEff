@@ -204,12 +204,13 @@ export const insertRegistration = async (
     readonly proof: Record<string, unknown>;
     readonly placementId: string;
     readonly status?: "active" | "retired";
+    readonly displayAlias?: string;
   },
 ): Promise<RegistrationRow> => {
   const result = await client.query<RegistrationRow>(
     `insert into parameter_catalog.organization_subject_registrations (
-       id, organization_id, subject_id, status, registration_method, proof, current_placement_id
-     ) values ($1,$2,$3,$7,$4,$5::jsonb,$6)
+       id, organization_id, subject_id, status, registration_method, proof, current_placement_id, display_alias
+     ) values ($1,$2,$3,$7,$4,$5::jsonb,$6,$8)
      returning id, organization_id, subject_id, status, registration_method, current_placement_id,
        (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [
@@ -220,6 +221,7 @@ export const insertRegistration = async (
       JSON.stringify(input.proof),
       input.placementId,
       input.status ?? "active",
+      input.displayAlias ?? null,
     ],
   );
   return result.rows[0]!;

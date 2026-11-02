@@ -1,6 +1,10 @@
 alter table public.parameter_modules add column archived_at timestamptz;
 grant select (archived_at) on public.parameter_modules to wiseeff_mod_d02_source_reader;
 
+drop index public.parameter_modules_org_parent_name_unique_idx;
+create unique index parameter_modules_org_parent_name_unique_idx
+  on public.parameter_modules (organization_id, coalesce(parent_id, ''), name) where archived_at is null;
+
 alter table parameter_catalog.organization_subject_registrations
   add column display_alias text,
   add constraint registration_display_alias_ck check (
@@ -20,7 +24,6 @@ create table parameter_catalog.module_structure_migration_map (
   to_module_id text,
   detail jsonb not null default '{}'::jsonb check (jsonb_typeof(detail) = 'object'),
   created_at timestamptz not null default clock_timestamp(),
-  foreign key (module_id, organization_id) references public.parameter_modules(id, organization_id) on delete restrict,
   foreign key (registration_id, organization_id) references parameter_catalog.organization_subject_registrations(id, organization_id) on delete restrict
 );
 alter table parameter_catalog.module_structure_migration_map owner to catalog_migration_owner;
@@ -113,3 +116,27 @@ revoke all on function parameter_catalog.assert_active_module_parent() from publ
 create trigger parameter_module_active_parent
 before insert or update of parent_id, organization_id on public.parameter_modules
 for each row execute function parameter_catalog.assert_active_module_parent();
+
+-- Retained archived children keep their recorded paths after their parent is
+-- deleted; active children still prohibit deletion, including direct SQL.
+alter table public.parameter_modules drop constraint parameter_modules_parent_id_fkey,
+  add constraint parameter_modules_parent_id_fkey foreign key (parent_id)
+    references public.parameter_modules(id) on delete set null;
+
+create function parameter_catalog.assert_no_active_module_children()
+returns trigger language plpgsql security definer
+set search_path = pg_catalog, parameter_catalog as $$
+begin
+  if exists (select 1 from public.parameter_modules
+      where parent_id=old.id and (organization_id<>old.organization_id or archived_at is null)) then
+    raise exception using errcode = '23503', message = 'Cannot delete a module with active children',
+      constraint = 'parameter_module_active_children_ck';
+  end if;
+  return old;
+end;
+$$;
+
+alter function parameter_catalog.assert_no_active_module_children() owner to catalog_migration_owner;
+revoke all on function parameter_catalog.assert_no_active_module_children() from public;
+create trigger parameter_module_active_children before delete on public.parameter_modules
+for each row execute function parameter_catalog.assert_no_active_module_children();

@@ -252,6 +252,9 @@ function makeRecomputeDb(input: {
         rowCount: moduleId ? 1 : 0
       };
     }
+    if (text.includes("with recursive ancestors as")) {
+      return { rows: [{ id: values[1] }], rowCount: 1 };
+    }
     if (text.includes("and source_key = $2")) {
       return { rows: [], rowCount: 0 };
     }

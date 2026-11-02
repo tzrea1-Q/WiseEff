@@ -434,6 +434,7 @@ export type DtsPowerSeedModuleMapping = {
   matchKind: "node-type" | "compatible";
   matchValue: string;
   moduleName: string;
+  legacyModuleName?: string;
   priority?: number;
 };
 
@@ -474,6 +475,7 @@ export function buildSeedModuleMappings(resolved: ResolvedDts): DtsPowerSeedModu
       matchKind: "compatible",
       matchValue: compatibleKey,
       moduleName: group.businessCategory,
+      legacyModuleName: group.moduleName,
       priority: 300,
     });
   }
@@ -489,6 +491,7 @@ export function buildSeedModuleMappings(resolved: ResolvedDts): DtsPowerSeedModu
       matchKind: "node-type",
       matchValue: nodeTypeKey,
       moduleName: businessNames.has(moduleName) ? moduleName : businessCategoryForNodePath(nodeType.nodePath),
+      legacyModuleName: nodeType.moduleName,
       priority: 500,
     });
   }

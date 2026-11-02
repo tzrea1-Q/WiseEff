@@ -1281,7 +1281,6 @@ Constraints:
 
 - `module_structure_migration_ma_registration_id_organization_fkey`: FOREIGN KEY (registration_id, organization_id) REFERENCES parameter_catalog.organization_subject_registrations(id, organization_id) ON DELETE RESTRICT
 - `module_structure_migration_map_detail_check`: CHECK ((jsonb_typeof(detail) = 'object'::text))
-- `module_structure_migration_map_module_id_organization_id_fkey`: FOREIGN KEY (module_id, organization_id) REFERENCES parameter_modules(id, organization_id) ON DELETE RESTRICT
 - `module_structure_migration_map_organization_id_fkey`: FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT
 - `module_structure_migration_map_pkey`: PRIMARY KEY (id)
 
@@ -5898,7 +5897,7 @@ Constraints:
 - `parameter_modules_kind_check`: CHECK ((kind = ANY (ARRAY['business'::text, 'driver-group'::text, 'node-type'::text, 'unclassified'::text])))
 - `parameter_modules_organization_id_fkey`: FOREIGN KEY (organization_id) REFERENCES organizations(id)
 - `parameter_modules_origin_check`: CHECK ((origin = ANY (ARRAY['curated'::text, 'auto'::text])))
-- `parameter_modules_parent_id_fkey`: FOREIGN KEY (parent_id) REFERENCES parameter_modules(id) ON DELETE RESTRICT
+- `parameter_modules_parent_id_fkey`: FOREIGN KEY (parent_id) REFERENCES parameter_modules(id) ON DELETE SET NULL
 - `parameter_modules_pkey`: PRIMARY KEY (id)
 - `parameter_modules_subject_kind_check`: CHECK ((((kind = ANY (ARRAY['driver-group'::text, 'node-type'::text])) AND (attribution_subject_id IS NOT NULL)) OR ((kind = ANY (ARRAY['business'::text, 'unclassified'::text])) AND (attribution_subject_id IS NULL))))
 
@@ -5906,7 +5905,7 @@ Indexes:
 
 - `parameter_modules_attribution_subject_idx`: INDEX parameter_modules_attribution_subject_idx ON public.parameter_modules USING btree (attribution_subject_id) WHERE (attribution_subject_id IS NOT NULL)
 - `parameter_modules_org_parent_idx`: INDEX parameter_modules_org_parent_idx ON public.parameter_modules USING btree (organization_id, parent_id, sort_order)
-- `parameter_modules_org_parent_name_unique_idx`: UNIQUE INDEX parameter_modules_org_parent_name_unique_idx ON public.parameter_modules USING btree (organization_id, COALESCE(parent_id, ''::text), name)
+- `parameter_modules_org_parent_name_unique_idx`: UNIQUE INDEX parameter_modules_org_parent_name_unique_idx ON public.parameter_modules USING btree (organization_id, COALESCE(parent_id, ''::text), name) WHERE (archived_at IS NULL)
 - `parameter_modules_org_path_idx`: INDEX parameter_modules_org_path_idx ON public.parameter_modules USING btree (organization_id, path)
 - `parameter_modules_org_source_key_unique_idx`: UNIQUE INDEX parameter_modules_org_source_key_unique_idx ON public.parameter_modules USING btree (organization_id, source_key) WHERE (source_key IS NOT NULL)
 

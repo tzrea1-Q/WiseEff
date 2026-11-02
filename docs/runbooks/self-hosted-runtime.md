@@ -127,6 +127,8 @@ npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --a
 
 Omitting the mode defaults to preflight. Use `--all` in place of `--organization <organization-id>` to process organizations independently. Apply rechecks under organization locks and commits each organization in its own audited transaction; a failure rolls back that organization. Empty technical modules are archived for history. Unregistered owners, missing business ancestors and unmigrated recognition rules are reported without guessing. Inconsistent ownership evidence remains standalone and must be reviewed through the claim report. The migration preserves registration, subject, Binding, value and definition identities. Repeat preflight after resolving conflicts; a completed rerun makes no changes.
 
+A module with an unmigrated recognition rule remains visible and continues to appear in preflight until the rule is resolved. If an otherwise empty business module is deleted later, its archived children remain available by ID with their recorded paths; their parent link is cleared. Active children still prevent deletion.
+
 ## Import Demo Seed Data
 
 For internal staging or demo hosts only:

@@ -49,6 +49,7 @@ export type RegisterSubjectCommand = {
   readonly destinationModuleId: string;
   readonly newDestination?: { readonly parentModuleId: string; readonly name: string };
   readonly method: "explicit" | "automatic" | "review";
+  readonly displayAlias?: string;
   readonly proof: RegistrationProof;
   readonly idempotencyKey: string;
   readonly context: TrustedInvocationContext;
@@ -149,6 +150,10 @@ export const validateRegistrationCommand = (
   }
 
   if (command.kind === "register") {
+    if (command.displayAlias !== undefined) {
+      if (command.method !== "automatic" || command.context.actorKind !== "trusted-system" || command.context.principalId !== "seed-initialization") return permissionDenied(command.context.actorKind, "seed-display-alias");
+      if (!controlFree(command.displayAlias) || Array.from(command.displayAlias).length > 128) return invalid("displayAlias");
+    }
     if (!controlFree(command.destinationModuleId)) {
       return invalid("destinationModuleId");
     }
@@ -253,6 +258,7 @@ const commandFingerprintModel = (command: RegistrationCommand): ContractJsonValu
         destinationModuleId: command.destinationModuleId,
         ...(command.newDestination ? { newDestination: { ...command.newDestination } } : {}),
         method: command.method,
+        ...(command.displayAlias !== undefined ? { displayAlias: command.displayAlias } : {}),
         proof: command.proof,
         context: actor,
       };

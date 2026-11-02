@@ -30,6 +30,8 @@ import { produceDtsReviewEvidenceInTransaction } from "../parameter-governance/e
 import { subjectMatcherRevision } from "../catalog-kernel/runtime/subjectMatch";
 import { stabilizeCanonicalBinding } from "./binding/service";
 import { lockOrganizationModuleRecognition, lockOrganizationSubjectRegistration } from "../parameter-modules/recognitionLock";
+import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
+import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 
 const ORG = "owner-integration-org";
 const PROJECT = "owner-integration-project";
@@ -193,7 +195,9 @@ describe("driver-scoped child ownership", () => {
     const charge = await createParameterModule(root, { organizationId, parentId: power.id, name: "充电", kind: "business" });
     const chargeTest = await createParameterModule(root, { organizationId, parentId: charge.id, name: "充电测试", kind: "business" });
     const balance = await createParameterModule(root, { organizationId, parentId: charge.id, name: "充电均衡", kind: "business" });
-    const typed = await createParameterModule(root, { organizationId, parentId: chargeTest.id, name: "charge_mode_test", kind: "node-type" });
+    const typed = await createParameterModule(root, { organizationId, parentId: chargeTest.id, name: "charge_mode_test", kind: "node-type", sourceKey: "nodetype:battery1" });
+    await pool.query(`insert into public.parameter_module_mappings(id,organization_id,parameter_module_id,match_kind,match_value)
+      values ('s4-battery-legacy-map',$1,$2,'node-type','battery1')`, [organizationId, typed.id]);
     const writer = await pool.connect();
     try {
       await writer.query("begin");
@@ -257,6 +261,14 @@ describe("driver-scoped child ownership", () => {
       join parameter_catalog.registration_effective_module effective on effective.registration_id=registration.id
       join public.parameter_modules module on module.id=$2 where registration.organization_id=$1 and registration.subject_id='s4-battery1'`,
     [organizationId, typed.id])).rows).toEqual([{ module_id: null, effective_module_id: balance.id, archived: true, display_alias: null }]);
+    expect(await resolveAttributionModuleForBinding(root, { organizationId, driverModule: null, compatible: null,
+      instanceName: "battery1", nodeLocator: "/battery_charge_balance/battery1", attributionSubjectId: typed.attributionSubjectId })).toBe(balance.id);
+    expect(await resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" })).toBe(balance.id);
+    await pool.query(`insert into public.module_recognition_rules(organization_id,module_id,canonical_subject_id,node_type_name)
+      values ($1,$2,'s4-battery1','battery1')`, [organizationId, typed.id]);
+    await pool.query(`insert into public.registration_recognition_migration_map(organization_id,module_id,registration_id)
+      select $1,$2,id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='s4-battery1'`, [organizationId, typed.id]);
+    expect(await resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" })).toBe(balance.id);
     expect((await migrateModuleStructure(root, organizationId, true)).changes).toEqual([]);
   }, 120_000);
 
@@ -305,6 +317,67 @@ describe("driver-scoped child ownership", () => {
         .toMatchObject({ module_id: null, effective_module_id: ownerModule, archived: true });
       expect((await migrateModuleStructure(db, ORG, true)).changes).toEqual([]);
     } finally { await client.query("rollback"); client.release(); }
+  });
+
+  it("lets recognition updates finish before migration locks registration rows", async () => {
+    const organizationId = "owner-recognition-migration";
+    await pool.query("insert into organizations(id,name) values ($1,'Recognition concurrency')", [organizationId]);
+    const setup = await pool.connect();
+    try {
+      await setup.query("begin");
+      await setup.query("set constraints all deferred");
+      await setup.query(`insert into parameter_catalog.organization_subject_registrations
+        (id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
+        values ('recognition-lock-reg',$1,'csub_acme_power','active','explicit','{}','recognition-lock-placement')`, [organizationId]);
+      await setup.query(`insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin)
+        values ('recognition-lock-placement','recognition-lock-reg',$1,null,'curated')`, [organizationId]);
+      await setup.query("commit");
+    } finally { await setup.query("rollback"); setup.release(); }
+    const recognition = await pool.connect();
+    let migration: ReturnType<typeof migrateModuleStructure> | undefined;
+    try {
+      await recognition.query("begin");
+      await lockOrganizationModuleRecognition(recognition, organizationId);
+      const pid = (await recognition.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
+      migration = migrateModuleStructure(root, organizationId, true);
+      await vi.waitFor(async () => {
+        expect((await pool.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [pid])).rows.length).toBeGreaterThan(0);
+      }, { timeout: 5000, interval: 25 });
+      await recognition.query("set local statement_timeout='2s'");
+      await recognition.query(`insert into public.registration_recognition_rules
+        (organization_id,registration_id,driver_nature,instance_cardinality)
+        values ($1,'recognition-lock-reg','physical-device','multiple')`, [organizationId]);
+      await recognition.query("commit");
+      await migration;
+      migration = undefined;
+    } finally {
+      await recognition.query("rollback").catch(() => undefined);
+      if (migration) await migration.catch(() => undefined);
+      recognition.release();
+    }
+  });
+
+  it("ingests new nodes after their legacy driver module was archived", async () => {
+    const organizationId = "owner-post-migration";
+    const projectId = "owner-post-migration-project";
+    const userId = "owner-post-migration-user";
+    await pool.query("insert into organizations(id,name) values ($1,'Post migration')", [organizationId]);
+    await pool.query("insert into users(id,organization_id,name,email,title,is_active) values ($1,$2,'Post migration','post-migration@example.com','Admin',true)", [userId, organizationId]);
+    await pool.query("insert into projects(id,organization_id,name,code,status,initialization_status) values ($1,$2,'Post migration','POSTMIGRATION','active','initialized')", [projectId, organizationId]);
+    const business = await createParameterModule(root, { organizationId, name: "Business", kind: "business" });
+    const legacy = await createParameterModule(root, { organizationId, parentId: business.id, name: "power", kind: "driver-group", sourceKey: "compatible:acme,power" });
+    await migrateModuleStructure(root, organizationId, true);
+    expect((await pool.query("select archived_at is not null as archived from parameter_modules where id=$1", [legacy.id])).rows).toEqual([{ archived: true }]);
+    const localAuth = makeTestAuthContext({ userId, organizationId, permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"] });
+    const content = `/dts-v1/; / { first { compatible = "acme,power"; battery1 { weight = <11>; }; }; };`;
+    const set = await createConfigSet(root, localAuth, { projectId, name: "Post migration" });
+    const file = await uploadProjectParameterFile(root, store, localAuth, { projectId, fileName: "post.dts", bytes: Buffer.from(content) });
+    await addConfigSetFile(root, localAuth, { configSetId: set.id, fileId: file.file.id, role: "base", sortOrder: 0 });
+    await ingestConfigRevision(root, { organizationId, projectId, configSetId: set.id, entryFile: "post.dts",
+      includeSearchPaths: ["."], overlayOrder: [], members: [{ fileId: file.file.id, fileVersionId: file.version.id,
+        fileName: "post.dts", role: "base", sortOrder: 0, content }] }, localAuth);
+    expect((await pool.query("select count(*)::int as count from parameter_modules where organization_id=$1 and kind in ('driver-group','node-type') and archived_at is null", [organizationId])).rows)
+      .toEqual([{ count: 0 }]);
   });
 
   it("serializes concurrent registration behind an organization migration", async () => {
@@ -451,6 +524,45 @@ describe("driver-scoped child ownership", () => {
     const restored = await service.execute({ ...command, kind: "restore", idempotencyKey: "auto-restore" });
     expect(restored.ok).toBe(true);
     expect((await pool.query("select id,registration_id from parameter_catalog.project_parameter_bindings where organization_id=$1", [organizationId])).rows).toEqual(bindings);
+  });
+
+  it("gives fresh and upgraded root registrations the same legacy alias", async () => {
+    const freshOrg = "owner-alias-fresh";
+    const upgradedOrg = "owner-alias-upgraded";
+    await pool.query("insert into organizations(id,name) values ($1,'Fresh alias'),($2,'Upgraded alias')", [freshOrg, upgradedOrg]);
+    const freshBusiness = await createParameterModule(root, { organizationId: freshOrg, name: "Business" });
+    const upgradedBusiness = await createParameterModule(root, { organizationId: upgradedOrg, name: "Business" });
+    const legacy = await createParameterModule(root, { organizationId: upgradedOrg, parentId: upgradedBusiness.id,
+      name: "Power label", kind: "driver-group" });
+    const pin = { id: predecessorArtifact.targetReleaseId, digest: predecessorArtifact.targetReleaseDigest };
+    await ensureSeedSubjectRegistrations(root, auth, { organizationId: freshOrg, currentRelease: pin, seedDigest: "alias-seed", projectId: PROJECT,
+      subjects: [{ subjectId: "csub_acme_power", subjectKind: "driver", destinationModuleId: freshBusiness.id, displayAlias: "Power label" }] });
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const result = await writeGuardedRegistration(client, { kind: "register", organizationId: upgradedOrg,
+        subjectId: CatalogSubjectId("csub_acme_power"), subjectKind: "driver", expectedRelease: pin,
+        placement: { mode: "use-default" }, destinationModuleId: upgradedBusiness.id, method: "explicit", proof: {},
+        idempotencyKey: "alias-upgrade", context: { actorKind: "org-admin", principalId: USER } });
+      if (!result.ok) throw new Error(JSON.stringify(result.error));
+      await client.query("set constraints all immediate");
+      await client.query("alter table parameter_catalog.subject_placements disable trigger subject_placement_kind_ck");
+      await client.query("update parameter_catalog.subject_placements set module_id=$1 where id=$2", [legacy.id, result.value.placementId]);
+      await client.query("alter table parameter_catalog.subject_placements enable trigger subject_placement_kind_ck");
+      await client.query("commit");
+    } finally { await client.query("rollback"); client.release(); }
+    await migrateModuleStructure(root, upgradedOrg, true);
+    const aliases = await pool.query(`select organization_id,subject_id,display_alias from parameter_catalog.organization_subject_registrations
+      where organization_id=any($1::text[]) order by organization_id,subject_id`, [[freshOrg, upgradedOrg]]);
+    expect(aliases.rows.filter((row) => row.organization_id === freshOrg).map(({ subject_id, display_alias }) => ({ subject_id, display_alias })))
+      .toEqual(aliases.rows.filter((row) => row.organization_id === upgradedOrg).map(({ subject_id, display_alias }) => ({ subject_id, display_alias })));
+    expect(aliases.rows).toContainEqual({ organization_id: freshOrg, subject_id: "csub_acme_power", display_alias: "Power label" });
+    expect((await pool.query("select metadata from public.audit_events where organization_id=$1 and action='registration-register'", [freshOrg])).rows)
+      .toContainEqual({ metadata: expect.objectContaining({ requestedDisplayAlias: "Power label", aliasSubjectId: "csub_acme_power" }) });
+    await ensureSeedSubjectRegistrations(root, auth, { organizationId: freshOrg, currentRelease: pin, seedDigest: "alias-seed", projectId: PROJECT,
+      subjects: [{ subjectId: "csub_acme_power", subjectKind: "driver", destinationModuleId: freshBusiness.id, displayAlias: "Different" }] });
+    expect((await pool.query("select display_alias from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_power'", [freshOrg])).rows)
+      .toEqual([{ display_alias: "Power label" }]);
   });
 
   it("registers the owner and structural child for a seed observation", async () => {

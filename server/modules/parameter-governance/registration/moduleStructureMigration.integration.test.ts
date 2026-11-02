@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../../testing/testDatabase";
-import { listParameterModules, getParameterModuleById } from "../../parameters/parameterModuleRepository";
+import { listParameterModules, getParameterModuleById, getParameterModuleByName, createParameterModule, deleteParameterModule, updateParameterModule, moveParameterModule,
+  adoptParameterModuleSourceKey, reassertAutoParameterModuleKind } from "../../parameters/parameterModuleRepository";
 import { migrateModuleStructure } from "../../../../scripts/migrate-module-structure";
 import { pruneRuntimeDemoDriverGroupModules } from "../../../../scripts/reset-quality-runtime";
 import { readPlacementHintEvidence } from "./readRepository";
 import type pg from "pg";
+import { makeTestAuthContext } from "../../../testing/authContext";
+import { moveParameterModuleForAuth, updateParameterModuleForAuth } from "../../parameters/service";
+import { resolveModuleIdForBinding } from "../../parameter-modules/resolveModuleForBinding";
 
 describe("module structure migration schema", () => {
   let db: InMemoryTestDatabase;
@@ -44,6 +48,103 @@ describe("module structure migration schema", () => {
     expect(report.changes).toEqual([]);
     expect(report.conflicts).toEqual([]);
     expect((await db.query("select * from parameter_catalog.module_structure_migration_map")).rows).toEqual([]);
+  });
+
+  it("keeps unmatched recognition rules visible on repeated preflights", async () => {
+    await db.query(`insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,origin,source_key)
+      values ('rule-attr','s4-org','node-type-definition','Rule','curated','rule-attr')`);
+    await db.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
+      values ('rule-module','s4-org','Rule','rule-module',1,'node-type','curated','rule-attr')`);
+    await db.query(`insert into public.module_recognition_rules(organization_id,module_id,node_type_name)
+      values ('s4-org','rule-module','rule')`);
+    await migrateModuleStructure(db, 's4-org', true);
+    expect((await migrateModuleStructure(db, 's4-org', false)).conflicts).toContainEqual(
+      expect.objectContaining({ action: 'unmigrated-recognition-rule', moduleId: 'rule-module' }));
+    expect((await listParameterModules(db, { organizationId: 's4-org' })).map((m) => m.id)).toContain('rule-module');
+  });
+
+  it("routes legacy mappings and rules on archived modules to an active business ancestor", async () => {
+    const business = await createParameterModule(db, { organizationId: "s4-org", name: "Business" });
+    const legacy = await createParameterModule(db, { organizationId: "s4-org", name: "Legacy", kind: "driver-group", parentId: business.id });
+    await db.query(`insert into parameter_module_mappings(id,organization_id,parameter_module_id,match_kind,match_value)
+      values ('archived-map','s4-org',$1,'compatible','vendor,old')`, [legacy.id]);
+    await db.query("update parameter_modules set archived_at=now() where id=$1", [legacy.id]);
+    const input = { organizationId: "s4-org", driverModule: null, compatible: "vendor,old", nodeType: null };
+    expect(await resolveModuleIdForBinding(db, input)).toBe(business.id);
+    await db.query(`insert into public.module_recognition_rules(organization_id,module_id,compatibles,driver_nature,instance_cardinality)
+      values ('s4-org',$1,array['vendor,new'],'physical-device','multiple')`, [legacy.id]);
+    expect(await resolveModuleIdForBinding(db, { ...input, compatible: 'vendor,new' })).toBe(business.id);
+  });
+
+  it("archives nested technical modules and preserves them when their business parent is deleted", async () => {
+    await db.query(`insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,origin,source_key)
+      values ('nested-attr-a','s4-org','driver-registration','A','curated','nested-attr-a'),
+        ('nested-attr-b','s4-org','node-type-definition','B','curated','nested-attr-b')`);
+    await db.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin)
+      values ('nested-business','s4-org','Business','nested-business',1,'business','curated')`);
+    await db.query(`insert into public.parameter_modules(id,organization_id,parent_id,name,path,depth,kind,origin,attribution_subject_id)
+      values ('nested-a','s4-org','nested-business','A','nested-business/nested-a',2,'driver-group','curated','nested-attr-a'),
+        ('nested-b','s4-org','nested-a','B','nested-business/nested-a/nested-b',3,'node-type','curated','nested-attr-b')`);
+    await migrateModuleStructure(db, 's4-org', true);
+    expect((await db.query("select id from public.parameter_modules where id in ('nested-a','nested-b') and archived_at is not null order by id")).rows)
+      .toEqual([{ id: 'nested-a' }, { id: 'nested-b' }]);
+    expect((await migrateModuleStructure(db, 's4-org', false)).conflicts).toEqual([]);
+    expect(await deleteParameterModule(db, { organizationId: 's4-org', moduleId: 'nested-business' })).toBe(true);
+    expect((await db.query("select parent_id,path from public.parameter_modules where id='nested-a'")).rows)
+      .toEqual([{ parent_id: null, path: 'nested-business/nested-a' }]);
+  });
+
+  it("does not mutate archived modules through repository operations", async () => {
+    const auth = makeTestAuthContext({ organizationId: 's4-org', permissions: ['parameter:edit', 'admin:access'] });
+    await expect(updateParameterModuleForAuth(db, auth, 's4-archived', { name: 'Changed' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(moveParameterModuleForAuth(db, auth, 's4-archived', { parentId: null })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(await updateParameterModule(db, { organizationId: 's4-org', moduleId: 's4-archived', name: 'Changed' })).toBeNull();
+    expect(await moveParameterModule(db, { organizationId: 's4-org', moduleId: 's4-archived', parentId: null })).toBeNull();
+    expect(await deleteParameterModule(db, { organizationId: 's4-org', moduleId: 's4-archived' })).toBe(false);
+    expect(await adoptParameterModuleSourceKey(db, { organizationId: 's4-org', moduleId: 's4-archived', sourceKey: 'changed' })).toBeNull();
+    await db.query("update public.parameter_modules set origin='auto' where id='s4-archived'");
+    expect(await reassertAutoParameterModuleKind(db, { organizationId: 's4-org', moduleId: 's4-archived', kind: 'node-type' })).toBeNull();
+    expect((await getParameterModuleById(db, { organizationId: 's4-org', moduleId: 's4-archived' }))?.name).toBe('Archived');
+  });
+
+  it("still rejects deleting a business module with an active child", async () => {
+    await db.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin)
+      values ('active-business','s4-org','Business','active-business',1,'business','curated')`);
+    await db.query(`insert into public.parameter_modules(id,organization_id,parent_id,name,path,depth,kind,origin)
+      values ('active-child','s4-org','active-business','Child','active-business/active-child',2,'business','curated')`);
+    await expect(deleteParameterModule(db, { organizationId: 's4-org', moduleId: 'active-business' }))
+      .rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(db.transaction((tx) => tx.query("delete from public.parameter_modules where id='active-business'")))
+      .rejects.toMatchObject({ code: '23503', constraint: 'parameter_module_active_children_ck' });
+  });
+
+  it("does not detach a historical child belonging to another organization", async () => {
+    await db.query("insert into public.organizations(id,name) values ('foreign-history','Foreign')");
+    await db.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin)
+      values ('foreign-parent','s4-org','Parent','foreign-parent',1,'business','curated')`);
+    await db.query("alter table public.parameter_modules disable trigger parameter_module_active_parent");
+    await db.query(`insert into public.parameter_modules(id,organization_id,parent_id,name,path,depth,kind,origin,archived_at)
+      values ('foreign-child','foreign-history','foreign-parent','Child','foreign-parent/foreign-child',2,'business','curated',now())`);
+    await db.query("alter table public.parameter_modules enable trigger parameter_module_active_parent");
+    await expect(db.transaction((tx) => tx.query("delete from public.parameter_modules where id='foreign-parent'")))
+      .rejects.toMatchObject({ code: '23503', constraint: 'parameter_module_active_children_ck' });
+    expect((await db.query("select parent_id from public.parameter_modules where id='foreign-child'")).rows)
+      .toEqual([{ parent_id: 'foreign-parent' }]);
+  });
+
+  it("retains same-named archived children when both business parents are deleted", async () => {
+    await db.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin)
+      values ('history-parent-a','s4-org','A','history-parent-a',1,'business','curated'),
+        ('history-parent-b','s4-org','B','history-parent-b',1,'business','curated')`);
+    await db.query(`insert into public.parameter_modules(id,organization_id,parent_id,name,path,depth,kind,origin,archived_at)
+      values ('history-child-a','s4-org','history-parent-a','Same','history-parent-a/history-child-a',2,'business','curated',now()),
+        ('history-child-b','s4-org','history-parent-b','Same','history-parent-b/history-child-b',2,'business','curated',now())`);
+    expect(await deleteParameterModule(db, { organizationId: 's4-org', moduleId: 'history-parent-a' })).toBe(true);
+    expect(await deleteParameterModule(db, { organizationId: 's4-org', moduleId: 'history-parent-b' })).toBe(true);
+    const active = await createParameterModule(db, { organizationId: 's4-org', name: 'Same' });
+    expect(await getParameterModuleByName(db, { organizationId: 's4-org', name: 'Same' })).toMatchObject({ id: active.id });
+    expect((await db.query("select id,parent_id from public.parameter_modules where id in ('history-child-a','history-child-b') order by id")).rows)
+      .toEqual([{ id: 'history-child-a', parent_id: null }, { id: 'history-child-b', parent_id: null }]);
   });
 
   it("reports unresolved owners, ancestors and recognition rules without moving them or another organization", async () => {
@@ -150,6 +251,8 @@ describe("module structure migration schema", () => {
     await db.query(`insert into public.parameter_modules(id,organization_id,parent_id,name,path,depth,kind,origin)
       values ('s4-nested','s4-org','s4-typed','Nested','s4-business/s4-typed/s4-nested',3,'business','curated'),
         ('s4-deeper','s4-org','s4-nested','Deeper','s4-business/s4-typed/s4-nested/s4-deeper',4,'business','curated')`);
+    await db.query(`insert into public.parameter_modules(id,organization_id,parent_id,name,path,depth,kind,origin,archived_at)
+      values ('s4-historical','s4-org','s4-nested','Historical','s4-business/s4-typed/s4-nested/s4-historical',4,'business','curated',now())`);
     await db.query(`insert into parameter_catalog.organization_subject_registrations
       (id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
       values ('s4-registration','s4-org','s4-driver','active','explicit','{}','s4-placement')`);
@@ -193,6 +296,8 @@ describe("module structure migration schema", () => {
       { id: "s4-deeper", parent_id: "s4-nested", path: "s4-business/s4-nested/s4-deeper", depth: 3 },
       { id: "s4-nested", parent_id: "s4-business", path: "s4-business/s4-nested", depth: 2 },
     ]);
+    expect((await db.query("select path from public.parameter_modules where id='s4-historical'")).rows)
+      .toEqual([{ path: 's4-business/s4-typed/s4-nested/s4-historical' }]);
     expect((await db.query(`select placement.id,placement.module_id,registration.display_alias,module.archived_at is not null as archived
       from parameter_catalog.subject_placements placement
       join parameter_catalog.organization_subject_registrations registration on registration.id=placement.registration_id
@@ -200,6 +305,9 @@ describe("module structure migration schema", () => {
       { id: "s4-placement", module_id: "s4-business", display_alias: "Legacy name", archived: true },
     ]);
     expect((await migrateModuleStructure(db, "s4-org", true)).changes).toEqual([]);
+    expect(await deleteParameterModule(db, { organizationId: 's4-org', moduleId: 's4-deeper' })).toBe(true);
+    expect((await db.query("select module_id from parameter_catalog.module_structure_migration_map where module_id='s4-deeper'")).rows)
+      .toEqual([{ module_id: 's4-deeper' }]);
     expect((await db.query<{ count: number }>("select count(*)::int as count from public.audit_events where organization_id='s4-org' and kind='module-structure-migrated'")).rows[0]!.count).toBe(1);
     expect((await db.query<{ archived_at: Date | null }>("select archived_at from public.parameter_modules where id='s4-other-module'")).rows[0]!.archived_at).toBeNull();
     await expect(db.query("update parameter_catalog.subject_placements set module_id='s4-archived' where id='s4-placement'"))

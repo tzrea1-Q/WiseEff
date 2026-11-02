@@ -109,6 +109,7 @@ export async function getParameterModuleByName(
     where organization_id = $1
       and name = $2
       and coalesce(parent_id, '') = coalesce($3::text, '')
+      and archived_at is null
     limit 1
     `,
     [query.organizationId, query.name, parentId]
@@ -155,6 +156,7 @@ export async function adoptParameterModuleSourceKey(
       updated_at = now()
     where organization_id = $1
       and id = $2
+      and archived_at is null
     returning ${parameterModuleColumns}
     `,
     [
@@ -188,6 +190,7 @@ export async function reassertAutoParameterModuleKind(
       updated_at = now()
     where organization_id = $1
       and id = $2
+      and archived_at is null
       and origin = 'auto'
       and kind <> $3
     returning ${parameterModuleColumns}
@@ -197,6 +200,7 @@ export async function reassertAutoParameterModuleKind(
   return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;
 }
 
+/** Count active children; archived children are retained historical references. */
 export async function countParameterModuleChildren(
   db: Queryable,
   query: { organizationId: string; moduleId: string }
@@ -207,6 +211,7 @@ export async function countParameterModuleChildren(
     from parameter_modules
     where organization_id = $1
       and parent_id = $2
+      and archived_at is null
     `,
     [query.organizationId, query.moduleId]
   );
@@ -345,7 +350,8 @@ export async function updateParameterModule(
 ) {
   const existing = await getParameterModuleById(db, {
     organizationId: input.organizationId,
-    moduleId: input.moduleId
+    moduleId: input.moduleId,
+    activeOnly: true
   });
   if (!existing) {
     return null;
@@ -381,6 +387,7 @@ export async function updateParameterModule(
       updated_at = now()
     where organization_id = $1
       and id = $2
+      and archived_at is null
     returning ${parameterModuleColumns}
     `,
     [
@@ -504,7 +511,8 @@ async function reparentParameterModule(
   await lockParameterModuleTree(db, input.organizationId);
   const node = await getParameterModuleById(db, {
     organizationId: input.organizationId,
-    moduleId: input.moduleId
+    moduleId: input.moduleId,
+    activeOnly: true
   });
   if (!node) {
     return null;
@@ -556,6 +564,7 @@ async function reparentParameterModule(
       end,
       updated_at = now()
     where organization_id = $1
+      and archived_at is null
       and (id = $2 or path like $5 || '/%')
     `,
     [
@@ -579,7 +588,7 @@ export async function deleteParameterModule(
   db: Queryable,
   input: { organizationId: string; moduleId: string }
 ) {
-  const existing = await getParameterModuleById(db, { ...input, forUpdate: true });
+  const existing = await getParameterModuleById(db, { ...input, forUpdate: true, activeOnly: true });
   if (!existing) {
     return false;
   }

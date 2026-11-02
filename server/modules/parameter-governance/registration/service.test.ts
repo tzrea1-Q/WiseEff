@@ -89,6 +89,19 @@ const databaseError = (code: string, detail: string): pg.DatabaseError => {
 };
 
 describe("S4-REG public command contract", () => {
+  it("limits seed aliases to validated seed registration commands and fingerprints them", () => {
+    expect(validateRegistrationCommand(registerCommand({ displayAlias: "Legacy" })))
+      .toMatchObject({ ok: false, error: { kind: "permission-denied" } });
+    const seed = registerCommand({ method: "automatic", context: { actorKind: "trusted-system", principalId: "seed-initialization" }, displayAlias: "Legacy" });
+    expect(validateRegistrationCommand(seed)).toMatchObject({ ok: true });
+    for (const alias of [" ", "invalid\nalias", "x".repeat(129)]) {
+      expect(validateRegistrationCommand({ ...seed, displayAlias: alias })).toMatchObject({ ok: false, error: { kind: "invalid-command" } });
+    }
+    expect(validateRegistrationCommand({ ...seed, context: { actorKind: "trusted-system", principalId: "another-job" } }))
+      .toMatchObject({ ok: false, error: { kind: "permission-denied" } });
+    expect(fingerprintRegistrationCommand(seed)).not.toBe(fingerprintRegistrationCommand({ ...seed, displayAlias: "Different" }));
+  });
+
   it("limits first removal to human administrators with an exact subject and bounded reason", () => {
     const command = { kind: "retire-unregistered" as const, organizationId: "org-s4-reg",
       subjectId: CatalogSubjectId("csub_acme_power"), expectedRelease: pin, idempotencyKey: "remove-unregistered",

@@ -48,6 +48,7 @@ describe("administrator module metadata through the API database role", () => {
     // Current module writers read this column while constructing the pre-0320
     // fixture; remove it again before applying the actual 0324 migration.
     await ownerDb.query("alter table public.parameter_modules add column archived_at timestamptz");
+    await ownerDb.query("alter table parameter_catalog.organization_subject_registrations add column display_alias text");
     pool = new pg.Pool({ connectionString: database.url, max: 4 });
     const chain = await installPublishedCatalogChain(pool);
     const bundle = nodeTypeAndSecondDriverSuccessorBundle();
@@ -125,6 +126,7 @@ describe("administrator module metadata through the API database role", () => {
     migrationPool.on("acquire", observeNotices);
     try {
       await ownerDb.query("alter table public.parameter_modules drop column archived_at");
+      await ownerDb.query("alter table parameter_catalog.organization_subject_registrations drop column display_alias");
       await applyMigrations(ownerDb, migrationsDir);
     } finally {
       migrationPool.off("acquire", observeNotices);

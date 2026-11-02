@@ -47,6 +47,9 @@ export async function auditRegistration(client: pg.PoolClient, command: Registra
     ...(trusted.invocation.initiator === "system" ? { organizationId: command.organizationId } : {}),
     metadata: { catalogReleaseId: command.expectedRelease.id, actorKind: context.actorKind, ...(batchId ? { batchId } : {}),
       ...(result.cascadedRegistrations?.length ? { cascadedRegistrations: result.cascadedRegistrations } : {}),
+      ...(command.kind === "register" && command.displayAlias ? {
+        requestedDisplayAlias: command.displayAlias, aliasSubjectId: result.ownerSubjectId ?? result.subjectId,
+      } : {}),
       ...(command.kind === "move-placement" && command.replacement && result.replacement ? {
         reason: command.replacement.reason,
         source: { registrationId: result.registrationId, placementId: result.placementId,

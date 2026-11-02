@@ -38,7 +38,7 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
   db: Database,
   auth: AuthContext,
   input: { readonly organizationId: string; readonly seedDigest: string;
-    readonly moduleMappings?: readonly { readonly matchKind: "compatible" | "node-type"; readonly matchValue: string; readonly moduleName: string }[];
+    readonly moduleMappings?: readonly { readonly matchKind: "compatible" | "node-type"; readonly matchValue: string; readonly moduleName: string; readonly legacyModuleName?: string }[];
     readonly defaultModuleName?: string },
 ): Promise<CanonicalAfterLegacyResult> {
   const pool = getRootPostgresPool(db);
@@ -59,7 +59,7 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
     return { catalogReleaseId: null, written: {}, skipped: [...TARGET_PROJECTS] };
   }
   const modules = input.moduleMappings ? await listParameterModules(db, { organizationId: input.organizationId }) : [];
-  const mappings = new Map(input.moduleMappings?.map((mapping) => [`${mapping.matchKind}:${mapping.matchValue}`, mapping.moduleName]));
+  const mappings = new Map(input.moduleMappings?.map((mapping) => [`${mapping.matchKind}:${mapping.matchValue}`, mapping]));
 
   const written: Record<string, number> = {};
   const skipped: string[] = [];
@@ -89,11 +89,13 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
     const routed = observed.map((subject) => {
       const result = snapshot.getSubject(CatalogSubjectId(subject.ownerSubjectId ?? subject.subjectId));
       if (result.status !== "found" && result.status !== "retired") return subject;
-      const name = mappings.get(`${result.subject.kind === "driver" ? "compatible" : "node-type"}:${result.subject.canonicalKey}`)
-        ?? input.defaultModuleName;
+      const mapping = mappings.get(`${result.subject.kind === "driver" ? "compatible" : "node-type"}:${result.subject.canonicalKey}`);
+      const name = mapping?.moduleName ?? input.defaultModuleName;
       if (!name) return input.moduleMappings ? { ...subject, destinationModuleId: null } : subject;
       const destinations = modules.filter((module) => module.kind === "business" && module.name === name);
-      return { ...subject, destinationModuleId: destinations.length === 1 ? destinations[0]!.id : null };
+      const displayAlias = mapping?.legacyModuleName;
+      return { ...subject, destinationModuleId: destinations.length === 1 ? destinations[0]!.id : null,
+        ...(displayAlias && displayAlias !== result.subject.canonicalKey ? { displayAlias } : {}) };
     });
     const registration = await ensureSeedSubjectRegistrations(db, auth, {
       organizationId: input.organizationId,

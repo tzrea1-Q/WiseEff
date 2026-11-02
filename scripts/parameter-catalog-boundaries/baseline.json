@@ -235,10 +235,6 @@
       "legacy-catalog-raw-read": 3,
       "legacy-catalog-sql-write": 4
     },
-    "server/modules/parameter-modules/ensureAttributionModuleForBinding.ts": {
-      "legacy-catalog-raw-read": 6,
-      "legacy-catalog-sql-write": 3
-    },
     "server/modules/parameter-modules/recognitionSettings.ts": {
       "legacy-catalog-raw-read": 4
     },

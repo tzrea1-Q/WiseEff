@@ -25,7 +25,7 @@ import { parseCompatibles, resolveObservedSubject } from "../catalogProjectValue
 import { getRootPostgresPool } from "../../../shared/database/client";
 
 export type ObservedSubject = { readonly subjectId: string; readonly subjectKind: string; readonly ownerSubjectId?: string;
-  readonly destinationModuleId?: string | null };
+  readonly destinationModuleId?: string | null; readonly displayAlias?: string };
 
 export type SeedRegistrationOutcome = {
   readonly registered: readonly string[];
@@ -143,6 +143,7 @@ export async function ensureSeedSubjectRegistrations(
       placement: { mode: "use-default" },
       destinationModuleId,
       method: "automatic",
+      ...(subject.displayAlias ? { displayAlias: subject.displayAlias } : {}),
       proof: {
         source: "seed-initialization",
         seedDigest: input.seedDigest,

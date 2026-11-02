@@ -32,6 +32,7 @@ import { dtsValueToPayload } from "../catalogProjectValueSync";
 import { firstReleaseBundle } from "../../../testing/parameterCatalog/cutoverPopulatedFixture";
 import { assertCanonicalValueConstraints } from "./service";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../seedInitialization/seedCanonicalAfterLegacy";
+import { migrateModuleStructure } from "../../../../scripts/migrate-module-structure";
 
 const definitionId = ParameterDefinitionId("pdef_drv_sc8562_gpio_int");
 const revisionId = DefinitionRevisionId("drev_drv_sc8562_gpio_int_3");
@@ -236,17 +237,21 @@ describe("published vendor constraint enforcement", () => {
       expect(before[0]!.bindings).toBeGreaterThan(0);
       expect(before[0]!.values).toBeGreaterThan(0);
       expect(before[0]!.history).toBeGreaterThan(0);
-      const routed = await freshDb.query(`select subject.canonical_key,module.name from parameter_catalog.organization_subject_registrations registration
+      const routed = await freshDb.query(`select subject.canonical_key,module.name,registration.display_alias from parameter_catalog.organization_subject_registrations registration
         join parameter_catalog.catalog_subjects subject on subject.id=registration.subject_id
         join parameter_catalog.registration_effective_module effective on effective.registration_id=registration.id
         join public.parameter_modules module on module.id=effective.module_id
         where registration.organization_id=$1 and subject.canonical_key in ('huawei,charging_core','huawei,battery_charge_balance')
         order by subject.canonical_key`, [seedAuth.organization.id]);
-      expect(routed.rows).toEqual([{ canonical_key: "huawei,battery_charge_balance", name: "Battery Balance" },
-        { canonical_key: "huawei,charging_core", name: "Charging Policy" }]);
+      expect(routed.rows).toEqual(["huawei,battery_charge_balance", "huawei,charging_core"].map((key) => ({
+        canonical_key: key, name: key === "huawei,battery_charge_balance" ? "Battery Balance" : "Charging Policy",
+        display_alias: moduleMappings.find((mapping) => mapping.matchKind === "compatible" && mapping.matchValue === key)!.legacyModuleName,
+      })));
       expect((await freshDb.query(`select count(*)::int as count from parameter_catalog.subject_placements placement
         join public.parameter_modules module on module.id=placement.module_id
         where placement.organization_id=$1 and module.kind in ('driver-group','node-type')`, [seedAuth.organization.id])).rows).toEqual([{ count: 0 }]);
+      expect((await freshDb.query(`select count(*)::int as count from public.parameter_modules
+        where organization_id=$1 and kind in ('driver-group','node-type')`, [seedAuth.organization.id])).rows).toEqual([{ count: 0 }]);
       const pins = await freshDb.query<{ effective_revision_id: string }>(`select effective_revision_id
         from parameter_catalog.project_parameter_bindings
         where definition_id in ('pdef_drv_sc8562_gpio_int','pdef_drv_mt_mt5788_gpio_int')
@@ -254,8 +259,11 @@ describe("published vendor constraint enforcement", () => {
       expect(pins.rows.map((pin) => pin.effective_revision_id)).toEqual([
         "drev_drv_mt_mt5788_gpio_int_3", "drev_drv_sc8562_gpio_int_3",
       ]);
+      expect((await migrateModuleStructure(freshDb, seedAuth.organization.id, true)).changes).toEqual([]);
       await seed();
       expect(await counts()).toEqual(before);
+      expect((await freshDb.query(`select count(*)::int as count from public.parameter_modules
+        where organization_id=$1 and kind in ('driver-group','node-type')`, [seedAuth.organization.id])).rows).toEqual([{ count: 0 }]);
     } finally {
       await freshDb.close();
       await fresh.drop();
