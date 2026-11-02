@@ -259,8 +259,8 @@ describe("legacy parameter plane archive", () => {
        insert into public.parameter_modules (
          id, organization_id, name, path, kind, origin, source_key, attribution_subject_id
        ) values (
-         'pmod_archive', 'org-plane-archive', 'Archive driver', 'pmod_archive', 'driver-group', 'curated',
-         'compatible:acme,archive', 'asub_archive'
+         'pmod_archive', 'org-plane-archive', 'Archive driver', 'pmod_archive', 'business', 'curated',
+         null, null
        );
        insert into parameter_catalog.catalog_releases (
          id, release_sequence, release_version, release_digest, compiled_model_digest,

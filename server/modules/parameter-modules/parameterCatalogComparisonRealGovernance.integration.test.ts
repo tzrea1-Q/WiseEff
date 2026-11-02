@@ -35,7 +35,7 @@ describe("MOD production comparison canonical Governance read", () => {
         if (suffix === "a") primaryBusinessModuleId = business.id;
         const module = await createParameterModule(pool, {
           organizationId, parentId: business.id, name: `Driver ${suffix}`,
-          kind: "driver-group", sourceKey: "compatible:acme,power",
+          kind: "business", sourceKey: "compatible:acme,power",
         });
         const registered = await registerParameterModuleComparisonDriver(pool, {
           organizationId, destinationModuleId: module.id, release: pin,
@@ -50,7 +50,7 @@ describe("MOD production comparison canonical Governance read", () => {
       for (let index = 0; index < 100; index += 1) {
         const organizationId = "mod-real-org-a";
         const module = await createParameterModule(pool, {
-          organizationId, parentId: primaryBusinessModuleId, name: `Driver page ${index}`, kind: "driver-group",
+          organizationId, parentId: primaryBusinessModuleId, name: `Driver page ${index}`, kind: "business",
           sourceKey: `compatible:mod-page-${index}`,
         });
         const registered = await registerParameterModuleComparisonDriver(pool, {
@@ -102,10 +102,7 @@ describe("MOD production comparison canonical Governance read", () => {
         const legacyModuleId = row.moduleId;
         const legacyCase = contribution.cases.find((entry) => entry.protectedReference.id === legacyModuleId
           && entry.protectedReference.kind === "subject-registration");
-        expect(legacyCase?.canonicalObservation).toMatchObject({ status: "value", value: {
-          organizationId: row.organizationId,
-          registration: { id: row.registrationId, placement: { moduleId: legacyModuleId } },
-        } });
+        expect(legacyCase).toBeUndefined();
       }
       expect(contribution.cases.filter((item) => pagedRegistrationIds.includes(item.protectedReference.id))).toHaveLength(100);
       expect(contribution.cases.filter((item) => item.canonicalObservation.status === "value"

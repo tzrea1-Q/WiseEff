@@ -270,8 +270,8 @@ describe("canonical project binding read chronology", () => {
     );
     await pool.query(
       `insert into parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id)
-       values ($1,$2,'Driver',$1,1,'driver-group','curated',$3)`,
-      [MODULE, ORG, ATTR]
+       values ($1,$2,'Driver',$1,1,'business','curated',null)`,
+      [MODULE, ORG]
     );
 
     // Source-first chronology: create the config set and upload the source

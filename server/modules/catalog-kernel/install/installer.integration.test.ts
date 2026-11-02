@@ -35,6 +35,8 @@ import {
 } from "./installer";
 import { acquireCurrentPointerLockExclusive } from "./lockProtocol";
 
+type Mutable<T> = T extends readonly (infer V)[] ? Mutable<V>[] : T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
+
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
   throw new Error(
@@ -62,9 +64,9 @@ if (!pgVectorInstalled) {
   );
 }
 
-const firstReleaseBundle = (): CatalogReleaseBundle => {
+const firstReleaseBundle = (): Mutable<CatalogReleaseBundle> => {
   const full = validCatalogReleaseBundle();
-  const first = structuredClone(full.releases[0]!);
+  const first = structuredClone(full.releases[0]!) as Mutable<CatalogReleaseNode>;
   return {
     schemaVersion: full.schemaVersion,
     targetReleaseId: first.manifest.release.id,
@@ -83,7 +85,7 @@ const compileOrThrow = (bundle: CatalogReleaseBundle) => {
 const sha256 = (bytes: string | Uint8Array): string =>
   `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
-const refreshReleaseSource = (release: CatalogReleaseNode): void => {
+const refreshReleaseSource = (release: Mutable<CatalogReleaseNode>): void => {
   for (const document of release.documents) {
     if (document.kind === "definition") {
       const revision = document.content.revision;
@@ -142,7 +144,7 @@ const competingSuccessorBundle = (
   version: string,
   publishedAt: string,
 ): CatalogReleaseBundle => {
-  const bundle = validCatalogReleaseBundle();
+  const bundle = validCatalogReleaseBundle() as Mutable<CatalogReleaseBundle>;
   const target = bundle.releases.find(
     (release) => release.manifest.release.id === bundle.targetReleaseId,
   );
@@ -156,13 +158,13 @@ const competingSuccessorBundle = (
 };
 
 const extraDefinitionSuccessorBundle = (): CatalogReleaseBundle => {
-  const bundle = validCatalogReleaseBundle();
+  const bundle = validCatalogReleaseBundle() as Mutable<CatalogReleaseBundle>;
   const target = bundle.releases.find(
     (release) => release.manifest.release.id === bundle.targetReleaseId,
   );
   if (!target) throw new Error("successor target missing");
   const definition = target.documents.find(
-    (document): document is CatalogReleaseDefinitionDocument =>
+    (document): document is Mutable<CatalogReleaseDefinitionDocument> =>
       document.kind === "definition",
   );
   if (!definition) throw new Error("successor definition missing");
@@ -185,13 +187,13 @@ const extraDefinitionSuccessorBundle = (): CatalogReleaseBundle => {
 };
 
 const changedDefinitionSuccessorBundle = (): CatalogReleaseBundle => {
-  const bundle = validCatalogReleaseBundle();
+  const bundle = validCatalogReleaseBundle() as Mutable<CatalogReleaseBundle>;
   const target = bundle.releases.find(
     (release) => release.manifest.release.id === bundle.targetReleaseId,
   );
   if (!target) throw new Error("successor target missing");
   const definition = target.documents.find(
-    (document): document is CatalogReleaseDefinitionDocument =>
+    (document): document is Mutable<CatalogReleaseDefinitionDocument> =>
       document.kind === "definition",
   );
   if (!definition) throw new Error("successor definition missing");
@@ -242,7 +244,7 @@ async function seedCandidateWrite(client: pg.Client, subjectId: string): Promise
     insert into public.parameter_modules (
       id, organization_id, name, path, depth, kind, origin, attribution_subject_id
     ) values (
-      'pmod-s3ins', 'org-s3ins', 'Driver', 'pmod-s3ins', 1, 'driver-group', 'curated', 'attr-s3ins'
+      'pmod-s3ins', 'org-s3ins', 'Driver', 'pmod-s3ins', 1, 'business', 'curated', null
     );
   `);
   await client.query(
@@ -563,7 +565,7 @@ describe("atomic Catalog install and pointer switch", () => {
                and wait_event_type = 'Lock'
                and wait_event = 'advisory'
            ) as waiting`,
-          [holder.processID],
+          [(holder as pg.Client & { processID: number }).processID],
         );
         if (waitingRow.rows[0]?.waiting) {
           sawWait = true;

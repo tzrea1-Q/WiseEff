@@ -4,6 +4,7 @@
  * should not duplicate their private compiler/registration SQL.
  */
 import type { Database } from "../../shared/database/client";
+import { randomUUID } from "node:crypto";
 import type { AuthContext } from "../../modules/auth/types";
 import { getRootPostgresPool } from "../../shared/database/client";
 import { validCatalogReleaseBundle } from "../../modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
@@ -16,6 +17,35 @@ import { writeGuardedRegistration } from "../../modules/parameter-governance/reg
 import type { RegisterSubjectCommand } from "../../modules/parameter-governance/registration/command";
 import { createParameterModuleForAuth } from "../../modules/parameters/service";
 import { createParameterModule } from "../../modules/parameters/parameterModuleRepository";
+import type pg from "pg";
+
+/** Seed a historical typed placement before 0320 so upgrade tests exercise real legacy rows. */
+export async function seedLegacySubjectPlacement(pool: pg.Pool, input: {
+  organizationId: string; subjectId: string; moduleId: string; reason: string;
+}): Promise<SubjectRegistrationId> {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("set constraints all deferred");
+    const applied = await client.query("select 1 from schema_migrations where name = '0320_placement_business_modules.sql'");
+    if (applied.rowCount) throw new Error("Legacy fixture must be seeded before migration 0320");
+    const registrationId = SubjectRegistrationId(`sreg-${randomUUID()}`);
+    const placementId = `spla-${randomUUID()}`;
+    await client.query(`insert into parameter_catalog.organization_subject_registrations
+      (id, organization_id, subject_id, status, registration_method, proof, current_placement_id)
+      values ($1, $2, $3, 'active', 'explicit', $4, $5)`,
+    [registrationId, input.organizationId, input.subjectId, JSON.stringify({ reason: input.reason }), placementId]);
+    await client.query(`insert into parameter_catalog.subject_placements
+      (id, registration_id, organization_id, module_id, origin) values ($1, $2, $3, $4, 'curated')`,
+    [placementId, registrationId, input.organizationId, input.moduleId]);
+    await client.query("set constraints all immediate");
+    await client.query("commit");
+    return registrationId;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally { client.release(); }
+}
 
 export async function seedHistoricalSingletonMapping(
   db: Database,
@@ -45,6 +75,7 @@ export async function installDriverSourceFixture(
     driverName: string;
     idempotencyKey: string;
     reason: string;
+    legacyPlacement?: boolean;
   },
 ): Promise<{ release: { id: string; digest: string }; driverModuleId: string }> {
   const pool = getRootPostgresPool(db);
@@ -85,21 +116,23 @@ export async function installDriverSourceFixture(
     subjectKind: "driver",
     expectedRelease: compiled.value.release,
     placement: { mode: "use-default" },
-    destinationModuleId: business.id,
+    destinationModuleId: input.legacyPlacement ? driver.id : business.id,
     method: "explicit",
     proof: { reason: input.reason },
     idempotencyKey: input.idempotencyKey,
     context: { actorKind: "org-admin", principalId: auth.user.id },
   };
+  if (input.legacyPlacement) {
+    await seedLegacySubjectPlacement(pool, { organizationId: auth.organization.id, subjectId: input.subjectId,
+      moduleId: driver.id, reason: input.reason });
+    return { release: compiled.value.release, driverModuleId: driver.id };
+  }
   const client = await pool.connect();
   try {
     await client.query("begin");
     await client.query("set constraints all deferred");
     const registration = await writeGuardedRegistration(client, command);
-    if (!registration.ok) {
-      await client.query("rollback");
-      throw new Error(JSON.stringify(registration.error));
-    }
+    if (!registration.ok) throw new Error(JSON.stringify(registration.error));
     await client.query("set constraints all immediate");
     await client.query("commit");
   } catch (error) {

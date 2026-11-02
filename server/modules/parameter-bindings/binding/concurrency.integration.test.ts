@@ -45,6 +45,8 @@ import {
 
 import { createSourceBackedBindingService, ensureSourceBackedBindingFixture } from "./__fixtures__/sourceBackedBinding";
 
+type Mutable<T> = T extends readonly (infer V)[] ? Mutable<V>[] : T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
+
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
   throw new Error(
@@ -99,7 +101,7 @@ const firstReleaseBundle = (): CatalogReleaseBundle => {
   };
 };
 
-const refreshReleaseSource = (release: CatalogReleaseNode): void => {
+const refreshReleaseSource = (release: Mutable<CatalogReleaseNode>): void => {
   for (const document of release.documents) {
     if (document.kind === "definition") {
       const revision = document.content.revision;
@@ -154,13 +156,13 @@ const refreshReleaseSource = (release: CatalogReleaseNode): void => {
 };
 
 const successorWithNewRevisionBundle = (): CatalogReleaseBundle => {
-  const bundle = structuredClone(validCatalogReleaseBundle());
+  const bundle = structuredClone(validCatalogReleaseBundle()) as Mutable<CatalogReleaseBundle>;
   const current = bundle.releases.find(
     (release) => release.manifest.release.id === bundle.targetReleaseId,
   );
   if (!current) throw new Error("successor release missing");
   const definition = current.documents.find(
-    (document): document is CatalogReleaseDefinitionDocument => document.kind === "definition",
+    (document): document is Mutable<CatalogReleaseDefinitionDocument> => document.kind === "definition",
   );
   if (!definition) throw new Error("successor definition missing");
   definition.content.revision.id = REVISION_2;
@@ -272,9 +274,9 @@ describe("canonical Binding independent-session races", () => {
       `insert into public.parameter_modules (
          id, organization_id, name, path, depth, kind, origin, attribution_subject_id
        ) values
-         ($1, $3, 'Driver A', $1, 1, 'driver-group', 'curated', $5),
-         ($2, $4, 'Driver B', $2, 1, 'driver-group', 'curated', $6)`,
-      [MODULE_A, MODULE_B, ORG_A, ORG_B, ATTR_A, ATTR_B],
+         ($1, $3, 'Driver A', $1, 1, 'business', 'curated', null),
+         ($2, $4, 'Driver B', $2, 1, 'business', 'curated', null)`,
+      [MODULE_A, MODULE_B, ORG_A, ORG_B],
     );
 
     const registeredA = await seedRegistration(registerCommand(ORG_A, MODULE_A, firstPin));

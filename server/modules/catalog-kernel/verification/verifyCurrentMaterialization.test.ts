@@ -8,10 +8,8 @@ import {
   type CatalogDriftViolationCode,
 } from "../../parameter-catalog-contract/index";
 import { compileCatalogRelease } from "../compiler/index";
-import {
-  validCatalogReleaseBundle,
-  type CatalogReleaseBundle,
-} from "../compiler/__fixtures__/catalogReleaseBundle";
+import { validCatalogReleaseBundle } from "../compiler/__fixtures__/catalogReleaseBundle";
+import type { CatalogReleaseBundle } from "../compiler/types";
 import { jsonCatalogReleaseSource } from "../interface";
 import { installPublishedRelease } from "../install/installer";
 import { CATALOG_SYNCHRONIZER_ROLE } from "../security/catalogRoleManifest";
@@ -515,7 +513,7 @@ describe("independent current materialization verifier", () => {
       insert into public.parameter_modules (
         id, organization_id, name, path, depth, kind, origin, attribution_subject_id
       ) values (
-        'pmod-s3vfy', 'org-s3vfy', 'Driver', 'pmod-s3vfy', 1, 'driver-group', 'curated', 'attr-s3vfy'
+        'pmod-s3vfy', 'org-s3vfy', 'Driver', 'pmod-s3vfy', 1, 'business', 'curated', null
       );
     `);
     await observer.query(

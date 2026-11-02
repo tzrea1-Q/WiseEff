@@ -557,7 +557,7 @@ async function seedLegacyOwnershipTargets(client: pg.Client): Promise<void> {
     insert into public.driver_registration_placements (
       id, organization_id, attribution_subject_id, driver_group_module_id
     ) values (
-      'source-placement-org-two', 'org-pcat-2', 'legacy-subject-two', 'pmod-driver-2'
+      'source-placement-org-two', 'org-pcat-2', 'legacy-subject-two', 'pmod-legacy-driver-2'
     );
     insert into public.dts_config_set (
       id, organization_id, project_id, name
@@ -660,9 +660,13 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       insert into public.parameter_modules (
         id, organization_id, name, path, depth, kind, origin, attribution_subject_id
       ) values (
-        'pmod-driver', 'org-pcat', 'Driver', 'pmod-driver', 1, 'driver-group', 'curated', 'legacy-subject-one'
+        'pmod-driver', 'org-pcat', 'Driver', 'pmod-driver', 1, 'business', 'curated', null
       ), (
-        'pmod-driver-2', 'org-pcat-2', 'Driver', 'pmod-driver-2', 1, 'driver-group', 'curated', 'legacy-subject-two'
+        'pmod-driver-2', 'org-pcat-2', 'Driver', 'pmod-driver-2', 1, 'business', 'curated', null
+      ), (
+        'pmod-legacy-driver', 'org-pcat', 'Legacy driver', 'pmod-legacy-driver', 1, 'driver-group', 'curated', 'legacy-subject-one'
+      ), (
+        'pmod-legacy-driver-2', 'org-pcat-2', 'Legacy driver two', 'pmod-legacy-driver-2', 1, 'driver-group', 'curated', 'legacy-subject-two'
       ), (
         'pmod-node-type', 'org-pcat', 'Node type', 'pmod-node-type', 1, 'node-type', 'curated', 'legacy-node-type'
       );
@@ -1239,7 +1243,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
           (result) => ({ result, error: null }),
           (error: pg.DatabaseError) => ({ result: null, error }),
         );
-      await waitForDatabaseLock(client, contender.processID);
+      await waitForDatabaseLock(client, (contender as pg.Client & { processID: number }).processID);
 
       await client.query(`
         insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
@@ -3049,7 +3053,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
           (result) => ({ result, error: null }),
           (error: pg.DatabaseError) => ({ result: null, error }),
         );
-      await waitForDatabaseLock(client, successor.processID);
+      await waitForDatabaseLock(client, (successor as pg.Client & { processID: number }).processID);
       await client.query("rollback");
 
       const outcome = await constraintAttempt;
@@ -3138,7 +3142,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         error: null,
       });
       const constraintAttempt = successor.query("set constraints all immediate");
-      await waitForDatabaseLock(client, successor.processID);
+      await waitForDatabaseLock(client, (successor as pg.Client & { processID: number }).processID);
 
       await client.query("set constraints all immediate");
       await client.query("commit");
@@ -3850,7 +3854,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     ]);
   });
 
-  it("rejects cross-kind Placement and leaves no Registration or Placement residue", async () => {
+  it("rejects a Placement in a legacy typed module and leaves no Registration or Placement residue", async () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.organization_subject_registrations (
@@ -3861,7 +3865,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       insert into parameter_catalog.subject_placements (
         id, registration_id, organization_id, module_id, origin
       ) values (
-        'placement-wrong-kind', 'reg-wrong-kind', 'org-pcat', 'pmod-driver', 'curated'
+        'placement-wrong-kind', 'reg-wrong-kind', 'org-pcat', 'pmod-legacy-driver', 'curated'
       );
     `);
 
@@ -3902,7 +3906,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
     await client.query("begin");
     await client.query(
-      "update public.parameter_modules set kind = 'node-type' where id = 'pmod-driver'",
+      "update public.parameter_modules set kind = 'node-type', attribution_subject_id = 'legacy-node-type' where id = 'pmod-driver'",
     );
     const error = await captureDatabaseError(
       client.query("set constraints all immediate"),
@@ -3914,7 +3918,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     const module = await client.query<{ kind: string }>(
       "select kind from public.parameter_modules where id = 'pmod-driver'",
     );
-    expect(module.rows[0]?.kind).toBe("driver-group");
+    expect(module.rows[0]?.kind).toBe("business");
   });
 
   it("serializes a Placement insert against a concurrent parameter module kind update", async () => {
@@ -3937,13 +3941,13 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       await updater.query("begin");
       const updateAttempt = updater
         .query(
-          "update public.parameter_modules set kind = 'node-type' where id = 'pmod-driver'",
+          "update public.parameter_modules set kind = 'node-type', attribution_subject_id = 'legacy-node-type' where id = 'pmod-driver'",
         )
         .then(
           (result) => ({ result, error: null }),
           (error: pg.DatabaseError) => ({ result: null, error }),
         );
-      await waitForDatabaseLock(client, updater.processID);
+      await waitForDatabaseLock(client, (updater as pg.Client & { processID: number }).processID);
 
       await client.query("set constraints all immediate");
       await client.query("commit");
@@ -3968,7 +3972,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
           (select kind from public.parameter_modules where id = 'pmod-driver') as module_kind
       `);
       expect(state.rows).toEqual([
-        { placements: "1", module_kind: "driver-group" },
+        { placements: "1", module_kind: "business" },
       ]);
     } finally {
       await client.query("rollback").catch(() => undefined);
@@ -3994,7 +3998,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       client.query(`
         insert into parameter_catalog.subject_placements (
           id, registration_id, organization_id, module_id, origin
-        ) values ('placement-second', 'reg-single', 'org-pcat', 'pmod-node-type', 'curated')
+        ) values ('placement-second', 'reg-single', 'org-pcat', 'pmod-driver', 'curated')
       `),
     );
     expect(error.code).toBe("23505");

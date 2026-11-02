@@ -216,7 +216,11 @@ export const S2_SCH_0314_FINGERPRINT =
 export const S2_SCH_0318_FINGERPRINT =
   "13a7665cb69a6ae39deb9e40cc2565a4f51154708e252fc6a6b4613ad5234eb5";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0318_FINGERPRINT;
+/** 0320 permits shared business-module placements and retains legacy typed placements. */
+export const S2_SCH_0320_FINGERPRINT =
+  "9756c820fac3f25e60a59b921a5217897bbf126bc4756497ced453b308276918";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0320_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
@@ -15,8 +16,11 @@ import { createRegistrationService } from "../parameter-governance/registration/
 import { createEvidenceIngest } from "../parameter-governance/evidence/index";
 import { createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import type { AuthContext } from "../auth/types";
+import { catalogDefinitionListResponseSchema, catalogDefinitionResponseSchema,
+  catalogSubjectListResponseSchema, catalogSubjectResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 
 type Mutable<T> = T extends readonly (infer V)[] ? Mutable<V>[] : T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
+type CapacityItem = { id: string; reviewCount: number; usageSummary: unknown; currentRevision: { id: string }; membership: { catalogReleaseId: string } };
 
 const subjectCount = Number(process.env.WISEEFF_CATALOG_BATCH_SUBJECTS ?? 125);
 const capacityProfile = process.env.WISEEFF_CATALOG_CAPACITY_PROFILE === "1";
@@ -86,9 +90,9 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     if (!pool) throw new Error("real root PostgreSQL pool required");
     pool.on("connect", (client) => {
       const query = client.query;
-      client.query = function (...args: Parameters<typeof query>) {
-        const input = args[0];
-        const sql = typeof input === "string" ? input : input && "text" in input ? String(input.text) : "<non-text query>";
+      client.query = function (this: PoolClient, ...args: Parameters<typeof query>) {
+        const input: unknown = args[0];
+        const sql = typeof input === "string" ? input : input && typeof input === "object" && "text" in input ? String(input.text) : "<non-text query>";
         const rejectProjection = projectionFailure === "usage"
           ? /from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)
           : projectionFailure === "registration" && /from parameter_catalog\.organization_subject_registrations registration/.test(sql);
@@ -122,7 +126,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     await pool.query("insert into public.projects(id,organization_id,name,code) values ('batch-project-a','batch-org','A','A'),('batch-project-b','batch-org','B','B')");
     await pool.query("insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,source_key) values ('batch-attr','batch-org','driver-registration','Batch driver','compatible:batch,device-0')");
     await pool.query("insert into public.driver_registrations(attribution_subject_id,driver_nature,instance_cardinality) values ('batch-attr','physical-device','multiple')");
-    await pool.query("insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id) values ('batch-module','batch-org','Batch driver','batch-module',1,'driver-group','curated','batch-attr')");
+    await pool.query("insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin) values ('batch-module','batch-org','Batch driver','batch-module',1,'business','curated')");
     const pin = { id: compiled.release.id, digest: compiled.release.digest };
     const registered = await createRegistrationService(pool).execute({ kind: "register", organizationId: "batch-org", subjectId: CatalogSubjectId("csub_batch_000"), subjectKind: "driver", expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: "batch-module", method: "explicit", proof: { reason: "batch fixture" }, idempotencyKey: "batch-register", context: { actorKind: "org-admin", principalId: "batch-admin" } });
     if (!registered.ok) throw new Error(`registration fixture failed: ${JSON.stringify(registered.error)}`);
@@ -219,7 +223,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     measuring = true;
     const started = performance.now();
     const response = await fetch(`${baseUrl}/api/v2/catalog/subjects?limit=${limit}`, { headers: { authorization: "Bearer batch-fixture-token" } });
-    const body = await response.json();
+    const body = catalogSubjectListResponseSchema.parse(await response.json());
     measuring = false;
     const counts = Object.fromEntries(["auth", "kernel", "business", "transaction", "other"].map((category) => [category, statements.filter((entry) => entry.category === category).length]));
     const evidence = { evidence: "R2-BATCH", route: "subjects", limit, status: response.status, counts, elapsedMs: performance.now() - started, ...resources(), statements };
@@ -241,7 +245,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     statements = [];
     measuring = true;
     const response = await fetch(`${baseUrl}/api/v2/catalog/subjects?search=no-such-subject`, { headers: { authorization: "Bearer batch-fixture-token" } });
-    const body = await response.json();
+    const body = catalogSubjectListResponseSchema.parse(await response.json());
     measuring = false;
     expect(response.status, JSON.stringify(body)).toBe(200);
     expect(body.items).toEqual([]);
@@ -254,7 +258,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     measuring = true;
     const started = performance.now();
     const response = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=${limit}`, { headers: { authorization: "Bearer batch-fixture-token" } });
-    const body = await response.json();
+    const body = catalogDefinitionListResponseSchema.parse(await response.json());
     measuring = false;
     const counts = Object.fromEntries(["auth", "kernel", "business", "transaction", "other"].map((category) => [category, statements.filter((entry) => entry.category === category).length]));
     const evidence = { evidence: "R2-BATCH", route: "definitions", limit, status: response.status, counts, elapsedMs: performance.now() - started, ...resources(), statements };
@@ -283,7 +287,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     statements = [];
     measuring = true;
     const response = await fetch(`${baseUrl}/api/v2/catalog/definitions?search=no-such-definition`, { headers: { authorization: "Bearer batch-fixture-token" } });
-    const body = await response.json();
+    const body = catalogDefinitionListResponseSchema.parse(await response.json());
     measuring = false;
     expect(response.status).toBe(200);
     expect(body.items).toEqual([]);
@@ -295,12 +299,13 @@ describe("R2-BATCH root HTTP SQL budget", () => {
   it("R2-BATCH-05 registration filtering precedes cursor pagination and retains nonzero/current-pointer usage", async () => {
     const headers = { authorization: "Bearer batch-fixture-token" };
     const first = await fetch(`${baseUrl}/api/v2/catalog/definitions?registration=active&limit=1`, { headers });
-    const firstPage = await first.json();
+    const firstPage = catalogDefinitionListResponseSchema.parse(await first.json());
     expect(first.status).toBe(200);
     expect(firstPage.items).toHaveLength(1);
     expect(firstPage.nextCursor).toEqual(expect.any(String));
+    if (!firstPage.nextCursor) throw new Error("First Definition page has no cursor");
     const second = await fetch(`${baseUrl}/api/v2/catalog/definitions?registration=active&limit=1&cursor=${encodeURIComponent(firstPage.nextCursor)}`, { headers });
-    const secondPage = await second.json();
+    const secondPage = catalogDefinitionListResponseSchema.parse(await second.json());
     expect(second.status).toBe(200);
     expect(secondPage.items).toHaveLength(1);
     expect(secondPage.nextCursor).toBeNull();
@@ -308,16 +313,16 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     expect(items.map((item) => item.id).sort()).toEqual(["pdef_batch_0_0", "pdef_batch_0_1"]);
     // Three bindings in two projects, two current non-placeholder pointers and
     // four historical writes. Policy remains outside this acceptance claim.
-    expect(items.find((item) => item.id === "pdef_batch_0_0").usageSummary).toMatchObject({ policyCount: null, projectCount: 2, currentValueCount: 2 });
-    expect(items.find((item) => item.id === "pdef_batch_0_1").usageSummary).toMatchObject({ policyCount: null, projectCount: 0, currentValueCount: 0 });
+    expect(items.find((item) => item.id === "pdef_batch_0_0")?.usageSummary).toMatchObject({ policyCount: null, projectCount: 2, currentValueCount: 2 });
+    expect(items.find((item) => item.id === "pdef_batch_0_1")?.usageSummary).toMatchObject({ policyCount: null, projectCount: 0, currentValueCount: 0 });
     for (const item of items) {
       const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${item.id}`, { headers });
       expect(detail.status).toBe(200);
-      expect((await detail.json()).item).toEqual(item);
+      expect(catalogDefinitionResponseSchema.parse(await detail.json()).item).toEqual(item);
     }
     const named = await fetch(`${baseUrl}/api/v2/catalog/definitions?registration=active&limit=2`, { headers: { ...headers, "X-WiseEff-Catalog-Release": releaseId } });
     expect(named.status).toBe(200);
-    expect((await named.json()).items).toEqual(items);
+    expect(catalogDefinitionListResponseSchema.parse(await named.json()).items).toEqual(items);
     // The named pin equals current here; this does not prove release drift.
   });
 
@@ -325,10 +330,10 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     const headers = { authorization: "Bearer batch-other-token" };
     const filtered = await fetch(`${baseUrl}/api/v2/catalog/definitions?registration=active&limit=25`, { headers });
     expect(filtered.status).toBe(200);
-    expect((await filtered.json()).items).toEqual([]);
+    expect(catalogDefinitionListResponseSchema.parse(await filtered.json()).items).toEqual([]);
     const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/pdef_batch_0_0`, { headers });
     expect(detail.status).toBe(200);
-    const item = (await detail.json()).item;
+    const item = catalogDefinitionResponseSchema.parse(await detail.json()).item;
     expect(item.registration.status).toBe("unregistered");
     expect(item.usageSummary).toMatchObject({ policyCount: null, projectCount: 0, currentValueCount: 0 });
   });
@@ -340,10 +345,10 @@ describe("R2-BATCH root HTTP SQL budget", () => {
       const headers = { authorization };
       const list = await fetch(`${baseUrl}/api/v2/catalog/subjects?limit=1`, { headers });
       expect(list.status).toBe(200);
-      expect((await list.json()).items[0]).toMatchObject({ id: "csub_batch_000", reviewCount: expectedCount });
+      expect(catalogSubjectListResponseSchema.parse(await list.json()).items[0]).toMatchObject({ id: "csub_batch_000", reviewCount: expectedCount });
       const detail = await fetch(`${baseUrl}/api/v2/catalog/subjects/csub_batch_000`, { headers });
       expect(detail.status).toBe(200);
-      expect((await detail.json()).item).toMatchObject({ id: "csub_batch_000", reviewCount: expectedCount });
+      expect(catalogSubjectResponseSchema.parse(await detail.json()).item).toMatchObject({ id: "csub_batch_000", reviewCount: expectedCount });
     }
   });
 
@@ -376,9 +381,11 @@ describe("R2-BATCH root HTTP SQL budget", () => {
               const firstQuery = new URLSearchParams(query);
               firstQuery.set("limit", "1");
               const first = await fetch(`${baseUrl}/api/v2/catalog/${route}?${firstQuery}`, { headers });
-              const firstPage = await first.json();
+              const firstPage = route === "definitions" ? catalogDefinitionListResponseSchema.parse(await first.json())
+                : catalogSubjectListResponseSchema.parse(await first.json());
               expect(first.status).toBe(200);
               expect(firstPage.nextCursor).toEqual(expect.any(String));
+              if (!firstPage.nextCursor) throw new Error("First capacity page has no cursor");
               query.set("cursor", firstPage.nextCursor);
             }
             const endpoint = `/api/v2/catalog/${route}${scenario.detail ? `/${detailId}` : ""}?${query}`;
@@ -394,7 +401,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
               const attempts = await Promise.allSettled(Array.from({ length: concurrency }, async () => {
                 const start = performance.now();
                 const response = await fetch(`${baseUrl}${endpoint}`, { headers, signal: AbortSignal.timeout(10_000) });
-                const body = await response.json();
+                const body = await response.json() as { catalogReleaseId: string; item: CapacityItem; items: CapacityItem[] };
                 expect(response.status, JSON.stringify(body)).toBe(200);
                 expect(response.headers.get("X-WiseEff-Catalog-Release")).toBe(expectedRelease);
                 if (!scenario.detail) expect(body.catalogReleaseId).toBe(expectedRelease);

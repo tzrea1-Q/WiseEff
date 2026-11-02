@@ -213,7 +213,7 @@ function reconstructChain(
     if (!row) {
       throw new Error(`Catalog OP-08 expected release sequence ${index + 1}; found ${bySequence.length}.`);
     }
-    return { id: row.id, digest: row.release_digest };
+    return { id: CatalogReleaseId(row.id), digest: CatalogReleaseDigest(row.release_digest) };
   };
   const emptyCompiled = {} as InstalledCatalogMatchChain["compiledA"];
   return {
