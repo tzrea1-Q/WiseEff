@@ -34,6 +34,7 @@ import { bindSharedDtsiProposalEvidence } from "../shared-dtsi/recognition";
 import { createGovernanceCatalogQueries, GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../parameter-governance/queries";
 import type { GovernanceRegistrationRecord } from "../parameter-governance/queries";
 import { executeRegistration } from "../parameter-governance/registration";
+import { readRegistrationRecognitionSettings, updateRegistrationRecognitionSettings } from "../parameter-modules/recognitionSettings";
 import { resolveReviewItem } from "../parameter-governance/resolveReviewItem";
 import { createReviewQueueReader } from "../parameter-governance/review";
 import { createUsageQueries } from "../parameter-bindings/usage";
@@ -483,7 +484,7 @@ const authenticateGovernance =
     if (matched && (organizationDetail || [
       "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
       "catalog.createRegistration", "catalog.createBatchRegistration", "catalog.listUnregisteredSubjects",
-      "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement"
+      "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement", "catalog.updateRegistrationRecognition"
     ].includes(matched.id))) {
       const targetId = matched.params.organizationId;
       if (!targetId || (request.query.organizationId !== undefined && request.query.organizationId !== targetId) ||
@@ -768,6 +769,8 @@ const createGovernancePorts = (
 
   return {
     authenticate: authenticateGovernance(resolveAuth, pool),
+    readRegistrationRecognition: db ? (organizationId, registrationId) => readRegistrationRecognitionSettings(db, organizationId, registrationId) : undefined,
+    updateRegistrationRecognition: db ? (input) => updateRegistrationRecognitionSettings(db, input) : undefined,
     listUnregisteredSubjects: pool ? (organizationId, releaseId, source) => listUnregisteredSubjects(pool, organizationId, releaseId, source) : undefined,
     executeBatchRegistration: pool ? (input) => executeBatchRegistration(pool, input) : undefined,
     currentRelease: async () => {

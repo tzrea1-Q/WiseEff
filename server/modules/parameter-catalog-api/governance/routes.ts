@@ -1,7 +1,7 @@
 import type { HttpMethod, WiseEffRouter } from "../../../shared/http/router";
 
 import { handleCatalogGovernance } from "./handlers";
-import { catalogBatchRegistrationRoutes, catalogDefinitionReplacementRoutes, catalogGovernanceRoutes } from "./mapping";
+import { catalogBatchRegistrationRoutes, catalogDefinitionReplacementRoutes, catalogGovernanceRoutes, catalogRecognitionRoutes } from "./mapping";
 import type { CatalogGovernancePorts, CatalogGovernanceRequest } from "./types";
 
 function addRoute(
@@ -54,6 +54,7 @@ export function registerCatalogGovernanceRoutes(
 
 export function registerCatalogBatchRegistrationRoutes(router: WiseEffRouter, ports: CatalogGovernancePorts): void {
   registerRoutes(router, ports, catalogBatchRegistrationRoutes);
+  registerRoutes(router, ports, catalogRecognitionRoutes);
 }
 
 /**

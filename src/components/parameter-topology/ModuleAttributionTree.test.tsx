@@ -67,6 +67,25 @@ const mappings: ParameterModuleMapping[] = [
 ];
 
 describe("ModuleAttributionTree", () => {
+  it("shows registered subjects after child modules and selects a subject", () => {
+    const onSelectSubject = vi.fn();
+    render(<ModuleAttributionTree modules={modules} mappings={[]} subjects={[
+      { id: "subject-a", moduleId: "mod-power", name: "acme,power", kind: "driver", definitionCount: 2 },
+      { id: "subject-b", moduleId: "mod-power", name: "battery1", kind: "node-type", definitionCount: 3 },
+    ]} onSelectSubject={onSelectSubject} onUpdateModule={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} onCreateModule={vi.fn()} />);
+    const root = screen.getByRole("treeitem", { name: /Power/ });
+    expect(within(root).getByText("驱动")).toBeInTheDocument();
+    expect(within(root).getByText("节点类型")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "查看主体：acme,power" }).closest('[role="treeitem"]')!).getByText("2 定义")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "查看主体：battery1" }).closest('[role="treeitem"]')!).getByText("3 定义")).toBeInTheDocument();
+    fireEvent.click(within(root).getByRole("button", { name: "查看主体：acme,power" }));
+    expect(onSelectSubject).toHaveBeenCalledWith("subject-a", "mod-power");
+    const leaf = screen.getByRole("button", { name: "查看主体：acme,power" }).closest('[role="treeitem"]')!;
+    expect(leaf).toHaveFocus();
+    fireEvent.keyDown(leaf, { key: "ArrowLeft" });
+    expect(root).toHaveFocus();
+    expect(root.textContent!.indexOf("SC8562")).toBeLessThan(root.textContent!.indexOf("acme,power"));
+  });
   it.each(["driver-group", "node-type"] as const)("allows administrators to edit auto-discovered %s details directly", async (kind) => {
     const module = { ...modules[1]!, kind, parentId: null };
     const onUpdateModule = vi.fn().mockResolvedValue(undefined);

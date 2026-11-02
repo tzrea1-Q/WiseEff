@@ -458,6 +458,19 @@ export const catalogRestoreRegistrationRequestSchema = catalogObject({
   reason: z.string()
 });
 
+export const catalogRegistrationRecognitionUpdateSchema = catalogObject({
+  compatibles: z.array(z.string()).max(128).optional(),
+  driverNature: z.enum(["physical-device", "logical-service"]).optional(),
+  instanceCardinality: z.enum(["multiple", "singleton-per-project"]).optional(),
+  nodeTypeName: z.string().optional(),
+});
+export const catalogRegistrationRecognitionResponseSchema = itemEnvelopeSchema(catalogObject({
+  kind: z.enum(["driver", "node-type"]), recognitionSubjectId: z.string().nullable(),
+  compatibles: z.array(z.string()), driverNature: z.enum(["physical-device", "logical-service"]).nullable(),
+  instanceCardinality: z.enum(["multiple", "singleton-per-project"]).nullable(),
+  nodeTypeName: z.string().nullable(), overridden: z.boolean(),
+}));
+
 export const catalogUpdatePlacementRequestSchema = catalogObject({
   placement: catalogPlacementIntentSchema,
   destinationModuleId: z.string().min(1).optional(),
@@ -1718,6 +1731,8 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogRetireRegistrationRequest: catalogRetireRegistrationRequestSchema,
   CatalogRestoreRegistrationRequest: catalogRestoreRegistrationRequestSchema,
   CatalogPlacementResponse: catalogPlacementResponseSchema,
+  CatalogRegistrationRecognitionUpdate: catalogRegistrationRecognitionUpdateSchema,
+  CatalogRegistrationRecognitionResponse: catalogRegistrationRecognitionResponseSchema,
   CatalogUpdatePlacementRequest: catalogUpdatePlacementRequestSchema,
   CatalogObservationListResponse: catalogObservationListResponseSchema,
   CatalogDriverCompatibleDiscoveryResponse: catalogDriverCompatibleDiscoveryResponseSchema,
@@ -1943,6 +1958,16 @@ export const parameterCatalogCanonicalRoutes = [
     stability: "mvp"
   },
   {
+    id: "catalog.getRegistrationRecognition", method: "GET",
+    path: "/api/v2/organizations/:organizationId/subject-registrations/:registrationId/recognition",
+    module: "catalog", stability: "mvp"
+  },
+  {
+    id: "catalog.updateRegistrationRecognition", method: "PATCH",
+    path: "/api/v2/organizations/:organizationId/subject-registrations/:registrationId/recognition",
+    module: "catalog", stability: "mvp"
+  },
+  {
     id: "catalog.listObservations",
     method: "GET",
     path: "/api/v2/organizations/:organizationId/parameter-observations",
@@ -2145,6 +2170,8 @@ export const parameterCatalogRouteGates: Record<
   "catalog.restoreRegistration": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.getPlacement": ["PCAT-API-04"],
   "catalog.updatePlacement": ["PCAT-API-04", "PCAT-API-10"],
+  "catalog.getRegistrationRecognition": ["PCAT-API-04"],
+  "catalog.updateRegistrationRecognition": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.listObservations": ["PCAT-API-05"],
   "catalog.getObservation": ["PCAT-API-05"],
   "catalog.listDriverCompatibleDiscovery": ["PCAT-API-05"],
@@ -2205,6 +2232,8 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.restoreRegistration": "restoreRegistration",
   "catalog.getPlacement": "getPlacement",
   "catalog.updatePlacement": "updatePlacement",
+  "catalog.getRegistrationRecognition": "getRegistrationRecognition",
+  "catalog.updateRegistrationRecognition": "updateRegistrationRecognition",
   "catalog.listObservations": "listObservations",
   "catalog.getObservation": "getObservation",
   "catalog.listDriverCompatibleDiscovery": "listDriverCompatibleDiscovery",
@@ -2573,6 +2602,18 @@ export const parameterCatalogSchemaRegistry = {
     tags: ["catalog"],
     requestBody: "CatalogUpdatePlacementRequest",
     responseBody: "CatalogPlacementResponse",
+    additionalResponses: catalogWriteErrors,
+    requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader, catalogIfMatchHeader],
+    successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
+  },
+  "catalog.getRegistrationRecognition": {
+    summary: "Get organization recognition rules for a subject registration", tags: ["catalog"],
+    responseBody: "CatalogRegistrationRecognitionResponse", additionalResponses: catalogReadErrors,
+    successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
+  },
+  "catalog.updateRegistrationRecognition": {
+    summary: "Update organization recognition rules for a subject registration", tags: ["catalog"],
+    requestBody: "CatalogRegistrationRecognitionUpdate", responseBody: "CatalogRegistrationRecognitionResponse",
     additionalResponses: catalogWriteErrors,
     requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader, catalogIfMatchHeader],
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]

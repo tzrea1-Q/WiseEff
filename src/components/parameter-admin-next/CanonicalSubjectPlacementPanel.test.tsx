@@ -256,6 +256,23 @@ function createPorts() {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it("edits recognition rules on a registered subject", async () => {
+    const ports = createPorts();
+    const item = { kind: "driver" as const, recognitionSubjectId: "subject-driver", compatibles: ["vendor,driver"],
+      driverNature: "physical-device" as const, instanceCardinality: "multiple" as const, nodeTypeName: null, overridden: false };
+    const getRecognition = vi.fn().mockResolvedValue({ item, etag: '"recognition-1"' });
+    const updateRecognition = vi.fn().mockResolvedValue({ item: { ...item, compatibles: ["vendor,updated"], overridden: true } });
+    const governance = { ...ports.governance, getRegistrationRecognition: getRecognition, updateRegistrationRecognition: updateRecognition };
+    render(<CanonicalSubjectPlacementPanel catalog={ports.catalog} governance={governance} modules={ports.modules}
+      organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+    await userEvent.click(await screen.findByRole("button", { name: "识别规则：vendor,driver" }));
+    const dialog = await screen.findByRole("dialog", { name: "识别规则：vendor,driver" });
+    await userEvent.clear(within(dialog).getByLabelText("compatible 匹配规则"));
+    await userEvent.type(within(dialog).getByLabelText("compatible 匹配规则"), "vendor,updated");
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(updateRecognition).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID, "registration-driver",
+      expect.objectContaining({ compatibles: ["vendor,updated"] }), expect.objectContaining({ ifMatch: '"recognition-1"', catalogReleaseId: CATALOG_RELEASE_ID })));
+  });
   it("hands the newly published subject to the Catalog batch registration view", async () => {
     const ports = createPorts();
     const publication = createMockCatalogPorts({ publicationOutcome: "active" });

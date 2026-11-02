@@ -113,12 +113,6 @@ describe("issue 847 collection contract", () => {
       [OTHER_ORGANIZATION_ID],
     );
     await pool.query(
-      `insert into attribution_subjects
-         (id, organization_id, subject_kind, display_name, origin, source_key)
-       values ('asub-847-other', $1, 'driver-registration', 'Other acme power', 'curated', 'acme,power-other')`,
-      [OTHER_ORGANIZATION_ID],
-    );
-    await pool.query(
       `insert into public.parameter_modules
          (id, organization_id, parent_id, name, path, depth, sort_order, kind, origin,
           attribution_subject_id)

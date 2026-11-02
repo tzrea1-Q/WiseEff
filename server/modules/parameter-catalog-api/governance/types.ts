@@ -28,12 +28,15 @@ import type {
   catalogBatchRegistrationCommandByRouteId,
   catalogDefinitionReplacementCommandByRouteId,
   catalogGovernanceCommandByRouteId,
+  catalogRecognitionCommandByRouteId,
 } from "./mapping";
+import type { ModuleRecognitionSettings, UpdateModuleRecognition } from "../../parameter-modules/recognitionSettings";
 
 export type CatalogGovernanceRouteId =
   | keyof typeof catalogGovernanceCommandByRouteId
   | keyof typeof catalogDefinitionReplacementCommandByRouteId
-  | keyof typeof catalogBatchRegistrationCommandByRouteId;
+  | keyof typeof catalogBatchRegistrationCommandByRouteId
+  | keyof typeof catalogRecognitionCommandByRouteId;
 
 export type CatalogGovernanceRequest = {
   readonly method: string;
@@ -137,6 +140,10 @@ export type ReviewItemDetails = Pick<
 >;
 
 export type CatalogGovernancePorts = {
+  readonly readRegistrationRecognition?: (organizationId: string, registrationId: string) => Promise<(ModuleRecognitionSettings & { kind: "driver" | "node-type" }) | null>;
+  readonly updateRegistrationRecognition?: (input: { organizationId: string; registrationId: string; body: UpdateModuleRecognition;
+    invocation: TrustedInvocationContext; requestId: string; ifMatch: string; idempotencyKey: string; catalogReleaseId: string
+  }) => Promise<(ModuleRecognitionSettings & { kind: "driver" | "node-type" }) | null>;
   readonly executeBatchRegistration?: (input: BatchRegistrationInput) => ReturnType<typeof executeBatchRegistration>;
   readonly listUnregisteredSubjects?: (organizationId: string, releaseId: string, source: "organization" | "all") => ReturnType<typeof listUnregisteredSubjects>;
   readonly authenticate: (

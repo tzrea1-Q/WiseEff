@@ -70,7 +70,7 @@
       "legacy-parameter-spec-identifier": 2
     },
     "server/modules/dts-reload/repository.ts": {
-      "canonical-catalog-raw-access": 6,
+      "canonical-catalog-raw-access": 4,
       "legacy-catalog-raw-read": 2,
       "unresolved-boundary-expression": 3
     },

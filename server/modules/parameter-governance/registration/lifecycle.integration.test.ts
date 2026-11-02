@@ -20,6 +20,9 @@ import { makeTestAuthContext } from "../../../testing/authContext";
 import type { MovePlacementCommand } from "./command";
 import { assertCatalogSubjectActive } from "./guardAdapter";
 import { createSourceBackedBindingService } from "../../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
+import { aggregateBindingDashboardHotspots } from "../../parameter-bindings/dashboardRead";
+import { readRegistry } from "../../parameter-modules/repository";
+import { createPostgresDatabase } from "../../../shared/database/client";
 
 describe("conditional registration lifecycle on the real application SQL LOGIN", () => {
   let database: EphemeralTestDatabase;
@@ -147,6 +150,39 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       proof: {}, idempotencyKey: randomUUID(), context });
     if (!result.ok) throw new Error(`registration failed: ${JSON.stringify(result.error)}`);
     registration = result.value;
+  });
+
+  it("reads effective modules for every registration in the requested organization", async () => {
+    const shared = await registerTarget(targetSubject, moduleId);
+    const unset = await registerTarget(thirdSubject);
+    await admin.query("update parameter_catalog.subject_placements set module_id = null where id = $1", [unset.placementId]);
+    const rows = await api.query(`select registration_id, subject_id, module_id, via_owner_registration_id
+      from parameter_catalog.registration_effective_module where organization_id = $1 order by registration_id`, [organizationId]);
+    expect(rows.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ registration_id: registration.registrationId, module_id: moduleId, via_owner_registration_id: null }),
+      expect.objectContaining({ registration_id: shared.registrationId, module_id: moduleId, via_owner_registration_id: null }),
+      expect.objectContaining({ registration_id: unset.registrationId, module_id: null, via_owner_registration_id: null }),
+    ]));
+    expect(rows.rows).toHaveLength(3);
+    expect((await api.query("select * from parameter_catalog.registration_effective_module where organization_id = $1", ["other-org"])).rows).toEqual([]);
+  });
+
+  it("groups bindings for two registered subjects in the same business module", async () => {
+    const shared = await registerTarget(targetSubject, moduleId);
+    await seedBindingValueHistory(registration, "pdef_acme_power_iin_max", "drev_acme_power_iin_max_1");
+    await seedBindingValueHistory(shared, `pdef_${targetSubject}_iin_max`, `drev_${targetSubject}_iin_max_1`);
+    const db = createPostgresDatabase(database.url);
+    try {
+      const loaded = await createCatalogKernel(admin).loadPinnedCatalog(pin);
+      if (!loaded.ok) throw new Error(JSON.stringify(loaded.error));
+      const registry = await readRegistry(db, organizationId, loaded.value, { includeAdminSettings: false });
+      expect(registry.modules.find(module => module.id === moduleId)).toMatchObject({ parameterCount: 2, definitionCount: 2 });
+      const groups = await aggregateBindingDashboardHotspots(db, { organizationId, projectId: null, dimension: "module",
+        windowStart: "2000-01-01T00:00:00.000Z", windowEnd: "2100-01-01T00:00:00.000Z" });
+      expect(groups).toEqual([expect.objectContaining({ groupId: moduleId, parameterCount: 2, definitionCount: 2 })]);
+    } finally {
+      await db.close();
+    }
   });
 
   afterAll(async () => {

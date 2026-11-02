@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { registrationRecognitionEtag } from "../../parameter-modules/recognitionSettings";
 import { decodeCatalogCursor, encodeCatalogCursor, fingerprintCatalogQuery } from "../../catalog-kernel/runtime/cursors";
 import {
   catalogAcceptProposalRequestSchema,
@@ -14,6 +15,7 @@ import {
   catalogRetireRegistrationRequestSchema,
   catalogSubmitProposalRequestSchema,
   catalogUpdatePlacementRequestSchema,
+  catalogRegistrationRecognitionUpdateSchema,
   catalogWithdrawProposalRequestSchema,
 } from "../../contracts/dtoSchemas/parameterCatalog";
 import {
@@ -59,6 +61,8 @@ import {
   catalogGovernanceIfMatchRouteIds,
   catalogGovernanceRoutes,
   catalogGovernanceWriteRouteIds,
+  catalogRecognitionCommandByRouteId,
+  catalogRecognitionRoutes,
   type CatalogGovernanceCommandName,
 } from "./mapping";
 import {
@@ -114,17 +118,19 @@ import type {
 } from "./types";
 
 const ifMatchRequired = new Set<string>([
+  "catalog.updateRegistrationRecognition",
   ...catalogGovernanceIfMatchRouteIds,
   ...catalogDefinitionReplacementIfMatchRouteIds,
 ]);
 const writeRoutes = new Set<string>([
+  "catalog.updateRegistrationRecognition",
   ...catalogGovernanceWriteRouteIds,
   ...catalogDefinitionReplacementWriteRouteIds,
   ...catalogBatchRegistrationWriteRouteIds,
 ]);
 const reviewReasonSet = new Set<string>(reviewReasons);
 
-const allGovernanceRoutes = [...catalogGovernanceRoutes, ...catalogDefinitionReplacementRoutes, ...catalogBatchRegistrationRoutes];
+const allGovernanceRoutes = [...catalogGovernanceRoutes, ...catalogDefinitionReplacementRoutes, ...catalogBatchRegistrationRoutes, ...catalogRecognitionRoutes];
 
 const catalogGovernanceRouteTable = allGovernanceRoutes
   .map((route) => {
@@ -179,6 +185,7 @@ export function matchCatalogGovernanceRoute(
 }
 
 function asCommandName(id: CatalogGovernanceRouteId): CatalogGovernanceCommandName {
+  if (id in catalogRecognitionCommandByRouteId) return catalogRecognitionCommandByRouteId[id as keyof typeof catalogRecognitionCommandByRouteId];
   if (id in catalogBatchRegistrationCommandByRouteId) {
     return catalogBatchRegistrationCommandByRouteId[id as keyof typeof catalogBatchRegistrationCommandByRouteId];
   }
@@ -1585,16 +1592,49 @@ export async function handleCatalogGovernance(
   }
   const headerError = requireWriteHeaders(request, matched.id);
   if (headerError) {
+    if (matched.id === "catalog.updateRegistrationRecognition") return catalogGovernanceError({ status: headerError.status,
+      code: headerError.status === 409 ? "CONFLICT" : "VALIDATION_FAILED", message: "缺少更新凭据，请刷新后重试。", requestId: request.requestId });
     return headerError;
   }
   const auth = await ports.authenticate(request);
   if (!auth.ok) {
+    if (matched.id === "catalog.getRegistrationRecognition" || matched.id === "catalog.updateRegistrationRecognition") {
+      return catalogGovernanceError({ status: auth.status, code: auth.status === 401 ? "UNAUTHENTICATED" : "FORBIDDEN",
+        message: auth.status === 401 ? "请先登录。" : "无权访问此主体的识别规则。", requestId: request.requestId });
+    }
     return auth.status === 401 ? unauthenticated(request.requestId) : forbidden(request.requestId);
   }
   const scopedRequest = { ...request, params: { ...request.params, ...matched.params } };
   void asCommandName(matched.id);
   try {
   switch (matched.id) {
+    case "catalog.getRegistrationRecognition":
+    case "catalog.updateRegistrationRecognition": {
+      const denied = matched.id === "catalog.updateRegistrationRecognition"
+        ? authorizeOrganizationWrite(auth.scope, scopedRequest) : authorizeRead(auth.scope, scopedRequest);
+      if (denied) return catalogGovernanceError({ status: denied.status, code: denied.status === 404 ? "NOT_FOUND" : "FORBIDDEN",
+        message: denied.status === 404 ? "未找到主体登记。" : "无权访问此主体的识别规则。", requestId: request.requestId });
+      const organizationId = scopedRequest.params.organizationId!;
+      const registrationId = scopedRequest.params.registrationId!;
+      const pin = await requirePin(ports, request, { requireHeader: matched.id === "catalog.updateRegistrationRecognition" });
+      if (!pin.ok) return pin.response;
+      if (matched.id === "catalog.getRegistrationRecognition") {
+        if (!ports.readRegistrationRecognition) return catalogNotReady(request.requestId);
+        const item = await ports.readRegistrationRecognition(organizationId, registrationId);
+        return item ? catalogGovernanceOk({ status: 200, body: { item }, requestId: request.requestId, catalogReleaseId: pin.pin.id,
+          etag: registrationRecognitionEtag(item) }) : catalogGovernanceError({ status: 404, code: "NOT_FOUND", message: "未找到主体登记。", requestId: request.requestId });
+      }
+      const parsed = catalogRegistrationRecognitionUpdateSchema.safeParse(request.body);
+      if (!parsed.success) return catalogGovernanceError({ status: 400, code: "VALIDATION_FAILED", message: "识别规则格式无效。", requestId: request.requestId });
+      if (!ports.updateRegistrationRecognition) return catalogNotReady(request.requestId);
+      if (!auth.scope.trustedActor || auth.scope.trustedActor.initiator !== "user") return catalogGovernanceError({ status: 403,
+        code: "FORBIDDEN", message: "只有组织管理员可以修改识别规则。", requestId: request.requestId });
+      const item = await ports.updateRegistrationRecognition({ organizationId, registrationId, body: parsed.data,
+        invocation: auth.scope.trustedActor, requestId: request.requestId, ifMatch: ifMatchHeader(request.headers)!,
+        idempotencyKey: idempotencyKeyHeader(request.headers)!, catalogReleaseId: pin.pin.id });
+      return item ? catalogGovernanceOk({ status: 200, body: { item }, requestId: request.requestId, catalogReleaseId: pin.pin.id,
+        etag: registrationRecognitionEtag(item) }) : catalogGovernanceError({ status: 404, code: "NOT_FOUND", message: "未找到主体登记。", requestId: request.requestId });
+    }
     case "catalog.createBatchRegistration": {
       const denied = authorizeOrganizationWrite(auth.scope, scopedRequest);
       if (denied) return denied;

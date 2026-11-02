@@ -13544,6 +13544,190 @@
         }
       }
     },
+    "/api/v2/organizations/{organizationId}/subject-registrations/{registrationId}/recognition": {
+      "get": {
+        "operationId": "catalog.getRegistrationRecognition",
+        "summary": "Get organization recognition rules for a subject registration",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "registrationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogRegistrationRecognitionResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Opaque ETag for If-Match on the next mutation.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "catalog.updateRegistrationRecognition",
+        "summary": "Update organization recognition rules for a subject registration",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "registrationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-WiseEff-Catalog-Release",
+            "in": "header",
+            "required": true,
+            "description": "Catalog release observed by the client.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Idempotency key for governance writes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "ETag of the mutable catalog resource.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogRegistrationRecognitionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogRegistrationRecognitionResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Opaque ETag for If-Match on the next mutation.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/organizations/{organizationId}/parameter-observations": {
       "get": {
         "operationId": "catalog.listObservations",
@@ -87237,6 +87421,109 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogUpdatePlacementRequest"
+      },
+      "CatalogRegistrationRecognitionResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "driver",
+                  "node-type"
+                ]
+              },
+              "recognitionSubjectId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "compatibles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "driverNature": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "physical-device",
+                  "logical-service"
+                ]
+              },
+              "instanceCardinality": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "multiple",
+                  "singleton-per-project"
+                ]
+              },
+              "nodeTypeName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "overridden": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "recognitionSubjectId",
+              "compatibles",
+              "driverNature",
+              "instanceCardinality",
+              "nodeTypeName",
+              "overridden"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogRegistrationRecognitionResponse"
+      },
+      "CatalogRegistrationRecognitionUpdate": {
+        "type": "object",
+        "properties": {
+          "compatibles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "driverNature": {
+            "type": "string",
+            "enum": [
+              "physical-device",
+              "logical-service"
+            ]
+          },
+          "instanceCardinality": {
+            "type": "string",
+            "enum": [
+              "multiple",
+              "singleton-per-project"
+            ]
+          },
+          "nodeTypeName": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogRegistrationRecognitionUpdate"
       },
       "CatalogObservationListResponse": {
         "type": "object",

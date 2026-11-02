@@ -6,14 +6,37 @@ export type ModuleRecognitionPlacementFact = {
   module_id: string | null;
 };
 
+export async function readRegistrationRecognitionSubject(db: Queryable, organizationId: string, registrationId: string) {
+  const result = await db.query<{ subject_id: string; kind: string }>(
+    `select registration.subject_id, subject.kind
+       from parameter_catalog.organization_subject_registrations registration
+       join parameter_catalog.catalog_subjects subject on subject.id = registration.subject_id
+      where registration.organization_id = $1 and registration.id = $2`, [organizationId, registrationId],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function readRecognitionIdempotency(db: Queryable, organizationId: string, key: string) {
+  const result = await db.query<{ request_fingerprint: string; state: string; result_ref: string | null }>(
+    `select request_fingerprint, state, result_ref from parameter_catalog.governance_command_idempotency
+     where organization_id = $1 and command_family = 'registration-recognition' and idempotency_key = $2 for update`,
+    [organizationId, key],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function writeRecognitionIdempotency(db: Queryable, organizationId: string, key: string, fingerprint: string, result: string) {
+  await db.query(`insert into parameter_catalog.governance_command_idempotency
+    (organization_id, command_family, idempotency_key, request_fingerprint, state, result_kind, result_ref, committed_at)
+    values ($1,'registration-recognition',$2,$3,'committed','recognition',$4,now())`, [organizationId, key, fingerprint, result]);
+}
+
 /** Current retained placement ownership, including retired and unset registrations. */
 export async function listModuleRecognitionPlacements(db: Queryable, organizationId: string): Promise<ModuleRecognitionPlacementFact[]> {
   const result = await db.query<ModuleRecognitionPlacementFact>(
-    `select registration.id as registration_id, registration.subject_id, placement.module_id
-     from parameter_catalog.organization_subject_registrations registration
-     join parameter_catalog.subject_placements placement
-       on placement.id = registration.current_placement_id and placement.organization_id = registration.organization_id
-     where registration.organization_id = $1`, [organizationId],
+    `select registration_id, subject_id, module_id
+     from parameter_catalog.registration_effective_module
+     where organization_id = $1`, [organizationId],
   );
   return result.rows;
 }

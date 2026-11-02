@@ -3,6 +3,20 @@ import { describe, expect, it } from "vitest";
 import { rollupSubtreeAttributionCounts } from "./subtreeCounts";
 
 describe("rollupSubtreeAttributionCounts", () => {
+  it("counts definitions from shared subjects once and aggregates nested business modules", () => {
+    const totals = rollupSubtreeAttributionCounts([
+      { id: "root", parentId: null }, { id: "shared", parentId: "root" },
+      { id: "nested", parentId: "shared" },
+    ], [
+      { moduleId: "shared", bindingId: null, definitionId: "subject-a-definition" },
+      { moduleId: "shared", bindingId: null, definitionId: "subject-b-definition" },
+      { moduleId: "shared", bindingId: null, definitionId: "subject-b-definition" },
+      { moduleId: "nested", bindingId: null, definitionId: "nested-definition" },
+    ]);
+    expect(totals.get("shared")).toEqual({ parameterCount: 0, definitionCount: 3 });
+    expect(totals.get("root")).toEqual({ parameterCount: 0, definitionCount: 3 });
+    expect(totals.get("nested")).toEqual({ parameterCount: 0, definitionCount: 1 });
+  });
   it("keeps current binding counts separate from active definition counts", () => {
     const totals = rollupSubtreeAttributionCounts([{ id: "module", parentId: null }], [
       { moduleId: "module", bindingId: "bound-retired-definition", definitionId: null },

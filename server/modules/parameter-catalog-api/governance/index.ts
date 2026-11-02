@@ -2,6 +2,9 @@ export { handleCatalogGovernance, matchCatalogGovernanceRoute } from "./handlers
 export {
   listModuleRecognitionPlacements,
   readModuleRecognitionSubjectDefaults,
+  readRegistrationRecognitionSubject,
+  readRecognitionIdempotency,
+  writeRecognitionIdempotency,
   hasMultipleCurrentModuleSubjectInstances,
   type ModuleRecognitionPlacementFact,
   type ModuleRecognitionSubjectDefault,

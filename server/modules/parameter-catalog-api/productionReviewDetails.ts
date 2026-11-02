@@ -125,8 +125,8 @@ export async function readReviewItemDetails(
     }>(
       `select registration.id, registration.subject_id as "subjectId", coalesce(module.name, '未设置模块 (unset)') as "placementDisplayName"
        from parameter_catalog.organization_subject_registrations registration
-       join parameter_catalog.subject_placements placement
-         on placement.id = registration.current_placement_id and placement.registration_id = registration.id
+       join parameter_catalog.registration_effective_module placement
+         on placement.registration_id = registration.id
          and placement.organization_id = registration.organization_id
        left join public.parameter_modules module on module.id = placement.module_id
          and module.organization_id = placement.organization_id

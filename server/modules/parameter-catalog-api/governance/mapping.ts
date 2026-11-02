@@ -43,6 +43,13 @@ export const catalogBatchRegistrationCommandByRouteId = {
   "catalog.listUnregisteredSubjects": "listUnregisteredSubjects",
   "catalog.createBatchRegistration": "executeBatchRegistration",
 } as const;
+export const catalogRecognitionCommandByRouteId = {
+  "catalog.getRegistrationRecognition": "getRegistrationRecognition",
+  "catalog.updateRegistrationRecognition": "updateRegistrationRecognition",
+} as const;
+export const catalogRecognitionRoutes = parameterCatalogCanonicalRoutes.filter(
+  (route) => route.id in catalogRecognitionCommandByRouteId,
+);
 export const catalogBatchRegistrationRoutes = parameterCatalogCanonicalRoutes.filter(
   (route) => route.id in catalogBatchRegistrationCommandByRouteId,
 );
@@ -51,7 +58,8 @@ export const catalogBatchRegistrationWriteRouteIds = catalogBatchRegistrationRou
 export type CatalogGovernanceCommandName =
   | (typeof catalogGovernanceCommandByRouteId)[keyof typeof catalogGovernanceCommandByRouteId]
   | (typeof catalogDefinitionReplacementCommandByRouteId)[keyof typeof catalogDefinitionReplacementCommandByRouteId]
-  | (typeof catalogBatchRegistrationCommandByRouteId)[keyof typeof catalogBatchRegistrationCommandByRouteId];
+  | (typeof catalogBatchRegistrationCommandByRouteId)[keyof typeof catalogBatchRegistrationCommandByRouteId]
+  | (typeof catalogRecognitionCommandByRouteId)[keyof typeof catalogRecognitionCommandByRouteId];
 
 const GOVERNANCE_GATES = new Set(["PCAT-API-04", "PCAT-API-05", "PCAT-API-06"]);
 const DEFINITION_REPLACEMENT_GATES = new Set(["PCAT-API-13"]);

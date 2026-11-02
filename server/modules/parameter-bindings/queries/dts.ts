@@ -154,12 +154,10 @@ export async function readCanonicalCompareRows(
       join public.projects project
         on project.id = b.project_id
        and project.organization_id = b.organization_id
-      left join parameter_catalog.organization_subject_registrations registration
-        on registration.id = b.registration_id
-      left join parameter_catalog.subject_placements placement
-        on placement.id = registration.current_placement_id
+      left join parameter_catalog.registration_effective_module placement
+        on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
       left join public.parameter_modules parameter_module
-        on parameter_module.id = placement.module_id
+        on parameter_module.id = placement.module_id and parameter_module.organization_id = b.organization_id
       left join public.attribution_subjects subject
         on subject.id = parameter_module.attribution_subject_id
      where b.organization_id = $2
