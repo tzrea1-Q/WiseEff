@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiClient } from "@/infrastructure/http/apiClient";
 import { SharedDtsiPage } from "./SharedDtsiPage";
 import { invalidateSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
+
+// Exercise reference selection, preview and confirmation without HTTPS-only APIs.
+beforeEach(() => {
+  vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+});
+afterEach(() => vi.unstubAllGlobals());
 
 const resourceOne = "a0000000-0000-4000-8000-000000000001";
 const resourceTwo = "a0000000-0000-4000-8000-000000000002";

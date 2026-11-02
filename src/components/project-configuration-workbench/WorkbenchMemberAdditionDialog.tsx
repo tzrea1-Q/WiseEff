@@ -1,3 +1,4 @@
+import { createGovernanceIdempotencyKey as createUuid } from "@/features/parameter-catalog-governance/governanceState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
 import { createDefaultApiClient } from "@/infrastructure/http/defaultApiClient";
@@ -153,7 +154,7 @@ export function WorkbenchMemberAdditionDialog({ projectId, configSets, initialCo
         sortOrder: Number(sortOrder), ...(registerJson ? { json: { configurationSchemaId: registration.configurationSchemaId, rootPointer: "", mappings: jsonMappings! } } : {}) };
       const result = await client.preview(projectId, configSetId, body);
       if (!mounted.current) return;
-      setPreparedBody(body); setPreview(result); mutationId.current = crypto.randomUUID();registrationId.current=crypto.randomUUID();
+      setPreparedBody(body); setPreview(result); mutationId.current = createUuid();registrationId.current=createUuid();
     } catch (failure) { if (mounted.current) {
       showError(failure, "无法预览文件组成，请检查文件后重试。");
       if(sharedOnly && refreshExistingReferences && failure instanceof WiseEffApiError && (failure.code==="CONFLICT"||[401,403,404].includes(failure.status??0))) {setRefreshRequired(true);await refreshReferences();}

@@ -1,3 +1,4 @@
+import { createGovernanceIdempotencyKey as createUuid } from "@/features/parameter-catalog-governance/governanceState";
 import { useState } from "react";
 import type { SharedDtsiLifecycleInput, SharedDtsiResourceDetail } from "@wiseeff/dto-schemas";
 import type { createSharedDtsiClient } from "@/infrastructure/http/sharedDtsiClient";
@@ -38,7 +39,7 @@ export function SharedDtsiLifecycle({ client, resource, canWrite, pending, onPen
     {canWrite?<RowActionMenu label="资源操作" triggerLabel="资源更多操作" items={[
       ...(onDiscard?[{id:"discard",label:"丢弃草稿",destructive:true as const,disabled:pending || discardDisabled,onRequestConfirmation:onDiscard}]:[]),
       {id:"lifecycle",label,destructive:true as const,disabled:pending,onRequestConfirmation:()=>{
-        setError("");setStale(false);setRestored(false);setRequest({state:retired?"active":"retired",expectedLifecycleRevision:resource.lifecycleRevision,idempotencyKey:crypto.randomUUID()});
+        setError("");setStale(false);setRestored(false);setRequest({state:retired?"active":"retired",expectedLifecycleRevision:resource.lifecycleRevision,idempotencyKey:createUuid()});
       }}
     ]}/>:null}
     <ConfirmDialog open={Boolean(request)} title={`${label}？`} description={retired

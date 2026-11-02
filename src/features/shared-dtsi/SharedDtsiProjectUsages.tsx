@@ -1,3 +1,4 @@
+import { createGovernanceIdempotencyKey as createUuid } from "@/features/parameter-catalog-governance/governanceState";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { sharedDtsiProjectUsagesSchema, type SharedDtsiProjectUsages } from "@wiseeff/dto-schemas";
 import { AdminListPage } from "@/components/layout/AdminListPage";
@@ -80,7 +81,7 @@ export function SharedDtsiProjectUsages({apiClient,organizationId,currentUserId,
       const existing=source?targetRow.references.find(ref=>ref.resourceId===source.resourceId):undefined;
       if(existing&&(!existing.direct||existing.versionId===source?.versionId)){setReload(value=>value+1);return;}
       const additionDraft=source&&!existing?additionDrafts.get(additionDraftKey(targetRow,source.resourceId,source.versionId)):undefined;
-      setPendingFocus(undefined);trigger.current=element;setAppliedNotice("");setUncertainNotice(false);setSelected({row:targetRow,adding:Boolean(source),scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:crypto.randomUUID(),...(additionDraft?{additionDraft}:{}),...(source&&existing?{action:{kind:"switch" as const,reference:existing}}:{})});
+      setPendingFocus(undefined);trigger.current=element;setAppliedNotice("");setUncertainNotice(false);setSelected({row:targetRow,adding:Boolean(source),scope:search,client:apiClient,canWrite,organizationId,currentUserId,instance:createUuid(),...(additionDraft?{additionDraft}:{}),...(source&&existing?{action:{kind:"switch" as const,reference:existing}}:{})});
     }catch{if(activeScope.current===scope)setRecheckError(source?"无法核对目标配置或权限，请稍后重试。":"无法核对待处理操作，请稍后重试。");}
     finally{if(activeScope.current===scope){openingRef.current=false;setOpening(null);}}
   };

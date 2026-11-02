@@ -1,7 +1,7 @@
 import { useLayoutEffect, useState } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { createApiClient } from "@/infrastructure/http/apiClient";
 import { requestSettingsLeave } from "@/application/settingsFormNavigation";
@@ -13,6 +13,12 @@ beforeAll(() => {
   Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
   Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 });
+// Match ordinary HTTP deployments: secure random bytes exist, randomUUID does not.
+beforeEach(() => {
+  vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+});
+afterEach(() => vi.unstubAllGlobals());
+
 function setup(options: { writable?: boolean; existingDraft?: boolean; saveError?: boolean;dependency?:boolean;beforeCreate?:()=>Promise<void>;beforePreview?:()=>Promise<void>;onOrganizationLayout?:()=>void;onDraftGet?:(item:Record<string,unknown>)=>Promise<Record<string,unknown>>; reorderOnSave?:boolean; previewError?: {code:string;message:string;details:Record<string,unknown>}; createError?: {code:string;message:string;details:Record<string,unknown>};createStatus?:number; draftOnly?:boolean; pagination?:boolean; failSearch?:Promise<void>; failVersions?:boolean; failPinnedVersion?:boolean } = {}) {
   const resourceId = "33333333-3333-4333-8333-333333333333";
   let item: Record<string, unknown> | null = options.existingDraft ? {id:"11111111-1111-4111-8111-111111111111",resourceId,name:"Existing draft",revision:1,updatedAt:"2026-10-25T00:00:00Z",changeDescription:"Existing change",members:[{id:"22222222-2222-4222-8222-000000000000",sourceName:"existing.dtsi",content:"/ { existing {}; };"}]} : null;
@@ -84,6 +90,13 @@ function setup(options: { writable?: boolean; existingDraft?: boolean; saveError
 }
 
 describe("shared DTSI draft authoring", () => {
+  it.each([true, false])("loads the source list on HTTP with canWrite=%s", async canWrite => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ items: [], total: 0 })));
+    render(<SharedDtsiPage apiClient={createApiClient({ baseUrl: "", fetchImpl })}
+      canWrite={canWrite} search="" onNavigate={() => {}} />);
+    expect(await screen.findByText("尚无共享 DTSI")).toBeVisible();
+    expect(fetchImpl).toHaveBeenCalled();
+  });
   it("loads the resource list when session storage is unavailable",async()=>{
     const get=vi.spyOn(Storage.prototype,"getItem").mockImplementation(()=>{throw new DOMException("denied","SecurityError");});
     try{render(<SharedDtsiPage apiClient={createApiClient({baseUrl:"",fetchImpl:async()=>new Response(JSON.stringify({items:[],total:0}))})} currentUserId="user" canWrite search="" onNavigate={()=>{}}/>);
