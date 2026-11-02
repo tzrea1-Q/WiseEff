@@ -28,7 +28,7 @@ import { parseMappingManifestV2 } from "../../catalog-cutover/mappingManifest";
 import { executeCutover, planCutover } from "../../catalog-cutover/orchestrator";
 import { fixtureObservedQuiescence } from "../../catalog-cutover/quiescence";
 import { fixtureObservedRecoveryPoint } from "../../catalog-cutover/recoveryPointObservation";
-import { createParameterModule } from "../../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../../testing/legacyParameterModuleFixture";
 
 const sqlQuote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
 

@@ -6,6 +6,8 @@ Date: 2026-08-31
 
 ## Status
 
+Amended by [ADR-0053](0053-business-modules-hold-subjects-and-drivers-own-child-nodes.md) (placement targets and one-placement-per-module).
+
 Accepted as the target contract for [Choose organization registration and placement semantics](https://github.com/tzrea1-Q/WiseEff/issues/675). It depends on [ADR-0040](0040-canonical-parameter-catalog-relational-model.md) for the canonical relational model and on [ADR-0041](0041-platform-schema-catalog-releases-materialize-before-runtime.md) for current Catalog Release lifecycle. This is a decision for the parameter-catalog replacement; it does not claim that current production already behaves this way. ADR-0039 remains the current operational contract until a later implementation plan and verified cutover replace it.
 
 ## Context

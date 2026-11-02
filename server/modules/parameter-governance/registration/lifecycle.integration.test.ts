@@ -212,9 +212,11 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       principalId: actor.principalId, invocation: actor.invocation, requestId: actor.requestId });
     expect(refused).toMatchObject({ ok: false, error: [{ subjectId: ownedNodeSubject, code: "owned-child", field: "subject" }] });
     const result = await executeBatchRegistration(api, { organizationId, expectedRelease: pin, idempotencyKey: randomUUID(),
-      rows: [{ subjectId: targetSubject, target: { type: "existing-module", moduleId } }], actorKind: "org-admin",
+      rows: [{ subjectId: targetSubject, target: { type: "existing-module", moduleId }, displayAlias: "设备展示名" }], actorKind: "org-admin",
       principalId: actor.principalId, invocation: actor.invocation, requestId: actor.requestId });
     expect(result.ok).toBe(true);
+    expect((await api.query(`select display_alias from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, targetSubject])).rows).toEqual([{ display_alias: "设备展示名" }]);
     const rows = await api.query(`select subject_id,registration_method,proof from parameter_catalog.organization_subject_registrations
       where organization_id=$1 and subject_id in ($2,$3) order by subject_id`, [organizationId, targetSubject, ownedNodeSubject]);
     expect(rows.rows).toHaveLength(2);
@@ -352,7 +354,7 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     const actor = await auditedContext("concurrent-batch");
     const [batch, single] = await Promise.all([
       executeBatchRegistration(api, { organizationId, expectedRelease: pin, idempotencyKey: randomUUID(),
-        rows: [{ subjectId: targetSubject, target: { type: "new-module", parentModuleId: moduleId, name: "Batch destination" } }],
+        rows: [{ subjectId: targetSubject, target: { type: "existing-module", moduleId } }],
         actorKind: "org-admin", principalId: actor.principalId, invocation: actor.invocation, requestId: actor.requestId }),
       createRegistrationService(api).execute({ kind: "register", organizationId, subjectId: thirdSubject, subjectKind: "driver",
         expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: `single-${randomUUID()}`,

@@ -26,7 +26,7 @@ import { executeClaimedPublicationJob } from "../catalog-publication/jobs/execut
 import { createCatalogInstaller } from "../catalog-kernel/install/installer";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { getAuthContext } from "../auth/repository";
-import { createParameterModule } from "../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../testing/legacyParameterModuleFixture";
 import { writeGuardedRegistration } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
 import { CatalogSubjectId } from "../parameter-catalog-contract";
 import { captureCurrentCatalogPin } from "../catalog-publication/runtime";

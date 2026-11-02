@@ -8,6 +8,7 @@ import {
 import { seedCoreGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { createParameterModule } from "../parameters/parameterModuleRepository";
+import { createLegacyParameterModule } from "../../testing/legacyParameterModuleFixture";
 import { resolveModuleIdForBinding, unclassifiedModuleId } from "./resolveModuleForBinding";
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -143,6 +144,15 @@ describe.skipIf(!databaseAvailable)("resolveModuleIdForBinding", () => {
       kind: "unclassified",
       origin: "auto"
     });
+  });
+
+  it("rejects a technical module occupying the reserved unclassified id", async () => {
+    await createLegacyParameterModule(db, {
+      id: unclassifiedModuleId("org-1"), organizationId: "org-1", name: "Legacy driver", kind: "driver-group",
+    });
+    await expect(resolveModuleIdForBinding(db, {
+      organizationId: "org-1", driverModule: null, compatible: null, nodeType: null,
+    })).rejects.toThrow("未分类根模块不可用");
   });
 
   it("never returns null/undefined even when driver/compatible/nodeType are all null", async () => {

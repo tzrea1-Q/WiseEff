@@ -10,6 +10,8 @@ import type { ParameterChangeAction } from "../parameter-drafts/types";
 export type ModuleImportance = "high" | "medium" | "low";
 
 export type ModuleKind = "business" | "driver-group" | "node-type" | "unclassified";
+/** The unclassified kind is reserved for the system root. */
+export type WritableModuleKind = "business" | "unclassified";
 
 export type ModuleOrigin = "curated" | "auto";
 

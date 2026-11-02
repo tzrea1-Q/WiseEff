@@ -89,9 +89,9 @@ const databaseError = (code: string, detail: string): pg.DatabaseError => {
 };
 
 describe("S4-REG public command contract", () => {
-  it("limits seed aliases to validated seed registration commands and fingerprints them", () => {
+  it("allows validated human and seed aliases and fingerprints them", () => {
     expect(validateRegistrationCommand(registerCommand({ displayAlias: "Legacy" })))
-      .toMatchObject({ ok: false, error: { kind: "permission-denied" } });
+      .toMatchObject({ ok: true });
     const seed = registerCommand({ method: "automatic", context: { actorKind: "trusted-system", principalId: "seed-initialization" }, displayAlias: "Legacy" });
     expect(validateRegistrationCommand(seed)).toMatchObject({ ok: true });
     for (const alias of [" ", "invalid\nalias", "x".repeat(129)]) {

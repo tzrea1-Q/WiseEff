@@ -16,8 +16,7 @@ import { executeRegistration } from "../../modules/parameter-governance/registra
 import { writeGuardedRegistration } from "../../modules/parameter-governance/registration/internalGuardedRegistrationWriter";
 import type { RegisterSubjectCommand } from "../../modules/parameter-governance/registration/command";
 import { createParameterModuleForAuth } from "../../modules/parameters/service";
-import { createParameterModule } from "../../modules/parameters/parameterModuleRepository";
-import { insertAttributionSubjectForNewModule } from "../../modules/parameter-modules/attributionSubjectRepository";
+import { createLegacyParameterModule as createParameterModule } from "../legacyParameterModuleFixture";
 import type pg from "pg";
 
 /** Seed a historical typed placement before 0320 so upgrade tests exercise real legacy rows. */
@@ -108,10 +107,10 @@ export async function installDriverSourceFixture(
   });
   if (input.legacyPlacement) {
     // The current module service reads 0324 columns, so seed genuine pre-0320 rows explicitly.
-    const attributionSubjectId = await insertAttributionSubjectForNewModule(db, {
-      moduleId: driver.id, organizationId: auth.organization.id, kind: "driver-group", displayName: input.driverName,
-      origin: "curated", sourceKey: `compatible:${input.compatible}`, defaultBusinessCategoryModuleId: business.id,
-    });
+    const attributionSubjectId = `asub:legacy:${driver.id}`;
+    await db.query(`insert into attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key)
+      values ($1,$2,'driver-registration',$3,'curated',$4)`,
+    [attributionSubjectId, auth.organization.id, input.driverName, `compatible:${input.compatible}`]);
     await db.query(`insert into public.parameter_modules
       (id,organization_id,parent_id,name,path,depth,kind,origin,source_key,attribution_subject_id)
       values ($1,$2,$3,$4,$5,2,'driver-group','curated',$6,$7)`,

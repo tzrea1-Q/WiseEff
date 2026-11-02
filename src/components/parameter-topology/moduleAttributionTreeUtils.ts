@@ -275,6 +275,9 @@ export function isUnclassifiedRoot(module: ParameterModule): boolean {
 export type ModuleActionDecision = { allowed: true } | { allowed: false; reason: string };
 
 export function renameModuleDecision(module: ParameterModule): ModuleActionDecision {
+  if (module.kind === "driver-group" || module.kind === "node-type") {
+    return { allowed: false, reason: "遗留技术模块只读，请在主体详情中调整归属。" };
+  }
   if (isUnclassifiedRoot(module)) {
     return { allowed: false, reason: "未分类根为只读，不可重命名。" };
   }
@@ -286,7 +289,7 @@ export function editModuleDetailsDecision(module: ParameterModule): ModuleAction
 }
 
 export function addChildModuleDecision(module: ParameterModule): ModuleActionDecision {
-  if (module.kind === "business" || module.kind === "driver-group") {
+  if (module.kind === "business") {
     return { allowed: true };
   }
   if (module.kind === "node-type") {
@@ -296,13 +299,17 @@ export function addChildModuleDecision(module: ParameterModule): ModuleActionDec
 }
 
 export function moveModuleDecision(module: ParameterModule): ModuleActionDecision {
-  if (module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type") {
+  if (module.kind === "business") {
     return { allowed: true };
   }
+  if (module.kind !== "unclassified") return { allowed: false, reason: "遗留技术模块只读，请调整主体归属。" };
   return { allowed: false, reason: "未分类根不可移动。" };
 }
 
 export function deleteModuleDecision(module: ParameterModule, modules: readonly ParameterModule[] = []): ModuleActionDecision {
+  if (module.kind === "driver-group" || module.kind === "node-type") {
+    return { allowed: false, reason: "遗留技术模块只读。" };
+  }
   if (module.kind === "unclassified" && module.parentId === null) {
     return { allowed: false, reason: "未分类根不可删除。" };
   }
@@ -350,13 +357,13 @@ export function sortOrderSwapUpdates(
   direction: "up" | "down",
   modules: readonly ParameterModule[]
 ): Array<{ id: string; sortOrder: number }> | null {
-  const siblings = siblingModules(modules, module);
+  if (module.kind !== "business") return null;
+  const siblings = siblingModules(modules, module).filter((candidate) => candidate.kind === "business");
   const index = siblings.findIndex((candidate) => candidate.id === module.id);
   if (index < 0) return null;
   const swapIndex = direction === "up" ? index - 1 : index + 1;
   if (swapIndex < 0 || swapIndex >= siblings.length) return null;
   const peer = siblings[swapIndex]!;
-  if (isUnclassifiedRoot(module) || isUnclassifiedRoot(peer)) return null;
   return [
     { id: module.id, sortOrder: peer.sortOrder },
     { id: peer.id, sortOrder: module.sortOrder }
@@ -449,5 +456,5 @@ export function canDeleteModule(module: ParameterModule): boolean {
 }
 
 export function canEditImportance(module: ParameterModule): boolean {
-  return !isUnclassifiedRoot(module);
+  return module.kind === "business";
 }

@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { ApiError } from "../../shared/http/errors";
 import type { Queryable } from "../../shared/database/client";
 import { compatibleSourceKey } from "./ensureAttributionModuleForBinding";
-import { getParameterModuleBySourceKey } from "../parameters/parameterModuleRepository";
 import { defaultDriverRegistrationAttributes } from "./attributionSubjects";
 
 /**
@@ -44,7 +43,7 @@ export async function getModuleAttributionSubjectId(
 
 /**
  * Resolve the durable AttributionSubject for a compatible string.
- * Prefers exact `compatible:{token}` source_key, then module placement via the same key.
+ * Uses the attribution subject source key, never a module label as identity.
  * Does not invent subjects — callers that need creation should use ensure*.
  */
 export async function resolveAttributionSubjectIdForCompatible(
@@ -60,13 +59,6 @@ export async function resolveAttributionSubjectIdForCompatible(
   });
   if (bySource) return bySource;
 
-  if (input.organizationId) {
-    const module = await getParameterModuleBySourceKey(db, {
-      organizationId: input.organizationId,
-      sourceKey,
-    });
-    if (module?.attributionSubjectId) return module.attributionSubjectId;
-  }
 
   return null;
 }
@@ -171,12 +163,6 @@ async function ensureNodeTypeDefinitionSubject(
     // Keep the old registration/placement rows as migration evidence. Every
     // driver-registry/placement query filters the corrected subject kind, so
     // these immutable legacy rows cannot make a node type look like a driver.
-    await db.query(
-      `update parameter_modules
-       set kind = 'node-type', updated_at = now()
-       where attribution_subject_id = $1 and source_key = $2 and kind = 'driver-group'`,
-      [subjectId, sourceKey],
-    );
     await db.query(
       `update attribution_subjects set subject_kind = 'node-type-definition', updated_at = now() where id = $1`,
       [subjectId],

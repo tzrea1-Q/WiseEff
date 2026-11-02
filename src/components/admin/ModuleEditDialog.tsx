@@ -142,7 +142,9 @@ export function ModuleEditDialog({
             <h2 id={titleId}>{module.name}</h2>
             <p id={descriptionId}>
               {moduleDetailsReadOnly
-                ? "查看模块的名称、描述与适用范围。当前会话为只读。"
+                ? module.kind === "driver-group" || module.kind === "node-type"
+                  ? "查看保留的遗留技术模块；请在主体详情中维护识别规则与归属。"
+                  : "查看模块的名称、描述与适用范围。当前会话为只读。"
                 : description ?? (showImportance
                     ? "更新模块名称、重要性、描述与适用范围。"
                     : "更新模块名称、描述与适用范围。修改名称会同步更新共享参数库中的模块归属。")}

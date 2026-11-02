@@ -1,3 +1,4 @@
+-- Historical cutover comparison reads pre-ADR-0053 technical placement evidence.
 begin transaction isolation level repeatable read read only;
 \pset format csv
 

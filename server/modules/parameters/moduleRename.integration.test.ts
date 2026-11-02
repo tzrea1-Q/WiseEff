@@ -6,7 +6,8 @@ import { createEphemeralTestDatabase, withTestClusterRoleCatalogLock } from "../
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/index";
 import { installParameterModuleRegistryProjectionFixture, registerParameterModuleRegistryProjectionDriver } from "../../testing/parameterCatalog/registryProjection";
 import { CatalogSubjectId } from "../parameter-catalog-contract/index";
-import { createParameterModule, listParameterModules } from "./parameterModuleRepository";
+import { listParameterModules } from "./parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../testing/legacyParameterModuleFixture";
 
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
@@ -15,7 +16,7 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
-import { insertAttributionSubjectForNewModule } from "../parameter-modules/attributionSubjectRepository";
+import { insertAttributionSubjectForNewModule } from "../../testing/legacyAttributionSubjectFixture";
 import { applyParameterIdentityCutover, migrateParameterIdentities } from "../parameter-topology/migration";
 import {
   resolveParameterIdentityMode,
@@ -334,7 +335,7 @@ describe.skipIf(!databaseAvailable)("parameter module rename with the standard A
     });
   });
 
-  it("renames an unregistered populated structural module without changing flat labels or canonical identity", async () => {
+  it("rejects renaming an unregistered structural module without changing history", async () => {
     await withLegacyApiLogin(true, async ({ db, apiDb, moduleId, errors }) => {
       const identitySql = "select id,organization_id,parent_id,path,kind,source_key,attribution_subject_id from parameter_modules where id=$1";
       const identity = (await db.query(identitySql, [moduleId])).rows;
@@ -343,8 +344,7 @@ describe.skipIf(!databaseAvailable)("parameter module rename with the standard A
       const response = await requestJson(makeServer(apiDb), `/api/v1/parameter-modules/${moduleId}`, {
         method: "PATCH", body: JSON.stringify({ name: "Unregistered Driver Renamed" }),
       });
-      expect(response.status, response.bodyText).toBe(200);
-      expect(response.body).toMatchObject({ item: { id: moduleId, name: "Unregistered Driver Renamed", kind: "driver-group" } });
+      expect(response.status, response.bodyText).toBe(410);
       expect(errors).toEqual([]);
       expect((await db.query(identitySql, [moduleId])).rows).toEqual(identity);
       expect((await readUnregisteredCanonicalRenameState(db)).rows).toEqual(canonical);
@@ -352,13 +352,13 @@ describe.skipIf(!databaseAvailable)("parameter module rename with the standard A
         { id: "pd-api-foreign", module: "Foreign Legacy" }, { id: "pd-api-local", module: "API Driver" },
       ]);
       expect((await db.query("select metadata from audit_events where kind='parameter-module-admin-update' and organization_id=$1", [ORG])).rows)
-        .toEqual([{ metadata: expect.objectContaining({ name: "Unregistered Driver Renamed", previousName: "API Driver" }) }]);
+        .toEqual([]);
     }, { registered: false });
   });
 });
 
 describe.skipIf(!databaseAvailable)("parameter module rename after identity cutover", () => {
-  it("keeps subject creation and identity-kind changes governed while allowing organization moves and leaf deletion", async () => {
+  it("rejects legacy structural module moves and deletion", async () => {
     await withModuleRenameDatabase({ prefix: "modrenamegone" }, async ({ db }) => {
       await bootstrapPostCutoverDatabase(db);
       const before = await listParameterModules(db, { organizationId: ORG });
@@ -381,31 +381,28 @@ describe.skipIf(!databaseAvailable)("parameter module rename after identity cuto
       const moved = await requestJson(makeServer(db), "/api/v1/parameter-modules/pm-rename-driver/move", {
         method: "POST", body: JSON.stringify({ parentId: "pm-rename-description" }),
       });
-      expect(moved.status, moved.bodyText).toBe(200);
-      expect(moved.body).toMatchObject({ item: { ...driverBefore, parentId: "pm-rename-description",
-        path: "pm-rename-description/pm-rename-driver" } });
+      expect(moved.status, moved.bodyText).toBe(410);
+      expect((await listParameterModules(db, { organizationId: ORG })).find(module => module.id === driverBefore.id))
+        .toEqual(driverBefore);
       expect((await listParameterModules(db, { organizationId: ORG })).find(module => module.id === nodeBefore.id))
-        .toMatchObject({ ...nodeBefore, path: "pm-rename-description/pm-rename-driver/pm-rename-node" });
+        .toEqual(nodeBefore);
       const deleted = await requestJson(makeServer(db), "/api/v1/parameter-modules/pm-rename-node", { method: "DELETE" });
-      expect(deleted.status, deleted.bodyText).toBe(204);
-      expect((await listParameterModules(db, { organizationId: ORG })).some(module => module.id === nodeBefore.id)).toBe(false);
+      expect(deleted.status, deleted.bodyText).toBe(410);
+      expect((await listParameterModules(db, { organizationId: ORG })).some(module => module.id === nodeBefore.id)).toBe(true);
       expect((await db.query("select id from attribution_subjects where id=$1", [nodeBefore.attributionSubjectId])).rows)
         .toEqual([{ id: nodeBefore.attributionSubjectId }]);
       expect((await db.query("select kind from audit_events where organization_id=$1 and kind in ('parameter-module-admin-move','parameter-module-admin-delete')", [ORG])).rows)
-        .toEqual(expect.arrayContaining([{ kind: "parameter-module-admin-move" }, { kind: "parameter-module-admin-delete" }]));
+        .toEqual([]);
     });
   });
 
-  it("renames business, manual and automatic structural modules after cutover while preserving identity and audit", async () => {
+  it("renames business modules while retaining legacy structural modules and their identities", async () => {
     await withModuleRenameDatabase({ prefix: "modrename" }, async ({ db }) => {
       await bootstrapPostCutoverDatabase(db);
       const identities = await db.query("select id,organization_id,parent_id,path,kind,source_key,attribution_subject_id from parameter_modules where organization_id=$1 order by id", [ORG]);
 
       const cases = [
         { id: "pm-rename-business", name: "Charging Policy", previousName: "Charging" },
-        { id: "pm-rename-driver", name: "Power Driver Group", previousName: "Driver Group" },
-        { id: "pm-rename-node", name: "Power Node Type", previousName: "Node Type" },
-        { id: "pm-rename-auto", name: "Renamed Auto Driver Group", previousName: "Auto Driver Group" }
       ];
 
       const descriptionResponse = await requestJson<{ item: { id: string; description: string } }>(
@@ -434,6 +431,12 @@ describe.skipIf(!databaseAvailable)("parameter module rename after identity cuto
         expect(response.status, response.bodyText).toBe(200);
         expect(response.body).toEqual({ item: expect.objectContaining({ id: testCase.id, name: testCase.name }) });
       }
+      for (const id of ["pm-rename-driver", "pm-rename-node", "pm-rename-auto"]) {
+        const response = await requestJson(makeServer(db), `/api/v1/parameter-modules/${id}`, {
+          method: "PATCH", body: JSON.stringify({ name: "Denied" }),
+        });
+        expect(response.status, response.bodyText).toBe(410);
+      }
       expect((await db.query("select id,organization_id,parent_id,path,kind,source_key,attribution_subject_id from parameter_modules where organization_id=$1 order by id", [ORG])).rows).toEqual(identities.rows);
 
       const description = await db.query<{ description: string }>(
@@ -452,11 +455,11 @@ describe.skipIf(!databaseAvailable)("parameter module rename after identity cuto
         [ORG]
       );
       expect(persisted.rows).toEqual([
-        { id: "pm-rename-auto", name: "Renamed Auto Driver Group" },
+        { id: "pm-rename-auto", name: "Auto Driver Group" },
         { id: "pm-rename-business", name: "Charging Policy" },
         { id: "pm-rename-description", name: "Description Only" },
-        { id: "pm-rename-driver", name: "Power Driver Group" },
-        { id: "pm-rename-node", name: "Power Node Type" }
+        { id: "pm-rename-driver", name: "Driver Group" },
+        { id: "pm-rename-node", name: "Node Type" }
       ]);
 
       const origins = await db.query<{ id: string; origin: string }>(
@@ -467,7 +470,7 @@ describe.skipIf(!databaseAvailable)("parameter module rename after identity cuto
         [ORG]
       );
       expect(origins.rows).toEqual([
-        { id: "pm-rename-auto", origin: "curated" },
+        { id: "pm-rename-auto", origin: "auto" },
         { id: "pm-rename-business", origin: "curated" },
         { id: "pm-rename-description", origin: "curated" },
         { id: "pm-rename-driver", origin: "curated" },
@@ -482,7 +485,7 @@ describe.skipIf(!databaseAvailable)("parameter module rename after identity cuto
          order by created_at, id`,
         [ORG]
       );
-      expect(audit.rows).toHaveLength(5);
+      expect(audit.rows).toHaveLength(2);
       expect(audit.rows).toEqual(
         expect.arrayContaining([
           ...cases.map(testCase => ({ target_id: testCase.id,

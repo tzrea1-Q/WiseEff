@@ -150,15 +150,19 @@ Legacy 运行时调试参数 DTO 包含可选值元数据：
 
 ## 参数模块树
 
+ADR-0053 取代下方历史段落中的技术模块 placement 合同。新模块写入使用业务分类，未分类根为保留根。根主体登记指向业务分类或未分类根，所属子主体继承驱动的有效放置；多个登记可共享模块。识别规则按登记保存，遗留技术模块保留用于历史。
+
+`POST /api/v2/organizations/:organizationId/subject-registrations/batch` 的每行选择已有业务模块或未分类根，并可填写根主体的可选 `displayAlias`。Markdown 发布预览的 `placementHints` 返回 `categoryPath`、可选 `displayAlias` 和警告；提示不会创建模块或登记主体。旧 `moduleName` 指令会给出弃用警告，仅对根主体映射为别名。ADR-0053 取代 #1447 原来的“创建同类型模块 / 选择空闲模块”合同。
+
 组织级参数模块为独立于调试模块树的层级分类。列表要求 `parameter:view`；创建/更新/移动/删除要求 `admin:access`。删除非空模块（仍有子模块或已挂参数）返回 `409`；循环移动返回 `409`。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/v1/parameter-modules` | 列出组织参数模块树节点。 |
-| `POST` | `/api/v1/parameter-modules` | 创建模块（`name`，可选 `parentId`）。 |
-| `PATCH` | `/api/v1/parameter-modules/:moduleId` | 更新模块元数据。 |
-| `POST` | `/api/v1/parameter-modules/:moduleId/move` | 重新挂载父节点（`parentId`，根节点可为 null）。 |
-| `DELETE` | `/api/v1/parameter-modules/:moduleId` | 删除空叶子模块。 |
+| `POST` | `/api/v1/parameter-modules` | 创建 curated 业务模块（`name`，可选业务模块 `parentId`）；提供 `kind` 时只能为 `business`。技术类型返回 `410 GONE`。 |
+| `PATCH` | `/api/v1/parameter-modules/:moduleId` | 更新业务模块元数据；技术模块只读，返回 `410 GONE`。 |
+| `POST` | `/api/v1/parameter-modules/:moduleId/move` | 将业务模块移动到另一个业务模块或根；拒绝技术模块及技术目标。 |
+| `DELETE` | `/api/v1/parameter-modules/:moduleId` | 删除空业务叶子；技术模块作为历史保留并返回 `410 GONE`。 |
 
 `GET /api/v1/parameters` 支持 `moduleId` 与可选 `includeDescendants`（默认包含子树）。参数 DTO 提供 `moduleId` 与 `modulePath`。
 
@@ -875,7 +879,7 @@ Migration `0092_dts_structural_spans.sql` 在 `dts_nodes` / `dts_properties` 上
 
 **ParameterSpec 身份（ADR-0013 / ADR-0014 / ADR-0017）：** 稳定目录身份为归属范围 + `attributionSubjectId`（驱动登记或节点类型定义）+ `property_key`。`parameter_specs.id` 是**代理键**；find-or-create 按上述列查找，哈希 id 只在即将插入新行时生成。`specification_key` 由三元组**派生**，身份纠错时在同一事务中重写（ID-R4），不要当作可独立编写的字段。列表/详情 DTO 的 `lifecycle` 反映定义层 `definition_lifecycle`（`draft` \| `active` \| `deprecated`）。版本化内容在 `parameter_spec_versions`（`version_status`：`draft` \| `active` \| `superseded`）；`currentVersionId` / `currentVersion` 在有活跃内容时指向当前版本行。同 subject + key 时组织定义覆盖平台定义。
 
-默认列表是生效目录投影（ADR-0039）。`view=effective`（省略 `view` 时的默认值）按规范驱动主体 + 属性键只返回一条启用且当前版本的定义，并执行组织 active > 平台 active 优先级；主体、驱动 schema 与组织驱动组放置不完整时不返回。`view=governance` 返回原始归属/生命周期/版本行，包含 draft、deprecated、被遮蔽成对行及不完整放置，用于修复与审计，不得用作 matcher override。每行还可带 `effectiveScope`、`overrideOfSpecId`、权威分类放置 `declaredPlacement` 与仅表示 binding 证据的 `observationState`。未匹配/歧义 ingest 只保留审核证据，不创建已识别 binding。扩展/收缩数据修复命令为 `npm run parameter-definitions:reconcile -- --dry-run|--apply`，独立完整只读门禁为 `npm run parameter-definitions:check`。`--catalog-only` 只选择自托管候选就绪所需的驱动目录子集，排除 node-type taxonomy 和项目 binding tip 检查，不得替代配置发布的完整门禁。
+ADR-0039 原生效驱动定义投影及驱动组放置规则现为历史合同。当前 Catalog 定义采用规范主体身份与 ADR-0053 组织登记 placement；未匹配或歧义观察进入审核。`parameter-definitions:reconcile --apply` 已退役；`parameter-definitions:check` 仍是只读发布验证门禁。
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -907,19 +911,19 @@ Migration `0092_dts_structural_spans.sql` 在 `dts_nodes` / `dts_properties` 上
 | `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | 失败关闭工具链校验。再次校验失败会**撤销**此前的 `validated` 标记；开放身份映射、**已驳回**身份映射、**singleton-cardinality** 映射阻断，或被 dismiss 且未匹配的规格审核，均 fail-closed。软通过/warn（硬性 dtc 通过但仍有工具链诊断，或 warn 模式）可返回 `requiresConfirmation: true`；配置工作台发布 ConfirmDialog 必须确认该标志。 |
 | `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | 类型化绑定草稿 + **精确 occurrence** Config Set 回写：锁定 binding revision、occurrence、文件版本、checksum 与 CST span（默认强制 schema；**base** binding revision 不可变；合入值在 **candidate** revision）。身份过期 → `409`。Cutover 后语义合并在缺 `objectStore`、项目范围、write lock 或真实 DTC 工具链时失败关闭——生产路径无 `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN`。Cutover 后草稿不得再创建 shadow `project_parameter_values` / `parameter_definitions`。 |
 | `POST` | `/api/v2/projects/:projectId/node-enablement-drafts` | 共享工作 tip 管线上的节点启用草稿。请求体：`{ logicalNodeId, baseRevisionId, target: force-enabled\|force-disabled\|unstated, reason, acknowledgeNonstandard?, spellingOverride? }`。在锁定的 overlay 文件上写入或删除 DTS `status`；与 binding 草稿共享 candidate revision 协调（混用 tip → `409 mixed-working-tips`）。要求 `parameter:edit`；适用 `dts_sensitive_node_rules`。审计：`parameter-topology-governance` / `enablement-changed`。 |
-| `GET` | `/api/v2/parameter-modules` | 组织模块注册表：`{ item: { modules, mappings } }`。模块 DTO 含 `kind`、`origin`、`sourceKey`、`attributionSubjectId`（驱动组/节点类型目录 subject）、`effectiveImportance`、`definitionCount`（子树内互异规格数 / 定义数）、`parameterCount`（子树绑定数 / 实测处数），以及 `name`、`parentId`、`sortOrder`、`importance`。两计数字段是不同事实，不可合成一个。定义库 `referenceCount`（引用数）是同一绑定事实收窄到单定义。模块 CRUD 仍走 v1。 |
+| `GET` | `/api/v2/parameter-modules` | 只读导航，返回 `{ item: { navigationOnly: true, modules, mappings: [] } }`；技术模块仅作历史展示。业务模块 CRUD 使用 v1，技术模块写入返回 `410 GONE`。 |
 | `GET` | `/api/v2/parameter-modules/discovery-hints` | 从 binding 观测未映射 `compatible`（`{ item: { compatibles: [{ compatible, bindingCount, projectCount, suggestedGroupName }], total } }`），排除已忽略与脚手架标签。 |
-| `POST` | `/api/v2/parameter-modules/discovery-hints/dismissals` | Admin 从队列忽略 compatible（`{ compatible, reason? }`）；返回刷新后的 hints。审计：`parameter-module-compatible-dismissed`。 |
-| `DELETE` | `/api/v2/parameter-modules/discovery-hints/dismissals/:compatible` | Admin 恢复已忽略的 compatible。审计：`parameter-module-compatible-restored`。 |
-| `POST` | `/api/v2/parameter-modules/mappings/preview` | Admin 映射干跑（`{ moduleId, matchKind, matchValue, priority? }`）；`matchKind` 仅 `compatible` \| `node-type`。返回 `{ item: MappingApplyPreview }`，不落库。 |
-| `POST` | `/api/v2/parameter-modules/mappings` | Admin 创建映射并**按规则范围应用**到匹配 binding。返回 `{ item: registry, apply: MappingApplyPreview }`（`201`）。审计：`parameter-module-mapping-created`。 |
-| `DELETE` | `/api/v2/parameter-modules/mappings/:mappingId` | Admin 删除映射并对受影响 binding 做范围重停放。返回 `{ item: registry, apply: MappingApplyPreview }`。审计：`parameter-module-mapping-deleted`。 |
-| `POST` | `/api/v2/parameter-modules/recompute-bindings` | Admin 全组织或单项目重算（可选 `{ projectId, dryRun }`）。`dryRun: true` 返回 `{ updated, conflicts, dryRun: true, preview }` 不写库。正式应用返回 `{ updated, conflicts, preview? }`；唯一键冲突 → `409`。运维/回填（历史 drift 或 seed 纠偏）——日常归类与驱动登记/认领走按范围应用，而非全量重算。审计：`parameter-module-bindings-recomputed`。 |
-| `GET` | `/api/v2/parameter-modules/driver-registry` | 组织驱动登记视图：`{ items: DriverRegistryEntry[], total }`。每项为驱动组模块，含 exact compatible、`origin`、当前树业务分类、权威 `defaultBusinessCategoryId`（注册默认，可与当前父节点不同）、参数/实测覆盖、可通过 PATCH 编辑的 `driverNature` / `instanceCardinality`（已链接 `driver_registrations` 时；GET 本身只读）及逐条 compatible 解析覆盖（钉住 schema 模式 **或** 活跃组织 overlay；`source`/`driverId` 标识来源）。排除脚手架标签。 |
-| `POST` | `/api/v2/parameter-modules/driver-registry` | Admin 登记或认领驱动（`{ displayName, businessCategoryId, compatibles[], notes? }`）。创建 curated 驱动组 + exact compatible 映射，或认领已有映射组（移动 + 重命名 + 提升）。将 `businessCategoryId` 写入注册 `defaultBusinessCategoryId`。同一事务内对每个 compatible 做 scoped binding 重算（语义同映射创建）。返回 `{ mode: 'registered'\|'claimed', item, apply }`（`201`）；唯一键冲突 → `409`。审计：`parameter-module-driver-registered`（metadata 含 `affectedBindings`）。 |
-| `PATCH` | `/api/v2/parameter-modules/driver-registry/:moduleId` | Admin 更新驱动登记属性（`{ driverNature?, instanceCardinality? }`；至少一项）。组织 Admin 仅可编辑**组织**主体；**platform-admin** 可编辑平台**与**组织主体。同事务：登记更新 + 审计（`parameter-module-driver-registration-updated`，组织 id = 主体组织，使 platform-admin 编辑出现在组织审计）+ 对 tip 修订重同步 singleton-cardinality 阻断任务（仅阻断发布；不改写拓扑）。返回 `{ moduleId, driverNature, instanceCardinality, attributionSubjectId }`。 |
-| `PATCH` | `/api/v2/parameter-modules/driver-registry/:moduleId/default-business-category` | Admin 更新注册默认业务分类（`{ defaultBusinessCategoryId }`）。同事务审计，并回放该 subject 下 **auto** 驱动组到新默认（curated 冻结）。返回 `{ item, defaultBusinessCategoryId, replay: { moved, skippedCurated, skippedMissingDefault } }`。审计：`parameter-module-driver-default-business-category-updated`。独立路径，避免与 `PATCH .../driver-registry/:moduleId`（nature/cardinality）冲突。 |
-| `POST` | `/api/v2/parameter-modules/driver-registry/:moduleId/replay-placement` | 显式 Admin「从注册回放放置」：将 **auto** 驱动组重挂到注册默认；curated 跳过。返回 `{ moduleId, moved, skippedCurated, skippedMissingDefault }`。审计：`parameter-module-driver-placement-replayed`。 |
+| `POST` | `/api/v2/parameter-modules/discovery-hints/dismissals` | 已退役：返回 `410 GONE` 及规范目录 successor 链接，不执行旧模块写入。 |
+| `DELETE` | `/api/v2/parameter-modules/discovery-hints/dismissals/:compatible` | 已退役：返回 `410 GONE` 及规范目录 successor 链接，不执行旧模块写入。 |
+| `POST` | `/api/v2/parameter-modules/mappings/preview` | 已退役：返回 `410 GONE` 及规范目录 successor 链接，不执行旧模块写入。 |
+| `POST` | `/api/v2/parameter-modules/mappings` | 已退役：返回 `410 GONE` 及规范目录 successor 链接，不执行旧模块写入。 |
+| `DELETE` | `/api/v2/parameter-modules/mappings/:mappingId` | 已退役：返回 `410 GONE` 及规范目录 successor 链接，不执行旧模块写入。 |
+| `POST` | `/api/v2/parameter-modules/recompute-bindings` | 已退役：返回 `410 GONE` 及规范目录 successor 链接，不执行旧模块写入。 |
+| `GET` | `/api/v2/parameter-modules/driver-registry` | 只读历史驱动注册表，返回 `{ items, total }` 及历史 compatible、分类和解析覆盖。当前识别规则在主体登记中维护。 |
+| `POST` | `/api/v2/parameter-modules/driver-registry` | 已退役：返回 `410 GONE` 及规范目录 successor 链接，不执行旧模块写入。 |
+| `PATCH` | `/api/v2/parameter-modules/driver-registry/:moduleId` | 已退役：返回 `410 GONE` 及规范目录 successor 链接，不执行旧模块写入。 |
+| `PATCH` | `/api/v2/parameter-modules/driver-registry/:moduleId/default-business-category` | 已退役：返回 `410 GONE` 及规范目录 successor 链接，不执行旧模块写入。 |
+| `POST` | `/api/v2/parameter-modules/driver-registry/:moduleId/replay-placement` | 已退役：返回 `410 GONE` 及规范目录 successor 链接，不执行旧模块写入。 |
 | `GET` | `/api/v2/organization-driver-schemas` | 列出本组织手工驱动 schema overlay（`{ items, total }`）。 |
 | `GET` | `/api/v2/organization-driver-schemas/:schemaId` | 获取单个 overlay（`{ item }`）。 |
 | `POST` | `/api/v2/organization-driver-schemas` | Admin 创建 draft overlay（`{ compatible, displayName, notes?, properties[] }`）。属性可为 `{ parameterSpecId }`（链接定义库）或 `{ propertyKey, valueShape, … }`（创建/确保组织手工 ParameterSpec 后链接）。仅 exact compatible；钉住可发布 schema 已覆盖时拒绝（`409`）。返回 `{ item }`（`201`）。 |
@@ -943,9 +947,9 @@ X-WiseEff-Legacy-Contract: parameter-module-v2
 
 `DriverRegistryParseCoverage` 在已覆盖时含 `scope: "platform" | "organization"` 及可选 `shadowedBy[]`（输给所选层级的低优先级匹配）。
 
-`MappingApplyPreview`：`{ affectedBindings, byProject: [{ projectId, count }], fromModules: [{ moduleId, moduleName, count }], toModuleId, emptiedModules, conflicts }`。
+历史 `MappingApplyPreview`：`{ affectedBindings, byProject: [{ projectId, count }], fromModules: [{ moduleId, moduleName, count }], toModuleId, emptiedModules, conflicts }`；对应的模块映射写入已退役。
 
-**Binding 模块身份（Phase 2，ADR-0010）：** 每条 `project_parameter_bindings` 行持久化非空 `module_id`，外键指向 `parameter_modules(id)`（迁移 `0067`）；浏览唯一键为 `(project_id, logical_node_id, parameter_spec_id, module_id)`。写路径经单一解析器：**compatible → node-type → 未分类根**——绝不为 null。`module_id` 必须指向**驱动组**或**节点类型单元**（或组织未分类根）；业务分类不接 binding。器件实例身份仅为 **`logical_node_id`**——同一驱动的多个实例共享定义、值由实例区分。binding DTO 暴露 `moduleId`；工作台以其为浏览真相源（不做 derive-on-read）。干净切换，无双读兼容层。
+**Binding 模块身份：** 遗留 `project_parameter_bindings` 行保留历史 `module_id`。规范 Binding 使用登记与定义身份；有效业务模块从登记 placement 推导，子主体通过所属驱动继承（ADR-0053）。器件实例身份仍是逻辑节点。技术模块行及旧引用保留用于历史和迁移。
 
 值拆分：`exampleValue` / `schemaDefault` / `policyTarget` / `effectiveValue` 分字段；不得折叠为业务 `recommendedValue`。拓扑载荷携带 API provenance（`sourceChain` / occurrence span）；API 模式下客户端不得发明教学回退数据。
 

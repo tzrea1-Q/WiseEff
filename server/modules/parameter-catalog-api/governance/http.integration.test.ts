@@ -255,12 +255,13 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     expect(stored.rows[0]?.count).toBe("0");
   });
 
-  it("rejects malformed batch identifiers and names at the route boundary", async () => {
+  it("rejects malformed identifiers, aliases and retired creation targets at the route boundary", async () => {
     const targets = [
-      { subjectId: " ", target: { type: "unclassified", name: "valid" } },
+      { subjectId: " ", target: { type: "existing-module", moduleId: MODULE_ID } },
       { subjectId: SUBJECT_ID, target: { type: "existing-module", moduleId: " " } },
       { subjectId: SUBJECT_ID, target: { type: "new-module", parentModuleId: " ", name: "valid" } },
-      ...[" ", "x".repeat(121), "x\u0001y"].map((name) => ({ subjectId: SUBJECT_ID, target: { type: "unclassified", name } })),
+      { subjectId: SUBJECT_ID, target: { type: "unclassified", name: "valid" } },
+      ...[" ", "x".repeat(129), "x\u0001y"].map((displayAlias) => ({ subjectId: SUBJECT_ID, target: { type: "existing-module", moduleId: MODULE_ID }, displayAlias })),
     ];
     for (const row of targets) {
       const result = await request("POST", `/api/v2/organizations/${ORG_ID}/subject-registrations/batch`, {
@@ -310,10 +311,10 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     scope = { ...scope, organizationId, principalId: userId, trustedActor: createUserInvocation(makeTestAuthContext({ organizationId, userId })) };
     try {
       const headers = { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: `batch:${randomUUID()}` };
-      const valid = { subjectId: SUBJECT_ID, target: { type: "unclassified", name: " 电源 " } };
+      const valid = { subjectId: SUBJECT_ID, target: { type: "existing-module", moduleId: "batch-root" }, displayAlias: "电源" };
       const failed = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
-        headers, body: { rows: [valid, { subjectId: "csub_missing", target: { type: "unclassified", name: "未知" } },
-          { subjectId: "csub_batch_second", target: { type: "new-module", parentModuleId: "missing", name: "名称" } }] },
+        headers, body: { rows: [valid, { subjectId: "csub_missing", target: { type: "existing-module", moduleId: "batch-root" } },
+          { subjectId: "csub_batch_second", target: { type: "existing-module", moduleId: "missing" } }] },
       });
       expect(failed.status, JSON.stringify(failed.body)).toBe(409);
       expect(failed.body).toMatchObject({ error: { details: { rows: expect.arrayContaining([expect.objectContaining({ index: 1, code: "subject-inactive", field: "subject" }), expect.objectContaining({ index: 2, code: "category-missing", field: "category" })]) } } });
@@ -323,9 +324,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
         const invalid = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
           headers: { ...headers, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [valid, { subjectId: "csub_batch_second", target }] },
         });
-        expect(invalid.status, JSON.stringify(invalid.body)).toBe(409);
-        expect(invalid.body).toMatchObject({ error: { details: { rows: [expect.objectContaining({ index: 1, code: expect.any(String), field: expect.any(String) })] } } });
-        if (target.parentModuleId === "batch-category") expect(invalid.body).toMatchObject({ error: { details: { rows: [{ code: "name-taken", field: "name" }] } } });
+        expect(invalid.status, JSON.stringify(invalid.body)).toBe(400);
         expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organizationId])).rowCount).toBe(0);
       }
       const stale = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
@@ -333,10 +332,10 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
       });
       expect(stale.status).toBe(409);
       expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organizationId])).rowCount).toBe(0);
-      const successfulRows = [valid, { subjectId: "csub_batch_second", target: { type: "unclassified", name: "第二个" } }];
+      const successfulRows = [valid, { subjectId: "csub_batch_second", target: { type: "existing-module", moduleId: "batch-root" }, displayAlias: "第二个" }];
       const success = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, { headers, body: { rows: successfulRows } });
       expect(success.status, JSON.stringify(success.body)).toBe(201);
-      expect((await pool.query("select id from public.parameter_modules where organization_id=$1 and parent_id='batch-root' and name='电源'", [organizationId])).rowCount).toBe(1);
+      expect((await pool.query("select id from public.parameter_modules where organization_id=$1 and parent_id='batch-root'", [organizationId])).rowCount).toBe(0);
       const batchId = (success.body as { batchId: string }).batchId;
       const replay = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, { headers, body: { rows: successfulRows } });
       expect(replay.status, JSON.stringify(replay.body)).toBe(201);
@@ -344,7 +343,9 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
       const stored = await pool.query<{ name: string; parent_id: string; kind: string }>(
         `select module.name, module.parent_id, module.kind from parameter_catalog.subject_placements placement
          join public.parameter_modules module on module.id = placement.module_id where placement.organization_id = $1`, [organizationId]);
-      expect(stored.rows).toEqual(expect.arrayContaining([{ name: "电源", parent_id: "batch-root", kind: "business" }, { name: "第二个", parent_id: "batch-root", kind: "business" }]));
+      expect(stored.rows).toEqual([{ name: "未分类", parent_id: null, kind: "unclassified" }, { name: "未分类", parent_id: null, kind: "unclassified" }]);
+      expect((await pool.query("select display_alias from parameter_catalog.organization_subject_registrations where organization_id=$1 order by display_alias", [organizationId])).rows)
+        .toEqual([{ display_alias: "电源" }, { display_alias: "第二个" }]);
       const audits = await pool.query<{ batch_id: string }>("select metadata->>'batchId' as batch_id from public.audit_events where organization_id = $1 and action = 'registration-register'", [organizationId]);
       expect(audits.rows).toEqual([{ batch_id: batchId }, { batch_id: batchId }]);
       const registrationId = (success.body as { items: Array<{ id: string }> }).items[1]!.id;
@@ -378,7 +379,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
       const auto = await executeRegistration(pool, { kind: "register", organizationId, subjectId: CatalogSubjectId("csub_batch_second"), subjectKind: "driver", expectedRelease: pin,
         placement: { mode: "use-default" }, destinationModuleId: "race-module", method: "automatic", proof: {}, idempotencyKey: "auto-race", context: { actorKind: "trusted-system", principalId: "ingest" } });
       expect(auto.ok).toBe(true);
-      const good = { subjectId: SUBJECT_ID, target: { type: "unclassified", name: "有效行" } };
+      const good = { subjectId: SUBJECT_ID, target: { type: "existing-module", moduleId: "race-root" }, displayAlias: "有效行" };
       for (const bad of [
         { subjectId: "csub_batch_second", target: { type: "existing-module", moduleId: "race-module" } },
         { subjectId: "csub_batch_third", target: { type: "existing-module", moduleId: "missing" } },
@@ -417,7 +418,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
       await pool.query("insert into public.parameter_modules (id,organization_id,name,path,depth,kind,origin) values ('race-free',$1,'Free','race-free',1,'business','curated')", [organizationId]);
       const success = await request("POST", `/api/v2/organizations/${organizationId}/subject-registrations/batch`, {
         headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: randomUUID() }, body: { rows: [
-          { subjectId: SUBJECT_ID, target: { type: "new-module", parentModuleId: "race-category", name: "新模块" } },
+          { subjectId: SUBJECT_ID, target: { type: "existing-module", moduleId: "race-category" }, displayAlias: "新模块" },
           { subjectId: "csub_batch_third", target: { type: "existing-module", moduleId: "race-free" } },
         ] },
       });
@@ -427,7 +428,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
          join parameter_catalog.subject_placements placement on placement.registration_id=registration.id
          join public.parameter_modules module on module.id=placement.module_id where registration.organization_id=$1`, [organizationId]);
       expect(destinations.rows).toEqual(expect.arrayContaining([
-        expect.objectContaining({ subject_id: SUBJECT_ID, parent_id: "race-category" }),
+        expect.objectContaining({ subject_id: SUBJECT_ID, module_id: "race-category" }),
         expect.objectContaining({ subject_id: "csub_batch_third", module_id: "race-free" }),
       ]));
     } finally { scope = previous; }
@@ -445,7 +446,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
       registerParameterCatalogApi(router, { db, resolveAuth: () => auth });
       const send = () => router.handle({ method: "POST", path: `/api/v2/organizations/${organizationId}/subject-registrations/batch`, params: {}, query: {},
         headers: { [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: "authority" }, requestId: "authority-request",
-        body: { rows: Array.from({ length: 129 }, () => ({ subjectId: SUBJECT_ID, target: { type: "unclassified", name: "名称" } })) } });
+        body: { rows: Array.from({ length: 129 }, () => ({ subjectId: SUBJECT_ID, target: { type: "existing-module", moduleId: "root" } })) } });
       expect((await send()).status).toBe(403);
       auth = makeTestAuthContext({ userId: principalId, organizationId });
       expect((await send()).status).toBe(403);
@@ -710,7 +711,7 @@ it("excludes retired current-release membership and rejects it when submitted", 
     expect(((await list.json()) as { items: Array<{ id: string }> }).items.map((item) => item.id)).not.toContain(SUBJECT_ID);
     const write = await fetch(`${server.baseUrl}/api/v2/organizations/${organizationId}/subject-registrations/batch`, { method: "POST",
       headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: pin.id, [CATALOG_IDEMPOTENCY_HEADER]: "retired" },
-      body: JSON.stringify({ rows: [{ subjectId: SUBJECT_ID, target: { type: "unclassified", name: "退役" } }] }) });
+      body: JSON.stringify({ rows: [{ subjectId: SUBJECT_ID, target: { type: "existing-module", moduleId: "retired-root" } }] }) });
     expect(write.status).toBe(409);
     expect(await write.json()).toMatchObject({ error: { details: { rows: [expect.objectContaining({ index: 0, code: "subject-inactive", field: "subject" })] } } });
     expect((await pool.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organizationId])).rowCount).toBe(0);

@@ -140,7 +140,7 @@ export async function getNodeTypeDefinitionPlacement(
 }
 
 /**
- * Ensure the declared organization placement for a canonical registration.
+ * Historical reconciliation fixture for pre-ADR-0053 driver placements; no live route calls it.
  * Existing placement is authoritative and is never silently replaced by an
  * observed module. A missing module/category returns null for governance.
  */

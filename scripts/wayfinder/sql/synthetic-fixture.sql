@@ -222,6 +222,7 @@ insert into parameter_modules (
     '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'medium', 'business',
     'curated', 'wf671-business', null
   ),
+  -- Historical technical modules exercise the release-verification fixture.
   (
     'wf671-driver-module', 'wf671-org', null, 'Synthetic Driver Group',
     'wf671-driver', 1, 20, 'Synthetic fixture only', 'organization',

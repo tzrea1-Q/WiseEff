@@ -6,6 +6,8 @@
 
 ## 状态
 
+由 [ADR-0053](adr-0053-business-modules-hold-subjects-and-drivers-own-child-nodes.md) 修订（placement 目标和一模块一 placement）。
+
 已接受，作为 [Choose organization registration and placement semantics](https://github.com/tzrea1-Q/WiseEff/issues/675) 的目标合同。本 ADR 依赖 [ADR-0040](../../adr/0040-canonical-parameter-catalog-relational-model.md) 的 canonical relational model，以及 [ADR-0041](../../adr/0041-platform-schema-catalog-releases-materialize-before-runtime.md) 的当前 Catalog Release 生命周期。这是参数目录替代模型的决策，不表示当前生产已经具备这些行为。在后续实现计划和经验证的切换完成前，ADR-0039 仍是当前运行合同。
 
 ## 背景

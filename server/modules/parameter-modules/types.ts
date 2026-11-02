@@ -3,6 +3,7 @@ export type ModuleMatchKind = "compatible" | "node-type";
 export type ModuleImportance = "high" | "medium" | "low";
 
 export type ModuleKind = "business" | "driver-group" | "node-type" | "unclassified";
+export type WritableModuleKind = "business" | "unclassified";
 
 export type ModuleOrigin = "curated" | "auto";
 

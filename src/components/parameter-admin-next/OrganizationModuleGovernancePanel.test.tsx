@@ -81,9 +81,10 @@ describe("canonical module governance", () => {
       name: "Child category", kind: "business", parentId: "business_one"
     }));
 
-    fireEvent.click(screen.getByRole("button", { name: "修改模块 Node placement" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看模块 Node placement" }));
     expect(within(screen.getByRole("dialog")).queryByLabelText("模块类型")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Node placement 更多操作" })).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByLabelText("模块名称")).toHaveAttribute("readonly");
+    expect(screen.queryByRole("button", { name: "Node placement 更多操作" })).not.toBeInTheDocument();
     expect(moduleRegistry.registerOrClaimDriver).not.toHaveBeenCalled();
     expect(moduleRegistry.createMapping).not.toHaveBeenCalled();
   });

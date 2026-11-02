@@ -11,7 +11,6 @@ import { createHash } from "node:crypto";
 import { normalizeMatchToken } from "./modulePlacement";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { activeBusinessAncestor } from "../parameter-catalog-api/governance/index";
 
 export type ModuleBindingMatchKind = "compatible" | "node-type";
 
@@ -39,6 +38,12 @@ async function ensureUnclassifiedModule(db: Queryable, organizationId: string): 
     `,
     [id, organizationId, UNCLASSIFIED_MODULE_NAME],
   );
+  const root = await db.query<{ id: string }>(
+    `select id from parameter_modules where id = $1 and organization_id = $2
+      and kind = 'unclassified' and parent_id is null and archived_at is null`,
+    [id, organizationId],
+  );
+  if (root.rows.length !== 1) throw new ApiError("CONFLICT", "未分类根模块不可用，请联系管理员处理。");
   return id;
 }
 
@@ -53,48 +58,13 @@ async function findMappedModuleId(
     join parameter_modules pm on pm.id=mm.parameter_module_id and pm.organization_id=mm.organization_id
     where mm.organization_id=$1 and mm.match_kind=$2
       and lower(trim(both '"' from trim(both '''' from trim(both from mm.match_value))))=$3
-      and not exists (select 1 from public.module_recognition_rules rule
-        where rule.organization_id=mm.organization_id and rule.module_id=mm.parameter_module_id)
+      and pm.archived_at is null
+      and (pm.kind = 'business' or (pm.kind = 'unclassified' and pm.parent_id is null))
     order by mm.priority desc,pm.id
     `,
     [input.organizationId, input.matchKind, input.matchValue],
   );
-  // ponytail: legacy mappings are checked one at a time; batch this if an organization has many matching mappings.
-  for (const row of result.rows) {
-    const active = await activeBusinessAncestor(db, input.organizationId, row.parameter_module_id);
-    if (active) return active;
-  }
-  return null;
-}
-
-/** A saved rule replaces old selectors, including their automatic-discovery source keys. */
-export async function findModuleRecognitionOverride(db: Queryable, input: {
-  organizationId: string; compatible: string | null; nodeType: string | null;
-}): Promise<{ moduleId: string | null; replacesLegacyMatch: boolean }> {
-  const compatible = normalizeMatchValue(input.compatible);
-  const nodeType = normalizeMatchValue(input.nodeType);
-  const currentCompatible = input.compatible?.trim().replace(/^(['"])(.*)\1$/, "$2") ?? null;
-  const currentNodeType = input.nodeType?.trim() ?? null;
-  const rules = await db.query<{ module_id: string; matches: boolean; replaces: boolean }>(
-    `select rule.module_id,
-       (($4::text is not null and $4=any(rule.compatibles))
-         or ($4::text is null and $5::text is not null and rule.node_type_name=$5)) as matches,
-       (module.source_key=concat('compatible:',$2::text) or module.source_key=concat('nodetype:',$3::text)
-         or exists (select 1 from public.parameter_module_mappings mapping
-           where mapping.organization_id=rule.organization_id and mapping.parameter_module_id=rule.module_id
-             and ((mapping.match_kind='compatible' and lower(trim(both '"' from trim(mapping.match_value)))=$2)
-               or (mapping.match_kind='node-type' and lower(trim(mapping.match_value))=$3)))) as replaces
-     from public.module_recognition_rules rule
-     join public.parameter_modules module on module.id=rule.module_id and module.organization_id=rule.organization_id
-     where rule.organization_id=$1 order by (module.kind='driver-group') desc,rule.module_id`,
-    [input.organizationId, compatible, nodeType, currentCompatible, currentNodeType],
-  );
-  const matches = rules.rows.filter((rule) => rule.matches);
-  if (matches.length > 1) throw new ApiError("CONFLICT", "Recognition selectors match multiple modules", {
-    reason: "ambiguous-module-recognition", moduleIds: matches.map((rule) => rule.module_id),
-  });
-  return { moduleId: matches[0] ? await activeBusinessAncestor(db, input.organizationId, matches[0].module_id) : null,
-    replacesLegacyMatch: rules.rows.some((rule) => rule.replaces) };
+  return result.rows[0]?.parameter_module_id ?? null;
 }
 
 /**
@@ -111,8 +81,6 @@ export async function resolveModuleIdForBinding(
     nodeType: string | null;
   },
 ): Promise<string> {
-  const override = await findModuleRecognitionOverride(db, input);
-  if (override.moduleId) return override.moduleId;
   const candidates: Array<{ kind: ModuleBindingMatchKind; value: string | null }> = [
     { kind: "compatible", value: normalizeMatchValue(input.compatible) },
     { kind: "node-type", value: normalizeMatchValue(input.nodeType) },

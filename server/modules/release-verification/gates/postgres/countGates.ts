@@ -250,6 +250,7 @@ export const runV04 = async (query: GateQuery): Promise<GateResult> => {
   return withChecksum("PCAT-DB-V04", "PCAT-VRF-V04-SUBJECT-MEMBERSHIP-MISSING", observation);
 };
 
+// V05 compares the retained pre-cutover placement contract during release verification.
 export const runV05 = async (query: GateQuery): Promise<GateResult> => {
   const observation = await countSql(
     query,

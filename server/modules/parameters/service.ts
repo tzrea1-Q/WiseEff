@@ -2268,7 +2268,7 @@ export async function createParameterModuleForAuth(
   const name = body.name.trim();
   const parentId = body.parentId ?? null;
   const kind = body.kind ?? "business";
-  if (kind !== "business") {
+  if ((kind as string) !== "business") {
     throw legacyStructuralWriteRetirementError();
   }
 
@@ -2354,6 +2354,7 @@ export async function updateParameterModuleForAuth(
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
+  if (current.kind === "driver-group" || current.kind === "node-type") throw legacyStructuralWriteRetirementError();
 
   const nextName = body.name?.trim() ?? current.name;
   if (!nextName) {
@@ -2385,6 +2386,7 @@ export async function updateParameterModuleForAuth(
     if (!lockedCurrent) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
     }
+    if (lockedCurrent.kind === "driver-group" || lockedCurrent.kind === "node-type") throw legacyStructuralWriteRetirementError();
     const module = await updateParameterModule(tx, {
       organizationId,
       moduleId,
@@ -2440,6 +2442,9 @@ export async function moveParameterModuleForAuth(
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
+  if (current.kind === "driver-group" || current.kind === "node-type") {
+    throw legacyStructuralWriteRetirementError();
+  }
 
   const parentId = body.parentId;
   if (parentId) {
@@ -2468,6 +2473,9 @@ export async function moveParameterModuleForAuth(
       const lockedCurrent = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true, activeOnly: true });
       if (!lockedCurrent) {
         throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
+      }
+      if (lockedCurrent.kind === "driver-group" || lockedCurrent.kind === "node-type") {
+        throw legacyStructuralWriteRetirementError();
       }
       if (parentId === lockedCurrent.parentId) return lockedCurrent;
       const module = await moveParameterModule(tx, {
@@ -2522,6 +2530,7 @@ export async function deleteParameterModuleForAuth(
     if (!current) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
     }
+    if (current.kind === "driver-group" || current.kind === "node-type") throw legacyStructuralWriteRetirementError();
     const deleted = await deleteParameterModule(tx, { organizationId, moduleId });
     if (!deleted) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });

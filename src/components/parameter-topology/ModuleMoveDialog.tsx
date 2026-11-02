@@ -4,11 +4,11 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
-import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
+import type { ParameterModule, WritableModuleKind } from "@/domain/parameter-topology/moduleRegistry";
 import { toAttributionFlatNodes } from "./moduleAttributionTreeUtils";
 
 export type ModuleMoveDialogProps = {
-  module: ParameterModule;
+  module: Omit<ParameterModule, "kind"> & { kind: Extract<WritableModuleKind, "business"> };
   modules: readonly ParameterModule[];
   busy?: boolean;
   /** Move failure — the dialog stays open and shows it in place. */
@@ -18,7 +18,7 @@ export type ModuleMoveDialogProps = {
 };
 
 /**
- * Move a business category or driver group under another business parent (or to root).
+ * Move a business category under another business parent (or to root).
  */
 export function ModuleMoveDialog({
   module,
@@ -29,7 +29,7 @@ export function ModuleMoveDialog({
   onCancel
 }: ModuleMoveDialogProps) {
   const targetLabelId = useId();
-  const targetLabel = module.kind === "node-type" ? "目标上级模块" : "目标业务分类";
+  const targetLabel = "目标业务分类";
   const [parentId, setParentId] = useState(module.parentId ?? "");
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const changed = parentId !== (module.parentId ?? "");
@@ -43,10 +43,9 @@ export function ModuleMoveDialog({
     const flat = toAttributionFlatNodes(modules);
     const selfPath = flat.find((item) => item.id === module.id)?.path ?? `/${module.id}`;
     const blocked = `${selfPath}/`;
-    const allowed = new Set(modules.filter((candidate) => candidate.kind === "business" ||
-      (module.kind === "node-type" && (candidate.kind === "driver-group" || candidate.kind === "node-type"))).map((candidate) => candidate.id));
+    const allowed = new Set(modules.filter((candidate) => candidate.kind === "business").map((candidate) => candidate.id));
     return flat.filter((item) => allowed.has(item.id) && item.id !== module.id && !item.path.startsWith(blocked));
-  }, [module.id, module.kind, modules]);
+  }, [module.id, modules]);
 
   useEffect(() => {
     setParentId(module.parentId ?? "");

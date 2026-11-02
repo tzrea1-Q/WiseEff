@@ -199,10 +199,10 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     });
     authenticateAs(publisherScope());
     const hinted = await post({ markdownImport: { ...markdownImport,
-      document: document.replace("# Driver `acme,power`", "# Driver `acme,new`\nnature: physical-device · cardinality: multiple · 业务分类：不存在 · 模块名称：设备") } });
+      document: document.replace("# Driver `acme,power`", "# Driver `acme,new`\nnature: physical-device · cardinality: multiple · 业务分类：不存在 · 展示别名：设备") } });
     expect(hinted.status).toBe(201);
     expect(hinted.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [
-      { selector: "acme,new", categoryPath: "不存在", moduleName: "设备", warnings: [expect.stringContaining("不存在")] },
+      { selector: "acme,new", categoryPath: "不存在", displayAlias: "设备", warnings: [expect.stringContaining("不存在")] },
     ] } });
     expect((await post({ markdownImport, changeSet: changeSetFor("ambiguous") })).status).toBe(400);
     const before = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
@@ -376,12 +376,14 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     const post = (text: string) => request("POST", "/api/v2/catalog/publication-candidates", {
       headers: { [CATALOG_RELEASE_HEADER]: pinId }, body: { markdownImport: { document: text, fileName: "placement.md" } },
     });
-    const base = "# NodeType `new-subject`\n业务分类：电源 · 模块名称：设备\n## `one` 参数\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |";
+    const base = "# NodeType `new-subject`\n业务分类：电源 · 展示别名：设备\n## `one` 参数\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |";
     authenticateAs(publisherScope(org));
+    const beforeModules = (await pool.query("select id from parameter_modules where organization_id=$1 order by id", [org])).rows;
     const collision = await post(base);
-    expect(collision.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ warnings: ["同一分类下已有同名模块。"] }] } });
-    expect((await post(base.replace(" · 模块名称：设备", ""))).body)
-      .toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ warnings: ["同一分类下已有同名模块。"] }] } });
+    expect(collision.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ displayAlias: "设备", warnings: [] }] } });
+    expect((await post(base.replace("展示别名：设备", "模块名称：设备"))).body)
+      .toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ displayAlias: "设备", warnings: [expect.stringContaining("已弃用")] }] } });
+    expect((await pool.query("select id from parameter_modules where organization_id=$1 order by id", [org])).rows).toEqual(beforeModules);
     const ambiguous = await post(base.replace("业务分类：电源", "业务分类：电源 / 充电"));
     expect(ambiguous.body).toMatchObject({ item: { entries: [{ outcome: "create" }], placementHints: [{ warnings: ["业务分类路径不唯一。"] }] } });
     authenticateAs(publisherScope(OTHER_ORG));

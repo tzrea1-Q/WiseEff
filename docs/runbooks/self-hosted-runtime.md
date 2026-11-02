@@ -116,9 +116,11 @@ npx tsx scripts/catalog-claim-child-owners.ts --apply
 
 Preflight is also the default when no flag is supplied. It reads the checked `schemas/dts/catalog.json` inventory and reports each unique driver/child declaration, current Catalog identity, and evidence conflicts across organizations. Review every conflict before deciding how to resolve it; a missing or contradictory nearest compatible ancestor is never claimed. Apply repeats the checks under locks and claims only ready subjects together in one audited transaction. It does not alter registrations, Bindings, values, or definitions. Repeating apply leaves claimed identities unchanged. Ownership is permanent; moving a child to another driver requires a new subject and the definition-replacement process. Publish the successor through the normal authorized Catalog pipeline after the claim; the claim itself is not a release activation.
 
+After the claim, follow [legacy technical module migration](#migrate-legacy-technical-modules).
+
 ## Migrate legacy technical modules
 
-Run the child-owner claim above first, so established child ownership is available. After migration 0324, use the maintenance operator's database credentials to preflight one organization, review its JSON report and resolve conflicts before applying:
+Run the [child-owner claim](#claim-existing-catalog-child-node-owners) first, so established child ownership is available. After migration 0324, use the maintenance operator's database credentials to preflight one organization, review its JSON report and resolve conflicts before applying:
 
 ```bash
 npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --preflight

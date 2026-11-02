@@ -21,7 +21,6 @@ import { resolveDts } from "../server/modules/dts";
 import { loadCommittedDtsSeedFiles } from "./compile-dts-seed";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
 import { ensurePublishedVendorCatalog } from "./sync-vendor-property-docs";
-import { insertAttributionSubjectForNewModule } from "../server/modules/parameter-modules/attributionSubjectRepository";
 import { getAuthContext } from "../server/modules/auth/repository";
 import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../server/modules/audit/trustedRefusalSink";
@@ -65,7 +64,7 @@ export type PowerManagementParameterModule = {
   description: string;
   scope: string;
   parent?: string;
-  kind?: "business" | "driver-group" | "node-type";
+  kind?: "business";
   origin?: "curated" | "auto";
   sourceKey?: string | null;
 };
@@ -92,7 +91,7 @@ const powerManagementConfigSchema = z.object({
         description: z.string(),
         scope: z.string(),
         parent: z.string().optional(),
-        kind: z.enum(["business", "driver-group", "node-type"]).optional(),
+        kind: z.literal("business").optional(),
         origin: z.enum(["curated", "auto"]).optional(),
         sourceKey: z.string().nullable().optional()
       })
@@ -291,7 +290,7 @@ export async function seedM1Parameters(
         `
         select id
         from parameter_modules
-        where organization_id = $1 and name = $2
+        where organization_id = $1 and name = $2 and kind = 'business' and archived_at is null
         order by case when coalesce(parent_id, '') = coalesce($3::text, '') then 0 else 1 end, id
         limit 1
         `,
@@ -302,26 +301,9 @@ export async function seedM1Parameters(
       const modulePath = parentPath ? `${parentPath}/${id}` : id;
       const depth = module.parent ? (modulePath.match(/\//g)?.length ?? 0) + 1 : 1;
       const kind = module.kind ?? "business";
-      const origin = module.origin ?? (kind === "business" ? "curated" : "auto");
+      const origin = module.origin ?? "curated";
       const sourceKey = module.sourceKey ?? null;
-      let attributionSubjectId: string | null = null;
-      if (kind === "driver-group" || kind === "node-type") {
-        // Committed DTS seed modules describe the platform schema taxonomy.
-        // Keep their subject global so an organization module can declare a
-        // tenant placement for the same canonical driver/node-type identity;
-        // organization overlays remain scoped by their `org/<id>/...`
-        // schema namespace and do not pass through this seed path.
-        const subjectOrganizationId = sourceKey ? null : organizationId;
-        attributionSubjectId = await insertAttributionSubjectForNewModule(tx, {
-          moduleId: id,
-          organizationId: subjectOrganizationId,
-          kind,
-          displayName: module.name,
-          origin,
-          sourceKey,
-          notes: module.description,
-        });
-      }
+      const attributionSubjectId = null;
       const result = await tx.query<{ id: string }>(
         `
         insert into parameter_modules (
@@ -345,6 +327,8 @@ export async function seedM1Parameters(
             parameter_modules.attribution_subject_id
           ),
           updated_at = now()
+        where parameter_modules.organization_id = excluded.organization_id
+          and parameter_modules.kind = 'business' and parameter_modules.archived_at is null
         returning id
         `,
         [
@@ -363,7 +347,8 @@ export async function seedM1Parameters(
           attributionSubjectId
         ]
       );
-      const persistedId = result.rows[0]?.id ?? id;
+      const persistedId = result.rows[0]?.id;
+      if (!persistedId) throw new Error(`Seed module ID is occupied by a legacy or foreign module: ${id}`);
       moduleIdByName.set(module.name, persistedId);
       modulePathByName.set(module.name, parentPath ? `${parentPath}/${persistedId}` : persistedId);
     }

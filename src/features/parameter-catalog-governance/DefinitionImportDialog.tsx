@@ -175,7 +175,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
       {({ titleId, descriptionId }) => <>
         <h2 id={titleId}>批量导入定义</h2>
         <div className="confirm-dialog__scroll"><div id={descriptionId} className="governance-confirm-dialog__body">
-          <p>粘贴或上传 Markdown 文档，格式见模板；可引用已有主体或新建主体。业务分类和模块名称为可选的登记提示，不影响发布。</p>
+          <p>粘贴或上传 Markdown 文档，格式见模板；可引用已有主体或新建主体。业务分类和展示别名为可选的登记提示，不影响发布。</p>
           {unavailable ? <p role="status">{unavailable}</p> : null}
           {advisory ? <p role="status" data-tone={advisory.tone}>{advisory.message}</p> : null}
           {status ? <p role="status" aria-label="发布任务状态" data-publication-status={job?.status}
@@ -192,7 +192,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
                 openBatchRegistration({ organizationId: props.organizationId, userId: props.currentPersonId,
                   subjectIds: newSubjects.map((subject) => subject.id), hints: Object.fromEntries(newSubjects.flatMap((subject) => {
                     const hint = placementHints?.find((item) => item.selector === subject.canonicalName && item.kind === subject.type);
-                    return hint ? [[subject.id, { categoryPath: hint.categoryPath, moduleName: hint.moduleName }]] : [];
+                    return hint ? [[subject.id, { categoryPath: hint.categoryPath, displayAlias: hint.displayAlias }]] : [];
                   })) });
                 props.onOpenChange(false);
               }}>前往批量登记</button> : null}

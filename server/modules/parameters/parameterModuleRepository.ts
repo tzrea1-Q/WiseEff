@@ -118,88 +118,6 @@ export async function getParameterModuleByName(
   return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;
 }
 
-export async function getParameterModuleBySourceKey(
-  db: Queryable,
-  query: { organizationId: string; sourceKey: string }
-): Promise<ParameterModuleDto | null> {
-  const result = await db.query<ParameterModuleRow>(
-    `
-    select ${parameterModuleColumns}
-    from parameter_modules
-    where organization_id = $1
-      and source_key = $2
-    limit 1
-    `,
-    [query.organizationId, query.sourceKey]
-  );
-  return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;
-}
-
-/** One-time adopt: attach a stable source_key to an unkeyed module without renaming it. */
-export async function adoptParameterModuleSourceKey(
-  db: Queryable,
-  input: {
-    organizationId: string;
-    moduleId: string;
-    sourceKey: string;
-    kind?: ParameterModuleDto["kind"];
-    origin?: ParameterModuleDto["origin"];
-  }
-): Promise<ParameterModuleDto | null> {
-  const result = await db.query<ParameterModuleRow>(
-    `
-    update parameter_modules
-    set
-      source_key = coalesce(source_key, $3),
-      kind = coalesce($4, kind),
-      origin = coalesce($5, origin),
-      updated_at = now()
-    where organization_id = $1
-      and id = $2
-      and archived_at is null
-    returning ${parameterModuleColumns}
-    `,
-    [
-      input.organizationId,
-      input.moduleId,
-      input.sourceKey,
-      input.kind ?? null,
-      input.origin ?? null
-    ]
-  );
-  return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;
-}
-
-/**
- * Re-assert kind on auto-discovered modules during ingest. Curated rows are never
- * overwritten — manual reclassify must stick across re-ingest (ADR-0006).
- */
-export async function reassertAutoParameterModuleKind(
-  db: Queryable,
-  input: {
-    organizationId: string;
-    moduleId: string;
-    kind: ParameterModuleDto["kind"];
-  }
-): Promise<ParameterModuleDto | null> {
-  const result = await db.query<ParameterModuleRow>(
-    `
-    update parameter_modules
-    set
-      kind = $3,
-      updated_at = now()
-    where organization_id = $1
-      and id = $2
-      and archived_at is null
-      and origin = 'auto'
-      and kind <> $3
-    returning ${parameterModuleColumns}
-    `,
-    [input.organizationId, input.moduleId, input.kind]
-  );
-  return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;
-}
-
 /** Count active children; archived children are retained historical references. */
 export async function countParameterModuleChildren(
   db: Queryable,
@@ -253,17 +171,15 @@ export async function createParameterModule(
     scope?: string;
     sortOrder?: number;
     importance?: "high" | "medium" | "low";
-    kind?: ParameterModuleDto["kind"];
+    kind?: import("./types").WritableModuleKind;
     origin?: ParameterModuleDto["origin"];
     sourceKey?: string | null;
-    /** Reuse a schema-resolved canonical subject when materializing a placement. */
-    attributionSubjectId?: string | null;
-    /** When creating a driver-group, seed registration default placement (D-AG-04). */
-    defaultBusinessCategoryModuleId?: string | null;
   }
 ) {
   const id = randomUUID();
   const kind = input.kind ?? "business";
+  if (kind !== "business" && kind !== "unclassified") throw new Error("Only business modules and the reserved unclassified root may be created.");
+  if (kind === "unclassified" && input.parentId) throw new Error("The unclassified module must be a root.");
   const origin = input.origin ?? "curated";
   const name = input.name.trim();
   let parentPath: string | null = null;
@@ -273,7 +189,7 @@ export async function createParameterModule(
       moduleId: input.parentId,
       activeOnly: true
     });
-    if (!parent) {
+    if (!parent || parent.kind !== "business") {
       throw new Error("Parent parameter module not found");
     }
     parentPath = parent.path;
@@ -282,27 +198,6 @@ export async function createParameterModule(
   const path = buildPath(parentPath, id);
   const depth = depthOf(path);
 
-  let attributionSubjectId: string | null = input.attributionSubjectId ?? null;
-  if (kind === "driver-group" || kind === "node-type") {
-    if (!attributionSubjectId) {
-      const { insertAttributionSubjectForNewModule } = await import(
-        "../parameter-modules/attributionSubjectRepository"
-      );
-      attributionSubjectId = await insertAttributionSubjectForNewModule(db, {
-        moduleId: id,
-        organizationId: input.organizationId,
-        kind,
-        displayName: name,
-        origin,
-        sourceKey: input.sourceKey ?? null,
-        notes: input.description ?? "",
-        defaultBusinessCategoryModuleId:
-          kind === "driver-group"
-            ? (input.defaultBusinessCategoryModuleId ?? input.parentId ?? null)
-            : null,
-      });
-    }
-  }
 
   const result = await db.query<ParameterModuleRow>(
     `
@@ -327,7 +222,7 @@ export async function createParameterModule(
       kind,
       origin,
       input.sourceKey ?? null,
-      attributionSubjectId
+      null
     ]
   );
 
@@ -344,7 +239,7 @@ export async function updateParameterModule(
     scope?: string;
     sortOrder?: number;
     importance?: "high" | "medium" | "low" | null;
-    kind?: ParameterModuleDto["kind"];
+    kind?: import("./types").WritableModuleKind;
     promoteToCurated?: boolean;
   }
 ) {
@@ -355,6 +250,9 @@ export async function updateParameterModule(
   });
   if (!existing) {
     return null;
+  }
+  if (existing.kind !== "business" || (input.kind !== undefined && input.kind !== "business")) {
+    throw new ApiError("CONFLICT", "Only business modules can be edited.");
   }
 
   const nextName = input.name?.trim() ?? existing.name;
@@ -388,6 +286,7 @@ export async function updateParameterModule(
     where organization_id = $1
       and id = $2
       and archived_at is null
+      and kind = 'business'
     returning ${parameterModuleColumns}
     `,
     [
@@ -407,7 +306,6 @@ export async function updateParameterModule(
   // Structural module renames change display metadata, never retained flat
   // labels. Registered business placements also read their live module label.
   if (result.rows[0] && nextName !== existing.name && parameterIdentityMode() === "legacy"
-    && existing.kind !== "driver-group" && existing.kind !== "node-type"
     && await countCanonicalPlacementsForModule(db, input) === 0) {
     const linked = await db.query<{ present: boolean }>(
       `select exists (
@@ -452,53 +350,6 @@ export async function lockParameterModuleTree(db: Queryable, organizationId: str
   ]);
 }
 
-/**
- * Reparent an auto-origin module without promoting it to curated.
- * Curated modules are skipped (returns `{ skipped: 'curated' }`).
- * Used by registration-default placement replay (D-AG-04 / TD-046).
- */
-export async function reparentAutoParameterModule(
-  db: Queryable,
-  input: { organizationId: string; moduleId: string; parentId: string | null }
-): Promise<
-  | { status: "moved"; module: ParameterModuleDto }
-  | { status: "skipped"; reason: "missing" | "curated" | "noop" }
-  | { status: "error"; message: string }
-> {
-  await lockParameterModuleTree(db, input.organizationId);
-  const node = await getParameterModuleById(db, {
-    organizationId: input.organizationId,
-    moduleId: input.moduleId,
-  });
-  if (!node) {
-    return { status: "skipped", reason: "missing" };
-  }
-  if (node.origin !== "auto") {
-    return { status: "skipped", reason: "curated" };
-  }
-  if ((node.parentId ?? null) === (input.parentId ?? null)) {
-    return { status: "skipped", reason: "noop" };
-  }
-
-  try {
-    const moved = await reparentParameterModule(db, {
-      organizationId: input.organizationId,
-      moduleId: input.moduleId,
-      parentId: input.parentId,
-      promoteAutoToCurated: false,
-    });
-    if (!moved) {
-      return { status: "skipped", reason: "missing" };
-    }
-    return { status: "moved", module: moved };
-  } catch (error) {
-    return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Failed to reparent auto module",
-    };
-  }
-}
-
 async function reparentParameterModule(
   db: Queryable,
   input: {
@@ -517,8 +368,8 @@ async function reparentParameterModule(
   if (!node) {
     return null;
   }
-  if (node.kind === "unclassified" && node.parentId === null) {
-    throw new ApiError("CONFLICT", "Cannot move the unclassified root module");
+  if (node.kind !== "business") {
+    throw new ApiError("CONFLICT", "Only business modules can be moved");
   }
 
   let parentPath: string | null = null;
@@ -531,8 +382,7 @@ async function reparentParameterModule(
     if (!parent) {
       throw new Error("Target parent parameter module not found");
     }
-    if (parent.kind === "unclassified" ||
-      ((node.kind === "business" || node.kind === "driver-group") && parent.kind !== "business")) {
+    if (parent.kind !== "business") {
       throw new ApiError("CONFLICT", "Target parent is not valid for this module kind", {
         moduleId: node.id, kind: node.kind, parentId: parent.id, parentKind: parent.kind,
       });
@@ -541,6 +391,9 @@ async function reparentParameterModule(
   }
 
   const allModules = await listParameterModules(db, { organizationId: input.organizationId });
+  if (allModules.some((module) => module.path.startsWith(`${node.path}/`) && module.kind !== "business")) {
+    throw new ApiError("CONFLICT", "请先迁移业务模块下的遗留技术模块。");
+  }
   const byId = new Map(allModules.map((item) => ({ id: item.id, path: item.path })).map((item) => [item.id, item]));
   assertNoCycle(input.moduleId, input.parentId, byId);
 
@@ -591,6 +444,9 @@ export async function deleteParameterModule(
   const existing = await getParameterModuleById(db, { ...input, forUpdate: true, activeOnly: true });
   if (!existing) {
     return false;
+  }
+  if (existing.kind === "driver-group" || existing.kind === "node-type") {
+    throw new ApiError("CONFLICT", "Legacy technical modules are read-only.");
   }
   if (existing.kind === "unclassified" && existing.parentId === null) {
     throw new ApiError("CONFLICT", "Cannot delete the unclassified root module", { moduleId: input.moduleId });

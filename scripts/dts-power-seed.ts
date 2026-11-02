@@ -67,7 +67,7 @@ export type DtsPowerSeedModule = {
   scope: string;
   parent?: string;
   /** Stated at seed time (ADR-0006) — do not rely on migration backfill. */
-  kind?: "business" | "driver-group" | "node-type";
+  kind?: "business";
   origin?: "curated" | "auto";
   sourceKey?: string | null;
 };

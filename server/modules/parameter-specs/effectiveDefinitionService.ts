@@ -1,3 +1,4 @@
+// Retained for pre-cutover definition comparison tests; live binding ingestion uses Catalog registrations.
 import { ApiError } from "../../shared/http/errors";
 import type { Queryable } from "../../shared/database/client";
 import {

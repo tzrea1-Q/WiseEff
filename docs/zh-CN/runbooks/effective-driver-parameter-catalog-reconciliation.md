@@ -2,6 +2,8 @@
 
 > English: [English runbook](../../runbooks/effective-driver-parameter-catalog-reconciliation.md)
 
+> 历史流程：旧对账 `--apply` 写入已退役并返回 `410 GONE`；下文的驱动组放置合同早于 ADR-0053。当前结构切换请[先认领子主体，再迁移技术模块](../../runbooks/self-hosted-runtime.md#claim-existing-catalog-child-node-owners)。
+
 Issue #649 的维护窗口流程。修复组织 draft / 平台 active 成对行，不删除历史；在每个
 生效驱动定义具备规范主体、active 当前版本和恰好一个组织驱动组放置前，发布门禁保持失败关闭。
 

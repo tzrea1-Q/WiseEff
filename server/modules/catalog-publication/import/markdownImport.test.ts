@@ -139,7 +139,7 @@ describe("Definition import planner", () => {
   it("builds identical artifact bytes and candidate content with or without placement hints", async () => {
     const predecessor = firstAcmePredecessor();
     const plain = planMarkdownImport(document, "d.md", predecessor.first);
-    const hinted = planMarkdownImport(document.replace("# Driver `acme,power`", "# Driver `acme,power`\n业务分类：电源 · 模块名称：设备"), "d.md", predecessor.first);
+    const hinted = planMarkdownImport(document.replace("# Driver `acme,power`", "# Driver `acme,power`\n业务分类：电源 · 展示别名：设备"), "d.md", predecessor.first);
     expect(plain.changeSet).not.toBeNull();
     expect(hinted.changeSet).toEqual(plain.changeSet);
     if (!plain.changeSet || !hinted.changeSet) throw new Error("expected changes");
@@ -159,14 +159,26 @@ describe("Definition import planner", () => {
     for (const kind of ["Driver", "NodeType", "ConfigurationSchema"]) {
       const base = document.replace("Driver `acme,power`", `${kind} \`acme,new\``)
         .replace("\n\n##", kind === "Driver" ? "\nnature: physical-device · cardinality: multiple\n\n##" : "\n\n##");
-      const hinted = base.replace("\n\n##", `${kind === "Driver" ? " · " : "\n"}业务分类：电源 / 充电管理 · 模块名称：充电芯片\n\n##`);
+      const hinted = base.replace("\n\n##", `${kind === "Driver" ? " · " : "\n"}业务分类：电源 / 充电管理 · 展示别名：充电芯片\n\n##`);
       const plain = planMarkdownImport(base, "d.md", snapshot);
       const plan = planMarkdownImport(hinted, "d.md", snapshot);
       expect(plan.changeSet).toEqual(plain.changeSet);
-      expect(plan.placementHints).toEqual([expect.objectContaining({ selector: "acme,new", categoryPath: "电源 / 充电管理", moduleName: "充电芯片" })]);
+      expect(plan.placementHints).toEqual([expect.objectContaining({ selector: "acme,new", categoryPath: "电源 / 充电管理", displayAlias: "充电芯片" })]);
       const invalid = planMarkdownImport(hinted.replace("电源 / 充电管理", "电源 / "), "d.md", snapshot);
       expect(invalid.entries[0]).toMatchObject({ outcome: "error", diagnostics: expect.arrayContaining([expect.objectContaining({ line: 2 })]) });
     }
+  });
+  it("warns about the legacy moduleName directive and maps it only for a root subject", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const root = document.replace("# Driver `acme,power`", "# Driver `acme,power`\nmoduleName: 旧名称");
+    const plan = planMarkdownImport(root, "d.md", snapshot);
+    expect(plan.changeSet).toEqual(planMarkdownImport(document, "d.md", snapshot).changeSet);
+    expect(plan.placementHints).toEqual([expect.objectContaining({ displayAlias: "旧名称",
+      warnings: [expect.stringContaining("已弃用")] })]);
+    const child = document.replace("# Driver `acme,power`", "# NodeType `battery`\nparent: acme,power · 模块名称：旧名称");
+    const childPlan = planMarkdownImport(child, "d.md", snapshot);
+    expect(childPlan.placementHints[0]).not.toHaveProperty("displayAlias");
+    expect(childPlan.placementHints[0]?.warnings).toEqual(expect.arrayContaining([expect.stringContaining("已弃用")]));
   });
   it("creates subjects with their definitions and checks driver facts", () => {
     const snapshot = firstAcmePredecessor().first;

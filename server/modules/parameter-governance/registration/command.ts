@@ -151,7 +151,9 @@ export const validateRegistrationCommand = (
 
   if (command.kind === "register") {
     if (command.displayAlias !== undefined) {
-      if (command.method !== "automatic" || command.context.actorKind !== "trusted-system" || command.context.principalId !== "seed-initialization") return permissionDenied(command.context.actorKind, "seed-display-alias");
+      const admin = command.method === "explicit" && (command.context.actorKind === "org-admin" || command.context.actorKind === "platform-admin");
+      const seed = command.method === "automatic" && command.context.actorKind === "trusted-system" && command.context.principalId === "seed-initialization";
+      if (!admin && !seed) return permissionDenied(command.context.actorKind, "display-alias");
       if (!controlFree(command.displayAlias) || Array.from(command.displayAlias).length > 128) return invalid("displayAlias");
     }
     if (!controlFree(command.destinationModuleId)) {

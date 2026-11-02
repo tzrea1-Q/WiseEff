@@ -16,7 +16,7 @@ import type { BuiltReleaseArtifact } from "../catalog-publication/builder/types"
 import { vendorDirectoryHash } from "../catalog-publication/import/vendorYaml";
 import { claimCatalogChildOwners } from "../../../scripts/catalog-claim-child-owners";
 import { migrateModuleStructure } from "../../../scripts/migrate-module-structure";
-import { createParameterModule } from "../parameters/parameterModuleRepository";
+import { createLegacyParameterModule as createParameterModule } from "../../testing/legacyParameterModuleFixture";
 import { writeGuardedRegistration } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
 import { createRegistrationService } from "../parameter-governance/registration/service";
 import { createConfigSet, addConfigSetFile } from "../parameter-files/configSetService";
@@ -31,7 +31,7 @@ import { subjectMatcherRevision } from "../catalog-kernel/runtime/subjectMatch";
 import { stabilizeCanonicalBinding } from "./binding/service";
 import { lockOrganizationModuleRecognition, lockOrganizationSubjectRegistration } from "../parameter-modules/recognitionLock";
 import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
-import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
+import { resolveModuleIdForBinding, unclassifiedModuleId } from "../parameter-modules/resolveModuleForBinding";
 
 const ORG = "owner-integration-org";
 const PROJECT = "owner-integration-project";
@@ -263,12 +263,12 @@ describe("driver-scoped child ownership", () => {
     [organizationId, typed.id])).rows).toEqual([{ module_id: null, effective_module_id: balance.id, archived: true, display_alias: null }]);
     expect(await resolveAttributionModuleForBinding(root, { organizationId, driverModule: null, compatible: null,
       instanceName: "battery1", nodeLocator: "/battery_charge_balance/battery1", attributionSubjectId: typed.attributionSubjectId })).toBe(balance.id);
-    expect(await resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" })).toBe(balance.id);
+    expect(await resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" })).toBe(unclassifiedModuleId(organizationId));
     await pool.query(`insert into public.module_recognition_rules(organization_id,module_id,canonical_subject_id,node_type_name)
       values ($1,$2,'s4-battery1','battery1')`, [organizationId, typed.id]);
     await pool.query(`insert into public.registration_recognition_migration_map(organization_id,module_id,registration_id)
       select $1,$2,id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='s4-battery1'`, [organizationId, typed.id]);
-    expect(await resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" })).toBe(balance.id);
+    expect(await resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" })).toBe(unclassifiedModuleId(organizationId));
     expect((await migrateModuleStructure(root, organizationId, true)).changes).toEqual([]);
   }, 120_000);
 
@@ -557,6 +557,15 @@ describe("driver-scoped child ownership", () => {
     expect(aliases.rows.filter((row) => row.organization_id === freshOrg).map(({ subject_id, display_alias }) => ({ subject_id, display_alias })))
       .toEqual(aliases.rows.filter((row) => row.organization_id === upgradedOrg).map(({ subject_id, display_alias }) => ({ subject_id, display_alias })));
     expect(aliases.rows).toContainEqual({ organization_id: freshOrg, subject_id: "csub_acme_power", display_alias: "Power label" });
+    const placements = await pool.query(`select effective.organization_id,effective.subject_id,module.name,module.kind
+      from parameter_catalog.registration_effective_module effective
+      join public.parameter_modules module on module.id=effective.module_id and module.organization_id=effective.organization_id
+      where effective.organization_id=any($1::text[]) order by effective.organization_id,effective.subject_id`, [[freshOrg, upgradedOrg]]);
+    const normalize = (org: string) => placements.rows.filter(row => row.organization_id === org)
+      .map(({ subject_id, name, kind }) => ({ subject_id, name, kind }));
+    expect(normalize(freshOrg)).toEqual(normalize(upgradedOrg));
+    expect(normalize(freshOrg)).toContainEqual({ subject_id: "csub_acme_power", name: "Business", kind: "business" });
+    expect((await pool.query("select kind from public.parameter_modules where organization_id=$1 and kind in ('driver-group','node-type')", [freshOrg])).rows).toEqual([]);
     expect((await pool.query("select metadata from public.audit_events where organization_id=$1 and action='registration-register'", [freshOrg])).rows)
       .toContainEqual({ metadata: expect.objectContaining({ requestedDisplayAlias: "Power label", aliasSubjectId: "csub_acme_power" }) });
     await ensureSeedSubjectRegistrations(root, auth, { organizationId: freshOrg, currentRelease: pin, seedDigest: "alias-seed", projectId: PROJECT,

@@ -3,6 +3,7 @@ import type {
   InstanceCardinality,
   ModuleImportance,
   ModuleOrigin,
+  WritableModuleKind,
   ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
 
@@ -13,7 +14,7 @@ export type CreateParameterModuleInput = {
   scope?: string;
   sortOrder?: number;
   importance?: ModuleImportance;
-  kind?: "business" | "driver-group" | "node-type";
+  kind?: Extract<WritableModuleKind, "business">;
   origin?: "curated" | "auto";
   sourceKey?: string | null;
   compatibles?: string[];
@@ -26,7 +27,7 @@ export type UpdateParameterModuleInput = {
   parentId?: string | null;
   sortOrder?: number;
   importance?: ModuleImportance;
-  kind?: "business" | "driver-group" | "node-type";
+  kind?: Extract<WritableModuleKind, "business">;
   compatibles?: string[];
   driverNature?: DriverNature;
   instanceCardinality?: InstanceCardinality;

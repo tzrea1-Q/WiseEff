@@ -19,25 +19,28 @@ const moduleTree = `with recursive modules as (
 )`;
 
 async function canonicalOutput(db: RootDatabase) {
-  const modules = await db.query(`${moduleTree}
+  const modules = await db.query<{ kind: string }>(`${moduleTree}
     select module.organization_id, module.name_path, module.kind, module.origin, module.source_key,
            count(distinct binding.id)::int as parameter_count,
-           count(distinct placement.id)::int as placement_count
+           count(distinct effective.registration_id)::int as placement_count
       from modules module
-      left join parameter_catalog.subject_placements placement
-        on placement.module_id = module.id and placement.organization_id = module.organization_id
+      left join parameter_catalog.registration_effective_module effective
+        on effective.module_id = module.id and effective.organization_id = module.organization_id
       left join parameter_catalog.organization_subject_registrations registration
-        on registration.current_placement_id = placement.id and registration.status = 'active'
+        on registration.id = effective.registration_id and registration.status = 'active'
       left join parameter_catalog.current_project_parameter_bindings binding
         on binding.registration_id = registration.id and binding.organization_id = registration.organization_id
      group by module.organization_id, module.name_path, module.kind, module.origin, module.source_key
      order by module.organization_id, module.name_path collate "C"`);
   const registrations = await db.query(`${moduleTree}
     select registration.organization_id, registration.subject_id, registration.status,
-           registration.registration_method, registration.proof, module.name_path, placement.origin
+           registration.registration_method, registration.proof, registration.display_alias,
+           module.name_path, placement.origin, (placement.module_id is null) as structural
       from parameter_catalog.organization_subject_registrations registration
       join parameter_catalog.subject_placements placement on placement.id = registration.current_placement_id
-      join modules module on module.id = placement.module_id and module.organization_id = placement.organization_id
+      join parameter_catalog.registration_effective_module effective on effective.registration_id = registration.id
+        and effective.organization_id = registration.organization_id
+      join modules module on module.id = effective.module_id and module.organization_id = effective.organization_id
      order by registration.organization_id, registration.subject_id collate "C"`);
   const bindings = await db.query(`${moduleTree}
     select binding.organization_id, binding.project_id, binding.subject_id,
@@ -46,12 +49,14 @@ async function canonicalOutput(db: RootDatabase) {
       from parameter_catalog.current_project_parameter_bindings binding
       join parameter_catalog.parameter_definitions definition on definition.id = binding.definition_id
       join parameter_catalog.organization_subject_registrations registration on registration.id = binding.registration_id
-      join parameter_catalog.subject_placements placement on placement.id = registration.current_placement_id
-      join modules module on module.id = placement.module_id and module.organization_id = placement.organization_id
+      join parameter_catalog.registration_effective_module effective on effective.registration_id = registration.id
+        and effective.organization_id = registration.organization_id
+      join modules module on module.id = effective.module_id and module.organization_id = effective.organization_id
       join parameter_catalog.project_parameter_values value on value.id = binding.current_value_id
      order by binding.organization_id, binding.project_id, binding.subject_id collate "C",
               definition.property_key collate "C", value.source_ref collate "C"`);
   expect(modules.rows.length).toBeGreaterThan(0);
+  expect(modules.rows.filter((module) => module.kind === "driver-group" || module.kind === "node-type")).toEqual([]);
   expect(registrations.rows.length).toBeGreaterThan(0);
   expect(bindings.rows.length).toBeGreaterThan(0);
   return { modules: modules.rows, registrations: registrations.rows, bindings: bindings.rows };
