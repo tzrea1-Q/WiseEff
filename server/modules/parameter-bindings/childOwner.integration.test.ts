@@ -31,7 +31,7 @@ import { subjectMatcherRevision } from "../catalog-kernel/runtime/subjectMatch";
 import { stabilizeCanonicalBinding } from "./binding/service";
 import { lockOrganizationModuleRecognition, lockOrganizationSubjectRegistration } from "../parameter-modules/recognitionLock";
 import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
-import { resolveModuleIdForBinding, unclassifiedModuleId } from "../parameter-modules/resolveModuleForBinding";
+import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 
 const ORG = "owner-integration-org";
 const PROJECT = "owner-integration-project";
@@ -263,12 +263,20 @@ describe("driver-scoped child ownership", () => {
     [organizationId, typed.id])).rows).toEqual([{ module_id: null, effective_module_id: balance.id, archived: true, display_alias: null }]);
     expect(await resolveAttributionModuleForBinding(root, { organizationId, driverModule: null, compatible: null,
       instanceName: "battery1", nodeLocator: "/battery_charge_balance/battery1", attributionSubjectId: typed.attributionSubjectId })).toBe(balance.id);
-    expect(await resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" })).toBe(unclassifiedModuleId(organizationId));
+    expect(await resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" })).toBe(balance.id);
+    const conflicting = await pool.query<{ id: string }>(`insert into parameter_catalog.module_structure_migration_map
+      (run_id,organization_id,module_id,registration_id,action,from_module_id,to_module_id)
+      select gen_random_uuid(),$1,$2,id,'structural-placement',$2,null
+      from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='s4-charge-mode' returning id`,
+    [organizationId, typed.id]);
+    await expect(resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" }))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+    await pool.query("delete from parameter_catalog.module_structure_migration_map where id=$1", [conflicting.rows[0]!.id]);
     await pool.query(`insert into public.module_recognition_rules(organization_id,module_id,canonical_subject_id,node_type_name)
       values ($1,$2,'s4-battery1','battery1')`, [organizationId, typed.id]);
     await pool.query(`insert into public.registration_recognition_migration_map(organization_id,module_id,registration_id)
       select $1,$2,id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='s4-battery1'`, [organizationId, typed.id]);
-    expect(await resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" })).toBe(unclassifiedModuleId(organizationId));
+    expect(await resolveModuleIdForBinding(root, { organizationId, driverModule: null, compatible: null, nodeType: "battery1" })).toBe(balance.id);
     expect((await migrateModuleStructure(root, organizationId, true)).changes).toEqual([]);
   }, 120_000);
 

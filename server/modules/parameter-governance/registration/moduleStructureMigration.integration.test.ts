@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../../testing/testDatabase";
 import { listParameterModules, getParameterModuleById, getParameterModuleByName, deleteParameterModule, updateParameterModule, moveParameterModule } from "../../parameters/parameterModuleRepository";
-import { createLegacyParameterModule as createParameterModule } from "../../../testing/legacyParameterModuleFixture";
+import { createLegacyParameterModule as createParameterModule, seedLegacyModuleMapping } from "../../../testing/legacyParameterModuleFixture";
 import { migrateModuleStructure } from "../../../../scripts/migrate-module-structure";
 import { pruneRuntimeDemoDriverGroupModules } from "../../../../scripts/reset-quality-runtime";
 import { readPlacementHintEvidence } from "./readRepository";
@@ -9,6 +9,7 @@ import type pg from "pg";
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { moveParameterModuleForAuth, updateParameterModuleForAuth } from "../../parameters/service";
 import { resolveModuleIdForBinding, unclassifiedModuleId } from "../../parameter-modules/resolveModuleForBinding";
+import { loadModuleRecognitionSettings, loadOrganizationRecognitionRules } from "../../parameter-modules/recognitionSettings";
 
 describe("module structure migration schema", () => {
   let db: InMemoryTestDatabase;
@@ -57,20 +58,26 @@ describe("module structure migration schema", () => {
       values ('rule-module','s4-org','Rule','rule-module',1,'node-type','curated','rule-attr')`);
     await db.query(`insert into public.module_recognition_rules(organization_id,module_id,node_type_name)
       values ('s4-org','rule-module','rule')`);
+    const settings = (await loadModuleRecognitionSettings(db, 's4-org')).get('rule-module');
+    expect(settings?.unmigratedRecognition).toMatchObject({ nodeTypeName: 'rule' });
+    expect(settings?.nodeTypeName).not.toBe('rule');
+    expect(await loadOrganizationRecognitionRules(db, 's4-org')).toEqual([]);
+    expect(await resolveModuleIdForBinding(db, { organizationId: 's4-org', driverModule: null, compatible: null, nodeType: 'rule' }))
+      .toBe(unclassifiedModuleId('s4-org'));
     await migrateModuleStructure(db, 's4-org', true);
     expect((await migrateModuleStructure(db, 's4-org', false)).conflicts).toContainEqual(
       expect.objectContaining({ action: 'unmigrated-recognition-rule', moduleId: 'rule-module' }));
     expect((await listParameterModules(db, { organizationId: 's4-org' })).map((m) => m.id)).toContain('rule-module');
   });
 
-  it("retains archived legacy mappings and rules without using them for new bindings", async () => {
+  it("resolves archived legacy mappings to business while keeping unmigrated rules inert", async () => {
     const business = await createParameterModule(db, { organizationId: "s4-org", name: "Business" });
     const legacy = await createParameterModule(db, { organizationId: "s4-org", name: "Legacy", kind: "driver-group", parentId: business.id });
     await db.query(`insert into parameter_module_mappings(id,organization_id,parameter_module_id,match_kind,match_value)
       values ('archived-map','s4-org',$1,'compatible','vendor,old')`, [legacy.id]);
     await db.query("update parameter_modules set archived_at=now() where id=$1", [legacy.id]);
     const input = { organizationId: "s4-org", driverModule: null, compatible: "vendor,old", nodeType: null };
-    expect(await resolveModuleIdForBinding(db, input)).toBe(unclassifiedModuleId("s4-org"));
+    expect(await resolveModuleIdForBinding(db, input)).toBe(business.id);
     await db.query(`insert into public.module_recognition_rules(organization_id,module_id,compatibles,driver_nature,instance_cardinality)
       values ('s4-org',$1,array['vendor,new'],'physical-device','multiple')`, [legacy.id]);
     expect(await resolveModuleIdForBinding(db, { ...input, compatible: 'vendor,new' })).toBe(unclassifiedModuleId("s4-org"));
@@ -246,6 +253,8 @@ describe("module structure migration schema", () => {
       values ('s4-attribution','s4-org','driver-registration','Legacy name','curated','s4-attribution')`);
     await db.query(`insert into public.parameter_modules(id,organization_id,parent_id,name,path,depth,kind,origin,attribution_subject_id)
       values ('s4-typed','s4-org','s4-business','Legacy name','s4-business/s4-typed',2,'driver-group','curated','s4-attribution')`);
+    await seedLegacyModuleMapping(db, { id: "retained-placement-map", organizationId: "s4-org", moduleId: "s4-typed",
+      matchKind: "compatible", matchValue: "vendor,retained" });
     await db.query(`insert into public.parameter_modules(id,organization_id,parent_id,name,path,depth,kind,origin)
       values ('s4-nested','s4-org','s4-typed','Nested','s4-business/s4-typed/s4-nested',3,'business','curated'),
         ('s4-deeper','s4-org','s4-nested','Deeper','s4-business/s4-typed/s4-nested/s4-deeper',4,'business','curated')`);
@@ -302,6 +311,10 @@ describe("module structure migration schema", () => {
       join public.parameter_modules module on module.id='s4-typed' where placement.id='s4-placement'`)).rows).toEqual([
       { id: "s4-placement", module_id: "s4-business", display_alias: "Legacy name", archived: true },
     ]);
+    await db.query("update parameter_catalog.organization_subject_registrations set status='retired' where id='s4-registration'");
+    expect(await resolveModuleIdForBinding(db, { organizationId: "s4-org", driverModule: null, compatible: "vendor,retained", nodeType: null }))
+      .toBe("s4-business");
+    await db.query("update parameter_catalog.organization_subject_registrations set status='active' where id='s4-registration'");
     expect((await migrateModuleStructure(db, "s4-org", true)).changes).toEqual([]);
     expect(await deleteParameterModule(db, { organizationId: 's4-org', moduleId: 's4-deeper' })).toBe(true);
     expect((await db.query("select module_id from parameter_catalog.module_structure_migration_map where module_id='s4-deeper'")).rows)

@@ -37246,6 +37246,50 @@
                         "null"
                       ]
                     },
+                    "unmigratedRecognition": {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "driverNature",
+                        "instanceCardinality",
+                        "nodeTypeName"
+                      ],
+                      "additionalProperties": false
+                    },
                     "parameterCount": {
                       "type": "number"
                     },
@@ -90236,7 +90280,20 @@
                         "warnings": {
                           "type": "array",
                           "items": {
-                            "type": "string"
+                            "type": "object",
+                            "properties": {
+                              "message": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "message",
+                              "line"
+                            ],
+                            "additionalProperties": false
                           }
                         }
                       },
@@ -90532,7 +90589,20 @@
                     "warnings": {
                       "type": "array",
                       "items": {
-                        "type": "string"
+                        "type": "object",
+                        "properties": {
+                          "message": {
+                            "type": "string"
+                          },
+                          "line": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "message",
+                          "line"
+                        ],
+                        "additionalProperties": false
                       }
                     }
                   },

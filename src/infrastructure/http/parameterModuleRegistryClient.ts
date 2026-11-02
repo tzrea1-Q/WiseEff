@@ -36,6 +36,7 @@ type ModuleDto = {
   instanceCardinality?: ParameterModule["instanceCardinality"];
   nodeTypeName?: string | null;
   recognitionSubjectId?: string | null;
+  unmigratedRecognition?: ParameterModule["unmigratedRecognition"];
 };
 
 type MappingDto = {
@@ -79,6 +80,7 @@ function mapModule(module: ModuleDto): ParameterModule {
     instanceCardinality: module.instanceCardinality,
     nodeTypeName: module.nodeTypeName,
     recognitionSubjectId: module.recognitionSubjectId,
+    unmigratedRecognition: module.unmigratedRecognition,
   };
 }
 

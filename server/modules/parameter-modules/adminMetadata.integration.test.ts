@@ -14,7 +14,7 @@ import { CatalogSubjectId, SubjectRegistrationId, type CatalogReleasePin } from 
 import { createRegistrationService } from "../parameter-governance/registration";
 import { getPlacement, getRegistration } from "../parameter-governance/queries/registration";
 import { getParameterModuleById, updateParameterModule } from "../parameters/parameterModuleRepository";
-import { createLegacyParameterModule as createParameterModule } from "../../testing/legacyParameterModuleFixture";
+import { createLegacyParameterModule as createParameterModule, seedLegacyModuleMapping } from "../../testing/legacyParameterModuleFixture";
 import { updateParameterModuleForAuth, moveParameterModuleForAuth } from "../parameters/service";
 import type { AuthContext } from "../auth/types";
 import { readRegistry } from "./repository";
@@ -28,6 +28,10 @@ import { createSourceBackedBindingService } from "../parameter-bindings/binding/
 import { aggregateBindingDashboardHotspots } from "../parameter-bindings/dashboardRead";
 import { DefinitionRevisionId, ParameterDefinitionId } from "../parameter-catalog-contract";
 import { CATALOG_IDEMPOTENCY_HEADER, CATALOG_IF_MATCH_HEADER, CATALOG_RELEASE_HEADER } from "../contracts/dtoSchemas/parameterCatalog";
+import { resolveModuleIdForBinding } from "./resolveModuleForBinding";
+import { migrateModuleStructure } from "../../../scripts/migrate-module-structure";
+import { runV05 } from "../release-verification/gates/postgres/countGates";
+import { queryOf } from "../release-verification/gates/postgres/session";
 
 describe("administrator module metadata through the API database role", () => {
   let database: ParameterCatalogDatabase;
@@ -81,6 +85,7 @@ describe("administrator module metadata through the API database role", () => {
       ["recognition-old-endpoint", "driver-group", "curated"],
       ["recognition-release-lock", "node-type", "curated"],
       ["recognition-release-race", "node-type", "curated"],
+      ["legacy-runtime-mapping", "driver-group", "curated"],
     ] as const) await prepareLegacyFixture(key, kind, origin);
     const upgrade = legacyFixtures.get("recognition-upgrade")!;
     await pool.query(`insert into public.module_recognition_rules
@@ -194,6 +199,20 @@ describe("administrator module metadata through the API database role", () => {
     const result = await apiDb.query(`select registration_id, compatibles from public.registration_recognition_rules
       where organization_id = $1`, [f.auth.organization.id]);
     expect(result.rows).toEqual([{ registration_id: f.registrationId, compatibles: ["local,upgrade"] }]);
+    expect((await readRegistry(apiDb, f.auth.organization.id, null)).modules.find(module => module.id === f.module.id)?.unmigratedRecognition)
+      .toBeUndefined();
+  });
+
+  it("resolves legacy mapping evidence through the API role before and after organization migration", async () => {
+    const f = await fixture("legacy-runtime-mapping", "driver-group", "curated");
+    await seedLegacyModuleMapping(pool, { id: "api-legacy-mapping", organizationId: f.auth.organization.id,
+      moduleId: f.module.id, matchKind: "compatible", matchValue: "legacy,runtime" });
+    const input = { organizationId: f.auth.organization.id, driverModule: null, compatible: "legacy,runtime", nodeType: null };
+    expect(await resolveModuleIdForBinding(apiDb, input)).toBe(f.parent.id);
+    const applied = await migrateModuleStructure(ownerDb, f.auth.organization.id, true);
+    expect(applied.changes).toContainEqual(expect.objectContaining({ action: "move-placement", moduleId: f.module.id }));
+    expect(await resolveModuleIdForBinding(apiDb, input)).toBe(f.parent.id);
+    expect(await runV05(queryOf(apiDb))).toMatchObject({ gateId: "PCAT-DB-V05" });
   });
 
   it.each(["recognition-mismatch", "recognition-unproven"])("keeps %s legacy rules unresolved during upgrade", async key => {
@@ -204,10 +223,14 @@ describe("administrator module metadata through the API database role", () => {
     expect(mappings.rows).toEqual([]);
     const legacy = await apiDb.query(`select module_id from public.module_recognition_rules where organization_id = $1`, [f.auth.organization.id]);
     expect(legacy.rows).toEqual([{ module_id: f.module.id }]);
+    const displayed = (await readRegistry(apiDb, f.auth.organization.id, null)).modules.find(module => module.id === f.module.id);
+    const savedSelector = key === "recognition-mismatch" ? "local,misattributed" : "local,unproven";
+    expect(displayed?.unmigratedRecognition?.compatibles).toEqual([savedSelector]);
     expect(migrationNotices.some(notice => notice.includes(f.auth.organization.id) && notice.includes(f.module.id))).toBe(true);
     const catalog = await captureModuleRecognitionCatalog(apiDb);
     if (!catalog) throw new Error("Catalog is unavailable");
     const snapshot = await loadOrganizationCatalogSnapshot(apiDb, f.auth.organization.id, catalog);
+    expect(snapshot.resolveSubject({ driverCompatibles: [DriverCompatible(savedSelector)], nodeTypeFallback: { kind: "absent" } }).status).toBe("unknown");
     expect(snapshot.resolveSubject({ driverCompatibles: [], nodeTypeFallback: { kind: "present", name: NormalizedNodeTypeName("charger") } }))
       .toMatchObject({ status: "matched", subject: { id: "csub_acme_charger" } });
   });
@@ -220,6 +243,13 @@ describe("administrator module metadata through the API database role", () => {
     expect(rules.rows).toEqual([]);
     expect(mappings.rows).toEqual([]);
     expect(legacy.rows).toEqual([{ module_id: f.target.id }]);
+    const displayed = (await readRegistry(apiDb, f.auth.organization.id, null)).modules.find(module => module.id === f.target.id);
+    expect(displayed?.unmigratedRecognition?.compatibles).toEqual(["local,shared-upgrade"]);
+    const catalog = await captureModuleRecognitionCatalog(apiDb);
+    if (!catalog) throw new Error("Catalog is unavailable");
+    const snapshot = await loadOrganizationCatalogSnapshot(apiDb, f.auth.organization.id, catalog);
+    expect(snapshot.resolveSubject({ driverCompatibles: [DriverCompatible("local,shared-upgrade")], nodeTypeFallback: { kind: "absent" } }).status)
+      .toBe("unknown");
     expect(migrationNotices.some(notice => notice.includes(f.auth.organization.id) && notice.includes(f.target.id))).toBe(true);
   });
 

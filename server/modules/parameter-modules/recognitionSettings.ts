@@ -36,6 +36,10 @@ export type ModuleRecognitionSettings = {
   instanceCardinality: InstanceCardinality | null;
   nodeTypeName: string | null;
   overridden: boolean;
+  unmigratedRecognition?: {
+    compatibles: string[]; driverNature: DriverNature | null;
+    instanceCardinality: InstanceCardinality | null; nodeTypeName: string | null;
+  };
 };
 
 type ModuleRecognitionRow = {
@@ -80,8 +84,18 @@ export async function loadModuleRecognitionSettings(
      where module.organization_id = $1 and module.kind in ('driver-group', 'node-type')`,
     [organizationId],
   );
-  if (rows.rows.length === 0) return new Map();
   const effectiveRules = rulesAvailable ? await loadOrganizationRecognitionRules(db, organizationId) : [];
+  // Unmigrated selectors are display-only evidence and never enter the Catalog overlay.
+  const unmigrated = rulesAvailable ? (await db.query<{
+    module_id: string; compatibles: string[]; driver_nature: DriverNature | null;
+    instance_cardinality: InstanceCardinality | null; node_type_name: string | null;
+  }>(`select rule.module_id,rule.compatibles,rule.driver_nature,rule.instance_cardinality,rule.node_type_name
+      from public.module_recognition_rules rule
+      left join public.registration_recognition_migration_map migrated
+        on migrated.organization_id=rule.organization_id and migrated.module_id=rule.module_id
+      where rule.organization_id=$1 and migrated.module_id is null`, [organizationId])).rows : [];
+  if (rows.rows.length === 0 && unmigrated.length === 0) return new Map();
+  const unmigratedByModule = new Map(unmigrated.map(rule => [rule.module_id, rule]));
   const rules = new Map(effectiveRules.filter(rule => rule.module_id !== null).map(rule => [rule.module_id, rule]));
   const placements = await listModuleRecognitionPlacements(db, organizationId);
   const settings = new Map<string, ModuleRecognitionSettings>();
@@ -108,13 +122,24 @@ export async function loadModuleRecognitionSettings(
       compatibles = rule.compatibles;
       nodeTypeName = rule.node_type_name;
     }
+    const legacyRule = unmigratedByModule.get(row.id);
     settings.set(row.id, {
       recognitionSubjectId: subjectId, compatibles: row.kind === "driver-group" ? compatibles : [],
       nodeTypeName: row.kind === "node-type" ? nodeTypeName : null,
       driverNature: row.kind === "driver-group" ? (rule?.driver_nature ?? row.legacy_nature ?? "physical-device") : null,
       instanceCardinality: row.kind === "driver-group" ? (rule?.instance_cardinality ?? row.legacy_cardinality ?? "multiple") : null,
       overridden: rule !== undefined,
+      ...(legacyRule ? { unmigratedRecognition: { compatibles: legacyRule.compatibles,
+        driverNature: legacyRule.driver_nature, instanceCardinality: legacyRule.instance_cardinality,
+        nodeTypeName: legacyRule.node_type_name } } : {}),
     });
+  }
+  for (const legacyRule of unmigrated) {
+    if (settings.has(legacyRule.module_id)) continue;
+    settings.set(legacyRule.module_id, { recognitionSubjectId: null, compatibles: [], nodeTypeName: null,
+      driverNature: null, instanceCardinality: null, overridden: false,
+      unmigratedRecognition: { compatibles: legacyRule.compatibles, driverNature: legacyRule.driver_nature,
+        instanceCardinality: legacyRule.instance_cardinality, nodeTypeName: legacyRule.node_type_name } });
   }
   const subjectIds = [...new Set([...settings.values()].flatMap(value => value.recognitionSubjectId ? [value.recognitionSubjectId] : []))];
   if (subjectIds.length === 0) return settings;

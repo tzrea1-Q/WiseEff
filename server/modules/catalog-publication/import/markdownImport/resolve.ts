@@ -17,7 +17,7 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
   ownerSubjectId?: string;
   categoryPath?: string;
   displayAlias?: string;
-  warnings: string[];
+  warnings: { message: string; line: number }[];
   hintLine?: number;
 } {
   const diagnostics: ImportDiagnostic[] = [];
@@ -67,8 +67,9 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
   let categoryPath: string | undefined;
   let displayAlias: string | undefined;
   let aliasSeen = false;
-  const warnings: string[] = [];
+  const warnings: { message: string; line: number }[] = [];
   let hintLine: number | undefined;
+  let categoryLine: number | undefined;
   for (const metadata of section.metadataLines) {
     const parts = metadata.text.split(/\s*·\s*/u);
     const hintPattern = /^(业务分类|模块名称|展示别名)：|^(categoryPath|moduleName|displayAlias):/u;
@@ -81,11 +82,11 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
       const value = part.slice(separator + 1).trim();
       if (key === "业务分类" || key === "categoryPath") {
         if (categoryPath !== undefined || !value || value.split(" / ").some((segment) => !segment.trim() || segment.includes("/"))) invalid = true;
-        else categoryPath = value;
+        else { categoryPath = value; categoryLine = metadata.line; }
       } else {
-        if (key === "模块名称" || key === "moduleName") warnings.push("模块名称（moduleName）已弃用，请改用展示别名（displayAlias）。");
+        if (key === "模块名称" || key === "moduleName") warnings.push({ message: "模块名称（moduleName）已弃用，请改用展示别名（displayAlias）。", line: metadata.line });
         if (aliasSeen || !value) invalid = true;
-        else if (parents.length || subject?.content.ownerSubjectId) warnings.push("子主体继承所属驱动的展示位置，已忽略展示别名。");
+        else if (parents.length || subject?.content.ownerSubjectId) warnings.push({ message: "子主体继承所属驱动的展示位置，已忽略展示别名。", line: metadata.line });
         else displayAlias = value;
         aliasSeen = true;
       }
@@ -106,7 +107,7 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
   if (section.kind === "driver" && !subject && !nature) {
     diagnostics.push(diagnostic(section, null, "主体", "新建 Driver 必须填写 nature 和 cardinality。", section.line));
   }
-  return { subject, diagnostics, section, nature, cardinality, ownerSubjectId, categoryPath, displayAlias, warnings, hintLine };
+  return { subject, diagnostics, section, nature, cardinality, ownerSubjectId, categoryPath, displayAlias, warnings, hintLine: categoryLine ?? hintLine };
 }
 
 /** Convert this subject's accepted definitions to existing publication operations. */

@@ -26,6 +26,8 @@ export type ParameterModuleDto = {
   instanceCardinality?: "multiple" | "singleton-per-project" | null;
   nodeTypeName?: string | null;
   recognitionSubjectId?: string | null;
+  unmigratedRecognition?: { compatibles: string[]; driverNature: "physical-device" | "logical-service" | null;
+    instanceCardinality: "multiple" | "singleton-per-project" | null; nodeTypeName: string | null };
   /** Subtree bindings (measured occurrences). */
   parameterCount: number;
   /** Distinct specs in the same subtree (definition count). */

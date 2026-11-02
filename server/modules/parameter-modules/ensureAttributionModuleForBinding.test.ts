@@ -38,7 +38,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
     await db?.rollback();
   });
 
-  it("ignores legacy module recognition rules and technical mappings without creating modules", async () => {
+  it("ignores legacy recognition rules but resolves retained mappings to their business ancestor", async () => {
     const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const module = await createParameterModule(db, { organizationId:"org-1",name:"Editable driver",
       parentId: business.id, kind:"driver-group",origin:"auto",sourceKey:"compatible:vendor,old" });
@@ -51,7 +51,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
     const before = (await db.query("select id from parameter_modules where kind='driver-group' order by id")).rows;
     const input = {organizationId:"org-1",driverModule:"editable",instanceName:"device",nodeLocator:"/device"};
     expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"Vendor,new"})).toBe(unclassifiedModuleId("org-1"));
-    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"vendor,old"})).toBe(unclassifiedModuleId("org-1"));
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"vendor,old"})).toBe(business.id);
     expect((await db.query("select id from parameter_modules where kind='driver-group' order by id")).rows).toEqual(before);
     const duplicate = await createParameterModule(db, {organizationId:"org-1",name:"Other manual driver",parentId: business.id,kind:"driver-group"});
     await db.query(`insert into public.module_recognition_rules
@@ -94,7 +94,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
     return result.rows;
   }
 
-  it("does not use a legacy driver-group mapping for a new binding", async () => {
+  it("resolves a legacy driver-group mapping to its business ancestor", async () => {
     const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const group = await createParameterModule(db, {
       organizationId: "org-1",
@@ -119,7 +119,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/amba/i2c@FF24E000/hl7603@6E"
     });
 
-    expect(moduleId).toBe(unclassifiedModuleId("org-1"));
+    expect(moduleId).toBe(business.id);
   });
 
   it("does not infer a binding destination from a legacy technical module's parent", async () => {
@@ -139,7 +139,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
     })).toBe(unclassifiedModuleId("org-1"));
   });
 
-  it("does not use a legacy node-type mapping for a new binding", async () => {
+  it("resolves a legacy node-type mapping to its business ancestor", async () => {
     const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const nodeType = await createParameterModule(db, {
       organizationId: "org-1",
@@ -164,7 +164,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/amba/i2c@FF24E000/hl7603@6E"
     });
 
-    expect(moduleId).toBe(unclassifiedModuleId("org-1"));
+    expect(moduleId).toBe(business.id);
   });
 
   it("does not materialize node-type modules during auto discovery", async () => {
@@ -208,8 +208,8 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/amba/i2c@FF24E000/hl7603@6E"
     });
 
-    expect(first).toBe(unclassifiedModuleId("org-1"));
-    expect(second).toBe(unclassifiedModuleId("org-1"));
+    expect(first).toBe(business.id);
+    expect(second).toBe(business.id);
     const rows = (await allModules()).filter((row) => row.source_key === sourceKey);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ name: "备用电源旁路", origin: "curated" });
@@ -265,9 +265,9 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/"
     });
 
-    expect(moduleId).toBe(unclassifiedModuleId("org-1"));
+    expect(moduleId).toBe(business.id);
     // The board root is scaffolding for materialization: nothing new was created.
-    expect(await allModules()).toHaveLength(3);
+    expect(await allModules()).toHaveLength(2);
   });
 
   it("does not create an auto driver-group from a legacy registration default", async () => {
@@ -316,7 +316,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/wireless/sc8562@1"
     });
 
-    expect(moduleId).toBe(unclassifiedModuleId("org-1"));
+    expect(moduleId).toBe(oldCat.id);
     const stored = (await allModules()).find((row) => row.id === group.id);
     expect(stored?.parent_id).toBe(oldCat.id);
   });

@@ -1519,7 +1519,8 @@ export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObj
   candidate: catalogPublicationCandidateDtoSchema.nullable(),
   noChange: z.boolean(),
   placementHints: z.array(catalogObject({ kind: z.string(), selector: z.string(), subjectId: z.string().optional(),
-    categoryPath: z.string().optional(), displayAlias: z.string().optional(), line: z.number().int().positive(), warnings: z.array(z.string()) })),
+    categoryPath: z.string().optional(), displayAlias: z.string().optional(), line: z.number().int().positive(),
+    warnings: z.array(catalogObject({ message: z.string(), line: z.number().int().positive() })) })),
   entries: z.array(catalogObject({
     subjectHeading: z.string(), definitionHeading: z.string(),
     selector: z.string(), propertyKey: z.string(), displayName: z.string(),

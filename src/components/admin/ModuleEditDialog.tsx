@@ -37,6 +37,8 @@ type EditableModule = {
   driverNature?: DriverNature | null;
   instanceCardinality?: InstanceCardinality | null;
   nodeTypeName?: string | null;
+  unmigratedRecognition?: { compatibles: readonly string[]; driverNature: DriverNature | null;
+    instanceCardinality: InstanceCardinality | null; nodeTypeName: string | null };
 };
 
 const EMPTY_COMPATIBLES: readonly string[] = [];
@@ -156,6 +158,15 @@ export function ModuleEditDialog({
         </div>
 
         <div className="param-admin-module-edit-body">
+          {module.unmigratedRecognition ? <section className="module-edit-section" aria-label="未迁移识别规则">
+            <h3>未迁移识别规则</h3>
+            <p>仅供核对，不参与匹配。请运行模块结构迁移预检并处理冲突：</p>
+            <code>npx tsx scripts/migrate-module-structure.ts --all --preflight</code>
+            {module.unmigratedRecognition.compatibles.length ? <p>compatible：{module.unmigratedRecognition.compatibles.join("、")}</p> : null}
+            {module.unmigratedRecognition.nodeTypeName ? <p>节点类型名：{module.unmigratedRecognition.nodeTypeName}</p> : null}
+            {module.unmigratedRecognition.driverNature ? <p>驱动性质：{formatDriverNatureLabel(module.unmigratedRecognition.driverNature)}</p> : null}
+            {module.unmigratedRecognition.instanceCardinality ? <p>实例基数：{formatInstanceCardinalityLabel(module.unmigratedRecognition.instanceCardinality)}</p> : null}
+          </section> : null}
           {historicalCompatibles.length > 0 ? (
             <section className="module-edit-section" aria-label="历史 compatible 溯源">
               <h3>历史 compatible 溯源</h3>

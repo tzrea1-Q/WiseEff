@@ -278,11 +278,11 @@ export function bindCatalogPublicationCommands(input: {
           placementHints = plan.placementHints.map((hint) => {
             const warnings = [...hint.warnings];
             const registered = registrations.find((item) => item.subjectId === hint.subjectId);
-            if (registered) warnings.push(`已登记于 ${modulePath(registered.moduleId, modules)}，未改动`);
+            if (registered) warnings.push({ message: `已登记于 ${modulePath(registered.moduleId, modules)}，未改动`, line: hint.line });
             else if (hint.categoryPath) {
               const parents = modules.filter((item) => (item.kind === "business" || (item.kind === "unclassified" && hint.categoryPath === "未分类")) && modulePath(item.id, modules) === hint.categoryPath);
-              if (!parents.length) warnings.push("业务分类不存在。");
-              else if (parents.length > 1) warnings.push("业务分类路径不唯一。");
+              if (!parents.length) warnings.push({ message: "业务分类不存在。", line: hint.line });
+              else if (parents.length > 1) warnings.push({ message: "业务分类路径不唯一。", line: hint.line });
             }
             return { ...hint, warnings };
           });

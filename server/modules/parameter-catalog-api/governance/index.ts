@@ -14,6 +14,7 @@ export {
   countCurrentBindingsForModule,
   countSubjectPlacementsForModules,
   findEffectiveModuleForLegacyAttribution,
+  resolveLegacyModuleDestination,
   listModuleRegistryFacts,
   type ModuleRegistryFact,
 } from "../../parameter-governance/queries/registration";

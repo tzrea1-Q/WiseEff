@@ -33,7 +33,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
   }
   const entries: ImportEntry[] = [];
   const changes: CatalogChange[] = [];
-  const placementHints: { kind: string; selector: string; subjectId?: string; categoryPath?: string; displayAlias?: string; line: number; warnings: string[] }[] = [];
+  const placementHints: { kind: string; selector: string; subjectId?: string; categoryPath?: string; displayAlias?: string; line: number; warnings: { message: string; line: number }[] }[] = [];
   const seen = new Set<string>();
   const newSubjects = new Map<string, ReturnType<typeof resolveSubject>>();
   for (const issue of syntax.diagnostics.filter((item) => item.subjectLine === undefined)) {

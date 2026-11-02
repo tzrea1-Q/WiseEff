@@ -152,7 +152,7 @@ Legacy 运行时调试参数 DTO 包含可选值元数据：
 
 ADR-0053 取代下方历史段落中的技术模块 placement 合同。新模块写入使用业务分类，未分类根为保留根。根主体登记指向业务分类或未分类根，所属子主体继承驱动的有效放置；多个登记可共享模块。识别规则按登记保存，遗留技术模块保留用于历史。
 
-`POST /api/v2/organizations/:organizationId/subject-registrations/batch` 的每行选择已有业务模块或未分类根，并可填写根主体的可选 `displayAlias`。Markdown 发布预览的 `placementHints` 返回 `categoryPath`、可选 `displayAlias` 和警告；提示不会创建模块或登记主体。旧 `moduleName` 指令会给出弃用警告，仅对根主体映射为别名。ADR-0053 取代 #1447 原来的“创建同类型模块 / 选择空闲模块”合同。
+`POST /api/v2/organizations/:organizationId/subject-registrations/batch` 的每行选择已有业务模块或未分类根，并可填写根主体的可选 `displayAlias`。Markdown 发布预览的 `placementHints` 返回 `categoryPath`、可选 `displayAlias` 和含 `message`、来源 `line` 的警告；提示不会创建模块或登记主体。旧 `moduleName` 指令会给出弃用警告，仅对根主体映射为别名。ADR-0053 取代 #1447 原来的“创建同类型模块 / 选择空闲模块”合同。
 
 组织级参数模块为独立于调试模块树的层级分类。列表要求 `parameter:view`；创建/更新/移动/删除要求 `admin:access`。删除非空模块（仍有子模块或已挂参数）返回 `409`；循环移动返回 `409`。
 

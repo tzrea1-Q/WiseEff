@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { normalizeMatchToken } from "./modulePlacement";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { resolveLegacyModuleDestination } from "../parameter-catalog-api/governance";
 
 export type ModuleBindingMatchKind = "compatible" | "node-type";
 
@@ -51,20 +52,33 @@ async function findMappedModuleId(
   db: Queryable,
   input: { organizationId: string; matchKind: ModuleBindingMatchKind; matchValue: string },
 ): Promise<string | null> {
-  const result = await db.query<{ parameter_module_id: string }>(
+  const result = await db.query<{ parameter_module_id: string; kind: string; priority: number }>(
     `
-    select pm.id as parameter_module_id
+    select pm.id as parameter_module_id, pm.kind, mm.priority
     from parameter_module_mappings mm
     join parameter_modules pm on pm.id=mm.parameter_module_id and pm.organization_id=mm.organization_id
     where mm.organization_id=$1 and mm.match_kind=$2
       and lower(trim(both '"' from trim(both '''' from trim(both from mm.match_value))))=$3
-      and pm.archived_at is null
-      and (pm.kind = 'business' or (pm.kind = 'unclassified' and pm.parent_id is null))
+      and ((pm.archived_at is null and (pm.kind = 'business' or (pm.kind = 'unclassified' and pm.parent_id is null)))
+        or pm.kind in ('driver-group', 'node-type'))
     order by mm.priority desc,pm.id
     `,
     [input.organizationId, input.matchKind, input.matchValue],
   );
-  return result.rows[0]?.parameter_module_id ?? null;
+  const highest = result.rows[0]?.priority;
+  const destinations = new Set<string>();
+  for (const row of result.rows.filter((item) => item.priority === highest)) {
+    if (row.kind !== 'driver-group' && row.kind !== 'node-type') {
+      destinations.add(row.parameter_module_id);
+      continue;
+    }
+    const legacy = await resolveLegacyModuleDestination(db, input.organizationId, row.parameter_module_id);
+    const target = legacy.evidence ? (legacy.destinations.length === 1 ? legacy.destinations[0] : null) : legacy.ancestor;
+    if (!target) throw new ApiError("CONFLICT", "旧模块映射无法唯一确定业务分类，请先检查模块结构迁移预检结果。", { moduleId: row.parameter_module_id });
+    destinations.add(target);
+  }
+  if (destinations.size > 1) throw new ApiError("CONFLICT", "旧模块映射对应多个业务分类，请先处理模块结构迁移冲突。");
+  return [...destinations][0] ?? null;
 }
 
 /**

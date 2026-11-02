@@ -43,6 +43,8 @@ export type ParameterModule = {
   instanceCardinality?: InstanceCardinality | null;
   nodeTypeName?: string | null;
   recognitionSubjectId?: string | null;
+  unmigratedRecognition?: { compatibles: string[]; driverNature: DriverNature | null;
+    instanceCardinality: InstanceCardinality | null; nodeTypeName: string | null };
 };
 
 export type ParameterModuleMapping = {

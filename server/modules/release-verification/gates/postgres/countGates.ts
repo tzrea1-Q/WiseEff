@@ -250,7 +250,6 @@ export const runV04 = async (query: GateQuery): Promise<GateResult> => {
   return withChecksum("PCAT-DB-V04", "PCAT-VRF-V04-SUBJECT-MEMBERSHIP-MISSING", observation);
 };
 
-// V05 compares the retained pre-cutover placement contract during release verification.
 export const runV05 = async (query: GateQuery): Promise<GateResult> => {
   const observation = await countSql(
     query,
@@ -278,15 +277,29 @@ export const runV05 = async (query: GateQuery): Promise<GateResult> => {
        and module.organization_id = placement.organization_id
       left join ${catalogRelation("catalog_subjects")} subject
         on subject.id = registration.subject_id
+      left join ${catalogRelation("organization_subject_registrations")} owner_registration
+        on owner_registration.organization_id = registration.organization_id
+       and owner_registration.subject_id = subject.owner_subject_id
+       and owner_registration.status = 'active'
+      left join ${catalogRelation("catalog_subjects")} owner_subject
+        on owner_subject.id = subject.owner_subject_id
       where placement.id is null
          or coalesce(counts.retained, 0) <> 1
          or placement.organization_id is distinct from registration.organization_id
          or subject.id is null
-         or (
-           (subject.kind = 'driver' and module.kind is distinct from 'driver-group')
-           or (subject.kind = 'node-type' and module.kind is distinct from 'node-type')
-           or (subject.kind = 'configuration-schema' and module.kind is distinct from 'business')
-         )
+         or (subject.owner_subject_id is not null and (subject.kind <> 'node-type'
+           or owner_subject.kind is distinct from 'driver' or owner_registration.id is null))
+         or not coalesce(
+           (subject.owner_subject_id is not null and placement.module_id is null)
+           or (subject.owner_subject_id is null and module.archived_at is null
+             and (module.kind = 'business' or (module.kind = 'unclassified' and module.parent_id is null)))
+           or (module.archived_at is null
+             and ((subject.kind = 'driver' and module.kind = 'driver-group')
+               or (subject.kind = 'node-type' and module.kind = 'node-type'))
+             and not exists (select 1 from ${catalogRelation("module_structure_migration_map")} migrated
+               where migrated.organization_id = registration.organization_id
+                 and migrated.registration_id = registration.id
+                 and migrated.action in ('move-placement', 'structural-placement'))), false)
     )
     select
       (select count(*)::int from violations) as violation_count,

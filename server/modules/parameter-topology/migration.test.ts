@@ -27,6 +27,8 @@ import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdent
 import { listParameters } from "../parameters/repository";
 import { listChangeRequests } from "../parameters/reviewWorkflowRepository";
 import { ApiError } from "../../shared/http/errors";
+import { createLegacyParameterModule, listLegacyFixtureBindingIds, seedLegacyMappedBinding } from "../../testing/legacyParameterModuleFixture";
+import { migrateModuleStructure } from "../../../scripts/migrate-module-structure";
 
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -514,6 +516,23 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
 
   afterEach(async () => {
     await db?.rollback();
+  });
+
+  it.each([false, true])("reuses an existing business binding through a legacy mapping (S4 applied: %s)", async (applyS4) => {
+    const seeded = await seedLegacyGraph(db!);
+    const business = await createLegacyParameterModule(db!, { organizationId: ORG, name: "Existing business" });
+    const legacy = await createLegacyParameterModule(db!, { organizationId: ORG, name: "Legacy node", kind: "node-type", parentId: business.id });
+    await seedLegacyMappedBinding(db!, { organizationId: ORG, projectId: PROJECT, logicalNodeId: seeded.logicalNodeId,
+      specId: seeded.specId, moduleId: legacy.id, businessId: business.id });
+    if (applyS4) {
+      expect((await migrateModuleStructure(db!, ORG, true)).changes).toContainEqual(expect.objectContaining({ action: "archive-module", moduleId: legacy.id }));
+    }
+    await migrateParameterIdentities(db!, { mode: "apply", organizationId: ORG, ...applyGates,
+      dbSnapshotId: "db-legacy-mapping", objectSnapshotId: "obj-legacy-mapping" });
+    expect((await db!.query<{ project_parameter_binding_id: string }>(`select project_parameter_binding_id
+      from legacy_parameter_migration_evidence where legacy_kind='project_parameter_value' and legacy_id=$1`, [PPV_ID])).rows)
+      .toEqual([{ project_parameter_binding_id: "existing-identity-binding" }]);
+    expect(await listLegacyFixtureBindingIds(db!, PROJECT, seeded.specId)).toEqual(["existing-identity-binding"]);
   });
 
   it("dry-run maps every seeded legacy record with zero blockers", async () => {

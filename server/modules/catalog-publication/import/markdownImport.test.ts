@@ -174,11 +174,17 @@ describe("Definition import planner", () => {
     const plan = planMarkdownImport(root, "d.md", snapshot);
     expect(plan.changeSet).toEqual(planMarkdownImport(document, "d.md", snapshot).changeSet);
     expect(plan.placementHints).toEqual([expect.objectContaining({ displayAlias: "旧名称",
-      warnings: [expect.stringContaining("已弃用")] })]);
+      warnings: [expect.objectContaining({ message: expect.stringContaining("已弃用"), line: 2 })] })]);
     const child = document.replace("# Driver `acme,power`", "# NodeType `battery`\nparent: acme,power · 模块名称：旧名称");
     const childPlan = planMarkdownImport(child, "d.md", snapshot);
     expect(childPlan.placementHints[0]).not.toHaveProperty("displayAlias");
-    expect(childPlan.placementHints[0]?.warnings).toEqual(expect.arrayContaining([expect.stringContaining("已弃用")]));
+    expect(childPlan.placementHints[0]?.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining("已弃用"), line: 2 })]));
+  });
+  it("preserves the deprecation warning line when a later metadata line contains categoryPath", () => {
+    const source = document.replace("# Driver `acme,power`", "# Driver `acme,power`\nmoduleName: 旧名称\ncategoryPath: 电源 / 充电管理");
+    const hint = planMarkdownImport(source, "d.md", firstAcmePredecessor().first).placementHints[0];
+    expect(hint).toMatchObject({ categoryPath: "电源 / 充电管理", line: 3,
+      warnings: [{ message: expect.stringContaining("已弃用"), line: 2 }] });
   });
   it("creates subjects with their definitions and checks driver facts", () => {
     const snapshot = firstAcmePredecessor().first;

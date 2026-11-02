@@ -164,7 +164,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const summary = (Object.keys(outcomeLabels) as (keyof typeof outcomeLabels)[])
     .filter((outcome) => counts[outcome]).map((outcome) => `${outcomeLabels[outcome]} ${counts[outcome]}`).join(" · ");
   const placementWarnings = placementHints?.flatMap((hint) => hint.warnings.map((warning) => ({
-    selector: hint.selector, line: hint.line, warning,
+    selector: hint.selector, line: warning.line, warning: warning.message,
   }))) ?? [];
 
   return <>
