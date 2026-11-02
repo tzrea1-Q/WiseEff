@@ -399,6 +399,7 @@ export const catalogRegistrationDtoSchema = catalogObject({
   id: z.string(),
   organizationId: z.string(),
   subjectId: z.string(),
+  displayAlias: z.string().optional(),
   ownerSubjectId: z.string().optional(),
   structural: z.literal(true).optional(),
   status: catalogRegistrationStatusSchema,

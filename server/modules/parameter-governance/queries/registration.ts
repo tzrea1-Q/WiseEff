@@ -35,6 +35,7 @@ type RegistrationJoinRow = {
   id: string;
   organization_id: string;
   subject_id: string;
+  display_alias: string | null;
   owner_subject_id: string | null;
   status: string;
   registration_method: string;
@@ -55,6 +56,61 @@ export type ModuleRegistryFact = {
   subject_id: string;
   binding_id: string | null;
 };
+
+/** Resolve a legacy attribution identity only when all matching registrations agree. */
+export async function findEffectiveModuleForLegacyAttribution(
+  client: Queryable, organizationId: string, attributionSubjectId: string,
+): Promise<string | null> {
+  const result = await client.query<{ module_id: string }>(`select distinct effective.module_id
+    from public.attribution_subjects legacy
+    join parameter_catalog.catalog_subjects subject on
+      (lower(legacy.source_key) = 'compatible:' || lower(subject.canonical_key) and subject.kind = 'driver') or
+      (lower(legacy.source_key) = 'nodetype:' || lower(subject.canonical_key) and subject.kind = 'node-type')
+    join parameter_catalog.organization_subject_registrations registration
+      on registration.organization_id=$1 and registration.subject_id=subject.id and registration.status='active'
+    join parameter_catalog.registration_effective_module effective on effective.registration_id=registration.id
+      and effective.organization_id=registration.organization_id
+    join public.parameter_modules module on module.id=effective.module_id and module.organization_id=$1
+      and module.archived_at is null and (module.kind='business' or (module.kind='unclassified' and module.parent_id is null))
+    where legacy.id=$2 and (legacy.organization_id is null or legacy.organization_id=$1)`, [organizationId, attributionSubjectId]);
+  return result.rows.length === 1 ? result.rows[0]!.module_id : null;
+}
+
+export async function activeBusinessAncestor(client: Queryable, organizationId: string, moduleId: string): Promise<string | null> {
+  const result = await client.query<{ id: string | null }>(`with recursive ancestors as (
+    select id,parent_id,kind,archived_at,0 as distance,array[id] as visited
+      from public.parameter_modules where organization_id=$1 and id=$2
+    union all
+    select parent.id,parent.parent_id,parent.kind,parent.archived_at,ancestors.distance+1,ancestors.visited || parent.id
+    from ancestors join public.parameter_modules parent on parent.id=ancestors.parent_id and parent.organization_id=$1
+    where not parent.id=any(ancestors.visited)
+  ), migrated as (
+    select registration.status,effective.module_id
+    from parameter_catalog.module_structure_migration_map evidence
+    join parameter_catalog.organization_subject_registrations registration
+      on registration.id=evidence.registration_id and registration.organization_id=evidence.organization_id
+    left join parameter_catalog.registration_effective_module effective
+      on effective.registration_id=registration.id and effective.organization_id=registration.organization_id
+    where evidence.organization_id=$1 and evidence.module_id=$2
+      and evidence.action in ('move-placement','structural-placement')
+    union all
+    select registration.status,effective.module_id
+    from public.registration_recognition_migration_map evidence
+    join parameter_catalog.organization_subject_registrations registration
+      on registration.id=evidence.registration_id and registration.organization_id=evidence.organization_id
+    left join parameter_catalog.registration_effective_module effective
+      on effective.registration_id=registration.id and effective.organization_id=registration.organization_id
+    where evidence.organization_id=$1 and evidence.module_id=$2
+  ), targets as (
+    select distinct module.id from migrated
+    join public.parameter_modules module on module.id=migrated.module_id and module.organization_id=$1
+      and module.archived_at is null and (module.kind='business' or (module.kind='unclassified' and module.parent_id is null))
+    where migrated.status='active'
+  ) select case when exists(select 1 from migrated) then (select min(id) from targets having count(*)=1)
+    else (select id from ancestors where archived_at is null
+      and (kind='business' or (kind='unclassified' and parent_id is null)) order by distance limit 1) end as id`, [organizationId, moduleId]);
+  return result.rows[0]?.id ?? null;
+}
 
 /** Current Binding references for one module, scoped to its current Registration Placement. */
 export async function countCurrentBindingsForModule(
@@ -129,6 +185,7 @@ const registrationSelect = `
     registration.id,
     registration.organization_id,
     registration.subject_id,
+    registration.display_alias,
     subject.owner_subject_id,
     registration.status,
     registration.registration_method,
@@ -202,6 +259,7 @@ const mapRecord = (
       id: row.id,
       organizationId: row.organization_id,
       subjectId: CatalogSubjectId(row.subject_id),
+      ...(row.display_alias ? { displayAlias: row.display_alias } : {}),
       ...(row.owner_subject_id ? { ownerSubjectId: row.owner_subject_id, structural: true as const } : {}),
       status,
       method,

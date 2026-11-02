@@ -256,6 +256,20 @@ function createPorts() {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it("shows a registration alias beside the canonical name and passes it to the module tree", async () => {
+    const ports = createPorts();
+    const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
+    ports.listRegistrations.mockResolvedValue({ ...registrations, items: registrations.items.map((item) =>
+      item.id === "registration-driver" ? { ...item, displayAlias: "旧驱动名称" } : item) });
+    const onTreeSubjectsChange = vi.fn();
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin
+      onTreeSubjectsChange={onTreeSubjectsChange} />);
+    const row = await screen.findByRole("listitem", { name: "vendor,driver（驱动）" });
+    expect(within(row).getByText("旧驱动名称")).toBeInTheDocument();
+    expect(onTreeSubjectsChange).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ id: "subject-driver", name: "vendor,driver", displayAlias: "旧驱动名称" }),
+    ]));
+  });
   it("nests registered owned nodes under their driver without independent lifecycle actions", async () => {
     const ports = createPorts();
     const driver = (await ports.catalog.listSubjects()).items[0]!;

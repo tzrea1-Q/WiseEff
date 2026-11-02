@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { normalizeMatchToken } from "./modulePlacement";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { activeBusinessAncestor } from "../parameter-catalog-api/governance/index";
 
 export type ModuleBindingMatchKind = "compatible" | "node-type";
 
@@ -47,21 +48,23 @@ async function findMappedModuleId(
 ): Promise<string | null> {
   const result = await db.query<{ parameter_module_id: string }>(
     `
-    select mm.parameter_module_id
+    select pm.id as parameter_module_id
     from parameter_module_mappings mm
-    inner join parameter_modules pm
-      on pm.id = mm.parameter_module_id and pm.organization_id = mm.organization_id
-    where mm.organization_id = $1
-      and mm.match_kind = $2
-      and lower(trim(both '"' from trim(both '''' from trim(both from mm.match_value)))) = $3
+    join parameter_modules pm on pm.id=mm.parameter_module_id and pm.organization_id=mm.organization_id
+    where mm.organization_id=$1 and mm.match_kind=$2
+      and lower(trim(both '"' from trim(both '''' from trim(both from mm.match_value))))=$3
       and not exists (select 1 from public.module_recognition_rules rule
         where rule.organization_id=mm.organization_id and rule.module_id=mm.parameter_module_id)
-    order by mm.priority desc
-    limit 1
+    order by mm.priority desc,pm.id
     `,
     [input.organizationId, input.matchKind, input.matchValue],
   );
-  return result.rows[0]?.parameter_module_id ?? null;
+  // ponytail: legacy mappings are checked one at a time; batch this if an organization has many matching mappings.
+  for (const row of result.rows) {
+    const active = await activeBusinessAncestor(db, input.organizationId, row.parameter_module_id);
+    if (active) return active;
+  }
+  return null;
 }
 
 /** A saved rule replaces old selectors, including their automatic-discovery source keys. */
@@ -90,7 +93,7 @@ export async function findModuleRecognitionOverride(db: Queryable, input: {
   if (matches.length > 1) throw new ApiError("CONFLICT", "Recognition selectors match multiple modules", {
     reason: "ambiguous-module-recognition", moduleIds: matches.map((rule) => rule.module_id),
   });
-  return { moduleId: matches[0]?.module_id ?? null,
+  return { moduleId: matches[0] ? await activeBusinessAncestor(db, input.organizationId, matches[0].module_id) : null,
     replacesLegacyMatch: rules.rows.some((rule) => rule.replaces) };
 }
 

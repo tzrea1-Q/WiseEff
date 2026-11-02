@@ -83,6 +83,7 @@ export type CatalogGovernanceAuthResult =
   | { readonly ok: false; readonly status: 401 | 403 };
 
 export type RegistrationRecord = {
+  readonly displayAlias?: string;
   readonly ownerSubjectId?: string;
   readonly structural?: true;
   readonly id: string;

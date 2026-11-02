@@ -70,6 +70,7 @@ export const GOVERNANCE_RELATIONS = [
   "definition_proposal_revisions",
   "definition_proposals",
   "governance_command_idempotency",
+  "module_structure_migration_map",
   "organization_subject_registrations",
   "parameter_observation_matches",
   "parameter_observations",

@@ -303,6 +303,11 @@ describe("canonical binding materialization from a published release", () => {
       [ORG],
     );
     expect(Number(registrations.rows[0]?.count)).toBeGreaterThan(0);
+    const typedPlacements = await pool.query<{ count: number }>(`select count(*)::int as count
+      from parameter_catalog.subject_placements placement join public.parameter_modules module
+        on module.id=placement.module_id and module.organization_id=placement.organization_id
+      where placement.organization_id=$1 and module.kind in ('driver-group','node-type')`, [ORG]);
+    expect(typedPlacements.rows[0]).toEqual({ count: 0 });
 
     const bindings = await pool.query<{ count: string }>(
       `select count(*)::text as count

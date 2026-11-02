@@ -68,6 +68,7 @@ export type GovernancePlacementRecord = {
 };
 
 export type GovernanceRegistrationRecord = {
+  readonly displayAlias?: string;
   readonly ownerSubjectId?: string;
   readonly structural?: true;
   readonly impact?: { readonly bindingCount: number; readonly projectCount: number;

@@ -200,6 +200,7 @@ const writeRegister = async (
     method: command.method,
     proof: command.proof,
     placementId,
+    ...(command.displayAlias !== undefined ? { displayAlias: command.displayAlias } : {}),
   });
   const placement = await insertPlacement(client, {
     id: placementId,

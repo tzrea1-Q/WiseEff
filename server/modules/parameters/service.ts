@@ -2274,7 +2274,7 @@ export async function createParameterModuleForAuth(
 
   let parent: ParameterModuleDto | null = null;
   if (parentId) {
-    parent = await getParameterModuleById(db, { organizationId, moduleId: parentId });
+    parent = await getParameterModuleById(db, { organizationId, moduleId: parentId, activeOnly: true });
     if (!parent) {
       throw new ApiError("NOT_FOUND", "Parent parameter module was not found.", { parentId });
     }
@@ -2350,7 +2350,7 @@ export async function updateParameterModuleForAuth(
 ): Promise<ParameterModuleDto> {
   requireParameterAdmin(auth);
   const organizationId = parameterOrganizationId(auth);
-  const current = await getParameterModuleById(db, { organizationId, moduleId });
+  const current = await getParameterModuleById(db, { organizationId, moduleId, activeOnly: true });
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
@@ -2381,7 +2381,7 @@ export async function updateParameterModuleForAuth(
   }
 
   return db.transaction(async (tx) => {
-    const lockedCurrent = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true });
+    const lockedCurrent = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true, activeOnly: true });
     if (!lockedCurrent) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
     }
@@ -2436,14 +2436,14 @@ export async function moveParameterModuleForAuth(
 ): Promise<ParameterModuleDto> {
   requireParameterAdmin(auth);
   const organizationId = parameterOrganizationId(auth);
-  const current = await getParameterModuleById(db, { organizationId, moduleId });
+  const current = await getParameterModuleById(db, { organizationId, moduleId, activeOnly: true });
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
 
   const parentId = body.parentId;
   if (parentId) {
-    const parent = await getParameterModuleById(db, { organizationId, moduleId: parentId });
+    const parent = await getParameterModuleById(db, { organizationId, moduleId: parentId, activeOnly: true });
     if (!parent) {
       throw new ApiError("NOT_FOUND", "Target parent parameter module was not found.", { parentId });
     }
@@ -2465,7 +2465,7 @@ export async function moveParameterModuleForAuth(
   try {
     return await db.transaction(async (tx) => {
       await lockParameterModuleTree(tx, organizationId);
-      const lockedCurrent = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true });
+      const lockedCurrent = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true, activeOnly: true });
       if (!lockedCurrent) {
         throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
       }
@@ -2518,7 +2518,7 @@ export async function deleteParameterModuleForAuth(
   requireParameterAdmin(auth);
   const organizationId = parameterOrganizationId(auth);
   await db.transaction(async (tx) => {
-    const current = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true });
+    const current = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true, activeOnly: true });
     if (!current) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
     }

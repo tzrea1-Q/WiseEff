@@ -38,8 +38,9 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
   });
 
   it("reuses edited recognition rules and prevents the old selector from rediscovering the module", async () => {
+    const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const module = await createParameterModule(db, { organizationId:"org-1",name:"Editable driver",
-      kind:"driver-group",origin:"auto",sourceKey:"compatible:vendor,old" });
+      parentId: business.id, kind:"driver-group",origin:"auto",sourceKey:"compatible:vendor,old" });
     await db.query(`insert into public.parameter_module_mappings
       (id,organization_id,parameter_module_id,match_kind,match_value)
       values ('edited-rule-map','org-1',$1,'compatible','vendor,old')`,[module.id]);
@@ -48,20 +49,20 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       values ('org-1',$1,array['Vendor,new'],'physical-device','multiple')`,[module.id]);
     const before = (await db.query("select id from parameter_modules where kind='driver-group' order by id")).rows;
     const input = {organizationId:"org-1",driverModule:"editable",instanceName:"device",nodeLocator:"/device"};
-    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"Vendor,new"})).toBe(module.id);
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"Vendor,new"})).toBe(business.id);
     expect(await resolveAttributionModuleForBinding(db,{...input,compatible:"vendor,old"})).toBe(unclassifiedModuleId("org-1"));
     expect((await db.query("select id from parameter_modules where kind='driver-group' order by id")).rows).toEqual(before);
-    const duplicate = await createParameterModule(db, {organizationId:"org-1",name:"Other manual driver",kind:"driver-group"});
+    const duplicate = await createParameterModule(db, {organizationId:"org-1",name:"Other manual driver",parentId: business.id,kind:"driver-group"});
     await db.query(`insert into public.module_recognition_rules
       (organization_id,module_id,compatibles,driver_nature,instance_cardinality)
       values ('org-1',$1,array['Vendor,new'],'physical-device','multiple')`,[duplicate.id]);
     await expect(resolveAttributionModuleForBinding(db,{...input,compatible:"Vendor,new"}))
       .rejects.toMatchObject({code:"CONFLICT",details:{reason:"ambiguous-module-recognition"}});
-    const nodeType = await createParameterModule(db,{organizationId:"org-1",name:"Editable type",kind:"node-type",
+    const nodeType = await createParameterModule(db,{organizationId:"org-1",name:"Editable type",parentId: business.id,kind:"node-type",
       sourceKey:"nodetype:oldnode"});
     await db.query(`insert into public.module_recognition_rules (organization_id,module_id,node_type_name)
       values ('org-1',$1,'NewNode')`,[nodeType.id]);
-    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:null,instanceName:"NewNode"})).toBe(nodeType.id);
+    expect(await resolveAttributionModuleForBinding(db,{...input,compatible:null,instanceName:"NewNode"})).toBe(business.id);
     expect(await resolveAttributionModuleForBinding(db,{...input,compatible:null,instanceName:"oldnode"}))
       .toBe(unclassifiedModuleId("org-1"));
   });
@@ -93,10 +94,12 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
     return result.rows;
   }
 
-  it("resolves bindings through a compatible mapping to the driver group", async () => {
+  it("resolves a compatible mapping to the driver group's business parent", async () => {
+    const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const group = await createParameterModule(db, {
       organizationId: "org-1",
       name: "hl7603",
+      parentId: business.id,
       kind: "driver-group",
       origin: "auto",
       sourceKey: "compatible:huawei,bypass_bst_hl7603"
@@ -116,13 +119,15 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/amba/i2c@FF24E000/hl7603@6E"
     });
 
-    expect(moduleId).toBe(group.id);
+    expect(moduleId).toBe(business.id);
   });
 
   it("resolves bindings through a node-type mapping", async () => {
+    const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const nodeType = await createParameterModule(db, {
       organizationId: "org-1",
       name: "hl7603",
+      parentId: business.id,
       kind: "node-type",
       origin: "auto",
       sourceKey: nodeTypeSourceKey("hl7603")
@@ -142,10 +147,10 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/amba/i2c@FF24E000/hl7603@6E"
     });
 
-    expect(moduleId).toBe(nodeType.id);
+    expect(moduleId).toBe(business.id);
   });
 
-  it("materializes node-type modules with nodetype source keys during auto discovery", async () => {
+  it("does not materialize node-type modules during auto discovery", async () => {
     const moduleId = await resolveAttributionModuleForBinding(db, {
       organizationId: "org-1",
       driverModule: null,
@@ -154,24 +159,17 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/battery_charge_balance/battery0"
     });
 
-    // No mapping exists, so the binding still lands on unclassified…
     expect(moduleId).toBe(unclassifiedModuleId("org-1"));
-    // …but the durable node-type module was materialized with its stable key
-    // and a linked attribution subject (post-0088 invariant).
-    const created = (await allModules()).find((row) => row.kind === "node-type");
-    expect(created).toMatchObject({
-      name: "battery0",
-      origin: "auto",
-      source_key: nodeTypeSourceKey("battery0")
-    });
-    expect(created?.attribution_subject_id).not.toBeNull();
+    expect((await allModules()).filter((row) => row.kind === "node-type")).toEqual([]);
   });
 
   it("preserves a curated rename across re-ingest via source_key (no duplicate)", async () => {
+    const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const sourceKey = nodeTypeSourceKey("hl7603");
     const curated = await createParameterModule(db, {
       organizationId: "org-1",
       name: "备用电源旁路",
+      parentId: business.id,
       kind: "node-type",
       origin: "curated",
       sourceKey
@@ -193,8 +191,8 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/amba/i2c@FF24E000/hl7603@6E"
     });
 
-    expect(first).toBe(curated.id);
-    expect(second).toBe(curated.id);
+    expect(first).toBe(business.id);
+    expect(second).toBe(business.id);
     const rows = (await allModules()).filter((row) => row.source_key === sourceKey);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ name: "备用电源旁路", origin: "curated" });
@@ -211,7 +209,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
 
     const modules = await allModules();
     expect(modules.some((row) => row.name === "new_driver@10")).toBe(false);
-    expect(modules.some((row) => row.name === "new_driver" && row.kind === "node-type")).toBe(true);
+    expect(modules.some((row) => row.kind === "node-type" || row.kind === "driver-group")).toBe(false);
   });
 
   it("parks scaffolding drivers on the org unclassified root without provisional buckets", async () => {
@@ -231,9 +229,11 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
   });
 
   it("maps DTS root instance `/` through the board node-type mapping", async () => {
+    const business = await createParameterModule(db, { organizationId: "org-1", name: "Business" });
     const board = await createParameterModule(db, {
       organizationId: "org-1",
       name: "board",
+      parentId: business.id,
       kind: "node-type",
       origin: "auto",
       sourceKey: nodeTypeSourceKey("board")
@@ -248,15 +248,15 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/"
     });
 
-    expect(moduleId).toBe(board.id);
+    expect(moduleId).toBe(business.id);
     // The board root is scaffolding for materialization: nothing new was created.
-    expect(await allModules()).toHaveLength(1);
+    expect(await allModules()).toHaveLength(2);
   });
 
-  it("places a new auto driver-group under registration default when set (not heuristic)", async () => {
+  it("does not create an auto driver-group from a legacy registration default", async () => {
     const wireless = await createParameterModule(db, { organizationId: "org-1", name: "Wireless Charging" });
     // Heuristic decoy: businessCategoryForNodePath('/board') would pick this one.
-    const boardIdentity = await createParameterModule(db, { organizationId: "org-1", name: "Board Identity" });
+    await createParameterModule(db, { organizationId: "org-1", name: "Board Identity" });
     await db.query(
       `insert into attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key)
        values ('subj-sc8562', 'org-1', 'driver-registration', 'sc8562', 'auto', 'compatible:vendor,sc8562')`
@@ -275,14 +275,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/board"
     });
 
-    const created = (await allModules()).find((row) => row.kind === "driver-group");
-    expect(created).toMatchObject({
-      origin: "auto",
-      source_key: "compatible:vendor,sc8562",
-      attribution_subject_id: "subj-sc8562"
-    });
-    expect(created?.parent_id).toBe(wireless.id);
-    expect(created?.parent_id).not.toBe(boardIdentity.id);
+    expect((await allModules()).filter((row) => row.kind === "driver-group")).toEqual([]);
   });
 
   it("does not reparent an existing auto driver-group on re-ingest", async () => {
@@ -306,7 +299,7 @@ describe.skipIf(!databaseAvailable)("resolveAttributionModuleForBinding", () => 
       nodeLocator: "/wireless/sc8562@1"
     });
 
-    expect(moduleId).toBe(group.id);
+    expect(moduleId).toBe(oldCat.id);
     const stored = (await allModules()).find((row) => row.id === group.id);
     expect(stored?.parent_id).toBe(oldCat.id);
   });

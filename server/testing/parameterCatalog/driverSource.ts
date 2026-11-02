@@ -17,6 +17,7 @@ import { writeGuardedRegistration } from "../../modules/parameter-governance/reg
 import type { RegisterSubjectCommand } from "../../modules/parameter-governance/registration/command";
 import { createParameterModuleForAuth } from "../../modules/parameters/service";
 import { createParameterModule } from "../../modules/parameters/parameterModuleRepository";
+import { insertAttributionSubjectForNewModule } from "../../modules/parameter-modules/attributionSubjectRepository";
 import type pg from "pg";
 
 /** Seed a historical typed placement before 0320 so upgrade tests exercise real legacy rows. */
@@ -97,17 +98,26 @@ export async function installDriverSourceFixture(
   });
   if (!installed.ok) throw new Error(JSON.stringify(installed.error));
 
-  const business = await createParameterModuleForAuth(db, auth, {
-    name: input.businessName,
-    kind: "business",
+  const business = input.legacyPlacement
+    ? await createParameterModule(db, { organizationId: auth.organization.id, name: input.businessName, kind: "business" })
+    : await createParameterModuleForAuth(db, auth, { name: input.businessName, kind: "business" });
+  const driverId = randomUUID();
+  const driver = input.legacyPlacement ? { id: driverId } : await createParameterModule(db, {
+    organizationId: auth.organization.id, name: input.driverName, kind: "driver-group",
+    parentId: business.id, sourceKey: `compatible:${input.compatible}`,
   });
-  const driver = await createParameterModule(db, {
-    organizationId: auth.organization.id,
-    name: input.driverName,
-    kind: "driver-group",
-    parentId: business.id,
-    sourceKey: `compatible:${input.compatible}`,
-  });
+  if (input.legacyPlacement) {
+    // The current module service reads 0324 columns, so seed genuine pre-0320 rows explicitly.
+    const attributionSubjectId = await insertAttributionSubjectForNewModule(db, {
+      moduleId: driver.id, organizationId: auth.organization.id, kind: "driver-group", displayName: input.driverName,
+      origin: "curated", sourceKey: `compatible:${input.compatible}`, defaultBusinessCategoryModuleId: business.id,
+    });
+    await db.query(`insert into public.parameter_modules
+      (id,organization_id,parent_id,name,path,depth,kind,origin,source_key,attribution_subject_id)
+      values ($1,$2,$3,$4,$5,2,'driver-group','curated',$6,$7)`,
+    [driver.id, auth.organization.id, business.id, input.driverName, `${business.path}/${driver.id}`,
+      `compatible:${input.compatible}`, attributionSubjectId]);
+  }
 
   const command: RegisterSubjectCommand = {
     kind: "register",

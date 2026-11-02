@@ -146,7 +146,7 @@ export async function readRegistry(
        pm.attribution_subject_id,
        pm.path
        from parameter_modules pm
-      where pm.organization_id = $1
+      where pm.organization_id = $1 and pm.archived_at is null
       order by pm.sort_order asc, pm.path asc, pm.name asc`,
     [organizationId]
   ) : await db.query<ParameterModuleRow>(
@@ -165,7 +165,7 @@ export async function readRegistry(
        pm.attribution_subject_id,
        pm.path
        from parameter_modules pm
-      where pm.organization_id = $1
+      where pm.organization_id = $1 and pm.archived_at is null
       order by pm.sort_order asc, pm.path asc, pm.name asc`,
     [organizationId]
   );

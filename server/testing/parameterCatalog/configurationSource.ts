@@ -8,6 +8,8 @@ import { installPublishedRelease } from "../../modules/catalog-kernel/install/in
 import { CatalogSubjectId } from "../../modules/parameter-catalog-contract";
 import { executeRegistration } from "../../modules/parameter-governance/registration";
 import { createParameterModuleForAuth } from "../../modules/parameters/service";
+import { createParameterModule } from "../../modules/parameters/parameterModuleRepository";
+import { seedLegacySubjectPlacement } from "./driverSource";
 import { encodeBundleBytes, sha256Digest } from "../../modules/catalog-publication/builder/bundleCodec";
 
 /** Explicit local-test Catalog bootstrap, not publication-manager qualification.
@@ -17,6 +19,7 @@ export async function installConfigurationSourceFixture(db: Database, auth: Auth
   subjectId: string; schemaId: string;
   additionalDefinitionWithSameName?: { definitionId: string; revisionId: string; propertyKey: string };
   retainArtifactForErasure?: boolean;
+  historicalPlacement?: boolean;
 }) {
   const pool = getRootPostgresPool(db);
   if (!pool) throw new Error("Configuration fixture requires native PostgreSQL");
@@ -58,7 +61,14 @@ export async function installConfigurationSourceFixture(db: Database, auth: Auth
       source_kind,target_release_id,target_release_digest,toolchain) values ($1,$2,$3,$4,'repository-bundle',$5,$2,$6)`,
       [`cart_${randomUUID()}`,compiled.value.aggregateDigest,sha256Digest(bytes),Buffer.from(bytes),release.manifest.release.id,release.manifest.toolchain]);
   }
-  const module = await createParameterModuleForAuth(db,auth,{ name: "Configuration",kind: "business" });
+  const module = input.historicalPlacement
+    ? await createParameterModule(db, { organizationId: auth.organization.id, name: "Configuration", kind: "business" })
+    : await createParameterModuleForAuth(db,auth,{ name: "Configuration",kind: "business" });
+  if (input.historicalPlacement) {
+    await seedLegacySubjectPlacement(pool, { organizationId: auth.organization.id, subjectId: input.subjectId,
+      moduleId: module.id, reason: "T1.1 JSON source" });
+    return module;
+  }
   const registration = await executeRegistration(pool,{
     kind: "register",organizationId: auth.organization.id,subjectId: CatalogSubjectId(input.subjectId),subjectKind: "configuration-schema",
     expectedRelease: compiled.value.release,placement: { mode: "use-default" },destinationModuleId: module.id,

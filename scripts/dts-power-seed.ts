@@ -12,12 +12,9 @@ import { resolveDts, type DtsValueType, type ResolvedDts } from "../server/modul
 import {
   BOARD_INSTANCE_MODULE_NAME,
   businessCategoryForNodePath,
-  driverGroupDisplayNameFromCompatible,
-  nodeTypeSourceKey,
   planAttributionModulePlacements,
   type ResolvedPlacementNode,
 } from "../server/modules/parameter-modules/modulePlacement";
-import { compatibleSourceKey } from "../server/modules/parameter-modules/ensureAttributionModuleForBinding";
 import { isParameterSurfaceRow } from "../server/modules/parameter-topology/parameterSurface";
 import { primaryBoardFileName } from "./merge-primary-dts";
 
@@ -437,6 +434,7 @@ export type DtsPowerSeedModuleMapping = {
   matchKind: "node-type" | "compatible";
   matchValue: string;
   moduleName: string;
+  legacyModuleName?: string;
   priority?: number;
 };
 
@@ -449,54 +447,13 @@ function toPlacementNodes(resolved: ResolvedDts): ResolvedPlacementNode[] {
   }));
 }
 
-export function buildParameterModulesFromResolved(resolved: ResolvedDts): DtsPowerSeed["parameterModules"] {
-  const placement = planAttributionModulePlacements(toPlacementNodes(resolved), (nodePath) =>
-    businessCategoryForNodePath(nodePath),
-  );
-  type SeededModule = DtsPowerSeedModule & {
-    kind: NonNullable<DtsPowerSeedModule["kind"]>;
-    origin: NonNullable<DtsPowerSeedModule["origin"]>;
-    sourceKey: string | null;
-  };
-  const modules: SeededModule[] = moduleMetadata.map((module) => ({
+export function buildParameterModulesFromResolved(_resolved: ResolvedDts): DtsPowerSeed["parameterModules"] {
+  return moduleMetadata.map((module) => ({
     ...module,
     kind: module.kind ?? "business",
     origin: module.origin ?? "curated",
     sourceKey: module.sourceKey ?? null
   }));
-  const seen = new Set(modules.map((module) => module.name));
-
-  const ensureModule = (entry: SeededModule) => {
-    if (seen.has(entry.name)) return;
-    modules.push(entry);
-    seen.add(entry.name);
-  };
-
-  for (const group of placement.driverGroups.values()) {
-    ensureModule({
-      name: group.moduleName,
-      parent: group.businessCategory,
-      description: `${group.moduleName} 驱动组（compatible: ${group.compatibleKey}）。`,
-      scope: `共享 compatible ${group.compatibleKey} 的节点类型分组`,
-      kind: "driver-group",
-      origin: "auto",
-      sourceKey: compatibleSourceKey(group.compatibleKey)
-    });
-  }
-
-  for (const nodeType of placement.nodeTypes.values()) {
-    ensureModule({
-      name: nodeType.moduleName,
-      parent: nodeType.parentModuleName,
-      description: `${nodeType.moduleName} DTS 节点类型模块。`,
-      scope: `节点类型 ${nodeType.moduleName} 的可管理参数`,
-      kind: "node-type",
-      origin: "auto",
-      sourceKey: nodeType.sourceKey
-    });
-  }
-
-  return modules;
 }
 
 export function buildSeedModuleMappings(resolved: ResolvedDts): DtsPowerSeedModuleMapping[] {
@@ -504,6 +461,10 @@ export function buildSeedModuleMappings(resolved: ResolvedDts): DtsPowerSeedModu
     businessCategoryForNodePath(nodePath),
   );
   const mappings = new Map<string, DtsPowerSeedModuleMapping>();
+  const parents = new Map<string, string>();
+  for (const group of placement.driverGroups.values()) parents.set(group.moduleName, group.businessCategory);
+  for (const nodeType of placement.nodeTypes.values()) if (!parents.has(nodeType.moduleName)) parents.set(nodeType.moduleName, nodeType.parentModuleName);
+  const businessNames = new Set(moduleMetadata.map((module) => module.name));
 
   const putMapping = (mapping: DtsPowerSeedModuleMapping) => {
     mappings.set(`${mapping.matchKind}:${mapping.matchValue}`, mapping);
@@ -513,16 +474,24 @@ export function buildSeedModuleMappings(resolved: ResolvedDts): DtsPowerSeedModu
     putMapping({
       matchKind: "compatible",
       matchValue: compatibleKey,
-      moduleName: group.moduleName,
+      moduleName: group.businessCategory,
+      legacyModuleName: group.moduleName,
       priority: 300,
     });
   }
 
   for (const [nodeTypeKey, nodeType] of placement.nodeTypes) {
+    let moduleName = nodeType.parentModuleName;
+    const visited = new Set<string>();
+    while (!businessNames.has(moduleName) && parents.has(moduleName) && !visited.has(moduleName)) {
+      visited.add(moduleName);
+      moduleName = parents.get(moduleName)!;
+    }
     putMapping({
       matchKind: "node-type",
       matchValue: nodeTypeKey,
-      moduleName: nodeType.moduleName,
+      moduleName: businessNames.has(moduleName) ? moduleName : businessCategoryForNodePath(nodeType.nodePath),
+      legacyModuleName: nodeType.moduleName,
       priority: 500,
     });
   }

@@ -45,7 +45,7 @@ describe("0160/0161 populated canonical property-delete upgrade", () => {
           await db.query(`insert into public.organizations(id,name) values ($1,'delete upgrade')`, [ORG]);
           await db.query(`insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Delete upgrade','Admin',true)`, [USER, ORG]);
           await db.query(`insert into public.projects(id,organization_id,name,code,status) values ($1,$2,'Delete upgrade','D849U','initialized')`, [PROJECT, ORG]);
-          await installConfigurationSourceFixture(db, auth, { subjectId: SUBJECT, schemaId: SCHEMA });
+          await installConfigurationSourceFixture(db, auth, { subjectId: SUBJECT, schemaId: SCHEMA, historicalPlacement: true });
 
           const definition = (await db.query<{
             release_id: string;

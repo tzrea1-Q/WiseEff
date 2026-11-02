@@ -168,41 +168,27 @@ describe("DTS power seed catalog", () => {
     }
   });
 
-  it("builds business → driver-group → node-type modules without Power Bus scaffolding", () => {
+  it("seeds business modules without technical wrapper modules", () => {
     const seed = buildDtsPowerSeed(baseSource);
     const names = new Set(seed.parameterModules.map((module) => module.name));
-    const parentOf = (name: string) => seed.parameterModules.find((module) => module.name === name)?.parent;
     const moduleOf = (name: string) => seed.parameterModules.find((module) => module.name === name);
 
     expect(names.has("Power Bus")).toBe(false);
-    expect(parentOf("hl7603")).toBe("Charger IC");
-    expect(names.has("hl7603@75")).toBe(false);
-    expect(names.has("hl7603@77")).toBe(false);
-    expect(parentOf("fm1230")).toBe("Battery Authentication");
-    expect(names.has("fm1230_1")).toBe(false);
-    expect(parentOf("battery0")).toBe("battery_charge_balance");
-    expect(parentOf("scharger_v800")).toBe("Charger IC");
-    expect(parentOf("scharger_v800_coul")).toBe("scharger_v800");
-    expect(parentOf("board")).toBe("Board Identity");
-    expect(names.has("/")).toBe(false);
-
+    expect(seed.parameterModules.every((module) => (module.kind ?? "business") === "business")).toBe(true);
+    expect(names.has("hl7603")).toBe(false);
+    expect(names.has("battery0")).toBe(false);
     expect(moduleOf("Power")?.kind).toBe("business");
     expect(moduleOf("Power")?.origin).toBe("curated");
-    expect(moduleOf("hl7603")?.kind).toBe("driver-group");
-    expect(moduleOf("hl7603")?.origin).toBe("auto");
-    expect(moduleOf("hl7603")?.sourceKey).toMatch(/^compatible:/);
-    expect(moduleOf("battery0")?.kind).toBe("node-type");
-    expect(moduleOf("fm1230")?.kind).toBe("driver-group");
-    expect(moduleOf("btb_check")?.kind).toBe("driver-group");
-    expect(moduleOf("board")?.kind).toBe("node-type");
-    expect(moduleOf("board")?.sourceKey).toBe("nodetype:board");
 
     const mappings = buildSeedModuleMappings(resolveDts(baseSource));
     expect(mappings).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ matchKind: "node-type", matchValue: "board", moduleName: "board" })
+        expect.objectContaining({ matchKind: "node-type", matchValue: "board", moduleName: "Board Identity" }),
+        expect.objectContaining({ matchKind: "compatible", matchValue: "huawei,battery_charge_balance", moduleName: "Battery Balance" }),
+        expect.objectContaining({ matchKind: "node-type", matchValue: "battery0", moduleName: "Battery Balance" }),
       ])
     );
+    expect(mappings.every((mapping) => names.has(mapping.moduleName))).toBe(true);
     expect(mappings.map((mapping) => mapping.matchKind)).not.toContain("instance");
   });
 });

@@ -7,6 +7,8 @@ import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentP
 import { ApiError } from "../../../shared/http/errors";
 import { loadOrganizationCatalogSnapshot } from "../../parameter-modules/recognitionSettings";
 import type { AuthContext } from "../../auth/types";
+import { CatalogSubjectId } from "../../parameter-catalog-contract";
+import { listParameterModules } from "../../parameters/parameterModuleRepository";
 import {
   getRootPostgresPool,
   type Database,
@@ -35,7 +37,9 @@ export type CanonicalAfterLegacyResult = {
 export async function ensureCanonicalCatalogAfterLegacySeed(
   db: Database,
   auth: AuthContext,
-  input: { readonly organizationId: string; readonly seedDigest: string },
+  input: { readonly organizationId: string; readonly seedDigest: string;
+    readonly moduleMappings?: readonly { readonly matchKind: "compatible" | "node-type"; readonly matchValue: string; readonly moduleName: string; readonly legacyModuleName?: string }[];
+    readonly defaultModuleName?: string },
 ): Promise<CanonicalAfterLegacyResult> {
   const pool = getRootPostgresPool(db);
   if (!pool) {
@@ -54,6 +58,8 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
   if (!snapshot || pointer.kind !== "installed") {
     return { catalogReleaseId: null, written: {}, skipped: [...TARGET_PROJECTS] };
   }
+  const modules = input.moduleMappings ? await listParameterModules(db, { organizationId: input.organizationId }) : [];
+  const mappings = new Map(input.moduleMappings?.map((mapping) => [`${mapping.matchKind}:${mapping.matchValue}`, mapping]));
 
   const written: Record<string, number> = {};
   const skipped: string[] = [];
@@ -80,10 +86,21 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
       snapshot,
       await listObservedProperties(asValueClient(pool), row.id),
     );
+    const routed = observed.map((subject) => {
+      const result = snapshot.getSubject(CatalogSubjectId(subject.ownerSubjectId ?? subject.subjectId));
+      if (result.status !== "found" && result.status !== "retired") return subject;
+      const mapping = mappings.get(`${result.subject.kind === "driver" ? "compatible" : "node-type"}:${result.subject.canonicalKey}`);
+      const name = mapping?.moduleName ?? input.defaultModuleName;
+      if (!name) return input.moduleMappings ? { ...subject, destinationModuleId: null } : subject;
+      const destinations = modules.filter((module) => module.kind === "business" && module.name === name);
+      const displayAlias = mapping?.legacyModuleName;
+      return { ...subject, destinationModuleId: destinations.length === 1 ? destinations[0]!.id : null,
+        ...(displayAlias && displayAlias !== result.subject.canonicalKey ? { displayAlias } : {}) };
+    });
     const registration = await ensureSeedSubjectRegistrations(db, auth, {
       organizationId: input.organizationId,
       currentRelease: { id: snapshot.release.id, digest: snapshot.release.digest },
-      subjects: observed,
+      subjects: routed,
       seedDigest: input.seedDigest,
       projectId,
     });

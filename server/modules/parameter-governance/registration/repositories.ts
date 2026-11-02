@@ -70,7 +70,8 @@ export const createRegistrationDestination = async (
   if (!choice) return null;
   const parent = await client.query<{ id: string; path: string; depth: number }>(
     `select id, path, depth from public.parameter_modules
-     where organization_id = $1 and id = $2 and (kind = 'business' or (kind = 'unclassified' and parent_id is null)) for update`,
+     where organization_id = $1 and id = $2 and archived_at is null
+       and (kind = 'business' or (kind = 'unclassified' and parent_id is null)) for update`,
     [command.organizationId, choice.parentModuleId],
   );
   const business = parent.rows[0];
@@ -203,12 +204,13 @@ export const insertRegistration = async (
     readonly proof: Record<string, unknown>;
     readonly placementId: string;
     readonly status?: "active" | "retired";
+    readonly displayAlias?: string;
   },
 ): Promise<RegistrationRow> => {
   const result = await client.query<RegistrationRow>(
     `insert into parameter_catalog.organization_subject_registrations (
-       id, organization_id, subject_id, status, registration_method, proof, current_placement_id
-     ) values ($1,$2,$3,$7,$4,$5::jsonb,$6)
+       id, organization_id, subject_id, status, registration_method, proof, current_placement_id, display_alias
+     ) values ($1,$2,$3,$7,$4,$5::jsonb,$6,$8)
      returning id, organization_id, subject_id, status, registration_method, current_placement_id,
        (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [
@@ -219,6 +221,7 @@ export const insertRegistration = async (
       JSON.stringify(input.proof),
       input.placementId,
       input.status ?? "active",
+      input.displayAlias ?? null,
     ],
   );
   return result.rows[0]!;
@@ -303,7 +306,7 @@ export const lockDestinationModule = async (
   const result = await client.query<DestinationModuleRow>(
     `select id, organization_id, parent_id, kind
      from public.parameter_modules
-     where organization_id = $1 and id = $2
+     where organization_id = $1 and id = $2 and archived_at is null
      for share`,
     [organizationId, moduleId],
   );
