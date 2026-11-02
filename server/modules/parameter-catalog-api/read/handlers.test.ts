@@ -606,6 +606,16 @@ describe("S8-READ nine canonical catalog read routes", () => {
     expect(body.items[1]?.aliases).toEqual(["acme,power-v1"]);
   });
 
+  it("exposes ownership without offering independent child registration", async () => {
+    const { ports, snapshotCalls } = createHarness({ listSubjectsItems: [{ ...otherSubject, owner: subject.id }] });
+    const response = await handleCatalogRead(ports, get("/api/v2/catalog/subjects"));
+    expect(snapshotCalls).toEqual(["listSubjects"]);
+    expect(response.status).toBe(200);
+    const body = catalogSubjectListResponseSchema.parse(response.body);
+    expect(body.items[0]).toMatchObject({ id: otherSubject.id, ownerSubjectId: subject.id, registration: { status: "unregistered" } });
+    expect(body.items[0]?.availableActions).toBeUndefined();
+  });
+
   it("hides out-of-scope subject IDs before calling Kernel", async () => {
     const { ports, snapshotCalls } = createHarness({
       scope: {

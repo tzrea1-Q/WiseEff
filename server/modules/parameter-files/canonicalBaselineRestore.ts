@@ -17,7 +17,7 @@ import { DefinitionRevisionId, ParameterDefinitionId, ProjectValueId, type Contr
 import { ingestConfigRevisionInTransaction, prepareReviewedSourceContinuity, type ReviewedSourceContinuity } from "../parameter-topology/ingestService";
 import { insertConfigRevision, insertConfigRevisionMembers, nextConfigRevisionNumber } from "../parameter-topology/repository";
 import type { ConfigRevisionMemberRole } from "../parameter-topology/types";
-import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } from "../parameter-modules/recognitionSettings";
+import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitionSettings";
 import { createDtsToolchainRunner } from "./dtsToolchain";
 import { loadFormerRootOverlayFiles } from "./configSetSnapshot";
 import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, readJsonSourceValue } from "./jsonSource";
@@ -97,7 +97,6 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const set = (await tx.query(`select id from public.dts_config_set where id=$1 and organization_id=$2 and project_id=$3 for update nowait`,
     [configSetId,parameterOrganizationId(auth),input.projectId])).rows[0];
   if (!set) throw new ApiError("NOT_FOUND","配置快照不属于当前项目。");
-  await lockOrganizationModuleRecognition(tx,parameterOrganizationId(auth));
   const currentCatalog = await lockSourceCatalogGovernance(tx,parameterOrganizationId(auth));
   if (snapshot ? currentCatalog?.id !== snapshot.release.id || currentCatalog.digest !== snapshot.release.digest : currentCatalog) conflict("参数目录已更新，请重新预览恢复。");
   if (snapshot) snapshot = await loadOrganizationCatalogSnapshot(tx,parameterOrganizationId(auth),snapshot);

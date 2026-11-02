@@ -23,8 +23,8 @@ export const THREAT_MATRIX: readonly ThreatMatrixRow[] = Object.freeze([
     name: "catalog-isolation",
     initialState: "production TypeScript of S4-REG",
     action: "static scan of production sources for Catalog structural DML/SELECT",
-    expected: "only scalar parameter_catalog.assert_catalog_subject_active($1,$2,$3,$4) after idempotency lookup",
-    leftover: "no Catalog structural-relation SELECT or INSERT from Governance production TypeScript",
+    expected: "Catalog owner reads use the read-only Kernel seam; the scalar active guard follows idempotency lookup",
+    leftover: "no direct Catalog structural-relation SELECT or INSERT from Governance production TypeScript",
   }),
   freezeRow({
     id: 3,

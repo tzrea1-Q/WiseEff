@@ -21,3 +21,20 @@ export async function readCatalogSubjectOwners(client: Client, releaseId: string
     where membership.release_id = $1 and subject.owner_subject_id is not null`, [releaseId]);
   return new Map(result.rows.map((row) => [row.id, row.owner_subject_id]));
 }
+
+export async function readCatalogSubjectOwner(client: Client, subjectId: string): Promise<string | null> {
+  if (!await catalogOwnersAvailable(client)) return null;
+  const result = await client.query<{ owner_subject_id: string | null }>(
+    "select owner_subject_id from parameter_catalog.catalog_subjects where id=$1", [subjectId]);
+  return result.rows[0]?.owner_subject_id ?? null;
+}
+
+export async function listOwnedCatalogSubjects(client: Client, ownerId: string, activeReleaseId?: string): Promise<string[]> {
+  if (!await catalogOwnersAvailable(client)) return [];
+  const result = activeReleaseId
+    ? await client.query<{ id: string }>(`select subject.id from parameter_catalog.catalog_subjects subject
+      join parameter_catalog.catalog_release_subjects membership on membership.subject_id=subject.id
+      where subject.owner_subject_id=$1 and membership.release_id=$2 and membership.lifecycle='active' order by subject.id`, [ownerId, activeReleaseId])
+    : await client.query<{ id: string }>("select id from parameter_catalog.catalog_subjects where owner_subject_id=$1 order by id", [ownerId]);
+  return result.rows.map((row) => row.id);
+}

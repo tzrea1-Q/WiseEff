@@ -16,6 +16,7 @@
  */
 import type { Database, Queryable } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
+import { createSystemInvocation } from "../../auth/trustedInvocation";
 import { CatalogSubjectId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
 import { executeRegistration } from "../../parameter-governance/registration/service";
 import type { CatalogSnapshot } from "../../catalog-kernel/interface";
@@ -23,7 +24,7 @@ import { subjectMatcherRevision } from "../../catalog-kernel/runtime/subjectMatc
 import { parseCompatibles, resolveObservedSubject } from "../catalogProjectValueSync";
 import { getRootPostgresPool } from "../../../shared/database/client";
 
-export type ObservedSubject = { readonly subjectId: string; readonly subjectKind: string };
+export type ObservedSubject = { readonly subjectId: string; readonly subjectKind: string; readonly ownerSubjectId?: string };
 
 export type SeedRegistrationOutcome = {
   readonly registered: readonly string[];
@@ -116,7 +117,8 @@ export async function ensureSeedSubjectRegistrations(
   const alreadyRegistered: string[] = [];
 
   for (const subject of input.subjects) {
-    if (await activeRegistrationExists(root, input.organizationId, subject.subjectId)) {
+    if (await activeRegistrationExists(root, input.organizationId, subject.subjectId) &&
+        (!subject.ownerSubjectId || await activeRegistrationExists(root, input.organizationId, subject.ownerSubjectId))) {
       alreadyRegistered.push(subject.subjectId);
       continue;
     }
@@ -143,13 +145,15 @@ export async function ensureSeedSubjectRegistrations(
         seedDigest: input.seedDigest,
         projectId: input.projectId,
         subjectKind: subject.subjectKind,
+        ...(subject.ownerSubjectId ? { ownerSubjectId: subject.ownerSubjectId } : {}),
         matcherRevision: subjectMatcherRevision
       },
       idempotencyKey: `seed-register:${input.seedDigest}:${input.projectId}:${subject.subjectId}`,
       // `RegistrationCommand` carries its own invocation shape (actorKind +
       // principalId), not the auth module's branded context. `trusted-system` is what
       // `validateRegistrationCommand` requires for `method: "automatic"`.
-      context: { actorKind: "trusted-system", principalId: "seed-initialization" }
+      context: { actorKind: "trusted-system", principalId: "seed-initialization",
+        invocation: createSystemInvocation({ kind: "job", name: "seed-initialization" }), requestId: `seed-register:${input.seedDigest}:${input.projectId}:${subject.subjectId}` }
     });
     if (result.ok) {
       registered.push(subject.subjectId);

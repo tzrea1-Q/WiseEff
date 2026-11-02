@@ -40522,6 +40522,15 @@
                                 },
                                 "moduleId": {
                                   "type": "string"
+                                },
+                                "ownerSubjectId": {
+                                  "type": "string"
+                                },
+                                "structural": {
+                                  "type": "boolean",
+                                  "enum": [
+                                    true
+                                  ]
                                 }
                               },
                               "required": [
@@ -41189,6 +41198,15 @@
                                   },
                                   "moduleId": {
                                     "type": "string"
+                                  },
+                                  "ownerSubjectId": {
+                                    "type": "string"
+                                  },
+                                  "structural": {
+                                    "type": "boolean",
+                                    "enum": [
+                                      true
+                                    ]
                                   }
                                 },
                                 "required": [
@@ -85196,6 +85214,9 @@
                 "id": {
                   "type": "string"
                 },
+                "ownerSubjectId": {
+                  "type": "string"
+                },
                 "type": {
                   "type": "string",
                   "enum": [
@@ -85288,6 +85309,15 @@
                             },
                             "moduleId": {
                               "type": "string"
+                            },
+                            "ownerSubjectId": {
+                              "type": "string"
+                            },
+                            "structural": {
+                              "type": "boolean",
+                              "enum": [
+                                true
+                              ]
                             }
                           },
                           "required": [
@@ -85398,6 +85428,9 @@
               "id": {
                 "type": "string"
               },
+              "ownerSubjectId": {
+                "type": "string"
+              },
               "type": {
                 "type": "string",
                 "enum": [
@@ -85490,6 +85523,15 @@
                           },
                           "moduleId": {
                             "type": "string"
+                          },
+                          "ownerSubjectId": {
+                            "type": "string"
+                          },
+                          "structural": {
+                            "type": "boolean",
+                            "enum": [
+                              true
+                            ]
                           }
                         },
                         "required": [
@@ -85766,6 +85808,15 @@
                             },
                             "moduleId": {
                               "type": "string"
+                            },
+                            "ownerSubjectId": {
+                              "type": "string"
+                            },
+                            "structural": {
+                              "type": "boolean",
+                              "enum": [
+                                true
+                              ]
                             }
                           },
                           "required": [
@@ -86080,6 +86131,15 @@
                           },
                           "moduleId": {
                             "type": "string"
+                          },
+                          "ownerSubjectId": {
+                            "type": "string"
+                          },
+                          "structural": {
+                            "type": "boolean",
+                            "enum": [
+                              true
+                            ]
                           }
                         },
                         "required": [
@@ -86547,6 +86607,15 @@
                 "subjectId": {
                   "type": "string"
                 },
+                "ownerSubjectId": {
+                  "type": "string"
+                },
+                "structural": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                },
                 "status": {
                   "type": "string",
                   "enum": [
@@ -86579,6 +86648,15 @@
                     },
                     "moduleId": {
                       "type": "string"
+                    },
+                    "ownerSubjectId": {
+                      "type": "string"
+                    },
+                    "structural": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
                     }
                   },
                   "required": [
@@ -86711,6 +86789,9 @@
                   "items": {
                     "type": "string"
                   }
+                },
+                "childCount": {
+                  "type": "number"
                 }
               },
               "required": [
@@ -86876,6 +86957,15 @@
                 "subjectId": {
                   "type": "string"
                 },
+                "ownerSubjectId": {
+                  "type": "string"
+                },
+                "structural": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                },
                 "status": {
                   "type": "string",
                   "enum": [
@@ -86908,6 +86998,15 @@
                     },
                     "moduleId": {
                       "type": "string"
+                    },
+                    "ownerSubjectId": {
+                      "type": "string"
+                    },
+                    "structural": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
                     }
                   },
                   "required": [
@@ -87020,6 +87119,7 @@
                             "name-taken",
                             "already-registered",
                             "subject-inactive",
+                            "owned-child",
                             "release-drift",
                             "conflict"
                           ]
@@ -87163,6 +87263,15 @@
               "subjectId": {
                 "type": "string"
               },
+              "ownerSubjectId": {
+                "type": "string"
+              },
+              "structural": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
               "status": {
                 "type": "string",
                 "enum": [
@@ -87195,6 +87304,15 @@
                   },
                   "moduleId": {
                     "type": "string"
+                  },
+                  "ownerSubjectId": {
+                    "type": "string"
+                  },
+                  "structural": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
                   }
                 },
                 "required": [
@@ -87311,6 +87429,15 @@
               },
               "moduleId": {
                 "type": "string"
+              },
+              "ownerSubjectId": {
+                "type": "string"
+              },
+              "structural": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
               }
             },
             "required": [
@@ -88917,6 +89044,15 @@
                       },
                       "moduleId": {
                         "type": "string"
+                      },
+                      "ownerSubjectId": {
+                        "type": "string"
+                      },
+                      "structural": {
+                        "type": "boolean",
+                        "enum": [
+                          true
+                        ]
                       }
                     },
                     "required": [

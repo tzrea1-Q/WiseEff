@@ -75,6 +75,7 @@ export function mapCatalogSubject(
 ): ReturnType<typeof catalogSubjectDtoSchema.parse> {
   return catalogSubjectDtoSchema.parse({
     id: subject.id,
+    ...(subject.owner ? { ownerSubjectId: subject.owner } : {}),
     type: subject.kind,
     canonicalName: subject.canonicalKey,
     aliases: subjectAliases(subject),

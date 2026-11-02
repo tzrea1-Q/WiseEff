@@ -228,7 +228,11 @@ export const S2_SCH_0321_FINGERPRINT =
 export const S2_SCH_0322_FINGERPRINT =
   "865eb41ba26de6f15326f72c2a664c4f4bccb2ee6e572501c4d22e945e48751f";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0322_FINGERPRINT;
+/** 0323 adds structural child placement and cascade retirement. */
+export const S2_SCH_0323_FINGERPRINT =
+  "6836a2fe52b8b0d74a0c76bc1a645a6b3112dbacb5f896f4856a57e18ee1706e";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0323_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

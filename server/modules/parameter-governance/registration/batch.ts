@@ -7,6 +7,7 @@ import { TrustedInvocationContextError, type UserInvocationContext } from "../..
 import { validateRegistrationCommand, type RegisterSubjectCommand } from "./command";
 import { assertRegistrationInvocation, auditRegistration } from "./service";
 import { writeGuardedRegistration } from "./internalGuardedRegistrationWriter";
+import { lockOrganizationRegistrations } from "./repositories";
 import { withRegistrationUnitOfWork } from "./unitOfWork";
 import { mapWriterDatabaseError, type RegistrationFailure } from "./failures";
 import type { RegistrationResult } from "./result";
@@ -14,7 +15,7 @@ import type { RegistrationResult } from "./result";
 type Rows = z.infer<typeof catalogBatchRegistrationRequestSchema>["rows"];
 export type BatchRegistrationInput = { organizationId: string; rows: Rows; expectedRelease: CatalogReleasePin; idempotencyKey: string;
   actorKind: "org-admin" | "platform-admin"; principalId: string; invocation: UserInvocationContext; requestId: string };
-export type BatchRowFailure = { index: number; subjectId: string; code: "category-missing" | "name-invalid" | "name-taken" | "already-registered" | "subject-inactive" | "release-drift" | "conflict"; field: "category" | "name" | "subject" };
+export type BatchRowFailure = { index: number; subjectId: string; code: "category-missing" | "name-invalid" | "name-taken" | "already-registered" | "subject-inactive" | "owned-child" | "release-drift" | "conflict"; field: "category" | "name" | "subject" };
 
 function failureReason(failure: RegistrationFailure): Pick<BatchRowFailure, "code" | "field"> {
   if (failure.kind === "placement-conflict" && failure.placementId === "parameter_modules_org_parent_name_unique_idx") return { code: "name-taken", field: "name" };
@@ -34,6 +35,7 @@ export async function executeBatchRegistration(pool: pg.Pool, input: BatchRegist
   const fingerprint = createHash("sha256").update(JSON.stringify(input.rows)).digest("hex");
   const batchId = `batch_${createHash("sha256").update(JSON.stringify([input.organizationId, input.idempotencyKey])).digest("hex")}`;
   return withRegistrationUnitOfWork<RegistrationResult[], BatchRowFailure[]>(pool, async (client) => {
+    await lockOrganizationRegistrations(client, input.organizationId);
     const results: RegistrationResult[] = [];
     const failures: BatchRowFailure[] = [];
     for (const [index, row] of input.rows.entries()) {
@@ -41,8 +43,8 @@ export async function executeBatchRegistration(pool: pg.Pool, input: BatchRegist
       let failure: Pick<BatchRowFailure, "code" | "field"> | undefined;
       let result: RegistrationResult | undefined;
       try {
-        const subject = await client.query<{ kind: "driver" | "node-type" | "configuration-schema" }>(
-          "select kind from parameter_catalog.catalog_subjects where id = $1", [row.subjectId]);
+        const subject = await client.query<{ kind: "driver" | "node-type" | "configuration-schema"; owner_subject_id: string | null }>(
+          "select kind, owner_subject_id from parameter_catalog.catalog_subjects where id = $1", [row.subjectId]);
         const kind = subject.rows[0]?.kind;
         const rowKey = `${input.idempotencyKey}:${index}`;
         const prior = await client.query<{ registered: boolean; replay: boolean }>(
@@ -50,6 +52,7 @@ export async function executeBatchRegistration(pool: pg.Pool, input: BatchRegist
            exists (select 1 from parameter_catalog.governance_command_idempotency where organization_id=$1 and command_family='subject-registration' and idempotency_key=$3 and state='committed') as replay`,
           [input.organizationId, row.subjectId, rowKey]);
         if (!kind) failure = { code: "subject-inactive", field: "subject" };
+        else if (subject.rows[0]?.owner_subject_id) failure = { code: "owned-child", field: "subject" };
         else if (prior.rows[0]?.registered && !prior.rows[0]?.replay) failure = { code: "already-registered", field: "subject" };
         else {
           const target = row.target;
@@ -79,6 +82,8 @@ export async function executeBatchRegistration(pool: pg.Pool, input: BatchRegist
               await client.query("set constraints all immediate");
               await client.query("set constraints all deferred");
               await auditRegistration(client, command, result, batchId);
+              const { cascadedRegistrations: _cascadedRegistrations, ...publicResult } = result;
+              result = publicResult;
             }
           }
         }

@@ -17,11 +17,14 @@ import { vendorDirectoryHash } from "../catalog-publication/import/vendorYaml";
 import { claimCatalogChildOwners } from "../../../scripts/catalog-claim-child-owners";
 import { createParameterModule } from "../parameters/parameterModuleRepository";
 import { writeGuardedRegistration } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
+import { createRegistrationService } from "../parameter-governance/registration/service";
 import { createConfigSet, addConfigSetFile } from "../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../parameter-files/service";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { loadPublishedCatalog, resolveObservedSubject, syncPublishedCatalogProjectValues } from "./catalogProjectValueSync";
 import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitionSettings";
+import { readRegistry } from "../parameter-modules/repository";
+import { ensureSeedSubjectRegistrations } from "./seedInitialization/registration";
 import { produceDtsReviewEvidenceInTransaction } from "../parameter-governance/evidence/dtsProducer";
 
 const ORG = "owner-integration-org";
@@ -96,7 +99,7 @@ describe("driver-scoped child ownership", () => {
     const client = await pool.connect();
     try {
       await client.query("begin");
-      for (const [subjectId, subjectKind] of [["csub_acme_power", "driver"], ["owner-battery-a", "node-type"], ["owner-battery-b", "node-type"],
+      for (const [subjectId, subjectKind] of [["csub_acme_power", "driver"], ["owner-driver-b", "driver"],
         ["owner-claim-good", "node-type"], ["owner-claim-bad", "node-type"]] as const) {
         const result = await writeGuardedRegistration(client, { kind: "register", organizationId: ORG, subjectId: CatalogSubjectId(subjectId), subjectKind,
           expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: `module-${subjectId}`,
@@ -160,6 +163,107 @@ describe("driver-scoped child ownership", () => {
   }, 180_000);
   let source: { configSetId: string; configRevisionId: string };
   afterAll(async () => { await root?.close(); await database?.drop(); if (tempRoot) await rm(tempRoot, { recursive: true, force: true }); });
+
+  it("automatically registers an observed owned child and its driver exactly once", async () => {
+    const organizationId = "owner-auto-org";
+    const projectId = "owner-auto-project";
+    const userId = "owner-auto-user";
+    await pool.query("insert into organizations (id,name) values ($1,'Automatic')", [organizationId]);
+    await pool.query("insert into users (id,organization_id,name,email,title,is_active) values ($1,$2,'Automatic','auto-owner@example.com','Admin',true)", [userId, organizationId]);
+    await pool.query("insert into projects (id,organization_id,name,code,status,initialization_status) values ($1,$2,'Automatic','AUTOOWNER','active','initialized')", [projectId, organizationId]);
+    await createParameterModule(root, { organizationId, name: "Business", kind: "business", origin: "curated" });
+    const autoAuth = makeTestAuthContext({ userId, organizationId, permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"] });
+    const content = `/dts-v1/; / { first { compatible = "acme,power"; battery1 { weight = <11>; }; }; };`;
+    const set = await createConfigSet(root, autoAuth, { projectId, name: "Automatic" });
+    const file = await uploadProjectParameterFile(root, store, autoAuth, { projectId, fileName: "auto.dts", bytes: Buffer.from(content) });
+    await addConfigSetFile(root, autoAuth, { configSetId: set.id, fileId: file.file.id, role: "base", sortOrder: 0 });
+    const revision = await ingestConfigRevision(root, { organizationId, projectId, configSetId: set.id, entryFile: "auto.dts",
+      includeSearchPaths: ["."], overlayOrder: [], members: [{ fileId: file.file.id, fileVersionId: file.version.id,
+        fileName: "auto.dts", role: "base", sortOrder: 0, content }] }, autoAuth);
+    const input = { organizationId, projectId, configSetId: set.id, configRevisionId: revision.id };
+    await syncPublishedCatalogProjectValues(pool, input);
+    await syncPublishedCatalogProjectValues(pool, input);
+    const registrations = await pool.query(`select registration.subject_id,registration.registration_method,registration.proof,placement.module_id
+      from parameter_catalog.organization_subject_registrations registration
+      join parameter_catalog.subject_placements placement on placement.id=registration.current_placement_id
+      where registration.organization_id=$1 order by registration.subject_id`, [organizationId]);
+    expect(registrations.rows).toEqual([expect.objectContaining({ subject_id: "csub_acme_power", registration_method: "automatic" }),
+      expect.objectContaining({ subject_id: "owner-battery-a", registration_method: "automatic", module_id: null })]);
+    expect(registrations.rows[0].proof).toEqual(registrations.rows[1].proof);
+    const audits = await pool.query(`select metadata from public.audit_events
+      where organization_id=$1 and action='registration-register'`, [organizationId]);
+    expect(audits.rows).toHaveLength(1);
+    expect(audits.rows[0].metadata.cascadedRegistrations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subjectId: "csub_acme_power" }), expect.objectContaining({ subjectId: "owner-battery-a" })]));
+    const bindings = (await pool.query("select id,registration_id from parameter_catalog.project_parameter_bindings where organization_id=$1", [organizationId])).rows;
+    expect(bindings).toHaveLength(1);
+    const snapshot = await loadPublishedCatalog(pool);
+    if (!snapshot) throw new Error("Catalog snapshot unavailable");
+    const registry = await readRegistry(root, organizationId, snapshot, { includeAdminSettings: false });
+    const effectiveModule = (await pool.query<{ module_id: string }>(`select module_id from parameter_catalog.registration_effective_module
+      where organization_id=$1 and subject_id='owner-battery-a'`, [organizationId])).rows[0]!.module_id;
+    expect(registry.modules.find((module) => module.id === effectiveModule)).toMatchObject({ parameterCount: 1, definitionCount: 2 });
+    const driver = (await pool.query<{ id: string }>(`select id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id='csub_acme_power'`, [organizationId])).rows[0]!;
+    const service = createRegistrationService(pool);
+    const command = { organizationId, registrationId: driver.id as never,
+      expectedRelease: { id: predecessorArtifact.targetReleaseId, digest: predecessorArtifact.targetReleaseDigest },
+      context: { actorKind: "org-admin" as const, principalId: userId }, reason: "test lifecycle" };
+    const retired = await service.execute({ ...command, kind: "retire", idempotencyKey: "auto-retire" });
+    expect(retired.ok).toBe(true);
+    expect(await syncPublishedCatalogProjectValues(pool, input)).toBe(0);
+    expect((await pool.query("select id,registration_id from parameter_catalog.project_parameter_bindings where organization_id=$1", [organizationId])).rows).toEqual(bindings);
+    const restored = await service.execute({ ...command, kind: "restore", idempotencyKey: "auto-restore" });
+    expect(restored.ok).toBe(true);
+    expect((await pool.query("select id,registration_id from parameter_catalog.project_parameter_bindings where organization_id=$1", [organizationId])).rows).toEqual(bindings);
+  });
+
+  it("registers the owner and structural child for a seed observation", async () => {
+    const organizationId = "owner-seed-org";
+    await pool.query("insert into organizations (id,name) values ($1,'Seed owner')", [organizationId]);
+    await createParameterModule(root, { organizationId, name: "Business", kind: "business", origin: "curated" });
+    const snapshot = await loadPublishedCatalog(pool);
+    if (!snapshot) throw new Error("Catalog snapshot unavailable");
+    const subject = resolveObservedSubject(snapshot, { compatibles: [], nodeName: "battery1", ownerCompatibles: ["acme,power"] });
+    if (!subject) throw new Error("Seed observation did not resolve");
+    const seedAuth = makeTestAuthContext({ userId: "seed-owner", organizationId });
+    const outcome = await ensureSeedSubjectRegistrations(root, seedAuth, { organizationId,
+      currentRelease: { id: snapshot.release.id, digest: snapshot.release.digest }, subjects: [subject], seedDigest: "owner-seed", projectId: "seed-project" });
+    expect(outcome.registered).toEqual(["owner-battery-a"]);
+    const rows = await pool.query(`select registration.subject_id,registration.registration_method,placement.module_id
+      from parameter_catalog.organization_subject_registrations registration join parameter_catalog.subject_placements placement on placement.id=registration.current_placement_id
+      where registration.organization_id=$1 order by registration.subject_id`, [organizationId]);
+    expect(rows.rows).toEqual([expect.objectContaining({ subject_id: "csub_acme_power", registration_method: "automatic" }),
+      expect.objectContaining({ subject_id: "owner-battery-a", registration_method: "automatic", module_id: null })]);
+  });
+
+  it("does not skip seed owner registration when the child already exists", async () => {
+    const organizationId = "owner-seed-existing";
+    await pool.query("insert into organizations (id,name) values ($1,'Existing child')", [organizationId]);
+    await createParameterModule(root, { organizationId, name: "Business", kind: "business", origin: "curated" });
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("set constraints all deferred");
+      await client.query(`insert into parameter_catalog.organization_subject_registrations
+        (id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
+        values ('existing-seed-child',$1,'owner-battery-a','active','explicit','{}','existing-seed-placement')`, [organizationId]);
+      await client.query(`insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin)
+        values ('existing-seed-placement','existing-seed-child',$1,null,'curated')`, [organizationId]);
+      await client.query("commit");
+    } finally { await client.query("rollback").catch(() => undefined); client.release(); }
+    const snapshot = await loadPublishedCatalog(pool);
+    if (!snapshot) throw new Error("Catalog snapshot unavailable");
+    const subject = resolveObservedSubject(snapshot, { compatibles: [], nodeName: "battery1", ownerCompatibles: ["acme,power"] });
+    if (!subject) throw new Error("Seed observation did not resolve");
+    const result = await ensureSeedSubjectRegistrations(root, makeTestAuthContext({ userId: "seed-owner", organizationId }), {
+      organizationId, currentRelease: { id: snapshot.release.id, digest: snapshot.release.digest }, subjects: [subject], seedDigest: "existing-seed", projectId: "seed-project" });
+    expect(result.registered).toEqual([subject.subjectId]);
+    const rows = await pool.query(`select id,subject_id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 order by subject_id`, [organizationId]);
+    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows).toContainEqual({ id: "existing-seed-child", subject_id: "owner-battery-a" });
+  });
 
   it("binds equal child names only to their corresponding driver and leaves root unmatched", async () => {
     const rows = await pool.query<{ subject_id: string; value: number }>(`select binding.subject_id,value.value

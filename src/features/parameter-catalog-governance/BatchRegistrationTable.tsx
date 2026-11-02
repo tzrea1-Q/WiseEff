@@ -26,6 +26,7 @@ const rowCopy: Record<string, RowError> = {
   "name-taken": { field: "name", message: "同一分类下已有同名模块。" },
   "already-registered": { field: "subject", message: "主体已登记，请刷新。" },
   "subject-inactive": { field: "subject", message: "主体在当前目录中未生效。" },
+  "owned-child": { field: "subject", message: "请登记其所属驱动。" },
   "release-drift": { field: "subject", message: "目录版本已变化，请刷新。" },
   conflict: { field: "subject", message: "登记失败，请刷新后重试。" },
 };
@@ -187,7 +188,7 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
       {rows.map((row) => {
         const errorId = `${rowPrefix}-${row.subject.id}-error`;
         return <tr key={row.subject.id} className={row.inBatch ? undefined : "opacity-50"}><td><input type="checkbox" aria-label={`选择 ${row.subject.canonicalName}`} checked={row.selected} onChange={(event) => update(row.subject.id, { selected: event.target.checked })} /></td>
-          <td>{row.subject.canonicalName} · {catalogSubjectTypeLabel(row.subject.kind)}{row.error?.field === "subject" ? <p className="field-error" role="alert">{row.error.message}</p> : null}</td>
+          <td>{row.subject.canonicalName} · {catalogSubjectTypeLabel(row.subject.kind)}{row.subject.childCount ? <p>含 {row.subject.childCount} 个子节点，将随驱动一同登记。</p> : null}{row.error?.field === "subject" ? <p className="field-error" role="alert">{row.error.message}</p> : null}</td>
           <td><SelectControl ariaLabel={`${row.subject.canonicalName} 的登记目标`} value={row.moduleId} onValueChange={(moduleId) => update(row.subject.id, { moduleId })} options={[
             { value: "", label: "请选择业务分类" },
             { value: "__new__", label: "新建业务分类" },

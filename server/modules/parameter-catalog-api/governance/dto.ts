@@ -70,6 +70,7 @@ export function mapRegistrationRecord(
     id: record.id,
     organizationId: record.organizationId,
     subjectId: record.subjectId,
+    ...(record.ownerSubjectId ? { ownerSubjectId: record.ownerSubjectId, structural: true } : {}),
     status: record.status,
     method: record.method,
     impact: record.impact,
@@ -86,9 +87,10 @@ export function mapRegistrationResult(
     id: result.registrationId,
     organizationId: result.organizationId,
     subjectId: result.subjectId,
+    ...(result.ownerSubjectId ? { ownerSubjectId: result.ownerSubjectId, structural: true } : {}),
     status: result.registrationStatus,
     method: result.registrationMethod,
-    placement,
+    placement: result.ownerSubjectId ? { ...placement, ownerSubjectId: result.ownerSubjectId, structural: true } : placement,
     catalogReleaseId: result.release.id,
   });
 }

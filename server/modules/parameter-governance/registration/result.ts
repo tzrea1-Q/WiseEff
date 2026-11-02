@@ -18,6 +18,8 @@ export type RegistrationResult = {
   readonly placementId: SubjectPlacementId;
   readonly organizationId: string;
   readonly subjectId: CatalogSubjectId;
+  readonly ownerSubjectId?: CatalogSubjectId;
+  readonly structural?: true;
   readonly registrationStatus: RegistrationStatus;
   readonly registrationMethod: RegistrationMethod;
   readonly registrationVersion?: string;
@@ -27,6 +29,7 @@ export type RegistrationResult = {
   readonly moduleId: string | null;
   /** Current Placement version for conditional move callers. */
   readonly placementVersion?: string;
+  readonly cascadedRegistrations?: readonly { readonly registrationId: string; readonly subjectId: string }[];
   /** Committed before/after facts for an explicitly confirmed two-sided replacement. */
   readonly replacement?: {
     readonly registrationId: SubjectRegistrationId;

@@ -398,7 +398,7 @@ async function handleListSubjects(
       mapCatalogSubject(subject, projection.registration, {
         reviewCount: projection.reviewCount,
         availableActions:
-          projection.registration.status === "unregistered" && scope.canRegister ? ["register"] : [],
+          !subject.owner && projection.registration.status === "unregistered" && scope.canRegister ? ["register"] : [],
       }),
     );
   }
@@ -456,7 +456,7 @@ async function handleGetSubject(
       item: mapCatalogSubject(subject, projection.registration, {
         reviewCount: projection.reviewCount,
         availableActions:
-          projection.registration.status === "unregistered" && scope.canRegister ? ["register"] : [],
+          !subject.owner && projection.registration.status === "unregistered" && scope.canRegister ? ["register"] : [],
       }),
     },
     snapshot.release.id,

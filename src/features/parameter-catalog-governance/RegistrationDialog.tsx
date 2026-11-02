@@ -44,6 +44,7 @@ export type RegistrationModuleOption = PlacementOption & {
 
 export type RegistrationSubjectImpact = {
   activeDefinitionCount: number;
+  childCount?: number;
   bindingCount: number | null;
   projectCount: number | null;
 };
@@ -405,7 +406,9 @@ export function RegistrationDialog({
                           {subjectImpact.activeDefinitionCount} 个有效定义、
                           {subjectImpact.bindingCount === null ? "参数绑定数量暂不可用" : `${subjectImpact.bindingCount} 个参数绑定`}、
                           {subjectImpact.projectCount === null ? "项目数量暂不可用" : `${subjectImpact.projectCount} 个项目`}
+                          {subjectImpact.childCount ? `，含 ${subjectImpact.childCount} 个子节点` : ""}
                         </p>
+                        {intent === "register-subject" && subjectImpact.childCount ? <p>子节点将随驱动一同登记。</p> : null}
                         <dl className="registration-dialog__placement">
                           {intent === "update-placement" ? <div><dt>当前归属</dt><dd>{currentModuleName ?? "当前归属"}</dd></div> : null}
                           <div><dt>{intent === "update-placement" ? "调整至" : "登记至"}</dt><dd>{selectedDestinationName}</dd></div>

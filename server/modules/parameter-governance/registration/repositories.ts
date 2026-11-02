@@ -1,4 +1,6 @@
 import type pg from "pg";
+import { lockOrganizationSubjectRegistration } from "../../parameter-modules/recognitionLock";
+import type { Queryable } from "../../../shared/database/client";
 
 import type { RegistrationCommand, RegisterSubjectCommand } from "./command";
 import { registrationCommandFamily } from "./command";
@@ -45,13 +47,13 @@ export type DestinationModuleRow = {
  * A replacement always has existing registrations. Lock the organization's
  * existing rows in one immutable order before any command-specific locks so
  * opposing replacements and ordinary lifecycle/move commands cannot invert
- * their registration lock order. Empty-organization registration still uses
- * the existing uniqueness and idempotency constraints.
+ * their registration lock order.
  */
 export const lockOrganizationRegistrations = async (
   client: RegistrationWriterClient,
   organizationId: string,
 ): Promise<void> => {
+  await lockOrganizationSubjectRegistration(client as unknown as Queryable, organizationId);
   await client.query(
     `select id from parameter_catalog.organization_subject_registrations
      where organization_id = $1 order by id for update`,

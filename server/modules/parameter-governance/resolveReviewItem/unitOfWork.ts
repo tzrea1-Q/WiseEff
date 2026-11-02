@@ -365,6 +365,7 @@ export const insertSuccessAudit = async (
     readonly resolutionId: string;
     readonly resolutionType: ReviewResolutionType;
     readonly fingerprint: string;
+    readonly cascadedRegistrations?: readonly { readonly registrationId: string; readonly subjectId: string }[];
   },
 ): Promise<void> => {
   if (input.invocation) {
@@ -375,7 +376,8 @@ export const insertSuccessAudit = async (
     await writeAuditEventInTx(asAuditTx(client), invocation, { requestId: input.requestId }, {
       id: input.id, app: "parameter-governance", kind: "parameter-catalog-governance", action: "review-item-resolved", severity: "Medium",
       projectId: null, targetType: "review-item", targetId: input.reviewItemId,
-      metadata: { resolutionId: input.resolutionId, resolutionType: input.resolutionType, fingerprint: input.fingerprint }
+      metadata: { resolutionId: input.resolutionId, resolutionType: input.resolutionType, fingerprint: input.fingerprint,
+        ...(input.cascadedRegistrations?.length ? { cascadedRegistrations: input.cascadedRegistrations } : {}) }
     });
     return;
   }
@@ -395,6 +397,7 @@ export const insertSuccessAudit = async (
         resolutionId: input.resolutionId,
         resolutionType: input.resolutionType,
         fingerprint: input.fingerprint,
+        ...(input.cascadedRegistrations?.length ? { cascadedRegistrations: input.cascadedRegistrations } : {}),
       }),
       input.resolutionId,
     ],

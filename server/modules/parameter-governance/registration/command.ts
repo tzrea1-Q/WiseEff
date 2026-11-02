@@ -13,7 +13,7 @@ import {
 
 import type { RegistrationFailure } from "./failures";
 import type { Result } from "./result";
-import type { UserInvocationContext } from "../../auth/trustedInvocation";
+import type { SystemInvocationContext, UserInvocationContext } from "../../auth/trustedInvocation";
 
 export const registrationCommandFamily = "subject-registration";
 
@@ -27,6 +27,8 @@ export type TrustedInvocationContext =
   | {
       readonly actorKind: "trusted-system";
       readonly principalId: string;
+      readonly invocation?: SystemInvocationContext;
+      readonly requestId?: string;
     }
   | {
       readonly actorKind: "review-coordinator";

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
@@ -12,6 +12,11 @@ import { CatalogReleaseDigest, CatalogSubjectId, DefinitionRevisionId, Parameter
 import { createGovernanceCatalogQueries } from "../queries/index";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
 import { createRegistrationService } from "./service";
+import { executeBatchRegistration } from "./batch";
+import { listUnregisteredSubjects } from "./readRepository";
+import { createEvidenceIngest } from "../evidence";
+import { createReviewQueueReader } from "../review";
+import { createReviewItemResolver } from "../resolveReviewItem";
 import type { RegistrationResult } from "./result";
 import { withRegistrationUnitOfWork } from "./unitOfWork";
 import { writeGuardedRegistration } from "./internalGuardedRegistrationWriter";
@@ -23,6 +28,9 @@ import { createSourceBackedBindingService } from "../../parameter-bindings/bindi
 import { aggregateBindingDashboardHotspots } from "../../parameter-bindings/dashboardRead";
 import { readRegistry } from "../../parameter-modules/repository";
 import { createPostgresDatabase } from "../../../shared/database/client";
+import type { Queryable } from "../../../shared/database/client";
+import { lockOrganizationModuleRecognition } from "../../parameter-modules/recognitionLock";
+import { lockSourceCatalogGovernance } from "../../parameter-bindings/catalogProjectValueSync";
 
 describe("conditional registration lifecycle on the real application SQL LOGIN", () => {
   let database: EphemeralTestDatabase;
@@ -33,11 +41,13 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
   let organizationId: string;
   let moduleId: string;
   let registration: RegistrationResult;
+  let initialBundle: ReturnType<typeof validCatalogReleaseBundle>;
   const targetSubject = CatalogSubjectId("csub_replacement_target");
   const thirdSubject = CatalogSubjectId("csub_replacement_third");
   const emptySubject = CatalogSubjectId("csub_removal_without_definitions");
   const configSubject = CatalogSubjectId("csub_placement_configuration");
   const nodeSubject = CatalogSubjectId("csub_placement_node");
+  const ownedNodeSubject = CatalogSubjectId("csub_owned_lifecycle_node");
   const context = { actorKind: "org-admin" as const, principalId: "lifecycle-admin" };
   const version = (result: RegistrationResult) => `${result.registrationStatus}:${result.registrationVersion}`;
   const lifecycle = (kind: "retire" | "restore", result = registration) => ({
@@ -123,8 +133,12 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       canonicalKey: "battery1", lifecycle: "active" as const,
       selector: { kind: "node-type-name" as const, value: "battery1", provenance: { source: initial.sources[0]!.path } },
       subtype: {}, tombstone: null } };
-    const release = refreshSuccessorSource({ ...initial, documents: [...initial.documents, ...extra, configuration, node] }, initial.sources[0]!.path);
+    const ownedNode = { ...structuredClone(node), content: { ...structuredClone(node.content), id: ownedNodeSubject,
+      canonicalKey: "owned_lifecycle_node", ownerSubjectId: targetSubject,
+      selector: { ...structuredClone(node.content.selector), value: "owned_lifecycle_node" } } };
+    const release = refreshSuccessorSource({ ...initial, documents: [...initial.documents, ...extra, configuration, node, ownedNode] }, initial.sources[0]!.path);
     const first = { schemaVersion: bundle.schemaVersion, targetReleaseId: release.manifest.release.id, releases: [release] };
+    initialBundle = first;
     const compiled = compileCatalogRelease(first);
     if (!compiled.ok) throw new Error("lifecycle fixture did not compile");
     const installed = await installPublishedRelease(admin, { mode: "bootstrap", source: jsonCatalogReleaseSource(first), expectedTargetDigest: compiled.value.aggregateDigest });
@@ -162,9 +176,303 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       expect.objectContaining({ registration_id: registration.registrationId, module_id: moduleId, via_owner_registration_id: null }),
       expect.objectContaining({ registration_id: shared.registrationId, module_id: moduleId, via_owner_registration_id: null }),
       expect.objectContaining({ registration_id: unset.registrationId, module_id: null, via_owner_registration_id: null }),
+      expect.objectContaining({ subject_id: ownedNodeSubject, module_id: moduleId, via_owner_registration_id: shared.registrationId }),
     ]));
-    expect(rows.rows).toHaveLength(3);
+    expect(rows.rows).toHaveLength(4);
     expect((await api.query("select * from parameter_catalog.registration_effective_module where organization_id = $1", ["other-org"])).rows).toEqual([]);
+  });
+
+  it("registers active owned subjects with their driver", async () => {
+    const driver = await registerTarget(targetSubject, moduleId);
+    const children = await api.query(`select registration.registration_method, placement.module_id, effective.module_id as effective_module_id,
+      effective.via_owner_registration_id
+      from parameter_catalog.organization_subject_registrations registration
+      join parameter_catalog.subject_placements placement on placement.id=registration.current_placement_id
+      join parameter_catalog.registration_effective_module effective on effective.registration_id=registration.id
+      where registration.organization_id=$1 and registration.subject_id=$2`, [organizationId, ownedNodeSubject]);
+    expect(children.rows).toEqual([{ registration_method: "explicit", module_id: null,
+      effective_module_id: moduleId, via_owner_registration_id: driver.registrationId }]);
+    const childId = (await api.query<{ id: string }>(`select id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows[0]!.id;
+    const queries = createGovernanceCatalogQueries(api);
+    const query = { organizationId, registrationId: childId, observedCatalogReleaseId: pin.id,
+      authScope: { organizationId, principalId: context.principalId } };
+    expect(await queries.getRegistration(query)).toMatchObject({ ok: true, value: { ownerSubjectId: targetSubject, structural: true,
+      placement: { ownerSubjectId: targetSubject, structural: true, moduleId } } });
+    expect(await queries.getPlacement(query)).toMatchObject({ ok: true, value: { ownerSubjectId: targetSubject, structural: true, moduleId } });
+  });
+
+  it("lists only unowned subjects for batch registration and audits cascaded children", async () => {
+    const listed = await listUnregisteredSubjects(api, organizationId, pin.id, "all");
+    expect(listed.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: targetSubject, childCount: 1 })]));
+    expect(listed.items.map((item) => item.id)).not.toContain(ownedNodeSubject);
+    const actor = await auditedContext("batch-owned");
+    const refused = await executeBatchRegistration(api, { organizationId, expectedRelease: pin, idempotencyKey: randomUUID(),
+      rows: [{ subjectId: ownedNodeSubject, target: { type: "existing-module", moduleId } }], actorKind: "org-admin",
+      principalId: actor.principalId, invocation: actor.invocation, requestId: actor.requestId });
+    expect(refused).toMatchObject({ ok: false, error: [{ subjectId: ownedNodeSubject, code: "owned-child", field: "subject" }] });
+    const result = await executeBatchRegistration(api, { organizationId, expectedRelease: pin, idempotencyKey: randomUUID(),
+      rows: [{ subjectId: targetSubject, target: { type: "existing-module", moduleId } }], actorKind: "org-admin",
+      principalId: actor.principalId, invocation: actor.invocation, requestId: actor.requestId });
+    expect(result.ok).toBe(true);
+    const rows = await api.query(`select subject_id,registration_method,proof from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id in ($2,$3) order by subject_id`, [organizationId, targetSubject, ownedNodeSubject]);
+    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows[0].proof).toEqual(rows.rows[1].proof);
+    expect(rows.rows.every((row: { registration_method: string }) => row.registration_method === "explicit")).toBe(true);
+    const audit = await api.query("select metadata from public.audit_events where trace_id='batch-owned'");
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0].metadata.cascadedRegistrations).toEqual([expect.objectContaining({ subjectId: ownedNodeSubject })]);
+  });
+
+  it("registers and audits owned children when a review resolves to their driver", async () => {
+    const actor = await auditedContext("review-owned");
+    const reviewContext = { actorKind: "org-admin" as const, principalId: actor.principalId, organizationId };
+    const ingested = await createEvidenceIngest(api).ingest({ organizationId, sourceIdentity: `review-${randomUUID()}`,
+      catalogReleaseId: pin.id, matcherRevision: "review-owned", matcherOutput: { status: "unknown" }, evidence: { propertyKey: "owned_review" } });
+    expect(ingested.ok).toBe(true);
+    const listed = await createReviewQueueReader(api).list({ organizationId, capturedRelease: pin, context: reviewContext });
+    if (!listed.ok || !listed.value.items[0]) throw new Error("Review item unavailable");
+    const item = listed.value.items[0];
+    const resolved = await createReviewItemResolver(api).resolve({ resolution: "register-subject", organizationId,
+      reviewItemId: item.id, expectedRelease: pin, etag: item.etag, idempotencyKey: randomUUID(), context: reviewContext,
+      invocation: actor.invocation, requestId: actor.requestId, reason: item.reason, subjectId: targetSubject, subjectKind: "driver",
+      placement: { mode: "use-default" }, destinationModuleId: moduleId, proof: { review: "owned" } });
+    expect(resolved.ok).toBe(true);
+    const rows = await api.query(`select subject_id,registration_method,proof from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id in ($2,$3) order by subject_id`, [organizationId, targetSubject, ownedNodeSubject]);
+    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows.every((row: { registration_method: string }) => row.registration_method === "review")).toBe(true);
+    expect(rows.rows[0].proof).toEqual(rows.rows[1].proof);
+    const audit = await api.query("select metadata from public.audit_events where trace_id='review-owned' and action='review-item-resolved'");
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0].metadata.cascadedRegistrations).toEqual([expect.objectContaining({ subjectId: ownedNodeSubject })]);
+  });
+
+  it("automatically registers a proven owned observation and its owner only once", async () => {
+    const command = { kind: "register" as const, organizationId, subjectId: ownedNodeSubject, subjectKind: "node-type" as const,
+      expectedRelease: pin, placement: { mode: "use-default" as const }, destinationModuleId: moduleId,
+      method: "automatic" as const, proof: { ownerSubjectId: targetSubject, source: "observation" },
+      idempotencyKey: randomUUID(), context: { actorKind: "trusted-system" as const, principalId: "observation" } };
+    const service = createRegistrationService(api);
+    const unproven = await service.execute({ ...command, proof: { ownerSubjectId: "wrong-owner" }, idempotencyKey: randomUUID() });
+    expect(unproven).toMatchObject({ ok: false, error: { kind: "invalid-command", reason: "请登记其所属驱动" } });
+    expect((await api.query(`select id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id in ($2,$3)`, [organizationId, targetSubject, ownedNodeSubject])).rows).toEqual([]);
+    const first = await service.execute(command);
+    expect(first).toMatchObject({ ok: true, value: { subjectId: ownedNodeSubject, moduleId: null, ownerSubjectId: targetSubject, structural: true } });
+    const second = await service.execute(command);
+    expect(second).toMatchObject({ ok: true, value: { outcome: "replayed", subjectId: ownedNodeSubject } });
+    const rows = await api.query(`select subject_id, registration_method from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id in ($2,$3) order by subject_id`, [organizationId, targetSubject, ownedNodeSubject]);
+    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows.every((row: { registration_method: string }) => row.registration_method === "automatic")).toBe(true);
+  });
+
+  it("preserves an existing structural child registration while automatically registering its owner", async () => {
+    const client = await admin.connect();
+    try {
+      await client.query("begin");
+      await client.query("set constraints all deferred");
+      await client.query(`insert into parameter_catalog.organization_subject_registrations
+        (id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
+        values ('legacy-child-registration',$1,$2,'active','explicit','{}','legacy-child-placement')`, [organizationId, ownedNodeSubject]);
+      await client.query(`insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin)
+        values ('legacy-child-placement','legacy-child-registration',$1,null,'curated')`, [organizationId]);
+      await client.query("commit");
+    } finally { await client.query("rollback").catch(() => undefined); client.release(); }
+    const result = await createRegistrationService(api).execute({ kind: "register", organizationId, subjectId: ownedNodeSubject,
+      subjectKind: "node-type", expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: moduleId,
+      method: "automatic", proof: { ownerSubjectId: targetSubject }, idempotencyKey: randomUUID(),
+      context: { actorKind: "trusted-system", principalId: "observation" } });
+    expect(result).toMatchObject({ ok: true, value: { registrationId: "legacy-child-registration", ownerSubjectId: targetSubject, structural: true } });
+    const rows = await api.query(`select subject_id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id in ($2,$3)`, [organizationId, targetSubject, ownedNodeSubject]);
+    expect(rows.rows).toHaveLength(2);
+  });
+
+  it("retires existing active children when their previously unregistered driver is retired", async () => {
+    const client = await admin.connect();
+    try {
+      await client.query("begin");
+      await client.query("set constraints all deferred");
+      await client.query(`insert into parameter_catalog.organization_subject_registrations
+        (id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
+        values ('retire-existing-child',$1,$2,'active','explicit','{}','retire-existing-placement')`, [organizationId, ownedNodeSubject]);
+      await client.query(`insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin)
+        values ('retire-existing-placement','retire-existing-child',$1,null,'curated')`, [organizationId]);
+      await client.query("commit");
+    } finally { await client.query("rollback").catch(() => undefined); client.release(); }
+    const service = createRegistrationService(api);
+    const retired = await service.execute({ kind: "retire-unregistered", organizationId, subjectId: targetSubject,
+      expectedRelease: pin, idempotencyKey: randomUUID(), context, reason: "driver not used" });
+    expect(retired.ok).toBe(true);
+    expect((await api.query("select status,cascade_retired from parameter_catalog.organization_subject_registrations where id='retire-existing-child'")).rows)
+      .toEqual([{ status: "retired", cascade_retired: true }]);
+    if (!retired.ok) return;
+    expect((await service.execute(lifecycle("restore", retired.value))).ok).toBe(true);
+    expect((await api.query("select status from parameter_catalog.organization_subject_registrations where id='retire-existing-child'")).rows)
+      .toEqual([{ status: "active" }]);
+  });
+
+  it("serializes concurrent registrations of a driver and its children", async () => {
+    const service = createRegistrationService(api);
+    const concurrentOrg = `concurrent-${randomUUID()}`;
+    await admin.query("insert into public.organizations(id,name) values ($1,'Concurrent')", [concurrentOrg]);
+    const concurrentModule = await createModule("Concurrent", concurrentOrg);
+    const command = { kind: "register" as const, organizationId: concurrentOrg, subjectId: targetSubject, subjectKind: "driver" as const,
+      expectedRelease: pin, placement: { mode: "use-default" as const }, destinationModuleId: concurrentModule,
+      method: "explicit" as const, proof: {}, context };
+    const results = await Promise.all([service.execute({ ...command, idempotencyKey: randomUUID() }),
+      service.execute({ ...command, idempotencyKey: randomUUID() })]);
+    expect(results.every((result) => result.ok)).toBe(true);
+    const rows = await api.query(`select subject_id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id in ($2,$3)`, [concurrentOrg, targetSubject, ownedNodeSubject]);
+    expect(rows.rows).toHaveLength(2);
+  });
+
+  it("orders batch and single registration before locking destination categories", async () => {
+    const actor = await auditedContext("concurrent-batch");
+    const [batch, single] = await Promise.all([
+      executeBatchRegistration(api, { organizationId, expectedRelease: pin, idempotencyKey: randomUUID(),
+        rows: [{ subjectId: targetSubject, target: { type: "new-module", parentModuleId: moduleId, name: "Batch destination" } }],
+        actorKind: "org-admin", principalId: actor.principalId, invocation: actor.invocation, requestId: actor.requestId }),
+      createRegistrationService(api).execute({ kind: "register", organizationId, subjectId: thirdSubject, subjectKind: "driver",
+        expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: `single-${randomUUID()}`,
+        newDestination: { parentModuleId: moduleId, name: "Single destination" }, method: "explicit", proof: {}, idempotencyKey: randomUUID(), context }),
+    ]);
+    expect(batch.ok).toBe(true);
+    expect(single.ok).toBe(true);
+    expect((await api.query(`select id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id in ($2,$3,$4)`, [organizationId, targetSubject, thirdSubject, ownedNodeSubject])).rows).toHaveLength(3);
+  });
+
+  it("serializes source approvals that register drivers in different organizations", async () => {
+    const otherOrganizationId = `source-concurrent-${randomUUID()}`;
+    await admin.query("insert into public.organizations(id,name) values ($1,'Concurrent source')", [otherOrganizationId]);
+    const otherModuleId = await createModule("Source concurrent", otherOrganizationId);
+    const register = (scope: string, destinationModuleId: string) => withRegistrationUnitOfWork(api, async (client) => {
+      await lockSourceCatalogGovernance(client as unknown as Queryable, scope);
+      return writeGuardedRegistration(client, { kind: "register", organizationId: scope, subjectId: targetSubject,
+        subjectKind: "driver", expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId,
+        method: "explicit", proof: {}, idempotencyKey: randomUUID(), context });
+    });
+    const results = await Promise.all([register(organizationId, moduleId), register(otherOrganizationId, otherModuleId)]);
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect((await admin.query(`select organization_id,count(*)::int as count from parameter_catalog.organization_subject_registrations
+      where subject_id in ($1,$2) and organization_id in ($3,$4) group by organization_id order by organization_id`,
+    [targetSubject, ownedNodeSubject, organizationId, otherOrganizationId])).rows).toEqual(expect.arrayContaining([
+      { organization_id: organizationId, count: 2 }, { organization_id: otherOrganizationId, count: 2 }]));
+  });
+
+  it("orders an ordinary registration against a source approval in the same organization", async () => {
+    const source = withRegistrationUnitOfWork(api, async (client) => {
+      await lockSourceCatalogGovernance(client as unknown as Queryable, organizationId);
+      return writeGuardedRegistration(client, { kind: "register", organizationId, subjectId: targetSubject,
+        subjectKind: "driver", expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: moduleId,
+        method: "explicit", proof: {}, idempotencyKey: randomUUID(), context });
+    });
+    const ordinary = createRegistrationService(api).execute({ kind: "register", organizationId, subjectId: thirdSubject,
+      subjectKind: "driver", expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: moduleId,
+      method: "explicit", proof: {}, idempotencyKey: randomUUID(), context });
+    expect((await Promise.all([source, ordinary])).every((result) => result.ok)).toBe(true);
+  });
+
+  it("replays a cascaded driver registration without changing its result or children", async () => {
+    const service = createRegistrationService(api);
+    const command = { kind: "register" as const, organizationId, subjectId: targetSubject, subjectKind: "driver" as const,
+      expectedRelease: pin, placement: { mode: "use-default" as const }, destinationModuleId: moduleId,
+      method: "explicit" as const, proof: {}, idempotencyKey: randomUUID(), context };
+    const first = await service.execute(command);
+    if (!first.ok) throw new Error(JSON.stringify(first.error));
+    expect(await service.execute(command)).toEqual({ ok: true, value: { ...first.value, outcome: "replayed" } });
+    expect((await api.query(`select id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows).toHaveLength(1);
+  });
+
+  it("does not hold the recognition lock while waiting for publication", async () => {
+    const publisher = await admin.connect();
+    let pending: ReturnType<ReturnType<typeof createRegistrationService>["execute"]> | undefined;
+    try {
+      await publisher.query("begin");
+      await publisher.query("select parameter_catalog.acquire_current_pointer_lock_exclusive()");
+      const publisherPid = (await publisher.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
+      pending = createRegistrationService(api).execute({ kind: "register", organizationId, subjectId: targetSubject, subjectKind: "driver",
+        expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: moduleId,
+        method: "explicit", proof: {}, idempotencyKey: randomUUID(), context });
+      await vi.waitFor(async () => {
+        const blocked = await admin.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [publisherPid]);
+        expect(blocked.rows.length).toBeGreaterThan(0);
+      }, { timeout: 3000, interval: 25 });
+      await publisher.query("set local lock_timeout='2s'");
+      await lockOrganizationModuleRecognition(publisher as unknown as Queryable, organizationId);
+      await publisher.query("commit");
+      expect((await pending).ok).toBe(true);
+      pending = undefined;
+    } finally {
+      await publisher.query("rollback").catch(() => undefined);
+      if (pending) await pending.catch(() => undefined);
+      publisher.release();
+    }
+  });
+
+  it("moves the driver and inherited reads without writing the child placement", async () => {
+    const driver = await registerTarget(targetSubject, moduleId);
+    const before = await api.query(`select placement.id,placement.module_id,placement.updated_at::text
+      from parameter_catalog.subject_placements placement
+      join parameter_catalog.organization_subject_registrations registration on registration.id=placement.registration_id
+      where registration.organization_id=$1 and registration.subject_id=$2`, [organizationId, ownedNodeSubject]);
+    const destination = await createModule("Inherited destination");
+    const moved = await createRegistrationService(api).execute({ kind: "move-placement", organizationId, registrationId: driver.registrationId,
+      destinationModuleId: destination, expectedRelease: pin, idempotencyKey: randomUUID(), context });
+    expect(moved.ok).toBe(true);
+    const after = await api.query(`select placement.id,placement.module_id,placement.updated_at::text
+      from parameter_catalog.subject_placements placement
+      join parameter_catalog.organization_subject_registrations registration on registration.id=placement.registration_id
+      where registration.organization_id=$1 and registration.subject_id=$2`, [organizationId, ownedNodeSubject]);
+    expect(after.rows).toEqual(before.rows);
+    expect((await api.query(`select module_id,via_owner_registration_id from parameter_catalog.registration_effective_module
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows)
+      .toEqual([{ module_id: destination, via_owner_registration_id: driver.registrationId }]);
+  });
+
+  it("retires and restores owned registrations with their driver and refuses direct child operations", async () => {
+    const driver = await registerTarget(targetSubject, moduleId);
+    const child = (await api.query<{ id: string; current_placement_id: string }>(`select id,current_placement_id
+      from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows[0]!;
+    const service = createRegistrationService(api);
+    const direct = await service.execute({ kind: "register", organizationId, subjectId: ownedNodeSubject, subjectKind: "node-type",
+      expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: moduleId, method: "explicit",
+      proof: {}, idempotencyKey: randomUUID(), context });
+    expect(direct).toMatchObject({ ok: false, error: { kind: "invalid-command", reason: "请登记其所属驱动" } });
+    for (const kind of ["retire", "restore"] as const) {
+      expect(await service.execute({ ...lifecycle(kind, driver), registrationId: child.id as typeof driver.registrationId,
+        expectedRegistrationVersion: undefined })).toMatchObject({ ok: false, error: { kind: "invalid-command" } });
+    }
+    expect(await service.execute({ kind: "move-placement", organizationId, registrationId: child.id as typeof driver.registrationId,
+      destinationModuleId: moduleId, expectedRelease: pin, idempotencyKey: randomUUID(), context }))
+      .toMatchObject({ ok: false, error: { kind: "invalid-command" } });
+    const retired = await service.execute(lifecycle("retire", driver));
+    expect(retired.ok).toBe(true);
+    expect((await api.query("select status from parameter_catalog.organization_subject_registrations where id=$1", [child.id])).rows[0]).toEqual({ status: "retired" });
+    if (!retired.ok) throw new Error(JSON.stringify(retired.error));
+    const restored = await service.execute(lifecycle("restore", retired.value));
+    expect(restored.ok).toBe(true);
+    expect((await api.query("select status,current_placement_id from parameter_catalog.organization_subject_registrations where id=$1", [child.id])).rows[0])
+      .toEqual({ status: "active", current_placement_id: child.current_placement_id });
+  });
+
+  it("does not restore a child that was already retired before its driver", async () => {
+    const driver = await registerTarget(targetSubject, moduleId);
+    await admin.query(`update parameter_catalog.organization_subject_registrations set status='retired'
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject]);
+    const service = createRegistrationService(api);
+    const retired = await service.execute(lifecycle("retire", driver));
+    if (!retired.ok) throw new Error(JSON.stringify(retired.error));
+    const restored = await service.execute(lifecycle("restore", retired.value));
+    expect(restored.ok).toBe(true);
+    expect((await api.query(`select status,cascade_retired from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows).toEqual([{ status: "retired", cascade_retired: false }]);
   });
 
   it("groups bindings for two registered subjects in the same business module", async () => {
@@ -374,7 +682,8 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
         subjectId: targetSubject, previousModuleId: target.moduleId, previousSourceModuleId: moduleId,
         moduleId: null, registrationStatus: "active" } });
     const after = await placements();
-    expect(after).toHaveLength(2);
+    expect(after).toHaveLength(3);
+    expect(after.filter((row) => row.module_id === null)).toHaveLength(2);
     expect(after.find((row) => row.registration_id === target.registrationId)).toMatchObject({ id: target.placementId, module_id: null });
     expect(after.find((row) => row.registration_id === registration.registrationId)).toMatchObject({ id: registration.placementId, module_id: target.moduleId });
     expect((await api.query("select id,status,current_placement_id from parameter_catalog.organization_subject_registrations where organization_id=$1 order by id", [organizationId])).rows)
@@ -472,8 +781,8 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       expect([registration.placementId, target.placementId]).toContain(failed.error.placementId);
     }
     const rows = await placements();
-    expect(rows).toHaveLength(2);
-    expect(rows.filter((row) => row.module_id === null)).toHaveLength(1);
+    expect(rows).toHaveLength(3);
+    expect(rows.filter((row) => row.module_id === null)).toHaveLength(2);
     expect(rows.filter((row) => row.module_id !== null)).toHaveLength(1);
   });
 
@@ -695,5 +1004,31 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       .toMatchObject({ ok: true, value: { kind: "only", ids: universe } });
     expect(await queries.selectSubjectIds({ ...base, organizationId: otherOrg }))
       .toMatchObject({ ok: false, error: { kind: "not-found", resource: "organization" } });
+  });
+
+  it("does not restore a cascade-retired child whose release membership was retired", async () => {
+    const driver = await registerTarget(targetSubject, moduleId);
+    const service = createRegistrationService(api);
+    const retired = await service.execute(lifecycle("retire", driver));
+    if (!retired.ok) throw new Error(JSON.stringify(retired.error));
+    const base = initialBundle.releases[0]!;
+    const nextId = "crel_owned_retired";
+    const next = refreshSuccessorSource({ ...structuredClone(base), manifest: { ...structuredClone(base.manifest),
+      release: { ...base.manifest.release, id: nextId, version: "1.2.0", sequence: 2,
+        publishedAt: "2026-09-02T00:00:00Z", predecessor: { id: pin.id, digest: pin.digest } } },
+    documents: base.documents.map((document) => document.kind === "subject" && document.content.id === ownedNodeSubject ? {
+      ...structuredClone(document), content: { ...structuredClone(document.content), lifecycle: "retired" as const,
+        tombstone: { reason: "withdrawn", withdrawnByReleaseId: nextId, previousSelector: "owned_lifecycle_node" } },
+    } : structuredClone(document)) }, base.sources[0]!.path);
+    const bundle = { ...initialBundle, targetReleaseId: nextId, releases: [base, next] };
+    const compiled = compileCatalogRelease(bundle);
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+    const installed = await installPublishedRelease(admin, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
+      expectedCurrent: pin, expectedTargetDigest: compiled.value.aggregateDigest });
+    if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+    const restored = await service.execute({ ...lifecycle("restore", retired.value), expectedRelease: { id: compiled.value.release.id, digest: compiled.value.release.digest } });
+    expect(restored.ok).toBe(true);
+    expect((await api.query(`select status,cascade_retired from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows).toEqual([{ status: "retired", cascade_retired: true }]);
   });
 });
