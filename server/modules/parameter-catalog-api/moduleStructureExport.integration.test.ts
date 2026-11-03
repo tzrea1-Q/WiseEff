@@ -330,6 +330,8 @@ describe("module structure export", () => {
         expect.objectContaining({ subjectId: "csub_acme_charger", ownerSubjectId: "csub_acme_power", state: "retired", cascadeRetired: true,
           placement: null, recognition: expect.objectContaining({ mode: "inherit", override: null }) })]) });
     expect((result.body as { modules: unknown[] }).modules).toHaveLength(251);
+    expect((await api.query(`select module_id,via_owner_registration_id from parameter_catalog.registration_effective_module
+      where registration_id='export-child'`)).rows).toEqual([{ module_id: "export-root", via_owner_registration_id: "export-registration" }]);
     const retainedBefore = (await db.query(`select r.id,r.status,r.cascade_retired,r.current_placement_id,r.display_alias,
       rr.compatibles from parameter_catalog.organization_subject_registrations r left join registration_recognition_rules rr
       on rr.organization_id=r.organization_id and rr.registration_id=r.id where r.organization_id=$1 order by r.id`, [org])).rows;
@@ -391,6 +393,8 @@ describe("module structure export", () => {
       where r.id='export-registration'`)).rows).toEqual([{ status: "retired", current_placement_id: "export-placement", display_alias: null, module_id: null }]);
     expect((await db.query(`select status,cascade_retired,current_placement_id from parameter_catalog.organization_subject_registrations
       where id='export-child'`)).rows).toEqual([{ status: "retired", cascade_retired: true, current_placement_id: "export-child-placement" }]);
+    expect((await api.query(`select module_id,via_owner_registration_id from parameter_catalog.registration_effective_module
+      where registration_id='export-child'`)).rows).toEqual([{ module_id: null, via_owner_registration_id: "export-registration" }]);
     await db.query(`insert into parameter_modules(id,organization_id,name,path,kind,origin)
       values ('export-unclassified',$1,'Unclassified','export-unclassified','unclassified','curated')`, [org]);
     const nextExport = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
@@ -404,6 +408,10 @@ describe("module structure export", () => {
         idempotencyKey: "retired-unclassified", reason: "Use unclassified" }) });
     expect(unclassifiedApply.status, unclassifiedApply.bodyText).toBe(200);
     expect((await db.query("select module_id from parameter_catalog.subject_placements where id='export-placement'")).rows[0]).toEqual({ module_id: "export-unclassified" });
+    expect((await api.query(`select module_id,via_owner_registration_id from parameter_catalog.registration_effective_module
+      where registration_id='export-child'`)).rows).toEqual([{ module_id: "export-unclassified", via_owner_registration_id: "export-registration" }]);
+    await db.query("update parameter_catalog.subject_placements set module_id=null where id='export-placement'");
+    await db.query("delete from parameter_modules where id='export-unclassified'");
     await db.query("update parameter_catalog.organization_subject_registrations set status='active' where id='export-registration'");
     await db.query("update parameter_catalog.organization_subject_registrations set cascade_retired=false where id='export-child'");
     const active = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
