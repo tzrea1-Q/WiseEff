@@ -76,6 +76,15 @@ describe("R2-AGT real authenticated Catalog execution", () => {
   const objectStoreWriteKeys = new Set<string>();
   let localPassword: string;
 
+  const assertScopedSuspensionRead = async (db: RootDatabase) => {
+    const permissions = await db.query(`select
+      has_function_privilege(current_user,'parameter_catalog.current_source_binding_is_suspended(text,text,text)','EXECUTE') as boolean_execute,
+      has_function_privilege(current_user,'parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)','EXECUTE') as continuity_execute,
+      has_function_privilege(current_user,'parameter_catalog.source_revision_exclusion_matches(text,text,text,text,text)','EXECUTE') as proof_execute,
+      has_table_privilege(current_user,'parameter_catalog.source_binding_suspension_receipts','SELECT,INSERT,UPDATE,DELETE') as receipt_access`);
+    expect(permissions.rows).toEqual([{ boolean_execute: true, continuity_execute: false, proof_execute: false, receipt_access: false }]);
+  };
+
   const runAgent = async (
     input: {
       runtimeUrl?: string;
@@ -519,12 +528,15 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       await pool.query(`grant select, insert, update, delete on all tables in schema public to ${role}`);
       await pool.query(`grant usage, select on all sequences in schema public to ${role}`);
       await pool.query(`grant select on all tables in schema parameter_catalog to ${role}`);
+      await pool.query(`revoke all on parameter_catalog.source_binding_suspension_receipts from ${role}`);
+      await pool.query(`grant execute on function parameter_catalog.current_source_binding_is_suspended(text,text,text) to ${role}`);
       await pool.query(`grant execute on function parameter_catalog.register_agent_checkpoint_namespace(text,text,text,text,text,text,boolean) to ${role}`);
       await pool.query(`revoke select on parameter_catalog.project_parameter_bindings from ${role}`);
       const url = new URL(database.url);
       url.searchParams.set("options", `-c role=${role}`);
       restrictedRoot = createPostgresDatabase(url.toString());
       expect((await restrictedRoot.query("select current_user as role")).rows).toEqual([{ role }]);
+      await assertScopedSuspensionRead(restrictedRoot);
       restrictedServer = createWiseEffServer({
         db: restrictedRoot,
         auth: { mode: "production" },
@@ -631,6 +643,8 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       await ddl("grant connect on database %I to %I", database.name, role);
       await ddl("grant usage on schema public, parameter_catalog to %I", role);
       await ddl("grant select on all tables in schema parameter_catalog to %I", role);
+      await ddl("revoke all on parameter_catalog.source_binding_suspension_receipts from %I", role);
+      await ddl("grant execute on function parameter_catalog.current_source_binding_is_suspended(text,text,text) to %I", role);
       await ddl(`grant select on public.users, public.organizations, public.user_role_bindings,
         public.user_password_credentials, public.auth_sessions, public.projects,
         public.agent_sessions, public.agent_messages, public.agent_tool_calls,
@@ -649,6 +663,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       restrictedRoot = createPostgresDatabase(roleUrl.toString());
       expect((await restrictedRoot.query(`select current_user as current, session_user as session,
         current_database() as database`)).rows).toEqual([{ current: role, session: role, database: database.name }]);
+      await assertScopedSuspensionRead(restrictedRoot);
       expect((await pool.query(`select rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
         rolinherit, rolbypassrls from pg_roles where rolname = $1`, [role])).rows).toEqual([
         { rolcanlogin: true, rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolinherit: false, rolbypassrls: false }
