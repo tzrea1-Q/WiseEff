@@ -301,6 +301,12 @@ export async function settleQualityRoute(page: Page, routePath: string, options:
 
   if (["/parameter-admin", "/parameter-admin/specs", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping"].includes(routePath.split("?")[0])) {
     await expect(page.getByTestId("organization-specs-readiness")).toHaveAttribute("data-state", /^(ready|error)$/, { timeout });
+    // The identity-mapping count/redirect settles independently of the catalog
+    // reads. Its ready marker can still leave the measured workbench a skeleton.
+    await expect(page.getByRole("region", { name: "参数定义目录", exact: true }))
+      .toHaveAttribute("data-catalog-state", /^(ready|empty)$/, { timeout });
+    await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
+    return;
   }
 
   if (/^\/parameter-admin\/modules(?:\/(?:queue|registry))?\/?$/.test(routePath.split("?")[0])) {

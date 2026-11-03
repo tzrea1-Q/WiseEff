@@ -85,6 +85,14 @@ Subject registration 状态机为 `active -> retired -> active`。retirement：
 
 restore 复用稳定的 Subject registration ID 与 Subject placement ID。目录域不提供 Subject registration 或 Subject placement hard-delete，即使该注册从未使用也一样。若其它领域支持整个 Organization 的抹除，应服从其独立 retention/audit 合同，本决策不授予该操作。
 
+整份 DTS 源码编辑与参数的纳管资格相互独立。合法的 Project DTS 可以包含未知属性，也可以包含 Organization registration、当前 Catalog subject、必需的所有者主体/登记或当前 Definition 已停用的属性。经过授权的源码修订允许修改、删除或移动这些内容；参数同步要求主体和登记为 active、必需的所有者有效，当前 Definition 的生命周期为 `active` 或 `deprecated`，其中 `deprecated` 继续纳管。被排除的既有 Binding 保留原历史值及其精确 source pin；源码请求冻结并审计排除依据，不伪造新参数值，也不因此阻止源码编辑。完整文件仍须通过语法、精确归属、敏感节点授权、源码审核、并发与审计校验。
+
+保留历史不等于当前参数投影。当前列表、比较、导入候选与默认参数导出要求治理状态有效，并排除具有精确可信暂停证据的当前值。普通有效 Binding 保留原有精确 pin 读取和校验规则，不因无关配置或文件产生较新版本就成为暂停项；精确历史读取仍然可用。restore 只恢复 Binding 的纳管资格，不会暴露暂停历史值，也不会把旧值写回 DTS。下一次经过授权的源码修订，以之前已批准的排除记录为连续性证据，从最新生效源码重新同步同一个 Binding。属性仍不存在时继续保留历史，直到对应源码重新出现。
+
+相邻的单参数/批量修改、成员添加/移除、JSON 纳管和快照创建/恢复，仅在精确身份及历史 pin 有之前已批准的排除记录作为依据时保留暂停 Binding。这些操作继续处理源码，但不同步暂停项；重新纳管由整份源码保存负责。没有证据解释的过期 pin 仍须拒绝。暂停属性迁移后移除原成员时，若 Binding 未列入成员的纳管删除清单，仍须保留其内部 owner 可发现性。
+
+批准暂停时，为每个 Binding 建立独立、不可变的回执及审计，仅保存该 Binding 的精确身份、生效配置和证明摘要。定义的破坏性擦除仍须单独授权：删除 X 可以清理 X 的回执以及与 Y 共享的源码请求，但必须保留 Y 的独立暂停证据。Y 随后可以按正常整份源码授权和纳管资格规则重新同步，无须保留 X 的内容。该证据只证明连续性，不授予额外权限，也不能用一般性的过期 pin 豁免替代。
+
 Catalog subject root 本身没有独立的当前生命周期；其当前状态只来自 `catalog_state.current_catalog_release_id` 选中的 Catalog Release membership。当该 membership 为 `retired` 时，新的显式 registration、自动 matching 与自动 registration 全部被阻止。既有 active 或 retired Subject registration、其恰有一个的 placement、Definition、Binding、Project value、observation、release membership 与 history 都保留且可寻址；retirement 不会伪造 Organization deletion 或替代身份。
 
 后续 Catalog Release 可以用同一个稳定 Catalog subject ID 与 canonical key 的 `active` membership 恢复该 subject。Organization 的既有使用复用同一个稳定 Subject registration ID 与 Subject placement ID。若该 Subject registration 已被 Organization 独立 retired，Parameter observation 仍不得自动恢复它；它继续是 Review Queue 决策。

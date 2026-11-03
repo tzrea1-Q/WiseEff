@@ -49,6 +49,7 @@ import { rethrowSourceTransactionError } from "./sourceVersion";
 import { withCanonicalSourceAttemptTransaction } from "./canonicalSourceAttemptTransaction";
 import { provePrivateSharedConversion } from "./sharedConversion";
 import type { ConfigSetRole } from "./types";
+import { filterPreviouslySuspendedSourceBindings } from "./sourceManagedScope";
 
 export type MemberAdditionInput = {
   projectId: string; configSetId: string; candidateId?: string; fileId?: string;
@@ -421,7 +422,19 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     }
   }
   const cohort: Cohort[] = [], targets: SourceRevisionTarget[] = [], newProperties: NewProperty[] = [], originTransfers: Proof["originTransfers"] = [];
-  for (const entry of await loadSourceBindingCohortReadOnly(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId })) {
+  const scope = { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId };
+  const retainedCohort = await loadSourceBindingCohortReadOnly(tx, scope);
+  const currentCohort = await filterPreviouslySuspendedSourceBindings(tx, { ...scope, baseConfigRevisionId: revision.id },
+    retainedCohort);
+  const currentBindingIds = new Set(currentCohort.map(entry => entry.bindingId));
+  const suspendedProperties = new Set<string>();
+  for (const entry of retainedCohort) if (!currentBindingIds.has(entry.bindingId)) {
+    const pin = await loadOwnedProjectValueSourcePin(tx, { ...scope, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
+    if (pin?.format === "dts" && pin.logicalNodeId && typeof pin.locator.propertyName === "string") {
+      suspendedProperties.add(JSON.stringify([pin.logicalNodeId, pin.locator.propertyName]));
+    }
+  }
+  for (const entry of currentCohort) {
     const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
     if (!pin || pin.configRevisionId !== revision.id || pin.valueState !== "present" || !members.some((row) => row.fileId === pin.fileId && row.fileVersionId === pin.fileVersionId)) conflict("参数来源已变化，请重新预览。");
     const old = await readOwnedProjectValueIdentity(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
@@ -471,7 +484,8 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
       if (property.deleted || isStructuralPropertyKey(name)) continue;
       const member = afterMembers.find((row) => row.sourceName === property.sourceChain.at(-1)?.fileName);
       const definition = snapshot.getDefinition({ subjectId: CatalogSubjectId(subject.subjectId), propertyKey: PropertyKey(name) });
-      if (!member || definition.status !== "found" || cohort.some((entry) => entry.logicalNodeId === logical.logicalNodeId && entry.propertyName === name)) continue;
+      if (!member || definition.status !== "found" || suspendedProperties.has(JSON.stringify([logical.logicalNodeId, name]))
+        || cohort.some((entry) => entry.logicalNodeId === logical.logicalNodeId && entry.propertyName === name)) continue;
       const payload = rawTextToPayload(name, property.rawText);
       try{assertCanonicalValueConstraints(definition.definition.selectedRevision, payload, true);}catch(error){refuseSwitch(error,[{...nodeSource("目标声明不满足参数定义约束。",node.nodeLocator,name),projectCorrection:true}]);}
       newProperties.push({ fileId: member.fileId, logicalNodeId: logical.logicalNodeId, nodeLocator: node.nodeLocator, propertyName: name,

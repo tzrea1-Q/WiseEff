@@ -27,9 +27,10 @@ import { asValueClient, listObservedProperties, rawTextToPayload } from "../para
 import { casNodeEnablementSourceTip, deriveHistoryEventId, deriveProjectValueId, insertBindingHistoryEvent, insertProjectValue, loadBindingById, loadProjectValueById } from "../parameter-bindings/values/repositories";
 import type { ProjectValueKind } from "../parameter-bindings/values";
 import { requireApprovedParameterInvocation } from "../agent/approvedParameterInvocation";
-import { discoverCurrentSourceRevisionPins, discoverDeletedSourceRevisionPins, loadDeletedSourceAnchors, loadSourceBindingCohort, loadOwnedProjectValueSourcePin, isCurrentGovernedSourceValue,
+import { discoverCurrentSourceRevisionPins, discoverDeletedSourceRevisionPins, loadDeletedSourceAnchors, loadSourceBindingCohort, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin, isCurrentGovernedSourceValue,
   type CanonicalValueSourcePin, type CanonicalSourceBindingPin } from "../parameter-bindings/values";
 import type { ConfigSetRole } from "./types";
+import { filterPreviouslySuspendedSourceBindings } from "./sourceManagedScope";
 export type { CanonicalSourceBindingPin } from "../parameter-bindings/values";
 
 export type CanonicalSourceManifest = CanonicalValueSourcePin & {
@@ -75,16 +76,22 @@ export async function lockCanonicalSourceCohort(db: Queryable, source: Canonical
   const scope = { organizationId: source.organizationId,projectId: source.projectId,configSetId: source.configSetId };
   const before = await discoverCurrentSourceRevisionPins(db,scope);
   const deleted = await discoverDeletedSourceRevisionPins(db,scope);
-  if (new Set(before.map((pin) => pin.configRevisionId)).size > 1) {
-    throw new ApiError("CONFLICT", "Source cohort spans different historical revisions.", { reason: "mixed-source-revisions" });
-  }
-  if (before.some((pin) => pin.configRevisionId !== source.configRevisionId)) {
-    throw new ApiError("CONFLICT", "Source request base value is stale.", { reason: "stale-base-value" });
-  }
   await lockExactSourceRevisionsForProof(db,[source,...before,...deleted]);
   if (JSON.stringify(await discoverCurrentSourceRevisionPins(db,scope)) !== JSON.stringify(before)
     || JSON.stringify(await discoverDeletedSourceRevisionPins(db,scope)) !== JSON.stringify(deleted)) {
     throw new ApiError("CONFLICT", "Source cohort changed during lock acquisition.", { reason: "source-proof-busy" });
+  }
+  const included = await filterPreviouslySuspendedSourceBindings(db, { ...scope, baseConfigRevisionId: source.configRevisionId },
+    await loadSourceBindingCohortReadOnly(db, scope));
+  const pins = await Promise.all(included.map(entry => loadOwnedProjectValueSourcePin(db, {
+    ...scope, bindingId: entry.bindingId, projectValueId: entry.oldValueId,
+  })));
+  if (pins.some(pin => !pin)) throw new ApiError("CONFLICT", "Source cohort contains an unpinned Binding.");
+  if (new Set(pins.map((pin) => pin!.configRevisionId)).size > 1) {
+    throw new ApiError("CONFLICT", "Source cohort spans different historical revisions.", { reason: "mixed-source-revisions" });
+  }
+  if (pins.some((pin) => pin!.configRevisionId !== source.configRevisionId)) {
+    throw new ApiError("CONFLICT", "Source request base value is stale.", { reason: "stale-base-value" });
   }
 }
 
@@ -159,10 +166,13 @@ export async function recordCanonicalPermissionRefusal(
 }
 
 /** The caller holds config-set/member locks before locking this complete cohort. */
-export async function loadCanonicalSourceCohort(db: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+export async function loadCanonicalSourceCohort(db: Queryable, input: {
+  organizationId: string; projectId: string; configSetId: string; baseConfigRevisionId?: string;
+}) {
   const rows = await loadSourceBindingCohort(db,input);
   if (rows.some((row) => !row.sourcePinId || !row.locator || !row.valueDigest)) throw new ApiError("CONFLICT", "Source cohort contains an unpinned Binding.");
-  return rows;
+  return input.baseConfigRevisionId ? filterPreviouslySuspendedSourceBindings(db,
+    { ...input, baseConfigRevisionId: input.baseConfigRevisionId }, rows) : rows;
 }
 
 /** Owner-side read: IDs select immutable provenance, never source_ref or current file tips. */
@@ -494,7 +504,7 @@ export async function preparePinnedNodeEnablementSourceChange(
         && !(child.kind === "node" && child.refTarget && child.children.every((entry) => ["property", "delete-property"].includes(entry.kind) && entry.name === "status")));
       return value;
     });
-    const cohort = await loadCanonicalSourceCohort(db, scope);
+    const cohort = await loadCanonicalSourceCohort(db, { ...scope, baseConfigRevisionId: lock.baseConfigRevisionId });
     for (const binding of cohort) {
       const pinned = await loadCanonicalSourceSnapshot(db, objectStore, { ...scope, bindingId: binding.bindingId, projectValueId: binding.oldValueId });
       if (pinned.manifest.members.length !== source.members.length || pinned.manifest.members.some((member, index) => {
@@ -731,7 +741,8 @@ export async function preparePinnedSourceChange(
     !manifest.members.some((member) => canonicalSourceMemberMatchesCurrentFile(member, current)))) {
     throw new ApiError("CONFLICT", "Configuration membership or file versions changed; prepare from the current source.");
   }
-  const bindings = await loadCanonicalSourceCohort(db, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: manifest.configSetId });
+  const bindings = await loadCanonicalSourceCohort(db, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
+    configSetId: manifest.configSetId, baseConfigRevisionId: manifest.configRevisionId });
   const targetBinding = bindings.find((entry) => entry.bindingId === input.bindingId);
   if (!targetBinding || targetBinding.oldValueId !== input.expectedValueId || targetBinding.sourcePinId !== manifest.sourcePinId
     || (input.invocation.initiator === "agent" && (!approvedAgent

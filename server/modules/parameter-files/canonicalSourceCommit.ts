@@ -240,7 +240,8 @@ export async function commitCanonicalSourceRevision(
   await assertPinnedCanonicalSensitiveNodeWriteAllowed(db, auth, manifest, security, "review");
   const current = await db.query<CanonicalSourceCurrentMember>(
     `select id,current_version_id,config_set_role,config_set_sort_order,format from project_parameter_files where config_set_id=$1 order by id for update nowait`, [manifest.configSetId]);
-  const cohort = await loadCanonicalSourceCohort(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId: manifest.configSetId });
+  const cohort = await loadCanonicalSourceCohort(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,
+    configSetId: manifest.configSetId,baseConfigRevisionId: manifest.configRevisionId });
   const request = await readRequest(true);
   if (!request) conflict("Source request disappeared.");
   if (request.status === "approved") {

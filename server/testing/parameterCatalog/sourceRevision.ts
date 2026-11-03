@@ -1,10 +1,14 @@
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { compileCatalogRelease } from "../../modules/catalog-kernel/compiler";
-import { validCatalogReleaseBundle } from "../../modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { refreshAuthoritativeSource, validCatalogReleaseBundle } from "../../modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import type { CatalogReleaseBundle } from "../../modules/catalog-kernel/compiler/types";
 import { jsonCatalogReleaseSource, type CatalogSnapshot } from "../../modules/catalog-kernel/interface";
 import { installPublishedRelease } from "../../modules/catalog-kernel/install/installer";
 import { CURRENT_POINTER_LOCK_KEY } from "../../modules/catalog-kernel/install/lockProtocol";
 import { CatalogCommitInjectedFailure } from "./failureInjection";
+import { CatalogArtifactId } from "../../modules/parameter-catalog-contract";
+import { encodeBundleBytes } from "../../modules/catalog-publication/builder/bundleCodec";
+import { persistArtifact } from "../../modules/catalog-publication/persistence/store";
 
 /** Advance the driver fixture through its real compiler and publication owner. */
 export async function advanceSourceRevisionCatalogFixture(db: Database, current: CatalogSnapshot["release"]) {
@@ -18,6 +22,75 @@ export async function advanceSourceRevisionCatalogFixture(db: Database, current:
     expectedTargetDigest: compiled.value.aggregateDigest
   });
   return installed.ok ? { ok: true as const } : { ok: false as const, reason: installed.error.kind };
+}
+
+type SourceRevisionLifecycleFixtureInput = (
+  { target: "subject"; lifecycle: "active" | "retired" } | { target: "definition"; lifecycle: "active" | "deprecated" | "retired" }
+) & { previousBundle?: CatalogReleaseBundle; includeManagedSibling?: boolean; retainArtifactForErasure?: boolean };
+
+export function sourceRevisionLifecycleFixtureBundle(current: CatalogSnapshot["release"], input: SourceRevisionLifecycleFixtureInput): CatalogReleaseBundle {
+  const initial = validCatalogReleaseBundle();
+  const history = input.previousBundle?.releases ?? [initial.releases[0]!];
+  const predecessor = history.at(-1)!;
+  const next = structuredClone(predecessor) as Parameters<typeof refreshAuthoritativeSource>[0];
+  const sequence = predecessor.manifest.release.sequence + 1;
+  next.manifest.release = { ...next.manifest.release, id: `crel_acme_${sequence}`, sequence,
+    version: `1.${sequence - 1}.0`, publishedAt: `2026-09-${String(sequence).padStart(2, "0")}T00:00:00Z`,
+    predecessor: { id: current.id, digest: current.digest } };
+  for (const document of next.documents) {
+    if (input.target === "subject" && document.kind === "subject") {
+      document.content.lifecycle = input.lifecycle;
+      document.content.tombstone = input.lifecycle === "retired" ? { reason: "Source management fixture",
+        withdrawnByReleaseId: next.manifest.release.id, previousSelector: document.content.selector.value } : null;
+    }
+    if (input.target === "subject" && document.kind === "alias") {
+      document.content.lifecycle = input.lifecycle;
+      document.content.tombstone = input.lifecycle === "retired" ? { reason: "Source management fixture",
+        withdrawnByReleaseId: next.manifest.release.id, previousSelector: document.content.normalizedSelector } : null;
+    }
+    if (input.target === "definition" && document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max"
+      && document.content.revision.lifecycle !== input.lifecycle) {
+      const revisionNumber = document.content.revision.number + 1;
+      document.content.revision = { ...document.content.revision, id: `drev_acme_power_iin_max_${revisionNumber}`,
+        number: revisionNumber, lifecycle: input.lifecycle };
+      if (input.lifecycle === "deprecated") document.content.revision.successorDefinitionId = "pdef_acme_power_iin_min";
+      else delete document.content.revision.successorDefinitionId;
+    }
+  }
+  if (input.includeManagedSibling || input.lifecycle === "deprecated") {
+    const definition = next.documents.find(document => document.kind === "definition");
+    if (!definition || definition.kind !== "definition") throw new Error("Source revision fixture Definition unavailable");
+    const sibling = structuredClone(definition);
+    sibling.content.id = "pdef_acme_power_iin_min";
+    sibling.content.propertyKey = "iin_min";
+    sibling.content.revision = { ...sibling.content.revision, id: "drev_acme_power_iin_min_1", number: 1, lifecycle: "active",
+      displayName: "Minimum input current", matching: { ...sibling.content.revision.matching, sourceProperty: "iin_min" } };
+    delete sibling.content.revision.successorDefinitionId;
+    next.documents.push(sibling);
+  }
+  refreshAuthoritativeSource(next);
+  return { schemaVersion: initial.schemaVersion,
+    targetReleaseId: next.manifest.release.id, releases: [...history, next] };
+}
+
+/** Publish a lifecycle successor while preserving the fixture's stable identities and release history. */
+export async function publishSourceRevisionLifecycleFixture(db: Database, current: CatalogSnapshot["release"], input: SourceRevisionLifecycleFixtureInput) {
+  const pool = getRootPostgresPool(db);
+  if (!pool) throw new Error("Source revision Catalog fixture requires native PostgreSQL");
+  const bundle = sourceRevisionLifecycleFixtureBundle(current, input);
+  const compiled = compileCatalogRelease(bundle);
+  if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+  const installed = await installPublishedRelease(pool, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
+    expectedCurrent: current, expectedTargetDigest: compiled.value.aggregateDigest });
+  if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+  if (input.retainArtifactForErasure) {
+    const stored = await persistArtifact(db, { id: CatalogArtifactId(`cart_source_revision_${compiled.value.release.id}`),
+      artifactDigest: compiled.value.aggregateDigest, artifactBytes: encodeBundleBytes(bundle), sourceKind: "repository-bundle",
+      targetReleaseId: compiled.value.release.id, targetReleaseDigest: compiled.value.release.digest,
+      predecessorReleaseId: current.id, predecessorReleaseDigest: current.digest, toolchain: bundle.releases.at(-1)!.manifest.toolchain });
+    if (!stored.ok) throw new Error(JSON.stringify(stored.error));
+  }
+  return { bundle, release: compiled.value.release };
 }
 
 export async function trySourceRevisionPublicationLock(observer: Queryable): Promise<boolean> {

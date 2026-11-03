@@ -64,6 +64,8 @@ const allowedCatalogIdentifiers = new Set([
   // #1305: read-only exact logical-anchor/effective-property agreement.
   "source_origin_matches",
   "source_anchor_restoration_matches",
+  // Scoped owner lookup; private suspension receipts remain inaccessible.
+  "find_source_binding_suspension",
 ]);
 
 const snapshotRelease = {

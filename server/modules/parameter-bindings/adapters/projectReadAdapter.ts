@@ -21,6 +21,7 @@ import type { Binding } from "../binding";
 import type { BindingRow } from "../binding/repositories";
 import { readProtectedReference } from "./readAdapter";
 import type { ProtectedReferenceDto } from "./dto";
+import { currentManagedSourceBindingPredicate } from "../queries/currentManagedBindings";
 
 export type ProjectProtectedParameter = {
   readonly pin: ProtectedReferenceDto;
@@ -60,8 +61,9 @@ export async function readProjectProtectedParameters(
   const listed = await pool.query<BindingRow>(
     `select id, organization_id, catalog_release_id, project_id, logical_node_id,
             registration_id, subject_id, definition_id, effective_revision_id, current_value_id
-       from parameter_catalog.current_project_parameter_bindings
+       from parameter_catalog.current_project_parameter_bindings binding
       where organization_id = $1 and project_id = $2
+        and ${currentManagedSourceBindingPredicate("binding")}
       order by id`,
     [parameterOrganizationId(auth), projectId]
   );

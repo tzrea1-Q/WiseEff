@@ -452,7 +452,11 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
       const input = { projectId: "project-src-occ-0151",bindingId: "binding-src-occ-0151" };
       try {
         const before = (await db.query("select * from dts_config_revisions order by id")).rows;
+        // A different file head does not suspend this exact owned pin. Both
+        // default and historical exports validate provenance before object reads.
         await expect(exportCanonicalBindingSource(db,store,auth,input))
+          .rejects.toMatchObject({ code: "CONFLICT",details: { reason: "source-proof-invalid" } });
+        await expect(exportCanonicalBindingSource(db,store,auth,{ ...input,projectValueId: "value-src-occ-0151" }))
           .rejects.toMatchObject({ code: "CONFLICT",details: { reason: "source-proof-invalid" } });
         await expect(verifyCanonicalSourceReimport(db,store,auth,{ ...input,source: { currentValueId: "value-src-occ-0151" } }))
           .rejects.toMatchObject({ code: "CONFLICT",details: { reason: "source-proof-invalid" } });

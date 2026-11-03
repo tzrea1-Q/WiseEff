@@ -82,6 +82,7 @@ const catalogInventory: readonly (readonly [string, string, "delete" | "detach" 
   ["canonical-history", "Canonical Binding 历史", "delete"],
   ["source-occurrences", "参数来源身份", "delete"],
   ["source-pins", "参数值来源钉住记录", "delete"],
+  ["source-suspensions", "参数来源暂停凭据", "delete"],
   ["member-tombstones", "已移除配置成员历史", "delete"],
   ["observations", "参数发现证据", "delete"],
   ["observation-matches", "参数识别结果", "delete"],

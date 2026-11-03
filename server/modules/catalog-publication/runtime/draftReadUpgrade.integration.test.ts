@@ -15,7 +15,7 @@ import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "./provi
 describe("existing API LOGIN privilege refresh after a parameter schema upgrade", () => {
   it("adds immutable structure baselines to a populated organization without reprovisioning the API login", async () => {
     await withTempDatabase({ prefix: "structure_baseline_upgrade", migrate: false }, async ({ db, connectionString }) => {
-      await applyMigrations(db, migrationsDir, { before: "0326" });
+      await applyMigrations(db, migrationsDir, { before: "0327" });
       const token = `bu${randomBytes(5).toString("hex")}`;
       const login = await provisionPublicationRuntimeLogins(connectionString, { mode: "lab", runToken: token });
       const api = createPostgresDatabase(login.apiUrl);
