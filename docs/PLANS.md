@@ -18,6 +18,7 @@ WiseEff is PC-first. The [UI quality checklist](developer/ui-quality-checklist.m
 
 ## Current Active Plan
 
+- [Module structure transfer](exec-plans/active/2026-11-03-module-structure-transfer.md): accepted JSON export/edit/update and same-deployment organization copy; specification [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493) published with `ready-for-agent`; implementation pending.
 - [Organization management remediation](exec-plans/active/2026-10-24-organization-management-remediation.md): repair all 40 audited interface, workflow and authorization findings; implementation and candidate verification in progress.
 - [Shared UI contracts and verification feedback](exec-plans/active/2026-10-15-ui-contract-verification.md): #1187/#1188 freezes remaining consumers, current-main failure, provisional CI cohorts and one cumulative latency/compute budget; implementation and measured outcomes remain pending.
 - [Unified SearchField and fuzzy search](exec-plans/active/2026-09-16-unified-fuzzy-search.md): one SearchField primitive, a repo-native multi-field fuzzy core, explicit Search Profiles, and migration of every search input without replacing provider-backed or literal-find engines.
