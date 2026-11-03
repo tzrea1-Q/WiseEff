@@ -10,6 +10,7 @@ import { planSubjectPlacement } from "./subjects";
 import { planModuleCopy } from "./copy";
 import type { LifecycleChange } from "./lifecycle";
 import { validateChangedPaths } from "./pathBudget";
+import { listModuleDeletionReferences } from "../../parameters/repository";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance", "parentRef"] as const;
 
@@ -204,15 +205,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   }
   for (const change of subjectPlan.changes) if (change.field === "placement" && typeof change.after === "object" && change.after?.kind === "module" && deleted.has(moduleIds.get(change.after.moduleRef) ?? change.after.moduleRef))
     throw new ApiError("CONFLICT", "A placement cannot target a deleted module.");
-  const legacyImpact = deleted.size ? (await client.query<{ module_id: string; kind: string; id: string }>(`select m.id as module_id, refs.kind, refs.id
-    from parameter_modules m cross join lateral (
-      select 'definitions' as kind,id::text from public.parameter_definitions where parameter_module_id=m.id
-      union all select 'bindings',id::text from public.project_parameter_bindings where module_id=m.id
-      union all select 'project modules',id::text from public.project_modules where parameter_module_id=m.id or parent_id=m.id
-      union all select 'project files',id::text from public.project_parameter_files where module_hint=m.id
-      union all select 'driver registrations',id::text from public.driver_registrations where default_business_category_module_id=m.id
-      union all select 'driver placements',id::text from public.driver_registration_placements where driver_group_module_id=m.id or default_business_category_module_id=m.id
-    ) refs where m.organization_id=$1 and m.id=any($2::text[]) order by 1,2,3`, [organizationId, [...deleted]])).rows : [];
+  const legacyImpact = deleted.size ? await listModuleDeletionReferences(client, organizationId, [...deleted]) : [];
   for (const id of deleted) changes.push({ moduleId: id, field: "legacyImpact", before: legacyImpact.filter(item => item.module_id === id).length, after: null });
   for (const id of deleted) { parents.delete(id); namesById.delete(id); }
   const validated = new Set<string>();
