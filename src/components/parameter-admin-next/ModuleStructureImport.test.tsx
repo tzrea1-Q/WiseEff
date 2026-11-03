@@ -45,3 +45,18 @@ it("reports a no-op receipt", async () => {
   await user.click(screen.getByRole("button", { name: "确认提交" }));
   expect(await screen.findByRole("status")).toHaveTextContent("没有领域数据变更");
 });
+
+it("shows the full placement path, unset and affected projects", async () => {
+  const post = vi.fn().mockResolvedValue({ changes: [{ moduleId: "subject:driver", field: "placement",
+    before: { kind: "unset" }, after: { kind: "module", moduleRef: "child" } }], conflicts: [],
+    impact: [{ subjectId: "driver", projectId: "project-a" }], token: "preview" });
+  const user = userEvent.setup();
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify({ modules: [
+    { ref: "root", name: "电源", parentRef: null }, { ref: "child", name: "充电", parentRef: "root" },
+  ] })], "edit.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "预览" }));
+  expect(await screen.findByText(/未设置归属 → 电源 \/ 充电/)).toBeInTheDocument();
+  expect(screen.getByText(/主体 driver · 项目 project-a/)).toBeInTheDocument();
+});

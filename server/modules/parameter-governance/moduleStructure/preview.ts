@@ -5,6 +5,7 @@ import { assertTrustedInvocationMatchesScope, type TrustedInvocationContext, typ
 import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
 import type { z } from "zod";
 import { captureModuleStructure, MODULE_STRUCTURE_MAX_BYTES } from "./export";
+import { planSubjectPlacement } from "./subjects";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance"] as const;
 
@@ -47,10 +48,30 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     const base = subjectBaselines.get(subject.subjectId);
     if (!base || seenSubjects.has(subject.subjectId)) throw new ApiError("VALIDATION_FAILED", "Unknown or duplicate Subject.", { path: `subjects.${index}.subjectId` });
     seenSubjects.add(subject.subjectId);
-    for (const [field, value] of Object.entries(subject)) if (!unchangedSubset(value, base[field as keyof typeof base]))
+    for (const [field, value] of Object.entries(subject)) if (field !== "placement" && field !== "displayAlias" && !unchangedSubset(value, base[field as keyof typeof base]))
       throw new ApiError("VALIDATION_FAILED", "Subject changes are not supported.", { path: `subjects.${index}.${field}` });
   }
-  const allowedChoices = new Set(document.modules.flatMap(module => fields.map(field => `${module.ref}:${field}`)));
+  const subjectPlan = planSubjectPlacement(document.subjects, baseline.subjects, moduleStructureExportSchema.parse(current).subjects, resolutions);
+  const moduleIds = new Map(current.modules.map(module => [module.ref, module.sourceId]));
+  for (const change of subjectPlan.changes) if (change.field === "placement" && typeof change.after === "object" && change.after?.kind === "module" && !moduleIds.has(change.after.moduleRef))
+    throw new ApiError("CONFLICT", "Placement destination is unavailable.");
+  if (subjectPlan.changes.some(change => change.field === "placement" && typeof change.after === "object" && change.after?.kind === "unclassified")) {
+    const reserved = await client.query("select 1 from parameter_modules where organization_id=$1 and kind='unclassified' and parent_id is null and archived_at is null", [organizationId]);
+    if (!reserved.rowCount) throw new ApiError("CONFLICT", "Unclassified destination is unavailable.");
+  }
+  const subjectVersions = await client.query(`select r.subject_id,r.status,r.updated_at::text,p.id as placement_id,p.updated_at::text as placement_updated_at,s.owner_subject_id
+    from parameter_catalog.organization_subject_registrations r
+    join parameter_catalog.subject_placements p on p.id=r.current_placement_id and p.organization_id=r.organization_id
+    join parameter_catalog.catalog_subjects s on s.id=r.subject_id
+    where r.organization_id=$1 order by r.subject_id`, [organizationId]);
+  const impactedIds = [...new Set([...subjectPlan.changes, ...subjectPlan.conflicts].map(change => change.subjectId))];
+  const impact = impactedIds.length ? (await client.query<{ subjectId: string; projectId: string }>(`select distinct owner.subject_id as "subjectId", b.project_id as "projectId"
+    from parameter_catalog.organization_subject_registrations owner
+    join parameter_catalog.catalog_subjects s on s.id=owner.subject_id or s.owner_subject_id=owner.subject_id
+    join parameter_catalog.project_parameter_bindings b on b.organization_id=owner.organization_id and b.subject_id=s.id
+    where owner.organization_id=$1 and owner.subject_id=any($2::text[]) order by 1,2`, [organizationId, impactedIds])).rows : [];
+  const allowedChoices = new Set([...document.modules.flatMap(module => fields.map(field => `${module.ref}:${field}`)),
+    ...document.subjects.flatMap(subject => ["placement", "displayAlias"].map(field => `subject:${subject.subjectId}:${field}`))]);
   for (const key of Object.keys(resolutions)) if (!allowedChoices.has(key)) throw new ApiError("VALIDATION_FAILED", "Unknown conflict choice.", { path: `resolutions.${key}` });
   for (const [index, module] of document.modules.entries()) {
     if (seen.has(module.ref) || seen.has(`id:${module.sourceId}`)) throw new ApiError("VALIDATION_FAILED", "Duplicate module reference.", { path: `modules.${index}.ref` });
@@ -85,15 +106,17 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   }
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
     roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
-  const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows };
-  return { changes, conflicts, token: createHash("sha256").update(stable(evidence)).digest("hex") };
+  const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, subjectVersions: subjectVersions.rows, impact };
+  return { changes: [...changes, ...subjectPlan.changes.map(({ subjectId, ...change }) => ({ moduleId: `subject:${subjectId}`, ...change }))],
+    conflicts: [...conflicts, ...subjectPlan.conflicts.map(({ subjectId, ...conflict }) => ({ moduleId: `subject:${subjectId}`, ...conflict }))],
+    subjectChanges: subjectPlan.changes, moduleIds, impact, token: createHash("sha256").update(stable(evidence)).digest("hex") };
 }
 
 export async function previewModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
   assertTrustedInvocationMatchesScope(invocation.principal, invocation, organizationId, "module structure preview");
   const client = await pool.connect();
-  try { await client.query("begin isolation level repeatable read read only"); const plan = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit"); return plan; }
+  try { await client.query("begin isolation level repeatable read read only"); const { subjectChanges: _subjectChanges, moduleIds: _moduleIds, ...plan } = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit"); return plan; }
   catch (error) { await client.query("rollback").catch(() => undefined); throw error; }
   finally { client.release(); }
 }
