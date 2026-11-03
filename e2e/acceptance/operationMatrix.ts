@@ -18,6 +18,9 @@ export type AcceptanceOperation = {
 
 export const acceptanceOperations: AcceptanceOperation[] = [
   { id: "MODULE-STRUCTURE-DELETE-001", priority: "P1", area: "parameters", coverage: "automated", route: "/parameter-admin/modules", roles: ["Org Admin"], action: "Review and retry a module deletion after moving its child.", acceptanceIds: ["MODULE-STRUCTURE-DELETE-001"], specFiles: ["e2e/acceptance/module-structure-transfer.acceptance.spec.ts"], assertions: ["ui", "api", "db", "screenshot"] },
+  { id: "MODULE-STRUCTURE-COPY-001", priority: "P1", area: "parameters", coverage: "automated",
+    route: "/parameter-admin/modules", roles: ["Org Admin"], action: "Confirm reuse and creation when copying modules into a nonempty organization.",
+    acceptanceIds: ["MODULE-STRUCTURE-COPY-001"], specFiles: ["e2e/acceptance/module-structure-transfer.acceptance.spec.ts"], assertions: ["ui", "api", "db", "screenshot"] },
   { id: "MODULE-STRUCTURE-RECOGNITION-001", priority: "P1", area: "parameters", coverage: "automated",
     route: "/parameter-admin/modules", roles: ["Org Admin"], action: "Validate, review and reset a recognition override.",
     acceptanceIds: ["MODULE-STRUCTURE-RECOGNITION-001"], specFiles: ["e2e/acceptance/module-structure-transfer.acceptance.spec.ts"], assertions: ["ui", "api", "db", "screenshot"] },

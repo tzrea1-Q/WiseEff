@@ -40,11 +40,14 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     if (existing.request_fingerprint !== fingerprint) throw new ApiError("CONFLICT", "Idempotency key was already used for different content.");
     if (existing.state === "committed" && existing.result_ref) { await client.query("commit"); return JSON.parse(existing.result_ref); }
     // FK writers take key-share locks; wait for them before reading deletion impact and block new references until commit.
-    if (input.document.modules.some(module => module.operation === "delete")) await client.query(
+    if (input.mode === "update" && input.document.modules.some(module => module.operation === "delete")) await client.query(
       "select id from parameter_modules where organization_id=$1 order by id for update", [organizationId]);
-    const plan = await planModuleStructure(client, organizationId, invocation, { mode: input.mode, document: input.document, resolutions: input.resolutions });
+    const plan = await planModuleStructure(client, organizationId, invocation, { mode: input.mode, document: input.document, resolutions: input.resolutions, mappings: input.mappings });
     if (plan.token !== input.token) throw new ApiError("CONFLICT", "Preview is stale; review the current state again.");
     if (plan.conflicts.length) throw new ApiError("CONFLICT", "Resolve all conflicts before applying.");
+    for (const mapping of plan.copyMappings) await client.query(`insert into parameter_catalog.module_structure_created_refs
+      (organization_id,source_organization_id,export_id,package_ref,module_id,initial_snapshot) values ($1,$2,$3,$4,$5,$6)`,
+      [organizationId, input.document.source.organizationId, input.document.source.exportId, mapping.ref, mapping.moduleId, JSON.stringify(mapping.snapshot)]);
     const createdRefs = new Set(plan.changes.filter(change => change.field === "create").map(change => change.moduleId));
     const changes = new Map<string, Record<string, unknown>>();
     for (const change of plan.changes) if (!createdRefs.has(change.moduleId) && change.field !== "parentRef" && change.field !== "placement" && change.field !== "displayAlias" && change.field !== "delete" && change.field !== "legacyImpact") changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
@@ -66,13 +69,13 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
         [organizationId, input.document.source.organizationId, input.document.source.exportId, module.ref, created.id, JSON.stringify({ ...module,
           name: module.name?.trim(), description: module.description?.trim(), scope: module.scope?.trim() })]);
     }
-    for (const module of input.document.modules) {
+    for (const module of input.document.modules.filter(module => input.mode !== "copy" || module.operation !== "delete")) {
       const id = plan.moduleIds.get(module.ref)!;
       if (plan.deleted.has(id)) continue;
       const originalId = plan.parents.has(id) ? id : module.ref;
       const parent = plan.parents.get(originalId) ?? null;
       const parentId = parent ? plan.moduleIds.get(parent) ?? parent : null;
-      if (structural.has(id) || !module.sourceId && plan.changes.some(change => change.field === "create" && change.moduleId === module.ref)) {
+      if (structural.has(id) || plan.changes.some(change => change.field === "create" && change.moduleId === module.ref)) {
         await client.query("update parameter_modules set parent_id=$3 where organization_id=$1 and id=$2", [organizationId, id, parentId]);
         const values = changes.get(id) ?? {};
         if (values.name === undefined) values.name = plan.namesById.get(originalId);
@@ -96,7 +99,7 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     for (const row of deletions.rows) await deleteParameterModule(client as unknown as Queryable, { organizationId, moduleId: row.id });
     const changedModules = new Set(plan.changes.filter(change => !change.moduleId.startsWith("subject:")).map(change => change.moduleId)).size;
     const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules, changedFields: plan.changes.length + plan.recognitionChanges.length };
-    if (receipt.changedFields) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
+    if (receipt.changedFields || plan.copyMappings.length) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
       action: "module-structure-update", severity: "Medium", projectId: null, targetType: "organization", targetId: organizationId,
       metadata: { receiptId: receipt.id, reason: input.reason, exportId: input.document.source.exportId,
         sourceOrganizationId: input.document.source.organizationId, catalogReleaseId: input.document.source.catalogReleaseId,

@@ -37,7 +37,8 @@ export const moduleStructureUpdateDocumentSchema = moduleStructureExportSchema.e
   modules: z.array(moduleUpdate).max(10_000), subjects: z.array(subjectUpdate).max(10_000),
 });
 const resolutions = z.record(z.string(), z.enum(["current", "file"]));
-export const moduleStructurePreviewRequestSchema = z.object({ mode: z.literal("update").default("update"), document: moduleStructureUpdateDocumentSchema, resolutions }).strict();
+export const moduleStructurePreviewRequestSchema = z.object({ mode: z.enum(["update", "copy"]).default("update"), document: moduleStructureUpdateDocumentSchema, resolutions,
+  mappings: z.record(z.string(), z.string().min(1)).default({}) }).strict();
 export const moduleStructureApplyRequestSchema = moduleStructurePreviewRequestSchema.extend({ token: z.string().regex(/^[a-f0-9]{64}$/),
   idempotencyKey: z.string().trim().min(1).max(200), reason: z.string().trim().min(1).max(1000) }).strict();
 const fieldValue = z.union([z.string(), z.number(), z.null(), z.array(z.string()),
@@ -49,6 +50,8 @@ export const moduleStructurePreviewResponseSchema = z.object({
   changes: z.array(z.object({ moduleId: z.string(), field: z.string(), before: fieldValue, after: fieldValue }).strict()),
   conflicts: z.array(z.object({ key: z.string(), moduleId: z.string(), field: z.string(), baseline: fieldValue, file: fieldValue, current: fieldValue }).strict()),
   impact: z.array(z.object({ subjectId: z.string(), projectId: z.string() }).strict()),
+  mappings: z.array(z.object({ ref: z.string(), selected: z.string().nullable(), frozen: z.boolean(), candidates: z.array(z.object({ id: z.string(), name: z.string(), suggested: z.boolean() }).strict()) }).strict()).optional(),
+  targets: z.array(z.object({ id: z.string(), name: z.string() }).strict()).optional(),
   token: z.string(),
 }).strict();
 export const moduleStructureReceiptSchema = z.object({ id: z.string(), organizationId: z.string(), changedModules: z.number().int(), changedFields: z.number().int() }).strict();
