@@ -88595,6 +88595,14 @@
                         }
                       },
                       "additionalProperties": false
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "register",
+                        "retire",
+                        "restore"
+                      ]
                     }
                   },
                   "required": [
@@ -90539,11 +90547,22 @@
                 },
                 "projectId": {
                   "type": "string"
+                },
+                "bindingCount": {
+                  "type": "number"
+                },
+                "definitions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
                 "subjectId",
-                "projectId"
+                "projectId",
+                "bindingCount",
+                "definitions"
               ],
               "additionalProperties": false
             }
@@ -90985,6 +91004,14 @@
                         }
                       },
                       "additionalProperties": false
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "register",
+                        "retire",
+                        "restore"
+                      ]
                     }
                   },
                   "required": [

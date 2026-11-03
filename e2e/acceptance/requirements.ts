@@ -8,6 +8,8 @@ export type AcceptanceRequirement = {
 };
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
+  { id: "MODULE-STRUCTURE-LIFECYCLE-001", workflow: "C", required: true,
+    title: "An administrator reviews batch registration, retirement and restoration of Catalog roots." },
   { id: "MODULE-STRUCTURE-DELETE-001", workflow: "C", required: true, title: "An administrator reviews and retries an explicit module deletion with a moved child." },
   { id: "MODULE-STRUCTURE-COPY-001", workflow: "C", required: true,
     title: "An administrator confirms module reuse and creation when copying into a nonempty organization." },

@@ -86,6 +86,77 @@ describe("module structure export", () => {
     expect(after.rows).toEqual(before.rows);
   });
 
+  it("registers an explicitly requested Catalog root through the transfer", async () => {
+    const org = "lifecycle-export-org";
+    const user = "lifecycle-export-admin";
+    const guestUser = "lifecycle-export-guest";
+    await db.query("insert into organizations(id,name) values ($1,'Lifecycle')", [org]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Guest','Guest',true)", [guestUser, org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('lifecycle-guest-role',$1,$2,'guest')", [guestUser, org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('lifecycle-export-role',$1,$2,'admin')", [user, org]);
+    await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('lifecycle-export-root',$1,'Root','lifecycle-export-root','business','curated')", [org]);
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    const subject = await db.query<{ id: string }>(`select s.id from parameter_catalog.catalog_subjects s
+      join parameter_catalog.catalog_release_subjects rs on rs.subject_id=s.id
+      join parameter_catalog.catalog_state cs on cs.current_catalog_release_id=rs.release_id
+      where s.owner_subject_id is null and s.kind='driver' and rs.lifecycle='active' order by s.id limit 1`);
+    const subjectId = subject.rows[0]!.id;
+    const edited = { ...document, subjects: [...document.subjects, { subjectId, operation: "register", placement: { kind: "module", moduleRef: "lifecycle-export-root" } }] };
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    expect(preview.body).toMatchObject({ changes: [expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })] });
+    const guest = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: guestUser, roles: [{ roleId: "guest", projectId: null }] }) } } });
+    const denied = await requestJson(guest, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "denied", reason: "Reviewed" }) });
+    expect(denied.status).toBe(403);
+    const applyBody = JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "register-root", reason: "Reviewed registration" });
+    const secondApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const [applied, simultaneous] = await Promise.all([app, secondApp].map(server => requestJson(server, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: applyBody })));
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect(simultaneous.status, simultaneous.bodyText).toBe(200);
+    expect(simultaneous.body).toEqual(applied.body);
+    const replay = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "register-root", reason: "Reviewed registration" }) });
+    expect(replay.body).toEqual(applied.body);
+    const duplicate = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(duplicate.status).toBe(409);
+    const next = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    expect(next.body).toMatchObject({ subjects: expect.arrayContaining([expect.objectContaining({ subjectId, state: "active", placement: { kind: "module", moduleRef: "lifecycle-export-root" } })]) });
+    const identity = (await db.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [org, subjectId])).rows[0]!.id;
+    for (const operation of ["retire", "restore"] as const) {
+      const current = structuredClone(next.body) as z.infer<typeof moduleStructureExportSchema>;
+      if (operation === "restore") {
+        const refreshed = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+        Object.assign(current, refreshed.body);
+      }
+      const root = current.subjects.find(row => row.subjectId === subjectId)!;
+      const lifecycleDocument = { ...current, subjects: current.subjects.map(row => row === root ? { ...row, operation } : row) };
+      const planned = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {} }) });
+      expect(planned.status, planned.bodyText).toBe(200);
+      if (operation === "retire") {
+        await db.query(`create function public.fail_lifecycle_audit() returns trigger language plpgsql as $$ begin if new.action='module-structure-update' then raise exception 'injected'; end if; return new; end $$`);
+        await db.query("create trigger fail_lifecycle_audit before insert on audit_events for each row execute function public.fail_lifecycle_audit()");
+        try {
+          const failed = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {}, token: (planned.body as { token: string }).token, idempotencyKey: "retire-failed", reason: "Reviewed lifecycle" }) });
+          expect(failed.status).toBe(500);
+          expect((await db.query("select status from parameter_catalog.organization_subject_registrations where id=$1", [identity])).rows[0]).toEqual({ status: "active" });
+        } finally {
+          await db.query("drop trigger fail_lifecycle_audit on audit_events");
+          await db.query("drop function public.fail_lifecycle_audit()");
+        }
+      }
+      const writes = operation === "retire" ? [app, secondApp] : [app];
+      const results = await Promise.all(writes.map((server, index) => requestJson(server, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {}, token: (planned.body as { token: string }).token, idempotencyKey: `${operation}-${index}`, reason: "Reviewed lifecycle" }) })));
+      expect(results.map(result => result.status).sort()).toEqual(operation === "retire" ? [200, 409] : [200]);
+      const stored = await db.query("select id,status from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [org, subjectId]);
+      expect(stored.rows).toEqual([{ id: identity, status: operation === "retire" ? "retired" : "active" }]);
+    }
+  });
+
   it("requires explicit disposition of children before deleting a populated module", async () => {
     const org = "delete-tree-org", user = "delete-tree-admin";
     await db.query("insert into organizations(id,name) values ($1,'Delete tree')", [org]);
@@ -846,6 +917,11 @@ describe("module structure export", () => {
     releaseDocument.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!.override!.compatibles = ["acme,release-race"];
     const releasePreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: releaseDocument, resolutions: {} }) });
     expect(releasePreview.status, releasePreview.bodyText).toBe(200);
+    const lifecycleDocument = structuredClone(active.body) as z.infer<typeof moduleStructureExportSchema>;
+    const lifecycleRoot = lifecycleDocument.subjects.find(subject => subject.subjectId === "csub_acme_power")!;
+    Object.assign(lifecycleRoot, { operation: "retire" });
+    const lifecyclePreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {} }) });
+    expect(lifecyclePreview.status, lifecyclePreview.bodyText).toBe(200);
     const gate = await pool.connect();
     await gate.query("begin");
     await gate.query("select pg_advisory_xact_lock(688004000041::bigint)");
@@ -863,6 +939,15 @@ describe("module structure export", () => {
       await gate.query("commit");
       expect((await publication).ok).toBe(true);
       expect((await pending).status).toBe(409);
+      const staleLifecycle = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument,
+        resolutions: {}, token: (lifecyclePreview.body as { token: string }).token, idempotencyKey: "lifecycle-release-drift", reason: "Review" }) });
+      expect(staleLifecycle.status).toBe(409);
+      const refreshed = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: releaseDocument, resolutions: {} }) });
+      expect(refreshed.status, refreshed.bodyText).toBe(200);
+      const refreshedApply = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: releaseDocument,
+        resolutions: {}, token: (refreshed.body as { token: string }).token, idempotencyKey: "release-refreshed", reason: "Review" }) });
+      expect(refreshedApply.status, refreshedApply.bodyText).toBe(200);
+
     } finally { await gate.query("rollback"); gate.release(); await publication.catch(() => undefined); await pending?.catch(() => undefined); }
   });
 

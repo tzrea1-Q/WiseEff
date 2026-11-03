@@ -14,14 +14,14 @@ type Preview = {
   token: string;
   changes: { moduleId: string; field: string; before: unknown; after: unknown }[];
   conflicts: { key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }[];
-  impact?: { subjectId: string; projectId: string }[];
+  impact?: { subjectId: string; projectId: string; bindingCount: number; definitions: string[] }[];
   mappings?: { ref: string; selected: string | null; frozen: boolean; candidates: { id: string; name: string; suggested: boolean }[] }[];
   targets?: { id: string; name: string }[];
 };
 type Receipt = { id: string; organizationId: string; changedModules: number; changedFields: number };
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
 const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块", delete: "删除模块", legacyImpact: "将解除的遗留引用数", placement: "归属", displayAlias: "展示别名",
-  recognition: "识别规则", "recognition.mode": "识别模式", "recognition.compatibles": "兼容标识", "recognition.driverNature": "驱动性质",
+  state: "登记状态", recognition: "识别规则", "recognition.mode": "识别模式", "recognition.compatibles": "兼容标识", "recognition.driverNature": "驱动性质",
   "recognition.instanceCardinality": "实例基数", "recognition.nodeTypeName": "节点名称" };
 
 export function ModuleStructureImport({ apiClient, organizationId, canImport, onChanged }: {
@@ -111,7 +111,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
       <ModalDialog open={!discard} onDismiss={busy ? undefined : requestClose} className="submission-dialog param-admin-module-edit-dialog module-structure-import" describedBy>
         {({ titleId, descriptionId }) => <>
           <div className="submission-dialog-head"><div><h2 id={titleId}>导入模块结构</h2>
-            <p id={descriptionId}>更新当前组织结构，或将业务模块复制到当前目标组织。删除须明确处置子模块和主体归属；复制须确认每个模块的复用或新建选择。</p></div></div>
+            <p id={descriptionId}>更新当前组织结构，或复制业务模块到当前目标组织。删除须明确处置子模块和主体归属；复制须确认复用或新建。生命周期暂不能与删除或识别设置同时修改。</p></div></div>
           <div className="param-admin-module-edit-body">
             {!receipt ? <SelectControl ariaLabel="导入模式" value={mode} disabled={busy} options={[{ value: "update", label: "更新当前组织" }, { value: "copy", label: "复制到当前组织" }]} onValueChange={next => {
               setMode(next as "update" | "copy"); setMappings({}); setResolutions({}); setPreview(null);
@@ -138,7 +138,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
                 ]} onValueChange={choice => { if (!choice) return; const next = { ...mappings, [mapping.ref]: choice }; setMappings(next); void refresh(resolutions, next); }} />
               </div>)}</> : null}
               <h3>变更（{preview.changes.length}）</h3>
-              {preview.changes.length ? <ul>{preview.changes.map((change, index) => <li key={`${change.moduleId}:${change.field}:${index}`}>{moduleLabel(change.moduleId)} · {fieldLabels[change.field] ?? change.field}：{change.field === "parentRef" && typeof change.before === "string" ? moduleLabel(change.before) : displayValue(change.before)} → {change.field === "parentRef" && typeof change.after === "string" ? moduleLabel(change.after) : displayValue(change.after)}</li>)}</ul> : <p>没有领域数据变更。</p>}
+{preview.changes.length ? <ul>{preview.changes.map((change, index) => <li key={`${change.moduleId}:${change.field}:${index}`}>{moduleLabel(change.moduleId)} · {fieldLabels[change.field] ?? change.field}：{change.field === "parentRef" && typeof change.before === "string" ? moduleLabel(change.before) : displayValue(change.before)} → {change.field === "parentRef" && typeof change.after === "string" ? moduleLabel(change.after) : displayValue(change.after)}</li>)}</ul> : <p>没有领域数据变更。</p>}
               {preview.impact?.length ? <><h3>受影响项目</h3><ul>{preview.impact.map(item => <li key={`${item.subjectId}:${item.projectId}`}>主体 {item.subjectId} · 项目 {item.projectId}</li>)}</ul></> : null}
               <h3>待解决冲突（{preview.conflicts.length}）</h3>
               {preview.conflicts.filter(conflict => conflict.field !== "mapping").map(conflict => <div key={conflict.key}>

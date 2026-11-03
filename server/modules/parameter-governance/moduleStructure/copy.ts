@@ -94,7 +94,7 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
   const token = createHash("sha256").update(stable({ organizationId, actor, input, current, rows, saved })).digest("hex");
   const parents = new Map(rows.map(row => [row.id, row.parent_id])); const namesById = new Map(rows.map(row => [row.id, row.name]));
   const currentModules = new Map(current.modules.map(module => [module.sourceId, module]));
-  if (conflicts.length) return { changes, conflicts, subjectChanges: [], recognitionChanges: [], moduleIds, parents, namesById, deleted: new Set<string>(), impact: [], token, mappingSuggestions: suggestions, mappingTargets, copyMappings: [], currentCatalogReleaseId: current.source.catalogReleaseId };
+  if (conflicts.length) return { changes, conflicts, subjectChanges: [], recognitionChanges: [], lifecycle: [], moduleIds, parents, namesById, deleted: new Set<string>(), impact: [], token, mappingSuggestions: suggestions, mappingTargets, copyMappings: [], currentCatalogReleaseId: current.source.catalogReleaseId };
   const copyMappings: { ref: string; moduleId: string; snapshot: Input["document"]["modules"][number] }[] = [];
   for (const module of active) {
     const id = moduleIds.get(module.ref)!; const prior = savedByRef.get(module.ref); const target = currentModules.get(id);
@@ -131,5 +131,5 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
   }
   const siblingNames = new Set<string>();
   for (const [id, name] of namesById) { const key = stable([parents.get(id) ?? null, name]); if (siblingNames.has(key)) throw new ApiError("CONFLICT", "The resulting module names are not unique within their parent."); siblingNames.add(key); }
-  return { changes, conflicts, subjectChanges: [], recognitionChanges: [], moduleIds, parents, namesById, deleted: new Set<string>(), impact: [], token, mappingSuggestions: suggestions, mappingTargets, copyMappings, currentCatalogReleaseId: current.source.catalogReleaseId };
+  return { changes, conflicts, subjectChanges: [], recognitionChanges: [], lifecycle: [], moduleIds, parents, namesById, deleted: new Set<string>(), impact: [], token, mappingSuggestions: suggestions, mappingTargets, copyMappings, currentCatalogReleaseId: current.source.catalogReleaseId };
 }
