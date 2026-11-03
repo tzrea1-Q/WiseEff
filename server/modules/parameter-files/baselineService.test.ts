@@ -678,6 +678,7 @@ describe.skipIf(!databaseAvailable)("baseline service", () => {
       ];
       const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
         txCalls.push({ text, values });
+        if (text.includes("pg_advisory_xact_lock")) return { rows: [], rowCount: 0 };
         const rows = results.shift() ?? [];
         return { rows: rows as Row[], rowCount: rows.length };
       };

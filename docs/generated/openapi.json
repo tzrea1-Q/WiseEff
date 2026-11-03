@@ -88691,6 +88691,354 @@
                     },
                     {
                       "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unset"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unclassified"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "module"
+                                  ]
+                                },
+                                "moduleRef": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "moduleRef"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "reference"
+                                  ]
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "sourceId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "inherit",
+                            "override"
+                          ]
+                        },
+                        "override": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "effective": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "override",
+                        "effective"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "driver",
+                            "node-type"
+                          ]
+                        },
+                        "recognitionSubjectId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "overridden": {
+                          "type": "boolean"
+                        },
+                        "unmigratedRecognition": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "nodeTypeName",
+                        "driverNature",
+                        "instanceCardinality",
+                        "kind",
+                        "recognitionSubjectId",
+                        "overridden"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "nodeTypeName",
+                        "driverNature",
+                        "instanceCardinality"
+                      ],
+                      "additionalProperties": false
                     }
                   ]
                 },
@@ -88704,6 +89052,354 @@
                     },
                     {
                       "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unset"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unclassified"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "module"
+                                  ]
+                                },
+                                "moduleRef": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "moduleRef"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "reference"
+                                  ]
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "sourceId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "inherit",
+                            "override"
+                          ]
+                        },
+                        "override": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "effective": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "override",
+                        "effective"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "driver",
+                            "node-type"
+                          ]
+                        },
+                        "recognitionSubjectId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "overridden": {
+                          "type": "boolean"
+                        },
+                        "unmigratedRecognition": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "nodeTypeName",
+                        "driverNature",
+                        "instanceCardinality",
+                        "kind",
+                        "recognitionSubjectId",
+                        "overridden"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "nodeTypeName",
+                        "driverNature",
+                        "instanceCardinality"
+                      ],
+                      "additionalProperties": false
                     }
                   ]
                 }
@@ -88741,6 +89437,354 @@
                     },
                     {
                       "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unset"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unclassified"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "module"
+                                  ]
+                                },
+                                "moduleRef": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "moduleRef"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "reference"
+                                  ]
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "sourceId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "inherit",
+                            "override"
+                          ]
+                        },
+                        "override": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "effective": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "override",
+                        "effective"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "driver",
+                            "node-type"
+                          ]
+                        },
+                        "recognitionSubjectId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "overridden": {
+                          "type": "boolean"
+                        },
+                        "unmigratedRecognition": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "nodeTypeName",
+                        "driverNature",
+                        "instanceCardinality",
+                        "kind",
+                        "recognitionSubjectId",
+                        "overridden"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "nodeTypeName",
+                        "driverNature",
+                        "instanceCardinality"
+                      ],
+                      "additionalProperties": false
                     }
                   ]
                 },
@@ -88754,6 +89798,354 @@
                     },
                     {
                       "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unset"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unclassified"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "module"
+                                  ]
+                                },
+                                "moduleRef": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "moduleRef"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "reference"
+                                  ]
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "sourceId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "inherit",
+                            "override"
+                          ]
+                        },
+                        "override": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "effective": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "override",
+                        "effective"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "driver",
+                            "node-type"
+                          ]
+                        },
+                        "recognitionSubjectId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "overridden": {
+                          "type": "boolean"
+                        },
+                        "unmigratedRecognition": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "nodeTypeName",
+                        "driverNature",
+                        "instanceCardinality",
+                        "kind",
+                        "recognitionSubjectId",
+                        "overridden"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "nodeTypeName",
+                        "driverNature",
+                        "instanceCardinality"
+                      ],
+                      "additionalProperties": false
                     }
                   ]
                 },
@@ -88767,6 +90159,354 @@
                     },
                     {
                       "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unset"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unclassified"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "module"
+                                  ]
+                                },
+                                "moduleRef": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "moduleRef"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "reference"
+                                  ]
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "sourceId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "inherit",
+                            "override"
+                          ]
+                        },
+                        "override": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "effective": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "override",
+                        "effective"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "driver",
+                            "node-type"
+                          ]
+                        },
+                        "recognitionSubjectId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "overridden": {
+                          "type": "boolean"
+                        },
+                        "unmigratedRecognition": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "compatibles",
+                            "nodeTypeName",
+                            "driverNature",
+                            "instanceCardinality"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "nodeTypeName",
+                        "driverNature",
+                        "instanceCardinality",
+                        "kind",
+                        "recognitionSubjectId",
+                        "overridden"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "compatibles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nodeTypeName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "driverNature": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "physical-device",
+                            "logical-service"
+                          ]
+                        },
+                        "instanceCardinality": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "multiple",
+                            "singleton-per-project"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "compatibles",
+                        "nodeTypeName",
+                        "driverNature",
+                        "instanceCardinality"
+                      ],
+                      "additionalProperties": false
                     }
                   ]
                 }
@@ -88782,6 +90522,25 @@
               "additionalProperties": false
             }
           },
+          "impact": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "subjectId": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "subjectId",
+                "projectId"
+              ],
+              "additionalProperties": false
+            }
+          },
           "token": {
             "type": "string"
           }
@@ -88789,6 +90548,7 @@
         "required": [
           "changes",
           "conflicts",
+          "impact",
           "token"
         ],
         "additionalProperties": false,

@@ -12,8 +12,81 @@ const org = "org-chargelab";
 const endpoint = `/api/v2/organizations/${org}/module-structure/exports`;
 test.use({ viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "POST", path: endpoint, status: 503 },
+  { method: "POST", path: `/api/v2/organizations/${org}/module-structure/previews`, status: 400 },
   { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, status: 409 },
   { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, status: 503 }] });
+
+test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritance", async ({ page, request }, info) => {
+  // @acceptance MODULE-STRUCTURE-RECOGNITION-001
+  // @operation MODULE-STRUCTURE-RECOGNITION-001
+  await seedAcceptanceRoleMatrix();
+  const headers = authHeadersForRole("admin");
+  const base = `/api/v2/organizations/${org}/module-structure`;
+  const exportDocument = async () => {
+    const response = await request.post(apiRoute(endpoint), { headers, data: {} });
+    expect(response.status(), await response.text()).toBe(200);
+    return response.json();
+  };
+  const original = await exportDocument();
+  const subject = original.subjects.find((item: { kind: string; recognition: { mode: string } | null }) => item.kind === "driver" && item.recognition?.mode === "inherit");
+  expect(subject, "The isolated acceptance lane needs an inherited driver registration").toBeTruthy();
+  const subjectId = subject.subjectId as string;
+  const upload = async (document: unknown) => {
+    const dialog = page.getByRole("dialog", { name: "导入模块结构" });
+    await dialog.getByLabel("JSON 文件").setInputFiles({ name: "recognition.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+    return dialog;
+  };
+  try {
+    await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
+    await page.getByRole("button", { name: "导入结构" }).focus(); await page.keyboard.press("Enter");
+    const invalid = structuredClone(original);
+    const invalidRule = invalid.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId).recognition;
+    invalidRule.mode = "override"; invalidRule.override = { ...invalidRule.effective, compatibles: ["invalid selector!"] };
+    let dialog = await upload(invalid);
+    await dialog.getByRole("button", { name: "预览" }).click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await expect(dialog.getByText(/recognition.json/)).toBeVisible();
+    const edited = structuredClone(original);
+    const rule = edited.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId).recognition;
+    rule.mode = "override"; rule.override = { ...rule.effective, compatibles: ["wiseeff,recognition-1499"] };
+    dialog = await upload(edited);
+    await dialog.getByRole("button", { name: "预览" }).click();
+    await expect(dialog.getByText(/wiseeff,recognition-1499/)).toBeVisible();
+    await dialog.getByLabel("变更原因").fill("Review recognition override");
+    await dialog.getByRole("button", { name: "确认提交" }).focus(); await page.keyboard.press("Enter");
+    await expect(dialog.getByRole("status")).toContainText("回执");
+    await dialog.getByRole("button", { name: "关闭" }).click();
+    const reset = await exportDocument();
+    const resetRule = reset.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId).recognition;
+    expect(resetRule.mode).toBe("override");
+    resetRule.mode = "inherit"; resetRule.override = null;
+    await page.getByRole("button", { name: "导入结构" }).click(); dialog = await upload(reset);
+    await dialog.getByRole("button", { name: "预览" }).click();
+    await expect(dialog.getByText(/wiseeff,recognition-1499/)).toBeVisible();
+    await page.screenshot({ path: info.outputPath("recognition-reset-1440x900.png"), animations: "disabled" });
+    await dialog.getByLabel("变更原因").fill("Restore inherited recognition");
+    const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `${base}/applies` && response.status() === 200);
+    await dialog.getByRole("button", { name: "确认提交" }).focus(); await page.keyboard.press("Enter");
+    const response = await applied;
+    await expect(dialog.getByRole("status")).toContainText("回执");
+    const after = await exportDocument();
+    expect(after.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId).recognition.mode).toBe("inherit");
+    await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-RECOGNITION-001", title: "Review and reset recognition settings", status: "passed", page, testInfo: info,
+      artifacts: [info.outputPath("recognition-reset-1440x900.png")], api: [summarizeApiResponse(response, { method: "POST", path: `${base}/applies`, responseSummary: "Reviewed reset committed." })],
+      db: [{ table: "registration_recognition_rules", predicate: "selected inherited driver", observed: "Override removed", rowCount: 0 }], notes: "Real API at 1440×900; validation, override and reset were exercised by keyboard." });
+  } finally {
+    const current = await exportDocument();
+    const rule = current.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId)?.recognition;
+    if (rule?.mode === "override") {
+      rule.mode = "inherit"; rule.override = null;
+      const preview = await request.post(apiRoute(`${base}/previews`), { headers, data: { document: current, resolutions: {} } });
+      expect(preview.status(), await preview.text()).toBe(200);
+      const token = (await preview.json()).token;
+      const cleanup = await request.post(apiRoute(`${base}/applies`), { headers, data: { document: current, resolutions: {}, token, idempotencyKey: `recognition-cleanup-${Date.now()}`, reason: "Restore test state" } });
+      expect(cleanup.status(), await cleanup.text()).toBe(200);
+    }
+  }
+});
 
 test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", async ({ page, request }, info) => {
   // @acceptance MODULE-STRUCTURE-IMPORT-001

@@ -17,6 +17,9 @@ export type AcceptanceOperation = {
 };
 
 export const acceptanceOperations: AcceptanceOperation[] = [
+  { id: "MODULE-STRUCTURE-RECOGNITION-001", priority: "P1", area: "parameters", coverage: "automated",
+    route: "/parameter-admin/modules", roles: ["Org Admin"], action: "Validate, review and reset a recognition override.",
+    acceptanceIds: ["MODULE-STRUCTURE-RECOGNITION-001"], specFiles: ["e2e/acceptance/module-structure-transfer.acceptance.spec.ts"], assertions: ["ui", "api", "db", "screenshot"] },
   { id: "MODULE-STRUCTURE-IMPORT-001", priority: "P1", area: "parameters", coverage: "automated",
     route: "/parameter-admin/modules", roles: ["Org Admin"],
     action: "Upload an edited structure, resolve a conflict, refresh a stale preview, and confirm the resulting receipt.",

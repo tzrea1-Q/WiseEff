@@ -101,6 +101,9 @@ export function createApiParameterCatalogGovernanceRepository(
   client: ParameterCatalogClient
 ): ParameterCatalogGovernanceRepository {
   return {
+    exportModuleStructure: (organizationId) => client.exportModuleStructure(organizationId),
+    previewModuleStructure: (organizationId, body) => client.previewModuleStructure(organizationId, body),
+    applyModuleStructure: (organizationId, body) => client.applyModuleStructure(organizationId, body),
     listUnregisteredSubjects: (organizationId, source, releaseId) => client.listUnregisteredSubjects(organizationId, source, releaseId),
     createBatchRegistration: (organizationId, body, context) => client.createBatchRegistration(organizationId, body, idempotentContext(context)),
     listRegistrations: (organizationId, query) => client.listRegistrations(organizationId, query),

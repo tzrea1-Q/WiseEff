@@ -11,7 +11,7 @@ import { compileCatalogRelease } from "../catalog-kernel/compiler";
 import { installPublishedRelease } from "../catalog-kernel/install/installer";
 import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
-import { moduleStructureExportSchema } from "../contracts/dtoSchemas/moduleStructure";
+import { moduleStructureExportSchema, moduleStructurePreviewResponseSchema } from "../contracts/dtoSchemas/moduleStructure";
 import { createCatalogKernel } from "../catalog-kernel/interface";
 import { captureCurrentCatalogPin } from "../catalog-publication/runtime";
 import { createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
@@ -343,6 +343,8 @@ describe("module structure export", () => {
         expect.objectContaining({ subjectId: "csub_acme_charger", ownerSubjectId: "csub_acme_power", state: "retired", cascadeRetired: true,
           placement: null, recognition: expect.objectContaining({ mode: "inherit", override: null }) })]) });
     expect((result.body as { modules: unknown[] }).modules).toHaveLength(251);
+    expect((await api.query(`select module_id,via_owner_registration_id from parameter_catalog.registration_effective_module
+      where registration_id='export-child'`)).rows).toEqual([{ module_id: "export-root", via_owner_registration_id: "export-registration" }]);
     const retainedBefore = (await db.query(`select r.id,r.status,r.cascade_retired,r.current_placement_id,r.display_alias,
       rr.compatibles from parameter_catalog.organization_subject_registrations r left join registration_recognition_rules rr
       on rr.organization_id=r.organization_id and rr.registration_id=r.id where r.organization_id=$1 order by r.id`, [org])).rows;
@@ -354,6 +356,7 @@ describe("module structure export", () => {
     expect((await db.query(`select r.id,r.status,r.cascade_retired,r.current_placement_id,r.display_alias,
       rr.compatibles from parameter_catalog.organization_subject_registrations r left join registration_recognition_rules rr
       on rr.organization_id=r.organization_id and rr.registration_id=r.id where r.organization_id=$1 order by r.id`, [org])).rows).toEqual(retainedBefore);
+    {
     const reset = structuredClone(result.body) as z.infer<typeof moduleStructureExportSchema>;
     const recognition = reset.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!;
     recognition.mode = "inherit"; recognition.override = null;
@@ -420,6 +423,83 @@ describe("module structure export", () => {
       resolutions: { "csub_acme_power:recognition.compatibles": "file" }, token: (resolved.body as { token: string }).token,
       idempotencyKey: "recognition-stale", reason: "Review" }) });
     expect(stale.status).toBe(409);
+    }
+    {
+    const combinedExport = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const edited = structuredClone(combinedExport.body) as z.infer<typeof moduleStructureExportSchema>;
+    const previousDescription = edited.modules.find(module => module.sourceId === "export-root")!.description;
+    edited.modules.find(module => module.sourceId === "export-root")!.description = "Combined placement update";
+    const root = edited.subjects.find(subject => subject.subjectId === "csub_acme_power")!;
+    root.placement = { kind: "unset" };
+    root.displayAlias = null;
+    root.recognition!.override!.compatibles = ["acme,combined"];
+    const placementPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, {
+      method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(placementPreview.status, placementPreview.bodyText).toBe(200);
+    expect(() => moduleStructurePreviewResponseSchema.parse(placementPreview.body)).not.toThrow();
+    await db.query("update parameter_catalog.organization_subject_registrations set display_alias='Concurrent' where id='export-registration'");
+    const stalePlacement = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, {
+      method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (placementPreview.body as { token: string }).token,
+        idempotencyKey: "stale-retired-unset", reason: "Reorganize retired subject" }) });
+    expect(stalePlacement.status).toBe(409);
+    const conflict = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, {
+      method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(conflict.body).toMatchObject({ conflicts: [expect.objectContaining({ key: "subject:csub_acme_power:displayAlias", baseline: "Power alias", file: null, current: "Concurrent" })] });
+    const resolutions = { "subject:csub_acme_power:displayAlias": "file" };
+    const resolved = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, {
+      method: "POST", body: JSON.stringify({ document: edited, resolutions }) });
+    expect(resolved.status, resolved.bodyText).toBe(200);
+    await db.query(`create function public.fail_subject_transfer_audit() returns trigger language plpgsql as $$
+      begin if new.action='module-structure-update' then raise exception 'injected audit failure'; end if; return new; end $$`);
+    await db.query("create trigger fail_subject_transfer_audit before insert on audit_events for each row execute function public.fail_subject_transfer_audit()");
+    try {
+      const failed = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, {
+        method: "POST", body: JSON.stringify({ document: edited, resolutions, token: (resolved.body as { token: string }).token,
+          idempotencyKey: "retired-rollback", reason: "Reorganize retired subject" }) });
+      expect(failed.status).toBeGreaterThanOrEqual(500);
+    } finally {
+      await db.query("drop trigger fail_subject_transfer_audit on audit_events");
+      await db.query("drop function public.fail_subject_transfer_audit()");
+    }
+    expect((await db.query(`select r.status,r.display_alias,p.module_id from parameter_catalog.organization_subject_registrations r
+      join parameter_catalog.subject_placements p on p.id=r.current_placement_id where r.id='export-registration'`)).rows)
+      .toEqual([{ status: "retired", display_alias: "Concurrent", module_id: "export-root" }]);
+    expect((await db.query("select description from parameter_modules where id='export-root'")).rows[0]).toEqual({ description: previousDescription });
+    expect((await db.query<{ compatibles: string[] }>("select compatibles from registration_recognition_rules where registration_id='export-registration'")).rows[0]?.compatibles).toEqual(["acme,later"]);
+    const placementApply = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, {
+      method: "POST", body: JSON.stringify({ document: edited, resolutions, token: (resolved.body as { token: string }).token,
+        idempotencyKey: "retired-unset-alias", reason: "Reorganize retired subject" }) });
+    expect(placementApply.status, placementApply.bodyText).toBe(200);
+    expect((await db.query<{ compatibles: string[] }>("select compatibles from registration_recognition_rules where registration_id='export-registration'")).rows[0]?.compatibles).toEqual(["acme,combined"]);
+    const replay = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, {
+      method: "POST", body: JSON.stringify({ document: edited, resolutions, token: (resolved.body as { token: string }).token,
+        idempotencyKey: "retired-unset-alias", reason: "Reorganize retired subject" }) });
+    expect(replay.body).toEqual(placementApply.body);
+    expect((await db.query(`select r.status,r.current_placement_id,r.display_alias,p.module_id
+      from parameter_catalog.organization_subject_registrations r join parameter_catalog.subject_placements p on p.id=r.current_placement_id
+      where r.id='export-registration'`)).rows).toEqual([{ status: "retired", current_placement_id: "export-placement", display_alias: null, module_id: null }]);
+    expect((await db.query(`select status,cascade_retired,current_placement_id from parameter_catalog.organization_subject_registrations
+      where id='export-child'`)).rows).toEqual([{ status: "retired", cascade_retired: true, current_placement_id: "export-child-placement" }]);
+    expect((await api.query(`select module_id,via_owner_registration_id from parameter_catalog.registration_effective_module
+      where registration_id='export-child'`)).rows).toEqual([{ module_id: null, via_owner_registration_id: "export-registration" }]);
+    await db.query(`insert into parameter_modules(id,organization_id,name,path,kind,origin)
+      values ('export-unclassified',$1,'Unclassified','export-unclassified','unclassified','curated')`, [org]);
+    const nextExport = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const unclassified = structuredClone(nextExport.body) as z.infer<typeof moduleStructureExportSchema>;
+    unclassified.subjects.find(subject => subject.subjectId === "csub_acme_power")!.placement = { kind: "unclassified" };
+    const unclassifiedPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, {
+      method: "POST", body: JSON.stringify({ document: unclassified, resolutions: {} }) });
+    expect(unclassifiedPreview.status, unclassifiedPreview.bodyText).toBe(200);
+    const unclassifiedApply = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, {
+      method: "POST", body: JSON.stringify({ document: unclassified, resolutions: {}, token: (unclassifiedPreview.body as { token: string }).token,
+        idempotencyKey: "retired-unclassified", reason: "Use unclassified" }) });
+    expect(unclassifiedApply.status, unclassifiedApply.bodyText).toBe(200);
+    expect((await db.query("select module_id from parameter_catalog.subject_placements where id='export-placement'")).rows[0]).toEqual({ module_id: "export-unclassified" });
+    expect((await api.query(`select module_id,via_owner_registration_id from parameter_catalog.registration_effective_module
+      where registration_id='export-child'`)).rows).toEqual([{ module_id: "export-unclassified", via_owner_registration_id: "export-registration" }]);
+    await db.query("update parameter_catalog.subject_placements set module_id=null where id='export-placement'");
+    await db.query("delete from parameter_modules where id='export-unclassified'");
+    }
     await db.query("update parameter_catalog.organization_subject_registrations set status='active' where id='export-registration'");
     await db.query("update parameter_catalog.organization_subject_registrations set cascade_retired=false where id='export-child'");
     const active = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });

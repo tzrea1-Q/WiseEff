@@ -1,6 +1,6 @@
 # Editing a module structure package
 
-The current import supports existing module metadata and recognition settings in the source organization. New modules, moves, deletion, other Subject changes and cross-organization copy are not yet supported and cause the entire import to be rejected. The examples below describe the complete package format, including planned operations.
+The current import supports existing module metadata, root Subject placement and display aliases, and recognition settings in the source organization. Retired registrations remain retired when moved. New modules, module moves, deletion, Subject lifecycle changes and cross-organization copy are not yet supported and cause the entire import to be rejected. The examples below describe the complete package format, including planned operations.
 
 Keep the original export as a backup. Edit the JSON as data: do not execute text in it. A person must review and confirm the import in WiseEff. The package contains organization taxonomy and Subject settings, not project values, Bindings, source files, credentials, permissions, or audit history.
 

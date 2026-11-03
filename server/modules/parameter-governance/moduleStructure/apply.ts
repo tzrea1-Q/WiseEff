@@ -10,6 +10,7 @@ import { planModuleStructure, stable } from "./preview";
 import { moduleStructureApplyRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
 import { applyRecognition } from "./recognition";
 import type { Database } from "../../../shared/database/client";
+import { applySubjectPlacement } from "./subjects";
 
 export async function applyModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, requestId: string, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
@@ -42,11 +43,12 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     if (plan.token !== input.token) throw new ApiError("CONFLICT", "Preview is stale; review the current state again.");
     if (plan.conflicts.length) throw new ApiError("CONFLICT", "Resolve all conflicts before applying.");
     const changes = new Map<string, Record<string, unknown>>();
-    for (const change of plan.changes) changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
+    for (const change of plan.changes) if (change.field !== "placement" && change.field !== "displayAlias") changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
     // Temporary names make valid swaps safe under the immediate sibling-name index.
     for (const [moduleId, values] of changes) if (values.name !== undefined) await client.query(
       "update parameter_modules set name=$3 where organization_id=$1 and id=$2 and archived_at is null", [organizationId, moduleId, `__wiseeff_transfer_${randomUUID()}`]);
     for (const [moduleId, values] of changes) await updateParameterModule(client as unknown as Queryable, { organizationId, moduleId, ...values });
+    await applySubjectPlacement(client, organizationId, plan.subjectChanges, plan.moduleIds);
     await applyRecognition(client as unknown as Database, organizationId, input.document.source.catalogReleaseId, invocation, requestId, input.idempotencyKey, plan.recognitionChanges);
     const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules: changes.size, changedFields: plan.changes.length + plan.recognitionChanges.length };
     if (receipt.changedFields) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
