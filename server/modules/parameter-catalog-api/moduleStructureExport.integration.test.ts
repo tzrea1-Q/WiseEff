@@ -177,10 +177,37 @@ describe("module structure export", () => {
     expect((await db.query("select count(*)::int as count from audit_events where organization_id=$1 and action='module-structure-update'", [org])).rows[0]).toEqual({ count: 1 });
     const foreign = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: { ...partial, source: { ...partial.source, organizationId: "foreign" } }, resolutions: {} }) });
     expect(foreign.status).toBe(403);
+    const missing = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: { ...partial, source: { ...partial.source, exportId: "missing" } }, resolutions: {} }) });
+    expect(missing.status).toBe(404);
     const unknown = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: { ...partial, modules: [{ ...partial.modules[0], invented: true }] }, resolutions: {} }) });
     expect(unknown.status).toBe(400);
     const duplicate = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: { ...partial, modules: [partial.modules[0], partial.modules[0]] }, resolutions: {} }) });
     expect(duplicate.status).toBe(400);
+  });
+
+  it("rolls back the mutation and audit if writing the receipt fails", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    const original = document.modules[0]!.description;
+    document.modules[0]!.description = "Receipt failure";
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    const before = (await db.query("select count(*)::int as count from audit_events where organization_id=$1 and action='module-structure-update'", [org])).rows[0];
+    await db.query(`create function public.fail_structure_receipt() returns trigger language plpgsql as $$
+      begin if new.command_family='module-structure-update' then raise exception 'injected receipt failure'; end if; return new; end $$`);
+    await db.query("create trigger fail_structure_receipt before update on parameter_catalog.governance_command_idempotency for each row execute function public.fail_structure_receipt()");
+    try {
+      const result = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({
+        document, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "receipt-failure", reason: "Reviewed" }) });
+      expect(result.status).toBeGreaterThanOrEqual(500);
+    } finally {
+      await db.query("drop trigger fail_structure_receipt on parameter_catalog.governance_command_idempotency");
+      await db.query("drop function public.fail_structure_receipt()");
+    }
+    expect((await db.query("select description from parameter_modules where id='export-root'")).rows[0]).toEqual({ description: original });
+    expect((await db.query("select count(*)::int as count from audit_events where organization_id=$1 and action='module-structure-update'", [org])).rows[0]).toEqual(before);
+    expect((await db.query("select 1 from parameter_catalog.governance_command_idempotency where organization_id=$1 and idempotency_key='receipt-failure'", [org])).rowCount).toBe(0);
   });
 
   it("applies a valid sibling name swap without committing temporary names", async () => {
