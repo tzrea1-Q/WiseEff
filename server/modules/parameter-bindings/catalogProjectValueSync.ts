@@ -263,6 +263,13 @@ export async function loadActiveOrganizationSourceRegistrations(tx: Queryable, i
      where organization_id=$1 and status='active' order by id`, [input.organizationId])).rows;
 }
 
+/** Exact retained identities for unchanged whole-source value propagation only. */
+export async function loadRetiredOrganizationSourceRegistrations(tx: Queryable, input: { organizationId: string }) {
+  return (await tx.query<{ id: string; subjectId: string }>(
+    `select id,subject_id as "subjectId" from parameter_catalog.organization_subject_registrations
+     where organization_id=$1 and status='retired' order by id`, [input.organizationId])).rows;
+}
+
 export function publishedCatalogOwnsProperty(
   snapshot: CatalogSnapshot,
   compatibles: readonly string[],

@@ -31,6 +31,15 @@ export async function lockSourceRevisionRegistrations(observer: Queryable): Prom
   await observer.query("lock table parameter_catalog.organization_subject_registrations in row exclusive mode nowait");
 }
 
+/** Synthetic lifecycle transition for source-preview race and retention tests. */
+export async function setSourceRevisionRegistrationStatus(db: Queryable, input: {
+  organizationId: string; registrationId: string; status: "active" | "retired";
+}): Promise<void> {
+  const result = await db.query(`update parameter_catalog.organization_subject_registrations set status=$3
+    where organization_id=$1 and id=$2`, [input.organizationId, input.registrationId, input.status]);
+  if (result.rowCount !== 1) throw new Error("Source revision fixture requires one exact registration");
+}
+
 type SourceRevisionBindingState = {
   catalogReleaseId: string;
   currentValueId: string;
