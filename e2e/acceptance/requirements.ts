@@ -8,6 +8,8 @@ export type AcceptanceRequirement = {
 };
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
+  { id: "MODULE-STRUCTURE-IMPORT-001", workflow: "C", required: true,
+    title: "An organization administrator reviews a metadata update, resolves conflicts, refreshes a stale preview and receives the committed receipt." },
   { id: "PROJ-CONFIG-PRIVATE-SHARED-001", workflow: "C", required: false,
     title: "An administrator previews and converts a selected private source closure, retains identity and can review the read-only shared result." },
   { id: "MODULE-STRUCTURE-EXPORT-001", workflow: "C", required: true,

@@ -11,7 +11,74 @@ import { apiRoute } from "./helpers/runtime";
 const org = "org-chargelab";
 const endpoint = `/api/v2/organizations/${org}/module-structure/exports`;
 test.use({ viewport: { width: 1440, height: 900 } });
-useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "POST", path: endpoint, status: 503 }] });
+useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "POST", path: endpoint, status: 503 },
+  { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, status: 409 },
+  { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, status: 503 }] });
+
+test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", async ({ page, request }, info) => {
+  // @acceptance MODULE-STRUCTURE-IMPORT-001
+  // @operation MODULE-STRUCTURE-IMPORT-001
+  await seedAcceptanceRoleMatrix();
+  const headers = authHeadersForRole("admin");
+  const created = await request.post(apiRoute("/api/v1/parameter-modules"), { headers, data: { name: `Import ${Date.now()}` } });
+  expect(created.status(), await created.text()).toBe(201);
+  const moduleId = (await created.json()).item.id as string;
+  try {
+    const exported = await request.post(apiRoute(endpoint), { headers, data: {} });
+    expect(exported.status(), await exported.text()).toBe(200);
+    const document = await exported.json();
+    const module = document.modules.find((entry: { sourceId: string }) => entry.sourceId === moduleId);
+    expect(module).toBeTruthy();
+    module.description = "file edit";
+    const patch = async (description: string) => {
+      const response = await request.patch(apiRoute(`/api/v1/parameter-modules/${moduleId}`), { headers, data: { description } });
+      expect(response.status(), await response.text()).toBe(200);
+    };
+    await patch("current edit");
+    await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
+    await page.getByRole("button", { name: "导入结构" }).focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "导入模块结构" });
+    await dialog.getByLabelText("JSON 文件").setInputFiles({ name: "edit.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+    await dialog.getByRole("button", { name: "关闭" }).click();
+    await page.getByRole("dialog", { name: "放弃导入？" }).getByRole("button", { name: "继续编辑" }).click();
+    await expect(dialog.getByText(/edit.json/)).toBeVisible();
+    await dialog.getByRole("button", { name: "预览" }).click();
+    await expect(dialog.getByText('"current edit"')).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "确认提交" })).toBeDisabled();
+    await dialog.getByLabelText(`${module.ref}:description 的冲突选择`).click();
+    await page.getByRole("option", { name: "采用文件" }).click();
+    await expect(dialog.getByText(/待解决冲突（0）/)).toBeVisible();
+    await dialog.getByLabelText("变更原因").fill("Reviewed import");
+    await patch("later edit");
+    await dialog.getByRole("button", { name: "确认提交" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("重新预览");
+    await dialog.getByRole("button", { name: "预览" }).click();
+    await expect(dialog.getByText(/later edit/)).toBeVisible();
+    await page.screenshot({ path: info.outputPath("module-structure-import-1440x900.png"), animations: "disabled" });
+    await page.route(`**/api/v2/organizations/${org}/module-structure/applies`, route => route.fulfill({ status: 503, contentType: "application/json",
+      body: JSON.stringify({ error: { code: "SERVICE_UNAVAILABLE", message: "Temporary apply error", details: {}, requestId: "controlled" } }) }), { times: 1 });
+    await dialog.getByRole("button", { name: "确认提交" }).click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await expect(dialog.getByLabelText("变更原因")).toHaveValue("Reviewed import");
+    const applyResponse = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/module-structure/applies") && response.status() === 200);
+    await dialog.getByRole("button", { name: "确认提交" }).focus();
+    await page.keyboard.press("Enter");
+    const applied = await applyResponse;
+    await expect(dialog.getByRole("status")).toContainText("回执");
+    await page.screenshot({ path: info.outputPath("module-structure-receipt-1440x900.png"), animations: "disabled" });
+    const actual = await withPgClient(async client => (await client.query<{ description: string }>("select description from parameter_modules where id=$1 and organization_id=$2", [moduleId, org])).rows[0]);
+    expect(actual?.description).toBe("file edit");
+    await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-IMPORT-001", title: "Review and apply module structure update",
+      status: "passed", page, testInfo: info, artifacts: [info.outputPath("module-structure-import-1440x900.png"), info.outputPath("module-structure-receipt-1440x900.png")],
+      api: [summarizeApiResponse(applied, { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, responseSummary: "Reviewed update committed after stale preview was refreshed." })],
+      db: [{ table: "parameter_modules", predicate: "created module in authorized organization", observed: "file edit committed", rowCount: 1 }],
+      notes: "Real API and PostgreSQL, 1440×900; conflicting and stale target edits used the public module API. One controlled 503 exercised retry." });
+  } finally {
+    const deleted = await request.delete(apiRoute(`/api/v1/parameter-modules/${moduleId}`), { headers });
+    expect(deleted.ok(), await deleted.text()).toBeTruthy();
+  }
+});
 
 test("MODULE-STRUCTURE-EXPORT-001: complete filtered download, retry and reader permissions", async ({ page, request }, info) => {
   // @acceptance MODULE-STRUCTURE-EXPORT-001

@@ -1,5 +1,7 @@
 # Editing a module structure package
 
+The current import supports updates to existing modules' name, description, scope, sort order and importance in the source organization. New modules, moves, deletion, Subject changes and cross-organization copy are not yet supported and cause the entire import to be rejected. The examples below describe the complete package format, including planned operations.
+
 Keep the original export as a backup. Edit the JSON as data: do not execute text in it. A person must review and confirm the import in WiseEff. The package contains organization taxonomy and Subject settings, not project values, Bindings, source files, credentials, permissions, or audit history.
 
 ## Identity and references
