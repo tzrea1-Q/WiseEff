@@ -144,6 +144,7 @@
     "@langchain/langgraph-checkpoint-postgres": "^1.0.4",
     "@langchain/openai": "^1.5.3",
     "@lezer/highlight": "^1.2.5",
+    "@noble/hashes": "1.8.0",
     "@tailwindcss/vite": "^4.3.0",
     "@vitejs/plugin-react": "^5.1.1",
     "@wiseeff/device-command-core": "workspace:*",

@@ -1,4 +1,4 @@
-import { webcrypto } from "node:crypto";
+import { createHash, webcrypto } from "node:crypto";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
@@ -51,10 +51,33 @@ function setup() {
   return { ...view, props, session, createCandidate, getCandidateSourcePreview, submitCandidateSourceReview };
 }
 
-beforeEach(() => { vi.stubGlobal("crypto", webcrypto); });
 afterEach(() => { vi.unstubAllGlobals(); });
 
-describe("DTS whole-source workbench integration", () => {
+describe.each([
+  { context: "HTTPS", crypto: webcrypto },
+  { context: "HTTP", crypto: { getRandomValues: webcrypto.getRandomValues.bind(webcrypto) } }
+])("DTS whole-source workbench integration ($context)", ({ crypto }) => {
+  beforeEach(() => { vi.stubGlobal("crypto", crypto); });
+  it("reconciles an approved review with the applied source digest", async () => {
+    const { props, session, rerender } = setup();
+    await waitFor(() => expect(screen.getByRole("radio", { name: "编辑" })).toBeEnabled());
+    expect(session.getFile(props.scope)?.base.sourceDigest).toBe(createHash("sha256").update(props.source).digest("hex"));
+    fireEvent.click(screen.getByRole("radio", { name: "编辑" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "test DTS" }), { target: { value: "/ { next; };" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "DTS 修改原因" }), { target: { value: "确认来源修改" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "提交审核" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    await waitFor(() => expect(session.getFile(props.scope)?.submission?.requestId).toBe("request"));
+    const getSourceRevisionRequest = vi.fn().mockResolvedValue({ status: "approved", after: "/ { next; };",
+      appliedSourceResult: { fileVersionId: "v2", configRevisionId: "c2" } });
+    rerender(<WorkbenchSourceEditingPane {...props} repository={{ ...props.repository, getSourceRevisionRequest }} />);
+    await waitFor(() => expect(session.getFile(props.scope)).toMatchObject({ dirty: false, base: {
+      fileVersionId: "v2", configRevisionId: "c2", sourceDigest: createHash("sha256").update("/ { next; };").digest("hex")
+    } }));
+    expect(getSourceRevisionRequest).toHaveBeenCalledWith("p", "request");
+    await session.close();
+  });
   it("submits a prepared project override without permitting arbitrary source editing or direct application", async () => {
     const { props, rerender, session, createCandidate, submitCandidateSourceReview } = setup();
     await waitFor(() => expect(session.getFile(props.scope)?.loading).toBe(false));
@@ -164,13 +187,14 @@ describe("DTS whole-source workbench integration", () => {
     await waitFor(() => expect(direct).toBeEnabled());
     fireEvent.click(direct);
     await waitFor(() => expect(apply).toHaveBeenCalledWith("p", "candidate", {
-      expectedCurrentVersionId: "v1", expectedProofToken: "proof", reason: "管理员已核对差异", clientMutationId: expect.any(String)
+      expectedCurrentVersionId: "v1", expectedProofToken: "proof", reason: "管理员已核对差异", clientMutationId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
     }));
     fireEvent.change(screen.getAllByRole("textbox", { name: "test DTS", hidden: true })[0]!, { target: { value: "/ { later; };" } });
     await act(async () => { resolve({ id: "direct-request", status: "approved", applicationMode: "administrator_direct",
       appliedSourceResult: { fileVersionId: "v2", configRevisionId: "c2" } }); });
     await waitFor(() => expect(session.getFile(props.scope)?.base.fileVersionId).toBe("v2"));
-    expect(session.getFile(props.scope)).toMatchObject({ sourceText: "/ { later; };", dirty: true });
+    expect(session.getFile(props.scope)).toMatchObject({ sourceText: "/ { later; };", dirty: true,
+      base: { sourceDigest: createHash("sha256").update("/ { next; };").digest("hex") } });
     expect(submitCandidateSourceReview).not.toHaveBeenCalled();
     expect(props.onRefresh).toHaveBeenCalledOnce();
     await session.flush();
