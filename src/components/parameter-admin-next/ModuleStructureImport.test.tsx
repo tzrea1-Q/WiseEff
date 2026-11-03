@@ -49,7 +49,7 @@ it("reports a no-op receipt", async () => {
 it("shows the full placement path, unset and affected projects", async () => {
   const post = vi.fn().mockResolvedValue({ changes: [{ moduleId: "subject:driver", field: "placement",
     before: { kind: "unset" }, after: { kind: "module", moduleRef: "child" } }], conflicts: [],
-    impact: [{ subjectId: "driver", projectId: "project-a" }], token: "preview" });
+    impact: [{ subjectId: "driver", projectId: "project-a", bindingCount: 2, definitions: ["definition-a"] }], token: "preview" });
   const user = userEvent.setup();
   render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
   await user.click(screen.getByRole("button", { name: "导入结构" }));
@@ -58,5 +58,5 @@ it("shows the full placement path, unset and affected projects", async () => {
   ] })], "edit.json", { type: "application/json" }));
   await user.click(screen.getByRole("button", { name: "预览" }));
   expect(await screen.findByText(/未设置归属 → 电源 \/ 充电/)).toBeInTheDocument();
-  expect(screen.getByText(/主体 driver · 项目 project-a/)).toBeInTheDocument();
+  expect(screen.getByText(/主体 driver · 项目 project-a · 绑定 2 · 定义 definition-a/)).toBeInTheDocument();
 });

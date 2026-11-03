@@ -1,6 +1,11 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { readFile } from "node:fs/promises";
+import pg from "pg";
 import { expect, test } from "playwright/test";
+import { createCatalogKernel } from "../../server/modules/catalog-kernel/interface";
+import { captureCurrentCatalogPin } from "../../server/modules/catalog-publication/runtime";
+import { createSourceBackedBindingService } from "../../server/modules/parameter-bindings/binding/__fixtures__/sourceBackedBinding";
+import { DefinitionRevisionId, ParameterDefinitionId } from "../../server/modules/parameter-catalog-contract";
 import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
@@ -29,7 +34,8 @@ test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async
     await client.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ($1,$2,'Lifecycle category',$1,'business','curated')", [moduleId, organization]);
     return (await client.query<{ id: string }>(`select s.id from parameter_catalog.catalog_subjects s join parameter_catalog.catalog_state cs on cs.singleton
       join parameter_catalog.catalog_release_subjects rs on rs.release_id=cs.current_catalog_release_id and rs.subject_id=s.id
-      where s.owner_subject_id is null and rs.lifecycle='active' order by s.id limit 2`)).rows.map(row => row.id);
+      where s.owner_subject_id is null and s.kind='driver' and rs.lifecycle='active'
+      and exists (select 1 from parameter_catalog.parameter_definitions d where d.subject_id=s.id) order by s.id limit 2`)).rows.map(row => row.id);
   });
   expect(subjects).toHaveLength(2);
   const base = `/api/v2/organizations/${organization}/module-structure`;
@@ -38,7 +44,26 @@ test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async
   const document = await exportDocument();
   document.subjects.push(...subjects.map(subjectId => ({ subjectId, operation: "register", placement: { kind: "module", moduleRef: moduleId } })));
   await signInBrowserAsUser(page, user, email, "Lifecycle admin", "/parameter-admin/modules", organization);
+  let lastResponse: Awaited<ReturnType<typeof page.waitForResponse>> | undefined;
   for (const operation of ["register", "retire", "restore"] as const) {
+    if (operation === "retire") {
+      const projectId = `structure-life-project-${suffix}`;
+      const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+      try {
+        await pool.query("insert into projects(id,organization_id,name,code) values ($1,$2,'Lifecycle project',$3)", [projectId, organization, `L${suffix}`]);
+        const row = (await pool.query<{ registration_id: string; definition_id: string; revision_id: string }>(`select r.id as registration_id,d.id as definition_id,d.current_revision_id as revision_id
+          from parameter_catalog.organization_subject_registrations r join parameter_catalog.parameter_definitions d on d.subject_id=r.subject_id
+          where r.organization_id=$1 and r.subject_id=$2 order by d.id limit 1`, [organization, subjects[0]])).rows[0]!;
+        const pin = await captureCurrentCatalogPin(pool);
+        if (!pin) throw new Error("Catalog unavailable");
+        const snapshot = await createCatalogKernel(pool).loadCurrentCatalog(pin);
+        if (!snapshot.ok) throw new Error(JSON.stringify(snapshot.error));
+        const binding = await createSourceBackedBindingService(pool).stabilize({ snapshot: snapshot.value,
+          organizationId: organization, projectId, logicalNodeId: `lifecycle_${suffix}`, registrationId: row.registration_id,
+          definitionId: ParameterDefinitionId(row.definition_id), effectiveRevisionId: DefinitionRevisionId(row.revision_id), expectedEffectiveRevisionId: null });
+        if (!binding.ok) throw new Error(JSON.stringify(binding.error));
+      } finally { await pool.end(); }
+    }
     const edited = operation === "register" ? document : await exportDocument();
     if (operation !== "register") for (const subject of edited.subjects) if (subjects.includes(subject.subjectId)) subject.operation = operation;
     await page.getByRole("button", { name: "导入结构" }).click();
@@ -46,18 +71,25 @@ test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async
     await dialog.getByLabel("JSON 文件").setInputFiles({ name: `${operation}.json`, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
     await dialog.getByRole("button", { name: "预览" }).click();
     await expect(dialog.locator("li").filter({ hasText: "登记状态" })).toHaveCount(2);
+    if (operation !== "register") {
+      await expect(dialog.getByRole("heading", { name: "受影响项目" })).toBeVisible();
+      await expect(dialog.getByText(`项目 structure-life-project-${suffix}`, { exact: false })).toContainText("绑定 1");
+    }
     await dialog.getByLabel("变更原因").fill(`Review ${operation}`);
     if (operation === "retire") await page.screenshot({ path: info.outputPath("module-structure-lifecycle-1440x900.png"), animations: "disabled" });
     const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `${base}/applies` && response.status() === 200);
     await dialog.getByRole("button", { name: "确认提交" }).click();
-    await applied;
+    lastResponse = await applied;
     await expect(dialog.getByRole("status")).toContainText("回执");
     await dialog.getByRole("button", { name: "关闭" }).click();
     const after = await exportDocument();
     for (const id of subjects) expect(after.subjects.find((item: { subjectId: string }) => item.subjectId === id).state).toBe(operation === "retire" ? "retired" : "active");
   }
   await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-LIFECYCLE-001", title: "Review root registration lifecycle", status: "passed", page, testInfo: info,
-    artifacts: [info.outputPath("module-structure-lifecycle-1440x900.png")], api: [], db: [], notes: "Real API batch registration, retirement and restoration at 1440×900." });
+    artifacts: [info.outputPath("module-structure-lifecycle-1440x900.png")],
+    api: [summarizeApiResponse(lastResponse!, { method: "POST", path: `${base}/applies`, responseSummary: "Reviewed restore committed." })],
+    db: [{ table: "project_parameter_bindings", predicate: "isolated lifecycle project", observed: "One binding and its definition shown during review", rowCount: 1 }],
+    notes: "Real API batch registration, retirement and restoration at 1440×900." });
 });
 
 test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritance", async ({ page, request }, info) => {
