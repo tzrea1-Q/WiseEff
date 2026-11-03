@@ -29,6 +29,7 @@ export async function planRecognition(client: pg.PoolClient, organizationId: str
     if (requested === undefined || stable(requested) === stable(base)) continue;
     const registration = lifecycle.find(change => change.subjectId === edit.subjectId && change.operation === "register");
     if (!base && registration && requested) {
+      if (registration.kind !== "configuration-schema" && requested.effective === undefined && requested.mode === "inherit" && !requested.override) continue;
       if (registration.kind === "configuration-schema" || requested.effective !== undefined || requested.mode !== "override" || !requested.override)
         throw new ApiError("VALIDATION_FAILED", "Invalid recognition settings for a new registration.");
       const initial = { kind: registration.kind, recognitionSubjectId: edit.subjectId, compatibles: [] as string[], nodeTypeName: null,

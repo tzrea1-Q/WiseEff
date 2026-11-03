@@ -215,7 +215,8 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   const newIds = new Set(document.modules.filter(module => !module.sourceId && !mapped.has(module.ref)).map(module => moduleIds.get(module.ref)!));
   for (const change of lifecycle) if (change.operation === "register" && change.moduleId) {
     const id = moduleIds.get(change.moduleId) ?? change.moduleId;
-    if ((!currentModules.has(id) && !newIds.has(id) && !names.rows.some(row => row.id === id && row.kind === "unclassified")) || deleted.has(id))
+    const isUnclassified = subjectEdits.get(change.subjectId)?.placement?.kind === "unclassified";
+    if ((isUnclassified ? !names.rows.some(row => row.id === id && row.kind === "unclassified") : !currentModules.has(id) && !newIds.has(id)) || deleted.has(id))
       throw new ApiError("CONFLICT", "Placement destination is unavailable.");
   }
   for (const change of changes.filter(change => change.field === "parentRef" || change.field === "create")) {

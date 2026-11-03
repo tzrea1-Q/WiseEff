@@ -171,6 +171,8 @@ describe("module structure export", () => {
       makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
     await db.query(`insert into parameter_modules(id,organization_id,name,parent_id,path,depth,kind,origin)
       values ('delete-child',$1,'Child','delete-root','delete-root/delete-child',2,'business','curated')`, [org]);
+    await db.query(`insert into parameter_modules(id,organization_id,name,parent_id,path,depth,kind,origin,archived_at)
+      values ('delete-archived',$1,'Archived','delete-root','delete-root/delete-archived',2,'business','curated',now())`, [org]);
     const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
     const document = structuredClone(exported.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
     document.modules.find(m => m.sourceId === "delete-root")!.operation = "delete";
@@ -211,6 +213,7 @@ describe("module structure export", () => {
     const applied = await apply("delete-parent");
     expect(applied.status, applied.bodyText).toBe(200);
     expect((await db.query("select id,parent_id from parameter_modules where id=any($1::text[]) order by id", [["delete-root", "delete-child"]])).rows).toEqual([{ id: "delete-child", parent_id: null }]);
+    expect((await db.query("select parent_id,path from parameter_modules where id='delete-archived'")).rows).toEqual([{ parent_id: null, path: "delete-root/delete-archived" }]);
     expect((await db.query("select parameter_module_id,module from parameter_definitions where id='delete-legacy-definition'")).rows).toEqual([{ parameter_module_id: null, module: "unset" }]);
   });
 
