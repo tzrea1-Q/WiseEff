@@ -21,6 +21,7 @@ import { bindCatalogPublicationCommands } from "../modules/parameter-catalog-api
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../shared/database/client";
 import { dropLabRuntimeLogins, publicationRuntimeLoginNames } from "../testing/labRuntimeLogins";
 import { seedPublishedCatalog } from "../testing/parameterCatalog/seedPublishedCatalog";
+import { seedCurrentDemoCatalog } from "../testing/parameterCatalog/seedCurrentDemoCatalog";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../testing/testDatabase";
 
 type Fixture = {
@@ -159,6 +160,7 @@ describe.sequential("explicit local development Catalog preparation against Post
     expect(after.currentReleaseId).not.toBe(pointer.current.id);
     expect(after.receiptKinds).toContain("online-publication");
     expect((await seedPublishedCatalog(getRootPostgresPool(local.db)!)).id).toBe(after.currentReleaseId);
+    expect((await seedCurrentDemoCatalog(local.db)).id).toBe(after.currentReleaseId);
     await prepareLocalCatalogPublication(local.env, local.root);
     expect(await publicationState(local.db)).toEqual(after);
   }, 120_000);

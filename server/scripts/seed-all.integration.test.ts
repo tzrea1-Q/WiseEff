@@ -40,6 +40,8 @@ it("seeds twice through canonical owners without legacy rows and serves seeded h
     (select count(*)::int from parameter_catalog.project_parameter_bindings) as bindings,
     (select count(*)::int from parameter_catalog.project_parameter_values) as values,
     (select count(*)::int from parameter_catalog.binding_history_events) as history,
+    (select count(*)::int from parameter_catalog.organization_subject_registrations) as registrations,
+    (select count(*)::int from parameter_catalog.subject_placements) as placements,
     (select count(*)::int from dts_config_revisions) as source_revisions,
     (select count(*)::int from project_parameter_file_versions) as source_versions,
     (select count(*)::int from parameter_specs) as legacy_specs,
@@ -76,11 +78,11 @@ it("seeds twice through canonical owners without legacy rows and serves seeded h
   expect(source.rows[0]!.index_length).toBeGreaterThan(2);
   expect((await createLocalObjectStore(storage).get(source.rows[0]!.storage_key)).toString("utf8")).toContain("watchdog_time = <6000>;");
   const placement = await db.query<{ kind: string; name: string; module_id: string; logical_node_id: string }>(`select
-    module.kind, module.name, placement.module_id, binding.logical_node_id
+    module.kind, module.name, effective.module_id, binding.logical_node_id
     from parameter_catalog.current_project_parameter_bindings binding
     join parameter_catalog.organization_subject_registrations registration on registration.id = binding.registration_id
-    left join parameter_catalog.subject_placements placement on placement.registration_id = registration.id
-    left join parameter_modules module on module.id = placement.module_id
+    left join parameter_catalog.registration_effective_module effective on effective.registration_id = registration.id
+    left join parameter_modules module on module.id = effective.module_id
     where binding.project_id = 'aurora'`);
   expect(placement.rows.length).toBeGreaterThan(0);
   expect(placement.rows.every((row) => row.module_id !== null)).toBe(true);
@@ -100,6 +102,74 @@ it("seeds twice through canonical owners without legacy rows and serves seeded h
   expect(new Set(instances.rows.map((row) => row.logical_node_id)).size).toBeGreaterThanOrEqual(2);
   expect(new Set(instances.rows.map((row) => row.module_id)).size).toBe(1);
 }, 600_000);
+
+it("organizes battery authentication as one driver and one owned checker with two independent instances", async () => {
+  const driverId = "csub_drv_huawei_batt_info";
+  const childId = "csub_nt_battery_checker";
+  const subjects = await db.query(`select id, kind, canonical_key, owner_subject_id
+    from parameter_catalog.catalog_subjects where id = any($1::text[]) order by id`, [[driverId, childId]]);
+  expect(subjects.rows).toEqual([
+    { id: driverId, kind: "driver", canonical_key: "driver:huawei,batt_info", owner_subject_id: null },
+    { id: childId, kind: "node-type", canonical_key: "node-type:battery_checker", owner_subject_id: driverId },
+  ]);
+  const placements = await db.query<{ subject_id: string; module_id: string | null; effective_module_id: string; name: string; kind: string; status: string }>(`select
+    registration.subject_id, registration.status, placement.module_id, effective.module_id as effective_module_id, module.name, module.kind
+    from parameter_catalog.organization_subject_registrations registration
+    join parameter_catalog.subject_placements placement on placement.id = registration.current_placement_id
+    join parameter_catalog.registration_effective_module effective on effective.registration_id = registration.id
+    join parameter_modules module on module.id = effective.module_id
+    where registration.organization_id = 'org-chargelab' and registration.subject_id = any($1::text[])
+    order by registration.subject_id`, [[driverId, childId]]);
+  expect(placements.rows).toHaveLength(2);
+  expect(placements.rows[0]).toMatchObject({ subject_id: driverId, module_id: expect.any(String), name: "Battery Authentication", kind: "business", status: "active" });
+  expect(placements.rows[1]).toMatchObject({ subject_id: childId, module_id: null, name: "Battery Authentication", kind: "business", status: "active" });
+  expect(placements.rows[1]!.effective_module_id).toBe(placements.rows[0]!.effective_module_id);
+
+  const definitions = await db.query(`select subject_id, property_key from parameter_catalog.parameter_definitions
+    where subject_id = any($1::text[]) order by subject_id, property_key`, [[driverId, childId]]);
+  expect(definitions.rows).toEqual([
+    { subject_id: driverId, property_key: "sn-check-type" },
+    { subject_id: childId, property_key: "matchable" },
+    { subject_id: childId, property_key: "spare-cycles" },
+  ]);
+  const bindings = await db.query<{ id: string; project_id: string; logical_node_id: string; definition_id: string; property_key: string; value: unknown; node_locator: string }>(`select
+    binding.id, binding.project_id, binding.logical_node_id, binding.definition_id, definition.property_key, value.value, logical.node_locator
+    from parameter_catalog.current_project_parameter_bindings binding
+    join parameter_catalog.parameter_definitions definition on definition.id = binding.definition_id
+    join parameter_catalog.project_parameter_values value on value.id = binding.current_value_id
+    join parameter_catalog.project_value_source_pins pin on pin.project_value_id = value.id and pin.binding_id = binding.id
+    join dts_logical_node_revisions logical on logical.logical_node_id = binding.logical_node_id and logical.config_revision_id = pin.config_revision_id
+    where binding.organization_id = 'org-chargelab' and binding.subject_id = any($1::text[])
+    order by binding.project_id, logical.node_locator, definition.property_key`, [[driverId, childId]]);
+  for (const project of ["atlas", "aurora", "nebula"]) {
+    const rows = bindings.rows.filter((row) => row.project_id === project);
+    expect(rows).toHaveLength(5);
+    expect(new Set(rows.map((row) => row.logical_node_id)).size).toBe(3);
+    expect(new Set(rows.map((row) => row.id)).size).toBe(5);
+    for (const property of ["matchable", "spare-cycles"]) {
+      const instances = rows.filter((row) => row.property_key === property);
+      expect(instances).toHaveLength(2);
+      expect(instances.map((row) => row.node_locator.split("/").at(-1))).toEqual(["battery_checker@0", "battery_checker@1"]);
+      expect(new Set(instances.map((row) => row.definition_id)).size).toBe(1);
+    }
+    const refs = rows.filter((row) => row.property_key === "matchable");
+    expect(JSON.stringify(refs[0]!.value)).toContain("fm1230");
+    expect(JSON.stringify(refs[0]!.value)).toContain("t91407");
+    expect(JSON.stringify(refs[0]!.value)).not.toContain("fm1230_1");
+    expect(JSON.stringify(refs[1]!.value)).toContain("fm1230_1");
+    expect(JSON.stringify(refs[1]!.value)).toContain("t91407_1");
+  }
+  expect(bindings.rows.filter((row) => row.project_id === "atlas" && row.property_key === "spare-cycles").map((row) => row.value)).toEqual([167, 167]);
+  const server = createWiseEffServer({ db });
+  const response = await requestJson<{ items: Array<{ id: string; propertyKey: string; rawValue: string }> }>(
+    server, "/api/v2/projects/atlas/parameter-bindings?limit=500", { headers: { "X-WiseEff-User": "u-xu-yun" } });
+  expect(response.status, response.bodyText).toBe(200);
+  const ids = new Set(bindings.rows.filter((row) => row.project_id === "atlas").map((row) => row.id));
+  const apiRows = response.body.items.filter((row) => ids.has(row.id));
+  expect(apiRows).toHaveLength(5);
+  expect(apiRows.filter((row) => row.propertyKey === "matchable").map((row) => row.rawValue).sort())
+    .toEqual(["<&fm1230 &t91407>", "<&fm1230_1 &t91407_1>"].sort());
+});
 
 it("quality and visual review seeds use canonical source pins without legacy parameter rows", async () => {
   vi.stubEnv("WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE", "true");

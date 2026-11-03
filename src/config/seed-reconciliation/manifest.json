@@ -39,7 +39,7 @@
     {
       "path": "schemas/dts/catalog.json",
       "role": "vendor-manifest",
-      "sha256": "9023ce27f4884eb13951a6bb4b188513e3ff1a02d094ba16deb132ef6fb885e9",
+      "sha256": "a7433f0cb6c281c1cb39ef5f24fda2dafd18ed21269dc50eb3b27679a09ebf4d",
       "bytes": 2599
     },
     {
@@ -93,8 +93,8 @@
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-batt-info.yaml",
       "role": "vendor-input",
-      "sha256": "b1b0acd4cd56c6e1bb751536aa85ba2976b7adf327b325c636bbdf0e58f000c1",
-      "bytes": 372
+      "sha256": "8f5de70850d4a4031930f340c0232ab2f61d1eca1c5ef501efdd0cdb9eab8c77",
+      "bytes": 404
     },
     {
       "path": "schemas/dts/vendor/wiseeff/huawei-battery-cccv.yaml",
@@ -431,7 +431,7 @@
   },
   "vendorSelection": {
     "catalogPath": "schemas/dts/catalog.json",
-    "catalogDigest": "9023ce27f4884eb13951a6bb4b188513e3ff1a02d094ba16deb132ef6fb885e9",
+    "catalogDigest": "a7433f0cb6c281c1cb39ef5f24fda2dafd18ed21269dc50eb3b27679a09ebf4d",
     "schemaPathsListed": 50,
     "inputFiles": 48,
     "excludedBasenames": [
@@ -440,8 +440,8 @@
       "test-ambiguous-b.yaml"
     ],
     "excludedReason": "EXCLUDED_SCHEMA_BASENAMES in server/modules/catalog-publication/import/vendorYaml.ts; selection is schemaPaths-driven, not a directory walk",
-    "vendorContentHash": "6e354515c378fcd045399db59b4086b3552b92d4e46db60a147aeae672fa1dca",
-    "observedDirectoryHash": "6e354515c378fcd045399db59b4086b3552b92d4e46db60a147aeae672fa1dca",
+    "vendorContentHash": "ac1aef677323d617dd4f1c41cddb7ebbbc98803e78669c651168fc964cbc2bbf",
+    "observedDirectoryHash": "ac1aef677323d617dd4f1c41cddb7ebbbc98803e78669c651168fc964cbc2bbf",
     "hashPinned": true
   },
   "inputs": [
@@ -1654,7 +1654,7 @@
       "family": "vendor",
       "scope": "current",
       "sourcePath": "schemas/dts/vendor/wiseeff/huawei-batt-info.yaml",
-      "sourceDigest": "b1b0acd4cd56c6e1bb751536aa85ba2976b7adf327b325c636bbdf0e58f000c1",
+      "sourceDigest": "8f5de70850d4a4031930f340c0232ab2f61d1eca1c5ef501efdd0cdb9eab8c77",
       "sourceLocator": "vendor/wiseeff/huawei-batt-info.yaml#sn-check-type",
       "sourceKind": "vendor-yaml-property",
       "oldIdentity": {

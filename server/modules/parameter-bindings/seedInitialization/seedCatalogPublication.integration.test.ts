@@ -174,7 +174,7 @@ describe("reviewed seed publication against isolated PostgreSQL", () => {
     });
     expect(frozen.ok, JSON.stringify(frozen)).toBe(true);
     if (!frozen.ok) return;
-    expect(frozen.value.identity.subjects?.filter((subject) => "ownerSubjectId" in subject)).toHaveLength(5);
+    expect(frozen.value.identity.subjects?.filter((subject) => "ownerSubjectId" in subject)).toHaveLength(6);
     expect(parseSeedRebuildPreparation(JSON.parse(JSON.stringify(frozen.value)))).toEqual(frozen.value);
     const badHash = await prepareSeedCatalog({ ...frozen.value, db,
       pins: { ...frozen.value.pins, expectedVendorContentHash: "0".repeat(64) } });

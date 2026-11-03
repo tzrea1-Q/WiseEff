@@ -9,6 +9,8 @@ maintainers:
 properties:
   sn-check-type:
     $ref: /schemas/types.yaml#/definitions/uint32-array
+  battery_checker:
+    type: object
   compatible:
     contains:
       const: huawei,batt_info

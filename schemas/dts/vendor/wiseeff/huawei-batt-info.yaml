@@ -6,6 +6,8 @@ version: 1
 schemaNamespace: vendor/huawei,batt_info
 compatible:
   - huawei,batt_info
+childNodes:
+  - battery_checker
 properties:
   sn-check-type:
     valueShape: u32-array
