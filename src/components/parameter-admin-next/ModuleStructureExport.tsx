@@ -19,7 +19,7 @@ export function ModuleStructureExport({ apiClient, organizationId, canExport }: 
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  return <div role="group" aria-label="模块结构导出">
+  return <div className="module-structure-export" role="group" aria-label="模块结构导出">
     <Button type="button" size="sm" variant="outline" disabled={!canExport || !apiClient || !organizationId || busy}
       onClick={async () => {
         if (!apiClient || !organizationId) return;
