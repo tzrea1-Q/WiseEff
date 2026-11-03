@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getRootPostgresPool } from "../../../shared/database/client";
 import { setSourceRevisionRegistrationStatus } from "../../../testing/parameterCatalog/sourceRevision";
 import { createUserInvocation } from "../../auth/trustedInvocation";
-import { createSourceAdminFixture } from "../../parameter-files/sourceAdministration.testHelpers";
+import { createSourceAdminFixture, sourceAdminText } from "../../parameter-files/sourceAdministration.testHelpers";
+import { ingestConfigRevision } from "../../parameter-topology/ingestService";
 import {
   exportCanonicalBindingSource, findCatalogBindingRow, listCanonicalInitializationBindingCandidates,
   listCatalogBindingRowsForProject, listCatalogBindingsForImport, readCanonicalBindingChangeHistory,
@@ -66,5 +67,29 @@ describe("current managed source reads (PostgreSQL API role)", () => {
     } finally {
       await setSourceRevisionRegistrationStatus(f.db, { organizationId: f.organizationId, registrationId, status: "active" });
     }
+  });
+
+  it("keeps an eligible exact pin current after an unrelated configuration parse", async () => {
+    const pin = (await f.api.query<{ config_revision_id: string; file_version_id: string }>(
+      `select config_revision_id,file_version_id from parameter_catalog.project_value_source_pins
+       where binding_id=$1 and project_value_id=$2`, [bindingId, valueId])).rows[0]!;
+    const newer = await ingestConfigRevision(f.db, {
+      organizationId: f.organizationId, projectId: f.projectId, configSetId: f.configSetId,
+      entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
+      members: [{ fileId: f.fileId, fileVersionId: pin.file_version_id, fileName: "board.dts",
+        sourceName: "board.dts", role: "base", sortOrder: 0, content: sourceAdminText }],
+    }, f.auth);
+    expect(newer.id).not.toBe(pin.config_revision_id);
+    for (const limit of [undefined, 1]) {
+      expect(await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId, limit }))
+        .toMatchObject([{ id: bindingId, currentValueId: valueId, rawValue: "<36>" }]);
+    }
+    expect((await candidates()).map(row => row.sourceBindingId)).toEqual([bindingId]);
+    expect((await importCandidates()).map(row => row.projectParameterValueId)).toEqual([bindingId]);
+    expect(await findCatalogBindingRow(f.api, scope())).toMatchObject({ id: bindingId });
+    expect(await readCurrentManagedSourceBindingIds(f.api, { ...scope(), bindingIds: [bindingId] })).toEqual(new Set([bindingId]));
+    expect((await countSourceBackedBindingsByProject(f.api, f.organizationId)).get(f.projectId)).toBe(1);
+    expect(await exportCanonicalBindingSource(f.api, f.storage, f.auth, scope()))
+      .toMatchObject({ currentValueId: valueId, configRevisionId: pin.config_revision_id });
   });
 });

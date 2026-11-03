@@ -343,6 +343,8 @@ create table parameter_catalog.source_binding_suspension_receipts (
   unique(request_id,binding_id)
 );
 alter table parameter_catalog.source_binding_suspension_receipts owner to catalog_migration_owner;
+create index source_binding_suspension_receipts_current_tip_idx
+  on parameter_catalog.source_binding_suspension_receipts(binding_id,old_value_id);
 revoke all on parameter_catalog.source_binding_suspension_receipts from public;
 
 create function parameter_catalog.protect_source_binding_suspension_receipt()
@@ -483,6 +485,20 @@ where evidence.organization_id=p_org and evidence.project_id=p_project and evide
 order by applied.revision_number desc,evidence.request_id limit 1
 $$;
 
+-- Current read projections distinguish an explicitly suspended tip from an
+-- ordinary exact pin that predates an unrelated source revision. This exposes
+-- only a scoped boolean; readers need no direct access to receipts or DTS rows.
+create function parameter_catalog.current_source_binding_is_suspended(p_org text,p_project text,p_binding text)
+returns boolean language sql stable security definer set search_path=pg_catalog,parameter_catalog,public as $$
+select exists(select 1 from parameter_catalog.project_parameter_bindings binding
+  join parameter_catalog.source_binding_suspension_receipts receipt on receipt.binding_id=binding.id
+    and receipt.organization_id=binding.organization_id and receipt.project_id=binding.project_id
+    and receipt.definition_id=binding.definition_id and receipt.old_value_id=binding.current_value_id
+  where binding.id=p_binding and binding.organization_id=p_org and binding.project_id=p_project
+    and parameter_catalog.source_revision_exclusion_matches(receipt.request_id,binding.id,binding.current_value_id,
+      receipt.source_pin_id,receipt.applied_config_revision_id))
+$$;
+
 -- All callers that enumerate possible evidence must include independent rows;
 -- an erased parent request must not disappear before the predicate can run.
 do $$ declare installed text; changed text; marker text; replacement text;
@@ -544,9 +560,12 @@ end $$;
 alter function parameter_catalog.protect_source_binding_suspension_receipt() owner to catalog_migration_owner;
 alter function parameter_catalog.mint_source_binding_suspensions() owner to catalog_migration_owner;
 alter function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) owner to catalog_migration_owner;
+alter function parameter_catalog.current_source_binding_is_suspended(text,text,text) owner to catalog_migration_owner;
 revoke all on function parameter_catalog.protect_source_binding_suspension_receipt() from public;
 revoke all on function parameter_catalog.mint_source_binding_suspensions() from public;
 revoke all on function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) from public;
+revoke all on function parameter_catalog.current_source_binding_is_suspended(text,text,text) from public;
+grant execute on function parameter_catalog.current_source_binding_is_suspended(text,text,text) to catalog_baseline_reader_role;
 -- Existing provisioned NOINHERIT logins must be repaired during upgrade,
 -- without reprovisioning or copying broad default SELECT onto this private
 -- table. Ownership plus an existing direct source-write grant in THIS database
@@ -571,13 +590,16 @@ begin
       or exists(select 1 from pg_class relation cross join lateral aclexplode(relation.relacl) acl
         where relation.oid='parameter_catalog.source_binding_suspension_receipts'::regclass and acl.grantee=role.oid)
       or exists(select 1 from pg_proc routine cross join lateral aclexplode(routine.proacl) acl
-        where routine.oid='parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)'::regprocedure
+        where routine.oid in ('parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)'::regprocedure,
+          'parameter_catalog.current_source_binding_is_suspended(text,text,text)'::regprocedure)
           and acl.grantee=role.oid)
   loop
     execute format('revoke all on parameter_catalog.source_binding_suspension_receipts from %I',runtime.rolname);
     execute format('revoke execute on function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) from %I',runtime.rolname);
+    execute format('revoke execute on function parameter_catalog.current_source_binding_is_suspended(text,text,text) from %I',runtime.rolname);
     if runtime.source_api then
       execute format('grant execute on function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) to %I',runtime.rolname);
+      execute format('grant execute on function parameter_catalog.current_source_binding_is_suspended(text,text,text) to %I',runtime.rolname);
     end if;
   end loop;
 end $$;

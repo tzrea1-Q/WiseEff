@@ -933,6 +933,27 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     }
   });
 
+  it("exposes only a scoped suspension boolean to the baseline reader", async () => {
+    const routine = await client.query(`select pg_get_userbyid(p.proowner) as owner,p.prosecdef as security_definer,
+      p.provolatile::text as volatility,p.proconfig as settings,
+      has_function_privilege('public',p.oid,'EXECUTE') as public_execute,
+      has_function_privilege('catalog_baseline_reader_role',p.oid,'EXECUTE') as reader_execute,
+      has_function_privilege('parameter_governance_writer_role',p.oid,'EXECUTE') as writer_execute,
+      has_function_privilege('catalog_synchronizer_role',p.oid,'EXECUTE') as synchronizer_execute,
+      has_function_privilege('catalog_baseline_reader_role','parameter_catalog.source_revision_exclusion_matches(text,text,text,text,text)','EXECUTE') as private_probe,
+      has_function_privilege('catalog_baseline_reader_role','parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)','EXECUTE') as private_lookup,
+      has_table_privilege('catalog_baseline_reader_role','parameter_catalog.source_binding_suspension_receipts','SELECT') as receipt_read,
+      has_table_privilege('catalog_baseline_reader_role','public.dts_config_revisions','SELECT') as dts_read
+      from pg_proc p where p.oid='parameter_catalog.current_source_binding_is_suspended(text,text,text)'::regprocedure`);
+    expect(routine.rows).toEqual([{ owner: CATALOG_MIGRATION_OWNER, security_definer: true, volatility: "s",
+      settings: ["search_path=pg_catalog, parameter_catalog, public"], public_execute: false, reader_execute: true,
+      writer_execute: false, synchronizer_execute: false, private_probe: false, private_lookup: false, receipt_read: false, dts_read: false }]);
+    await withLocalRole(client, "catalog_baseline_reader_role", async () => {
+      expect((await client.query("select parameter_catalog.current_source_binding_is_suspended('missing-org','missing-project','missing-binding') as suspended")).rows)
+        .toEqual([{ suspended: false }]);
+    });
+  });
+
   it("T3: re-running 0138 at its historical migration boundary is idempotent", async () => {
     await withTempDatabase(
       { prefix: "pcat_rbac_0138_replay", migrate: false },

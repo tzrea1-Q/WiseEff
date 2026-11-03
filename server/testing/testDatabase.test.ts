@@ -122,6 +122,7 @@ describe("fresh database fixture policy", () => {
       // The cleanup upgrade must create its API LOGIN before the erasure routines exist.
       "server/modules/catalog-publication/runtime/definitionCleanupUpgrade.integration.test.ts": ["cleanup_acl_upgrade:false"],
       "server/modules/catalog-publication/runtime/draftReadUpgrade.integration.test.ts": ["draft_acl_upgrade:false"],
+      "server/modules/catalog-publication/runtime/sourceSuspensionUpgrade.integration.test.ts": ["scope_acl_upgrade:false"],
       // Replay pre-0260 authors and published revisions to prove truthful backfill.
       "server/modules/knowledge/historicalAttribution.migration.integration.test.ts": ["history1386upgrade:false"],
       "server/modules/logs/sourceIndexWorker.integration.test.ts": ["stmtupgrade:false"],

@@ -42,6 +42,7 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "public.restore_private_shared_dtsi_source(text,text)",
   "parameter_catalog.source_origin_matches(text, text, text)",
   "parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)",
+  "parameter_catalog.current_source_binding_is_suspended(text,text,text)",
   "parameter_catalog.source_member_is_restored(text, text)",
   "parameter_catalog.is_replaced_current_binding(text)",
   "parameter_catalog.resolve_current_binding_by_source_occurrence(text, text, text)",

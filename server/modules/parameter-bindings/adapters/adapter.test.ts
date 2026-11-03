@@ -337,7 +337,7 @@ describe("S6-WFA production Catalog isolation", () => {
           file,
         ).toHaveLength(1);
         expect(source, file).toMatch(
-          /from parameter_catalog\.current_project_parameter_bindings\s+where organization_id = \$1 and project_id = \$2/,
+          /from parameter_catalog\.current_project_parameter_bindings binding\s+where organization_id = \$1 and project_id = \$2\s+and \$\{currentManagedSourceBindingPredicate\("binding"\)\}/,
         );
         expect(source, file).not.toMatch(/\b(insert\s+into|update|delete\s+from)\b/i);
         isolatedSource = source

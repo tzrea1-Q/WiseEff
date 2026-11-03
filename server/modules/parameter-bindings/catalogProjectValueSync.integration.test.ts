@@ -765,6 +765,10 @@ describe("published catalog project values", () => {
     [versionId,file.id,stored.storageKey,stored.checksumSha256,stored.fileSizeBytes,USER]);
     await pool.query(`update project_parameter_files set current_version_id=$2 where id=$1`, [file.id, versionId]);
     await pool.query(`update project_parameter_files set file_name='renamed-display.dts' where id=$1`, [file.id]);
+    for (const limit of [undefined, 10]) {
+      expect(await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT, limit }))
+        .toMatchObject([{ id: binding.id, currentValueId: binding.currentValueId, rawValue: "<2000>" }]);
+    }
     const exported = await exportCanonicalBindingSource(root, objectStore, auth, { projectId: PROJECT, bindingId: binding.id });
     await pool.query(`update project_parameter_files set file_name='charger.dts' where id=$1`, [file.id]);
     expect(exported?.files).toEqual([expect.objectContaining({ name: "charger.dts", content: DTS.replace("<1000>","<2000>"), versionNumber: 2 })]);

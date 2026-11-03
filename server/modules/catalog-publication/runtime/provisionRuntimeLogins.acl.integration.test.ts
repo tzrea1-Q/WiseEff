@@ -61,15 +61,26 @@ const assert42501 = async (client: pg.Client, sql: string): Promise<void> => {
 
 const assertCanonicalSourceAcl = async (client: pg.Client, api: boolean): Promise<void> => {
   const suspension = await client.query(`select
-    has_function_privilege(current_user, 'parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)', 'EXECUTE') as execute,
-    has_table_privilege(current_user, 'parameter_catalog.source_binding_suspension_receipts', 'SELECT') as table_read`);
-  expect(suspension.rows).toEqual([{ execute: api, table_read: false }]);
+    has_function_privilege(current_user, routine.oid, 'EXECUTE') as execute,
+    has_function_privilege(current_user, visibility.oid, 'EXECUTE') as visibility,
+    has_table_privilege(current_user, receipt.oid, 'SELECT') as table_read
+    from pg_proc routine join pg_namespace namespace on namespace.oid=routine.pronamespace
+    join pg_proc visibility on visibility.pronamespace=namespace.oid
+      and visibility.proname='current_source_binding_is_suspended' and visibility.proargtypes='25 25 25'::oidvector
+    join pg_class receipt on receipt.relnamespace=namespace.oid and receipt.relname='source_binding_suspension_receipts'
+    where namespace.nspname='parameter_catalog' and routine.proname='find_source_binding_suspension'
+      and routine.proargtypes='25 25 25 25 3802'::oidvector`);
+  expect(suspension.rows).toEqual([{ execute: api, visibility: api, table_read: false }]);
   if (api) {
     expect((await client.query(`select parameter_catalog.find_source_binding_suspension(
       'missing-org','missing-project','missing-set','missing-base','{}'::jsonb) as receipt`)).rows).toEqual([{ receipt: null }]);
+    expect((await client.query(`select parameter_catalog.current_source_binding_is_suspended(
+      'missing-org','missing-project','missing-binding') as suspended`)).rows).toEqual([{ suspended: false }]);
   } else {
     await assert42501(client, `select parameter_catalog.find_source_binding_suspension(
       'missing-org','missing-project','missing-set','missing-base','{}'::jsonb)`);
+    await assert42501(client, `select parameter_catalog.current_source_binding_is_suspended(
+      'missing-org','missing-project','missing-binding')`);
   }
   for (const [name, argumentsOid] of [
     ["is_replaced_current_binding", "25"],

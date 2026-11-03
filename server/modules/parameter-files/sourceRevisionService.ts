@@ -259,19 +259,47 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     throw new ApiError("VALIDATION_FAILED", "DTS configuration has unresolved source diagnostics.", { diagnostics });
   }
   const restorationScope = { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: context.configSetId };
-  const anchors = await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, rows);
-  const retainedNodes = [];
-  for (const anchor of await loadRetainedSourceAnchors(tx, restorationScope)) {
-    if (anchor.baseConfigRevisionId === revision.id || !anchor.nodeLocator || !anchor.logicalNodeId) continue;
+  const registrations = await loadActiveOrganizationSourceRegistrations(tx, { organizationId: parameterOrganizationId(auth) });
+  const registered = new Map(registrations.map((row) => [row.subjectId, row.id]));
+  const ownerActive = (subjectId: string) => {
+    const subject = snapshot?.getSubject(CatalogSubjectId(subjectId));
+    const owner = subject?.status === "found" ? subject.subject.owner : undefined;
+    return !owner || (registered.has(owner) && snapshot?.getSubject(owner).status === "found");
+  };
+  const matchesManagedRestoration = (anchor: { subjectId: string; registrationId: string; definitionId: string; nodeLocator: string | null }) => {
+    if (!snapshot || !anchor.nodeLocator || registered.get(anchor.subjectId) !== anchor.registrationId || !ownerActive(anchor.subjectId)
+      || snapshot.getSubject(CatalogSubjectId(anchor.subjectId)).status !== "found"
+      || snapshot.getDefinitionById(ParameterDefinitionId(anchor.definitionId)).status !== "found") return false;
     const node = resolved.effective.nodesByLocator.get(anchor.nodeLocator);
-    if (!node || node.deleted) continue;
+    if (!node || node.deleted) return false;
+    const compatible = node.properties.get("compatible");
+    return resolveObservedSubject(snapshot, {
+      compatibles: parseCompatibles(compatible && !compatible.deleted ? compatible.rawText : null), nodeName: node.name,
+      ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator)
+    })?.subjectId === anchor.subjectId;
+  };
+  const anchors = (await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, rows))
+    .filter(matchesManagedRestoration);
+  const retainedNodes: NonNullable<ReviewedSourceContinuity["restorationNodes"]> = [];
+  const retainedAnchors = await loadRetainedSourceAnchors(tx, restorationScope);
+  const currentNodes = retainedAnchors.length ? (await tx.query<{ nodeLocator: string; logicalNodeId: string }>(
+    `select node_locator as "nodeLocator",logical_node_id as "logicalNodeId"
+     from public.dts_logical_node_revisions where config_revision_id=$1`, [revision.id])).rows : [];
+  for (const anchor of retainedAnchors) {
+    if (anchor.baseConfigRevisionId === revision.id || !anchor.nodeLocator || !anchor.logicalNodeId) continue;
+    // An unmanaged node may have changed its compatible and acquired a distinct
+    // source identity. Its historical Binding must not block ordinary saves.
+    if (!matchesManagedRestoration(anchor)) continue;
     const identity = { bindingId: anchor.bindingId, oldValueId: anchor.oldValueId, sourcePinId: anchor.sourcePinId,
       sourceOccurrenceId: anchor.sourceOccurrenceId, definitionId: anchor.definitionId,
       effectiveRevisionId: anchor.effectiveRevisionId, catalogReleaseId: anchor.catalogReleaseId, valueDigest: anchor.valueDigest,
       registrationId: anchor.registrationId, subjectId: anchor.subjectId, configRevisionId: anchor.baseConfigRevisionId,
       fileId: anchor.fileId, fileVersionId: anchor.fileVersionId, format: anchor.format };
     if (await findSourceSuspension(tx, { ...restorationScope, baseConfigRevisionId: revision.id }, identity)) {
-      retainedNodes.push({ baseConfigRevisionId: anchor.baseConfigRevisionId, nodeLocator: anchor.nodeLocator, logicalNodeId: anchor.logicalNodeId });
+      if (retainedNodes.some(row => row.nodeLocator === anchor.nodeLocator && row.logicalNodeId === anchor.logicalNodeId)) continue;
+      const current = currentNodes.find(row => row.nodeLocator === anchor.nodeLocator);
+      retainedNodes.push({ baseConfigRevisionId: anchor.baseConfigRevisionId, nodeLocator: anchor.nodeLocator, logicalNodeId: anchor.logicalNodeId,
+        ...(current && current.logicalNodeId !== anchor.logicalNodeId ? { replacedUnmanagedLogicalNodeId: current.logicalNodeId } : {}) });
     }
   }
   const toolchain = await (options.toolchain ?? createDtsToolchainRunner()).validate({
@@ -287,19 +315,14 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   const continuity = await prepareReviewedSourceContinuity(tx, { organizationId: parameterOrganizationId(auth),
     projectId: input.projectId, configSetId: context.configSetId, baseConfigRevisionId: revision.id,
     effectiveNodes: resolved.effective.nodesByLocator, sourceDigest: sourceRevisionDigest(bytes),
-    restorationNodes: [...sourceRestorationNodes(anchors), ...retainedNodes] });
-  const registrations = await loadActiveOrganizationSourceRegistrations(tx, { organizationId: parameterOrganizationId(auth) });
-  const registered = new Map(registrations.map((row) => [row.subjectId, row.id]));
-  const ownerActive = (subjectId: string) => {
-    const subject = snapshot?.getSubject(CatalogSubjectId(subjectId));
-    const owner = subject?.status === "found" ? subject.subject.owner : undefined;
-    return !owner || (registered.has(owner) && snapshot?.getSubject(owner).status === "found");
-  };
+    // A trusted suspended owner may reclaim an unowned node before exact
+    // deleted siblings on that same historical identity are restored.
+    restorationNodes: [...retainedNodes, ...sourceRestorationNodes(anchors)] });
   const sourceProperties: SourceRevisionNewProperty[] = [];
   if (snapshot) for (const node of resolved.effective.nodesByLocator.values()) {
     if (node.deleted) continue;
     const compatible = node.properties.get("compatible");
-    const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(compatible?.rawText ?? null), nodeName: node.name,
+    const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(compatible && !compatible.deleted ? compatible.rawText : null), nodeName: node.name,
       ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator) });
     if (!subject || !registered.has(subject.subjectId) || !ownerActive(subject.subjectId)) continue;
     const logical = continuity.nodes.find((row) => row.nodeLocator === node.nodeLocator)!;
@@ -383,8 +406,9 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
       matchingSnapshot = await loadOrganizationCatalogSnapshot(tx, parameterOrganizationId(auth), pinnedSnapshot);
       matchingSnapshots.set(pinnedSnapshot.release.id, matchingSnapshot);
     }
+    const compatible = node?.properties.get("compatible");
     const resolvedSubject = node ? resolveObservedSubject(matchingSnapshot, {
-      compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name,
+      compatibles: parseCompatibles(compatible && !compatible.deleted ? compatible.rawText : null), nodeName: node.name,
       ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator)
     }) : null;
     const source = node && !node.deleted && property && !property.deleted && originMember && property.sourceChain.at(-1)?.origin

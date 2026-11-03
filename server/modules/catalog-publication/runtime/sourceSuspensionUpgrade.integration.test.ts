@@ -8,6 +8,7 @@ import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins, publicationRun
 
 const receiptTable = "parameter_catalog.source_binding_suspension_receipts";
 const lookup = "parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)";
+const visibility = "parameter_catalog.current_source_binding_is_suspended(text,text,text)";
 
 it("upgrades existing source API logins to the bounded suspension lookup without exposing receipts", async () => {
   await withTempDatabase({ prefix: "scope_acl_upgrade", migrate: false }, async ({ db, connectionString }) => {
@@ -55,11 +56,14 @@ it("upgrades existing source API logins to the bounded suspension lookup without
           await expect(api.query(`select parameter_catalog.find_source_binding_suspension($1,$2,$3,$4,$5::jsonb) as prior`,
             ["scope-upgrade-org", "scope-upgrade-project", "missing-set", "missing-revision", "{}"])).resolves.toMatchObject({ rows: [{ prior: null }] });
 
+          expect((await api.query(`select parameter_catalog.current_source_binding_is_suspended(
+            'scope-upgrade-org','scope-upgrade-project','missing-binding') as suspended`)).rows).toEqual([{ suspended: false }]);
           for (const role of [runtime.apiRole, runtime.workerRole, runtime.managerRole]) {
             expect((await db.query(`select has_table_privilege($1,$2,'SELECT,INSERT,UPDATE,DELETE') as table_access,
               has_function_privilege($1,'parameter_catalog.mint_source_binding_suspensions()','EXECUTE') as mint,
-              has_function_privilege($1,$3,'EXECUTE') as lookup`, [role, receiptTable, lookup])).rows)
-              .toEqual([{ table_access: false, mint: false, lookup: role === runtime.apiRole }]);
+              has_function_privilege($1,$3,'EXECUTE') as lookup,
+              has_function_privilege($1,$4,'EXECUTE') as visibility`, [role, receiptTable, lookup, visibility])).rows)
+              .toEqual([{ table_access: false, mint: false, lookup: role === runtime.apiRole, visibility: role === runtime.apiRole }]);
           }
           for (const connection of [api, ...denied]) {
             for (const statement of [
@@ -72,10 +76,13 @@ it("upgrades existing source API logins to the bounded suspension lookup without
           for (const connection of denied) {
             await expect(connection.query("select parameter_catalog.find_source_binding_suspension('org','project','set','revision','{}')"))
               .rejects.toMatchObject({ code: "42501" });
+            await expect(connection.query("select parameter_catalog.current_source_binding_is_suspended('org','project','binding')"))
+              .rejects.toMatchObject({ code: "42501" });
           }
           for (const role of [noLocalAuthority, unownedAuthority]) {
-            expect((await db.query("select has_function_privilege($1,$2,'EXECUTE') as lookup", [role, lookup])).rows)
-              .toEqual([{ lookup: false }]);
+            expect((await db.query(`select has_function_privilege($1,$2,'EXECUTE') as lookup,
+              has_function_privilege($1,$3,'EXECUTE') as visibility`, [role, lookup, visibility])).rows)
+              .toEqual([{ lookup: false, visibility: false }]);
           }
         } finally {
           for (const role of [noLocalAuthority, unownedAuthority]) {

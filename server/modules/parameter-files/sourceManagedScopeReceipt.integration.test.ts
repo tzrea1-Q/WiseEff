@@ -85,6 +85,18 @@ describe("managed source exclusion and resumption SQL receipts", { timeout: 120_
     const suspended = await f.stage(sourceAdminText.replace("<36>", "<42>"), "scope-genuine-suspension");
     const committed = await suspended.apply();
     await setSourceRevisionRegistrationStatus(f.db, { organizationId: f.organizationId, registrationId: retained.registrationId, status: "active" });
+    const suspensionQuery = "select parameter_catalog.current_source_binding_is_suspended($1,$2,$3) as suspended";
+    const currentScope = [f.organizationId, f.projectId, retained.bindingId];
+    expect((await f.api.query(suspensionQuery, currentScope)).rows).toEqual([{ suspended: true }]);
+    for (const scope of [
+      ["another-organization", f.projectId, retained.bindingId],
+      [f.organizationId, "another-project", retained.bindingId],
+      [f.organizationId, f.projectId, "unknown-binding"],
+    ]) expect((await f.api.query(suspensionQuery, scope)).rows).toEqual([{ suspended: false }]);
+    await f.api.transaction(async tx => {
+      await tx.query("set local role catalog_baseline_reader_role");
+      expect((await tx.query(suspensionQuery, currentScope)).rows).toEqual([{ suspended: true }]);
+    });
     const resumed = await f.stage(`${sourceAdminText.replace("<36>", "<42>")}\n/* reconcile latest source */`, "scope-genuine-resumption");
     const proof = await inspect(resumed.input.candidateId);
     expect(proof.resumptions).toEqual([{ bindingId: retained.bindingId, priorRequestId: committed.requestId }]);
@@ -109,5 +121,6 @@ describe("managed source exclusion and resumption SQL receipts", { timeout: 120_
       code: "23514", message: "Historical DTS source resumption requires a reviewed set target"
     });
     expect((await resumed.apply()).requestId).toMatch(/^pvcr_/);
+    expect((await f.api.query(suspensionQuery, currentScope)).rows).toEqual([{ suspended: false }]);
   });
 });

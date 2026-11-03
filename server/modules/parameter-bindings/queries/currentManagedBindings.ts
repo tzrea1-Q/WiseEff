@@ -1,11 +1,11 @@
 import type { Queryable } from "../../../shared/database/client";
 
 /**
- * Current display/adoption scope is narrower than the Binding owner's current
- * identity. Retained values keep their immutable provenance and remain writable
- * only through an authorized reconciliation, but are not current project data.
- * Keep this predicate out of owner mutation/cohort queries: a source commit
- * creates its successor configuration before it advances each Binding tip.
+ * Current display/adoption excludes ineligible governance and exact tips that a
+ * committed source revision suspended. Unrelated configuration/file revisions
+ * do not invalidate an otherwise current exact pin. Source pin/provenance
+ * validation remains with each caller so malformed pins retain their existing
+ * error boundaries. Keep this predicate out of owner mutation/cohort queries.
  */
 export function currentManagedSourceBindingPredicate(binding: string): string {
   if (!/^[a-z][a-z0-9_]*$/u.test(binding)) throw new TypeError("Invalid Binding SQL alias");
@@ -30,31 +30,6 @@ export function currentManagedSourceBindingPredicate(binding: string): string {
        and managed_registration.organization_id=${binding}.organization_id
        and managed_registration.subject_id=${binding}.subject_id
        and managed_registration.status='active'
-      join parameter_catalog.project_parameter_values managed_value
-        on managed_value.id=${binding}.current_value_id and managed_value.binding_id=${binding}.id
-       and managed_value.definition_id=${binding}.definition_id and managed_value.value_state='present'
-       and managed_value.source_ref<>'canonical-binding-identity'
-      join parameter_catalog.project_value_source_pins managed_pin
-        on managed_pin.project_value_id=managed_value.id and managed_pin.binding_id=${binding}.id
-       and managed_pin.definition_id=${binding}.definition_id
-       and managed_pin.organization_id=${binding}.organization_id and managed_pin.project_id=${binding}.project_id
-       and managed_pin.source_occurrence_id=${binding}.source_occurrence_id
-       and managed_pin.config_revision_id=managed_value.config_revision_id and managed_pin.value_state='present'
-      join parameter_catalog.project_parameter_source_occurrences managed_occurrence
-        on managed_occurrence.id=managed_pin.source_occurrence_id
-       and managed_occurrence.organization_id=${binding}.organization_id and managed_occurrence.project_id=${binding}.project_id
-      join public.dts_config_revisions managed_config
-        on managed_config.id=managed_pin.config_revision_id
-       and managed_config.organization_id=${binding}.organization_id and managed_config.project_id=${binding}.project_id
-       and managed_config.config_set_id=managed_occurrence.config_set_id
-       and managed_config.status in ('resolved','validated','compiled','pending_approval')
-      join public.dts_config_revision_members managed_member
-        on managed_member.config_revision_id=managed_config.id
-       and managed_member.file_id=managed_pin.file_id and managed_member.file_version_id=managed_pin.file_version_id
-      join public.project_parameter_files managed_file
-        on managed_file.id=managed_pin.file_id and managed_file.current_version_id=managed_pin.file_version_id
-       and managed_file.organization_id=${binding}.organization_id and managed_file.project_id=${binding}.project_id
-       and managed_file.config_set_id=managed_occurrence.config_set_id
      where (managed_subject.owner_subject_id is null or exists (
        select 1 from parameter_catalog.catalog_release_subjects managed_owner
        join parameter_catalog.organization_subject_registrations managed_owner_registration
@@ -64,12 +39,8 @@ export function currentManagedSourceBindingPredicate(binding: string): string {
        where managed_owner.release_id=managed_state.current_catalog_release_id
          and managed_owner.subject_id=managed_subject.owner_subject_id and managed_owner.lifecycle='active'
      ))
-       and not exists (
-         select 1 from public.dts_config_revisions managed_newer
-          where managed_newer.organization_id=${binding}.organization_id and managed_newer.project_id=${binding}.project_id
-            and managed_newer.config_set_id=managed_config.config_set_id
-            and managed_newer.status in ('resolved','validated','compiled','pending_approval')
-            and managed_newer.revision_number>managed_config.revision_number
+       and not parameter_catalog.current_source_binding_is_suspended(
+         ${binding}.organization_id, ${binding}.project_id, ${binding}.id
        )
   )`;
 }
