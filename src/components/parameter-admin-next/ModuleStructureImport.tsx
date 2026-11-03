@@ -18,7 +18,7 @@ type Preview = {
 };
 type Receipt = { id: string; organizationId: string; changedModules: number; changedFields: number };
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
-const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块", placement: "归属", displayAlias: "展示别名",
+const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块", delete: "删除模块", legacyImpact: "将解除的遗留引用数", placement: "归属", displayAlias: "展示别名",
   recognition: "识别规则", "recognition.mode": "识别模式", "recognition.compatibles": "兼容标识", "recognition.driverNature": "驱动性质",
   "recognition.instanceCardinality": "实例基数", "recognition.nodeTypeName": "节点名称" };
 
@@ -107,7 +107,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
       <ModalDialog open={!discard} onDismiss={busy ? undefined : requestClose} className="submission-dialog param-admin-module-edit-dialog module-structure-import" describedBy>
         {({ titleId, descriptionId }) => <>
           <div className="submission-dialog-head"><div><h2 id={titleId}>导入模块结构</h2>
-            <p id={descriptionId}>更新当前组织模块资料、新增模块、调整层级、根主体归属和展示别名及识别规则。删除、主体生命周期及跨组织复制尚不支持。</p></div></div>
+            <p id={descriptionId}>更新当前组织模块资料、新增或删除模块、调整层级、根主体归属和展示别名及识别规则。删除模块须明确处置子模块和根主体归属。</p></div></div>
           <div className="param-admin-module-edit-body">
             {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy} onChange={async event => {
               const file = event.target.files?.[0]; if (!file) return;
@@ -123,7 +123,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
             {fileName ? <p>文件：{fileName}；来源组织：{typeof source === "string" ? source : "未提供"}；目标组织：{organizationId}</p> : null}
             {preview && !receipt ? <>
               <h3>变更（{preview.changes.length}）</h3>
-              {preview.changes.length ? <ul>{preview.changes.map((change, index) => <li key={`${change.moduleId}:${change.field}:${index}`}>{moduleLabel(change.moduleId)} · {fieldLabels[change.field] ?? change.field}：{displayValue(change.before)} → {displayValue(change.after)}</li>)}</ul> : <p>没有领域数据变更。</p>}
+              {preview.changes.length ? <ul>{preview.changes.map((change, index) => <li key={`${change.moduleId}:${change.field}:${index}`}>{moduleLabel(change.moduleId)} · {fieldLabels[change.field] ?? change.field}：{change.field === "parentRef" && typeof change.before === "string" ? moduleLabel(change.before) : displayValue(change.before)} → {change.field === "parentRef" && typeof change.after === "string" ? moduleLabel(change.after) : displayValue(change.after)}</li>)}</ul> : <p>没有领域数据变更。</p>}
               {preview.impact?.length ? <><h3>受影响项目</h3><ul>{preview.impact.map(item => <li key={`${item.subjectId}:${item.projectId}`}>主体 {item.subjectId} · 项目 {item.projectId}</li>)}</ul></> : null}
               <h3>待解决冲突（{preview.conflicts.length}）</h3>
               {preview.conflicts.map(conflict => <div key={conflict.key}>
