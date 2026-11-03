@@ -15,6 +15,8 @@ type Preview = {
   changes: { moduleId: string; field: string; before: unknown; after: unknown }[];
   conflicts: { key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }[];
   impact?: { subjectId: string; projectId: string; bindingCount: number; definitions: string[] }[];
+  mappings?: { ref: string; selected: string | null; frozen: boolean; candidates: { id: string; name: string; suggested: boolean }[] }[];
+  targets?: { id: string; name: string }[];
 };
 type Receipt = { id: string; organizationId: string; changedModules: number; changedFields: number };
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
@@ -29,6 +31,8 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
   const [document, setDocument] = useState<unknown>(null);
   const [fileName, setFileName] = useState("");
   const [resolutions, setResolutions] = useState<Resolutions>({});
+  const [mode, setMode] = useState<"update" | "copy">("update");
+  const [mappings, setMappings] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<Preview | null>(null);
   const [reason, setReason] = useState("");
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -38,7 +42,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
   const write = useRef<{ fingerprint: string; key: string } | null>(null);
   const dirty = Boolean(fileName && !receipt);
   const base = `/api/v2/organizations/${encodeURIComponent(organizationId ?? "")}/module-structure`;
-  const close = () => { setOpen(false); setDocument(null); setFileName(""); setResolutions({}); setPreview(null); setReason(""); setReceipt(null); setError(""); write.current = null; };
+  const close = () => { setOpen(false); setDocument(null); setFileName(""); setResolutions({}); setMappings({}); setMode("update"); setPreview(null); setReason(""); setReceipt(null); setError(""); write.current = null; };
   const requestClose = () => { if (dirty) setDiscard(true); else close(); };
   const showError = (cause: unknown, fallback: string) => {
     const path = cause instanceof WiseEffApiError && typeof cause.details.path === "string" ? `（${cause.details.path}）` : "";
@@ -54,16 +58,16 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
     };
     setError(`${cause instanceof WiseEffApiError && labels[cause.message] || presentError(cause, fallback)}${path}${issues ? ` ${issues}` : ""}`);
   };
-  const refresh = async (next: Resolutions) => {
+  const refresh = async (next: Resolutions, nextMappings = mappings) => {
     if (!apiClient || !document) return;
     setBusy(true); setError(""); setPreview(null);
-    try { setPreview(await apiClient.post<Preview>(`${base}/previews`, { mode: "update", document, resolutions: next })); }
+    try { setPreview(await apiClient.post<Preview>(`${base}/previews`, { mode, document, resolutions: next, mappings: nextMappings })); }
     catch (cause) { showError(cause, "预览失败，请检查文件后重试。"); }
     finally { setBusy(false); }
   };
   const apply = async () => {
     if (!apiClient || !preview) return;
-    const body = { mode: "update", document, resolutions, token: preview.token, reason: reason.trim() };
+    const body = { mode, document, resolutions, mappings, token: preview.token, reason: reason.trim() };
     const fingerprint = JSON.stringify(body);
     if (write.current?.fingerprint !== fingerprint) write.current = { fingerprint, key: createGovernanceIdempotencyKey() };
     setBusy(true); setError("");
@@ -107,11 +111,14 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
       <ModalDialog open={!discard} onDismiss={busy ? undefined : requestClose} className="submission-dialog param-admin-module-edit-dialog module-structure-import" describedBy>
         {({ titleId, descriptionId }) => <>
           <div className="submission-dialog-head"><div><h2 id={titleId}>导入模块结构</h2>
-            <p id={descriptionId}>更新当前组织模块、根主体登记状态、归属、展示别名和识别设置。生命周期暂不能与删除模块或识别设置同时修改；跨组织复制尚不支持。</p></div></div>
+            <p id={descriptionId}>更新当前组织结构，或复制业务模块到当前目标组织。删除须明确处置子模块和主体归属；复制须确认复用或新建。生命周期暂不能与删除或识别设置同时修改。</p></div></div>
           <div className="param-admin-module-edit-body">
+            {!receipt ? <SelectControl ariaLabel="导入模式" value={mode} disabled={busy} options={[{ value: "update", label: "更新当前组织" }, { value: "copy", label: "复制到当前组织" }]} onValueChange={next => {
+              setMode(next as "update" | "copy"); setMappings({}); setResolutions({}); setPreview(null);
+            }} /> : null}
             {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy} onChange={async event => {
               const file = event.target.files?.[0]; if (!file) return;
-              setFileName(file.name); setDocument(null); setPreview(null); setReceipt(null); setResolutions({}); setError(""); write.current = null;
+              setFileName(file.name); setDocument(null); setPreview(null); setReceipt(null); setResolutions({}); setMappings({}); setError(""); write.current = null;
               if (file.size > 4 * 1024 * 1024) { setError("JSON 文件不能超过 4 MiB。"); return; }
               try {
                 const text = await new Promise<string>((resolve, reject) => {
@@ -122,11 +129,19 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
             }} /></label> : null}
             {fileName ? <p>文件：{fileName}；来源组织：{typeof source === "string" ? source : "未提供"}；目标组织：{organizationId}</p> : null}
             {preview && !receipt ? <>
+              {mode === "copy" ? <><h3>模块映射</h3>{preview.mappings?.map(mapping => <div key={mapping.ref}>
+                <strong>{moduleLabel(mapping.ref)}</strong>
+                <SelectControl ariaLabel={`${mapping.ref} 的目标模块`} value={mapping.selected ?? ""} disabled={busy || mapping.frozen} options={[
+                  { value: "", label: "请选择", disabled: true }, { value: "create", label: "新建目标模块" },
+                  ...mapping.candidates.map(candidate => ({ value: candidate.id, label: `建议：复用 ${candidate.name}` })),
+                  ...(preview.targets ?? []).filter(target => !mapping.candidates.some(candidate => candidate.id === target.id)).map(target => ({ value: target.id, label: `复用 ${target.name}` }))
+                ]} onValueChange={choice => { if (!choice) return; const next = { ...mappings, [mapping.ref]: choice }; setMappings(next); void refresh(resolutions, next); }} />
+              </div>)}</> : null}
               <h3>变更（{preview.changes.length}）</h3>
 {preview.changes.length ? <ul>{preview.changes.map((change, index) => <li key={`${change.moduleId}:${change.field}:${index}`}>{moduleLabel(change.moduleId)} · {fieldLabels[change.field] ?? change.field}：{change.field === "parentRef" && typeof change.before === "string" ? moduleLabel(change.before) : displayValue(change.before)} → {change.field === "parentRef" && typeof change.after === "string" ? moduleLabel(change.after) : displayValue(change.after)}</li>)}</ul> : <p>没有领域数据变更。</p>}
               {preview.impact?.length ? <><h3>受影响项目</h3><ul>{preview.impact.map(item => <li key={`${item.subjectId}:${item.projectId}`}>主体 {item.subjectId} · 项目 {item.projectId} · 绑定 {item.bindingCount} · 定义 {item.definitions.join("、")}</li>)}</ul></> : null}
               <h3>待解决冲突（{preview.conflicts.length}）</h3>
-              {preview.conflicts.map(conflict => <div key={conflict.key}>
+              {preview.conflicts.filter(conflict => conflict.field !== "mapping").map(conflict => <div key={conflict.key}>
                 <strong>{moduleLabel(conflict.moduleId)} · {fieldLabels[conflict.field] ?? conflict.field}</strong>
                 <dl><dt>基准</dt><dd>{displayValue(conflict.baseline)}</dd><dt>文件</dt><dd>{displayValue(conflict.file)}</dd><dt>当前</dt><dd>{displayValue(conflict.current)}</dd></dl>
                 <SelectControl ariaLabel={`${conflict.key} 的冲突选择`} value={resolutions[conflict.key] ?? ""} disabled={busy} options={[{ value: "", label: "请选择", disabled: true }, { value: "current", label: "保留当前" }, { value: "file", label: "采用文件" }]} onValueChange={choice => {

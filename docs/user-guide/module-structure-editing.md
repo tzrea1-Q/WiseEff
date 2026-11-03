@@ -1,6 +1,6 @@
 # Editing a module structure package
 
-The current import supports module creation, hierarchy moves, deletion and metadata updates, root Subjects' registration lifecycle, placement and display alias, and recognition settings in the source organization. Lifecycle changes cannot yet be combined with module deletion or recognition changes. Retired registrations remain retired when moved. Cross-organization copy is not yet supported.
+The current import supports module creation, hierarchy moves, deletion and metadata updates, root Subjects' registration lifecycle, placement and display alias, and recognition settings in the source organization. Lifecycle changes cannot yet be combined with module deletion or recognition changes. Retired registrations remain retired when moved. Copy mode supports business modules; remove Subject entries from a copy package until Subject copying is supported. Unsupported operations reject the entire import.
 
 Keep the original export as a backup. Edit the JSON as data: do not execute text in it. A person must review and confirm the import in WiseEff. The package contains organization taxonomy and Subject settings, not project values, Bindings, source files, credentials, permissions, or audit history.
 
@@ -38,5 +38,7 @@ Use the exported field shapes and clear values as the contract for the package v
 ## Review and import
 
 An update compares the file with the server-retained baseline and current organization state. Independent edits can be retained, but conflicting edits require a choice. A copy targets another organization in the same deployment; matching a path suggests a possible existing module but does not authorize reuse. Source deletion markers never delete target modules. A missing baseline cannot be replaced by values from the edited file. Review all operations, conflicts, affected Subjects, and project impact before confirming. If the target changes after preview, preview again.
+
+For module copy, select copy mode in the target organization, upload the package, and explicitly choose a target module or create a new one for each retained entry. Resolve differences with the target before confirming. The target stores each approved mapping, including reuse, for later imports of the same package; a missing mapped target is a conflict. Copy uses the file and target state, without reading a source baseline.
 
 The service reports its supported package size and counts. An oversized package is rejected rather than truncated or applied in parts.

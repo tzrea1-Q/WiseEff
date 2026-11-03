@@ -46,6 +46,27 @@ it("reports a no-op receipt", async () => {
   expect(await screen.findByRole("status")).toHaveTextContent("没有领域数据变更");
 });
 
+it("requires an explicit target mapping before confirming a copy", async () => {
+  const suggestion = { ref: "source", selected: null, frozen: false, candidates: [{ id: "target", name: "Power", suggested: true }] };
+  const post = vi.fn().mockResolvedValueOnce({ changes: [], conflicts: [{ key: "mapping:source", field: "mapping" }], mappings: [suggestion], targets: [{ id: "target", name: "Power (target)" }], token: "one" })
+    .mockResolvedValueOnce({ changes: [], conflicts: [], mappings: [{ ...suggestion, selected: "target" }], targets: [], token: "two" })
+    .mockResolvedValueOnce({ id: "copied", organizationId: "target-org", changedModules: 0, changedFields: 0 });
+  const user = userEvent.setup();
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="target-org" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  await user.click(screen.getByLabelText("导入模式")); await user.click(screen.getByRole("option", { name: "复制到当前组织" }));
+  await user.upload(screen.getByLabelText("JSON 文件"), new File(['{"source":{"organizationId":"source-org"},"modules":[{"ref":"source","name":"Power"}]}'], "copy.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "预览" }));
+  expect(await screen.findByText(/来源组织：source-org；目标组织：target-org/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  await user.click(screen.getByLabelText("source 的目标模块")); await user.click(screen.getByRole("option", { name: "建议：复用 Power" }));
+  await user.type(await screen.findByLabelText("变更原因"), "Reviewed copy");
+  await user.click(screen.getByRole("button", { name: "确认提交" }));
+  expect(await screen.findByText(/回执 copied/)).toBeInTheDocument();
+  expect(post.mock.calls[1][1]).toMatchObject({ mode: "copy", mappings: { source: "target" } });
+  expect(post.mock.calls[2][1]).toMatchObject({ mode: "copy", mappings: { source: "target" }, token: "two" });
+});
+
 it("shows the full placement path, unset and affected projects", async () => {
   const post = vi.fn().mockResolvedValue({ changes: [{ moduleId: "subject:driver", field: "placement",
     before: { kind: "unset" }, after: { kind: "module", moduleRef: "child" } }], conflicts: [],

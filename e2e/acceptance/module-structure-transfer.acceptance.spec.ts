@@ -5,7 +5,7 @@ import { expect, test } from "playwright/test";
 import { createCatalogKernel } from "../../server/modules/catalog-kernel/interface";
 import { captureCurrentCatalogPin } from "../../server/modules/catalog-publication/runtime";
 import { createSourceBackedBindingService } from "../../server/modules/parameter-bindings/binding/__fixtures__/sourceBackedBinding";
-import { DefinitionRevisionId, ParameterDefinitionId } from "../../server/modules/parameter-catalog-contract";
+import { DefinitionRevisionId, ParameterDefinitionId, SubjectRegistrationId } from "../../server/modules/parameter-catalog-contract";
 import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
@@ -59,7 +59,7 @@ test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async
         const snapshot = await createCatalogKernel(pool).loadCurrentCatalog(pin);
         if (!snapshot.ok) throw new Error(JSON.stringify(snapshot.error));
         const binding = await createSourceBackedBindingService(pool).stabilize({ snapshot: snapshot.value,
-          organizationId: organization, projectId, logicalNodeId: `lifecycle_${suffix}`, registrationId: row.registration_id,
+          organizationId: organization, projectId, logicalNodeId: `lifecycle_${suffix}`, registrationId: SubjectRegistrationId(row.registration_id),
           definitionId: ParameterDefinitionId(row.definition_id), effectiveRevisionId: DefinitionRevisionId(row.revision_id), expectedEffectiveRevisionId: null });
         if (!binding.ok) throw new Error(JSON.stringify(binding.error));
       } finally { await pool.end(); }
@@ -339,6 +339,56 @@ test("MODULE-STRUCTURE-DELETE-001: move a child into a new category and delete i
     const ids = await withPgClient(async client => (await client.query<{ module_id: string }>("select module_id from parameter_catalog.module_structure_created_refs where organization_id=$1 and export_id=$2", [org, exportId])).rows);
     for (const row of ids) await request.delete(apiRoute(`/api/v1/parameter-modules/${row.module_id}`), { headers });
     await request.delete(apiRoute(`/api/v1/parameter-modules/${parent}`), { headers });
+  }
+});
+
+test("MODULE-STRUCTURE-COPY-001: confirm reuse and creation in a nonempty target", async ({ page, request }, info) => {
+  // @acceptance MODULE-STRUCTURE-COPY-001
+  // @operation MODULE-STRUCTURE-COPY-001
+  await seedAcceptanceRoleMatrix();
+  const headers = authHeadersForRole("admin"); const suffix = String(Date.now());
+  const sourceOrg = `copy-source-${suffix}`; const sourceId = `copy-source-module-${suffix}`; const name = `Copy root ${suffix}`;
+  await withPgClient(async client => {
+    await client.query("insert into organizations(id,name) values ($1,'Copy source')", [sourceOrg]);
+    await client.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ($1,$2,$3,$1,'business','curated')", [sourceId, sourceOrg, name]);
+  });
+  const created = await request.post(apiRoute("/api/v1/parameter-modules"), { headers, data: { name } });
+  expect(created.status(), await created.text()).toBe(201);
+  const targetId = (await created.json()).item.id as string; let childId: string | undefined;
+  try {
+    const exported = await request.post(apiRoute(endpoint), { headers, data: {} });
+    const document = await exported.json();
+    const root = document.modules.find((entry: { sourceId: string }) => entry.sourceId === targetId);
+    document.source = { ...document.source, organizationId: sourceOrg, exportId: `browser-copy-${suffix}` };
+    document.modules = [{ ...root, ref: sourceId, sourceId }, { ref: `child-${suffix}`, name: `Copy child ${suffix}`, parentRef: sourceId,
+      description: "", scope: "", sortOrder: 0, importance: "medium" }];
+    document.subjects = []; document.references = [];
+    await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
+    await page.getByRole("button", { name: "导入结构" }).click();
+    const dialog = page.getByRole("dialog", { name: "导入模块结构" });
+    await dialog.getByLabel("导入模式").click(); await page.getByRole("option", { name: "复制到当前组织" }).click();
+    await dialog.getByLabel("JSON 文件").setInputFiles({ name: "copy.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+    await dialog.getByRole("button", { name: "预览" }).click();
+    await expect(dialog.getByText(`来源组织：${sourceOrg}`, { exact: false })).toBeVisible();
+    await dialog.getByLabel(`${sourceId} 的目标模块`).click(); await page.getByRole("option", { name: `建议：复用 ${name}` }).click();
+    await expect(dialog.getByLabel(`${sourceId} 的目标模块`)).toContainText(name);
+    await dialog.getByLabel(`child-${suffix} 的目标模块`).click(); await page.getByRole("option", { name: "新建目标模块" }).click();
+    await expect(dialog.getByText("待解决冲突（0）")).toBeVisible();
+    await dialog.getByLabel("变更原因").fill("Review cross-organization copy");
+    await page.screenshot({ path: info.outputPath("module-structure-copy-1440x900.png"), animations: "disabled" });
+    const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `/api/v2/organizations/${org}/module-structure/applies` && response.status() === 200);
+    await dialog.getByRole("button", { name: "确认提交" }).click(); const response = await applied;
+    await expect(dialog.getByRole("status")).toContainText("回执");
+    const result = await withPgClient(async client => ({ child: (await client.query<{ id: string; parent_id: string }>("select id,parent_id from parameter_modules where organization_id=$1 and name=$2", [org, `Copy child ${suffix}`])).rows[0],
+      source: (await client.query("select name from parameter_modules where organization_id=$1 and id=$2", [sourceOrg, sourceId])).rows }));
+    childId = result.child.id; expect(result.child.parent_id).toBe(targetId); expect(result.source).toEqual([{ name }]);
+    await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-COPY-001", title: "Copy modules into a nonempty organization", status: "passed", page, testInfo: info,
+      artifacts: [info.outputPath("module-structure-copy-1440x900.png")], api: [summarizeApiResponse(response, { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, responseSummary: "Confirmed reuse and creation committed." })],
+      db: [{ table: "parameter_modules", predicate: "target and source organizations", observed: "Target child references reused root; source remains unchanged." }] });
+  } finally {
+    if (childId) await request.delete(apiRoute(`/api/v1/parameter-modules/${childId}`), { headers });
+    await request.delete(apiRoute(`/api/v1/parameter-modules/${targetId}`), { headers });
+    await withPgClient(async client => { await client.query("delete from parameter_modules where id=$1", [sourceId]); await client.query("delete from organizations where id=$1", [sourceOrg]); });
   }
 });
 

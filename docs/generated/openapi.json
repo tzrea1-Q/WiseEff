@@ -88246,7 +88246,8 @@
           "mode": {
             "type": "string",
             "enum": [
-              "update"
+              "update",
+              "copy"
             ]
           },
           "document": {
@@ -88330,7 +88331,8 @@
                     "operation": {
                       "type": "string",
                       "enum": [
-                        "upsert"
+                        "upsert",
+                        "delete"
                       ]
                     },
                     "name": {
@@ -88593,6 +88595,14 @@
                         }
                       },
                       "additionalProperties": false
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "register",
+                        "retire",
+                        "restore"
+                      ]
                     }
                   },
                   "required": [
@@ -88656,6 +88666,12 @@
                 "current",
                 "file"
               ]
+            }
+          },
+          "mappings": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
             }
           }
         },
@@ -90531,11 +90547,91 @@
                 },
                 "projectId": {
                   "type": "string"
+                },
+                "bindingCount": {
+                  "type": "number"
+                },
+                "definitions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
                 "subjectId",
-                "projectId"
+                "projectId",
+                "bindingCount",
+                "definitions"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "mappings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "selected": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "frozen": {
+                  "type": "boolean"
+                },
+                "candidates": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "suggested": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "suggested"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "ref",
+                "selected",
+                "frozen",
+                "candidates"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
               ],
               "additionalProperties": false
             }
@@ -90559,7 +90655,8 @@
           "mode": {
             "type": "string",
             "enum": [
-              "update"
+              "update",
+              "copy"
             ]
           },
           "document": {
@@ -90643,7 +90740,8 @@
                     "operation": {
                       "type": "string",
                       "enum": [
-                        "upsert"
+                        "upsert",
+                        "delete"
                       ]
                     },
                     "name": {
@@ -90906,6 +91004,14 @@
                         }
                       },
                       "additionalProperties": false
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "register",
+                        "retire",
+                        "restore"
+                      ]
                     }
                   },
                   "required": [
@@ -90969,6 +91075,12 @@
                 "current",
                 "file"
               ]
+            }
+          },
+          "mappings": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "token": {

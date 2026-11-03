@@ -7,6 +7,7 @@ import type { z } from "zod";
 import { captureModuleStructure, MODULE_STRUCTURE_MAX_BYTES } from "./export";
 import { planRecognition } from "./recognition";
 import { planSubjectPlacement } from "./subjects";
+import { planModuleCopy } from "./copy";
 import type { LifecycleChange } from "./lifecycle";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance", "parentRef"] as const;
@@ -30,6 +31,8 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   const parsed = moduleStructurePreviewRequestSchema.safeParse(raw);
   if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Invalid module structure document.", { issues: parsed.error.issues.map(i => ({ path: i.path.join("."), message: i.message })) });
   const { mode, document, resolutions } = parsed.data;
+  if (mode === "copy") return planModuleCopy(client, organizationId, invocation, parsed.data);
+  if (Object.keys(parsed.data.mappings).length) throw new ApiError("VALIDATION_FAILED", "Mappings are only valid in copy mode.");
   if (document.source.organizationId !== organizationId) throw new ApiError("FORBIDDEN", "The package is not from this organization.");
   const result = await client.query<{ document: z.infer<typeof moduleStructureExportSchema> }>(
     "select document from parameter_catalog.module_structure_export_baselines where organization_id=$1 and export_id=$2", [organizationId, document.source.exportId]);
@@ -231,15 +234,15 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, mappings, subjectVersions: subjectVersions.rows, impact, legacyImpact, recognition: recognition.evidence };
   return { changes: [...changes, ...subjectPlan.changes.map(({ subjectId, ...change }) => ({ moduleId: `subject:${subjectId}`, ...change })), ...lifecycle.map(change => ({ moduleId: `subject:${change.subjectId}`, field: "state", before: change.operation === "register" ? null : change.operation === "retire" ? "active" : "retired", after: change.operation === "retire" ? "retired" : "active" }))],
     conflicts: [...conflicts, ...subjectPlan.conflicts.map(({ subjectId, ...conflict }) => ({ moduleId: `subject:${subjectId}`, ...conflict })), ...recognition.conflicts],
-    subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, lifecycle, moduleIds, parents, namesById, deleted, currentCatalogReleaseId: current.source.catalogReleaseId, impact: impact.map(({ bindingVersions: _versions, ...item }) => item), token: createHash("sha256").update(stable(evidence)).digest("hex") };
+    subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, lifecycle, moduleIds, parents, namesById, deleted, currentCatalogReleaseId: current.source.catalogReleaseId, impact: impact.map(({ bindingVersions: _versions, ...item }) => item), token: createHash("sha256").update(stable(evidence)).digest("hex"), mappingSuggestions: [], mappingTargets: [], copyMappings: [] };
 }
 
 export async function previewModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
   assertTrustedInvocationMatchesScope(invocation.principal, invocation, organizationId, "module structure preview");
   const client = await pool.connect();
-  try { await client.query("begin isolation level repeatable read read only"); const { changes, conflicts, token, impact, recognitionChanges } = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit");
-    return { changes: [...changes, ...recognitionChanges.map(change => ({ moduleId: change.subjectId, field: "recognition", before: change.before, after: change.after }))], conflicts, token, impact }; }
+  try { await client.query("begin isolation level repeatable read read only"); const { changes, conflicts, token, impact, recognitionChanges, mappingSuggestions, mappingTargets } = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit");
+    return { changes: [...changes, ...recognitionChanges.map(change => ({ moduleId: change.subjectId, field: "recognition", before: change.before, after: change.after }))], conflicts, token, impact, mappings: mappingSuggestions, targets: mappingTargets }; }
   catch (error) { await client.query("rollback").catch(() => undefined); throw error; }
   finally { client.release(); }
 }
