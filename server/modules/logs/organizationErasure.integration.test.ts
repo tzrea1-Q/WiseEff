@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createWiseEffServer } from "../../app";
 import { requestJson } from "../../test/testClient";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
-import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { seedBaselineAuthCatalog } from "../auth/baselineCatalog";
 import { createXiaozeCheckpointer } from "../agent/xiaoze/checkpointer";
@@ -91,6 +91,42 @@ describe("Organization log erasure through HTTP, PostgreSQL and real object stor
     expect(retry.status, retry.bodyText).toBe(200); expect(retry.body.item).toMatchObject({ status: "deleted", domains: {} });
     await expect(store.get(uploaded.fileObject.storageKey)).rejects.toThrow();
     expect(remove).toBeTypeOf("function");
+  });
+  it("retries transient log table contention without losing object custody", async () => {
+    const uploaded = await upload();
+    const blocker = await getRootPostgresPool(db)!.connect();
+    await blocker.query("begin");
+    await blocker.query("lock table public.log_webhook_outbox in row exclusive mode");
+    try {
+      const erasure = start();
+      await delay(150);
+      await blocker.query("commit");
+      const result = await erasure;
+      expect(result.status, result.bodyText).toBe(202);
+      expect(result.body.item.status).toBe("deleted");
+      await expect(store.get(uploaded.fileObject.storageKey)).rejects.toThrow();
+    } finally { await blocker.query("rollback"); blocker.release(); }
+  });
+  it("leaves persistent contention retryable and does not retry other database errors", async () => {
+    const uploaded = await upload();
+    const blocker = await getRootPostgresPool(db)!.connect();
+    await blocker.query("begin");
+    await blocker.query("lock table public.log_webhook_outbox in row exclusive mode");
+    let failed;
+    try { failed = await start(); } finally { await blocker.query("rollback"); blocker.release(); }
+    expect(failed.body.item.status).toBe("failed");
+    expect(await store.get(uploaded.fileObject.storageKey)).toBeInstanceOf(Buffer);
+    await db.query(`create sequence public.erasure_ack_attempts; create function public.fail_erasure_ack() returns trigger language plpgsql as $$
+      begin perform nextval('public.erasure_ack_attempts'); raise exception 'injected acknowledgement failure'; end $$;
+      create trigger fail_erasure_ack before delete on parameter_catalog.organization_log_erasure_objects for each row execute function public.fail_erasure_ack()`);
+    try {
+      const retry = await request<{ item: { status: string } }>(`/api/v1/platform/organization-deletions/${failed.body.item.id}/retry`, "POST");
+      expect(retry.body.item.status).toBe("failed");
+      expect((await db.query("select last_value from public.erasure_ack_attempts")).rows).toEqual([{ last_value: "1" }]);
+    } finally { await db.query("drop trigger fail_erasure_ack on parameter_catalog.organization_log_erasure_objects; drop function public.fail_erasure_ack(); drop sequence public.erasure_ack_attempts"); }
+    const recovered = await request<{ item: { status: string } }>(`/api/v1/platform/organization-deletions/${failed.body.item.id}/retry`, "POST");
+    expect(recovered.body.item.status).toBe("deleted");
+    await expect(store.get(uploaded.fileObject.storageKey)).rejects.toThrow();
   });
   it("retains objects referenced by another organization or pending global Definition erasure", async () => {
     const uploaded = await upload(), key = uploaded.fileObject.storageKey;
