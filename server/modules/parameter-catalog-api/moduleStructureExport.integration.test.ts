@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
 import type { z } from "zod";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
@@ -15,6 +16,7 @@ describe("module structure export", () => {
   let api: ReturnType<typeof createPostgresDatabase>;
   const org = "export-org";
   const user = "export-admin";
+  const runToken = `mstransfer${randomUUID().replaceAll("-", "").slice(0, 12)}`;
 
   beforeAll(async () => {
     fixture = await createDisposableParameterCatalogDatabase("structureexport");
@@ -26,12 +28,12 @@ describe("module structure export", () => {
     await pool.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('export-role',$1,$2,'admin')", [user, org]);
     await pool.query(`insert into parameter_modules(id,organization_id,name,path,kind,origin)
       values ('export-root',$1,'Root','export-root','business','curated')`, [org]);
-    const runtime = await provisionPublicationRuntimeLogins(fixture.url, { mode: "lab", runToken: "moduleexport1495" });
+    const runtime = await provisionPublicationRuntimeLogins(fixture.url, { mode: "lab", runToken });
     api = createPostgresDatabase(runtime.apiUrl);
     expect((await api.query<{ superuser: boolean }>("select rolsuper as superuser from pg_roles where rolname=current_user")).rows[0]?.superuser).toBe(false);
   }, 120_000);
 
-  afterAll(async () => { await api?.close(); if (fixture) await dropLabRuntimeLogins(fixture.url, "moduleexport1495"); await db?.close(); await fixture?.close(); });
+  afterAll(async () => { await api?.close(); if (fixture) await dropLabRuntimeLogins(fixture.url, runToken); await db?.close(); await fixture?.close(); });
 
   it("exports the complete organization structure and retains a baseline", async () => {
     const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
@@ -133,6 +135,21 @@ describe("module structure export", () => {
     document.modules[0]!.parentRef = "unsupported-parent";
     const unsupported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions }) });
     expect(unsupported.status).toBe(400);
+  });
+
+  it("requires a fresh preview when the actor's roles change", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    document.modules[0]!.description = "Changed after permission review";
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('export-extra-role',$1,$2,'guest')", [user, org]);
+    try {
+      const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({
+        document, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "role-drift", reason: "Reviewed" }) });
+      expect(applied.status, applied.bodyText).toBe(409);
+    } finally { await db.query("delete from user_role_bindings where id='export-extra-role'"); }
   });
 
   it("rolls back metadata and retry identity when audit fails", async () => {
@@ -312,6 +329,17 @@ describe("module structure export", () => {
         expect.objectContaining({ subjectId: "csub_acme_charger", ownerSubjectId: "csub_acme_power", state: "retired", cascadeRetired: true,
           placement: null, recognition: expect.objectContaining({ mode: "inherit", override: null }) })]) });
     expect((result.body as { modules: unknown[] }).modules).toHaveLength(251);
+    const retainedBefore = (await db.query(`select r.id,r.status,r.cascade_retired,r.current_placement_id,r.display_alias,
+      rr.compatibles from parameter_catalog.organization_subject_registrations r left join registration_recognition_rules rr
+      on rr.organization_id=r.organization_id and rr.registration_id=r.id where r.organization_id=$1 order by r.id`, [org])).rows;
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: result.body, resolutions: {} }) });
+    expect(preview.body).toMatchObject({ changes: [], conflicts: [] });
+    const roundTrip = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({
+      document: result.body, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "populated-no-op", reason: "Round trip" }) });
+    expect(roundTrip.status, roundTrip.bodyText).toBe(200);
+    expect((await db.query(`select r.id,r.status,r.cascade_retired,r.current_placement_id,r.display_alias,
+      rr.compatibles from parameter_catalog.organization_subject_registrations r left join registration_recognition_rules rr
+      on rr.organization_id=r.organization_id and rr.registration_id=r.id where r.organization_id=$1 order by r.id`, [org])).rows).toEqual(retainedBefore);
     await db.query("update parameter_catalog.organization_subject_registrations set status='active' where id='export-registration'");
     await db.query("update parameter_catalog.organization_subject_registrations set cascade_retired=false where id='export-child'");
     const active = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });

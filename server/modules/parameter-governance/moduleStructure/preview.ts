@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import { ApiError } from "../../../shared/http/errors";
-import { assertTrustedInvocationMatchesScope, type TrustedInvocationContext } from "../../auth/trustedInvocation";
+import { assertTrustedInvocationMatchesScope, type TrustedInvocationContext, type UserInvocationContext } from "../../auth/trustedInvocation";
 import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
 import type { z } from "zod";
 import { captureModuleStructure, MODULE_STRUCTURE_MAX_BYTES } from "./export";
@@ -21,7 +21,7 @@ function unchangedSubset(value: unknown, baseline: unknown): boolean {
   return stable(value) === stable(baseline);
 }
 
-export async function planModuleStructure(client: pg.PoolClient, organizationId: string, raw: unknown) {
+export async function planModuleStructure(client: pg.PoolClient, organizationId: string, invocation: UserInvocationContext, raw: unknown) {
   const documentBytes = raw && typeof raw === "object" && "document" in raw ? JSON.stringify(raw.document) : "";
   if (Buffer.byteLength(documentBytes ?? "", "utf8") > MODULE_STRUCTURE_MAX_BYTES) throw new ApiError("VALIDATION_FAILED", "Module structure exceeds the supported byte limit.");
   const parsed = moduleStructurePreviewRequestSchema.safeParse(raw);
@@ -83,7 +83,9 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     if (siblingNames.has(key)) throw new ApiError("CONFLICT", "The resulting module names are not unique within their parent.");
     siblingNames.add(key);
   }
-  const evidence = { organizationId, mode, document, resolutions, current, names: names.rows };
+  const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
+    roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
+  const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows };
   return { changes, conflicts, token: createHash("sha256").update(stable(evidence)).digest("hex") };
 }
 
@@ -91,7 +93,7 @@ export async function previewModuleStructure(pool: pg.Pool, organizationId: stri
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
   assertTrustedInvocationMatchesScope(invocation.principal, invocation, organizationId, "module structure preview");
   const client = await pool.connect();
-  try { await client.query("begin isolation level repeatable read read only"); const plan = await planModuleStructure(client, organizationId, raw); await client.query("commit"); return plan; }
+  try { await client.query("begin isolation level repeatable read read only"); const plan = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit"); return plan; }
   catch (error) { await client.query("rollback").catch(() => undefined); throw error; }
   finally { client.release(); }
 }

@@ -34,7 +34,7 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
        where organization_id=$1 and command_family='module-structure-update' and idempotency_key=$2 for update`, [organizationId, input.idempotencyKey])).rows[0]!;
     if (existing.request_fingerprint !== fingerprint) throw new ApiError("CONFLICT", "Idempotency key was already used for different content.");
     if (existing.state === "committed" && existing.result_ref) { await client.query("commit"); return JSON.parse(existing.result_ref); }
-    const plan = await planModuleStructure(client, organizationId, { mode: input.mode, document: input.document, resolutions: input.resolutions });
+    const plan = await planModuleStructure(client, organizationId, invocation, { mode: input.mode, document: input.document, resolutions: input.resolutions });
     if (plan.token !== input.token) throw new ApiError("CONFLICT", "Preview is stale; review the current state again.");
     if (plan.conflicts.length) throw new ApiError("CONFLICT", "Resolve all conflicts before applying.");
     const changes = new Map<string, Record<string, unknown>>();
