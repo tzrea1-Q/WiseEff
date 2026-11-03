@@ -17,6 +17,7 @@ type Preview = {
 };
 type Receipt = { id: string; organizationId: string; changedModules: number; changedFields: number };
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
+const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性" };
 
 export function ModuleStructureImport({ apiClient, organizationId, canImport, onChanged }: {
   apiClient?: ApiClient; organizationId?: string; canImport: boolean; onChanged?: () => void;
@@ -73,6 +74,11 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
     } finally { setBusy(false); }
   };
   const source = document && typeof document === "object" && "source" in document ? (document as { source?: { organizationId?: unknown } }).source?.organizationId : undefined;
+  const modules = document && typeof document === "object" && "modules" in document && Array.isArray(document.modules) ? document.modules : [];
+  const moduleLabel = (id: string) => {
+    const module = modules.find((entry: { sourceId?: string }) => entry.sourceId === id);
+    return typeof module?.name === "string" ? `${module.name}（${id}）` : id;
+  };
   return <>
     <Button type="button" size="sm" variant="outline" disabled={!canImport || !apiClient || !organizationId} onClick={() => setOpen(true)}>导入结构</Button>
     {open ? <>
@@ -96,16 +102,20 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
             {fileName ? <p>文件：{fileName}；来源组织：{typeof source === "string" ? source : "未提供"}；目标组织：{organizationId}</p> : null}
             {preview && !receipt ? <>
               <h3>变更（{preview.changes.length}）</h3>
-              {preview.changes.length ? <ul>{preview.changes.map((change, index) => <li key={`${change.moduleId}:${change.field}:${index}`}>{change.moduleId} · {change.field}：{value(change.before)} → {value(change.after)}</li>)}</ul> : <p>没有领域数据变更。</p>}
+              {preview.changes.length ? <ul>{preview.changes.map((change, index) => <li key={`${change.moduleId}:${change.field}:${index}`}>{moduleLabel(change.moduleId)} · {fieldLabels[change.field] ?? change.field}：{value(change.before)} → {value(change.after)}</li>)}</ul> : <p>没有领域数据变更。</p>}
               <h3>待解决冲突（{preview.conflicts.length}）</h3>
               {preview.conflicts.map(conflict => <div key={conflict.key}>
-                <strong>{conflict.moduleId} · {conflict.field}</strong>
+                <strong>{moduleLabel(conflict.moduleId)} · {fieldLabels[conflict.field] ?? conflict.field}</strong>
                 <dl><dt>基准</dt><dd>{value(conflict.baseline)}</dd><dt>文件</dt><dd>{value(conflict.file)}</dd><dt>当前</dt><dd>{value(conflict.current)}</dd></dl>
                 <SelectControl ariaLabel={`${conflict.key} 的冲突选择`} value={resolutions[conflict.key] ?? ""} disabled={busy} options={[{ value: "", label: "请选择", disabled: true }, { value: "current", label: "保留当前" }, { value: "file", label: "采用文件" }]} onValueChange={choice => {
                   if (!choice) return; const next = { ...resolutions, [conflict.key]: choice }; setResolutions(next); void refresh(next);
                 }} />
               </div>)}
-              {Object.entries(resolutions).filter(([key]) => !preview.conflicts.some(conflict => conflict.key === key)).map(([key, choice]) => <div key={key}>{key} 的选择
+              {Object.entries(resolutions).filter(([key]) => !preview.conflicts.some(conflict => conflict.key === key)).map(([key, choice]) => <div key={key}>{(() => {
+                const split = key.lastIndexOf(":"); const ref = key.slice(0, split); const field = key.slice(split + 1);
+                const module = modules.find((entry: { ref?: string }) => entry.ref === ref);
+                return `${typeof module?.sourceId === "string" ? moduleLabel(module.sourceId) : ref} · ${fieldLabels[field] ?? field} 的选择`;
+              })()}
                 <SelectControl ariaLabel={`${key} 的冲突选择`} value={choice} disabled={busy} options={[{ value: "current", label: "保留当前" }, { value: "file", label: "采用文件" }]} onValueChange={nextChoice => {
                   const next = { ...resolutions, [key]: nextChoice }; setResolutions(next); void refresh(next);
                 }} /></div>)}
