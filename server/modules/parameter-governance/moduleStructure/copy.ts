@@ -32,11 +32,17 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
     sourceByRef.set(module.ref, module); if (module.sourceId) sourceIds.add(module.sourceId);
   }
   const active = document.modules.filter(module => module.operation !== "delete");
+  const referenceIds = new Set<string>();
+  for (const [index, reference] of document.references.entries()) {
+    if (referenceIds.has(reference.sourceId) || sourceByRef.has(reference.sourceId))
+      throw new ApiError("VALIDATION_FAILED", "Duplicate module reference.", { path: `references.${index}.sourceId` });
+    referenceIds.add(reference.sourceId);
+  }
   const reservedRefs = new Set(document.references.filter(reference => reference.kind === "unclassified" && !reference.archived && !reference.parentId).map(reference => reference.sourceId));
+  if (reservedRefs.size > 1) throw new ApiError("VALIDATION_FAILED", "Multiple unclassified roots are not supported.", { path: "references" });
   const reserved = rows.find(row => row.kind === "unclassified" && !row.parent_id);
   for (const [index, module] of active.entries()) {
-    if (module.name === undefined || !module.name.trim() || module.parentRef === undefined || module.description === undefined || module.scope === undefined || module.sortOrder === undefined || module.importance === undefined)
-      throw new ApiError("VALIDATION_FAILED", "A copied module requires all editable fields.", { path: `modules.${index}` });
+    if (module.name !== undefined && !module.name.trim()) throw new ApiError("VALIDATION_FAILED", "Module name is required.", { path: `modules.${index}.name` });
     if (module.parentRef && (!sourceByRef.has(module.parentRef) || sourceByRef.get(module.parentRef)?.operation === "delete") && !reservedRefs.has(module.parentRef))
       throw new ApiError("VALIDATION_FAILED", "A retained module references an excluded or unavailable parent.", { path: `modules.${index}.parentRef` });
     if (module.parentRef && reservedRefs.has(module.parentRef) && !reserved) throw new ApiError("CONFLICT", "Unclassified destination is unavailable.");
@@ -47,6 +53,11 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
   const allowed = new Set(active.flatMap(module => fields.map(field => `${module.ref}:${field}`)));
   for (const key of Object.keys(resolutions)) if (!allowed.has(key)) throw new ApiError("VALIDATION_FAILED", "Unknown conflict choice.", { path: `resolutions.${key}` });
   const byId = new Map(rows.map(row => [row.id, row]));
+  const technicalAncestors = new Set<string>();
+  for (const row of rows) if (row.kind !== "business") {
+    let parent = row.parent_id;
+    while (parent && !technicalAncestors.has(parent)) { technicalAncestors.add(parent); parent = byId.get(parent)?.parent_id ?? null; }
+  }
   const pathKeys = (nodes: Map<string, { parent: string | null; name: string; reserved?: boolean }>) => {
     const keys = new Map<string, string>();
     for (const id of nodes.keys()) {
@@ -64,7 +75,8 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
     return keys;
   };
   const targetKeys = pathKeys(new Map(rows.map(row => [row.id, { parent: row.parent_id, name: row.name, reserved: row.kind === "unclassified" }])));
-  const sourceKeys = pathKeys(new Map(active.map(module => [module.ref, { parent: module.parentRef ?? null, name: module.name! }])));
+  const sourceKeys = pathKeys(new Map(active.map(module => [module.ref, { parent: module.parentRef ?? null,
+    name: module.name === undefined || module.parentRef === undefined ? `\u0000incomplete:${module.ref}` : module.name }])));
   const candidatesByPath = new Map<string, { id: string; name: string; suggested: boolean }[]>();
   for (const row of rows.filter(row => row.kind === "business")) {
     const key = targetKeys.get(row.id)!; const candidates = candidatesByPath.get(key) ?? [];
@@ -87,6 +99,8 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
       used.add(choice); moduleIds.set(module.ref, choice);
     } else { if (prior) throw new ApiError("CONFLICT", "A saved module mapping cannot be changed.");
       if (byId.has(module.ref)) throw new ApiError("VALIDATION_FAILED", "A new module reference cannot equal an existing module identity.");
+      if (module.name === undefined || module.parentRef === undefined || module.description === undefined || module.scope === undefined || module.sortOrder === undefined || module.importance === undefined)
+        throw new ApiError("VALIDATION_FAILED", "A new module requires all editable fields.", { path: `modules.${module.ref}` });
       moduleIds.set(module.ref, module.ref); }
   }
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
@@ -108,6 +122,7 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
     if (!target) throw new ApiError("CONFLICT", "A mapped module was deleted.");
     if (!prior) copyMappings.push({ ref: module.ref, moduleId: id, snapshot: { ...module, name: module.name?.trim(), description: module.description?.trim(), scope: module.scope?.trim() } });
     for (const field of fields) {
+      if (module[field] === undefined) continue;
       const file = field === "parentRef" && module.parentRef ? moduleIds.get(module.parentRef)! : normalized(field, module[field]);
       const now = target[field];
       const original = field === "parentRef" && prior?.initial_snapshot.parentRef ? moduleIds.get(prior.initial_snapshot.parentRef) ?? prior.initial_snapshot.parentRef : prior?.initial_snapshot[field];
@@ -115,7 +130,7 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
       const key = `${module.ref}:${field}`;
       if ((!prior || stable(now) !== stable(original)) && !resolutions[key]) { conflicts.push({ key, moduleId: id, field, baseline: prior ? original : null, file, current: now }); continue; }
       if (resolutions[key] === "current") continue;
-      if (field === "parentRef" && rows.some(row => row.kind !== "business" && row.path.startsWith(`${byId.get(id)!.path}/`)))
+      if (field === "parentRef" && technicalAncestors.has(id))
         throw new ApiError("CONFLICT", "Move legacy technical descendants before moving this module.");
       changes.push({ moduleId: id, field, before: now, after: file });
       if (field === "name") namesById.set(id, file as string);

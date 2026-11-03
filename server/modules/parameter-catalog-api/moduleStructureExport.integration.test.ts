@@ -322,6 +322,16 @@ describe("module structure export", () => {
       expect((await db.query("select name from parameter_modules where organization_id=$1", [target])).rows).toEqual([{ name: "Root" }]);
       expect((await db.query("select package_ref from parameter_catalog.module_structure_created_refs where organization_id=$1", [target])).rows).toEqual([]);
     } finally { await db.query("drop trigger fail_copy_mapping on parameter_catalog.module_structure_created_refs; drop function fail_copy_mapping()"); }
+    await db.query(`create function fail_copy_audit() returns trigger language plpgsql as $$ begin
+      if new.action='module-structure-update' then raise exception 'injected copy audit failure'; end if; return new; end $$;
+      create trigger fail_copy_audit before insert on audit_events for each row execute function fail_copy_audit()`);
+    try {
+      const failed = await requestJson(targetApp, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...resolved,
+        token: (reviewed.body as { token: string }).token, idempotencyKey: "copy-audit-failure", reason: "Copy tree" }) });
+      expect(failed.status).toBe(500);
+      expect((await db.query("select name,description from parameter_modules where organization_id=$1", [target])).rows).toEqual([{ name: "Root", description: "Target description" }]);
+      expect((await db.query("select package_ref from parameter_catalog.module_structure_created_refs where organization_id=$1", [target])).rows).toEqual([]);
+    } finally { await db.query("drop trigger fail_copy_audit on audit_events; drop function fail_copy_audit()"); }
     const commitBody = JSON.stringify({ ...resolved, token: (reviewed.body as { token: string }).token, idempotencyKey: "copy-tree", reason: "Copy tree" });
     const secondTargetApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId: target, userId: admin, roles: [{ roleId: "admin", projectId: null }] }) } } });
@@ -343,6 +353,11 @@ describe("module structure export", () => {
       token: (again.body as { token: string }).token, idempotencyKey: "copy-again", reason: "Repeat copy" }) });
     expect(repeated.status, repeated.bodyText).toBe(200);
     expect((await db.query("select name from parameter_modules where id='copy-existing'")).rows).toEqual([{ name: "Renamed target" }]);
+    const partialDocument = { ...document, modules: document.modules.map(module => module.ref === "export-root"
+      ? { ref: module.ref, sourceId: module.sourceId, operation: module.operation } : module) };
+    const partial = await requestJson(targetApp, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input, document: partialDocument }) });
+    expect(partial.status, partial.bodyText).toBe(200);
+    expect(partial.body).toMatchObject({ changes: [], conflicts: [] });
     const childId = (await db.query<{ id: string }>("select id from parameter_modules where organization_id=$1 and name='Child'", [target])).rows[0]!.id;
     const otherDocument = { ...document, source: { ...document.source, exportId: "another-package" } };
     const otherInput = { ...input, document: otherDocument, mappings: { "export-root": "copy-existing", "copy-child": childId }, resolutions: { "export-root:name": "current" } };
