@@ -12,6 +12,7 @@ import type { Database, Queryable } from "../../../shared/database/client";
 import { withAuditedWrite } from "../../audit/auditedWrite";
 import type { AuthContext } from "../../auth/types";
 import { canEditParameters } from "../../parameter-kernel/policy";
+import { lockOrganizationModuleRecognition } from "../../parameter-modules/recognitionLock";
 import type { ObjectStore } from "../../logs/objectStore";
 import {
   ARCHIVED_PARAMETER_PLANE_RELATIONS,
@@ -584,8 +585,8 @@ export async function disposeProjectParameterPlaneResidue(
   requireEditorAndOperator(auth, operator, input.projectId);
   requireTargetProject(input.projectId);
   const organizationId = parameterOrganizationId(auth);
-  const plan = await planProjectParameterPlaneDisposal(root, objectStore, auth, operator, input);
   return withAuditedWrite(root, parameterInvocation(auth) ?? createUserInvocation(auth), { requestId: operator.approvalRef }, async (tx) => {
+    await lockOrganizationModuleRecognition(tx, organizationId);
     await tx.query("select pg_advisory_xact_lock(hashtext('plane-disposal'), hashtext($1))", [
       `${organizationId}:${input.projectId}`,
     ]);
@@ -596,6 +597,7 @@ export async function disposeProjectParameterPlaneResidue(
     if (existing.rows[0]?.phase === "residue-deleted") {
       return { result: { phase: "residue-deleted" as const, archive: null }, audit: null };
     }
+    const plan = await planProjectParameterPlaneDisposal(tx, objectStore, auth, operator, input);
     const runId = existing.rows[0]?.id ?? randomUUID();
     if (!existing.rows[0]) {
       await tx.query(
@@ -613,7 +615,7 @@ export async function disposeProjectParameterPlaneResidue(
         ],
       );
     }
-    await loadDocument(root, objectStore, auth, {
+    await loadDocument(tx, objectStore, auth, {
       organizationId,
       projectId: input.projectId,
       archiveId: input.archiveId,

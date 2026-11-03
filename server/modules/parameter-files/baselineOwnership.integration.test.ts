@@ -12,6 +12,7 @@ import { captureConfigurationSourceState, installConfigurationSourceFixture } fr
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
+import { lockOrganizationModuleRecognition } from "../parameter-modules/recognitionLock";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { insertReleaseBaseline, insertReleaseBaselineMember } from "./baselineRepository";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
@@ -91,6 +92,27 @@ describe("assembled baseline source ownership API", () => {
   afterAll(async () => {
     await db?.close();
     await database?.drop();
+  });
+
+  it("serializes a legacy source upload with recognition validation", async () => {
+    let release!: () => void;
+    let locked!: () => void;
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { locked = resolve; });
+    const holder = db.transaction(async tx => { await lockOrganizationModuleRecognition(tx, organizationId); locked(); await wait; });
+    await ready;
+    const pending = uploadProjectParameterFile(db, storage, auth, {
+      projectId, fileName: "recognition-race.json", bytes: Buffer.from('{}'),
+    });
+    try {
+      await expect.poll(async () => (await db.query<{ waiting: boolean }>(`select exists (
+        select 1 from pg_catalog.pg_locks where locktype='advisory' and not granted
+          and database=(select oid from pg_database where datname=current_database())) as waiting`)).rows[0]!.waiting).toBe(true);
+    } finally {
+      release();
+      await holder;
+    }
+    await pending;
   });
 
   it("exposes canonical ownership and drift, refusing rollback without changing source truth", async () => {
