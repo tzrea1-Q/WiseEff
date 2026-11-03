@@ -207,6 +207,53 @@ describe("module structure export", () => {
     }
   });
 
+  it("keeps historical whitespace and importance inheritance on a full unchanged round trip", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    await db.query("update parameter_modules set description=' historical ',origin='auto',importance_override=false where id='export-root'");
+    const before = (await db.query("select description,origin,importance_override,updated_at from parameter_modules where id='export-root'")).rows[0];
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: exported.body, resolutions: {} }) });
+    expect(preview.body).toMatchObject({ changes: [], conflicts: [] });
+    const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({
+      document: exported.body, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "historical-no-op", reason: "Unchanged" }) });
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect((await db.query("select description,origin,importance_override,updated_at from parameter_modules where id='export-root'")).rows[0]).toEqual(before);
+  });
+
+  it("denies a non-admin and a different organization at the public preview boundary", async () => {
+    const adminApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(adminApp, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ('export-guest',$1,'Guest','Guest',true)", [org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('export-guest-role','export-guest',$1,'guest')", [org]);
+    const viewerApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: "export-guest", roles: [{ roleId: "guest", projectId: null }] }) } } });
+    const body = JSON.stringify({ document: exported.body, resolutions: {} });
+    const denied = await requestJson(viewerApp, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body });
+    expect(denied.status).toBe(403);
+    const foreign = await requestJson(adminApp, "/api/v2/organizations/another-org/module-structure/previews", { method: "POST", body });
+    expect(foreign.status).toBe(403);
+  });
+
+  it("previews a near-limit package and rejects one over the document bound", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const original = (await db.query<{ description: string }>("select description from parameter_modules where id='export-root'")).rows[0]!.description;
+    await db.query("update parameter_modules set description=$1 where id='export-root'", ["x".repeat(4 * 1024 * 1024 - 4096)]);
+    try {
+      const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+      expect(exported.status, exported.bodyText).toBe(200);
+      const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+      const path = `/api/v2/organizations/${org}/module-structure/previews`;
+      const accepted = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+      expect(accepted.status, accepted.bodyText).toBe(200);
+      document.modules[0]!.description += "x".repeat(8192);
+      const rejected = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+      expect(rejected.status).toBe(400);
+    } finally { await db.query("update parameter_modules set description=$1 where id='export-root'", [original]); }
+  });
+
   it("includes all modules and retained recognition settings without a page limit", async () => {
     await db.query(`insert into parameter_modules(id,organization_id,name,path,kind,origin)
       select 'export-extra-'||n,$1,'Extra '||n,'export-extra-'||n,'business','curated' from generate_series(1,250) n`, [org]);
