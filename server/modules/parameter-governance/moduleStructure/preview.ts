@@ -56,7 +56,13 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     for (const [field, value] of Object.entries(subject)) if (field !== "placement" && field !== "displayAlias" && !unchangedSubset(value, base[field as keyof typeof base]))
       throw new ApiError("VALIDATION_FAILED", "Subject changes are not supported.", { path: `subjects.${index}.${field}` });
   }
-  const subjectPlan = planSubjectPlacement(document.subjects, baseline.subjects, moduleStructureExportSchema.parse(current).subjects, resolutions);
+  const currentSubjects = moduleStructureExportSchema.parse(current).subjects.map(subject => {
+    const placement = subject.placement;
+    return placement?.kind === "module"
+      ? { ...subject, placement: { ...placement, moduleRef: mappings.find(mapping => mapping.module_id === placement.moduleRef)?.package_ref ?? placement.moduleRef } }
+      : subject;
+  });
+  const subjectPlan = planSubjectPlacement(document.subjects, baseline.subjects, currentSubjects, resolutions);
   const moduleIds = new Map(current.modules.map(module => [module.ref, module.sourceId]));
   for (const module of document.modules) moduleIds.set(module.ref, module.sourceId ?? mapped.get(module.ref)?.module_id ?? module.ref);
   for (const change of subjectPlan.changes) if (change.field === "placement" && typeof change.after === "object" && change.after?.kind === "module" && !moduleIds.has(change.after.moduleRef))

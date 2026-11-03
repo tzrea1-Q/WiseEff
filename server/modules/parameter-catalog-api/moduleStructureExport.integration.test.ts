@@ -489,6 +489,10 @@ describe("module structure export", () => {
     expect(destinationApply.status, destinationApply.bodyText).toBe(200);
     const destination = (await db.query<{ module_id: string }>("select module_id from parameter_catalog.subject_placements where id='export-placement'")).rows[0]!;
     expect((await db.query("select name from parameter_modules where id=$1", [destination.module_id])).rows).toEqual([{ name: "New placement module" }]);
+    const destinationAgain = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, {
+      method: "POST", body: JSON.stringify({ document: newDestination, resolutions: {} }) });
+    expect(destinationAgain.status, destinationAgain.bodyText).toBe(200);
+    expect(destinationAgain.body).toMatchObject({ changes: [], conflicts: [] });
     await db.query("update parameter_catalog.subject_placements set module_id=null where id='export-placement'");
     await db.query("delete from parameter_modules where id=$1", [destination.module_id]);
     unclassified.subjects.find(subject => subject.subjectId === "csub_acme_power")!.placement = { kind: "unclassified" };
