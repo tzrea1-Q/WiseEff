@@ -11,6 +11,7 @@ import { moduleStructureApplyRequestSchema } from "../../contracts/dtoSchemas/mo
 import { applyRecognition } from "./recognition";
 import type { Database } from "../../../shared/database/client";
 import { applySubjectPlacement } from "./subjects";
+import { applyLifecycle } from "./lifecycle";
 
 export async function applyModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, requestId: string, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
@@ -47,7 +48,7 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     if (plan.conflicts.length) throw new ApiError("CONFLICT", "Resolve all conflicts before applying.");
     const createdRefs = new Set(plan.changes.filter(change => change.field === "create").map(change => change.moduleId));
     const changes = new Map<string, Record<string, unknown>>();
-    for (const change of plan.changes) if (!createdRefs.has(change.moduleId) && change.field !== "parentRef" && change.field !== "placement" && change.field !== "displayAlias" && change.field !== "delete" && change.field !== "legacyImpact") changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
+    for (const change of plan.changes) if (!change.moduleId.startsWith("subject:") && !createdRefs.has(change.moduleId) && !["parentRef", "delete", "legacyImpact"].includes(change.field)) changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
     // Temporary names make valid swaps safe under the immediate sibling-name index.
     const structural = new Set(plan.changes.filter(change => !createdRefs.has(change.moduleId) && (change.field === "name" || change.field === "parentRef")).map(change => change.moduleId));
     for (const moduleId of new Set([...structural, ...plan.deleted])) await client.query(
@@ -90,8 +91,9 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
       update parameter_modules m set path=tree.path,depth=tree.depth from tree where m.organization_id=$1 and m.id=tree.id
       and m.id in (select id from affected) and (m.path,m.depth) is distinct from (tree.path,tree.depth)`, [organizationId, moved]);
     for (const [moduleId, values] of changes) await updateParameterModule(client as unknown as Queryable, { organizationId, moduleId, ...values });
+    await applyLifecycle(client, organizationId, invocation, requestId, input.idempotencyKey, input.reason, plan.lifecycle);
     await applySubjectPlacement(client, organizationId, plan.subjectChanges, plan.moduleIds);
-    await applyRecognition(client as unknown as Database, organizationId, input.document.source.catalogReleaseId, invocation, requestId, input.idempotencyKey, plan.recognitionChanges);
+    await applyRecognition(client as unknown as Database, organizationId, plan.currentCatalogReleaseId, invocation, requestId, input.idempotencyKey, plan.recognitionChanges);
     const deletions = await client.query<{ id: string }>("select id from parameter_modules where organization_id=$1 and id=any($2::text[]) order by depth desc,id", [organizationId, [...plan.deleted]]);
     for (const row of deletions.rows) await deleteParameterModule(client as unknown as Queryable, { organizationId, moduleId: row.id });
     const changedModules = new Set(plan.changes.filter(change => !change.moduleId.startsWith("subject:")).map(change => change.moduleId)).size;

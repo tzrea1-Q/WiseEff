@@ -30,6 +30,7 @@ const moduleUpdate = moduleStructureExportSchema.shape.modules.element.extend({
   sortOrder: z.number().int().min(-2147483648).max(2147483647).optional(), importance: z.enum(["high", "medium", "low"]).optional(),
 });
 const subjectUpdate = moduleStructureExportSchema.shape.subjects.element.partial().required({ subjectId: true }).extend({
+  operation: z.enum(["register", "retire", "restore"]).optional(),
   recognition: z.object({ mode: z.enum(["inherit", "override"]).optional(), override: recognitionValue.partial().nullable().optional(),
     effective: recognitionValue.partial().optional() }).strict().nullable().optional(),
 });
@@ -48,7 +49,7 @@ const fieldValue = z.union([z.string(), z.number(), z.null(), z.array(z.string()
 export const moduleStructurePreviewResponseSchema = z.object({
   changes: z.array(z.object({ moduleId: z.string(), field: z.string(), before: fieldValue, after: fieldValue }).strict()),
   conflicts: z.array(z.object({ key: z.string(), moduleId: z.string(), field: z.string(), baseline: fieldValue, file: fieldValue, current: fieldValue }).strict()),
-  impact: z.array(z.object({ subjectId: z.string(), projectId: z.string() }).strict()),
+  impact: z.array(z.object({ subjectId: z.string(), projectId: z.string(), bindingCount: z.number().int(), definitions: z.array(z.string()) }).strict()),
   token: z.string(),
 }).strict();
 export const moduleStructureReceiptSchema = z.object({ id: z.string(), organizationId: z.string(), changedModules: z.number().int(), changedFields: z.number().int() }).strict();
