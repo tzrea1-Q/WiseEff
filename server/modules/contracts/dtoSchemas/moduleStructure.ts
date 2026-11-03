@@ -22,7 +22,9 @@ export const moduleStructureExportSchema = z.object({
 }).strict();
 
 const moduleUpdate = moduleStructureExportSchema.shape.modules.element.extend({
-  operation: z.literal("upsert").optional(), parentRef: z.string().nullable().optional(),
+  ref: z.string().min(1).max(512),
+  sourceId: z.string().optional(),
+  operation: z.literal("upsert").optional(), parentRef: z.string().min(1).max(512).nullable().optional(),
   reference: moduleStructureExportSchema.shape.modules.element.shape.reference.optional(),
   name: z.string().optional(), description: z.string().optional(), scope: z.string().optional(),
   sortOrder: z.number().int().min(-2147483648).max(2147483647).optional(), importance: z.enum(["high", "medium", "low"]).optional(),
