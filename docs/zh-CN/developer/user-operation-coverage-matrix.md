@@ -1,5 +1,7 @@
 # 用户操作覆盖矩阵
 
+`MODULE-STRUCTURE-EXPORT-001`：组织管理员在模块管理页面以键盘导出完整结构和填写说明，核对真实 API、PostgreSQL 数量、基准和审计，重试受控失败，并验证访客权限；覆盖 UI、API、数据库、审计与截图。自动化文件：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
 > English: [English](../../developer/user-operation-coverage-matrix.md)
 
 这是日常开发文档，帮助开发者完成本地启动、环境配置、验证选择和验收覆盖判断。

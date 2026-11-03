@@ -1,5 +1,7 @@
 # Module structure export, external editing and organization copy
 
+Browser export coverage: `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`, requirement and operation `MODULE-STRUCTURE-EXPORT-001`; the spec records operation evidence for the real API journey.
+
 > Chinese: [可落地方案](../../zh-CN/exec-plans/active/2026-11-03-module-structure-transfer.md)
 
 Date: 2026-11-03. Status: implementation in progress. The user approved Q1–Q11, specification [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493) and tickets #1494–#1504, then authorized complete implementation and GitHub PR merge using GPT-6.1 Terra implementers. Original code inspection: `167361a1e`; integration branch `codex/module-structure-transfer` starts from `4037d9fef`. The approved planning documents are committed. Implementation acceptance and deployment verification remain pending.

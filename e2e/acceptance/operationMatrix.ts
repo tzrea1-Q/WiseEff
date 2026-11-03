@@ -17,6 +17,16 @@ export type AcceptanceOperation = {
 };
 
 export const acceptanceOperations: AcceptanceOperation[] = [
+  { id: "PROJ-CONFIG-PRIVATE-SHARED-001", priority: "P1", area: "parameters", coverage: "automated",
+    route: "/parameter-admin/projects/:projectId/configuration", roles: ["Admin"],
+    action: "Independently publish private source, explicitly preview/cancel/confirm conversion to its exact shared closure, recover a current resource-retirement refusal with retained input, and read the unchanged source and Binding under shared ownership.",
+    acceptanceIds: ["PROJ-CONFIG-PRIVATE-SHARED-001"], specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"] },
+  { id: "MODULE-STRUCTURE-EXPORT-001", priority: "P1", area: "parameters", coverage: "automated",
+    route: "/parameter-admin/modules", roles: ["Org Admin", "Guest"],
+    action: "Download the complete structure and guide using the keyboard with filters active; retry an export error and verify reader permissions.",
+    acceptanceIds: ["MODULE-STRUCTURE-EXPORT-001"], specFiles: ["e2e/acceptance/module-structure-transfer.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"] },
   {
     id: "ORG-OPERATING-LIFECYCLE-001", priority: "P1", area: "platform", coverage: "conditional",
     route: "/platform/organizations", roles: ["Platform Admin", "Org Admin", "Invited Editor", "Organization Member"],

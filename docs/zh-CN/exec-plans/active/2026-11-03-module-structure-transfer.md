@@ -1,5 +1,7 @@
 # 模块结构导出、外部编辑与组织间复制方案
 
+导出浏览器覆盖：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`，需求和操作 ID 均为 `MODULE-STRUCTURE-EXPORT-001`；该测试为真实 API 操作记录证据。
+
 > English: [Implementation plan](../../../exec-plans/active/2026-11-03-module-structure-transfer.md)
 
 日期：2026-11-03。状态：实施中。用户已确认 Q1–Q11、规格 [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493) 及任务 #1494–#1504，并授权使用 GPT-6.1 Terra 子智能体完成实施、提交 GitHub PR 并合入。最初核查代码为 `167361a1e`；集成分支 `codex/module-structure-transfer` 基于 `4037d9fef`。已提交获批准的规划文档，实施验收及部署验证仍待完成。

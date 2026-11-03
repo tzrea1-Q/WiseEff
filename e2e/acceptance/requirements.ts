@@ -8,6 +8,10 @@ export type AcceptanceRequirement = {
 };
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
+  { id: "PROJ-CONFIG-PRIVATE-SHARED-001", workflow: "C", required: false,
+    title: "An administrator previews and converts a selected private source closure, retains identity and can review the read-only shared result." },
+  { id: "MODULE-STRUCTURE-EXPORT-001", workflow: "C", required: true,
+    title: "An organization administrator downloads the complete structure and guide by keyboard despite filters; counts match PostgreSQL, failures can be retried, and readers cannot export." },
   {
     id: "ORG-OPERATING-LIFECYCLE-001", workflow: "H", required: false,
     title: "In an isolated local-auth API lane, actual identities complete Organization creation, invitation, project participation, offboarding and handover, transfer, suspension/restoration and recoverable mixed deletion; signed OIDC continuity is verified separately."
