@@ -42,7 +42,7 @@ export const moduleStructurePreviewRequestSchema = z.object({ mode: z.enum(["upd
   mappings: z.record(z.string(), z.string().min(1)).default({}) }).strict();
 export const moduleStructureApplyRequestSchema = moduleStructurePreviewRequestSchema.extend({ token: z.string().regex(/^[a-f0-9]{64}$/),
   idempotencyKey: z.string().trim().min(1).max(200), reason: z.string().trim().min(1).max(1000) }).strict();
-const fieldValue = z.union([z.string(), z.number(), z.null(), z.array(z.string()),
+const fieldValue = z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string()),
   moduleStructureExportSchema.shape.subjects.element.shape.placement,
   moduleStructureExportSchema.shape.subjects.element.shape.recognition,
   recognitionValue.extend({ kind: z.enum(["driver", "node-type"]), recognitionSubjectId: z.string().nullable(), overridden: z.boolean(),

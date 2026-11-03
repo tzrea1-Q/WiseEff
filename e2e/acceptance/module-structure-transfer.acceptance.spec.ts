@@ -392,6 +392,62 @@ test("MODULE-STRUCTURE-COPY-001: confirm reuse and creation in a nonempty target
   }
 });
 
+test("copy retained Subject settings into a populated target", async ({ page, request }, info) => {
+  const suffix = String(Date.now()), sourceOrg = `subject-source-${suffix}`, targetOrg = `subject-target-${suffix}`;
+  const sourceUser = `subject-source-user-${suffix}`, targetUser = `subject-target-user-${suffix}`;
+  const sourceModule = `subject-source-module-${suffix}`, targetModule = `subject-target-module-${suffix}`;
+  const email = (user: string) => `${user}@example.test`;
+  const subjectId = await withPgClient(async client => {
+    for (const [id, user, moduleId] of [[sourceOrg, sourceUser, sourceModule], [targetOrg, targetUser, targetModule]]) {
+      await client.query("insert into organizations(id,name) values ($1,'Subject copy')", [id]);
+      await client.query("insert into users(id,organization_id,name,title,email,is_active) values ($1,$2,'Copy admin','Admin',$3,true)", [user, id, email(user)]);
+      await client.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [`role-${user}`, user, id]);
+      await client.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ($1,$2,'Copy category',$1,'business','curated')", [moduleId, id]);
+    }
+    const subject = (await client.query<{ id: string }>(`select s.id from parameter_catalog.catalog_subjects s
+      join parameter_catalog.catalog_state cs on cs.singleton join parameter_catalog.catalog_release_subjects rs on rs.subject_id=s.id and rs.release_id=cs.current_catalog_release_id
+      where s.kind='driver' and s.owner_subject_id is null and rs.lifecycle='active'
+      and not exists (select 1 from parameter_catalog.catalog_subjects child where child.owner_subject_id=s.id) order by s.id limit 1`)).rows[0]!.id;
+    await client.query("begin"); await client.query("set constraints all deferred");
+    for (const [id, moduleId, status, alias] of [[sourceOrg, sourceModule, "retired", "Source alias"], [targetOrg, targetModule, "active", "Target alias"]]) {
+      await client.query(`insert into parameter_catalog.organization_subject_registrations(id,organization_id,subject_id,status,registration_method,proof,current_placement_id,display_alias)
+        values ($1,$2,$3,$4,'explicit','{}',$5,$6)`, [`registration-${id}`, id, subject, status, `placement-${id}`, alias]);
+      await client.query("insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin) values ($1,$2,$3,$4,'curated')",
+        [`placement-${id}`, `registration-${id}`, id, moduleId]);
+    }
+    await client.query(`insert into registration_recognition_rules(organization_id,registration_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
+      values ($1,$2,$3,array['wiseeff,copy-browser'],'physical-device','multiple')`, [sourceOrg, `registration-${sourceOrg}`, subject]);
+    await client.query("commit"); return subject;
+  });
+  const headers = authHeadersForUser(sourceUser, email(sourceUser), "Copy admin", sourceOrg);
+  const exported = await request.post(apiRoute(`/api/v2/organizations/${sourceOrg}/module-structure/exports`), { headers, data: {} });
+  expect(exported.status(), await exported.text()).toBe(200);
+  const document = await exported.json();
+  await signInBrowserAsUser(page, targetUser, email(targetUser), "Copy admin", "/parameter-admin/modules", targetOrg);
+  await page.getByRole("button", { name: "导入结构" }).click();
+  const dialog = page.getByRole("dialog", { name: "导入模块结构" });
+  await dialog.getByLabel("导入模式").click(); await page.getByRole("option", { name: "复制到当前组织" }).click();
+  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "subjects.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+  await dialog.getByRole("button", { name: "预览" }).click();
+  await dialog.getByLabel(`${sourceModule} 的目标模块`).click(); await page.getByRole("option", { name: "建议：复用 Copy category" }).click();
+  for (const field of ["state", "displayAlias", "recognition"]) {
+    await dialog.getByLabel(`subject:${subjectId}:${field} 的冲突选择`).click();
+    await page.getByRole("option", { name: "采用文件" }).click();
+  }
+  await expect(dialog.getByText("待解决冲突（0）")).toBeVisible();
+  await expect(dialog.getByText("Source alias", { exact: false }).first()).toBeVisible();
+  await dialog.getByLabel("变更原因").fill("Copy reviewed Subject settings");
+  await page.screenshot({ path: info.outputPath("module-structure-subject-copy-1440x900.png"), animations: "disabled" });
+  const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `/api/v2/organizations/${targetOrg}/module-structure/applies` && response.status() === 200);
+  await dialog.getByRole("button", { name: "确认提交" }).click(); const response = await applied;
+  await expect(dialog.getByRole("status")).toContainText("回执");
+  const rows = await withPgClient(async client => (await client.query("select organization_id,status,display_alias from parameter_catalog.organization_subject_registrations where organization_id=any($1::text[]) order by organization_id", [[sourceOrg, targetOrg]])).rows);
+  expect(rows).toEqual([{ organization_id: sourceOrg, status: "retired", display_alias: "Source alias" }, { organization_id: targetOrg, status: "retired", display_alias: "Source alias" }]);
+  await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-COPY-001", title: "Copy Subject settings into a populated organization", status: "passed", page, testInfo: info,
+    artifacts: [info.outputPath("module-structure-subject-copy-1440x900.png")], api: [summarizeApiResponse(response, { method: "POST", path: `/api/v2/organizations/${targetOrg}/module-structure/applies`, responseSummary: "Reviewed Subject settings committed." })],
+    db: [{ table: "organization_subject_registrations", predicate: "isolated source and target", observed: "Target state and alias copied; source unchanged.", rowCount: 2 }] });
+});
+
 test("MODULE-STRUCTURE-EXPORT-001: complete filtered download, retry and reader permissions", async ({ page, request }, info) => {
   // @acceptance MODULE-STRUCTURE-EXPORT-001
   // @operation MODULE-STRUCTURE-EXPORT-001

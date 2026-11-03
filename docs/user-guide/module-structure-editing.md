@@ -41,4 +41,6 @@ An update compares the file with the server-retained baseline and current organi
 
 For module copy, select copy mode in the target organization, upload the package, and explicitly choose a target module or create a new one for each retained entry. Resolve differences with the target before confirming. The target stores each approved mapping, including reuse, for later imports of the same package; a missing mapped target is a conflict. Copy uses the file and target state, without reading a source baseline.
 
+Copy also carries complete retained Subject snapshots, including root placement and alias, recognition inheritance or override, and each owned child's status and cascade-retirement fact. Current Catalog identity and ownership must match. Existing target registrations retain their identities; choose explicitly when their state, placement, alias, or recognition differs. Retired registrations are created retired, and restoring a copied driver restores only its cascade-retired children. A source deletion marker never retires a target registration.
+
 The service reports its supported package size and counts. An oversized package is rejected rather than truncated or applied in parts.
