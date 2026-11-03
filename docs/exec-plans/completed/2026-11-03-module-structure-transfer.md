@@ -2,9 +2,9 @@
 
 Browser export coverage: `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`, requirement and operation `MODULE-STRUCTURE-EXPORT-001`; the spec records operation evidence for the real API journey.
 
-> Chinese: [可落地方案](../../zh-CN/exec-plans/active/2026-11-03-module-structure-transfer.md)
+> Chinese: [可落地方案](../../zh-CN/exec-plans/completed/2026-11-03-module-structure-transfer.md)
 
-Date: 2026-11-03. Status: implementation in progress. The user approved Q1–Q11, specification [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493) and tickets #1494–#1504, then authorized complete implementation and GitHub PR merge using GPT-6.1 Terra implementers. Original code inspection: `167361a1e`; integration branch `codex/module-structure-transfer` starts from `4037d9fef`. The approved planning documents are committed. Implementation acceptance and deployment verification remain pending.
+Date: 2026-11-03. Implementation: [PR #1505](https://github.com/tzrea1-Q/WiseEff/pull/1505), covering approved decisions Q1–Q11, specification [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493) and tickets #1494–#1504. The user authorized complete implementation and PR merge using GPT-6.1 Terra implementers. The PR records the reviewed candidate, all 56 user stories and 13 acceptance groups, native checks, PostgreSQL and browser results, and final CI/merge status. Deployment is outside this delivery.
 
 ## Outcome and confirmed decisions
 
@@ -175,11 +175,11 @@ Use `npm run test:impact -- <changed-files>` and inspect both Vitest/browser fal
 | Document | Change and owner |
 | --- | --- |
 | This plan and Chinese companion | Coordinator keeps confirmed decisions, delivery and acceptance aligned |
-| `CONTEXT.md` | Add structure package/update/copy vocabulary without claiming implementation |
-| Accepted ADR-0054 and Chinese companion | Record organization-owned identity, explicit deletion, atomic governance and retired-placement extension; design accepted, implementation pending |
+| `CONTEXT.md` | Structure package/update/copy vocabulary links to this delivered contract |
+| Accepted ADR-0054 and Chinese companion | Record organization-owned identity, explicit deletion, atomic governance and retired-placement extension; implementation links to PR #1505 |
 | Parameter user guide and organization-governance guide, English/Chinese | S5 explains JSON workflow and corrects stale module-deletion descriptions against the delivered contract |
 | API DTO/route manifests and relevant security/domain docs | S1–S3 document actual public commands, scoped ownership and authorization; existing ADR status links the accepted amendment without claiming implementation |
 
 ## Documentation Update Gate
 
-The user confirmed the complete plan on 2026-11-03; the public export/preview/apply test boundary, real PostgreSQL invariants and UI acceptance are carried into specification #1493. Before handoff, keep bilingual documents aligned, validate relative links and run the repository docs checks. Publishing this specification changed no product behavior, live data, tests or approval policy. The present record is not proof of implementation, CI, target-host or production acceptance.
+The user confirmed the complete plan on 2026-11-03; the public export/preview/apply test boundary, real PostgreSQL invariants and UI acceptance are carried into specification #1493. English and Chinese guides, API contracts and this plan accompany PR #1505. Its evidence section records actual checks and review outcomes; this design record does not substitute for CI, target-host or production evidence.

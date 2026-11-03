@@ -6,7 +6,7 @@
 
 ## 状态
 
-设计于 2026-11-03 接受：Q1–Q11 及整份[实施方案](../exec-plans/active/2026-11-03-module-structure-transfer.md)已获用户确认。规格：[#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493)。实施待开始。本决策保留 ADR-0042/0053 的身份和所有权，将受控归属编辑扩展到停用登记，但不激活它们；设计接受不代表当前运行时已经支持。
+设计于 2026-11-03 接受：Q1–Q11 及整份[实施方案](../exec-plans/completed/2026-11-03-module-structure-transfer.md)已获用户确认。规格：[#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493)；实现与验证：[PR #1505](https://github.com/tzrea1-Q/WiseEff/pull/1505)。本决策保留 ADR-0042/0053 的身份和所有权，将受控归属编辑扩展到停用登记，但不激活它们。部署与本次实现分开处理。
 
 ## 决策
 

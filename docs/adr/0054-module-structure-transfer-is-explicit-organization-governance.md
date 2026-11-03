@@ -6,7 +6,7 @@ Date: 2026-11-03
 
 ## Status
 
-Accepted design on 2026-11-03 after Q1–Q11 and approval of the complete [implementation plan](../exec-plans/active/2026-11-03-module-structure-transfer.md). Specification: [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493). Implementation is pending. This decision preserves ADR-0042/0053 identity and ownership and extends governed placement edits to retired registrations without activating them; acceptance does not claim current runtime support.
+Accepted design on 2026-11-03 after Q1–Q11 and approval of the complete [implementation plan](../exec-plans/completed/2026-11-03-module-structure-transfer.md). Specification: [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493); implementation and verification: [PR #1505](https://github.com/tzrea1-Q/WiseEff/pull/1505). This decision preserves ADR-0042/0053 identity and ownership and extends governed placement edits to retired registrations without activating them. Deployment remains separate from this implementation.
 
 ## Decision
 

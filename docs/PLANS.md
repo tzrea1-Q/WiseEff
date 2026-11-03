@@ -18,7 +18,6 @@ WiseEff is PC-first. The [UI quality checklist](developer/ui-quality-checklist.m
 
 ## Current Active Plan
 
-- [Module structure transfer](exec-plans/active/2026-11-03-module-structure-transfer.md): accepted JSON export/edit/update and same-deployment organization copy; specification [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493) published with `ready-for-agent`; implementation pending.
 - [Organization management remediation](exec-plans/active/2026-10-24-organization-management-remediation.md): repair all 40 audited interface, workflow and authorization findings; implementation and candidate verification in progress.
 - [Shared UI contracts and verification feedback](exec-plans/active/2026-10-15-ui-contract-verification.md): #1187/#1188 freezes remaining consumers, current-main failure, provisional CI cohorts and one cumulative latency/compute budget; implementation and measured outcomes remain pending.
 - [Unified SearchField and fuzzy search](exec-plans/active/2026-09-16-unified-fuzzy-search.md): one SearchField primitive, a repo-native multi-field fuzzy core, explicit Search Profiles, and migration of every search input without replacing provider-backed or literal-find engines.
@@ -29,6 +28,8 @@ WiseEff is PC-first. The [UI quality checklist](developer/ui-quality-checklist.m
 - [Catalog R2 delivery](exec-plans/active/2026-09-05-catalog-r2-delivery.md): #814–#820 remaining Policy, batch-query, Proposal, Agent and browser evidence work; OP-09 remains outside this round.
 
 This list is only plans that still have remaining work. Finished implementation lives under `exec-plans/completed/` — including workflow discovery visibility (`2026-08-18-workflow-discovery-visibility.md`, #556); the 2026-08-18 property-key source cutover and remainder (`2026-08-18-property-key-source-cutover.md`, `2026-08-19-property-key-cutover-remainder.md`, #544/#549/#553/#555/#558; TD-117 closed as accepted residual); the 2026-08-18 CI feedback-loop plan (`2026-08-18-ci-feedback-loop-optimization.md`, #523–#525); the 2026-08-17 archive of path-reachable C1–C4, product feedback, topology review rounds 3–6, the notification center, the project-configuration-workbench defect repair, and Xiaoze approval-failure recovery (TD-102 / TD-094); the 2026-08-17 round-2 archive of landed DTS workbench/seed, attribution/driver-registry/overlay, parameter-admin UX/IA, batch import/excel, logs org-scope, personal overview, ADB/HDC, debug-admin, Device Bridge phase 1/2, Xiaoze turn-state UX, and CORS bootstrap plans; definition identity correction (`2026-08-04-parameter-definition-identity-correction.md`, #504); and the 2026-08-17 evidence archive of attribution deferred D-AG-01–04 (`2026-08-01-attribution-deferred-implementation.md`). Do not reopen those as active work.
+
+Completed module structure transfer: [plan](exec-plans/completed/2026-11-03-module-structure-transfer.md), specification [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493), implementation and acceptance [PR #1505](https://github.com/tzrea1-Q/WiseEff/pull/1505).
 
 ### Roadmap
 

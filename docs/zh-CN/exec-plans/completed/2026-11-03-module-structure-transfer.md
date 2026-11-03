@@ -2,9 +2,9 @@
 
 导出浏览器覆盖：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`，需求和操作 ID 均为 `MODULE-STRUCTURE-EXPORT-001`；该测试为真实 API 操作记录证据。
 
-> English: [Implementation plan](../../../exec-plans/active/2026-11-03-module-structure-transfer.md)
+> English: [Implementation plan](../../../exec-plans/completed/2026-11-03-module-structure-transfer.md)
 
-日期：2026-11-03。状态：实施中。用户已确认 Q1–Q11、规格 [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493) 及任务 #1494–#1504，并授权使用 GPT-6.1 Terra 子智能体完成实施、提交 GitHub PR 并合入。最初核查代码为 `167361a1e`；集成分支 `codex/module-structure-transfer` 基于 `4037d9fef`。已提交获批准的规划文档，实施验收及部署验证仍待完成。
+日期：2026-11-03。实施：[PR #1505](https://github.com/tzrea1-Q/WiseEff/pull/1505)，覆盖已批准的 Q1–Q11、规格 [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493) 及任务 #1494–#1504。用户已授权使用 GPT-6.1 Terra 子智能体完成实施并合入 PR。PR 记录审查候选、56 条用户故事和 13 组验收的逐项对应、原生检查、PostgreSQL 与浏览器结果，以及最终 CI 和合入状态。本次交付不包含部署。
 
 ## 目标与已确认决策
 
@@ -175,11 +175,11 @@ S1–S5 描述职责与验收范围，实际实施按已发布的任务图推进
 | 文档 | 修改与负责方 |
 | --- | --- |
 | 本计划与英文版 | 协调者维护已确认决策、切片和验收一致性 |
-| `CONTEXT.md` | 添加结构包、结构更新、结构复制术语，不宣称功能已实现 |
-| 已接受 ADR-0054 与中文版 | 记录组织身份、显式删除、治理事务和停用归属扩展；设计已接受，实施待开始 |
+| `CONTEXT.md` | 结构包、结构更新、结构复制术语链接到本交付契约 |
+| 已接受 ADR-0054 与中文版 | 记录组织身份、显式删除、治理事务和停用归属扩展；实现链接到 PR #1505 |
 | 中英文参数/组织治理用户指南 | S5 说明 JSON 操作，并按最终行为修正旧删除说明 |
 | API DTO/路由清单与相关安全/领域文档 | S1–S3 同步真实命令、所有权、权限；原 ADR 状态链接已接受修订，不宣称已实现 |
 
 ## 文档更新门禁
 
-用户于 2026-11-03 通过整份方案；公开导出/预览/执行测试边界、真实 PostgreSQL 不变量和界面验收已写入规格 #1493。交付前保持中英文一致，校验相对链接并运行仓库文档检查。规格发布不改变产品行为、数据、测试或审批策略，不代表实施、CI、目标环境或生产验收。
+用户于 2026-11-03 通过整份方案；公开导出/预览/执行测试边界、真实 PostgreSQL 不变量和界面验收已写入规格 #1493。中英文指南、API 契约和本计划随 PR #1505 交付。实际检查与审查结果记录在 PR 证据部分，本设计记录不能替代 CI、目标环境或生产证据。

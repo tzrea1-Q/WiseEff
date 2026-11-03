@@ -62,4 +62,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0051](0051-organization-provisioning-and-member-admission.md) | Organization provisioning belongs to the platform; member admission belongs to the organization (accepted design) |
 | [0052](0052-shared-source-versions-pin-project-dependency-closures.md) | Shared source versions pin complete project dependency closures |
 | [0053](0053-business-modules-hold-subjects-and-drivers-own-child-nodes.md) | Business modules hold subjects; drivers own their child nodes |
-| [0054](0054-module-structure-transfer-is-explicit-organization-governance.md) | Explicit organization-governed module structure transfer (accepted design; implementation pending) |
+| [0054](0054-module-structure-transfer-is-explicit-organization-governance.md) | Explicit organization-governed module structure transfer (implemented in PR #1505) |
