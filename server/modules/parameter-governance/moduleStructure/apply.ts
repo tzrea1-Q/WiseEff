@@ -15,7 +15,9 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
   const parsed = moduleStructureApplyRequestSchema.safeParse(raw);
   if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Invalid module structure confirmation.", { issues: parsed.error.issues });
   const input = parsed.data;
-  const fingerprint = createHash("sha256").update(stable({ organizationId, invocation, input })).digest("hex");
+  const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
+    roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
+  const fingerprint = createHash("sha256").update(stable({ organizationId, actor, input })).digest("hex");
   const client = await pool.connect();
   try {
     await client.query("begin");
