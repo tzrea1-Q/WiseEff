@@ -2,7 +2,7 @@
 
 > Chinese: [可落地方案](../../zh-CN/exec-plans/active/2026-11-03-module-structure-transfer.md)
 
-Date: 2026-11-03. Status: accepted implementation plan; the user approved the complete plan and continued to specification after confirming Q1–Q11. Specification: [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493), published with `ready-for-agent`. Code inspected: `167361a1e`, branch `codex/dts-save-dialog`. Implementation and deployment verification are pending. Planning documents remain local and uncommitted; no implementation PR has been created for this feature.
+Date: 2026-11-03. Status: implementation in progress. The user approved Q1–Q11, specification [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493) and tickets #1494–#1504, then authorized complete implementation and GitHub PR merge using GPT-6.1 Terra implementers. Original code inspection: `167361a1e`; integration branch `codex/module-structure-transfer` starts from `4037d9fef`. The approved planning documents are committed. Implementation acceptance and deployment verification remain pending.
 
 ## Outcome and confirmed decisions
 
@@ -135,7 +135,7 @@ Authorization is the conjunction of permissions for every planned operation, not
 
 ## Delivery slices
 
-Each slice starts from then-current `main`, preserves unrelated work, and becomes one coherent PR when separately authorized. Internal foundations do not expose an incomplete import button.
+The user invoked `implement-spec` after ticket publication: implement tickets #1494–#1504 in separate worktrees, integrate them on one branch based on current `main`, and merge one reviewed PR closing the specification and tickets. Preserve unrelated work. Internal foundations do not expose an incomplete import button.
 
 | Slice | Deliverable | Evidence owned by that slice |
 | --- | --- | --- |
@@ -145,7 +145,7 @@ Each slice starts from then-current `main`, preserves unrelated work, and become
 | S4 Module-management UI | Export/import, mode and mapping choices, conflict/impact views, dirty state, receipts | Real API browser at `1440x900`; accessible controls; update and nonempty-target copy journeys |
 | S5 Acceptance and documentation | Full populated-organization scenarios, user guide and existing stale deletion copy reconciled | Impact-selected regression, build, required CI; documented scale and evidence limits |
 
-Critical dependency: S1 → S2 → S3 → S4 → S5. UI presentation can be drafted after S1, but atomic behavior cannot be accepted until S2/S3 pass. This feature does not adopt the sealed Wayfinder delivery protocol.
+S1–S5 describe responsibility and acceptance areas. Execution follows the published ticket graph: #1494 and #1495 → #1496; #1496 → #1497/#1498/#1499; #1498 → #1500; #1497 + #1498 → #1501; #1497 → #1502; #1499 + #1500 + #1502 → #1503; #1501 + #1503 → #1504. Each vertical ticket includes its API, UI and verification where applicable. This feature does not adopt the sealed Wayfinder delivery protocol.
 
 ## Acceptance cases
 
