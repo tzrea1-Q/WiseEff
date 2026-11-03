@@ -639,6 +639,7 @@ describe("module structure export", () => {
     const additions = [
       { ref: "new-child", name: "New child", parentRef: "new-parent", description: "", scope: "", sortOrder: 0, importance: "medium" },
       { ref: "new-parent", name: "New parent", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" },
+      ...Array.from({ length: 55 }, (_, index) => 54 - index).map(index => ({ ref: `deep-${index}`, name: `Deep ${index}`, parentRef: index ? `deep-${index - 1}` : null, description: "", scope: "", sortOrder: 0, importance: "medium" })),
     ];
     const edited = { ...document, modules: [...document.modules, ...additions] };
     const previewPath = `/api/v2/organizations/${org}/module-structure/previews`;
@@ -662,6 +663,7 @@ describe("module structure export", () => {
     const created = (await db.query<{ id: string; parent_id: string | null; name: string; path: string; depth: number }>("select id,parent_id,name,path,depth from parameter_modules where organization_id=$1 and name in ('New parent','New child') order by name", [org])).rows;
     expect(created).toHaveLength(2);
     expect(created[0].parent_id).toBe(created[1].id);
+    expect((await db.query("select depth from parameter_modules where organization_id=$1 and name='Deep 54'", [org])).rows).toEqual([{ depth: 55 }]);
     await db.query("update parameter_modules set name='Renamed parent' where id=$1", [created[1].id]);
     const again = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(again.status, again.bodyText).toBe(200);
@@ -1237,6 +1239,11 @@ describe("module structure export", () => {
     const maximum = await requestJson(app, path, { method: "POST", body: "{}" });
     expect(maximum.status, maximum.bodyText).toBe(200);
     expect((maximum.body as { modules: unknown[] }).modules).toHaveLength(10_000);
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: maximum.body, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: maximum.body, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "maximum-noop", reason: "Verify full round trip" }) });
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect(applied.body).toMatchObject({ changedModules: 0, changedFields: 0 });
     const before = (await db.query("select count(*)::int as count from parameter_catalog.module_structure_export_baselines where organization_id=$1", [org])).rows[0];
     await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('export-excess',$1,'Excess','export-excess','business','curated')", [org]);
     const excess = await requestJson(app, path, { method: "POST", body: "{}" });
