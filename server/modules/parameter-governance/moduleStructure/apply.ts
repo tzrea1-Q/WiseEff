@@ -5,7 +5,7 @@ import type { Queryable } from "../../../shared/database/client";
 import { asAuditTx, writeAuditEventInTx } from "../../audit/auditedWrite";
 import { assertTrustedInvocationMatchesScope, type TrustedInvocationContext } from "../../auth/trustedInvocation";
 import { lockOrganizationModuleStructure } from "../../parameter-modules/recognitionLock";
-import { createParameterModule, updateParameterModule } from "../../parameters/parameterModuleRepository";
+import { createParameterModule, deleteParameterModule, updateParameterModule } from "../../parameters/parameterModuleRepository";
 import { planModuleStructure, stable } from "./preview";
 import { moduleStructureApplyRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
 import { applyRecognition } from "./recognition";
@@ -39,15 +39,18 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
        where organization_id=$1 and command_family='module-structure-update' and idempotency_key=$2 for update`, [organizationId, input.idempotencyKey])).rows[0]!;
     if (existing.request_fingerprint !== fingerprint) throw new ApiError("CONFLICT", "Idempotency key was already used for different content.");
     if (existing.state === "committed" && existing.result_ref) { await client.query("commit"); return JSON.parse(existing.result_ref); }
+    // FK writers take key-share locks; wait for them before reading deletion impact and block new references until commit.
+    if (input.document.modules.some(module => module.operation === "delete")) await client.query(
+      "select id from parameter_modules where organization_id=$1 order by id for update", [organizationId]);
     const plan = await planModuleStructure(client, organizationId, invocation, { mode: input.mode, document: input.document, resolutions: input.resolutions });
     if (plan.token !== input.token) throw new ApiError("CONFLICT", "Preview is stale; review the current state again.");
     if (plan.conflicts.length) throw new ApiError("CONFLICT", "Resolve all conflicts before applying.");
     const createdRefs = new Set(plan.changes.filter(change => change.field === "create").map(change => change.moduleId));
     const changes = new Map<string, Record<string, unknown>>();
-    for (const change of plan.changes) if (!createdRefs.has(change.moduleId) && change.field !== "parentRef" && change.field !== "placement" && change.field !== "displayAlias") changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
+    for (const change of plan.changes) if (!createdRefs.has(change.moduleId) && change.field !== "parentRef" && change.field !== "placement" && change.field !== "displayAlias" && change.field !== "delete" && change.field !== "legacyImpact") changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
     // Temporary names make valid swaps safe under the immediate sibling-name index.
     const structural = new Set(plan.changes.filter(change => !createdRefs.has(change.moduleId) && (change.field === "name" || change.field === "parentRef")).map(change => change.moduleId));
-    for (const moduleId of structural) await client.query(
+    for (const moduleId of new Set([...structural, ...plan.deleted])) await client.query(
       "update parameter_modules set name=$3 where organization_id=$1 and id=$2 and archived_at is null", [organizationId, moduleId, `__wiseeff_transfer_${randomUUID()}`]);
     const pending = input.document.modules.filter(module => plan.changes.some(change => change.field === "create" && change.moduleId === module.ref));
     while (pending.length) {
@@ -65,6 +68,7 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     }
     for (const module of input.document.modules) {
       const id = plan.moduleIds.get(module.ref)!;
+      if (plan.deleted.has(id)) continue;
       const originalId = plan.parents.has(id) ? id : module.ref;
       const parent = plan.parents.get(originalId) ?? null;
       const parentId = parent ? plan.moduleIds.get(parent) ?? parent : null;
@@ -88,6 +92,8 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     for (const [moduleId, values] of changes) await updateParameterModule(client as unknown as Queryable, { organizationId, moduleId, ...values });
     await applySubjectPlacement(client, organizationId, plan.subjectChanges, plan.moduleIds);
     await applyRecognition(client as unknown as Database, organizationId, input.document.source.catalogReleaseId, invocation, requestId, input.idempotencyKey, plan.recognitionChanges);
+    const deletions = await client.query<{ id: string }>("select id from parameter_modules where organization_id=$1 and id=any($2::text[]) order by depth desc,id", [organizationId, [...plan.deleted]]);
+    for (const row of deletions.rows) await deleteParameterModule(client as unknown as Queryable, { organizationId, moduleId: row.id });
     const changedModules = new Set(plan.changes.filter(change => !change.moduleId.startsWith("subject:")).map(change => change.moduleId)).size;
     const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules, changedFields: plan.changes.length + plan.recognitionChanges.length };
     if (receipt.changedFields) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",

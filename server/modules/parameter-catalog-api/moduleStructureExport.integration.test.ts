@@ -11,11 +11,11 @@ import { compileCatalogRelease } from "../catalog-kernel/compiler";
 import { installPublishedRelease } from "../catalog-kernel/install/installer";
 import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
-import { moduleStructureExportSchema, moduleStructurePreviewResponseSchema } from "../contracts/dtoSchemas/moduleStructure";
+import { moduleStructureExportSchema, moduleStructurePreviewResponseSchema, moduleStructureUpdateDocumentSchema } from "../contracts/dtoSchemas/moduleStructure";
 import { createCatalogKernel } from "../catalog-kernel/interface";
 import { captureCurrentCatalogPin } from "../catalog-publication/runtime";
 import { createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
-import { DefinitionRevisionId, ParameterDefinitionId } from "../parameter-catalog-contract";
+import { DefinitionRevisionId, ParameterDefinitionId, SubjectRegistrationId } from "../parameter-catalog-contract";
 
 describe("module structure export", () => {
   let fixture: ParameterCatalogDatabase;
@@ -84,6 +84,127 @@ describe("module structure export", () => {
       (select count(*)::int from parameter_catalog.module_structure_export_baselines where organization_id=$1) as baselines,
       (select count(*)::int from audit_events where organization_id=$1) as audits`, [org]);
     expect(after.rows).toEqual(before.rows);
+  });
+
+  it("requires explicit disposition of children before deleting a populated module", async () => {
+    const org = "delete-tree-org", user = "delete-tree-admin";
+    await db.query("insert into organizations(id,name) values ($1,'Delete tree')", [org]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('delete-tree-role',$1,$2,'admin')", [user, org]);
+    await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('delete-root',$1,'Root','delete-root','business','curated')", [org]);
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    await db.query(`insert into parameter_modules(id,organization_id,name,parent_id,path,depth,kind,origin)
+      values ('delete-child',$1,'Child','delete-root','delete-root/delete-child',2,'business','curated')`, [org]);
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
+    document.modules.find(m => m.sourceId === "delete-root")!.operation = "delete";
+    const preview = () => requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect((await preview()).status).toBe(409);
+    document.modules.find(m => m.sourceId === "delete-child")!.parentRef = null;
+    let planned = await preview();
+    expect(planned.status, planned.bodyText).toBe(200);
+    expect(planned.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: "delete-root", field: "delete" })]) });
+    const apply = (key: string) => requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (planned.body as { token: string }).token, idempotencyKey: key, reason: "Reorganize" }) });
+    await db.query(`insert into parameter_modules(id,organization_id,name,parent_id,path,depth,kind,origin)
+      values ('delete-race',$1,'Concurrent','delete-root','delete-root/delete-race',2,'business','curated')`, [org]);
+    expect((await apply("delete-stale")).status).toBe(409);
+    await db.query("delete from parameter_modules where id='delete-race'");
+    planned = await preview();
+    const writer = await getRootPostgresPool(db)!.connect();
+    await writer.query("begin");
+    await writer.query(`insert into public.parameter_definitions(id,organization_id,name,description,explanation,config_format,module,default_range,unit,risk,parameter_module_id)
+      values ('delete-legacy-definition',$1,'Retained','','','ENV','Root','','','Low','delete-root')`, [org]);
+    const competingApply = apply("delete-legacy-stale");
+    await new Promise(resolve => setTimeout(resolve, 50));
+    await writer.query("commit"); writer.release();
+    expect((await competingApply).status).toBe(409);
+    planned = await preview();
+    expect(planned.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: "delete-root", field: "legacyImpact", before: 1 })]) });
+    await db.query(`create function public.fail_transfer_delete() returns trigger language plpgsql as $$
+      begin if old.id='delete-root' then raise exception 'injected deletion failure'; end if; return old; end $$`);
+    await db.query("create trigger fail_transfer_delete before delete on parameter_modules for each row execute function public.fail_transfer_delete()");
+    try { expect((await apply("delete-stage-rollback")).status).toBeGreaterThanOrEqual(500); }
+    finally { await db.query("drop trigger fail_transfer_delete on parameter_modules"); await db.query("drop function public.fail_transfer_delete()"); }
+    expect((await db.query("select parent_id from parameter_modules where id='delete-child'")).rows).toEqual([{ parent_id: "delete-root" }]);
+    await db.query(`create function public.fail_delete_transfer_audit() returns trigger language plpgsql as $$
+      begin if new.action='module-structure-update' then raise exception 'injected audit failure'; end if; return new; end $$`);
+    await db.query("create trigger fail_delete_transfer_audit before insert on audit_events for each row execute function public.fail_delete_transfer_audit()");
+    try { expect((await apply("delete-rollback")).status).toBeGreaterThanOrEqual(500); }
+    finally { await db.query("drop trigger fail_delete_transfer_audit on audit_events"); await db.query("drop function public.fail_delete_transfer_audit()"); }
+    expect((await db.query("select parent_id from parameter_modules where id='delete-child'")).rows).toEqual([{ parent_id: "delete-root" }]);
+    const applied = await apply("delete-parent");
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect((await db.query("select id,parent_id from parameter_modules where id=any($1::text[]) order by id", [["delete-root", "delete-child"]])).rows).toEqual([{ id: "delete-child", parent_id: null }]);
+    expect((await db.query("select parameter_module_id,module from parameter_definitions where id='delete-legacy-definition'")).rows).toEqual([{ parameter_module_id: null, module: "unset" }]);
+  });
+
+  it("rejects a deletion preview when a registration is created afterward", async () => {
+    const org = "delete-register-org", user = "delete-register-admin";
+    await db.query("insert into organizations(id,name) values ($1,'Delete registration')", [org]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('delete-register-role',$1,$2,'admin')", [user, org]);
+    await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('delete-register-module',$1,'Old','delete-register-module','business','curated')", [org]);
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
+    document.modules[0]!.operation = "delete";
+    const planned = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(planned.status, planned.bodyText).toBe(200);
+    await db.query(`create function public.pause_delete_registration() returns trigger language plpgsql as $$
+      begin if new.organization_id='delete-register-org' then perform pg_sleep(0.3); end if; return new; end $$`);
+    await db.query("create trigger pause_delete_registration before insert on parameter_catalog.organization_subject_registrations for each row execute function public.pause_delete_registration()");
+    let stale;
+    try {
+      const registering = requestJson(app, `/api/v2/organizations/${org}/subject-registrations`, { method: "POST", headers: {
+        "X-WiseEff-Catalog-Release": document.source.catalogReleaseId, "Idempotency-Key": "delete-register-race" },
+        body: JSON.stringify({ subjectId: "csub_acme_power", placement: { mode: "use-default" }, destinationModuleId: "delete-register-module", reason: "Register" }) });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const competingApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+        makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+      const applying = requestJson(competingApp, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (planned.body as { token: string }).token, idempotencyKey: "delete-register-stale", reason: "Reorganize" }) });
+      const registration = await registering;
+      expect(registration.status, registration.bodyText).toBe(201);
+      stale = await applying;
+    } finally {
+      await db.query("drop trigger pause_delete_registration on parameter_catalog.organization_subject_registrations");
+      await db.query("drop function public.pause_delete_registration()");
+    }
+    expect(stale.status).toBe(409);
+    expect((await db.query("select id from parameter_modules where id='delete-register-module'")).rowCount).toBe(1);
+  });
+
+  it("moves a retired root to a new module before deletion without restoring it", async () => {
+    const org = "delete-retired-org", user = "delete-retired-admin";
+    await db.query("insert into organizations(id,name) values ($1,'Delete retired')", [org]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('delete-retired-role',$1,$2,'admin')", [user, org]);
+    await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('delete-retired-module',$1,'Old','delete-retired-module','business','curated')", [org]);
+    await db.transaction(async tx => {
+      await tx.query("set constraints all deferred");
+      await tx.query(`insert into parameter_catalog.organization_subject_registrations(id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
+        values ('delete-retired-registration',$1,'csub_acme_power','retired','explicit','{}','delete-retired-placement')`, [org]);
+      await tx.query(`insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin)
+        values ('delete-retired-placement','delete-retired-registration',$1,'delete-retired-module','curated')`, [org]);
+    });
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
+    document.modules[0].operation = "delete";
+    const preview = () => requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect((await preview()).status).toBe(409);
+    document.modules.push({ ref: "new-destination", name: "New", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" });
+    document.subjects[0].placement = { kind: "module", moduleRef: "new-destination" };
+    const planned = await preview();
+    expect(planned.status, planned.bodyText).toBe(200);
+    expect(planned.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: "subject:csub_acme_power", field: "placement" })]) });
+    const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (planned.body as { token: string }).token, idempotencyKey: "retired-delete", reason: "Reorganize" }) });
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect((await db.query(`select r.status,r.current_placement_id,m.name from parameter_catalog.organization_subject_registrations r
+      join parameter_catalog.subject_placements p on p.id=r.current_placement_id join parameter_modules m on m.id=p.module_id where r.id='delete-retired-registration'`)).rows)
+      .toEqual([{ status: "retired", current_placement_id: "delete-retired-placement", name: "New" }]);
   });
 
   it("creates package-local parent and child and reuses their identities after a rename", async () => {
@@ -616,7 +737,7 @@ describe("module structure export", () => {
     if (!loaded.ok) throw new Error(JSON.stringify(loaded.error));
     for (const logicalNodeId of ["capacity-one", "capacity-two"]) {
       const binding = await createSourceBackedBindingService(pool).stabilize({ snapshot: loaded.value, organizationId: org,
-        projectId: "recognition-capacity-project", logicalNodeId, registrationId: "export-registration",
+        projectId: "recognition-capacity-project", logicalNodeId, registrationId: SubjectRegistrationId("export-registration"),
         definitionId: ParameterDefinitionId("pdef_acme_power_iin_max"), effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_2"), expectedEffectiveRevisionId: null });
       if (!binding.ok) throw new Error(JSON.stringify(binding.error));
     }

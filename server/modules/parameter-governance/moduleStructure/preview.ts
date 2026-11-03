@@ -43,7 +43,8 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     [organizationId, document.source.organizationId, document.source.exportId])).rows;
   const mapped = new Map(mappings.map(row => [row.package_ref, row]));
   const seen = new Set<string>();
-  const changes: { moduleId: string; field: typeof fields[number] | "create"; before: unknown; after: unknown }[] = [];
+  const changes: { moduleId: string; field: typeof fields[number] | "create" | "delete" | "legacyImpact"; before: unknown; after: unknown }[] = [];
+  const deleted = new Set<string>();
   const conflicts: { key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }[] = [];
   if (stable(document.source) !== stable(baseline.source) || stable(document.limits) !== stable(baseline.limits) ||
     stable(document.counts) !== stable(baseline.counts) ||
@@ -98,6 +99,15 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
       (base && module.reference !== undefined && stable(module.reference) !== stable(base.reference)))
       throw new ApiError("VALIDATION_FAILED", "Invalid module identity or reference.", { path: `modules.${index}` });
     if (targetId && !target) throw new ApiError("CONFLICT", "A mapped or exported module was deleted.", { path: `modules.${index}.sourceId` });
+    if (module.operation === "delete") {
+      if (!base || !targetId || !target) throw new ApiError("VALIDATION_FAILED", "Only an existing business module can be deleted.", { path: `modules.${index}.operation` });
+      if (stable(target) !== stable(base)) throw new ApiError("CONFLICT", "The module changed since export; export again before deleting.");
+      if (fields.some(field => module[field] !== undefined && module[field] !== base[field]))
+        throw new ApiError("VALIDATION_FAILED", "A deleted module cannot also have metadata or parent edits.", { path: `modules.${index}` });
+      deleted.add(targetId);
+      changes.push({ moduleId: targetId, field: "delete", before: target.name, after: null });
+      continue;
+    }
     if (!base) {
       if (module.name === undefined || !module.name.trim() || module.parentRef === undefined || module.description === undefined || module.scope === undefined || module.sortOrder === undefined || module.importance === undefined)
         throw new ApiError("VALIDATION_FAILED", "A new module requires all editable fields.", { path: `modules.${index}` });
@@ -140,6 +150,34 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     if (change.field === "parentRef") parents.set(change.moduleId, change.after as string | null);
   }
   for (const [id, parent] of parents) if (parent && moduleIds.has(parent)) parents.set(id, moduleIds.get(parent)!);
+  for (const row of names.rows) if (deleted.has(row.id) && row.kind !== "business") throw new ApiError("CONFLICT", "Protected modules cannot be deleted.");
+  if (deleted.size && (await client.query("select 1 from parameter_modules where organization_id=$1 and parent_id=any($2::text[]) and archived_at is not null limit 1", [organizationId, [...deleted]])).rowCount)
+    throw new ApiError("CONFLICT", "A module with archived children cannot be deleted.");
+  for (const [id, parent] of parents) if (parent && deleted.has(parent)) {
+    if (!deleted.has(id)) throw new ApiError("CONFLICT", "Every child of a deleted module must be explicitly moved or deleted.");
+  }
+  for (const subject of currentSubjects) {
+    if (subject.ownerSubjectId || subject.placement?.kind !== "module") continue;
+    const currentId = moduleIds.get(subject.placement.moduleRef) ?? subject.placement.moduleRef;
+    if (!deleted.has(currentId)) continue;
+    const change = subjectPlan.changes.find(item => item.subjectId === subject.subjectId && item.field === "placement");
+    const destination = change?.after;
+    if (!destination || typeof destination !== "object" || (destination.kind === "module" && deleted.has(moduleIds.get(destination.moduleRef) ?? destination.moduleRef)))
+      throw new ApiError("CONFLICT", "Every root registration in a deleted module requires an explicit destination or unset.");
+  }
+  for (const change of subjectPlan.changes) if (change.field === "placement" && typeof change.after === "object" && change.after?.kind === "module" && deleted.has(moduleIds.get(change.after.moduleRef) ?? change.after.moduleRef))
+    throw new ApiError("CONFLICT", "A placement cannot target a deleted module.");
+  const legacyImpact = deleted.size ? (await client.query<{ module_id: string; kind: string; id: string }>(`select m.id as module_id, refs.kind, refs.id
+    from parameter_modules m cross join lateral (
+      select 'definitions' as kind,id::text from public.parameter_definitions where parameter_module_id=m.id
+      union all select 'bindings',id::text from public.project_parameter_bindings where module_id=m.id
+      union all select 'project modules',id::text from public.project_modules where parameter_module_id=m.id or parent_id=m.id
+      union all select 'project files',id::text from public.project_parameter_files where module_hint=m.id
+      union all select 'driver registrations',id::text from public.driver_registrations where default_business_category_module_id=m.id
+      union all select 'driver placements',id::text from public.driver_registration_placements where driver_group_module_id=m.id or default_business_category_module_id=m.id
+    ) refs where m.organization_id=$1 and m.id=any($2::text[]) order by 1,2,3`, [organizationId, [...deleted]])).rows : [];
+  for (const id of deleted) changes.push({ moduleId: id, field: "legacyImpact", before: legacyImpact.filter(item => item.module_id === id).length, after: null });
+  for (const id of deleted) { parents.delete(id); namesById.delete(id); }
   const validated = new Set<string>();
   for (const [id, parent] of parents) {
     if (parent && !parents.has(parent)) throw new ApiError("VALIDATION_FAILED", "Parent reference is missing or invalid.");
@@ -163,10 +201,10 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     moduleStructureExportSchema.parse(current).subjects, resolutions);
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
     roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
-  const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, mappings, subjectVersions: subjectVersions.rows, impact, recognition: recognition.evidence };
+  const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, mappings, subjectVersions: subjectVersions.rows, impact, legacyImpact, recognition: recognition.evidence };
   return { changes: [...changes, ...subjectPlan.changes.map(({ subjectId, ...change }) => ({ moduleId: `subject:${subjectId}`, ...change }))],
     conflicts: [...conflicts, ...subjectPlan.conflicts.map(({ subjectId, ...conflict }) => ({ moduleId: `subject:${subjectId}`, ...conflict })), ...recognition.conflicts],
-    subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, moduleIds, parents, namesById, impact, token: createHash("sha256").update(stable(evidence)).digest("hex") };
+    subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, moduleIds, parents, namesById, deleted, impact, token: createHash("sha256").update(stable(evidence)).digest("hex") };
 }
 
 export async function previewModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, raw: unknown) {
