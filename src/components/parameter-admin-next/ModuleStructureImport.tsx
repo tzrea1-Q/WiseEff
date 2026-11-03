@@ -82,12 +82,18 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
   };
   const source = document && typeof document === "object" && "source" in document ? (document as { source?: { organizationId?: unknown } }).source?.organizationId : undefined;
   const modules = document && typeof document === "object" && "modules" in document && Array.isArray(document.modules) ? document.modules : [];
+  const subjects = document && typeof document === "object" && "subjects" in document && Array.isArray(document.subjects) ? document.subjects : [];
+  const subjectId = (id: string) => id.startsWith("subject:") ? id.slice(8) : subjects.some((subject: { subjectId?: string }) => subject.subjectId === id) ? id : null;
   const moduleLabel = (id: string) => {
-    if (id.startsWith("subject:")) return `主体 ${id.slice(8)}`;
+    const subject = subjects.find((entry: { subjectId?: string }) => entry.subjectId === subjectId(id));
+    if (subjectId(id)) return subject?.displayAlias || subject?.recognition?.effective?.nodeTypeName || subject?.recognition?.effective?.compatibles?.[0] || `主体 ${subjectId(id)}`;
     const module = modules.find((entry: { sourceId?: string; ref?: string }) => entry.sourceId === id || entry.ref === id);
     return typeof module?.name === "string" ? `${module.name}（${id}）` : id;
   };
   const displayValue = (item: unknown): string => {
+    if (item === null) return "无";
+    if (typeof item === "string") return ({ active: "启用", retired: "停用", inherit: "继承目录设置", override: "自定义覆盖" } as Record<string, string>)[item] ?? item;
+    if (Array.isArray(item)) return item.length ? item.join("、") : "无";
     if (!item || typeof item !== "object" || !("kind" in item)) return value(item);
     const placement = item as { kind: string; moduleRef?: string; sourceId?: string };
     if (placement.kind === "unset") return "未设置归属";
@@ -104,6 +110,19 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
     }
     return path.join(" / ");
   };
+  const groups = new Map<string, Preview["changes"]>();
+  for (const change of preview?.changes ?? []) {
+    const key = subjectId(change.moduleId) ? `subject:${subjectId(change.moduleId)}` : change.moduleId;
+    const group = groups.get(key) ?? []; group.push(change); groups.set(key, group);
+  }
+  const recognitionFields = ["mode", "compatibles", "driverNature", "instanceCardinality", "nodeTypeName"] as const;
+  const recognitionValue = (item: unknown, field: typeof recognitionFields[number]) => {
+    if (!item || typeof item !== "object") return null;
+    const rule = item as Record<string, unknown>;
+    if (field === "mode") return rule.mode ?? (rule.overridden === true ? "override" : rule.overridden === false ? "inherit" : null);
+    const effective = rule.effective as Record<string, unknown> | undefined;
+    return rule[field] ?? effective?.[field] ?? null;
+  };
   return <>
     <Button type="button" size="sm" variant="outline" disabled={!canImport || !apiClient || !organizationId} onClick={() => setOpen(true)}>导入结构</Button>
     {open ? <>
@@ -111,7 +130,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
       <ModalDialog open={!discard} onDismiss={busy ? undefined : requestClose} className="submission-dialog param-admin-module-edit-dialog module-structure-import" describedBy>
         {({ titleId, descriptionId }) => <>
           <div className="submission-dialog-head"><div><h2 id={titleId}>导入模块结构</h2>
-            <p id={descriptionId}>更新当前组织结构，或复制业务模块到当前目标组织。删除须明确处置子模块和主体归属；复制须确认复用或新建。生命周期暂不能与删除或识别设置同时修改。</p></div></div>
+            <p id={descriptionId}>更新当前组织结构，或复制业务模块和主体到当前目标组织。删除须明确处置子模块和主体归属；复制须确认复用或新建。</p></div></div>
           <div className="param-admin-module-edit-body">
             {!receipt ? <SelectControl ariaLabel="导入模式" value={mode} disabled={busy} options={[{ value: "update", label: "更新当前组织" }, { value: "copy", label: "复制到当前组织" }]} onValueChange={next => {
               setMode(next as "update" | "copy"); setMappings({}); setResolutions({}); setPreview(null);
@@ -138,7 +157,11 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
                 ]} onValueChange={choice => { if (!choice) return; const next = { ...mappings, [mapping.ref]: choice }; setMappings(next); void refresh(resolutions, next); }} />
               </div>)}</> : null}
               <h3>变更（{preview.changes.length}）</h3>
-{preview.changes.length ? <ul>{preview.changes.map((change, index) => <li key={`${change.moduleId}:${change.field}:${index}`}>{moduleLabel(change.moduleId)} · {fieldLabels[change.field] ?? change.field}：{change.field === "parentRef" && typeof change.before === "string" ? moduleLabel(change.before) : displayValue(change.before)} → {change.field === "parentRef" && typeof change.after === "string" ? moduleLabel(change.after) : displayValue(change.after)}</li>)}</ul> : <p>没有领域数据变更。</p>}
+{preview.changes.length ? [...groups].map(([id, changes]) => <section key={id}>
+  <h4>{moduleLabel(id)}</h4><ul>{changes.flatMap((change, index) => change.field === "recognition"
+    ? [...recognitionFields.filter(field => JSON.stringify(recognitionValue(change.before, field)) !== JSON.stringify(recognitionValue(change.after, field))).map(field => <li key={`${index}:${field}`}>{fieldLabels[`recognition.${field}`]}：{displayValue(recognitionValue(change.before, field))} → {displayValue(recognitionValue(change.after, field))}</li>), <li key={`${index}:details`}><details><summary>识别规则技术详情</summary><p>变更前：{value(change.before)}</p><p>变更后：{value(change.after)}</p></details></li>]
+    : [<li key={index}>{fieldLabels[change.field] ?? change.field}：{change.field === "parentRef" && typeof change.before === "string" ? moduleLabel(change.before) : displayValue(change.before)} → {change.field === "parentRef" && typeof change.after === "string" ? moduleLabel(change.after) : displayValue(change.after)}</li>])}</ul>
+</section>) : <p>没有领域数据变更。</p>}
               {preview.impact?.length ? <><h3>受影响项目</h3><ul>{preview.impact.map(item => <li key={`${item.subjectId}:${item.projectId}`}>主体 {item.subjectId} · 项目 {item.projectId} · 绑定 {item.bindingCount} · 定义 {item.definitions.join("、")}</li>)}</ul></> : null}
               <h3>待解决冲突（{preview.conflicts.length}）</h3>
               {preview.conflicts.filter(conflict => conflict.field !== "mapping").map(conflict => <div key={conflict.key}>

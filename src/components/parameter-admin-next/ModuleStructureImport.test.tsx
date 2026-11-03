@@ -17,7 +17,7 @@ it("re-previews conflict choices and preserves the request key for a failed appl
   window.dispatchEvent(unload);
   expect(unload.defaultPrevented).toBe(true);
   await user.click(screen.getByRole("button", { name: "预览" }));
-  expect(await screen.findByText('"old"')).toBeInTheDocument();
+  expect(await screen.findByText('old')).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
   await user.click(screen.getByLabelText("a:name 的冲突选择"));
   await user.click(screen.getByRole("option", { name: "采用文件" }));
@@ -80,4 +80,21 @@ it("shows the full placement path, unset and affected projects", async () => {
   await user.click(screen.getByRole("button", { name: "预览" }));
   expect(await screen.findByText(/未设置归属 → 电源 \/ 充电/)).toBeInTheDocument();
   expect(screen.getByText(/主体 driver · 项目 project-a · 绑定 2 · 定义 definition-a/)).toBeInTheDocument();
+});
+
+it("groups subject changes and explains recognition settings field by field", async () => {
+  const post = vi.fn().mockResolvedValue({ token: "preview", conflicts: [], changes: [
+    { moduleId: "subject:driver", field: "state", before: "active", after: "retired" },
+    { moduleId: "driver", field: "recognition", before: { mode: "inherit", effective: { compatibles: ["old"], driverNature: "physical-device" } },
+      after: { overridden: true, compatibles: ["new"], driverNature: "physical-device" } },
+  ] });
+  const user = userEvent.setup();
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify({ subjects: [{ subjectId: "driver", displayAlias: "充电驱动", kind: "driver" }] })], "edit.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "预览" }));
+  expect(await screen.findByText("充电驱动")).toBeInTheDocument();
+  expect(screen.getByText(/启用 → 停用/)).toBeInTheDocument();
+  expect(screen.getByText(/继承目录设置 → 自定义覆盖/)).toBeInTheDocument();
+  expect(screen.getByText(/old → new/)).toBeInTheDocument();
 });

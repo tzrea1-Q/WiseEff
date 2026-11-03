@@ -1,5 +1,7 @@
 # 浏览器验收覆盖图
 
+`MODULE-STRUCTURE-MIXED-001`：在 1440×900 下，管理员一次确认混合结构更新。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
 `MODULE-STRUCTURE-COPY-001`：在 1440×900 下，管理员向非空目标组织复制模块时确认复用与新建。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
 
 `MODULE-STRUCTURE-RECOGNITION-001`：在 1440×900 下，管理员通过真实 API 验证、审阅并恢复识别继承。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。

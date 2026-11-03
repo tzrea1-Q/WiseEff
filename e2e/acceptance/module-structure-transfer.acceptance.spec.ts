@@ -21,6 +21,60 @@ useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "POST", path: endp
   { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, status: 409 },
   { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, status: 503 }] });
 
+test("MODULE-STRUCTURE-MIXED-001: review one mixed update", async ({ page, request }, info) => {
+  // @acceptance MODULE-STRUCTURE-MIXED-001
+  // @operation MODULE-STRUCTURE-MIXED-001
+  const suffix = String(Date.now()), organization = `structure-mixed-${suffix}`, user = `mixed-user-${suffix}`;
+  const oldModule = `mixed-old-${suffix}`, email = `${user}@example.test`;
+  const subjects = await withPgClient(async client => {
+    await client.query("insert into organizations(id,name) values ($1,'Mixed structure')", [organization]);
+    await client.query("insert into users(id,organization_id,name,title,email,is_active) values ($1,$2,'Mixed admin','Admin',$3,true)", [user, organization, email]);
+    await client.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [`role-${suffix}`, user, organization]);
+    await client.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ($1,$2,'Old category',$1,'business','curated')", [oldModule, organization]);
+    const ids = (await client.query<{ id: string }>(`select s.id from parameter_catalog.catalog_subjects s join parameter_catalog.catalog_state cs on cs.singleton
+      join parameter_catalog.catalog_release_subjects rs on rs.release_id=cs.current_catalog_release_id and rs.subject_id=s.id
+      where s.owner_subject_id is null and s.kind='driver' and rs.lifecycle='active' order by s.id limit 2`)).rows.map(row => row.id);
+    await client.query("begin"); await client.query("set constraints all deferred");
+    await client.query(`insert into parameter_catalog.organization_subject_registrations(id,organization_id,subject_id,status,registration_method,proof,current_placement_id,display_alias)
+      values ($1,$2,$3,'retired','explicit','{}',$4,'Retired driver')`, [`registration-${suffix}`, organization, ids[0], `placement-${suffix}`]);
+    await client.query("insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin) values ($1,$2,$3,$4,'curated')", [`placement-${suffix}`, `registration-${suffix}`, organization, oldModule]);
+    await client.query("commit"); return ids;
+  });
+  expect(subjects).toHaveLength(2);
+  const base = `/api/v2/organizations/${organization}/module-structure`, headers = authHeadersForUser(user, email, "Mixed admin", organization);
+  const exported = await request.post(apiRoute(`${base}/exports`), { headers, data: {} });
+  expect(exported.status(), await exported.text()).toBe(200);
+  const document = await exported.json();
+  document.modules.find((item: { sourceId: string }) => item.sourceId === oldModule).operation = "delete";
+  document.modules.push({ ref: "new-parent", name: "New parent", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" },
+    { ref: "new-child", name: "New child", parentRef: "new-parent", description: "", scope: "", sortOrder: 0, importance: "medium" });
+  const retired = document.subjects.find((item: { subjectId: string }) => item.subjectId === subjects[0]);
+  retired.placement = { kind: "module", moduleRef: "new-child" }; retired.operation = "restore";
+  retired.recognition.mode = "override"; retired.recognition.override = { ...retired.recognition.effective, compatibles: [`wiseeff,mixed-${suffix}`] };
+  document.subjects.push({ subjectId: subjects[1], operation: "register", placement: { kind: "module", moduleRef: "new-child" } });
+  await signInBrowserAsUser(page, user, email, "Mixed admin", "/parameter-admin/modules", organization);
+  await page.getByRole("button", { name: "导入结构" }).click();
+  const dialog = page.getByRole("dialog", { name: "导入模块结构" });
+  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "mixed.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+  await dialog.getByRole("button", { name: "预览" }).click();
+  await expect(dialog.getByText(/Retired driver/).first()).toBeVisible();
+  await expect(dialog.getByText(/停用 → 启用/)).toBeVisible();
+  await expect(dialog.getByText(/New parent \/ New child/).first()).toBeVisible();
+  await expect(dialog.getByText(`wiseeff,mixed-${suffix}`, { exact: false }).first()).toBeVisible();
+  await expect(dialog.getByText(/删除模块/).first()).toBeVisible();
+  await page.screenshot({ path: info.outputPath("module-structure-mixed-1440x900.png"), animations: "disabled" });
+  await dialog.getByLabel("变更原因").fill("Review mixed update");
+  const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `${base}/applies` && response.status() === 200);
+  await dialog.getByRole("button", { name: "确认提交" }).click(); const response = await applied;
+  await expect(dialog.getByRole("status")).toContainText("回执");
+  const after = await request.post(apiRoute(`${base}/exports`), { headers, data: {} }); const result = await after.json();
+  expect(result.modules.some((item: { sourceId: string }) => item.sourceId === oldModule)).toBe(false);
+  expect(result.subjects.filter((item: { subjectId: string; state: string }) => subjects.includes(item.subjectId) && item.state === "active")).toHaveLength(2);
+  await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-MIXED-001", title: "Review a mixed structure update", status: "passed", page, testInfo: info,
+    artifacts: [info.outputPath("module-structure-mixed-1440x900.png")], api: [summarizeApiResponse(response, { method: "POST", path: `${base}/applies`, responseSummary: "Mixed update committed." })],
+    notes: "Real API at 1440×900: new parent and child, registration, retired placement, recognition, restoration and deletion." });
+});
+
 test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async ({ page, request }, info) => {
   // @acceptance MODULE-STRUCTURE-LIFECYCLE-001
   // @operation MODULE-STRUCTURE-LIFECYCLE-001
@@ -127,7 +181,7 @@ test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritan
     rule.mode = "override"; rule.override = { ...rule.effective, compatibles: ["wiseeff,recognition-1499"] };
     dialog = await upload(edited);
     await dialog.getByRole("button", { name: "预览" }).click();
-    await expect(dialog.getByText(/wiseeff,recognition-1499/)).toBeVisible();
+    await expect(dialog.locator("li").filter({ hasText: "wiseeff,recognition-1499" }).first()).toBeVisible();
     await dialog.getByLabel("变更原因").fill("Review recognition override");
     await dialog.getByRole("button", { name: "确认提交" }).focus(); await page.keyboard.press("Enter");
     await expect(dialog.getByRole("status")).toContainText("回执");
@@ -138,7 +192,7 @@ test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritan
     resetRule.mode = "inherit"; resetRule.override = null;
     await page.getByRole("button", { name: "导入结构" }).click(); dialog = await upload(reset);
     await dialog.getByRole("button", { name: "预览" }).click();
-    await expect(dialog.getByText(/wiseeff,recognition-1499/)).toBeVisible();
+    await expect(dialog.locator("li").filter({ hasText: "wiseeff,recognition-1499" }).first()).toBeVisible();
     await page.screenshot({ path: info.outputPath("recognition-reset-1440x900.png"), animations: "disabled" });
     await dialog.getByLabel("变更原因").fill("Restore inherited recognition");
     const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `${base}/applies` && response.status() === 200);
@@ -200,7 +254,7 @@ test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", 
     await page.getByRole("dialog", { name: "放弃导入？" }).getByRole("button", { name: "继续编辑" }).click();
     await expect(dialog.getByText(/edit.json/)).toBeVisible();
     await dialog.getByRole("button", { name: "预览" }).click();
-    await expect(dialog.getByText('"current edit"')).toBeVisible();
+    await expect(dialog.getByText('current edit', { exact: true })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "确认提交" })).toBeDisabled();
     await dialog.getByLabel(`${module.ref}:description 的冲突选择`).click();
     await page.getByRole("option", { name: "采用文件" }).click();
