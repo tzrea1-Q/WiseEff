@@ -6,7 +6,7 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../shared/databa
 import { requestJson } from "../../test/testClient";
 import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog";
 import { makeTestAuthContext } from "../../testing/authContext";
-import { installPublishedCatalogChain, nodeTypeAndSecondDriverSuccessorBundle, retiredPowerAliasSuccessorBundle } from "../catalog-kernel/runtime/catalogChain.fixture";
+import { installPublishedCatalogChain, nodeTypeAndSecondDriverSuccessorBundle, retiredPowerAliasSuccessorBundle, retiredPowerSubjectSuccessorBundle } from "../catalog-kernel/runtime/catalogChain.fixture";
 import { compileCatalogRelease } from "../catalog-kernel/compiler";
 import { installPublishedRelease } from "../catalog-kernel/install/installer";
 import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
@@ -367,6 +367,23 @@ describe("module structure export", () => {
     expect((sourceAfter.body as { subjects: unknown[] }).subjects).toEqual((exported.body as { subjects: unknown[] }).subjects);
     const identity = (await db.query<{ id: string; current_placement_id: string }>(`select id,current_placement_id from parameter_catalog.organization_subject_registrations
       where organization_id=$1 and subject_id='csub_acme_power'`, [target])).rows[0]!;
+    const staleInput = { ...input, mappings: {} };
+    const stalePreview = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify(staleInput) });
+    expect(stalePreview.status, stalePreview.bodyText).toBe(200);
+    const gatePool = getRootPostgresPool(db)!;
+    const gate = await gatePool.connect();
+    await gate.query("begin");
+    await gate.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-recognition:${target}`]);
+    await gate.query("update parameter_catalog.organization_subject_registrations set display_alias='Concurrent alias' where id=$1", [identity.id]);
+    const gatePid = (await gate.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
+    let pending: ReturnType<typeof requestJson> | undefined;
+    try {
+      pending = requestJson(destination, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...staleInput,
+        token: (stalePreview.body as { token: string }).token, idempotencyKey: "copy-competing-writer", reason: "Review copy" }) });
+      await vi.waitFor(async () => { expect((await gatePool.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [gatePid])).rowCount).toBeGreaterThan(0); });
+      await gate.query("commit");
+      expect((await pending).status).toBe(409);
+    } finally { await gate.query("rollback"); gate.release(); await pending?.catch(() => undefined); }
     await db.query("update parameter_catalog.organization_subject_registrations set display_alias='Target alias' where id=$1", [identity.id]);
     await db.query("update registration_recognition_rules set compatibles=array['target,rule'] where registration_id=$1", [identity.id]);
     const repeated = { ...input, mappings: {} };
@@ -420,6 +437,29 @@ describe("module structure export", () => {
       expect.objectContaining({ subjectId: "csub_acme_power", state: "active" }),
       expect.objectContaining({ subjectId: "csub_acme_charger", state: "retired", cascadeRetired: false }),
     ]) });
+    const capacity = structuredClone(historical.body) as z.infer<typeof moduleStructureExportSchema>;
+    capacity.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!.override!.instanceCardinality = "singleton-per-project";
+    const capacityInput = { mode: "copy", document: capacity, mappings: {}, resolutions: { "subject:csub_acme_power:recognition": "file" } };
+    const beforeCapacity = await requestJson(secondApp, `${secondPath}/previews`, { method: "POST", body: JSON.stringify(capacityInput) });
+    expect(beforeCapacity.status, beforeCapacity.bodyText).toBe(200);
+    await db.query("insert into projects(id,organization_id,name,code) values ('copy-capacity-project',$1,'Capacity','COPYCAP')", [secondTarget]);
+    const pool = getRootPostgresPool(db)!;
+    const pin = await captureCurrentCatalogPin(pool);
+    if (!pin) throw new Error("Missing Catalog release");
+    const loaded = await createCatalogKernel(pool).loadPinnedCatalog(pin);
+    if (!loaded.ok) throw new Error(JSON.stringify(loaded.error));
+    const targetRegistration = (await db.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_power'", [secondTarget])).rows[0]!.id;
+    for (const logicalNodeId of ["copy-capacity-one", "copy-capacity-two"]) {
+      const binding = await createSourceBackedBindingService(pool).stabilize({ snapshot: loaded.value, organizationId: secondTarget,
+        projectId: "copy-capacity-project", logicalNodeId, registrationId: SubjectRegistrationId(targetRegistration),
+        definitionId: ParameterDefinitionId("pdef_acme_power_iin_max"), effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_2"), expectedEffectiveRevisionId: null });
+      if (!binding.ok) throw new Error(JSON.stringify(binding.error));
+    }
+    const overCapacity = await requestJson(secondApp, `${secondPath}/previews`, { method: "POST", body: JSON.stringify(capacityInput) });
+    expect(overCapacity.status).toBe(409);
+    const staleCapacity = await requestJson(secondApp, `${secondPath}/applies`, { method: "POST", body: JSON.stringify({ ...capacityInput,
+      token: (beforeCapacity.body as { token: string }).token, idempotencyKey: "copy-capacity-race", reason: "Check capacity" }) });
+    expect(staleCapacity.status).toBe(409);
     for (const operation of ["retire", "restore"] as const) {
       const snapshot = await requestJson(secondApp, `${secondPath}/exports`, { method: "POST", body: "{}" });
       const edit = structuredClone(snapshot.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
@@ -1223,5 +1263,57 @@ describe("module structure export", () => {
     expect((await db.query(`select
       (select count(*) from parameter_catalog.module_structure_export_baselines where organization_id=$1) as baselines,
       (select count(*) from audit_events where organization_id=$1 and action='module-structure-export') as audits`, [org])).rows[0]).toEqual(before);
+  });
+
+  it("rejects a copy when its current Catalog Subject is retired after preview", async () => {
+    const pool = getRootPostgresPool(db)!;
+    const aliasBundle = retiredPowerAliasSuccessorBundle();
+    const aliasCompiled = compileCatalogRelease(aliasBundle);
+    if (!aliasCompiled.ok) throw new Error(JSON.stringify(aliasCompiled.error));
+    let pin = await captureCurrentCatalogPin(pool);
+    if (!pin) throw new Error("Missing Catalog release");
+    const currentId = (await db.query<{ id: string }>("select current_catalog_release_id as id from parameter_catalog.catalog_state where singleton")).rows[0]!.id;
+    if (currentId !== aliasBundle.targetReleaseId) {
+      const installed = await installPublishedRelease(pool, { mode: "advance", source: jsonCatalogReleaseSource(aliasBundle), expectedCurrent: pin, expectedTargetDigest: aliasCompiled.value.aggregateDigest });
+      if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+      pin = (await captureCurrentCatalogPin(pool))!;
+    }
+    const sourceOrg = "retirement-copy-source", targetOrg = "retirement-copy-target";
+    for (const organization of [sourceOrg, targetOrg]) {
+      await db.query("insert into organizations(id,name) values ($1,'Catalog copy')", [organization]);
+      await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [`${organization}-admin`, organization]);
+      await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [`${organization}-role`, `${organization}-admin`, organization]);
+    }
+    await db.transaction(async tx => {
+      await tx.query("set constraints all deferred");
+      await tx.query(`insert into parameter_catalog.organization_subject_registrations(id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
+        values ('retirement-copy-registration',$1,'csub_acme_power','active','explicit','{}','retirement-copy-placement')`, [sourceOrg]);
+      await tx.query("insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin) values ('retirement-copy-placement','retirement-copy-registration',$1,null,'curated')", [sourceOrg]);
+      const children = await tx.query<{ id: string }>("select id from parameter_catalog.catalog_subjects where owner_subject_id='csub_acme_power'");
+      for (const child of children.rows) {
+        await tx.query(`insert into parameter_catalog.organization_subject_registrations(id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
+          values ($1,$2,$3,'active','automatic','{}',$4)`, [`retirement-copy-${child.id}`, sourceOrg, child.id, `retirement-copy-place-${child.id}`]);
+        await tx.query("insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin) values ($1,$2,$3,null,'curated')",
+          [`retirement-copy-place-${child.id}`, `retirement-copy-${child.id}`, sourceOrg]);
+      }
+    });
+    const app = (organization: string) => createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: organization, userId: `${organization}-admin`, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const source = app(sourceOrg), target = app(targetOrg);
+    const exported = await requestJson(source, `/api/v2/organizations/${sourceOrg}/module-structure/exports`, { method: "POST", body: "{}" });
+    expect(exported.status, exported.bodyText).toBe(200);
+    const input = { mode: "copy", document: exported.body, mappings: {}, resolutions: {} };
+    const path = `/api/v2/organizations/${targetOrg}/module-structure`;
+    const preview = await requestJson(target, `${path}/previews`, { method: "POST", body: JSON.stringify(input) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    const retired = retiredPowerSubjectSuccessorBundle(), compiled = compileCatalogRelease(retired);
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+    const installed = await installPublishedRelease(pool, { mode: "advance", source: jsonCatalogReleaseSource(retired), expectedCurrent: pin, expectedTargetDigest: compiled.value.aggregateDigest });
+    if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+    expect((await requestJson(target, `${path}/previews`, { method: "POST", body: JSON.stringify(input) })).status).toBe(409);
+    const stale = await requestJson(target, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...input,
+      token: (preview.body as { token: string }).token, idempotencyKey: "copy-catalog-retired", reason: "Review copy" }) });
+    expect(stale.status).toBe(409);
+    expect((await db.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations where organization_id=$1", [targetOrg])).rows[0]).toEqual({ count: 0 });
   });
 });
