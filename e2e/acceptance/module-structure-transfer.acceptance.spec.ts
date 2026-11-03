@@ -71,6 +71,10 @@ test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritan
     await expect(dialog.getByRole("status")).toContainText("回执");
     const after = await exportDocument();
     expect(after.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId).recognition.mode).toBe("inherit");
+    const saved = await withPgClient(async client => (await client.query(`select 1 from public.registration_recognition_rules rule
+      join parameter_catalog.organization_subject_registrations registration on registration.id=rule.registration_id and registration.organization_id=rule.organization_id
+      where registration.organization_id=$1 and registration.subject_id=$2`, [org, subjectId])).rowCount);
+    expect(saved).toBe(0);
     await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-RECOGNITION-001", title: "Review and reset recognition settings", status: "passed", page, testInfo: info,
       artifacts: [info.outputPath("recognition-reset-1440x900.png")], api: [summarizeApiResponse(response, { method: "POST", path: `${base}/applies`, responseSummary: "Reviewed reset committed." })],
       db: [{ table: "registration_recognition_rules", predicate: "selected inherited driver", observed: "Override removed", rowCount: 0 }], notes: "Real API at 1440×900; validation, override and reset were exercised by keyboard." });
