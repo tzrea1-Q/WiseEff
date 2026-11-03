@@ -1,6 +1,7 @@
 import type { ZodTypeAny, z } from "zod";
 
 import {
+  moduleStructureExportSchema,
   catalogBatchRegistrationRequestSchema,
   catalogBatchRegistrationResponseSchema,
   catalogUnregisteredSubjectsResponseSchema,
@@ -323,6 +324,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     listUnregisteredSubjects: (organizationId: string, source: "organization" | "all", catalogReleaseId: string) =>
       request("GET", `${canonical("catalog.listUnregisteredSubjects", { organizationId })}?source=${source}`,
         catalogUnregisteredSubjectsResponseSchema, "CatalogUnregisteredSubjectsResponse", { context: { catalogReleaseId } }),
+    exportModuleStructure: (organizationId: string) =>
+      request("POST", canonical("catalog.exportModuleStructure", { organizationId }), moduleStructureExportSchema, "ModuleStructureExport", { body: {} }),
     createBatchRegistration: (organizationId: string, body: CatalogBatchRegistrationRequest, context: CatalogWriteContext) =>
       request("POST", canonical("catalog.createBatchRegistration", { organizationId }), catalogBatchRegistrationResponseSchema,
         "CatalogBatchRegistrationResponse", { body: catalogBatchRegistrationRequestSchema.parse(body), context }),
@@ -1039,6 +1042,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.listRegistrations": "listRegistrations",
     "catalog.listUnregisteredSubjects": "listUnregisteredSubjects",
     "catalog.createBatchRegistration": "createBatchRegistration",
+    "catalog.exportModuleStructure": "exportModuleStructure",
     "catalog.createRegistration": "createRegistration",
     "catalog.getRegistration": "getRegistration",
     "catalog.retireRegistration": "retireRegistration",
