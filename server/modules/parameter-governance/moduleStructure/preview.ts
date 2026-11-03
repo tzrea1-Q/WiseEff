@@ -62,8 +62,10 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     if (!target) throw new ApiError("CONFLICT", "A module was deleted after export.", { path: `modules.${index}.sourceId` });
     for (const field of fields) {
       const supplied = module[field]; if (supplied === undefined) continue;
-      const file = typeof supplied === "string" && field !== "importance" ? supplied.trim() : supplied;
       const original = base[field]; const now = target[field];
+      // A byte-for-byte round trip must not normalize historical values.
+      if (supplied === original || supplied === now) continue;
+      const file = typeof supplied === "string" && field !== "importance" ? supplied.trim() : supplied;
       if (file === original || file === now) continue;
       const key = `${module.ref}:${field}`;
       if (now !== original && !resolutions[key]) { conflicts.push({ key, moduleId: module.sourceId, field, baseline: original, file, current: now }); continue; }
