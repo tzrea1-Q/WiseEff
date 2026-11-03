@@ -10,13 +10,14 @@ import { readInheritedRegistrationRecognitionSettings, readRegistrationRecogniti
   resetRegistrationRecognitionSettingsInTransaction, updateRegistrationRecognitionSettingsInTransaction,
   validateRecognitionCapacity, validateRegistrationRecognitionSettings, type UpdateModuleRecognition } from "../../parameter-modules/recognitionSettings";
 import { stable } from "./preview";
+import type { LifecycleChange } from "./lifecycle";
 
 type Subject = z.infer<typeof moduleStructureExportSchema>["subjects"][number];
 type Edit = z.infer<typeof moduleStructureUpdateDocumentSchema>["subjects"][number];
 const fields = ["compatibles", "driverNature", "instanceCardinality", "nodeTypeName"] as const;
 
 export async function planRecognition(client: pg.PoolClient, organizationId: string, releaseId: string,
-  edits: Edit[], baseline: Subject[], current: Subject[], resolutions: Record<string, "current" | "file">) {
+  edits: Edit[], baseline: Subject[], current: Subject[], resolutions: Record<string, "current" | "file">, lifecycle: LifecycleChange[] = []) {
   const db = client as unknown as Queryable;
   const changes: Array<{ subjectId: string; registrationId: string; ifMatch: string; mode: "inherit" | "override"; body: UpdateModuleRecognition; before: unknown; after: unknown }> = [];
   const conflicts: Array<{ key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }> = [];
@@ -26,6 +27,30 @@ export async function planRecognition(client: pg.PoolClient, organizationId: str
     const target = current.find(s => s.subjectId === edit.subjectId)?.recognition;
     const requested = edit.recognition;
     if (requested === undefined || stable(requested) === stable(base)) continue;
+    const registration = lifecycle.find(change => change.subjectId === edit.subjectId && change.operation === "register");
+    if (!base && registration && requested) {
+      if (registration.kind !== "configuration-schema" && requested.effective === undefined && requested.mode === "inherit" && !requested.override) continue;
+      if (registration.kind === "configuration-schema" || requested.effective !== undefined || requested.mode !== "override" || !requested.override)
+        throw new ApiError("VALIDATION_FAILED", "Invalid recognition settings for a new registration.");
+      const initial = { kind: registration.kind, recognitionSubjectId: edit.subjectId, compatibles: [] as string[], nodeTypeName: null,
+        driverNature: null, instanceCardinality: null, overridden: false };
+      const inherited = await readInheritedRegistrationRecognitionSettings(db, initial, releaseId);
+      const override = requested.override;
+      if (registration.kind === "driver" ? override.compatibles === null || override.driverNature === null || override.instanceCardinality === null || override.nodeTypeName != null
+        : override.nodeTypeName === null || override.compatibles?.length || override.driverNature != null || override.instanceCardinality != null)
+        throw new ApiError("VALIDATION_FAILED", "Recognition fields do not match this Subject kind.");
+      const body = Object.fromEntries(Object.entries(registration.kind === "driver"
+        ? { compatibles: override.compatibles, driverNature: override.driverNature, instanceCardinality: override.instanceCardinality }
+        : { nodeTypeName: override.nodeTypeName }).filter(([, value]) => value !== undefined)) as UpdateModuleRecognition;
+      const next = await validateRegistrationRecognitionSettings(db, organizationId, inherited, body);
+      const instances = await listModuleRecognitionInstances(db, organizationId, next);
+      instances.sort((a, b) => a.projectId.localeCompare(b.projectId) || a.logicalNodeId.localeCompare(b.logicalNodeId));
+      const bindings = (await client.query(`select distinct project_id, coalesce(logical_node_id, source_occurrence_id) as instance_id
+        from parameter_catalog.current_project_parameter_bindings where organization_id=$1 and subject_id=$2 order by project_id, instance_id`, [organizationId, edit.subjectId])).rows;
+      evidence.push({ subjectId: edit.subjectId, instances, bindings });
+      changes.push({ subjectId: edit.subjectId, registrationId: "", ifMatch: registrationRecognitionEtag(inherited), mode: "override", body, before: null, after: next });
+      continue;
+    }
     if (!base || !target || !requested) throw new ApiError("VALIDATION_FAILED", "Recognition settings do not apply to this Subject.");
     if (requested.effective !== undefined && Object.entries(requested.effective).some(([k, v]) => stable(v) !== stable(base.effective[k as keyof typeof base.effective])))
       throw new ApiError("VALIDATION_FAILED", "Effective recognition settings are read-only.");
@@ -80,8 +105,10 @@ export async function planRecognition(client: pg.PoolClient, organizationId: str
 export async function applyRecognition(tx: Database, organizationId: string, releaseId: string,
   invocation: TrustedInvocationContext, requestId: string, key: string, changes: Awaited<ReturnType<typeof planRecognition>>["changes"]) {
   for (const change of changes) {
-    if (change.mode === "inherit") await resetRegistrationRecognitionSettingsInTransaction(tx, { organizationId, registrationId: change.registrationId, ifMatch: change.ifMatch, catalogReleaseId: releaseId });
-    else await updateRegistrationRecognitionSettingsInTransaction(tx, { organizationId, registrationId: change.registrationId, body: change.body,
+    const registrationId = change.registrationId || (await tx.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, change.subjectId])).rows[0]?.id;
+    if (!registrationId) throw new ApiError("CONFLICT", "Subject registration no longer exists.");
+    if (change.mode === "inherit") await resetRegistrationRecognitionSettingsInTransaction(tx, { organizationId, registrationId, ifMatch: change.ifMatch, catalogReleaseId: releaseId });
+    else await updateRegistrationRecognitionSettingsInTransaction(tx, { organizationId, registrationId, body: change.body,
       invocation, requestId, ifMatch: change.ifMatch, catalogReleaseId: releaseId,
       idempotencyKey: `module-structure:${createHash("sha256").update(JSON.stringify([key, change.subjectId])).digest("hex")}` });
   }

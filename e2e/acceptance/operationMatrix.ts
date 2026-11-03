@@ -17,6 +17,9 @@ export type AcceptanceOperation = {
 };
 
 export const acceptanceOperations: AcceptanceOperation[] = [
+  { id: "MODULE-STRUCTURE-MIXED-001", priority: "P1", area: "parameters", coverage: "automated",
+    route: "/parameter-admin/modules", roles: ["Org Admin"], action: "Review and apply a mixed structure update in one confirmation.",
+    acceptanceIds: ["MODULE-STRUCTURE-MIXED-001"], specFiles: ["e2e/acceptance/module-structure-transfer.acceptance.spec.ts"], assertions: ["ui", "api", "screenshot"] },
   { id: "MODULE-STRUCTURE-LIFECYCLE-001", priority: "P1", area: "parameters", coverage: "automated",
     route: "/parameter-admin/modules", roles: ["Org Admin"], action: "Review batch root registration, retirement and restoration.",
     acceptanceIds: ["MODULE-STRUCTURE-LIFECYCLE-001"], specFiles: ["e2e/acceptance/module-structure-transfer.acceptance.spec.ts"], assertions: ["ui", "api", "screenshot"] },

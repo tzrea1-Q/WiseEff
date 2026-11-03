@@ -1,5 +1,7 @@
 # 用户操作覆盖矩阵
 
+`MODULE-STRUCTURE-MIXED-001`：组织管理员一次确认混合结构更新；覆盖 UI、真实 API 和截图。自动化文件：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
 `MODULE-STRUCTURE-COPY-001`：组织管理员向非空目标组织复制模块并确认复用与新建；覆盖 UI、真实 API、数据库和截图。自动化文件：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
 
 `MODULE-STRUCTURE-RECOGNITION-001`：组织管理员验证、审阅并恢复识别继承；覆盖 UI、真实 API、数据库和截图。自动化文件：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。

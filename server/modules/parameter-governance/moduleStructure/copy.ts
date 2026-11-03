@@ -8,6 +8,7 @@ import { captureModuleStructure } from "./export";
 import { stable } from "./preview";
 import { planCopySubjects } from "./copySubjects";
 import { moduleStructureExportSchema } from "../../contracts/dtoSchemas/moduleStructure";
+import { validateChangedPaths } from "./pathBudget";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance", "parentRef"] as const;
 const normalized = (field: typeof fields[number], value: unknown) => typeof value === "string" && field !== "parentRef" && field !== "importance" ? value.trim() : value;
@@ -146,6 +147,7 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
     while (next && !validated.has(next)) { if (seen.has(next)) throw new ApiError("CONFLICT", "The resulting module hierarchy contains a cycle."); seen.add(next); next = parents.get(next) ?? null; }
     for (const node of seen) validated.add(node);
   }
+  validateChangedPaths(organizationId, parents, rows, changes);
   const siblingNames = new Set<string>();
   for (const [id, name] of namesById) { const key = stable([parents.get(id) ?? null, name]); if (siblingNames.has(key)) throw new ApiError("CONFLICT", "The resulting module names are not unique within their parent."); siblingNames.add(key); }
   const subjects = await planCopySubjects(client, organizationId, input, moduleStructureExportSchema.parse(current).subjects, moduleIds, current.source.catalogReleaseId);

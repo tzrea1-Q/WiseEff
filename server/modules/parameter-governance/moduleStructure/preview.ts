@@ -9,6 +9,7 @@ import { planRecognition } from "./recognition";
 import { planSubjectPlacement } from "./subjects";
 import { planModuleCopy } from "./copy";
 import type { LifecycleChange } from "./lifecycle";
+import { validateChangedPaths } from "./pathBudget";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance", "parentRef"] as const;
 
@@ -54,6 +55,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     stable(document.counts) !== stable(baseline.counts) ||
     stable(document.references) !== stable(baseline.references)) throw new ApiError("VALIDATION_FAILED", "Unsupported changes outside module metadata.");
   const subjectBaselines = new Map(baseline.subjects.map(subject => [subject.subjectId, subject]));
+  const subjectEdits = new Map(document.subjects.map(subject => [subject.subjectId, subject]));
   const seenSubjects = new Set<string>();
   const lifecycle: LifecycleChange[] = [];
   for (const [index, subject] of document.subjects.entries()) {
@@ -72,7 +74,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
         if (subject.displayAlias !== undefined && subject.displayAlias !== null && (!subject.displayAlias.trim() || subject.displayAlias !== subject.displayAlias.trim() || [...subject.displayAlias].length > 128 || /[\u0000-\u001f\u007f-\u009f]/u.test(subject.displayAlias)))
           throw new ApiError("VALIDATION_FAILED", "Invalid display alias.", { path: `subjects.${index}.displayAlias` });
         if (!subject.placement || (subject.placement.kind !== "module" && subject.placement.kind !== "unclassified")) throw new ApiError("VALIDATION_FAILED", "Registration requires a business module or unclassified.");
-        const moduleId = subject.placement.kind === "module" ? current.modules.find(module => module.ref === (subject.placement as { moduleRef: string }).moduleRef)?.sourceId :
+        const moduleId = subject.placement.kind === "module" ? subject.placement.moduleRef :
           (await client.query<{ id: string }>("select id from parameter_modules where organization_id=$1 and kind='unclassified' and parent_id is null and archived_at is null", [organizationId])).rows[0]?.id;
         if (!moduleId) throw new ApiError("CONFLICT", "Placement destination is unavailable.");
         lifecycle.push({ subjectId: subject.subjectId, operation: "register", kind: catalog.kind, moduleId, ...(subject.displayAlias ? { displayAlias: subject.displayAlias } : {}) });
@@ -179,8 +181,6 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   }
   for (const [id, parent] of parents) if (parent && moduleIds.has(parent)) parents.set(id, moduleIds.get(parent)!);
   for (const row of names.rows) if (deleted.has(row.id) && row.kind !== "business") throw new ApiError("CONFLICT", "Protected modules cannot be deleted.");
-  if (deleted.size && (await client.query("select 1 from parameter_modules where organization_id=$1 and parent_id=any($2::text[]) and archived_at is not null limit 1", [organizationId, [...deleted]])).rowCount)
-    throw new ApiError("CONFLICT", "A module with archived children cannot be deleted.");
   for (const [id, parent] of parents) if (parent && deleted.has(parent)) {
     if (!deleted.has(id)) throw new ApiError("CONFLICT", "Every child of a deleted module must be explicitly moved or deleted.");
   }
@@ -214,6 +214,13 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     for (const node of visited) validated.add(node);
   }
   const newIds = new Set(document.modules.filter(module => !module.sourceId && !mapped.has(module.ref)).map(module => moduleIds.get(module.ref)!));
+  validateChangedPaths(organizationId, parents, names.rows, changes);
+  for (const change of lifecycle) if (change.operation === "register" && change.moduleId) {
+    const id = moduleIds.get(change.moduleId) ?? change.moduleId;
+    const isUnclassified = subjectEdits.get(change.subjectId)?.placement?.kind === "unclassified";
+    if ((isUnclassified ? !names.rows.some(row => row.id === id && row.kind === "unclassified") : !currentModules.has(id) && !newIds.has(id)) || deleted.has(id))
+      throw new ApiError("CONFLICT", "Placement destination is unavailable.");
+  }
   for (const change of changes.filter(change => change.field === "parentRef" || change.field === "create")) {
     const parent = parents.get(change.moduleId);
     if (parent && !currentModules.has(parent) && !newIds.has(parent))
@@ -226,13 +233,15 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     siblingNames.add(key);
   }
   const recognition = await planRecognition(client, organizationId, current.source.catalogReleaseId, document.subjects, baseline.subjects,
-    moduleStructureExportSchema.parse(current).subjects, resolutions);
-  if (lifecycle.length && deleted.size) throw new ApiError("VALIDATION_FAILED", "Lifecycle and module deletion cannot be combined yet.");
-  if (lifecycle.length && recognition.changes.length) throw new ApiError("VALIDATION_FAILED", "Lifecycle and recognition changes cannot be combined yet.");
+    moduleStructureExportSchema.parse(current).subjects, resolutions, lifecycle);
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
     roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
   const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, mappings, subjectVersions: subjectVersions.rows, impact, legacyImpact, recognition: recognition.evidence };
-  return { changes: [...changes, ...subjectPlan.changes.map(({ subjectId, ...change }) => ({ moduleId: `subject:${subjectId}`, ...change })), ...lifecycle.map(change => ({ moduleId: `subject:${change.subjectId}`, field: "state", before: change.operation === "register" ? null : change.operation === "retire" ? "active" : "retired", after: change.operation === "retire" ? "retired" : "active" }))],
+  return { changes: [...changes, ...subjectPlan.changes.map(({ subjectId, ...change }) => ({ moduleId: `subject:${subjectId}`, ...change })), ...lifecycle.flatMap(change => [
+    { moduleId: `subject:${change.subjectId}`, field: "state", before: change.operation === "register" ? null : change.operation === "retire" ? "active" : "retired", after: change.operation === "retire" ? "retired" : "active" },
+    ...(change.operation === "register" ? [{ moduleId: `subject:${change.subjectId}`, field: "placement", before: null, after: subjectEdits.get(change.subjectId)!.placement },
+      ...(change.displayAlias ? [{ moduleId: `subject:${change.subjectId}`, field: "displayAlias", before: null, after: change.displayAlias }] : [])] : []),
+  ])],
     conflicts: [...conflicts, ...subjectPlan.conflicts.map(({ subjectId, ...conflict }) => ({ moduleId: `subject:${subjectId}`, ...conflict })), ...recognition.conflicts],
     subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, lifecycle, copyCreates: [], moduleIds, parents, namesById, deleted, currentCatalogReleaseId: current.source.catalogReleaseId, impact: impact.map(({ bindingVersions: _versions, ...item }) => item), token: createHash("sha256").update(stable(evidence)).digest("hex"), mappingSuggestions: [], mappingTargets: [], copyMappings: [] };
 }

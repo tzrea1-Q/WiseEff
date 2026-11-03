@@ -105,10 +105,10 @@ describe("module structure export", () => {
       join parameter_catalog.catalog_state cs on cs.current_catalog_release_id=rs.release_id
       where s.owner_subject_id is null and s.kind='driver' and rs.lifecycle='active' order by s.id limit 1`);
     const subjectId = subject.rows[0]!.id;
-    const edited = { ...document, subjects: [...document.subjects, { subjectId, operation: "register", placement: { kind: "module", moduleRef: "lifecycle-export-root" } }] };
+    const edited = { ...document, modules: [...document.modules, { ref: "registration-destination", name: "Registration destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }], subjects: [...document.subjects, { subjectId, operation: "register", placement: { kind: "module", moduleRef: "registration-destination" }, recognition: { mode: "override", override: { compatibles: ["acme,new"], nodeTypeName: null } } }] };
     const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(preview.status, preview.bodyText).toBe(200);
-    expect(preview.body).toMatchObject({ changes: [expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })] });
+    expect(preview.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })]) });
     const guest = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId: org, userId: guestUser, roles: [{ roleId: "guest", projectId: null }] }) } } });
     const denied = await requestJson(guest, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "denied", reason: "Reviewed" }) });
@@ -125,8 +125,11 @@ describe("module structure export", () => {
     const duplicate = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(duplicate.status).toBe(409);
     const next = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
-    expect(next.body).toMatchObject({ subjects: expect.arrayContaining([expect.objectContaining({ subjectId, state: "active", placement: { kind: "module", moduleRef: "lifecycle-export-root" } })]) });
+    const nextDocument = next.body as z.infer<typeof moduleStructureExportSchema>;
+    const destination = nextDocument.modules.find(module => module.name === "Registration destination")!;
+    expect(nextDocument.subjects).toEqual(expect.arrayContaining([expect.objectContaining({ subjectId, state: "active", placement: { kind: "module", moduleRef: destination.ref } })]));
     const identity = (await db.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [org, subjectId])).rows[0]!.id;
+    expect((await db.query("select compatibles from registration_recognition_rules where registration_id=$1", [identity])).rows).toEqual([{ compatibles: ["acme,new"] }]);
     for (const operation of ["retire", "restore"] as const) {
       const current = structuredClone(next.body) as z.infer<typeof moduleStructureExportSchema>;
       if (operation === "restore") {
@@ -134,7 +137,7 @@ describe("module structure export", () => {
         Object.assign(current, refreshed.body);
       }
       const root = current.subjects.find(row => row.subjectId === subjectId)!;
-      const lifecycleDocument = { ...current, subjects: current.subjects.map(row => row === root ? { ...row, operation } : row) };
+      const lifecycleDocument = { ...current, modules: [...current.modules.map(row => operation === "retire" && row.sourceId === "lifecycle-export-root" ? { ...row, operation: "delete" } : row), ...(operation === "restore" ? [{ ref: "restore-destination", name: "Restore destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }] : [])], subjects: current.subjects.map(row => row === root ? { ...row, operation, ...(operation === "restore" ? { placement: { kind: "module", moduleRef: "restore-destination" } } : {}), recognition: { ...row.recognition!, mode: "override", override: { ...row.recognition!.effective, compatibles: [operation === "retire" ? "acme,mixed" : "acme,restored"] } } } : row) };
       const planned = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {} }) });
       expect(planned.status, planned.bodyText).toBe(200);
       if (operation === "retire") {
@@ -154,7 +157,34 @@ describe("module structure export", () => {
       expect(results.map(result => result.status).sort()).toEqual(operation === "retire" ? [200, 409] : [200]);
       const stored = await db.query("select id,status from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [org, subjectId]);
       expect(stored.rows).toEqual([{ id: identity, status: operation === "retire" ? "retired" : "active" }]);
+      expect((await db.query("select compatibles from registration_recognition_rules where registration_id=$1", [identity])).rows).toEqual([{ compatibles: [operation === "retire" ? "acme,mixed" : "acme,restored"] }]);
     }
+  });
+
+  it("preserves a long historical encoded path on unchanged and metadata-only updates", async () => {
+    const org = "historical-path-org", user = "historical-path-admin";
+    await db.query("insert into organizations(id,name) values ($1,'Historical')", [org]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('historical-path-role',$1,$2,'admin')", [user, org]);
+    await db.query(`with recursive tree as (
+      select 1 as n, 'h0001'::text as id, null::text as parent_id, 'h0001'::text as path
+      union all select n+1, 'h'||lpad((n+1)::text,4,'0'), id, path||'/'||'h'||lpad((n+1)::text,4,'0') from tree where n<450)
+      insert into parameter_modules(id,organization_id,name,parent_id,path,depth,kind,origin)
+      select id,$1,'Historical '||n,parent_id,path,n,'business','curated' from tree order by n`, [org]);
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const path = `/api/v2/organizations/${org}/module-structure`;
+    const exported = await requestJson(app, `${path}/exports`, { method: "POST", body: "{}" });
+    expect(exported.status, exported.bodyText).toBe(200);
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    for (const metadata of [false, true]) {
+      if (metadata) document.modules.find(module => module.sourceId === "h0450")!.description = "Retained path";
+      const preview = await requestJson(app, `${path}/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+      expect(preview.status, preview.bodyText).toBe(200);
+      const applied = await requestJson(app, `${path}/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: `historical-${metadata}`, reason: "Retain history" }) });
+      expect(applied.status, applied.bodyText).toBe(200);
+    }
+    expect((await db.query("select length(path) as length,description from parameter_modules where id='h0450'")).rows).toEqual([{ length: 2699, description: "Retained path" }]);
   });
 
   it("requires explicit disposition of children before deleting a populated module", async () => {
@@ -167,6 +197,8 @@ describe("module structure export", () => {
       makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
     await db.query(`insert into parameter_modules(id,organization_id,name,parent_id,path,depth,kind,origin)
       values ('delete-child',$1,'Child','delete-root','delete-root/delete-child',2,'business','curated')`, [org]);
+    await db.query(`insert into parameter_modules(id,organization_id,name,parent_id,path,depth,kind,origin,archived_at)
+      values ('delete-archived',$1,'Archived','delete-root','delete-root/delete-archived',2,'business','curated',now())`, [org]);
     const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
     const document = structuredClone(exported.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
     document.modules.find(m => m.sourceId === "delete-root")!.operation = "delete";
@@ -207,6 +239,7 @@ describe("module structure export", () => {
     const applied = await apply("delete-parent");
     expect(applied.status, applied.bodyText).toBe(200);
     expect((await db.query("select id,parent_id from parameter_modules where id=any($1::text[]) order by id", [["delete-root", "delete-child"]])).rows).toEqual([{ id: "delete-child", parent_id: null }]);
+    expect((await db.query("select parent_id,path from parameter_modules where id='delete-archived'")).rows).toEqual([{ parent_id: null, path: "delete-root/delete-archived" }]);
     expect((await db.query("select parameter_module_id,module from parameter_definitions where id='delete-legacy-definition'")).rows).toEqual([{ parameter_module_id: null, module: "unset" }]);
   });
 
@@ -327,17 +360,21 @@ describe("module structure export", () => {
     missing.subjects[0]!.subjectId = "missing-catalog-subject";
     const missingCatalog = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input, document: missing }) });
     expect(missingCatalog.status).toBe(409);
+    const auditsBeforeFailure = (await db.query("select count(*)::int as count from audit_events where organization_id=$1", [target])).rows[0];
     for (const [table, action] of [["parameter_modules", "insert"], ["parameter_catalog.module_structure_created_refs", "insert"],
       ["parameter_catalog.organization_subject_registrations", "insert"], ["registration_recognition_rules", "insert"],
       ["audit_events", "insert"], ["parameter_catalog.governance_command_idempotency", "update"]] as const) {
       await db.query(`create function public.fail_copy_subject_stage() returns trigger language plpgsql as $$ begin raise exception 'injected copy failure'; end $$`);
-      await db.query(`create trigger fail_copy_subject_stage before ${action} on ${table} for each row execute function public.fail_copy_subject_stage()`);
+      await db.query(`create trigger fail_copy_subject_stage after ${action} on ${table} for each row execute function public.fail_copy_subject_stage()`);
       try {
         const failed = await requestJson(destination, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...input,
           token: (preview.body as { token: string }).token, idempotencyKey: `failure-${table}`, reason: "Test rollback" }) });
-        expect(failed.status).toBeGreaterThanOrEqual(400);
+        expect(failed.status).toBeGreaterThanOrEqual(500);
         expect((await db.query("select count(*)::int as count from parameter_modules where organization_id=$1", [target])).rows[0]).toEqual({ count: 0 });
         expect((await db.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations where organization_id=$1", [target])).rows[0]).toEqual({ count: 0 });
+        expect((await db.query("select count(*)::int as count from parameter_catalog.module_structure_created_refs where organization_id=$1", [target])).rows[0]).toEqual({ count: 0 });
+        expect((await db.query("select count(*)::int as count from parameter_catalog.governance_command_idempotency where organization_id=$1 and command_family='module-structure-update'", [target])).rows[0]).toEqual({ count: 0 });
+        expect((await db.query("select count(*)::int as count from audit_events where organization_id=$1", [target])).rows[0]).toEqual(auditsBeforeFailure);
       } finally {
         await db.query(`drop trigger fail_copy_subject_stage on ${table}`);
         await db.query("drop function public.fail_copy_subject_stage()");
@@ -525,6 +562,12 @@ describe("module structure export", () => {
     expect(partialChoice.status, partialChoice.bodyText).toBe(200);
     expect(partialChoice.body).toMatchObject({ conflicts: expect.arrayContaining([expect.objectContaining({ key: "mapping:export-root", file: null })]) });
     const choices = { "export-root": "copy-existing", "copy-child": "create" };
+    const deepModules = Array.from({ length: 75 }, (_, index) => 74 - index).map(index => ({ ref: `copy-limit-${index}`, name: `Copy limit ${index}`, parentRef: index ? `copy-limit-${index - 1}` : null, description: "", scope: "", sortOrder: 0, importance: "medium" }));
+    const deepCopy = await requestJson(targetApp, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input,
+      document: { ...document, modules: [...document.modules, ...deepModules] },
+      mappings: { ...choices, ...Object.fromEntries(deepModules.map(module => [module.ref, "create"])) } }) });
+    expect(deepCopy.status, deepCopy.bodyText).toBe(400);
+    expect(deepCopy.bodyText).toContain("encoded path");
     await db.query("update parameter_modules set description='Target description' where id='copy-existing'");
     const conflicting = await requestJson(targetApp, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input, mappings: choices }) });
     expect(conflicting.status, conflicting.bodyText).toBe(200);
@@ -626,12 +669,17 @@ describe("module structure export", () => {
     const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
     const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
     const additions = [
-      { ref: "new-parent", name: "New parent", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" },
       { ref: "new-child", name: "New child", parentRef: "new-parent", description: "", scope: "", sortOrder: 0, importance: "medium" },
+      { ref: "new-parent", name: "New parent", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" },
+      ...Array.from({ length: 55 }, (_, index) => 54 - index).map(index => ({ ref: `deep-${index}`, name: `Deep ${index}`, parentRef: index ? `deep-${index - 1}` : null, description: "", scope: "", sortOrder: 0, importance: "medium" })),
     ];
     const edited = { ...document, modules: [...document.modules, ...additions] };
     const previewPath = `/api/v2/organizations/${org}/module-structure/previews`;
     const applyPath = `/api/v2/organizations/${org}/module-structure/applies`;
+    const tooDeep = { ...document, modules: [...document.modules, ...Array.from({ length: 75 }, (_, index) => 74 - index).map(index => ({ ref: `limit-${index}`, name: `Limit ${index}`, parentRef: index ? `limit-${index - 1}` : null, description: "", scope: "", sortOrder: 0, importance: "medium" }))] };
+    const rejected = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document: tooDeep, resolutions: {} }) });
+    expect(rejected.status, rejected.bodyText).toBe(400);
+    expect(rejected.bodyText).toContain("encoded path");
     const preview = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(preview.status, preview.bodyText).toBe(200);
     await db.query(`create function fail_created_ref() returns trigger language plpgsql as $$ begin raise exception 'injected mapping failure'; end $$;
@@ -651,6 +699,7 @@ describe("module structure export", () => {
     const created = (await db.query<{ id: string; parent_id: string | null; name: string; path: string; depth: number }>("select id,parent_id,name,path,depth from parameter_modules where organization_id=$1 and name in ('New parent','New child') order by name", [org])).rows;
     expect(created).toHaveLength(2);
     expect(created[0].parent_id).toBe(created[1].id);
+    expect((await db.query("select depth from parameter_modules where organization_id=$1 and name='Deep 54'", [org])).rows).toEqual([{ depth: 55 }]);
     await db.query("update parameter_modules set name='Renamed parent' where id=$1", [created[1].id]);
     const again = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(again.status, again.bodyText).toBe(200);
@@ -908,11 +957,20 @@ describe("module structure export", () => {
     try {
       const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
       expect(exported.status, exported.bodyText).toBe(200);
-      const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+      let document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+      const padding = 4 * 1024 * 1024 - Buffer.byteLength(JSON.stringify(document));
+      expect(padding).toBeGreaterThanOrEqual(0);
+      await db.query("update parameter_modules set description=description || $1 where id='export-root'", ["x".repeat(padding)]);
+      const exact = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+      expect(exact.status, exact.bodyText).toBe(200);
+      document = structuredClone(exact.body) as z.infer<typeof moduleStructureExportSchema>;
+      expect(Buffer.byteLength(JSON.stringify(document))).toBe(4 * 1024 * 1024);
       const path = `/api/v2/organizations/${org}/module-structure/previews`;
       const accepted = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
       expect(accepted.status, accepted.bodyText).toBe(200);
-      document.modules[0]!.description += "x".repeat(8192);
+      const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (accepted.body as { token: string }).token, idempotencyKey: "byte-limit-noop", reason: "Verify full round trip" }) });
+      expect(applied.status, applied.bodyText).toBe(200);
+      document.modules[0]!.description += "x";
       const rejected = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
       expect(rejected.status).toBe(400);
     } finally { await db.query("update parameter_modules set description=$1 where id='export-root'", [original]); }
@@ -1142,12 +1200,28 @@ describe("module structure export", () => {
     if (!pin) throw new Error("Missing Catalog release");
     const loaded = await createCatalogKernel(pool).loadPinnedCatalog(pin);
     if (!loaded.ok) throw new Error(JSON.stringify(loaded.error));
-    for (const logicalNodeId of ["capacity-one", "capacity-two"]) {
-      const binding = await createSourceBackedBindingService(pool).stabilize({ snapshot: loaded.value, organizationId: org,
+    const stabilize = (logicalNodeId: string) => createSourceBackedBindingService(pool).stabilize({ snapshot: loaded.value, organizationId: org,
         projectId: "recognition-capacity-project", logicalNodeId, registrationId: SubjectRegistrationId("export-registration"),
         definitionId: ParameterDefinitionId("pdef_acme_power_iin_max"), effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_2"), expectedEffectiveRevisionId: null });
+    const sourceGate = await pool.connect();
+    await sourceGate.query("begin");
+    await sourceGate.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-recognition:${org}`]);
+    const sourceGatePid = (await sourceGate.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
+    let sourceWrite: ReturnType<typeof stabilize> | undefined;
+    let competingApply: ReturnType<typeof requestJson> | undefined;
+    try {
+      sourceWrite = stabilize("capacity-one");
+      await vi.waitFor(async () => { expect((await pool.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [sourceGatePid])).rowCount).toBeGreaterThan(0); });
+      competingApply = requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: capacityDocument,
+        resolutions: {}, token: (beforeCapacity.body as { token: string }).token, idempotencyKey: "source-instance-race", reason: "Review" }) });
+      await vi.waitFor(async () => { expect((await pool.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [sourceGatePid])).rowCount).toBeGreaterThan(1); });
+      await sourceGate.query("commit");
+      const binding = await sourceWrite;
       if (!binding.ok) throw new Error(JSON.stringify(binding.error));
-    }
+      expect((await competingApply).status).toBe(409);
+    } finally { await sourceGate.query("rollback"); sourceGate.release(); await sourceWrite?.catch(() => undefined); await competingApply?.catch(() => undefined); }
+    const secondBinding = await stabilize("capacity-two");
+    if (!secondBinding.ok) throw new Error(JSON.stringify(secondBinding.error));
     const capacityPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: capacityDocument, resolutions: {} }) });
     expect(capacityPreview.status, capacityPreview.bodyText).toBe(409);
     expect(capacityPreview.bodyText).toContain("单例容量");
@@ -1226,6 +1300,20 @@ describe("module structure export", () => {
     const maximum = await requestJson(app, path, { method: "POST", body: "{}" });
     expect(maximum.status, maximum.bodyText).toBe(200);
     expect((maximum.body as { modules: unknown[] }).modules).toHaveLength(10_000);
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: maximum.body, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: maximum.body, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "maximum-noop", reason: "Verify full round trip" }) });
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect(applied.body).toMatchObject({ changedModules: 0, changedFields: 0 });
+    const edited = structuredClone(maximum.body) as z.infer<typeof moduleStructureExportSchema>;
+    edited.modules.find(module => module.sourceId === "export-root")!.description = "Scale update";
+    edited.modules.find(module => module.sourceId === "export-scale-1")!.parentRef = "export-root";
+    const mixedPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(mixedPreview.status, mixedPreview.bodyText).toBe(200);
+    const mixedApply = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (mixedPreview.body as { token: string }).token, idempotencyKey: "maximum-mixed", reason: "Verify full package" }) });
+    expect(mixedApply.status, mixedApply.bodyText).toBe(200);
+    expect((await db.query("select description from parameter_modules where id='export-root'")).rows).toEqual([{ description: "Scale update" }]);
+    expect((await db.query("select parent_id from parameter_modules where id='export-scale-1'")).rows).toEqual([{ parent_id: "export-root" }]);
     const before = (await db.query("select count(*)::int as count from parameter_catalog.module_structure_export_baselines where organization_id=$1", [org])).rows[0];
     await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('export-excess',$1,'Excess','export-excess','business','curated')", [org]);
     const excess = await requestJson(app, path, { method: "POST", body: "{}" });

@@ -9,6 +9,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | ID | Workflow | Blocking | Expected User Behavior | Spec Owner |
 | --- | --- | --- | --- | --- |
 | `MODULE-STRUCTURE-RECOGNITION-001` | C | Yes | At 1440×900, an administrator validates, reviews and resets a recognition override using the real API. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
+| `MODULE-STRUCTURE-MIXED-001` | C | Yes | At 1440×900, an administrator reviews and applies a mixed structure update in one confirmation. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-COPY-001` | C | Yes | At 1440×900, an administrator confirms reuse and creation when copying modules into a nonempty organization. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-EXPORT-001` | C | Yes | At 1440×900, an administrator downloads the complete structure and guide by keyboard despite an active filter; counts match PostgreSQL, a failed export can be retried, and a reader cannot export. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-IMPORT-001` | C | Yes | At 1440×900, an administrator resolves metadata conflicts, refreshes a stale preview, creates and moves modules, swaps names and repeats a package against the real API. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |

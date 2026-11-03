@@ -57,11 +57,18 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     const structural = new Set(plan.changes.filter(change => !createdRefs.has(change.moduleId) && (change.field === "name" || change.field === "parentRef")).map(change => change.moduleId));
     for (const moduleId of new Set([...structural, ...plan.deleted])) await client.query(
       "update parameter_modules set name=$3 where organization_id=$1 and id=$2 and archived_at is null", [organizationId, moduleId, `__wiseeff_transfer_${randomUUID()}`]);
-    const pending = input.document.modules.filter(module => plan.changes.some(change => change.field === "create" && change.moduleId === module.ref));
-    while (pending.length) {
-      const index = pending.findIndex(module => !module.parentRef || !pending.some(parent => parent.ref === module.parentRef));
-      if (index < 0) throw new ApiError("CONFLICT", "Invalid module hierarchy.");
-      const module = pending.splice(index, 1)[0]!;
+    const pending = input.document.modules.filter(module => createdRefs.has(module.ref));
+    const children = new Map<string, typeof pending>();
+    const ready: typeof pending = [];
+    for (const module of pending) {
+      if (module.parentRef && createdRefs.has(module.parentRef)) {
+        const siblings = children.get(module.parentRef) ?? [];
+        siblings.push(module);
+        children.set(module.parentRef, siblings);
+      } else ready.push(module);
+    }
+    for (let index = 0; index < ready.length; index++) {
+      const module = ready[index]!;
       const created = await createParameterModule(client as unknown as Queryable, { organizationId, name: `__wiseeff_transfer_${randomUUID()}`,
         parentId: module.parentRef ? plan.moduleIds.get(module.parentRef) ?? module.parentRef : null, description: module.description?.trim(),
         scope: module.scope?.trim(), sortOrder: module.sortOrder, importance: module.importance });
@@ -70,14 +77,16 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
         (organization_id,source_organization_id,export_id,package_ref,module_id,initial_snapshot) values ($1,$2,$3,$4,$5,$6)`,
         [organizationId, input.document.source.organizationId, input.document.source.exportId, module.ref, created.id, JSON.stringify({ ...module,
           name: module.name?.trim(), description: module.description?.trim(), scope: module.scope?.trim() })]);
+      ready.push(...(children.get(module.ref) ?? []));
     }
+    if (ready.length !== pending.length) throw new ApiError("CONFLICT", "Invalid module hierarchy.");
     for (const module of input.document.modules.filter(module => input.mode !== "copy" || module.operation !== "delete")) {
       const id = plan.moduleIds.get(module.ref)!;
       if (plan.deleted.has(id)) continue;
       const originalId = plan.parents.has(id) ? id : module.ref;
       const parent = plan.parents.get(originalId) ?? null;
       const parentId = parent ? plan.moduleIds.get(parent) ?? parent : null;
-      if (structural.has(id) || plan.changes.some(change => change.field === "create" && change.moduleId === module.ref)) {
+      if (structural.has(id) || createdRefs.has(module.ref)) {
         await client.query("update parameter_modules set parent_id=$3 where organization_id=$1 and id=$2", [organizationId, id, parentId]);
         const values = changes.get(id) ?? {};
         if (values.name === undefined) values.name = plan.namesById.get(originalId);
@@ -96,7 +105,7 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
       and m.id in (select id from affected) and (m.path,m.depth) is distinct from (tree.path,tree.depth)`, [organizationId, moved]);
     for (const [moduleId, values] of changes) await updateParameterModule(client as unknown as Queryable, { organizationId, moduleId, ...values });
     const copiedRecognition = await applyCopySubjects(client, organizationId, plan.copyCreates, plan.moduleIds, input.reason);
-    await applyLifecycle(client, organizationId, invocation, requestId, input.idempotencyKey, input.reason, plan.lifecycle);
+    await applyLifecycle(client, organizationId, invocation, requestId, input.idempotencyKey, input.reason, plan.lifecycle, plan.moduleIds);
     await applySubjectPlacement(client, organizationId, plan.subjectChanges, plan.moduleIds);
     await applyRecognition(client as unknown as Database, organizationId, plan.currentCatalogReleaseId, invocation, requestId, input.idempotencyKey, [...plan.recognitionChanges, ...copiedRecognition]);
     const deletions = await client.query<{ id: string }>("select id from parameter_modules where organization_id=$1 and id=any($2::text[]) order by depth desc,id", [organizationId, [...plan.deleted]]);
