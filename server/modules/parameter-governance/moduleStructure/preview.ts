@@ -95,8 +95,8 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   for (const module of document.modules) if (!module.sourceId && !mapped.has(module.ref) && existingIds.has(module.ref))
     throw new ApiError("VALIDATION_FAILED", "A new module reference cannot equal an existing module identity.");
   for (const change of changes.filter(change => change.field === "parentRef")) {
-    const node = names.rows.find(row => row.id === change.moduleId)!;
-    if (names.rows.some(row => row.kind !== "business" && row.path.startsWith(`${node.path}/`)))
+    const node = names.rows.find(row => row.id === change.moduleId);
+    if (node && names.rows.some(row => row.kind !== "business" && row.path.startsWith(`${node.path}/`)))
       throw new ApiError("CONFLICT", "Move legacy technical descendants before moving this module.");
   }
   const moduleIds = new Map(document.modules.map(module => [module.ref, module.sourceId ?? mapped.get(module.ref)?.module_id ?? module.ref]));

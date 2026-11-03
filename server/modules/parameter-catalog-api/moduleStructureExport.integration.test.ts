@@ -79,6 +79,7 @@ describe("module structure export", () => {
     await db.query("insert into organizations(id,name) values ($1,'Tree')", [org]);
     await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
     await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('tree-role',$1,$2,'admin')", [user, org]);
+    await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('tree-unclassified',$1,'Unclassified','tree-unclassified','unclassified','curated')", [org]);
     const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
     const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
@@ -97,7 +98,7 @@ describe("module structure export", () => {
     try {
       const failed = await requestJson(app, applyPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "failed-tree", reason: "Create tree" }) });
       expect(failed.status).toBe(500);
-      expect((await db.query("select id from parameter_modules where organization_id=$1", [org])).rows).toEqual([]);
+      expect((await db.query("select id from parameter_modules where organization_id=$1 and kind='business'", [org])).rows).toEqual([]);
       expect((await db.query("select package_ref from parameter_catalog.module_structure_created_refs where organization_id=$1", [org])).rows).toEqual([]);
     } finally {
       await db.query("drop trigger fail_created_ref on parameter_catalog.module_structure_created_refs; drop function fail_created_ref()");
