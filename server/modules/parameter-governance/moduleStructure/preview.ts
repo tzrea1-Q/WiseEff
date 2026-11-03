@@ -10,7 +10,6 @@ import { planSubjectPlacement } from "./subjects";
 import { planModuleCopy } from "./copy";
 import type { LifecycleChange } from "./lifecycle";
 import { validateChangedPaths } from "./pathBudget";
-import { listModuleDeletionReferences } from "../../parameters/repository";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance", "parentRef"] as const;
 
@@ -205,7 +204,8 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   }
   for (const change of subjectPlan.changes) if (change.field === "placement" && typeof change.after === "object" && change.after?.kind === "module" && deleted.has(moduleIds.get(change.after.moduleRef) ?? change.after.moduleRef))
     throw new ApiError("CONFLICT", "A placement cannot target a deleted module.");
-  const legacyImpact = deleted.size ? await listModuleDeletionReferences(client, organizationId, [...deleted]) : [];
+  const legacyImpact = deleted.size ? (await client.query<{ module_id: string; kind: string; id: string }>(
+    "select * from parameter_catalog.module_deletion_references($1,$2::text[])", [organizationId, [...deleted]])).rows : [];
   for (const id of deleted) changes.push({ moduleId: id, field: "legacyImpact", before: legacyImpact.filter(item => item.module_id === id).length, after: null });
   for (const id of deleted) { parents.delete(id); namesById.delete(id); }
   const validated = new Set<string>();
