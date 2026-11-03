@@ -26,7 +26,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   if (Buffer.byteLength(documentBytes ?? "", "utf8") > MODULE_STRUCTURE_MAX_BYTES) throw new ApiError("VALIDATION_FAILED", "Module structure exceeds the supported byte limit.");
   const parsed = moduleStructurePreviewRequestSchema.safeParse(raw);
   if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Invalid module structure document.", { issues: parsed.error.issues.map(i => ({ path: i.path.join("."), message: i.message })) });
-  const { document, resolutions } = parsed.data;
+  const { mode, document, resolutions } = parsed.data;
   if (document.source.organizationId !== organizationId) throw new ApiError("FORBIDDEN", "The package is not from this organization.");
   const result = await client.query<{ document: z.infer<typeof moduleStructureExportSchema> }>(
     "select document from parameter_catalog.module_structure_export_baselines where organization_id=$1 and export_id=$2", [organizationId, document.source.exportId]);
@@ -83,7 +83,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     if (siblingNames.has(key)) throw new ApiError("CONFLICT", "The resulting module names are not unique within their parent.");
     siblingNames.add(key);
   }
-  const evidence = { organizationId, document, resolutions, current, names: names.rows };
+  const evidence = { organizationId, mode, document, resolutions, current, names: names.rows };
   return { changes, conflicts, token: createHash("sha256").update(stable(evidence)).digest("hex") };
 }
 
