@@ -4,6 +4,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SelectControl } from "@/components/common/SelectControl";
 import { SettingsLeaveGuard } from "@/components/layout/SettingsFormPage";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { createGovernanceIdempotencyKey } from "@/features/parameter-catalog-governance/governanceState";
 import { WiseEffApiError, type ApiClient } from "@/infrastructure/http/apiClient";
 import { presentError } from "@/infrastructure/http/presentError";
@@ -81,7 +82,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
           <div className="submission-dialog-head"><div><h2 id={titleId}>导入模块结构</h2>
             <p id={descriptionId}>更新当前组织已有模块资料。新增、移动、删除、主体设置和跨组织复制尚不支持。</p></div></div>
           <div className="param-admin-module-edit-body">
-            <label>JSON 文件<input type="file" accept="application/json,.json" disabled={busy} onChange={async event => {
+            {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy} onChange={async event => {
               const file = event.target.files?.[0]; if (!file) return;
               setFileName(file.name); setDocument(null); setPreview(null); setReceipt(null); setResolutions({}); setError(""); write.current = null;
               if (file.size > 4 * 1024 * 1024) { setError("JSON 文件不能超过 4 MiB。"); return; }
@@ -91,9 +92,9 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
                 });
                 setDocument(JSON.parse(text));
               } catch { setError("JSON 格式无效，请检查文件后重新上传。"); }
-            }} /></label>
+            }} /></label> : null}
             {fileName ? <p>文件：{fileName}；来源组织：{typeof source === "string" ? source : "未提供"}；目标组织：{organizationId}</p> : null}
-            {preview ? <>
+            {preview && !receipt ? <>
               <h3>变更（{preview.changes.length}）</h3>
               {preview.changes.length ? <ul>{preview.changes.map((change, index) => <li key={`${change.moduleId}:${change.field}:${index}`}>{change.moduleId} · {change.field}：{value(change.before)} → {value(change.after)}</li>)}</ul> : <p>没有领域数据变更。</p>}
               <h3>待解决冲突（{preview.conflicts.length}）</h3>
@@ -108,7 +109,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
                 <SelectControl ariaLabel={`${key} 的冲突选择`} value={choice} disabled={busy} options={[{ value: "current", label: "保留当前" }, { value: "file", label: "采用文件" }]} onValueChange={nextChoice => {
                   const next = { ...resolutions, [key]: nextChoice }; setResolutions(next); void refresh(next);
                 }} /></div>)}
-              <label>变更原因<textarea value={reason} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
+              <label>变更原因<Textarea value={reason} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
             </> : null}
             {receipt ? <p role="status">回执 {receipt.id}：目标组织 {receipt.organizationId}，更新 {receipt.changedModules} 个模块、{receipt.changedFields} 个字段。{receipt.changedFields === 0 ? " 本次没有领域数据变更。" : ""}</p> : null}
             {error ? <p className="form-error" role="alert">{error}</p> : null}
