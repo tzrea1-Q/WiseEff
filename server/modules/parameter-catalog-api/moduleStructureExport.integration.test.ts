@@ -284,6 +284,9 @@ describe("module structure export", () => {
     expect((await competingApply).status).toBe(409);
     planned = await preview();
     expect(planned.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: "delete-root", field: "legacyImpact", before: 1 })]) });
+    expect((await api.query("select * from parameter_catalog.module_deletion_references($1,$2::text[])", [org, ["delete-root"]])).rows)
+      .toEqual([{ module_id: "delete-root", kind: "definitions", id: "delete-legacy-definition" }]);
+    expect((await api.query("select * from parameter_catalog.module_deletion_references($1,$2::text[])", ["foreign-org", ["delete-root"]])).rows).toEqual([]);
     await db.query(`create function public.fail_transfer_delete() returns trigger language plpgsql as $$
       begin if old.id='delete-root' then raise exception 'injected deletion failure'; end if; return old; end $$`);
     await db.query("create trigger fail_transfer_delete before delete on parameter_modules for each row execute function public.fail_transfer_delete()");

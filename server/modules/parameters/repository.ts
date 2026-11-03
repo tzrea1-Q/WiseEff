@@ -621,16 +621,3 @@ export async function insertProjectParameterValueWithSource(
 
   return toProjectParameterValueMatch(result.rows[0]);
 }
-
-/** References detached by the existing taxonomy deletion constraints. */
-export async function listModuleDeletionReferences(db: Queryable, organizationId: string, moduleIds: string[]) {
-  return (await db.query<{ module_id: string; kind: string; id: string }>(`select m.id as module_id, refs.kind, refs.id
-    from parameter_modules m cross join lateral (
-      select 'definitions' as kind,id::text from public.parameter_definitions where parameter_module_id=m.id
-      union all select 'bindings',id::text from public.project_parameter_bindings where module_id=m.id
-      union all select 'project modules',id::text from public.project_modules where parameter_module_id=m.id or parent_id=m.id
-      union all select 'project files',id::text from public.project_parameter_files where module_hint=m.id
-      union all select 'driver registrations',id::text from public.driver_registrations where default_business_category_module_id=m.id
-      union all select 'driver placements',id::text from public.driver_registration_placements where driver_group_module_id=m.id or default_business_category_module_id=m.id
-    ) refs where m.organization_id=$1 and m.id=any($2::text[]) order by 1,2,3`, [organizationId, moduleIds])).rows;
-}

@@ -26,6 +26,12 @@ describe("existing API LOGIN privilege refresh after a parameter schema upgrade"
         await applyMigrations(db, migrationsDir);
         expect((await api.query("select id,name from parameter_modules where organization_id='baseline-upgrade'")).rows)
           .toEqual([{ id: "baseline-module", name: "Existing" }]);
+        expect((await api.query("select * from parameter_catalog.module_deletion_references($1,$2::text[])", ["baseline-upgrade", ["baseline-module"]])).rows).toEqual([]);
+        expect((await db.query(`select p.prosecdef, has_function_privilege($1,p.oid,'EXECUTE') as worker_can_execute,
+          has_function_privilege('public',p.oid,'EXECUTE') as public_can_execute,
+          has_function_privilege('parameter_governance_writer_role',p.oid,'EXECUTE') as writer_can_execute
+          from pg_proc p where p.oid='parameter_catalog.module_deletion_references(text,text[])'::regprocedure`, [login.workerRole])).rows)
+          .toEqual([{ prosecdef: false, worker_can_execute: false, public_can_execute: false, writer_can_execute: false }]);
         await api.query(`insert into parameter_catalog.module_structure_export_baselines(export_id,organization_id,document)
           values ('upgrade-export','baseline-upgrade','{}')`);
         await expect(api.query("update parameter_catalog.module_structure_export_baselines set document='{}' where false")).rejects.toMatchObject({ code: "42501" });

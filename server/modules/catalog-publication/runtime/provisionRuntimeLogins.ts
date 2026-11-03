@@ -36,6 +36,7 @@ export const CANONICAL_SOURCE_LOCK_RELATIONS = [
 ] as const;
 
 const CANONICAL_SOURCE_READ_FUNCTIONS = [
+  "parameter_catalog.module_deletion_references(text,text[])",
   "public.derive_shared_dtsi_switch_version(text,text,text,text)",
   "public.apply_shared_dtsi_switch(text,jsonb)",
   "public.shared_dtsi_private_source_is_restored(text)",
