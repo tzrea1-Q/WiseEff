@@ -89,7 +89,11 @@ export async function planRecognition(client: pg.PoolClient, organizationId: str
       await validateRecognitionCapacity(db, organizationId, next);
     } else {
       if (Object.keys(body).length === 0) Object.assign(body, settings.kind === "driver" ? { compatibles: settings.compatibles } : { nodeTypeName: settings.nodeTypeName });
-      next = await validateRegistrationRecognitionSettings(db, organizationId, settings, body);
+      try { next = await validateRegistrationRecognitionSettings(db, organizationId, settings, body); }
+      catch (error) {
+        if (error instanceof ApiError && error.code === "VALIDATION_FAILED") throw new ApiError(error.code, error.message, { ...error.details, path: `subjects.${edits.indexOf(edit)}.recognition.override` });
+        throw error;
+      }
     }
     const instances = await listModuleRecognitionInstances(db, organizationId, next);
     instances.sort((a, b) => a.projectId.localeCompare(b.projectId) || a.logicalNodeId.localeCompare(b.logicalNodeId));

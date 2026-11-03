@@ -105,7 +105,7 @@ describe("module structure export", () => {
       join parameter_catalog.catalog_state cs on cs.current_catalog_release_id=rs.release_id
       where s.owner_subject_id is null and s.kind='driver' and rs.lifecycle='active' order by s.id limit 1`);
     const subjectId = subject.rows[0]!.id;
-    const edited = { ...document, modules: [...document.modules, { ref: "registration-destination", name: "Registration destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }], subjects: [...document.subjects, { subjectId, operation: "register", placement: { kind: "module", moduleRef: "registration-destination" }, recognition: { mode: "override", override: { compatibles: ["acme,new"], nodeTypeName: null } } }] };
+    const edited = { ...document, modules: [...document.modules, { ref: "registration-destination", name: "Registration destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }], subjects: [...document.subjects, { subjectId, state: "active", placement: { kind: "module", moduleRef: "registration-destination" }, recognition: { mode: "override", override: { compatibles: ["acme,new"], nodeTypeName: null } } }] };
     const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(preview.status, preview.bodyText).toBe(200);
     expect(preview.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })]) });
@@ -130,6 +130,66 @@ describe("module structure export", () => {
     expect(nextDocument.subjects).toEqual(expect.arrayContaining([expect.objectContaining({ subjectId, state: "active", placement: { kind: "module", moduleRef: destination.ref } })]));
     const identity = (await db.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [org, subjectId])).rows[0]!.id;
     expect((await db.query("select compatibles from registration_recognition_rules where registration_id=$1", [identity])).rows).toEqual([{ compatibles: ["acme,new"] }]);
+    const contradictory = structuredClone(nextDocument) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
+    contradictory.subjects.find(row => row.subjectId === subjectId)!.operation = "retire";
+    expect((await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: contradictory, resolutions: {} }) })).status).toBe(400);
+    const child = nextDocument.subjects.find(row => row.ownerSubjectId === subjectId);
+    if (child) {
+      const childEdit = structuredClone(nextDocument);
+      childEdit.subjects.find(row => row.subjectId === child.subjectId)!.state = child.state === "active" ? "retired" : "active";
+      expect((await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: childEdit, resolutions: {} }) })).status).toBe(409);
+    }
+    await db.query("update parameter_catalog.organization_subject_registrations set status='retired' where id=$1", [identity]);
+    const unchanged = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: nextDocument, resolutions: {} }) });
+    expect(unchanged.status, unchanged.bodyText).toBe(200);
+    expect(unchanged.body).toMatchObject({ changes: [], conflicts: [] });
+    const unchangedApply = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: nextDocument, resolutions: {}, token: (unchanged.body as { token: string }).token, idempotencyKey: "unchanged-state", reason: "Preserve concurrent state" }) });
+    expect(unchangedApply.status, unchangedApply.bodyText).toBe(200);
+    expect((await db.query("select status from parameter_catalog.organization_subject_registrations where id=$1", [identity])).rows[0]).toEqual({ status: "retired" });
+    await db.query("update parameter_catalog.organization_subject_registrations set status='active' where id=$1", [identity]);
+    // Queue each real single-item writer before the import on the shared PostgreSQL lock.
+    const makeApp = () => createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const moduleApi = "/api/v1/parameter-modules";
+    const created = await requestJson(makeApp(), moduleApi, { method: "POST", body: JSON.stringify({ name: "Race target" }) });
+    expect(created.status, created.bodyText).toBe(201);
+    const raceId = (created.body as { item: { id: string } }).item.id;
+    const recognitionPath = `/api/v2/organizations/${org}/subject-registrations/${identity}/recognition`;
+    for (const kind of ["create", "edit", "move", "delete", "recognition"] as const) {
+      const snapshot = await requestJson(makeApp(), `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+      const raceDocument = snapshot.body as z.infer<typeof moduleStructureExportSchema>;
+      const planned = await requestJson(makeApp(), `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: raceDocument, resolutions: {} }) });
+      expect(planned.status, planned.bodyText).toBe(200);
+      const recognition = kind === "recognition" ? await requestJson(makeApp(), recognitionPath) : null;
+      if (recognition) expect(recognition.status, recognition.bodyText).toBe(200);
+      const writers = {
+        create: { path: moduleApi, method: "POST", body: { name: "Race created" } },
+        edit: { path: `${moduleApi}/${raceId}`, method: "PATCH", body: { description: "Edited concurrently" } },
+        move: { path: `${moduleApi}/${raceId}/move`, method: "POST", body: { parentId: destination.sourceId } },
+        delete: { path: `${moduleApi}/${raceId}`, method: "DELETE", body: undefined },
+        recognition: { path: recognitionPath, method: "PATCH", body: { compatibles: ["acme,race"] } },
+      };
+      const writer = writers[kind];
+      const gate = await getRootPostgresPool(db)!.connect();
+      await gate.query("begin");
+      await gate.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-recognition:${org}`]);
+      const pid = (await gate.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
+      let pendingWriter: ReturnType<typeof requestJson> | undefined;
+      let pendingImport: ReturnType<typeof requestJson> | undefined;
+      try {
+        pendingWriter = requestJson(makeApp(), writer.path, { method: writer.method, body: writer.body ? JSON.stringify(writer.body) : undefined,
+          ...(recognition ? { headers: { "If-Match": recognition.headers.get("etag")!, "X-WiseEff-Catalog-Release": raceDocument.source.catalogReleaseId, "Idempotency-Key": "recognition-race" } } : {}) });
+        await vi.waitFor(async () => { expect((await db.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [pid])).rowCount).toBeGreaterThan(0); }, { interval: 10 });
+        pendingImport = requestJson(makeApp(), `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: raceDocument, resolutions: {}, token: (planned.body as { token: string }).token, idempotencyKey: `race-${kind}`, reason: "Review race" }) });
+        await vi.waitFor(async () => { expect((await db.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [pid])).rowCount).toBeGreaterThan(1); }, { interval: 10 });
+        await gate.query("commit");
+        const result = await pendingWriter;
+        expect(result.status, `${kind}: ${result.bodyText}`).toBe(kind === "create" ? 201 : kind === "delete" ? 204 : 200);
+        expect((await pendingImport).status, kind).toBe(409);
+      } finally { await gate.query("rollback"); gate.release(); await pendingWriter?.catch(() => undefined); await pendingImport?.catch(() => undefined); }
+    }
+    const afterRaces = await requestJson(makeApp(), `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    Object.assign(nextDocument, afterRaces.body);
     for (const operation of ["retire", "restore"] as const) {
       const current = structuredClone(next.body) as z.infer<typeof moduleStructureExportSchema>;
       if (operation === "restore") {
@@ -137,7 +197,7 @@ describe("module structure export", () => {
         Object.assign(current, refreshed.body);
       }
       const root = current.subjects.find(row => row.subjectId === subjectId)!;
-      const lifecycleDocument = { ...current, modules: [...current.modules.map(row => operation === "retire" && row.sourceId === "lifecycle-export-root" ? { ...row, operation: "delete" } : row), ...(operation === "restore" ? [{ ref: "restore-destination", name: "Restore destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }] : [])], subjects: current.subjects.map(row => row === root ? { ...row, operation, ...(operation === "restore" ? { placement: { kind: "module", moduleRef: "restore-destination" } } : {}), recognition: { ...row.recognition!, mode: "override", override: { ...row.recognition!.effective, compatibles: [operation === "retire" ? "acme,mixed" : "acme,restored"] } } } : row) };
+      const lifecycleDocument = { ...current, modules: [...current.modules.map(row => operation === "retire" && row.sourceId === "lifecycle-export-root" ? { ...row, operation: "delete" } : row), ...(operation === "restore" ? [{ ref: "restore-destination", name: "Restore destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }] : [])], subjects: current.subjects.map(row => row === root ? { ...row, state: operation === "retire" ? "retired" : "active", ...(operation === "restore" ? { placement: { kind: "module", moduleRef: "restore-destination" } } : {}), recognition: { ...row.recognition!, mode: "override", override: { ...row.recognition!.effective, compatibles: [operation === "retire" ? "acme,mixed" : "acme,restored"] } } } : row) };
       const planned = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {} }) });
       expect(planned.status, planned.bodyText).toBe(200);
       if (operation === "retire") {
@@ -288,10 +348,28 @@ describe("module structure export", () => {
     await db.transaction(async tx => {
       await tx.query("set constraints all deferred");
       await tx.query(`insert into parameter_catalog.organization_subject_registrations(id,organization_id,subject_id,status,registration_method,proof,current_placement_id)
-        values ('delete-retired-registration',$1,'csub_acme_power','retired','explicit','{}','delete-retired-placement')`, [org]);
+        values ('delete-retired-registration',$1,'csub_acme_power','active','explicit','{}','delete-retired-placement')`, [org]);
       await tx.query(`insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin)
         values ('delete-retired-placement','delete-retired-registration',$1,'delete-retired-module','curated')`, [org]);
     });
+    await db.query("insert into projects(id,organization_id,name,code) values ('delete-retired-project',$1,'Retained','KEEP')", [org]);
+    const pool = getRootPostgresPool(db)!;
+    const pin = await captureCurrentCatalogPin(pool);
+    if (!pin) throw new Error("Missing Catalog release");
+    const loaded = await createCatalogKernel(pool).loadPinnedCatalog(pin);
+    if (!loaded.ok) throw new Error(JSON.stringify(loaded.error));
+    const binding = await createSourceBackedBindingService(pool).stabilize({ snapshot: loaded.value, organizationId: org,
+      projectId: "delete-retired-project", logicalNodeId: "retained-node", registrationId: SubjectRegistrationId("delete-retired-registration"),
+      definitionId: ParameterDefinitionId("pdef_acme_power_iin_max"), effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_2"), expectedEffectiveRevisionId: null });
+    if (!binding.ok) throw new Error(JSON.stringify(binding.error));
+    const retained = async () => ({
+      bindings: (await db.query("select id from parameter_catalog.project_parameter_bindings where organization_id=$1 order by id", [org])).rows,
+      values: (await db.query("select id from parameter_catalog.project_parameter_values where binding_id=$1 order by id", [binding.value.binding.id])).rows,
+      history: (await db.query("select id from parameter_catalog.binding_history_events where binding_id=$1 order by id", [binding.value.binding.id])).rows,
+    });
+    const before = await retained();
+    expect(before.bindings.length).toBeGreaterThan(0); expect(before.values.length).toBeGreaterThan(0); expect(before.history.length).toBeGreaterThan(0);
+    await db.query("update parameter_catalog.organization_subject_registrations set status='retired' where id='delete-retired-registration'");
     const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
     const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
@@ -306,6 +384,7 @@ describe("module structure export", () => {
     expect(planned.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: "subject:csub_acme_power", field: "placement" })]) });
     const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (planned.body as { token: string }).token, idempotencyKey: "retired-delete", reason: "Reorganize" }) });
     expect(applied.status, applied.bodyText).toBe(200);
+    expect(await retained()).toEqual(before);
     expect((await db.query(`select r.status,r.current_placement_id,m.name from parameter_catalog.organization_subject_registrations r
       join parameter_catalog.subject_placements p on p.id=r.current_placement_id join parameter_modules m on m.id=p.module_id where r.id='delete-retired-registration'`)).rows)
       .toEqual([{ status: "retired", current_placement_id: "delete-retired-placement", name: "New" }]);
@@ -441,7 +520,7 @@ describe("module structure export", () => {
     expect(resolvedExport.body).toMatchObject({ subjects: expect.arrayContaining([expect.objectContaining({ subjectId: "csub_acme_power", displayAlias: "Power alias",
       recognition: expect.objectContaining({ override: expect.objectContaining({ compatibles: ["acme,copy"] }) }) })]) });
     const restore = structuredClone(resolvedExport.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
-    restore.subjects.find(subject => subject.subjectId === "csub_acme_power")!.operation = "restore";
+    restore.subjects.find(subject => subject.subjectId === "csub_acme_power")!.state = "active";
     const restoreInput = { document: restore, resolutions: {} };
     const reviewed = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify(restoreInput) });
     expect(reviewed.status, reviewed.bodyText).toBe(200);
@@ -500,7 +579,7 @@ describe("module structure export", () => {
     for (const operation of ["retire", "restore"] as const) {
       const snapshot = await requestJson(secondApp, `${secondPath}/exports`, { method: "POST", body: "{}" });
       const edit = structuredClone(snapshot.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
-      edit.subjects.find(subject => subject.subjectId === "csub_acme_power")!.operation = operation;
+      edit.subjects.find(subject => subject.subjectId === "csub_acme_power")!.state = operation === "retire" ? "retired" : "active";
       const lifecycleInput = { document: edit, resolutions: {} };
       const planned = await requestJson(secondApp, `${secondPath}/previews`, { method: "POST", body: JSON.stringify(lifecycleInput) });
       expect(planned.status, planned.bodyText).toBe(200);
@@ -726,19 +805,38 @@ describe("module structure export", () => {
     const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
     const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
-    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
     const child = document.modules.find(m => m.sourceId === "move-child")!;
     const occupied = document.modules.find(m => m.sourceId === "move-occupied")!;
     child.parentRef = "move-leaf";
+    await db.query("update parameter_modules set parent_id=null where id='move-child'");
     const previewPath = `/api/v2/organizations/${org}/module-structure/previews`;
-    const cycle = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    const unresolved = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(unresolved.body).toMatchObject({ conflicts: [expect.objectContaining({ key: "move-child:parentRef" })] });
+    const cycle = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document, resolutions: { "move-child:parentRef": "file" } }) });
     expect(cycle.status).toBe(409);
+    expect(cycle.body).toMatchObject({ error: { details: { path: `modules.${document.modules.indexOf(child)}.parentRef` } } });
+    await db.query("update parameter_modules set parent_id='move-a' where id='move-child'");
     child.parentRef = "move-b"; occupied.parentRef = "move-a";
+    document.modules.find(m => m.sourceId === "move-a")!.name = "B";
+    document.modules.find(m => m.sourceId === "move-b")!.name = "A";
+    child.description = "Moved subtree";
+    document.modules.push({ ref: "batch-parent", name: "New parent", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" },
+      { ref: "batch-child", name: "New child", parentRef: "batch-parent", description: "", scope: "", sortOrder: 0, importance: "medium" });
+    Object.assign(occupied, { operation: "delete", parentRef: "move-b" });
     const preview = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
     expect(preview.status, preview.bodyText).toBe(200);
     const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "move", reason: "Move tree" }) });
     expect(applied.status, applied.bodyText).toBe(200);
     expect((await db.query("select parent_id,path,depth from parameter_modules where id='move-leaf'")).rows[0]).toEqual({ parent_id: "move-child", path: "move-b/move-child/move-leaf", depth: 3 });
+    const final = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const graph = (final.body as z.infer<typeof moduleStructureExportSchema>).modules;
+    const newParent = graph.find(m => m.name === "New parent")!;
+    expect(graph.map(m => ({ name: m.name, parentRef: m.parentRef, description: m.description })).sort((a, b) => a.name.localeCompare(b.name))).toEqual([
+      { name: "A", parentRef: null, description: "" }, { name: "B", parentRef: null, description: "" },
+      { name: "Child", parentRef: "move-b", description: "Moved subtree" }, { name: "Leaf", parentRef: "move-child", description: "" },
+      { name: "New child", parentRef: newParent.ref, description: "" }, { name: "New parent", parentRef: null, description: "" },
+    ]);
   });
 
   it("merges independent field edits and asks for conflicting field choices", async () => {
@@ -869,6 +967,13 @@ describe("module structure export", () => {
     expect(unknown.status).toBe(400);
     const duplicate = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: { ...partial, modules: [partial.modules[0], partial.modules[0]] }, resolutions: {} }) });
     expect(duplicate.status).toBe(400);
+    expect(duplicate.body).toMatchObject({ error: { details: { path: "modules.1.ref" } } });
+    const unsupported = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: { ...partial, version: 2 }, resolutions: {} }) });
+    expect(unsupported.status).toBe(400);
+    expect(unsupported.body).toMatchObject({ error: { details: { issues: expect.arrayContaining([expect.objectContaining({ path: "document.version" })]) } } });
+    const dangling = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: { ...partial, modules: [{ ...partial.modules[0], parentRef: "missing" }] }, resolutions: {} }) });
+    expect(dangling.status).toBe(400);
+    expect(dangling.body).toMatchObject({ error: { details: { path: "modules.0.parentRef" } } });
   });
 
   it("rolls back the mutation and audit if writing the receipt fails", async () => {
@@ -1079,6 +1184,7 @@ describe("module structure export", () => {
     const invalidPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: invalid,
       resolutions: { "csub_acme_power:recognition.compatibles": "file" } }) });
     expect(invalidPreview.status).toBe(400);
+    expect(invalidPreview.body).toMatchObject({ error: { details: { path: `subjects.${invalid.subjects.findIndex(subject => subject.subjectId === "csub_acme_power")}.recognition.override` } } });
     const resolved = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: conflictDocument,
       resolutions: { "csub_acme_power:recognition.compatibles": "file" } }) });
     expect(resolved.status, resolved.bodyText).toBe(200);
@@ -1234,7 +1340,7 @@ describe("module structure export", () => {
     expect(releasePreview.status, releasePreview.bodyText).toBe(200);
     const lifecycleDocument = structuredClone(active.body) as z.infer<typeof moduleStructureExportSchema>;
     const lifecycleRoot = lifecycleDocument.subjects.find(subject => subject.subjectId === "csub_acme_power")!;
-    Object.assign(lifecycleRoot, { operation: "retire" });
+    lifecycleRoot.state = "retired";
     const lifecyclePreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {} }) });
     expect(lifecyclePreview.status, lifecyclePreview.bodyText).toBe(200);
     const gate = await pool.connect();
