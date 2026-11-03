@@ -1,12 +1,12 @@
 # Editing a module structure package
 
-The current import supports existing module metadata, root Subject placement and display aliases, and recognition settings in the source organization. Retired registrations remain retired when moved. New modules, module moves, deletion, Subject lifecycle changes and cross-organization copy are not yet supported and cause the entire import to be rejected. The examples below describe the complete package format, including planned operations.
+The current import supports module creation, hierarchy moves and metadata updates, root Subject placement and display aliases, and recognition settings in the source organization. Retired registrations remain retired when moved. Deletion, Subject lifecycle changes and cross-organization copy are not yet supported and cause the entire import to be rejected. The examples below describe the complete package format, including planned operations.
 
 Keep the original export as a backup. Edit the JSON as data: do not execute text in it. A person must review and confirm the import in WiseEff. The package contains organization taxonomy and Subject settings, not project values, Bindings, source files, credentials, permissions, or audit history.
 
 ## Identity and references
 
-Keep `format`, `version`, source information, `exportId`, existing `sourceId` values, Subject IDs, and Catalog ownership facts unchanged. An export ID is not permission to read another organization's baseline. Each module has a unique package-local `ref`; `parentRef` and module placements refer to that value, not to a name or database path. Keep existing refs stable when renaming or moving a module. To add a module, give it a new unique ref, omit `sourceId`, and supply all required module fields. New parents and children may appear in the same package.
+Keep `format`, `version`, source information, `exportId`, existing `sourceId` values, Subject IDs, and Catalog ownership facts unchanged. An export ID is not permission to read another organization's baseline. Each module has a unique package-local `ref` of at most 512 characters; `parentRef` and module placements refer to that value, not to a name or database path. Keep existing refs stable when renaming or moving a module. To add a module, give it a new unique ref, omit `sourceId`, and supply all required module fields. New parents and children may appear in the same package.
 
 For example, an existing module can be renamed without changing its identity, while a new child refers to it by ref:
 

@@ -89,6 +89,7 @@ test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritan
 });
 
 test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", async ({ page, request }, info) => {
+  test.setTimeout(90_000);
   // @acceptance MODULE-STRUCTURE-IMPORT-001
   // @operation MODULE-STRUCTURE-IMPORT-001
   await seedAcceptanceRoleMatrix();
@@ -96,6 +97,8 @@ test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", 
   const created = await request.post(apiRoute("/api/v1/parameter-modules"), { headers, data: { name: `Import ${Date.now()}` } });
   expect(created.status(), await created.text()).toBe(201);
   const moduleId = (await created.json()).item.id as string;
+  const extraIds: string[] = [];
+  let treeExportId: string | undefined;
   try {
     const exported = await request.post(apiRoute(endpoint), { headers, data: {} });
     expect(exported.status(), await exported.text()).toBe(200);
@@ -142,12 +145,71 @@ test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", 
     await page.screenshot({ path: info.outputPath("module-structure-receipt-1440x900.png"), animations: "disabled" });
     const actual = await withPgClient(async client => (await client.query<{ description: string }>("select description from parameter_modules where id=$1 and organization_id=$2", [moduleId, org])).rows[0]);
     expect(actual?.description).toBe("file edit");
+    await dialog.getByRole("button", { name: "关闭" }).click();
+    const suffix = `${Date.now()}`;
+    const createModule = async (name: string, parentId?: string) => {
+      const response = await request.post(apiRoute("/api/v1/parameter-modules"), { headers, data: { name, parentId } });
+      expect(response.status(), await response.text()).toBe(201);
+      const id = (await response.json()).item.id as string; extraIds.push(id); return id;
+    };
+    const left = await createModule(`Left ${suffix}`);
+    const right = await createModule(`Right ${suffix}`);
+    const child = await createModule(`Child ${suffix}`, left);
+    const leaf = await createModule(`Leaf ${suffix}`, child);
+    const structureExport = await request.post(apiRoute(endpoint), { headers, data: {} });
+    expect(structureExport.status(), await structureExport.text()).toBe(200);
+    const structure = await structureExport.json();
+    treeExportId = structure.source.exportId;
+    const leftEntry = structure.modules.find((entry: { sourceId: string }) => entry.sourceId === left);
+    const rightEntry = structure.modules.find((entry: { sourceId: string }) => entry.sourceId === right);
+    const childEntry = structure.modules.find((entry: { sourceId: string }) => entry.sourceId === child);
+    [leftEntry.name, rightEntry.name] = [rightEntry.name, leftEntry.name];
+    childEntry.parentRef = rightEntry.ref;
+    structure.modules.push({ ref: `new-parent-${suffix}`, name: `New parent ${suffix}`, parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" },
+      { ref: `new-child-${suffix}`, name: `New child ${suffix}`, parentRef: `new-parent-${suffix}`, description: "", scope: "", sortOrder: 0, importance: "medium" });
+    await page.getByRole("button", { name: "导入结构" }).click();
+    const treeDialog = page.getByRole("dialog", { name: "导入模块结构" });
+    await treeDialog.getByLabel("JSON 文件").setInputFiles({ name: "tree.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(structure)) });
+    await treeDialog.getByRole("button", { name: "预览" }).click();
+    await expect(treeDialog.getByText(/新增模块/).first()).toBeVisible();
+    await expect(treeDialog.getByText(/上级模块/).first()).toBeVisible();
+    await treeDialog.getByLabel("变更原因").fill("Review module tree");
+    await page.screenshot({ path: info.outputPath("module-structure-tree-1440x900.png"), animations: "disabled" });
+    await treeDialog.getByRole("button", { name: "确认提交" }).click();
+    await expect(treeDialog.getByRole("status")).toContainText("回执");
+    const createdRefs = await withPgClient(async client => (await client.query<{ module_id: string; package_ref: string }>(`select module_id,package_ref from parameter_catalog.module_structure_created_refs
+      where organization_id=$1 and export_id=$2 order by package_ref desc`, [org, structure.source.exportId])).rows);
+    expect(createdRefs).toHaveLength(2);
+    extraIds.push(...createdRefs.map(row => row.module_id));
+    const moved = await withPgClient(async client => (await client.query<{ path: string; parent_id: string }>("select path,parent_id from parameter_modules where id=$1", [leaf])).rows[0]);
+    expect(moved).toEqual({ parent_id: child, path: `${right}/${child}/${leaf}` });
+    await treeDialog.getByRole("button", { name: "关闭" }).click();
+    const newParent = createdRefs.find(row => row.package_ref === `new-parent-${suffix}`)!;
+    const renamed = await request.patch(apiRoute(`/api/v1/parameter-modules/${newParent.module_id}`), { headers, data: { name: `Renamed ${suffix}` } });
+    expect(renamed.status(), await renamed.text()).toBe(200);
+    await page.getByRole("button", { name: "导入结构" }).click();
+    await treeDialog.getByLabel("JSON 文件").setInputFiles({ name: "tree-again.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(structure)) });
+    await treeDialog.getByRole("button", { name: "预览" }).click();
+    await expect(treeDialog.getByText("没有领域数据变更。")).toBeVisible();
+    await treeDialog.getByLabel("变更原因").fill("Repeat reviewed tree");
+    await treeDialog.getByRole("button", { name: "确认提交" }).click();
+    await expect(treeDialog.getByRole("status")).toContainText("回执");
     await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-IMPORT-001", title: "Review and apply module structure update",
-      status: "passed", page, testInfo: info, artifacts: [info.outputPath("module-structure-import-1440x900.png"), info.outputPath("module-structure-receipt-1440x900.png")],
+      status: "passed", page, testInfo: info, artifacts: [info.outputPath("module-structure-import-1440x900.png"), info.outputPath("module-structure-receipt-1440x900.png"), info.outputPath("module-structure-tree-1440x900.png")],
       api: [summarizeApiResponse(applied, { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, responseSummary: "Reviewed update committed after stale preview was refreshed." })],
       db: [{ table: "parameter_modules", predicate: "created module in authorized organization", observed: "file edit committed", rowCount: 1 }],
       notes: "Real API and PostgreSQL, 1440×900; conflicting and stale target edits used the public module API. One controlled 503 exercised retry." });
   } finally {
+    if (treeExportId) {
+      const createdIds = await withPgClient(async client => (await client.query<{ module_id: string }>(`select r.module_id from parameter_catalog.module_structure_created_refs r
+        join parameter_modules m on m.id=r.module_id and m.organization_id=r.organization_id
+        where r.organization_id=$1 and r.export_id=$2 order by m.depth`, [org, treeExportId])).rows);
+      for (const row of createdIds) if (!extraIds.includes(row.module_id)) extraIds.push(row.module_id);
+    }
+    for (const id of extraIds.reverse()) {
+      const deleted = await request.delete(apiRoute(`/api/v1/parameter-modules/${id}`), { headers });
+      expect(deleted.ok(), await deleted.text()).toBeTruthy();
+    }
     const deleted = await request.delete(apiRoute(`/api/v1/parameter-modules/${moduleId}`), { headers });
     expect(deleted.ok(), await deleted.text()).toBeTruthy();
   }

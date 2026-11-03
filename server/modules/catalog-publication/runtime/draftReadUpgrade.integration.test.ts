@@ -32,6 +32,12 @@ describe("existing API LOGIN privilege refresh after a parameter schema upgrade"
         await expect(api.query("delete from parameter_catalog.module_structure_export_baselines where false")).rejects.toMatchObject({ code: "42501" });
         expect((await api.query("select has_table_privilege($1,'parameter_catalog.module_structure_export_baselines','INSERT') as allowed", [login.workerRole])).rows)
           .toEqual([{ allowed: false }]);
+        await api.query(`insert into parameter_catalog.module_structure_created_refs(organization_id,source_organization_id,export_id,package_ref,module_id,initial_snapshot)
+          values ('baseline-upgrade','baseline-upgrade','upgrade-export','new-ref','baseline-module','{}')`);
+        await expect(api.query("update parameter_catalog.module_structure_created_refs set initial_snapshot='{}' where false")).rejects.toMatchObject({ code: "42501" });
+        await expect(api.query("delete from parameter_catalog.module_structure_created_refs where false")).rejects.toMatchObject({ code: "42501" });
+        expect((await api.query("select has_table_privilege($1,'parameter_catalog.module_structure_created_refs','INSERT') as allowed", [login.workerRole])).rows)
+          .toEqual([{ allowed: false }]);
       } finally {
         await api.close();
         await dropLabRuntimeLogins(connectionString, token);
