@@ -58,6 +58,34 @@ function memoryStorage(): SourceDraftStorage & { records: Map<string, StoredSour
 }
 
 describe("whole-source draft recovery", () => {
+  it("opens the new source when recovery storage contains only the clean old source", async () => {
+    const storage = memoryStorage();
+    const first = createSourceEditSession({ storage, persistDelayMs: 60_000 });
+    await first.open({ scope, base, sourceText: "DirectV1" });
+    first.change(scope, "DirectV1", { anchor: 1, head: 1, firstVisibleLine: 1, scrollTop: 0, scrollLeft: 0 });
+    await first.close();
+    const returned = createSourceEditSession({ storage });
+    await returned.open({ scope, base: nextBase, sourceText: "DirectV2" });
+    expect(returned.getFile(scope)).toMatchObject({ sourceText: "DirectV2", base: nextBase, dirty: false, recoveryStatus: "none" });
+    await returned.close();
+  });
+
+  it.each(["unknown base", "submitted", "rebased"])("retains a %s recovery record when the source advances", async kind => {
+    const storage = memoryStorage();
+    const first = createSourceEditSession({ storage });
+    await first.open({ scope, base, sourceText: "DirectV1" });
+    first.change(scope, "DirectV1", { anchor: 1, head: 1, firstVisibleLine: 1, scrollTop: 0, scrollLeft: 0 });
+    await first.close();
+    const draft = storage.records.get(sourceDraftKey(scope))!.draft!;
+    if (kind === "unknown base") delete draft.baseSourceText;
+    if (kind === "submitted") draft.submission = { candidateId: "candidate", submittedGeneration: draft.generation };
+    if (kind === "rebased") draft.rebased = true;
+    const returned = createSourceEditSession({ storage });
+    await returned.open({ scope, base: nextBase, sourceText: "DirectV2" });
+    expect(returned.getFile(scope)).toMatchObject({ sourceText: "DirectV1", base, recoveryStatus: "stale-base", dirty: true });
+    await returned.close();
+  });
+
   it("keeps the original draft and merge base through leaving and returning, and saves after resolving conflicts", async () => {
     const storage = memoryStorage();
     const session = createSourceEditSession({ storage, persistDelayMs: 60_000 });

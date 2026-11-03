@@ -215,8 +215,10 @@ export function createSourceEditSession(options: {
         try {
           const stored = await storage.load(file.scope);
           file.storedGeneration = stored.generation;
-          if (stored.draft) {
-            const draft = stored.draft;
+          const draft = stored.draft;
+          // A clean old snapshot is not an unsaved edit; keep genuine or unknown drafts.
+          if (draft && (sameSourceDraftBase(draft.base, input.base) || draft.baseSourceText === undefined || draft.sourceText !== draft.baseSourceText
+            || draft.rebased || draft.originalDraft || draft.submission)) {
             file.base = { ...(sameSourceDraftBase(draft.base, input.base) && !draft.rebased && draft.sourceText === input.sourceText
               ? input.base : draft.base) };
             file.sourceText = draft.sourceText;
