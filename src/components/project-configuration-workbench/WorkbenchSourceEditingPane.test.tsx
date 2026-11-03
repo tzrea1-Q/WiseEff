@@ -181,6 +181,11 @@ describe.each([
     fireEvent.click(screen.getByRole("radio", { name: "编辑" }));
     fireEvent.change(screen.getByRole("textbox", { name: "test DTS" }), { target: { value: "/ { next; };" } });
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    const reason = await screen.findByRole("textbox", { name: "DTS 修改原因" });
+    await screen.findByText("恢复 1 个已删除参数，保留原身份及历史。");
+    expect(reason).toBeRequired();
+    expect(screen.getByRole("button", { name: "直接应用修改" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "直接应用修改" })).toHaveAccessibleDescription("请填写修改原因后直接应用；无需选择审核人。");
     fireEvent.change(await screen.findByRole("textbox", { name: "DTS 修改原因" }), { target: { value: "管理员已核对差异" } });
     expect(await screen.findByText("恢复 1 个已删除参数，保留原身份及历史。")).toBeInTheDocument();
     const direct = screen.getByRole("button", { name: "直接应用修改" });
@@ -197,6 +202,30 @@ describe.each([
       base: { sourceDigest: createHash("sha256").update("/ { next; };").digest("hex") } });
     expect(submitCandidateSourceReview).not.toHaveBeenCalled();
     expect(props.onRefresh).toHaveBeenCalledOnce();
+    await session.flush();
+  });
+
+  it.each([
+    [{ canSubmit: false, request: { id: "request", status: "pending", kind: "source_revision" } }, "此修改已有审核记录，请在审核中心查看处理结果，再返回编辑。"],
+    [{ canSubmit: false, reason: "source-unchanged" }, "DTS 内容与当前来源一致，没有可应用的修改。请返回编辑后重试。"],
+    [{ canSubmit: true, proofToken: undefined }, "来源校验结果不完整，请重新校验。"],
+  ])("explains why a validated administrator cannot apply with a filled reason (%j)", async (blocked, message) => {
+    const { props, rerender, getCandidateSourcePreview, session } = setup();
+    const preview = await getCandidateSourcePreview();
+    getCandidateSourcePreview.mockResolvedValue({ ...preview, ...blocked });
+    const apply = vi.fn();
+    rerender(<WorkbenchSourceEditingPane {...props} repository={{ ...props.repository, applyCandidateSourceRevision: apply }} />);
+    await waitFor(() => expect(screen.getByRole("radio", { name: "编辑" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("radio", { name: "编辑" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "test DTS" }), { target: { value: "/ { next; };" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "DTS 修改原因" }), { target: { value: "已核对差异" } });
+    const direct = screen.getByRole("button", { name: "直接应用修改" });
+    await waitFor(() => expect(direct).toHaveAccessibleDescription(message));
+    expect(direct).toBeDisabled();
+    expect(screen.getByRole("button", { name: "提交审核" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新校验" })).toBeEnabled();
+    expect(apply).not.toHaveBeenCalled();
     await session.flush();
   });
 

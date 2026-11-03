@@ -5,6 +5,7 @@ import { sourceDraftKey, type SourceDraftScope } from "@/application/project-con
 import { fileToContentBase64 } from "@/application/project-configuration/candidateVersionFlow";
 import type { DtsViewerFocusSpan } from "@/components/parameter-topology/ProjectPrimaryDtsViewer";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -251,6 +252,16 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
   const previewDiff = useMemo(() => attempt?.preview
     ? buildUnifiedDiff(attempt.preview.before ?? source, attempt.preview.after ?? attempt.saved.sourceText, "当前来源", "本次修改") : "",
   [attempt, source]);
+  const previewBlocker = !attempt?.preview ? "请等待 DTS 校验完成；校验失败时请返回编辑或重新校验。"
+    : attempt.preview.request ? "此修改已有审核记录，请在审核中心查看处理结果，再返回编辑。"
+    : !attempt.preview.canSubmit ? sourceReviewReason(attempt.preview.reason)
+    : !attempt.preview.proofToken ? "来源校验结果不完整，请重新校验。" : "";
+  const directHint = busy ? "正在处理来源修改，请稍候。"
+    : attempt?.submission ? "此修改已选择提交审核，请重试同一提交或查看审核结果。"
+    : previewBlocker || (!reason.trim() ? "请填写修改原因后直接应用；无需选择审核人。" : "直接应用将更新当前工作配置，并记录本次修改原因。");
+  const reviewHint = busy ? "正在处理来源修改，请稍候。"
+    : attempt?.directApplication ? "此修改已选择直接应用，请重试同一应用。"
+    : previewBlocker || (!reason.trim() ? "请填写修改原因。" : !reviewerId ? "请选择软件审核人后提交审核。" : "审核通过后更新当前工作配置。");
   const recoveryDiff = useMemo(() => compareOpen
     ? buildUnifiedDiff(source, file?.sourceText ?? source, "最新工作来源", "本地草稿") : "", [compareOpen, file?.sourceText, source]);
   const closeCompare = () => {
@@ -339,34 +350,54 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
         <footer className="dialog-actions"><Button variant="outline" onClick={() => download()}>下载草稿</Button><Button onClick={closeCompare}>返回草稿</Button></footer>
       </>}
     </ModalDialog>
-    <ModalDialog open={saveOpen} className="workbench-source-save-dialog" backdropClassName="param-admin-modal-backdrop"
+    <ModalDialog open={saveOpen} className="workbench-source-save-dialog workbench-source-save-dialog--save" backdropClassName="param-admin-modal-backdrop"
       onDismiss={busy ? undefined : () => setSaveOpen(false)} describedBy>
       {({ titleId, descriptionId }) => <>
-        <header><h2 id={titleId}>保存 DTS 修改</h2><p id={descriptionId}>{fileName} · {canDirectApply ? "管理员可核对差异后直接应用，也可提交独立审核" : "核对本项目属性差异后提交独立审核"}</p></header>
+        <header className="workbench-source-save-dialog__header"><h2 id={titleId}>保存 DTS 修改</h2><p id={descriptionId}>{fileName}</p></header>
+        <div className="workbench-source-save-dialog__body">
+        <section className="workbench-source-save-dialog__preview" aria-label="核对修改">
+        <h3>核对修改</h3>
         {busy ? <p role="status">正在处理来源修改…</p> : null}
         {error ? <p role="alert">{error}</p> : null}
         {mixedEndings ? <p role="note">原文件混用了换行形式，编辑后可能统一为 LF，请在差异中核对。</p> : null}
         {attempt?.preview ? <>
-          <p>{attempt.preview.impact?.parameterChanges ?? 0} 项参数变化 · 新增 {attempt.preview.impact?.nodeAdditions ?? 0} 个节点 · 删除 {attempt.preview.impact?.nodeRemovals ?? 0} 个节点</p>
+          <p className="workbench-source-save-dialog__summary">{attempt.preview.impact?.parameterChanges ?? 0} 项参数变化 · 新增 {attempt.preview.impact?.nodeAdditions ?? 0} 个节点 · 删除 {attempt.preview.impact?.nodeRemovals ?? 0} 个节点</p>
           {attempt.preview.impact?.restoredParameters ? <p>恢复 {attempt.preview.impact.restoredParameters} 个已删除参数，保留原身份及历史。</p> : null}
           <div className="workbench-source-save-dialog__diff" role="region" aria-label="DTS 修改差异">
             <Suspense fallback={<p role="status">正在加载差异…</p>}><DtsEditor sessionKey={`${key}:save-diff`} resetKey={previewDiff}
               text={previewDiff} readOnly ariaLabel="DTS 修改差异源码" /></Suspense>
           </div>
-          {attempt.preview.reason ? <p role={attempt.preview.canSubmit ? "status" : "alert"}>{sourceReviewReason(attempt.preview.reason)}</p> : null}
+          {previewBlocker ? <p role="alert">{previewBlocker}</p> : null}
         </> : null}
         {[...diagnostics, ...(attempt?.preview?.diagnostics ?? [])].map((item, index) => <p key={index} role={item.severity === "error" ? "alert" : "status"}>
           {item.file && item.file !== fileName ? `${item.file}${item.line ? `:${item.line}` : ""} · ` : item.line ? <Button variant="ghost" size="sm"
             onClick={() => { setSaveOpen(false); editor.current?.revealLine(item.line!, item.column); }}>第 {item.line} 行</Button> : null}{item.message}</p>)}
-        <label>修改原因<textarea aria-label="DTS 修改原因" rows={2} value={reason} maxLength={2000} disabled={busy || Boolean(attempt?.submission || attempt?.directApplication)} onChange={(event) => setReason(event.target.value)} /></label>
-        <label>软件审核人（仅提交审核时需要）<SelectControl ariaLabel="DTS 软件审核人" value={reviewerId} onValueChange={setReviewerId} disabled={busy || Boolean(attempt?.submission || attempt?.directApplication)}
+        </section>
+        <section className="workbench-source-save-dialog__form" aria-label="保存方式">
+        <h3>保存方式</h3>
+        <label>修改原因（必填）<Textarea aria-label="DTS 修改原因" aria-describedby={`${titleId}-reason-help`} required rows={4} placeholder="说明本次修改的原因和影响范围" value={reason} maxLength={2000} disabled={busy || Boolean(attempt?.submission || attempt?.directApplication)} onChange={(event) => setReason(event.target.value)} /></label>
+        <p id={`${titleId}-reason-help`} className="workbench-source-save-dialog__hint">直接应用和提交审核都需要填写，最多 2000 字。</p>
+        {canDirectApply && repository.applyCandidateSourceRevision ? <div className="workbench-source-save-dialog__method">
+          <h4>管理员直接应用</h4><p>核对差异后立即更新当前工作配置，无需选择审核人。</p>
+          <p id={`${titleId}-direct-help`} role="status">{directHint}</p>
+        </div> : null}
+        <div className="workbench-source-save-dialog__method">
+        <h4>提交独立审核</h4>
+        <label>软件审核人（仅提交审核时需要）<SelectControl ariaLabel="DTS 软件审核人" ariaDescribedBy={`${titleId}-review-help`} value={reviewerId} onValueChange={setReviewerId} disabled={busy || !reviewers.length || Boolean(attempt?.submission || attempt?.directApplication)}
           placeholder="选择审核人" options={reviewers.map(({ userId, name }) => ({ value: userId, label: name }))} /></label>
-        {attempt?.preview && !reviewers.length ? <p role="status">当前没有其他可选软件审核人。{canDirectApply ? "管理员可核对差异后直接应用；如需独立审核，请在项目审核角色中配置。" : "请在项目审核角色中配置软件审核人。"}</p> : null}
-        <footer className="dialog-actions"><Button variant="outline" disabled={busy} onClick={() => setSaveOpen(false)}>返回编辑</Button>
-          {!attempt?.preview || error ? <Button variant="outline" disabled={busy} onClick={() => void beginSave()}>重新校验</Button> : null}
-          <Button variant="outline" disabled={busy || Boolean(attempt?.directApplication) || !attempt?.preview?.canSubmit || !reviewerId || !reason.trim()} onClick={() => void submit()}>{attempt?.submission ? "重试同一提交" : "提交审核"}</Button>
-          {canDirectApply && repository.applyCandidateSourceRevision ? <Button disabled={busy || Boolean(attempt?.submission) || !attempt?.preview?.canSubmit || !reason.trim()}
-            onClick={() => void applyDirectly()}>{attempt?.directApplication ? "重试同一应用" : "直接应用修改"}</Button> : null}</footer>
+        {attempt?.preview && !reviewers.length ? <p>当前没有其他可选软件审核人，请在项目审核角色中配置。{canDirectApply ? "这不影响管理员直接应用。" : ""}</p> : null}
+        <p id={`${titleId}-review-help`} role="status">{reviewHint}</p>
+        </div>
+        </section>
+        </div>
+        <footer className="workbench-source-save-dialog__footer"><Button variant="outline" disabled={busy} onClick={() => setSaveOpen(false)}>返回编辑</Button>
+          <div className="workbench-source-save-dialog__actions">
+          {!attempt?.preview || error || previewBlocker ? <Button variant="outline" disabled={busy} onClick={() => void beginSave()}>重新校验</Button> : null}
+          <Button variant="outline" aria-describedby={`${titleId}-review-help`} disabled={busy || Boolean(attempt?.directApplication) || Boolean(previewBlocker) || !reviewerId || !reason.trim()} onClick={() => void submit()}>{attempt?.submission ? "重试同一提交" : "提交审核"}</Button>
+          {canDirectApply && repository.applyCandidateSourceRevision ? <Button aria-describedby={`${titleId}-direct-help`} disabled={busy || Boolean(attempt?.submission) || Boolean(previewBlocker) || !reason.trim()}
+            onClick={() => void applyDirectly()}>{attempt?.directApplication ? "重试同一应用" : "直接应用修改"}</Button> : null}
+          </div>
+        </footer>
       </>}
     </ModalDialog>
   </section>;

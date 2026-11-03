@@ -1,6 +1,8 @@
 /** Turn server proof codes into actionable workbench copy without changing the API contract. */
 export function sourceReviewReason(reason?: string): string {
   switch (reason) {
+    case "source-unchanged":
+      return "DTS 内容与当前来源一致，没有可应用的修改。请返回编辑后重试。";
     case "candidate-changes-multiple-bindings":
       return "候选同时修改多个参数绑定；请核对完整来源证明后提交一次批量审核。";
     case "canonical-batch-review-required":

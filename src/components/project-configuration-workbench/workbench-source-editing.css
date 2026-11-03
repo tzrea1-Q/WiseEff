@@ -42,3 +42,60 @@
   font: var(--text-sm) / 1.6 var(--font-code);
   tab-size: 2;
 }
+
+.workbench-source-save-dialog--save {
+  width: min(calc(100vw - var(--space-12)), 72rem);
+  max-height: calc(100dvh - var(--space-12));
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--text);
+  border: var(--stroke-hairline) solid var(--border);
+  box-shadow: var(--shadow-3);
+}
+.workbench-source-save-dialog__header,
+.workbench-source-save-dialog__footer { flex: 0 0 auto; padding: var(--space-4) var(--space-5); }
+.workbench-source-save-dialog__header { border-bottom: var(--stroke-hairline) solid var(--border); }
+.workbench-source-save-dialog__header h2 { font-size: var(--text-lg); line-height: var(--leading-lg); }
+.workbench-source-save-dialog__header p { margin-top: var(--space-1); color: var(--text-muted); overflow-wrap: anywhere; }
+.workbench-source-save-dialog__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+  gap: var(--space-5);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+.workbench-source-save-dialog__preview,
+.workbench-source-save-dialog__form { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.workbench-source-save-dialog--save h3,
+.workbench-source-save-dialog--save h4 { margin: 0; font-size: var(--text-base); font-weight: 600; }
+.workbench-source-save-dialog--save p { font-size: var(--text-sm); line-height: var(--leading-base); overflow-wrap: anywhere; }
+.workbench-source-save-dialog--save [role="alert"] { color: var(--danger); }
+.workbench-source-save-dialog__summary,
+.workbench-source-save-dialog__hint { color: var(--text-muted); }
+.workbench-source-save-dialog--save .workbench-source-save-dialog__diff {
+  flex: 0 0 auto;
+  height: clamp(16rem, 45vh, 30rem);
+  padding: 0;
+  border: var(--stroke-hairline) solid var(--border);
+  border-radius: var(--radius-md);
+}
+.workbench-source-save-dialog__form label { min-width: 0; font-size: var(--text-sm); font-weight: 500; }
+.workbench-source-save-dialog__form textarea { min-height: 6rem; max-height: 12rem; }
+.workbench-source-save-dialog__form [role="combobox"] { width: 100%; min-width: 0; }
+.workbench-source-save-dialog__method {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: var(--stroke-hairline) solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+.workbench-source-save-dialog__method p { color: var(--text-secondary); }
+.workbench-source-save-dialog__footer,
+.workbench-source-save-dialog__actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.workbench-source-save-dialog__footer { justify-content: space-between; border-top: var(--stroke-hairline) solid var(--border); }
+@media (max-width: 960px) {
+  .workbench-source-save-dialog__body { grid-template-columns: minmax(0, 1fr); }
+}

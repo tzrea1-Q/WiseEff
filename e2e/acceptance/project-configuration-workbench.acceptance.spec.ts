@@ -4480,7 +4480,19 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     const edited = (await source.text()).replace('"DirectV1"', '"DirectV2"') + "\n/* administrator confirmed the whole source */\n";
     const prepared = await prepareSourceFromEditor(page, edited, true);
     expect(prepared.item.impact?.parameterChanges).toBe(1);
+    const direct = prepared.dialog.getByRole("button", { name: "直接应用修改", exact: true });
+    await expect(direct).toBeDisabled();
+    await expect(direct).toHaveAccessibleDescription("请填写修改原因后直接应用；无需选择审核人。");
+    await expect(prepared.dialog.getByRole("textbox", { name: "DTS 修改原因" })).toHaveAttribute("required", "");
+    await expect(direct).toBeInViewport();
+    await testInfo.attach("dts-save-desktop", { body: await page.screenshot(), contentType: "image/png" });
     await prepared.dialog.getByRole("textbox", { name: "DTS 修改原因" }).fill("#1303 checked complete diff, directly apply");
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(direct).toBeEnabled();
+    await expect(direct).toBeInViewport();
+    await expect(prepared.dialog.getByRole("button", { name: "返回编辑", exact: true })).toBeInViewport();
+    await testInfo.attach("dts-save-compact", { body: await page.screenshot(), contentType: "image/png" });
+    await page.setViewportSize({ width: 1440, height: 900 });
     const applying = page.waitForResponse((response) => response.request().method() === "POST"
       && new URL(response.url()).pathname.endsWith("/source-apply"), { timeout: 60_000 });
     await prepared.dialog.getByRole("button", { name: "直接应用修改", exact: true }).focus();
