@@ -16,6 +16,7 @@ import { claimCatalogChildOwners } from "../../scripts/catalog-claim-child-owner
 import { VENDOR_OWNED_RELEASE_ID } from "../../scripts/compile-owned-vendor-catalog-release";
 import { resolveDebugNodeBindingForReloadTarget } from "../modules/dts-reload/behaviouralVerify";
 import type { ReloadCandidateDto } from "../modules/dts-reload/types";
+import { createDebugDeviceGatewayRegistry } from "../modules/debugging/gatewayRegistry";
 
 let database: EphemeralTestDatabase;
 let db: RootDatabase;
@@ -190,7 +191,7 @@ it("organizes battery authentication as one driver and one owned checker with tw
 });
 
 it("lists owned demo reload candidates and resolves exact readback pins across reused definition revisions", async () => {
-  const server = createWiseEffServer({ db });
+  const server = createWiseEffServer({ db, debugGatewayRegistry: createDebugDeviceGatewayRegistry({}) });
   const headers = { "X-WiseEff-User": "u-xu-yun" };
   let target: ReloadCandidateDto | undefined;
   for (const projectId of ["atlas", "aurora", "nebula"]) {
