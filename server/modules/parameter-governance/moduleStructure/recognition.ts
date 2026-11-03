@@ -35,8 +35,13 @@ export async function planRecognition(client: pg.PoolClient, organizationId: str
       const initial = { kind: registration.kind, recognitionSubjectId: edit.subjectId, compatibles: [] as string[], nodeTypeName: null,
         driverNature: null, instanceCardinality: null, overridden: false };
       const inherited = await readInheritedRegistrationRecognitionSettings(db, initial, releaseId);
-      if (Object.values(requested.override).some(value => value === null)) throw new ApiError("VALIDATION_FAILED", "Recognition fields cannot be cleared for this Subject kind.");
-      const body = requested.override as UpdateModuleRecognition;
+      const override = requested.override;
+      if (registration.kind === "driver" ? override.compatibles === null || override.driverNature === null || override.instanceCardinality === null || override.nodeTypeName != null
+        : override.nodeTypeName === null || override.compatibles?.length || override.driverNature != null || override.instanceCardinality != null)
+        throw new ApiError("VALIDATION_FAILED", "Recognition fields do not match this Subject kind.");
+      const body = Object.fromEntries(Object.entries(registration.kind === "driver"
+        ? { compatibles: override.compatibles, driverNature: override.driverNature, instanceCardinality: override.instanceCardinality }
+        : { nodeTypeName: override.nodeTypeName }).filter(([, value]) => value !== undefined)) as UpdateModuleRecognition;
       const next = await validateRegistrationRecognitionSettings(db, organizationId, inherited, body);
       const instances = await listModuleRecognitionInstances(db, organizationId, next);
       instances.sort((a, b) => a.projectId.localeCompare(b.projectId) || a.logicalNodeId.localeCompare(b.logicalNodeId));

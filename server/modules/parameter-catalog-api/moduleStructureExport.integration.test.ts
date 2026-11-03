@@ -105,7 +105,7 @@ describe("module structure export", () => {
       join parameter_catalog.catalog_state cs on cs.current_catalog_release_id=rs.release_id
       where s.owner_subject_id is null and s.kind='driver' and rs.lifecycle='active' order by s.id limit 1`);
     const subjectId = subject.rows[0]!.id;
-    const edited = { ...document, modules: [...document.modules, { ref: "registration-destination", name: "Registration destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }], subjects: [...document.subjects, { subjectId, operation: "register", placement: { kind: "module", moduleRef: "registration-destination" }, recognition: { mode: "override", override: { compatibles: ["acme,new"] } } }] };
+    const edited = { ...document, modules: [...document.modules, { ref: "registration-destination", name: "Registration destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }], subjects: [...document.subjects, { subjectId, operation: "register", placement: { kind: "module", moduleRef: "registration-destination" }, recognition: { mode: "override", override: { compatibles: ["acme,new"], nodeTypeName: null } } }] };
     const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(preview.status, preview.bodyText).toBe(200);
     expect(preview.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })]) });
