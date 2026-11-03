@@ -61,6 +61,7 @@ import { canViewParameters } from "../parameter-kernel/policy";
 import type { ObjectStore } from "../logs/objectStore";
 import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } from "../parameter-modules/recognitionSettings";
 import { lockOrganizationSubjectRegistration } from "../parameter-modules/recognitionLock";
+import { currentManagedSourceBindingPredicate } from "./queries/currentManagedBindings";
 
 export type CatalogBindingView = {
   id: string;
@@ -524,14 +525,28 @@ export async function syncPublishedCatalogProjectValuesInTransaction(
      where config_revision_id=$1 order by id`, [input.configRevisionId]);
   if (!sourceMembers.rows.length) throw new ApiError("CONFLICT", "Source revision has no exact members.");
   await lockExactSourceRevisionsForProof(write as unknown as Queryable,sourceMembers.rows.map((member) => ({ ...input,...member })));
+  const observed = await listObservedProperties(write, input.configRevisionId);
+  const selectedPropertyOccurrenceIds = input.propertyOccurrenceIds === undefined
+    ? null
+    : new Set(input.propertyOccurrenceIds);
+  // Reviewed discovery may materialize only its frozen new properties. Retained
+  // values elsewhere in the source must not block that work or become eligible
+  // for unreviewed re-materialization. Match logical identity and key even when
+  // the property moved files, so that a stale existing Binding cannot be reused.
+  const selectedIdentities = selectedPropertyOccurrenceIds === null ? null : observed
+    .filter(row => selectedPropertyOccurrenceIds.has(row.propertyOccurrenceId))
+    .map(row => ({ logicalNodeId: row.logicalNodeId, propertyKey: row.propertyKey }));
   const established = await write.query(`select binding.id from parameter_catalog.current_project_parameter_bindings binding
     join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+    join parameter_catalog.parameter_definitions definition on definition.id=binding.definition_id
     left join parameter_catalog.project_value_source_pins pin on pin.project_value_id=binding.current_value_id and pin.binding_id=binding.id
     where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
-      and (pin.id is null or pin.config_revision_id<>$4)`,
-  [input.organizationId,input.projectId,input.configSetId,input.configRevisionId]);
+      and (pin.id is null or pin.config_revision_id<>$4)
+      and ($5::jsonb is null or exists (select 1 from jsonb_array_elements($5::jsonb) selected
+        where selected->>'logicalNodeId'=binding.logical_node_id and selected->>'propertyKey'=definition.property_key))`,
+  [input.organizationId,input.projectId,input.configSetId,input.configRevisionId,
+    selectedIdentities === null ? null : JSON.stringify(selectedIdentities)]);
   if (established.rows.length) throw new ApiError("CONFLICT", "Existing source values require a reviewed source change, not re-materialization.");
-  const observed = await listObservedProperties(write, input.configRevisionId);
   const ownerOccurrences = new Map<string, string[]>();
   for (const row of observed) {
     if (isStructuralPropertyKey(row.propertyKey)) continue;
@@ -543,9 +558,6 @@ export async function syncPublishedCatalogProjectValuesInTransaction(
     ownerOccurrences.set(subject.subjectId, occurrences);
   }
   for (const occurrences of ownerOccurrences.values()) occurrences.sort();
-  const selectedPropertyOccurrenceIds = input.propertyOccurrenceIds === undefined
-    ? null
-    : new Set(input.propertyOccurrenceIds);
   // The config-set ref is the write the operator approved; the real `.dts`
   // source location is the file the occurrence came from.  Recording the file
   // keeps the value's provenance usable by identity correction and property-key
@@ -775,7 +787,7 @@ export async function listCanonicalInitializationBindingCandidates(
   if (input.projectIds.length === 0) return [];
 
   const values: unknown[] = [input.organizationId, [...input.projectIds]];
-  const conditions = ["b.organization_id = $1", "b.project_id = any($2::text[])"];
+  const conditions = ["b.organization_id = $1", "b.project_id = any($2::text[])", currentManagedSourceBindingPredicate("b")];
 
   if (input.bindingIds?.length) {
     values.push([...input.bindingIds]);
@@ -895,10 +907,11 @@ export async function findCatalogBindingRow(
     `
     select id, organization_id, catalog_release_id, project_id, logical_node_id,
            registration_id, subject_id, definition_id, effective_revision_id, current_value_id
-      from parameter_catalog.current_project_parameter_bindings
+      from parameter_catalog.current_project_parameter_bindings binding
      where organization_id = $1
        and project_id = $2
        and id = $3
+       and ${currentManagedSourceBindingPredicate("binding")}
      limit 1
     `,
     [input.organizationId, input.projectId, input.bindingId],
@@ -1061,6 +1074,7 @@ async function readBoundedCatalogParameters(
          on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
        left join public.parameter_modules module on module.id = placement.module_id and module.organization_id = b.organization_id
        where b.organization_id = $1 and b.project_id = $2 and b.id > $3
+         and ${currentManagedSourceBindingPredicate("b")}
          and value.source_ref <> 'canonical-binding-identity'
          and ($5::text[] is null or placement.module_id = any($5::text[]))
          and ($6::text is null or module.name = $6)
@@ -1447,6 +1461,7 @@ export async function listCatalogBindingsForImport(
     join parameter_catalog.project_value_source_pins pin on pin.project_value_id=v.id and pin.binding_id=b.id
     where b.organization_id = $1
       and b.project_id = $2
+      and ${currentManagedSourceBindingPredicate("b")}
       and v.source_ref <> 'canonical-binding-identity'
       and (
         d.property_key = any($3::text[])

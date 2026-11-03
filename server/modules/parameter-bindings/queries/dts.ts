@@ -1,4 +1,5 @@
 import type { Queryable } from "../../../shared/database/client";
+import { currentManagedSourceBindingPredicate } from "./currentManagedBindings";
 import type { ProjectValuePayload } from "../values";
 
 export type CanonicalValueRow = {
@@ -97,8 +98,9 @@ export async function readCanonicalCompareRows(
   const source = await db.query<{ definition_id: string }>(
     `
     select definition_id
-      from parameter_catalog.current_project_parameter_bindings
+      from parameter_catalog.current_project_parameter_bindings binding
      where id = $1 and organization_id = $2 and project_id = $3
+       and ${currentManagedSourceBindingPredicate("binding")}
      limit 1
     `,
     [input.bindingId, input.organizationId, input.projectId],
@@ -161,6 +163,7 @@ export async function readCanonicalCompareRows(
       left join public.attribution_subjects subject
         on subject.id = parameter_module.attribution_subject_id
      where b.organization_id = $2
+       and ${currentManagedSourceBindingPredicate("b")}
        and b.id <> $1
        and ($3::text[] is null or b.project_id = any($3::text[]))
        and b.definition_id = $4

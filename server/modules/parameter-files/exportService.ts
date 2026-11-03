@@ -5,6 +5,8 @@ import { isDeepStrictEqual } from "node:util";
 import { type ConfigSetSourcePackage } from "../contracts/dtoSchemas/configSetPackage";
 import { loadSharedDtsiClosure, composeDtsBuildInputs } from "../shared-dtsi/dependencies";
 import { loadSourceBindingCohort, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { readCurrentManagedSourceBindingIds } from "../parameter-bindings/queries/currentManagedBindings";
+import { lockSourceCatalogGovernance } from "../parameter-bindings/catalogProjectValueSync";
 import { rethrowSourceTransactionError } from "./sourceVersion";
 import { loadCanonicalSourceSnapshot } from "./canonicalSource";
 import { loadSnapshot } from "./sourceRevisionService";
@@ -285,7 +287,9 @@ export async function exportConfigSet(
   let catalog: Awaited<ReturnType<typeof loadSnapshot>> | undefined;
   const scope = {organizationId:parameterOrganizationId(auth),projectId:configSet.projectId,configSetId};
   const bindings = await loadSourceBindingCohortReadOnly(db, scope);
+  const managedBindings = await readCurrentManagedSourceBindingIds(db, { ...scope, bindingIds: bindings.map(binding => binding.bindingId) });
   for (const binding of bindings) {
+    if (!managedBindings.has(binding.bindingId)) continue;
     const pin = await loadOwnedProjectValueSourcePin(db,{organizationId:parameterOrganizationId(auth),projectId:configSet.projectId,bindingId:binding.bindingId,projectValueId:binding.oldValueId});
     if (pin?.format !== "json") continue;
     catalog ??= await loadSnapshot(db,deps.snapshot);
@@ -331,13 +335,17 @@ export async function exportConfigSet(
   // Object reads and compilation await outside the source locks. Refuse a
   // package if its original bytes, build inputs, references or JSON pins moved.
   try { await db.transaction(async tx => {
+    await lockSourceCatalogGovernance(tx, scope.organizationId);
     await tx.query(`select id from public.dts_config_set where organization_id=$1 and project_id=$2 and id=$3 for share nowait`,
       [scope.organizationId,scope.projectId,configSetId]);
     await tx.query(`select id from public.project_parameter_files where organization_id=$1 and project_id=$2 and config_set_id=$3 order by id for share nowait`,
       [scope.organizationId,scope.projectId,configSetId]);
     const currentBindings = await loadSourceBindingCohort(tx,scope);
+    const currentManagedBindings = await readCurrentManagedSourceBindingIds(tx, { ...scope,
+      bindingIds: currentBindings.map(binding => binding.bindingId) });
     if (!isDeepStrictEqual(snapshot,await loadConfigSetSnapshot(tx,deps.objectStore,configSetId))
-      || !isDeepStrictEqual(references,await loadReferences(tx)) || !isDeepStrictEqual(bindings,currentBindings)) {
+      || !isDeepStrictEqual(references,await loadReferences(tx)) || !isDeepStrictEqual(bindings,currentBindings)
+      || !isDeepStrictEqual(managedBindings,currentManagedBindings)) {
       throw new ApiError("CONFLICT","配置来源在导出期间已变化，请重新导出。",{reason:"configuration-export-stale"});
     }
   }); } catch (error) { rethrowSourceTransactionError(error); }

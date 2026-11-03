@@ -12,10 +12,10 @@ import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitio
 import { resolveDtsConfigSetAsync } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles, nearestAncestorCompatibles,
-  lockSourceCatalogGovernance, loadActiveOrganizationSourceRegistrations, loadRetiredOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
+  lockSourceCatalogGovernance, loadActiveOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
 import { loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin,
   loadProjectBindingCatalogReleaseIds, readOwnedCurrentBinding, readOwnedProjectValueIdentity,
-  hasSourceConfigurationDrafts } from "../parameter-bindings/values";
+  hasSourceConfigurationDrafts, loadRetainedSourceAnchors } from "../parameter-bindings/values";
 import type { ProjectValuePayload } from "../parameter-bindings/values";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
 import { CatalogReleaseId, CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
@@ -31,6 +31,7 @@ import { requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } f
 import { matchingDeletedSourceAnchors, prepareSourceRestorations, sourceRestorationNodes, type SourceRestoration } from "./sourceRestoration";
 import { assertProjectSourceOperationSensitiveWrites, prepareProjectLocalOverride } from "./projectLocalOverride";
 import type { SourceRevisionCandidateContext } from "./types";
+import { findSourceSuspension, type ExcludedSourceBinding } from "./sourceManagedScope";
 
 export const sourceRevisionDigest = (input: string | Buffer | object) => createHash("sha256")
   .update(typeof input === "string" || Buffer.isBuffer(input) ? input : serializeContract(input as ContractJsonValue)).digest("hex");
@@ -71,6 +72,8 @@ export type SourceRevisionProof = {
   originTransfers?: Array<{ bindingId: string; oldValueId: string; sourcePinId: string; fromFileId: string; toFileId: string }>;
   localOverride?: SourceRevisionCandidateContext["localOverride"];
   restorations?: SourceRestoration[];
+  excludedBindings: ExcludedSourceBinding[];
+  resumptions: Array<{ bindingId: string; priorRequestId: string }>;
   proofDigest: string;
 };
 export type SourceRevisionDiagnostic = { severity: "error" | "warning"; code: string; message: string; file?: string; line?: number; column?: number };
@@ -256,7 +259,49 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     throw new ApiError("VALIDATION_FAILED", "DTS configuration has unresolved source diagnostics.", { diagnostics });
   }
   const restorationScope = { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: context.configSetId };
-  const anchors = await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, rows);
+  const registrations = await loadActiveOrganizationSourceRegistrations(tx, { organizationId: parameterOrganizationId(auth) });
+  const registered = new Map(registrations.map((row) => [row.subjectId, row.id]));
+  const ownerActive = (subjectId: string) => {
+    const subject = snapshot?.getSubject(CatalogSubjectId(subjectId));
+    const owner = subject?.status === "found" ? subject.subject.owner : undefined;
+    return !owner || (registered.has(owner) && snapshot?.getSubject(owner).status === "found");
+  };
+  const matchesManagedRestoration = (anchor: { subjectId: string; registrationId: string; definitionId: string; nodeLocator: string | null }) => {
+    if (!snapshot || !anchor.nodeLocator || registered.get(anchor.subjectId) !== anchor.registrationId || !ownerActive(anchor.subjectId)
+      || snapshot.getSubject(CatalogSubjectId(anchor.subjectId)).status !== "found"
+      || snapshot.getDefinitionById(ParameterDefinitionId(anchor.definitionId)).status !== "found") return false;
+    const node = resolved.effective.nodesByLocator.get(anchor.nodeLocator);
+    if (!node || node.deleted) return false;
+    const compatible = node.properties.get("compatible");
+    return resolveObservedSubject(snapshot, {
+      compatibles: parseCompatibles(compatible && !compatible.deleted ? compatible.rawText : null), nodeName: node.name,
+      ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator)
+    })?.subjectId === anchor.subjectId;
+  };
+  const anchors = (await matchingDeletedSourceAnchors(tx, restorationScope, resolved.effective.nodesByLocator, rows))
+    .filter(matchesManagedRestoration);
+  const retainedNodes: NonNullable<ReviewedSourceContinuity["restorationNodes"]> = [];
+  const retainedAnchors = await loadRetainedSourceAnchors(tx, restorationScope);
+  const currentNodes = retainedAnchors.length ? (await tx.query<{ nodeLocator: string; logicalNodeId: string }>(
+    `select node_locator as "nodeLocator",logical_node_id as "logicalNodeId"
+     from public.dts_logical_node_revisions where config_revision_id=$1`, [revision.id])).rows : [];
+  for (const anchor of retainedAnchors) {
+    if (anchor.baseConfigRevisionId === revision.id || !anchor.nodeLocator || !anchor.logicalNodeId) continue;
+    // An unmanaged node may have changed its compatible and acquired a distinct
+    // source identity. Its historical Binding must not block ordinary saves.
+    if (!matchesManagedRestoration(anchor)) continue;
+    const identity = { bindingId: anchor.bindingId, oldValueId: anchor.oldValueId, sourcePinId: anchor.sourcePinId,
+      sourceOccurrenceId: anchor.sourceOccurrenceId, definitionId: anchor.definitionId,
+      effectiveRevisionId: anchor.effectiveRevisionId, catalogReleaseId: anchor.catalogReleaseId, valueDigest: anchor.valueDigest,
+      registrationId: anchor.registrationId, subjectId: anchor.subjectId, configRevisionId: anchor.baseConfigRevisionId,
+      fileId: anchor.fileId, fileVersionId: anchor.fileVersionId, format: anchor.format };
+    if (await findSourceSuspension(tx, { ...restorationScope, baseConfigRevisionId: revision.id }, identity)) {
+      if (retainedNodes.some(row => row.nodeLocator === anchor.nodeLocator && row.logicalNodeId === anchor.logicalNodeId)) continue;
+      const current = currentNodes.find(row => row.nodeLocator === anchor.nodeLocator);
+      retainedNodes.push({ baseConfigRevisionId: anchor.baseConfigRevisionId, nodeLocator: anchor.nodeLocator, logicalNodeId: anchor.logicalNodeId,
+        ...(current && current.logicalNodeId !== anchor.logicalNodeId ? { replacedUnmanagedLogicalNodeId: current.logicalNodeId } : {}) });
+    }
+  }
   const toolchain = await (options.toolchain ?? createDtsToolchainRunner()).validate({
     defines: revision.preprocessing?.defines,
     entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths,
@@ -270,20 +315,16 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
   const continuity = await prepareReviewedSourceContinuity(tx, { organizationId: parameterOrganizationId(auth),
     projectId: input.projectId, configSetId: context.configSetId, baseConfigRevisionId: revision.id,
     effectiveNodes: resolved.effective.nodesByLocator, sourceDigest: sourceRevisionDigest(bytes),
-    restorationNodes: sourceRestorationNodes(anchors) });
-  const registrations = await loadActiveOrganizationSourceRegistrations(tx, { organizationId: parameterOrganizationId(auth) });
-  const registered = new Map(registrations.map((row) => [row.subjectId, row.id]));
-  // Retirement excludes new adoption, but unchanged retained values still need
-  // an exact source pin in the successor configuration (ADR-0042).
-  const retired = new Map((await loadRetiredOrganizationSourceRegistrations(tx, { organizationId: parameterOrganizationId(auth) }))
-    .map((row) => [row.subjectId, row.id]));
+    // A trusted suspended owner may reclaim an unowned node before exact
+    // deleted siblings on that same historical identity are restored.
+    restorationNodes: [...retainedNodes, ...sourceRestorationNodes(anchors)] });
   const sourceProperties: SourceRevisionNewProperty[] = [];
   if (snapshot) for (const node of resolved.effective.nodesByLocator.values()) {
     if (node.deleted) continue;
     const compatible = node.properties.get("compatible");
-    const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(compatible?.rawText ?? null), nodeName: node.name,
+    const subject = resolveObservedSubject(snapshot, { compatibles: parseCompatibles(compatible && !compatible.deleted ? compatible.rawText : null), nodeName: node.name,
       ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator) });
-    if (!subject || !registered.has(subject.subjectId)) continue;
+    if (!subject || !registered.has(subject.subjectId) || !ownerActive(subject.subjectId)) continue;
     const logical = continuity.nodes.find((row) => row.nodeLocator === node.nodeLocator)!;
     for (const [propertyName, property] of node.properties) {
       if (property.deleted || isStructuralPropertyKey(propertyName)) continue;
@@ -300,6 +341,8 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     }
   }
   const cohort: SourceRevisionCohort[] = [];
+  const excludedBindings: ExcludedSourceBinding[] = [];
+  const resumptions: SourceRevisionProof["resumptions"] = [];
   const targets: SourceRevisionTarget[] = [];
   const originTransfers: NonNullable<SourceRevisionProof["originTransfers"]> = [];
   const matchingSnapshots = new Map<string, CatalogSnapshot>(snapshot ? [[snapshot.release.id, snapshot]] : []);
@@ -307,24 +350,40 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId,
       bindingId: entry.bindingId, projectValueId: entry.oldValueId });
     const pinnedSnapshot = options.snapshots?.get(entry.catalogReleaseId) ?? (snapshot?.release.id === entry.catalogReleaseId ? snapshot : null);
-    if (!pinnedSnapshot || !pin || pin.valueState !== "present" || pin.configRevisionId !== revision.id
-      || !rows.some(member => member.fileId === pin.fileId && member.fileVersionId === pin.fileVersionId && member.format === pin.format)) {
-      conflict("A current source Binding has stale or unsupported provenance.");
-    }
+    if (!pin || pin.valueState !== "present") conflict("A retained source Binding has unsupported provenance.");
     const currentBinding = await readOwnedCurrentBinding(tx, { organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, bindingId: entry.bindingId });
     if (currentBinding.status !== "current") conflict("A source Binding is no longer current.");
     const registration = currentBinding.binding;
-    const registrationActive = registered.get(registration.subjectId) === registration.registrationId;
-    if (!registrationActive && retired.get(registration.subjectId) !== registration.registrationId) {
-      conflict("A current source Binding's organization registration no longer matches.");
+    const identity = { bindingId: entry.bindingId, oldValueId: entry.oldValueId, sourcePinId: pin.sourcePinId,
+      sourceOccurrenceId: entry.sourceOccurrenceId, definitionId: entry.definitionId, effectiveRevisionId: entry.effectiveRevisionId,
+      catalogReleaseId: entry.catalogReleaseId, valueDigest: entry.valueDigest, registrationId: registration.registrationId,
+      subjectId: registration.subjectId, configRevisionId: pin.configRevisionId, fileId: pin.fileId,
+      fileVersionId: pin.fileVersionId, format: pin.format };
+    const excludedReason = registered.get(registration.subjectId) !== registration.registrationId ? "registration-inactive"
+      : snapshot?.getSubject(CatalogSubjectId(registration.subjectId)).status !== "found" ? "subject-inactive"
+      : !ownerActive(registration.subjectId) ? "owner-inactive"
+      : snapshot.getDefinitionById(ParameterDefinitionId(entry.definitionId)).status !== "found" ? "definition-inactive" : null;
+    // Lifecycle eligibility precedes current-source freshness. An excluded pin
+    // deliberately remains historical across any number of source revisions.
+    if (excludedReason) {
+      excludedBindings.push({ ...identity, reason: excludedReason });
+      continue;
     }
+    const sourceCurrent = pin.configRevisionId === revision.id
+      && rows.some(member => member.fileId === pin.fileId && member.fileVersionId === pin.fileVersionId && member.format === pin.format);
+    const priorRequestId = !sourceCurrent ? await findSourceSuspension(tx,
+      { ...restorationScope, baseConfigRevisionId: revision.id }, identity) : null;
+    if (!pinnedSnapshot || (!sourceCurrent && !priorRequestId)) conflict("A current source Binding has stale or unsupported provenance.");
     const definition = pinnedSnapshot.getDefinitionRevision({ definitionId: ParameterDefinitionId(entry.definitionId), revisionId: DefinitionRevisionId(entry.effectiveRevisionId) });
     if (definition.status !== "found") conflict("A pinned parameter Definition is unavailable.");
     const old = await readOwnedProjectValueIdentity(tx, { organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
     if (!old) conflict("A current source value is unavailable.");
     if (pin.format === "json") {
+      if (!rows.some(member => member.fileId === pin.fileId && member.fileVersionId === pin.fileVersionId && member.format === "json")) {
+        conflict("A retained JSON source changed outside its reviewed source operation.");
+      }
       if (pin.locator.kind !== "json-pointer" || typeof pin.locator.pointer !== "string" || pin.rootPointer === null
         || !sameSourceRevision(old.value.payload, { kind: "json", value: readJsonSourceValue(memberContents.get(pin.fileId)!, pin.locator.pointer, pin.rootPointer) })) {
         conflict("An unchanged JSON parameter does not match its exact owned source.");
@@ -332,6 +391,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
       assertCanonicalValueConstraints(definition.revision, old.value.payload);
       cohort.push({ ...entry, fileId: pin.fileId, fileVersionId: pin.fileVersionId, logicalNodeId: null,
         propertyName: "", format: "json", valueState: "present", locator: pin.locator });
+      if (priorRequestId) resumptions.push({ bindingId: entry.bindingId, priorRequestId });
       continue;
     }
     if (!pin.logicalNodeId || typeof pin.locator.propertyName !== "string" || pin.locator.kind !== "dts-property") {
@@ -346,27 +406,28 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
       matchingSnapshot = await loadOrganizationCatalogSnapshot(tx, parameterOrganizationId(auth), pinnedSnapshot);
       matchingSnapshots.set(pinnedSnapshot.release.id, matchingSnapshot);
     }
+    const compatible = node?.properties.get("compatible");
     const resolvedSubject = node ? resolveObservedSubject(matchingSnapshot, {
-      compatibles: parseCompatibles(node.properties.get("compatible")?.rawText ?? null), nodeName: node.name,
+      compatibles: parseCompatibles(compatible && !compatible.deleted ? compatible.rawText : null), nodeName: node.name,
       ownerCompatibles: nearestAncestorCompatibles(resolved.effective.nodesByLocator, node.nodeLocator)
     }) : null;
     const source = node && !node.deleted && property && !property.deleted && originMember && property.sourceChain.at(-1)?.origin
       && resolvedSubject?.subjectId === registration.subjectId
       ? { payload: rawTextToPayload(pin.locator.propertyName, property.rawText), fileId: originMember.fileId, propertyName: pin.locator.propertyName }
       : null;
-    if (!registrationActive && (!source || source.fileId !== pin.fileId || !sameSourceRevision(old.value.payload, source.payload))) {
-      throw new ApiError("CONFLICT", `参数「${pin.locator.propertyName}」的组织登记已停用，不能修改、删除或转移其来源。请保持该参数不变，或先恢复登记。`, {
-        reason: "source-registration-retired-change", bindingId: entry.bindingId,
-        registrationId: registration.registrationId, subjectId: registration.subjectId, propertyName: pin.locator.propertyName
-      });
+    if (priorRequestId && !source) {
+      // Restoring governance does not recreate a property removed while unmanaged.
+      excludedBindings.push({ ...identity, reason: "source-absent" });
+      continue;
     }
     const frozen = { ...entry, fileId: pin.fileId, fileVersionId: pin.fileVersionId, logicalNodeId: pin.logicalNodeId,
       propertyName: pin.locator.propertyName, valueState: "present" as const, locator: pin.locator };
     cohort.push(frozen);
+    if (priorRequestId) resumptions.push({ bindingId: entry.bindingId, priorRequestId });
     if (source) {
       // Existing Bindings retain their pinned revision, never migrate to a newly selected Definition implicitly.
       assertCanonicalValueConstraints(definition.revision, source.payload, true);
-      if (!sameSourceRevision(old.value.payload, source.payload) || source.fileId !== pin.fileId) targets.push({
+      if (priorRequestId || !sameSourceRevision(old.value.payload, source.payload) || source.fileId !== pin.fileId) targets.push({
         bindingId: entry.bindingId, action: "set", payload: source.payload, afterFileId: source.fileId, propertyName: source.propertyName
       });
       if (source.fileId !== pin.fileId) originTransfers.push({ bindingId: entry.bindingId, oldValueId: entry.oldValueId,
@@ -398,7 +459,7 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     entryFile: revision.entry_file, includeSearchPaths: revision.include_search_paths, overlayOrder: revision.overlay_order,
     ...(resolved.preprocessing ? { preprocessing: resolved.preprocessing.receipt } : {}),
     declaredBuildInputs: revision.declared_build_inputs,
-    members, cohort, continuity, catalogRelease: snapshot ? { id: snapshot.release.id, digest: snapshot.release.digest } : null,
+    members, cohort, excludedBindings, resumptions, continuity, catalogRelease: snapshot ? { id: snapshot.release.id, digest: snapshot.release.digest } : null,
     pinnedCatalogReleases: [...new Set(cohort.map((row) => row.catalogReleaseId))].sort().map((id) => {
       const pinned = options.snapshots?.get(id) ?? snapshot!;
       return { id, digest: pinned.release.digest };

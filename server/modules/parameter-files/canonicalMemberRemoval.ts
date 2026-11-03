@@ -39,6 +39,7 @@ import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface"
 import { deriveDtsSourceRef } from "../dts/sourceRef";
 import { rethrowSourceTransactionError } from "./sourceVersion";
 import { applySourceRestoration, matchingDeletedSourceAnchors, prepareSourceRestorations, sourceRestorationNodes, type SourceRestoration } from "./sourceRestoration";
+import { filterPreviouslySuspendedSourceBindings } from "./sourceManagedScope";
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const same = (left: unknown, right: unknown) => serializeContract(left as ContractJsonValue) === serializeContract(right as ContractJsonValue);
@@ -281,7 +282,20 @@ async function inspectAdministratorMemberRemoval(tx: Database, storage: ObjectSt
   }
   const cohort: CanonicalMemberRemovalProof["cohort"][number][] = [];
   const originTransfers: NonNullable<CanonicalMemberRemovalProof["originTransfers"]> = [];
-  for (const row of await loadSourceBindingCohortReadOnly(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId })) {
+  const bindingScope = { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: input.configSetId };
+  const retainedCohort = await loadSourceBindingCohortReadOnly(tx, bindingScope);
+  const currentCohort = await filterPreviouslySuspendedSourceBindings(tx, { ...bindingScope, baseConfigRevisionId: revision.id },
+    retainedCohort);
+  const currentBindingIds = new Set(currentCohort.map(entry => entry.bindingId));
+  for (const entry of retainedCohort) if (!currentBindingIds.has(entry.bindingId)) {
+    const pin = await loadOwnedProjectValueSourcePin(tx, { ...bindingScope, bindingId: entry.bindingId, projectValueId: entry.oldValueId });
+    if (pin?.format !== "dts" || !pin.logicalNodeId || typeof pin.locator.propertyName !== "string") continue;
+    for (let index = sourceProperties.length - 1; index >= 0; index--) {
+      const property = sourceProperties[index]!;
+      if (property.logicalNodeId === pin.logicalNodeId && property.propertyName === pin.locator.propertyName) sourceProperties.splice(index, 1);
+    }
+  }
+  for (const row of currentCohort) {
     const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: parameterOrganizationId(auth), projectId: input.projectId, bindingId: row.bindingId, projectValueId: row.oldValueId });
     if (!pin || pin.configRevisionId !== revision.id || pin.valueState !== "present" || !members.some((member) => member.fileId === pin.fileId && member.fileVersionId === pin.fileVersionId)) {
       conflict("参数来源或当前值已变化，请重新同步并预览配置。");

@@ -18,6 +18,7 @@ import { createCandidate } from "./candidateService";
 import { previewSourceRevisionCandidate } from "./sourceRevisionService";
 import { applySourceRevisionCandidate } from "./sourceRevisionCommit";
 import type { DtsToolchainRunner } from "./dtsToolchain";
+import type { ConfigRevisionManifestMember } from "../parameter-topology/types";
 
 // These cases qualify PostgreSQL identity/receipt behavior, not native compiler
 // acceptance. Existing native-toolchain suites keep their real runner unchanged.
@@ -30,7 +31,8 @@ export const sourceAdminToolchain: DtsToolchainRunner = {
 };
 export const sourceAdminText = '/dts-v1/; / { compatible = "test,board"; model = "source administration"; charger: charger { compatible = "acme,power"; iin_max = <36>; }; };';
 
-export async function createSourceAdminFixture(label: string, invocationForAuth: (auth: AuthContext) => TrustedInvocationContext) {
+export async function createSourceAdminFixture(label: string, invocationForAuth: (auth: AuthContext) => TrustedInvocationContext,
+  options: { sourceText?: string; includes?: Array<{ fileName: string; content: string }> } = {}) {
   const lane = await createEphemeralTestDatabase(label), db = createPostgresDatabase(lane.url);
   const directory = await mkdtemp(join(tmpdir(), "wiseeff-source-admin-")), storage = createLocalObjectStore(directory);
   const organizationId = `org-${label}`, projectId = `project-${label}`, userId = `user-${label}`, token = `${label}_${process.pid}`;
@@ -42,11 +44,22 @@ export async function createSourceAdminFixture(label: string, invocationForAuth:
   await installDriverSourceFixture(db, auth, { subjectId: "csub_acme_power", compatible: "acme,power", businessName: "Source administration",
     driverName: "Power", idempotencyKey: `registration-${label}`, reason: "Source administration integration" });
   const configSetId = (await createConfigSet(db, auth, { projectId, name: "Source administration" })).id;
-  const uploaded = await uploadProjectParameterFile(db, storage, auth, { projectId, fileName: "board.dts", bytes: Buffer.from(sourceAdminText) });
+  const sourceText = options.sourceText ?? sourceAdminText;
+  const uploaded = await uploadProjectParameterFile(db, storage, auth, { projectId, fileName: "board.dts", bytes: Buffer.from(sourceText) });
   const fileId = uploaded.file.id;
   await addConfigSetFile(db, auth, { configSetId, fileId, role: "base", sortOrder: 0 });
+  const members: ConfigRevisionManifestMember[] = [{ fileId, fileVersionId: uploaded.version.id,
+    fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: sourceText }];
+  const includeFileIds = new Map<string, string>();
+  for (const [index, include] of (options.includes ?? []).entries()) {
+    const member = await uploadProjectParameterFile(db, storage, auth, { projectId, fileName: include.fileName, bytes: Buffer.from(include.content) });
+    await addConfigSetFile(db, auth, { configSetId, fileId: member.file.id, role: "misc", sortOrder: index + 1 });
+    members.push({ fileId: member.file.id, fileVersionId: member.version.id, fileName: include.fileName,
+      sourceName: include.fileName, role: "include", sortOrder: index + 1, content: include.content });
+    includeFileIds.set(include.fileName, member.file.id);
+  }
   const revision = await ingestConfigRevision(db, { organizationId, projectId, configSetId, entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
-    members: [{ fileId, fileVersionId: uploaded.version.id, fileName: "board.dts", sourceName: "board.dts", role: "base", sortOrder: 0, content: sourceAdminText }] }, auth);
+    members }, auth);
   const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
   if (!snapshot) throw new Error("Missing source administration catalog");
   await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), snapshot, { organizationId, projectId, configSetId, configRevisionId: revision.id }));
@@ -63,6 +76,6 @@ export async function createSourceAdminFixture(label: string, invocationForAuth:
       expectedProofToken: preview.proofToken, reason: "Exercise exact source restoration", clientMutationId: `${key}-apply` };
     return { preview, input, apply: () => applySourceRevisionCandidate(api, storage, auth, input, security, { toolchain: sourceAdminToolchain }) };
   }
-  return { db, api, storage, auth, security, organizationId, projectId, configSetId, fileId, stage,
+  return { db, api, storage, auth, security, organizationId, projectId, configSetId, fileId, includeFileIds, stage,
     close: async () => { await api.close(); await dropLabRuntimeLogins(lane.url, token); await db.close(); await lane.drop(); await rm(directory, { recursive: true, force: true }); } };
 }

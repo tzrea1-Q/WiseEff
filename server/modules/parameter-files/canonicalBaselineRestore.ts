@@ -31,6 +31,7 @@ import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/
 import type { MemberAdditionPreview } from "./canonicalMemberAddition";
 import { rethrowSourceTransactionError } from "./sourceVersion";
 import type { ParsedIndex } from "./types";
+import { filterPreviouslySuspendedSourceBindings, findSourceSuspension } from "./sourceManagedScope";
 
 export type BaselineSourceSnapshot = { configRevisionId: string; sourcePinCount: number };
 type Member = { fileId: string; fileVersionId: string; sourceName: string; format: "dts" | "json";
@@ -82,7 +83,9 @@ export async function captureBaselineSourceSnapshot(tx: Queryable, auth: AuthCon
   if (!members.length || members.length !== count || members.some((row) => row.currentVersionId !== row.fileVersionId
     || row.currentConfigSetId !== configSetId || row.currentRole !== (row.role === "include" ? "misc" : row.role)
     || row.currentOrder !== row.sortOrder || !row.sourceName)) conflict("当前文件与完整来源修订不一致，请先在配置编辑器重新构建后保存快照。");
-  const cohort = await loadConfigurationRestoreCohort(tx,{ organizationId: parameterOrganizationId(auth),projectId,configSetId,snapshotRevisionId: revision.id });
+  const scope = { organizationId: parameterOrganizationId(auth), projectId, configSetId };
+  const cohort = await filterPreviouslySuspendedSourceBindings(tx, { ...scope, baseConfigRevisionId: revision.id },
+    await loadConfigurationRestoreCohort(tx,{ ...scope,snapshotRevisionId: revision.id }));
   if (cohort.some((row) => !row.active || !row.snapshotValueId || row.snapshotValueId !== row.oldValueId)) conflict("当前参数与完整来源修订不一致，请先完成来源同步后保存快照。");
   return { configRevisionId: revision.id,sourcePinCount: cohort.length };
 }
@@ -242,8 +245,31 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   const cohort = await loadConfigurationRestoreCohort(tx,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId,snapshotRevisionId: targetRevision.id });
   const expectedPinCount = baseline.source_snapshot?.sourcePinCount ?? targetRevision.source_pin_count!;
   if (cohort.filter((row) => row.snapshotValueId !== null).length !== expectedPinCount) conflict("快照参数定义或来源记录已被删除/替换，无法完整恢复；不会复活已彻底删除的定义。");
+  // Restoring source bytes does not reactivate parameters already suspended by
+  // an approved whole-source edit. Their exact historical pins remain available;
+  // the next whole-source reconciliation owns any return to managed values.
+  const managedCohort = await filterPreviouslySuspendedSourceBindings(tx,
+    { organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId, baseConfigRevisionId: current.id }, cohort);
+  const managedIds = new Set(managedCohort.map(row => row.bindingId));
+  const suspendedBindings = [];
+  for (const row of cohort.filter(row => !managedIds.has(row.bindingId))) {
+    const pin = await loadOwnedProjectValueSourcePin(tx, { organizationId: parameterOrganizationId(auth),
+      projectId: input.projectId, bindingId: row.bindingId, projectValueId: row.oldValueId });
+    if (!pin) conflict("暂停参数的历史来源已变化，整次恢复未执行。");
+    const priorRequestId = await findSourceSuspension(tx, { organizationId: parameterOrganizationId(auth),
+      projectId: input.projectId, configSetId, baseConfigRevisionId: current.id }, {
+      bindingId: row.bindingId, oldValueId: row.oldValueId, sourcePinId: pin.sourcePinId,
+      sourceOccurrenceId: row.sourceOccurrenceId, definitionId: row.definitionId, effectiveRevisionId: row.effectiveRevisionId,
+      catalogReleaseId: row.catalogReleaseId, valueDigest: row.valueDigest, registrationId: row.registrationId,
+      subjectId: row.subjectId, configRevisionId: pin.configRevisionId, fileId: pin.fileId,
+      fileVersionId: pin.fileVersionId, format: pin.format
+    });
+    if (!priorRequestId) conflict("暂停参数的审批凭据已变化，整次恢复未执行。");
+    suspendedBindings.push({ bindingId: row.bindingId, oldValueId: row.oldValueId, sourcePinId: pin.sourcePinId,
+      priorRequestId, snapshotValueId: row.snapshotValueId });
+  }
   const planned = [];
-  for (const row of cohort) {
+  for (const row of managedCohort) {
     const sourceValueId = row.snapshotValueId ?? row.oldValueId;
     const pin = await loadOwnedProjectValueSourcePin(tx,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,bindingId: row.bindingId,projectValueId: sourceValueId });
     const old = await readOwnedProjectValueIdentity(tx,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,bindingId: row.bindingId,projectValueId: row.oldValueId });
@@ -290,7 +316,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
     restoredBindings: planned.filter((row) => !row.active).length,sourceReplacements: planned.filter((row) => row.fileId !== row.sourceFileId).length };
   const facts = { kind: "configuration_restore" as const,organizationId: parameterOrganizationId(auth),projectId: input.projectId,baselineId: input.baselineId,
     candidateId: null,configSetId,baseConfigRevisionId: current.id,snapshotConfigRevisionId: targetRevision.id,
-    baseDigest: sourceRevisionDigest(currentMembers),proposedDigest: sourceRevisionDigest(members),members,cohort: planned,continuity,
+    baseDigest: sourceRevisionDigest(currentMembers),proposedDigest: sourceRevisionDigest(members),members,cohort: planned,suspendedBindings,continuity,
     ...(sharedComposition.length || beforeReferences.length ? { sharedComposition,sharedSwitch: { beforeReferences,beforeSources,
       beforeFiles: [...beforeSources,...sharedMembers.map((member) => ({ fileId: member.fileId,fileVersionId: member.currentVersionId }))] } } : {}),
     entryFile,includeSearchPaths,overlayOrder,declaredBuildInputs, ...(resolved?.preprocessing ? { preprocessing: resolved.preprocessing.receipt } : {}), catalogRelease: snapshot ? { id: snapshot.release.id,digest: snapshot.release.digest } : null,

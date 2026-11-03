@@ -11,7 +11,7 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { createLocalObjectStore } from "../logs/objectStore";
-import { loadPublishedCatalog, loadRetiredOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
+import { listCatalogBindingRowsForProject, loadPublishedCatalog, loadRetiredOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
 import { loadOwnedProjectValueSourcePin, loadSourceBindingCohortReadOnly, readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { createConfigSet, addConfigSetFile } from "./configSetService";
@@ -97,9 +97,10 @@ describe("retired JSON source continuity in whole DTS revisions", { timeout: 120
 
   async function apply(text: string, key: string) {
     const file = (await api.query<{ current_version_id: string }>("select current_version_id from public.project_parameter_files where id=$1", [dtsFileId])).rows[0]!;
-    const { pin } = await current();
+    const revision = (await api.query<{ id: string }>(
+      "select id from public.dts_config_revisions where config_set_id=$1 order by revision_number desc limit 1", [configSetId])).rows[0]!;
     const candidate = await createCandidate(api, storage, auth, { projectId: PROJECT, fileId: dtsFileId, fileName: "board.dts", bytes: Buffer.from(text),
-      intent: "source_revision", expectedCurrentVersionId: file.current_version_id, expectedConfigRevisionId: pin.configRevisionId, clientMutationId: key });
+      intent: "source_revision", expectedCurrentVersionId: file.current_version_id, expectedConfigRevisionId: revision.id, clientMutationId: key });
     const preview = await previewSourceRevisionCandidate(api, storage, auth, { projectId: PROJECT, candidateId: candidate.id }, { toolchain: sourceAdminToolchain });
     expect(preview).toMatchObject({ canSubmit: true, impact: { parameterChanges: 0 } });
     const input = { projectId: PROJECT, candidateId: candidate.id, expectedCurrentVersionId: file.current_version_id,
@@ -129,16 +130,13 @@ describe("retired JSON source continuity in whole DTS revisions", { timeout: 120
     expect(afterFirst.binding.registrationId).toBe(original.binding.registrationId);
     expect(afterFirst.pin.fileVersionId).toBe(jsonVersionId);
     expect(afterFirst.pin.locator).toEqual(original.pin.locator);
-    expect(afterFirst.pin.configRevisionId).not.toBe(original.pin.configRevisionId);
+    expect(afterFirst).toEqual(original);
     await apply(DTS + "/* second DTS-only edit */\n", "retired-json-second");
     const afterSecond = await current();
-    expect(afterSecond.pin.configRevisionId).not.toBe(afterFirst.pin.configRevisionId);
+    expect(afterSecond).toEqual(original);
     expect(afterSecond.pin.fileVersionId).toBe(jsonVersionId);
     expect(afterSecond.pin.locator).toEqual(original.pin.locator);
-    for (const pinId of [afterFirst.pin.sourcePinId, afterSecond.pin.sourcePinId]) {
-      expect((await db.query<{ allowed: boolean }>(
-        "select parameter_catalog.retired_json_source_revision_matches($1) as allowed", [pinId])).rows[0]?.allowed).toBe(true);
-    }
+    expect(new Set([original.binding.currentValueId, afterFirst.binding.currentValueId, afterSecond.binding.currentValueId]).size).toBe(1);
     const values = await Promise.all([original.binding.currentValueId, afterFirst.binding.currentValueId, afterSecond.binding.currentValueId]
       .map(projectValueId => readOwnedProjectValueIdentity(api, { ...scope, bindingId, projectValueId })));
     expect(values).toHaveLength(3);
@@ -152,5 +150,33 @@ describe("retired JSON source continuity in whole DTS revisions", { timeout: 120
       .toEqual([{ current_version_id: jsonVersionId }]);
     expect((await api.query("select status from public.project_parameter_value_change_requests where id=$1", [first.requestId])).rows)
       .toEqual([{ status: "approved" }]);
+    for (const limit of [undefined, 20]) {
+      expect(await listCatalogBindingRowsForProject(api, auth, { projectId: PROJECT, limit })).toHaveLength(0);
+    }
+    expect((await api.query<{ applied_source_result: { results: unknown[] } }>(
+      "select applied_source_result from public.project_parameter_value_change_requests where id=$1", [first.requestId])).rows[0]?.applied_source_result.results).toEqual([]);
+  });
+
+  it("keeps restored JSON historical until an audited source revision revalidates its exact unchanged bytes", async () => {
+    const original = await current();
+    await setSourceRevisionRegistrationStatus(db, { organizationId: ORG, registrationId: original.binding.registrationId, status: "active" });
+    expect(await listCatalogBindingRowsForProject(api, auth, { projectId: PROJECT })).toHaveLength(0);
+    expect(await current()).toEqual(original);
+    const resumed = await apply(DTS + "/* reconcile restored JSON */\n", "restored-json-current");
+    const after = await current();
+    expect(after.binding.id).toBe(original.binding.id);
+    expect(after.binding.sourceOccurrenceId).toBe(original.binding.sourceOccurrenceId);
+    expect(after.binding.currentValueId).not.toBe(original.binding.currentValueId);
+    expect(after.pin.configRevisionId).not.toBe(original.pin.configRevisionId);
+    expect(after.pin.fileVersionId).toBe(original.pin.fileVersionId);
+    expect(after.pin.locator).toEqual(original.pin.locator);
+    expect(await loadOwnedProjectValueSourcePin(api, { ...scope, bindingId, projectValueId: original.binding.currentValueId })).toEqual(original.pin);
+    const oldValue = await readOwnedProjectValueIdentity(api, { ...scope, bindingId, projectValueId: original.binding.currentValueId });
+    const newValue = await readOwnedProjectValueIdentity(api, { ...scope, bindingId, projectValueId: after.binding.currentValueId });
+    expect(newValue?.value.payload).toEqual(oldValue?.value.payload);
+    expect(await listCatalogBindingRowsForProject(api, auth, { projectId: PROJECT })).toMatchObject([{ id: bindingId }]);
+    expect((await api.query<{ applied_source_result: { results: unknown[] } }>(
+      "select applied_source_result from public.project_parameter_value_change_requests where id=$1", [resumed.requestId])).rows[0]?.applied_source_result.results)
+      .toContainEqual(expect.objectContaining({ bindingId, kind: "derived" }));
   });
 });

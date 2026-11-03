@@ -3,7 +3,7 @@ import { collectConsistencyMeasurements } from "./consistency-collector";
 import { installConsistencyReadGuard } from "./consistency";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import { expectUsablePage, prepareInteractionSurface, settleQualityRoute } from "./helpers";
+import { expectUsablePage, prepareInteractionSurface, settleQualityRoute, waitForFontsAndNextPaint } from "./helpers";
 import { requireReviewInboxStructure } from "./consistency-assertions";
 
 test("measures only the active governance task and keeps historical counts and empty states", async ({ page }) => {
@@ -223,6 +223,49 @@ for (const [path, queue, width] of [["/parameter-review", "审阅队列", 1280],
     expect(reads).toBeGreaterThan(0);
     requireReviewInboxStructure(await page.evaluate(collectConsistencyMeasurements), path);
     await page.screenshot({ path: testInfo.outputPath(`review-inbox-ready-${width}-dark.png`), animations: "disabled" });
+  });
+}
+
+for (const path of ["/parameter-admin", "/parameter-admin/specs", "/parameter-admin/identity-mapping", "/parameter-admin/specs/identity-mapping"]) {
+  test(`settles ${path} after catalog definitions even when mapping counts are already ready`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    let release!: () => void, received!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const arrived = new Promise<void>(resolve => { received = resolve; });
+    await page.route(url => url.pathname === "/api/v2/catalog/definitions", async route => {
+      const response = await route.fetch();
+      expect(response.status()).toBe(200);
+      received();
+      await held;
+      await route.fulfill({ response });
+    });
+    let settling: Promise<void> | undefined;
+    let settled = false;
+    try {
+      await test.step("quality:navigation", () => page.goto(path));
+      await expectUsablePage(page);
+      await prepareInteractionSurface(page);
+      await arrived;
+      await expect(page.getByTestId("organization-specs-readiness")).toHaveAttribute("data-state", "ready");
+      const catalog = page.getByRole("region", { name: "参数定义目录", exact: true });
+      await expect(catalog).toHaveAttribute("data-catalog-state", "loading");
+      const before = await page.evaluate(collectConsistencyMeasurements);
+      expect(before.navigatorWorkbenches).toHaveLength(1);
+      expect(before.navigatorWorkbenches[0].firstRow).toBeNull();
+      settling = settleQualityRoute(page, path, { readOnly: true }).then(() => { settled = true; });
+      await waitForFontsAndNextPaint(page);
+      expect(settled, "mapping counts cannot settle a still-loading catalog").toBe(false);
+      release();
+      await settling;
+      await expect(catalog).toHaveAttribute("data-catalog-state", "ready");
+      const after = await page.evaluate(collectConsistencyMeasurements);
+      expect(after.navigatorWorkbenches[0].firstRow).not.toBeNull();
+      expect(after.navigatorWorkbenches[0].firstRowClip).not.toBeNull();
+      expect(after.visibleTableCount).toBeGreaterThan(0);
+    } finally {
+      release();
+      await settling;
+    }
   });
 }
 

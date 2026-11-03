@@ -19,8 +19,9 @@ import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import { loadCanonicalSourceCohort, loadCanonicalSourceSnapshot, requireCanonicalUserInvocation, recordCanonicalPermissionRefusal } from "./canonicalSource";
 import { normalizeManifestLogicalPath, normalizePersistedManifest } from "../parameter-topology/configRevisionManifest";
 import type { ConfigRevisionManifestMember } from "../parameter-topology/types";
-import { discoverCurrentSourceRevisionPins, loadSourceValueReplay } from "../parameter-bindings/values";
+import { discoverCurrentSourceRevisionPins, loadSourceValueReplay, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { loadExactSourceRevisionForProof, lockExactSourceRevisionsForProof, rethrowSourceTransactionError } from "./sourceVersion";
+import { filterPreviouslySuspendedSourceBindings } from "./sourceManagedScope";
 
 export async function registerCanonicalJsonSource(
   db: Queryable,
@@ -66,11 +67,22 @@ export async function registerCanonicalJsonSource(
     from project_parameter_files file left join project_parameter_file_versions version on version.id=file.current_version_id and version.file_id=file.id
     where file.config_set_id=$1 and file.organization_id=$2 and file.project_id=$3 order by file.id`, [input.configSetId,parameterOrganizationId(auth),input.projectId]);
   if (members.rows.some((member) => !member.fileVersionId || !member.storageKey || !["dts", "json"].includes(member.format))) throw new ApiError("CONFLICT", "Configuration membership is incomplete or unsupported.");
-  const sourcePins = await discoverCurrentSourceRevisionPins(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId: input.configSetId });
+  const sourceScope = { organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId: input.configSetId };
+  const sourcePins = await discoverCurrentSourceRevisionPins(db,sourceScope);
   await lockExactSourceRevisionsForProof(db,sourcePins);
+  const latest = (await db.query<{ id: string }>(`select id from public.dts_config_revisions
+    where organization_id=$1 and project_id=$2 and config_set_id=$3
+      and status in ('resolved','validated','compiled','pending_approval') order by revision_number desc limit 1`,
+  [sourceScope.organizationId, sourceScope.projectId, sourceScope.configSetId])).rows[0];
+  const retained = await loadSourceBindingCohortReadOnly(db, sourceScope);
+  const included = latest ? await filterPreviouslySuspendedSourceBindings(db, { ...sourceScope, baseConfigRevisionId: latest.id }, retained) : retained;
+  const includedPins = await Promise.all(included.map(entry => loadOwnedProjectValueSourcePin(db, {
+    ...sourceScope, bindingId: entry.bindingId, projectValueId: entry.oldValueId,
+  })));
+  if (includedPins.some(pin => !pin)) throw new ApiError("CONFLICT", "Existing source cohort has an unpinned Binding.");
   let revisionId: string | undefined;
-  if (new Set(sourcePins.map((pin) => pin.configRevisionId)).size > 1) throw new ApiError("CONFLICT", "Existing source cohort is not on one exact current member revision.");
-  revisionId = sourcePins[0]?.configRevisionId;
+  if (new Set(includedPins.map((pin) => pin!.configRevisionId)).size > 1) throw new ApiError("CONFLICT", "Existing source cohort is not on one exact current member revision.");
+  revisionId = includedPins[0]?.configRevisionId;
   const file = members.rows.find((member) => member.fileId === input.fileId && member.fileVersionId === input.fileVersionId);
   if (!file || file.format !== "json") throw new ApiError("CONFLICT", "The selected JSON source version is stale or foreign.");
   if (!revisionId && members.rows.some((member) => member.format === "dts")) {
@@ -98,7 +110,7 @@ export async function registerCanonicalJsonSource(
   }
   await lockExactSourceRevisionsForProof(db,members.rows.map((member) => ({ ...member,organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,configSetId: input.configSetId,configRevisionId: revisionId })));
-  const cohort = await loadCanonicalSourceCohort(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId: input.configSetId });
+  const cohort = await loadCanonicalSourceCohort(db,{ ...sourceScope,baseConfigRevisionId: revisionId });
   if (cohort.length) {
     const existing = cohort[0]!;
     const source = await loadCanonicalSourceSnapshot(db,storage,{

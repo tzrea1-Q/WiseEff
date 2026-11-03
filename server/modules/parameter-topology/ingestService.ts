@@ -44,6 +44,7 @@ import {
 import { isStructuralPropertyKey } from "./parameterSurface";
 import { ApiError } from "../../shared/http/errors";
 import type { Database, Queryable } from "../../shared/database/client";
+import { loadDeletedSourceAnchors, loadRetainedSourceAnchors } from "../parameter-bindings/values";
 import {
   applyReviewedContinuityToSnapshots,
   listReviewedContinuityDecisions,
@@ -90,7 +91,9 @@ export type ConfigRevisionIngestOptions = {
 export type ReviewedSourceContinuity = {
   baseConfigRevisionId: string;
   restorationBaseConfigRevisionId?: string;
-  restorationNodes?: Array<{ baseConfigRevisionId: string; nodeLocator: string; logicalNodeId: string }>;
+  restorationNodes?: Array<{ baseConfigRevisionId: string; nodeLocator: string; logicalNodeId: string;
+    /** Exact unowned source identity; ancestors and managed identities remain protected. */
+    replacedUnmanagedLogicalNodeId?: string }>;
   nodes: Array<Omit<PersistedLogicalNodeRevision, "id"> & { isNew: boolean }>;
 };
 
@@ -394,6 +397,7 @@ async function buildLogicalRevisionsWithContinuity(
   }
   // Exact deleted anchors can come from different revisions. Import only each
   // anchor and its parents, never unrelated historical identities at reused paths.
+  let restorationOwnerIds: Set<string | null> | undefined;
   for (const anchor of input.reviewedSource?.restorationNodes ?? input.restorationNodes ?? []) {
     const owned = (await tx.query(`select id from dts_config_revisions where id=$1 and organization_id=$2 and project_id=$3 and config_set_id=$4`,
       [anchor.baseConfigRevisionId,input.organizationId,input.projectId,input.configSetId])).rows[0];
@@ -408,7 +412,37 @@ async function buildLogicalRevisionsWithContinuity(
       const row = historical.find((node) => node.nodeLocator === locator);
       if (!row) throw new ApiError("CONFLICT", "已删除参数的历史父节点不可用。");
       const existing = previousRows.find((node) => node.nodeLocator === locator);
-      if (existing && existing.logicalNodeId !== row.logicalNodeId) throw new ApiError("CONFLICT", "当前节点与已删除参数的历史身份不一致，无法安全恢复。");
+      if (anchor.replacedUnmanagedLogicalNodeId) {
+        const candidate = input.effectiveNodes.get(locator);
+        const compatible = candidate?.properties.get("compatible");
+        const candidateCompatible = compatible && !compatible.deleted ? compatible.normalizedValue || compatible.rawText : undefined;
+        if (!candidate || candidate.deleted || candidate.name !== row.name || candidate.unitAddress !== row.unitAddress
+          || candidateCompatible !== row.compatible || extractReg(candidate) !== row.reg) {
+          throw new ApiError("CONFLICT", "待恢复节点与历史身份元组不一致。");
+        }
+      }
+      if (locator === anchor.nodeLocator && anchor.replacedUnmanagedLogicalNodeId
+        && (existing?.logicalNodeId !== anchor.replacedUnmanagedLogicalNodeId || existing.logicalNodeId === row.logicalNodeId)) {
+        throw new ApiError("CONFLICT", "待恢复节点的未管理身份已变化。");
+      }
+      if (existing && existing.logicalNodeId !== row.logicalNodeId) {
+        if (locator !== anchor.nodeLocator || existing.logicalNodeId !== anchor.replacedUnmanagedLogicalNodeId) {
+          throw new ApiError("CONFLICT", "当前节点与已删除参数的历史身份不一致，无法安全恢复。");
+        }
+        // Recheck both present and terminal owners in preview and commit. A
+        // marker never authorizes replacing another Binding or its ancestor.
+        if (!restorationOwnerIds) {
+          const scope = { organizationId: input.organizationId, projectId: input.projectId, configSetId: input.configSetId };
+          const owners = [...await loadRetainedSourceAnchors(tx, scope), ...await loadDeletedSourceAnchors(tx, scope)];
+          restorationOwnerIds = new Set(owners.map(owner => owner.logicalNodeId));
+        }
+        const descendantPrefix = locator === "/" ? "/" : `${locator}/`;
+        if (previousRows.some(node => (node.nodeLocator === locator || node.nodeLocator.startsWith(descendantPrefix))
+          && restorationOwnerIds!.has(node.logicalNodeId))) {
+          throw new ApiError("CONFLICT", "待恢复节点已有参数身份占用，不能覆盖。");
+        }
+        previousRows.splice(previousRows.indexOf(existing), 1, row);
+      }
       if (!existing) previousRows.push(row);
       locator = parentLocator(locator);
     }
