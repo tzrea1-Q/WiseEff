@@ -29,7 +29,7 @@ import type { ReviewQueueItem } from "../../parameter-governance/review/types";
 import type { ReviewResolutionResult } from "../../parameter-governance/resolveReviewItem/result";
 import type { ProposalResult } from "../../parameter-governance/proposals/result";
 import { makeTestAuthContext } from "../../../testing/authContext";
-import { createUserInvocation } from "../../auth/trustedInvocation";
+import { createAgentInvocation, createUserInvocation } from "../../auth/trustedInvocation";
 
 import { handleCatalogGovernance, matchCatalogGovernanceRoute } from "./handlers";
 import { catalogGovernanceCommandByRouteId, catalogGovernanceRoutes } from "./mapping";
@@ -245,6 +245,26 @@ const writeHeaders = {
 };
 
 describe("S8-GOV one-command HTTP mapping", () => {
+  it("requires both permissions and a trusted human for structure export, ignoring spoofed headers", async () => {
+    const principal = makeTestAuthContext({ organizationId: orgAdmin.organizationId, userId: orgAdmin.principalId });
+    const human = createUserInvocation(principal);
+    const agentInvocation = createAgentInvocation(principal, { sessionId: "session", toolCallId: "call", approval: { required: false } });
+    const allowed = { ...orgAdmin, canReadOrganizationSettings: true, trustedActor: human };
+    const path = `/api/v2/organizations/${orgAdmin.organizationId}/module-structure/exports`;
+    for (const scope of [{ ...allowed, canReadOrganizationSettings: false }, { ...allowed, canReadGovernance: false },
+      { ...allowed, trustedActor: agentInvocation }, { ...allowed, organizationId: "foreign" }]) {
+      const { ports } = createHarness({ scope });
+      expect((await handleCatalogGovernance({ ...ports, exportModuleStructure: async () => ({}) }, request("POST", path))).status).toBe(403);
+    }
+    const { ports, seenHeaders } = createHarness({ scope: allowed });
+    expect((await handleCatalogGovernance({ ...ports, exportModuleStructure: async () => ({}) },
+      request("POST", path, { body: { organizationId: "foreign" } }))).status).toBe(400);
+    const result = await handleCatalogGovernance({ ...ports, exportModuleStructure: async () => ({ ok: true }) },
+      request("POST", path, { headers: { "x-wiseeff-organization": "forged", "x-wiseeff-actor-kind": "agent" } }));
+    expect(result.status).toBe(200);
+    expect(seenHeaders.at(-1)).not.toHaveProperty("x-wiseeff-organization");
+    expect(seenHeaders.at(-1)).not.toHaveProperty("x-wiseeff-actor-kind");
+  });
   it("creates an initially retired organization registration without resolving a module", async () => {
     const { ports, commands } = createHarness();
     const response = await handleCatalogGovernance({ ...ports, resolveDestinationModuleId: async () => {

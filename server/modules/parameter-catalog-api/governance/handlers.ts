@@ -63,6 +63,8 @@ import {
   catalogGovernanceWriteRouteIds,
   catalogRecognitionCommandByRouteId,
   catalogRecognitionRoutes,
+  catalogModuleStructureCommandByRouteId,
+  catalogModuleStructureRoutes,
   type CatalogGovernanceCommandName,
 } from "./mapping";
 import {
@@ -130,7 +132,7 @@ const writeRoutes = new Set<string>([
 ]);
 const reviewReasonSet = new Set<string>(reviewReasons);
 
-const allGovernanceRoutes = [...catalogGovernanceRoutes, ...catalogDefinitionReplacementRoutes, ...catalogBatchRegistrationRoutes, ...catalogRecognitionRoutes];
+const allGovernanceRoutes = [...catalogGovernanceRoutes, ...catalogDefinitionReplacementRoutes, ...catalogBatchRegistrationRoutes, ...catalogRecognitionRoutes, ...catalogModuleStructureRoutes];
 
 const catalogGovernanceRouteTable = allGovernanceRoutes
   .map((route) => {
@@ -185,6 +187,7 @@ export function matchCatalogGovernanceRoute(
 }
 
 function asCommandName(id: CatalogGovernanceRouteId): CatalogGovernanceCommandName {
+  if (id in catalogModuleStructureCommandByRouteId) return catalogModuleStructureCommandByRouteId[id as keyof typeof catalogModuleStructureCommandByRouteId];
   if (id in catalogRecognitionCommandByRouteId) return catalogRecognitionCommandByRouteId[id as keyof typeof catalogRecognitionCommandByRouteId];
   if (id in catalogBatchRegistrationCommandByRouteId) {
     return catalogBatchRegistrationCommandByRouteId[id as keyof typeof catalogBatchRegistrationCommandByRouteId];
@@ -1611,6 +1614,31 @@ export async function handleCatalogGovernance(
   void asCommandName(matched.id);
   try {
   switch (matched.id) {
+    case "catalog.applyModuleStructure": {
+      const denied = authorizeOrganizationWrite(auth.scope, scopedRequest);
+      if (denied) return denied;
+      if (!auth.scope.canReadGovernance || !auth.scope.canReadOrganizationSettings || auth.scope.trustedActor?.initiator !== "user") return forbidden(request.requestId);
+      if (!ports.applyModuleStructure) return catalogNotReady(request.requestId);
+      return { status: 200, body: await ports.applyModuleStructure(scopedRequest.params.organizationId!, auth.scope.trustedActor, request.requestId, request.body),
+        headers: { "X-Request-Id": request.requestId } };
+    }
+    case "catalog.previewModuleStructure": {
+      const denied = authorizeOrganizationWrite(auth.scope, scopedRequest);
+      if (denied) return denied;
+      if (!auth.scope.canReadGovernance || !auth.scope.canReadOrganizationSettings || auth.scope.trustedActor?.initiator !== "user") return forbidden(request.requestId);
+      if (!ports.previewModuleStructure) return catalogNotReady(request.requestId);
+      return { status: 200, body: await ports.previewModuleStructure(scopedRequest.params.organizationId!, auth.scope.trustedActor, request.body),
+        headers: { "X-Request-Id": request.requestId } };
+    }
+    case "catalog.exportModuleStructure": {
+      const denied = authorizeOrganizationWrite(auth.scope, scopedRequest);
+      if (denied) return denied;
+      if (!auth.scope.canReadGovernance || !auth.scope.canReadOrganizationSettings || auth.scope.trustedActor?.initiator !== "user") return forbidden(request.requestId);
+      if (request.body !== undefined && (request.body === null || typeof request.body !== "object" || Array.isArray(request.body) || Object.keys(request.body).length !== 0)) return validationFailed(request.requestId, "body");
+      if (!ports.exportModuleStructure) return catalogNotReady(request.requestId);
+      return { status: 200, body: await ports.exportModuleStructure(scopedRequest.params.organizationId!, auth.scope.trustedActor, request.requestId),
+        headers: { "X-Request-Id": request.requestId } };
+    }
     case "catalog.getRegistrationRecognition":
     case "catalog.updateRegistrationRecognition": {
       const denied = matched.id === "catalog.updateRegistrationRecognition"

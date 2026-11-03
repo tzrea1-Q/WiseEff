@@ -8,6 +8,8 @@
 
 [#1479](https://github.com/tzrea1-Q/WiseEff/issues/1479) 已确认。实施方案见[模块主体结构](../../exec-plans/completed/2026-11-02-issue-1479-module-subject-structure.md)，分 S1–S5 交付。本 ADR 修订 [ADR-0042](adr-0042-organizations-register-canonical-subjects-once.md)；ADR-0040 的身份、发布与同步器规则不变。
 
+[ADR-0054](adr-0054-module-structure-transfer-is-explicit-organization-governance.md) 补充已接受的组织结构传输与停用登记归属编辑设计，实施待开始；本 ADR 的 Catalog 所有权和子节点生命周期不变量继续生效。
+
 ## 背景
 
 ADR-0042 让主体登记放入与主体类型对应的模块（`driver-group`、`node-type`，配置规范放 `business`），数据库还限制一个模块只能放一条归属。用户因此要在业务分类下再建一个同名技术模块，“调整归属”看不到业务分类，模块树位置看起来像驱动与子节点的结构关系，实际却不是。Catalog 导入还丢弃了驱动 schema 的 `childNodes`，节点类型按名称全局唯一，另一驱动下同名子节点可能匹配到错误主体。

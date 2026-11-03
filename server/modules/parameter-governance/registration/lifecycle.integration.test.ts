@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { createWiseEffServer } from "../../../app";
+import { requestJson } from "../../../test/testClient";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,7 +29,8 @@ import { assertCatalogSubjectActive } from "./guardAdapter";
 import { createSourceBackedBindingService } from "../../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import { aggregateBindingDashboardHotspots } from "../../parameter-bindings/dashboardRead";
 import { readRegistry } from "../../parameter-modules/repository";
-import { createPostgresDatabase } from "../../../shared/database/client";
+import { createDatabase, createPostgresDatabase } from "../../../shared/database/client";
+import { createParameterModuleForAuth, deleteParameterModuleForAuth, moveParameterModuleForAuth, updateParameterModuleForAuth } from "../../parameters/service";
 import type { Queryable } from "../../../shared/database/client";
 import { lockOrganizationModuleRecognition } from "../../parameter-modules/recognitionLock";
 import { lockSourceCatalogGovernance } from "../../parameter-bindings/catalogProjectValueSync";
@@ -36,6 +39,7 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
   let database: EphemeralTestDatabase;
   let admin: pg.Pool;
   let api: pg.Pool;
+  let apiDatabase: ReturnType<typeof createPostgresDatabase>;
   let pin: CatalogReleasePin;
   let token: string;
   let organizationId: string;
@@ -147,6 +151,7 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     token = `reglife${randomUUID().replaceAll("-", "").slice(0, 12)}`;
     const runtime = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken: token });
     api = new pg.Pool({ connectionString: runtime.apiUrl, max: 4 });
+    apiDatabase = createPostgresDatabase(runtime.apiUrl);
     expect((await api.query("select session_user, current_user, rolsuper, rolinherit from pg_roles where rolname = current_user")).rows[0])
       .toEqual({ session_user: runtime.apiRole, current_user: runtime.apiRole, rolsuper: false, rolinherit: false });
   }, 120_000);
@@ -166,6 +171,53 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     registration = result.value;
   });
 
+  it("transfers a driver lifecycle with its owned child and preserves the child identity", async () => {
+    const userId = `transfer-admin-${randomUUID()}`;
+    await admin.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await admin.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [randomUUID(), userId, organizationId]);
+    const app = createWiseEffServer({ db: apiDatabase, auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ userId, organizationId, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const base = `/api/v2/organizations/${organizationId}/module-structure`;
+    let exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
+    const doc = exported.body as { subjects: Array<{ subjectId: string; operation?: string; state?: "active" | "retired" }>; [key: string]: unknown };
+    doc.subjects.push({ subjectId: targetSubject, operation: "register", placement: { kind: "module", moduleRef: moduleId } } as never);
+    const run = async (document: unknown, key: string) => {
+      const preview = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+      expect(preview.status, preview.bodyText).toBe(200);
+      const result = await requestJson(app, `${base}/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: key, reason: "Reviewed" }) });
+      expect(result.status, result.bodyText).toBe(200);
+    };
+    await run(doc, "child-register");
+    const child = (await admin.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, ownedNodeSubject])).rows[0]!.id;
+    exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
+    const childEdit = structuredClone(exported.body) as typeof doc;
+    childEdit.subjects.find(subject => subject.subjectId === ownedNodeSubject)!.state = "retired";
+    const childPreview = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document: childEdit, resolutions: {} }) });
+    expect(childPreview.status).toBe(409);
+    expect(childPreview.bodyText).toContain("owned by a driver");
+    const staleEdit = structuredClone(exported.body) as typeof doc;
+    staleEdit.subjects.find(subject => subject.subjectId === targetSubject)!.state = "retired";
+    const stalePreview = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document: staleEdit, resolutions: {} }) });
+    expect(stalePreview.status, stalePreview.bodyText).toBe(200);
+    await admin.query("update parameter_catalog.organization_subject_registrations set updated_at=updated_at + interval '1 second' where id=$1", [child]);
+    const stale = await requestJson(app, `${base}/applies`, { method: "POST", body: JSON.stringify({ document: staleEdit, resolutions: {}, token: (stalePreview.body as { token: string }).token, idempotencyKey: "stale-child", reason: "Reviewed" }) });
+    expect(stale.status).toBe(409);
+    for (const operation of ["retire", "restore"] as const) {
+      exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
+      const document = exported.body as typeof doc;
+      document.subjects.find(subject => subject.subjectId === targetSubject)!.state = operation === "retire" ? "retired" : "active";
+      await run(document, `child-${operation}`);
+      expect((await admin.query("select id,status,cascade_retired from parameter_catalog.organization_subject_registrations where id=$1", [child])).rows).toEqual([{ id: child, status: operation === "retire" ? "retired" : "active", cascade_retired: operation === "retire" }]);
+    }
+    await admin.query("update parameter_catalog.organization_subject_registrations set status='retired',cascade_retired=false where id=$1", [child]);
+    for (const operation of ["retire", "restore"] as const) {
+      exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
+      const document = exported.body as typeof doc;
+      document.subjects.find(subject => subject.subjectId === targetSubject)!.state = operation === "retire" ? "retired" : "active";
+      await run(document, `historical-${operation}`);
+    }
+    expect((await admin.query("select status,cascade_retired from parameter_catalog.organization_subject_registrations where id=$1", [child])).rows).toEqual([{ status: "retired", cascade_retired: false }]);
+  });
+
   it("reads effective modules for every registration in the requested organization", async () => {
     const shared = await registerTarget(targetSubject, moduleId);
     const unset = await registerTarget(thirdSubject);
@@ -180,6 +232,141 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     ]));
     expect(rows.rows).toHaveLength(4);
     expect((await api.query("select * from parameter_catalog.registration_effective_module where organization_id = $1", ["other-org"])).rows).toEqual([]);
+  });
+
+  it("rechecks an apparent no-op move after a competing move commits", async () => {
+    const parent = await createModule("Parent");
+    const child = await createModule("Child");
+    const userId = `module-admin-${randomUUID()}`;
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await admin.query("update public.parameter_modules set parent_id=$1,path=$1||'/'||id,depth=2 where id=$2", [parent, child]);
+    const holder = await admin.connect();
+    const caller = await api.connect();
+    try {
+      await holder.query("begin");
+      await holder.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-tree:${organizationId}`]);
+      await holder.query("update public.parameter_modules set parent_id=null,path=id,depth=1 where id=$1", [child]);
+      const pending = moveParameterModuleForAuth(createDatabase(caller as unknown as Queryable),
+        makeTestAuthContext({ userId, organizationId }), child, { parentId: parent });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await holder.query("commit");
+      expect((await pending).parentId).toBe(parent);
+      expect((await admin.query("select parent_id from public.parameter_modules where id=$1", [child])).rows[0].parent_id).toBe(parent);
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+      caller.release();
+    }
+  });
+
+  it("serializes opposing moves without committing a cycle", async () => {
+    const first = await createModule("First");
+    const second = await createModule("Second");
+    const userId = `module-admin-${randomUUID()}`;
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    const callers = await Promise.all([api.connect(), api.connect()]);
+    try {
+      const auth = makeTestAuthContext({ userId, organizationId });
+      const results = await Promise.allSettled([
+        moveParameterModuleForAuth(createDatabase(callers[0] as unknown as Queryable), auth, first, { parentId: second }),
+        moveParameterModuleForAuth(createDatabase(callers[1] as unknown as Queryable), auth, second, { parentId: first }),
+      ]);
+      expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
+      const rows = (await admin.query("select id,parent_id from public.parameter_modules where id=any($1::text[])", [[first, second]])).rows;
+      expect(rows.filter(row => row.parent_id === null)).toHaveLength(1);
+    } finally {
+      callers.forEach(client => client.release());
+    }
+  });
+
+  it("creates a child using its parent's committed path after a competing move", async () => {
+    const grandparent = await createModule("Grandparent");
+    const parent = await createModule("Parent");
+    const userId = `module-admin-${randomUUID()}`;
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await admin.query("update public.parameter_modules set parent_id=$1,path=$1||'/'||id,depth=2 where id=$2", [grandparent, parent]);
+    const holder = await admin.connect();
+    const caller = await api.connect();
+    try {
+      await holder.query("begin");
+      await holder.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-tree:${organizationId}`]);
+      await holder.query("update public.parameter_modules set parent_id=null,path=id,depth=1 where id=$1", [parent]);
+      const pending = createParameterModuleForAuth(createDatabase(caller as unknown as Queryable),
+        makeTestAuthContext({ userId, organizationId }), { name: "Child", parentId: parent });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await holder.query("commit");
+      const created = await pending;
+      expect(created.path).toBe(`${parent}/${created.id}`);
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+      caller.release();
+    }
+  });
+
+  it("serializes module creation with organization recognition updates", async () => {
+    const userId = `module-admin-${randomUUID()}`;
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    const holder = await api.connect();
+    const caller = await api.connect();
+    try {
+      await holder.query("begin");
+      await lockOrganizationModuleRecognition(holder as unknown as Queryable, organizationId);
+      const pending = createParameterModuleForAuth(createDatabase(caller as unknown as Queryable),
+        makeTestAuthContext({ userId, organizationId }), { name: "Concurrent" });
+      const completedWhileLocked = await Promise.race([pending.then(() => true), new Promise<false>(resolve => setTimeout(() => resolve(false), 100))]);
+      await holder.query("commit");
+      await pending;
+      expect(completedWhileLocked).toBe(false);
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+      caller.release();
+    }
+  });
+
+  it.each(["update", "delete"] as const)("serializes module %s with recognition updates", async (operation) => {
+    const userId = `module-admin-${randomUUID()}`;
+    const target = await createModule("Concurrent");
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    const holder = await api.connect();
+    const caller = await api.connect();
+    try {
+      await holder.query("begin");
+      await lockOrganizationModuleRecognition(holder as unknown as Queryable, organizationId);
+      const db = createDatabase(caller as unknown as Queryable);
+      const auth = makeTestAuthContext({ userId, organizationId });
+      const pending = operation === "update" ? updateParameterModuleForAuth(db, auth, target, { name: "Changed" })
+        : deleteParameterModuleForAuth(db, auth, target);
+      const completedWhileLocked = await Promise.race([pending.then(() => true), new Promise<false>(resolve => setTimeout(() => resolve(false), 100))]);
+      await holder.query("commit");
+      await pending;
+      expect(completedWhileLocked).toBe(false);
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+      caller.release();
+    }
+  });
+
+  it("rolls back a module creation when its audit fails", async () => {
+    const userId = `module-admin-${randomUUID()}`;
+    const requestId = `reject-module-audit-${randomUUID()}`;
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await admin.query(`create function public.reject_module_test_audit() returns trigger language plpgsql as $$
+      begin if new.trace_id like 'reject-module-audit-%' then raise exception 'module audit failure'; end if; return new; end $$;
+      create trigger reject_module_test_audit before insert on public.audit_events for each row execute function public.reject_module_test_audit()`);
+    const caller = await api.connect();
+    try {
+      await expect(createParameterModuleForAuth(createDatabase(caller as unknown as Queryable),
+        makeTestAuthContext({ userId, organizationId }), { name: "Rollback" }, { requestId })).rejects.toThrow("module audit failure");
+      expect((await admin.query("select id from public.parameter_modules where organization_id=$1 and name='Rollback'", [organizationId])).rows).toEqual([]);
+      expect((await admin.query("select id from public.audit_events where trace_id=$1", [requestId])).rows).toEqual([]);
+    } finally {
+      caller.release();
+      await admin.query("drop trigger reject_module_test_audit on public.audit_events; drop function public.reject_module_test_audit()");
+    }
   });
 
   it("registers active owned subjects with their driver", async () => {
@@ -513,6 +700,7 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
   });
 
   afterAll(async () => {
+    await apiDatabase?.close();
     await api?.end();
     if (token && database) expect((await dropLabRuntimeLogins(database.url, token)).failed).toEqual([]);
     await admin?.end();
@@ -621,6 +809,29 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     expect(await service.execute(command)).toMatchObject({ ok: true, value: { outcome: "replayed", moduleId: destination } });
     expect((await admin.query("select kind,parent_id,attribution_subject_id from public.parameter_modules where id=$1", [destination])).rows)
       .toEqual([{ kind: "business", parent_id: moduleId, attribution_subject_id: null }]);
+  });
+
+  it("creates a registration category against the committed parent tree", async () => {
+    const grandparent = await createModule("Grandparent");
+    await admin.query("update public.parameter_modules set parent_id=$1,path=$1||'/'||id,depth=2 where id=$2", [grandparent, moduleId]);
+    const holder = await admin.connect();
+    const destination = `new-business-${randomUUID()}`;
+    try {
+      await holder.query("begin");
+      await holder.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-tree:${organizationId}`]);
+      await holder.query("update public.parameter_modules set parent_id=null,path=id,depth=1 where id=$1", [moduleId]);
+      const pending = createRegistrationService(api).execute({ kind: "move-placement", organizationId,
+        registrationId: registration.registrationId, expectedRelease: pin, destinationModuleId: destination,
+        newDestination: { parentModuleId: moduleId, name: "Created category" }, idempotencyKey: randomUUID(), context });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await holder.query("commit");
+      expect(await pending).toMatchObject({ ok: true, value: { moduleId: destination } });
+      expect((await admin.query("select path from public.parameter_modules where id=$1", [destination])).rows[0].path)
+        .toBe(`${moduleId}/${destination}`);
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+    }
   });
 
   it("keeps other organizations independent, rejects stale releases, and never auto-restores a removed subject", async () => {
@@ -1026,6 +1237,17 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
   });
 
   it("does not restore a cascade-retired child whose release membership was retired", async () => {
+    const userId = `catalog-drift-admin-${randomUUID()}`;
+    await admin.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await admin.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [randomUUID(), userId, organizationId]);
+    const app = createWiseEffServer({ db: apiDatabase, auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ userId, organizationId, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const path = `/api/v2/organizations/${organizationId}/module-structure`;
+    const exported = await requestJson(app, `${path}/exports`, { method: "POST", body: "{}" });
+    expect(exported.status, exported.bodyText).toBe(200);
+    const document = exported.body as { subjects: unknown[]; [key: string]: unknown };
+    document.subjects.push({ subjectId: nodeSubject, operation: "register", placement: { kind: "module", moduleRef: moduleId } });
+    const preview = await requestJson(app, `${path}/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
     const driver = await registerTarget(targetSubject, moduleId);
     const service = createRegistrationService(api);
     const retired = await service.execute(lifecycle("retire", driver));
@@ -1040,9 +1262,9 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     const next = refreshSuccessorSource({ ...structuredClone(base), manifest: { ...structuredClone(base.manifest),
       release: { ...base.manifest.release, id: nextId, version: "1.2.0", sequence: 2,
         publishedAt: "2026-09-02T00:00:00Z", predecessor: { id: pin.id, digest: pin.digest } } },
-    documents: [...base.documents.map((document) => document.kind === "subject" && document.content.id === ownedNodeSubject ? {
+    documents: [...base.documents.map((document) => document.kind === "subject" && (document.content.id === ownedNodeSubject || document.content.id === nodeSubject) ? {
       ...structuredClone(document), content: { ...structuredClone(document.content), lifecycle: "retired" as const,
-        tombstone: { reason: "withdrawn", withdrawnByReleaseId: nextId, previousSelector: "owned_lifecycle_node" } },
+        tombstone: { reason: "withdrawn", withdrawnByReleaseId: nextId, previousSelector: document.content.id === nodeSubject ? "battery1" : "owned_lifecycle_node" } },
     } : structuredClone(document)), addedChild] }, base.sources[0]!.path);
     const bundle = { ...initialBundle, targetReleaseId: nextId, releases: [base, next] };
     const compiled = compileCatalogRelease(bundle);
@@ -1050,6 +1272,11 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     const installed = await installPublishedRelease(admin, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
       expectedCurrent: pin, expectedTargetDigest: compiled.value.aggregateDigest });
     if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+    const stale = await requestJson(app, `${path}/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "retired-catalog-subject", reason: "Reviewed" }) });
+    expect(stale.status).toBe(409);
+    const currentPreview = await requestJson(app, `${path}/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(currentPreview.status).toBe(409);
+    expect((await admin.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, nodeSubject])).rowCount).toBe(0);
     const restored = await service.execute({ ...lifecycle("restore", retired.value), expectedRelease: { id: compiled.value.release.id, digest: compiled.value.release.digest } });
     expect(restored.ok).toBe(true);
     expect((await api.query(`select status,cascade_retired from parameter_catalog.organization_subject_registrations

@@ -50,10 +50,11 @@ describe("administrator module metadata through the API database role", () => {
     database = await createCheckedEmptyDatabase("moduleadminmetadata");
     ownerDb = createPostgresDatabase(database.url);
     await applyMigrations(ownerDb, migrationsDir, { before: "0320_placement_business_modules.sql" });
-    // Current module writers read this column while constructing the pre-0320
-    // fixture; remove it again before applying the actual 0324 migration.
+    // Current writers need later columns while constructing the pre-0320 fixture;
+    // remove them before applying the real migrations.
     await ownerDb.query("alter table public.parameter_modules add column archived_at timestamptz");
     await ownerDb.query("alter table parameter_catalog.organization_subject_registrations add column display_alias text");
+    await ownerDb.query("alter table parameter_catalog.organization_subject_registrations add column cascade_retired boolean not null default false");
     pool = new pg.Pool({ connectionString: database.url, max: 4 });
     const chain = await installPublishedCatalogChain(pool);
     const bundle = nodeTypeAndSecondDriverSuccessorBundle();
@@ -133,6 +134,7 @@ describe("administrator module metadata through the API database role", () => {
     try {
       await ownerDb.query("alter table public.parameter_modules drop column archived_at");
       await ownerDb.query("alter table parameter_catalog.organization_subject_registrations drop column display_alias");
+      await ownerDb.query("alter table parameter_catalog.organization_subject_registrations drop column cascade_retired");
       await applyMigrations(ownerDb, migrationsDir);
     } finally {
       migrationPool.off("acquire", observeNotices);
@@ -515,7 +517,7 @@ describe("administrator module metadata through the API database role", () => {
     expect(registry.modules.find(m => m.id === sibling.id)?.parentId).toBe(f.parent.id);
   });
 
-  it("audits the actual previous parent after another move invalidates its preflight read", async () => {
+  it("audits the committed previous parent after a competing move", async () => {
     const f = await fixture("overlapping-move-audit", "node-type", "auto");
     const module = await createParameterModule(pool, {
       organizationId: f.auth.organization.id, name: "First", parentId: f.parent.id,
@@ -523,19 +525,27 @@ describe("administrator module metadata through the API database role", () => {
     const sibling = await createParameterModule(pool, {
       organizationId: f.auth.organization.id, name: "Sibling", parentId: f.parent.id,
     });
-    let moved = false;
-    const interleaved: Database = {
-      transaction: fn => apiDb.transaction(fn),
-      async query<Row>(sql: string, values?: unknown[]) {
-        const result = await apiDb.query<Row>(sql, values);
-        if (!moved && sql.includes("from parameter_modules") && sql.includes("id = $2")) {
-          moved = true;
-          await moveParameterModuleForAuth(apiDb, f.auth, module.id, { parentId: sibling.id });
-        }
-        return result;
-      },
-    };
-    await moveParameterModuleForAuth(interleaved, f.auth, module.id, { parentId: f.target.id });
+    let firstMoved!: () => void;
+    let releaseFirst!: () => void;
+    const moved = new Promise<void>(resolve => { firstMoved = resolve; });
+    const release = new Promise<void>(resolve => { releaseFirst = resolve; });
+    const first = apiDb.transaction(async tx => {
+      await moveParameterModuleForAuth(tx, f.auth, module.id, { parentId: sibling.id });
+      firstMoved();
+      await release;
+    });
+    await moved;
+    const second = moveParameterModuleForAuth(apiDb, f.auth, module.id, { parentId: f.target.id });
+    try {
+      await expect.poll(async () => (await apiDb.query<{ waiting: boolean }>(
+        `select exists (select 1 from pg_catalog.pg_locks where locktype = 'advisory' and not granted
+          and database = (select oid from pg_database where datname = current_database())) as waiting`,
+      )).rows[0]!.waiting).toBe(true);
+    } finally {
+      releaseFirst();
+      await first;
+    }
+    await second;
     const audits = await apiDb.query<{ metadata: { previousParentId: string } }>(
       `select metadata from public.audit_events where target_id = $1 and kind = 'parameter-module-admin-move'`, [module.id],
     );

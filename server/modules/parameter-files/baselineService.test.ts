@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import type { Database, QueryResult } from "../../shared/database/client";
 import { makeTestAuthContext } from "../../testing/authContext";
 import {
   createInMemoryTestDatabase,
@@ -678,13 +678,13 @@ describe.skipIf(!databaseAvailable)("baseline service", () => {
       ];
       const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
         txCalls.push({ text, values });
+        if (text.includes("pg_advisory_xact_lock")) return { rows: [], rowCount: 0 };
         const rows = results.shift() ?? [];
         return { rows: rows as Row[], rowCount: rows.length };
       };
-      const tx: Queryable = { query: (text, values = []) => runQuery(text, values) };
       const fakeDb: Database = {
         query: (text, values = []) => runQuery(text, values),
-        transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) => fn(tx)
+        transaction: async (fn) => fn(fakeDb)
       };
 
       await expect(rollbackToBaseline(fakeDb, fakeObjectStore({}), adminAuth(), "baseline-1")).rejects.toMatchObject({

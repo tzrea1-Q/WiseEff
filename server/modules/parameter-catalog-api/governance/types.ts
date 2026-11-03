@@ -29,6 +29,7 @@ import type {
   catalogDefinitionReplacementCommandByRouteId,
   catalogGovernanceCommandByRouteId,
   catalogRecognitionCommandByRouteId,
+  catalogModuleStructureCommandByRouteId,
 } from "./mapping";
 import type { ModuleRecognitionSettings, UpdateModuleRecognition } from "../../parameter-modules/recognitionSettings";
 
@@ -36,7 +37,8 @@ export type CatalogGovernanceRouteId =
   | keyof typeof catalogGovernanceCommandByRouteId
   | keyof typeof catalogDefinitionReplacementCommandByRouteId
   | keyof typeof catalogBatchRegistrationCommandByRouteId
-  | keyof typeof catalogRecognitionCommandByRouteId;
+  | keyof typeof catalogRecognitionCommandByRouteId
+  | keyof typeof catalogModuleStructureCommandByRouteId;
 
 export type CatalogGovernanceRequest = {
   readonly method: string;
@@ -67,6 +69,7 @@ export type TrustedGovernanceScope = {
   readonly actorKind: TrustedGovernanceActorKind;
   readonly canReadGovernance: boolean;
   readonly canMutateOrganization: boolean;
+  readonly canReadOrganizationSettings?: boolean;
   readonly canReviewProposals: boolean;
   readonly defaultDestinationModuleId: string;
   readonly defaultSubjectKind: "driver" | "node-type" | "configuration-schema";
@@ -145,6 +148,9 @@ export type ReviewItemDetails = Pick<
 >;
 
 export type CatalogGovernancePorts = {
+  readonly exportModuleStructure?: (organizationId: string, invocation: TrustedInvocationContext, requestId: string) => Promise<unknown>;
+  readonly previewModuleStructure?: (organizationId: string, invocation: TrustedInvocationContext, body: unknown) => Promise<unknown>;
+  readonly applyModuleStructure?: (organizationId: string, invocation: TrustedInvocationContext, requestId: string, body: unknown) => Promise<unknown>;
   readonly readRegistrationRecognition?: (organizationId: string, registrationId: string) => Promise<(ModuleRecognitionSettings & { kind: "driver" | "node-type" }) | null>;
   readonly updateRegistrationRecognition?: (input: { organizationId: string; registrationId: string; body: UpdateModuleRecognition;
     invocation: TrustedInvocationContext; requestId: string; ifMatch: string; idempotencyKey: string; catalogReleaseId: string

@@ -12,6 +12,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
+import { lockOrganizationModuleRecognition } from "../parameter-modules/recognitionLock";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
 import { normalizeManifestLogicalPath } from "../parameter-topology/configRevisionManifest";
 import { produceDtsReviewEvidenceInTransaction } from "../parameter-catalog-api/productionEvidence";
@@ -374,6 +375,7 @@ export async function uploadProjectParameterFile(
   const parsedIndex = buildParsedIndex(format, normalized.bytes);
 
   const runUpload = async (tx: Database, uploadStore: ObjectStore) => {
+    await lockOrganizationModuleRecognition(tx, parameterOrganizationId(auth));
     const existing = context.targetFileId ? await getProjectParameterFileById(tx, {
       organizationId: parameterOrganizationId(auth), fileId: context.targetFileId,
     }) : await getProjectParameterFileByName(tx, {
@@ -542,6 +544,7 @@ export async function rollbackProjectParameterFileVersion(
   requireParameterFileAdmin(auth);
 
   return db.transaction(async (tx) => {
+    await lockOrganizationModuleRecognition(tx, parameterOrganizationId(auth));
     const file = await getProjectParameterFileById(tx, {
       organizationId: parameterOrganizationId(auth),
       fileId: input.fileId,

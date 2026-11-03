@@ -8,6 +8,21 @@ export type AcceptanceRequirement = {
 };
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
+  { id: "MODULE-STRUCTURE-MIXED-001", workflow: "C", required: true,
+    title: "An administrator reviews and applies one mixed structure update including registration, retired placement, recognition, lifecycle and deletion." },
+  { id: "MODULE-STRUCTURE-LIFECYCLE-001", workflow: "C", required: true,
+    title: "An administrator reviews batch registration, retirement and restoration of Catalog roots." },
+  { id: "MODULE-STRUCTURE-DELETE-001", workflow: "C", required: true, title: "An administrator reviews and retries an explicit module deletion with a moved child." },
+  { id: "MODULE-STRUCTURE-COPY-001", workflow: "C", required: true,
+    title: "An administrator confirms module reuse and creation when copying into a nonempty organization." },
+  { id: "MODULE-STRUCTURE-RECOGNITION-001", workflow: "C", required: true,
+    title: "An administrator validates an edited recognition rule, reviews an override and restores inheritance." },
+  { id: "MODULE-STRUCTURE-IMPORT-001", workflow: "C", required: true,
+    title: "An organization administrator reviews metadata and hierarchy changes, resolves conflicts, refreshes stale previews and repeats a package without duplicating modules." },
+  { id: "PROJ-CONFIG-PRIVATE-SHARED-001", workflow: "C", required: false,
+    title: "An administrator previews and converts a selected private source closure, retains identity and can review the read-only shared result." },
+  { id: "MODULE-STRUCTURE-EXPORT-001", workflow: "C", required: true,
+    title: "An organization administrator downloads the complete structure and guide by keyboard despite filters; counts match PostgreSQL, failures can be retried, and readers cannot export." },
   {
     id: "ORG-OPERATING-LIFECYCLE-001", workflow: "H", required: false,
     title: "In an isolated local-auth API lane, actual identities complete Organization creation, invitation, project participation, offboarding and handover, transfer, suspension/restoration and recoverable mixed deletion; signed OIDC continuity is verified separately."

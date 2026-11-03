@@ -43,20 +43,20 @@ describe("administrator Canonical member removal through the API database role",
     registerDefinitionDeletionRoutes(router, { db: dependencies.db, objectStore: dependencies.storage, resolveAuth: () => auth });
     return createHttpServer(router);
   }
-  const path = (set: string, file: string, op: string) => `/api/v1/projects/${PROJECT}/config-sets/${set}/files/${file}/${op}`;
-  async function fixture(bound = false, mixed = false, include = false, override: boolean | "delete" = false) {
+  const path = (set: string, file: string, op: string, projectId = PROJECT) => `/api/v1/projects/${projectId}/config-sets/${set}/files/${file}/${op}`;
+  async function fixture(bound = false, mixed = false, include = false, override: boolean | "delete" = false, projectId = PROJECT) {
     const dependencyName = `obsolete-${crypto.randomUUID()}.dts`;
     let rootText = bound ? root.replace(" };", ' charger: charger { compatible = "acme,power"; iin_max = <36>; }; };') : root;
     if (include) rootText = rootText.replace('/dts-v1/;', `/dts-v1/;\n/include/ "${dependencyName}"`);
     const overlayText = override === "delete" ? '/dts-v1/; /plugin/;\n&charger { /delete-property/ iin_max; };\n' : override ? '/dts-v1/; /plugin/;\n&charger { iin_max = <48>; };\n' : include ? '/ { extra { note = "include dependency"; }; };' : bound ? overlay.replace('note = "obsolete";', 'backup: backup { compatible = "acme,power"; iin_max = <48>; };') : overlay;
-    const configSetId = (await createConfigSet(db, admin, { projectId: PROJECT, name: `Removal ${crypto.randomUUID()}` })).id;
-    const a = await uploadProjectParameterFile(db, storage, admin, { projectId: PROJECT, fileName: `board-${crypto.randomUUID()}.dts`, bytes: Buffer.from(rootText) });
-    const b = await uploadProjectParameterFile(db, storage, admin, { projectId: PROJECT, fileName: dependencyName, bytes: Buffer.from(overlayText) });
+    const configSetId = (await createConfigSet(db, admin, { projectId, name: `Removal ${crypto.randomUUID()}` })).id;
+    const a = await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: `board-${crypto.randomUUID()}.dts`, bytes: Buffer.from(rootText) });
+    const b = await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: dependencyName, bytes: Buffer.from(overlayText) });
     await addConfigSetFile(db, admin, { configSetId, fileId: a.file.id, role: "base", sortOrder: 0 });
     await addConfigSetFile(db, admin, { configSetId, fileId: b.file.id, role: include ? "misc" : "overlay", sortOrder: 1 });
-    const c = mixed ? await uploadProjectParameterFile(db, storage, admin, { projectId: PROJECT, fileName: `settings-${crypto.randomUUID()}.json`, bytes: Buffer.from('{"unused":42}\n') }) : null;
+    const c = mixed ? await uploadProjectParameterFile(db, storage, admin, { projectId, fileName: `settings-${crypto.randomUUID()}.json`, bytes: Buffer.from('{"unused":42}\n') }) : null;
     if (c) await addConfigSetFile(db, admin, { configSetId, fileId: c.file.id, role: "charging", sortOrder: 2 });
-    const revision = await ingestConfigRevision(db, { organizationId: ORG, projectId: PROJECT, configSetId, entryFile: a.file.fileName,
+    const revision = await ingestConfigRevision(db, { organizationId: ORG, projectId, configSetId, entryFile: a.file.fileName,
       includeSearchPaths: ["."], overlayOrder: include ? [] : [b.file.fileName], members: [
         { fileId: a.file.id, fileVersionId: a.version.id, fileName: a.file.fileName, sourceName: a.file.fileName, role: "base", sortOrder: 0, content: rootText },
         { fileId: b.file.id, fileVersionId: b.version.id, fileName: b.file.fileName, sourceName: b.file.fileName, role: include ? "include" : "overlay", sortOrder: 1, content: overlayText },
@@ -66,7 +66,7 @@ describe("administrator Canonical member removal through the API database role",
     if (bound) {
       const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
       if (!catalog) throw new Error("Missing Catalog fixture");
-      await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, { organizationId: ORG, projectId: PROJECT, configSetId, configRevisionId: revision.id }));
+      await db.transaction((tx) => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog, { organizationId: ORG, projectId, configSetId, configRevisionId: revision.id }));
     }
     return { configSetId, a, b, c, revision, rootText };
   }
@@ -281,14 +281,17 @@ describe("administrator Canonical member removal through the API database role",
   });
 
   it("can permanently erase a Definition after removal and fallback receipts while retaining original source", async () => {
+    // Keep both receipts together without inheriting unrelated configurations from earlier cases.
+    const isolatedProject = "project-definition-removal";
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Definition removal','DR1304','initialized')", [isolatedProject, ORG]);
     const sources: Array<Awaited<ReturnType<typeof fixture>>> = [];
     const requestIds: string[] = [];
     for (const override of [true, "delete"] as const) {
-      const f = await fixture(true, false, false, override);
+      const f = await fixture(true, false, false, override, isolatedProject);
       sources.push(f);
-      const preview = await requestJson<{ item: { proofToken: string } }>(server(), path(f.configSetId, f.b.file.id, "removal-preview"), { method: "POST", body: "{}" });
+      const preview = await requestJson<{ item: { proofToken: string } }>(server(), path(f.configSetId, f.b.file.id, "removal-preview", isolatedProject), { method: "POST", body: "{}" });
       expect(preview.status, preview.bodyText).toBe(200);
-      const removed = await requestJson<{ item: { requestId: string } }>(server(), path(f.configSetId, f.b.file.id, "removal-apply"), { method: "POST", body: JSON.stringify({
+      const removed = await requestJson<{ item: { requestId: string } }>(server(), path(f.configSetId, f.b.file.id, "removal-apply", isolatedProject), { method: "POST", body: JSON.stringify({
         expectedProofToken: preview.body.item.proofToken, reason: "Prepare Definition lifecycle regression", clientMutationId: crypto.randomUUID()
       }) });
       expect(removed.status, removed.bodyText).toBe(200);
@@ -303,10 +306,11 @@ describe("administrator Canonical member removal through the API database role",
     const deleted = await requestJson(server(platform), definitionPath, { method: "DELETE", body: JSON.stringify({ previewToken: deletionPreview.body.item.previewToken }) });
     expect(deleted.status, deleted.bodyText).toBe(200);
     expect(await listCatalogBindingRowsForProject(db, admin, { projectId: PROJECT })).toHaveLength(0);
+    expect(await listCatalogBindingRowsForProject(db, admin, { projectId: isolatedProject })).toHaveLength(0);
     expect((await api.query("select id from public.project_parameter_value_change_requests where id=any($1::text[])", [requestIds])).rows).toHaveLength(0);
     expect((await requestJson(server(platform), `${definitionPath}/deletion-preview`)).status).toBe(404);
     for (const f of sources) {
-      const original = await requestJson(server(), `/api/v1/projects/${PROJECT}/parameter-files/${f.a.file.id}/versions/${f.a.version.id}/content`);
+      const original = await requestJson(server(), `/api/v1/projects/${isolatedProject}/parameter-files/${f.a.file.id}/versions/${f.a.version.id}/content`);
       expect(original.status, original.bodyText).toBe(200); expect(original.bodyText).toBe(f.rootText);
     }
   });

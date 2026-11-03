@@ -63,6 +63,7 @@ import {
 import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { hasModuleRecognitionUpdate } from "../parameter-modules/recognitionSettings";
+import { lockOrganizationModuleRecognition, lockOrganizationModuleStructure } from "../parameter-modules/recognitionLock";
 import type { InitializationSuggestionDto } from "./types";
 import {
   bindParameterSource,
@@ -78,7 +79,6 @@ import {
   getParameterModuleByName,
   listParameterModules,
   moveParameterModule,
-  lockParameterModuleTree,
   updateParameterModule,
   type ListParametersQuery as RepositoryListParametersQuery
 } from "./repository";
@@ -1716,6 +1716,7 @@ export async function reviewChange(
 ) {
   const reviewContext = { ...context, invocation: context.invocation ?? parameterInvocation(auth) ?? createUserInvocation(auth) };
   return db.transaction(async (tx) => {
+    await lockOrganizationModuleRecognition(tx, parameterOrganizationId(auth));
     const initial = await loadChangeRequestForReview(tx, auth, input.requestId, false);
     const request = initial.editSubjectKind === "node-enablement" && initial.status === "software_merge" && input.decision === "advance"
       ? initial
@@ -2272,32 +2273,21 @@ export async function createParameterModuleForAuth(
     throw legacyStructuralWriteRetirementError();
   }
 
-  let parent: ParameterModuleDto | null = null;
-  if (parentId) {
-    parent = await getParameterModuleById(db, { organizationId, moduleId: parentId, activeOnly: true });
-    if (!parent) {
-      throw new ApiError("NOT_FOUND", "Parent parameter module was not found.", { parentId });
-    }
-  }
-
-  if (kind === "business") {
-    if (parent && parent.kind !== "business") {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "Business modules must be root or under another business module.",
-        { parentId, parentKind: parent.kind }
-      );
-    }
-  }
-
-  const existing = await getParameterModuleByName(db, { organizationId, name, parentId });
-  if (existing) {
-    throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", { name, parentId });
-  }
-
   const sourceKey = null;
 
   return db.transaction(async (tx) => {
+    await lockOrganizationModuleStructure(tx, organizationId);
+    if (parentId) {
+      const parent = await getParameterModuleById(tx, { organizationId, moduleId: parentId, activeOnly: true });
+      if (!parent) throw new ApiError("NOT_FOUND", "Parent parameter module was not found.", { parentId });
+      if (parent.kind !== "business") {
+        throw new ApiError("VALIDATION_FAILED", "Business modules must be root or under another business module.",
+          { parentId, parentKind: parent.kind });
+      }
+    }
+    if (await getParameterModuleByName(tx, { organizationId, name, parentId })) {
+      throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", { name, parentId });
+    }
     const module = await createParameterModule(tx, {
       organizationId,
       name,
@@ -2350,43 +2340,26 @@ export async function updateParameterModuleForAuth(
 ): Promise<ParameterModuleDto> {
   requireParameterAdmin(auth);
   const organizationId = parameterOrganizationId(auth);
-  const current = await getParameterModuleById(db, { organizationId, moduleId, activeOnly: true });
-  if (!current) {
-    throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
-  }
-  if (current.kind === "driver-group" || current.kind === "node-type") throw legacyStructuralWriteRetirementError();
-
-  const nextName = body.name?.trim() ?? current.name;
-  if (!nextName) {
-    throw new ApiError("VALIDATION_FAILED", "Module name is required.");
-  }
-
-  if (body.kind !== undefined && body.kind !== current.kind) {
-    throw legacyStructuralWriteRetirementError();
-  }
-  if (hasModuleRecognitionUpdate(body)) {
-    throw new ApiError("CONFLICT", "请在主体详情中修改识别规则。");
-  }
-  if (nextName !== current.name) {
-    const conflict = await getParameterModuleByName(db, {
-      organizationId,
-      name: nextName,
-      parentId: current.parentId
-    });
-    if (conflict && conflict.id !== current.id) {
-      throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", {
-        name: nextName,
-        parentId: current.parentId
-      });
-    }
-  }
-
+  let nextName = body.name?.trim();
+  let currentParentId: string | null = null;
   return db.transaction(async (tx) => {
+    await lockOrganizationModuleStructure(tx, organizationId);
     const lockedCurrent = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true, activeOnly: true });
     if (!lockedCurrent) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
     }
     if (lockedCurrent.kind === "driver-group" || lockedCurrent.kind === "node-type") throw legacyStructuralWriteRetirementError();
+    nextName ??= lockedCurrent.name;
+    if (!nextName) throw new ApiError("VALIDATION_FAILED", "Module name is required.");
+    if (body.kind !== undefined && body.kind !== lockedCurrent.kind) throw legacyStructuralWriteRetirementError();
+    if (hasModuleRecognitionUpdate(body)) throw new ApiError("CONFLICT", "请在主体详情中修改识别规则。");
+    currentParentId = lockedCurrent.parentId;
+    if (nextName !== lockedCurrent.name) {
+      const conflict = await getParameterModuleByName(tx, { organizationId, name: nextName, parentId: currentParentId });
+      if (conflict && conflict.id !== lockedCurrent.id) {
+        throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", { name: nextName, parentId: currentParentId });
+      }
+    }
     const module = await updateParameterModule(tx, {
       organizationId,
       moduleId,
@@ -2422,7 +2395,7 @@ export async function updateParameterModuleForAuth(
       && error.constraint === "parameter_modules_org_parent_name_unique_idx") {
       throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", {
         name: nextName,
-        parentId: current.parentId
+        parentId: currentParentId
       });
     }
     throw error;
@@ -2438,38 +2411,12 @@ export async function moveParameterModuleForAuth(
 ): Promise<ParameterModuleDto> {
   requireParameterAdmin(auth);
   const organizationId = parameterOrganizationId(auth);
-  const current = await getParameterModuleById(db, { organizationId, moduleId, activeOnly: true });
-  if (!current) {
-    throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
-  }
-  if (current.kind === "driver-group" || current.kind === "node-type") {
-    throw legacyStructuralWriteRetirementError();
-  }
-
   const parentId = body.parentId;
-  if (parentId) {
-    const parent = await getParameterModuleById(db, { organizationId, moduleId: parentId, activeOnly: true });
-    if (!parent) {
-      throw new ApiError("NOT_FOUND", "Target parent parameter module was not found.", { parentId });
-    }
-  }
-
-  if (parentId === current.parentId) {
-    return current;
-  }
-
-  const nextName = current.name;
-  const conflict = await getParameterModuleByName(db, { organizationId, name: nextName, parentId });
-  if (conflict && conflict.id !== current.id) {
-    throw new ApiError("CONFLICT", "Parameter module already exists under the target parent.", {
-      name: nextName,
-      parentId
-    });
-  }
+  let nextName = "";
 
   try {
     return await db.transaction(async (tx) => {
-      await lockParameterModuleTree(tx, organizationId);
+      await lockOrganizationModuleStructure(tx, organizationId);
       const lockedCurrent = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true, activeOnly: true });
       if (!lockedCurrent) {
         throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
@@ -2477,7 +2424,15 @@ export async function moveParameterModuleForAuth(
       if (lockedCurrent.kind === "driver-group" || lockedCurrent.kind === "node-type") {
         throw legacyStructuralWriteRetirementError();
       }
+      nextName = lockedCurrent.name;
+      if (parentId && !(await getParameterModuleById(tx, { organizationId, moduleId: parentId, activeOnly: true }))) {
+        throw new ApiError("NOT_FOUND", "Target parent parameter module was not found.", { parentId });
+      }
       if (parentId === lockedCurrent.parentId) return lockedCurrent;
+      const conflict = await getParameterModuleByName(tx, { organizationId, name: nextName, parentId });
+      if (conflict && conflict.id !== lockedCurrent.id) {
+        throw new ApiError("CONFLICT", "Parameter module already exists under the target parent.", { name: nextName, parentId });
+      }
       const module = await moveParameterModule(tx, {
         organizationId,
         moduleId,
@@ -2526,6 +2481,7 @@ export async function deleteParameterModuleForAuth(
   requireParameterAdmin(auth);
   const organizationId = parameterOrganizationId(auth);
   await db.transaction(async (tx) => {
+    await lockOrganizationModuleStructure(tx, organizationId);
     const current = await getParameterModuleById(tx, { organizationId, moduleId, forUpdate: true, activeOnly: true });
     if (!current) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });

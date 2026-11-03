@@ -224,6 +224,31 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     await database?.drop();
   });
 
+  it("denies a trusted Agent structure export, preview and apply without writes", async () => {
+    const previous = scope;
+    const principal = makeTestAuthContext({ organizationId: ORG_ID, userId: "user-org-admin" });
+    scope = { ...scope, canReadOrganizationSettings: true, trustedActor: createAgentInvocation(principal,
+      { sessionId: "export-session", toolCallId: "export-call", approval: { required: false } }) };
+    try {
+      const counts = () => pool.query(`select
+        (select count(*)::int from public.parameter_modules where organization_id=$1) as modules,
+        (select count(*)::int from parameter_catalog.organization_subject_registrations where organization_id=$1) as registrations,
+        (select count(*)::int from public.registration_recognition_rules where organization_id=$1) as rules,
+        (select count(*)::int from parameter_catalog.module_structure_created_refs where organization_id=$1) as mappings,
+        (select count(*)::int from parameter_catalog.module_structure_export_baselines where organization_id=$1) as baselines,
+        (select count(*)::int from public.audit_events where organization_id=$1) as audits,
+        (select count(*)::int from parameter_catalog.governance_command_idempotency where organization_id=$1) as receipts`, [ORG_ID]);
+      const before = (await counts()).rows;
+      for (const action of ["exports", "previews", "applies"]) {
+        const result = await request("POST", `/api/v2/organizations/${ORG_ID}/module-structure/${action}`,
+          { headers: { "x-wiseeff-role": "admin", "x-wiseeff-actor-kind": "user" }, body: {} });
+        expect(result.status).toBe(403);
+        expect(result.body).toMatchObject({ error: { code: "FORBIDDEN" } });
+      }
+      expect((await counts()).rows).toEqual(before);
+    } finally { scope = previous; }
+  });
+
   it("lists current unregistered subjects and filters bootstrap subjects from organization publications", async () => {
     const all = await request("GET", `/api/v2/organizations/${ORG_ID}/unregistered-subjects?source=all`);
     expect(all.status, JSON.stringify(all.body)).toBe(200);

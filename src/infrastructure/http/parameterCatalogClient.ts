@@ -1,6 +1,11 @@
 import type { ZodTypeAny, z } from "zod";
 
 import {
+  moduleStructureExportSchema,
+  moduleStructurePreviewRequestSchema,
+  moduleStructurePreviewResponseSchema,
+  moduleStructureApplyRequestSchema,
+  moduleStructureReceiptSchema,
   catalogBatchRegistrationRequestSchema,
   catalogBatchRegistrationResponseSchema,
   catalogUnregisteredSubjectsResponseSchema,
@@ -323,6 +328,12 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     listUnregisteredSubjects: (organizationId: string, source: "organization" | "all", catalogReleaseId: string) =>
       request("GET", `${canonical("catalog.listUnregisteredSubjects", { organizationId })}?source=${source}`,
         catalogUnregisteredSubjectsResponseSchema, "CatalogUnregisteredSubjectsResponse", { context: { catalogReleaseId } }),
+    exportModuleStructure: (organizationId: string) =>
+      request("POST", canonical("catalog.exportModuleStructure", { organizationId }), moduleStructureExportSchema, "ModuleStructureExport", { body: {} }),
+    previewModuleStructure: (organizationId: string, body: z.input<typeof moduleStructurePreviewRequestSchema>) =>
+      request("POST", canonical("catalog.previewModuleStructure", { organizationId }), moduleStructurePreviewResponseSchema, "ModuleStructurePreviewResponse", { body: moduleStructurePreviewRequestSchema.parse(body) }),
+    applyModuleStructure: (organizationId: string, body: z.input<typeof moduleStructureApplyRequestSchema>) =>
+      request("POST", canonical("catalog.applyModuleStructure", { organizationId }), moduleStructureReceiptSchema, "ModuleStructureReceipt", { body: moduleStructureApplyRequestSchema.parse(body) }),
     createBatchRegistration: (organizationId: string, body: CatalogBatchRegistrationRequest, context: CatalogWriteContext) =>
       request("POST", canonical("catalog.createBatchRegistration", { organizationId }), catalogBatchRegistrationResponseSchema,
         "CatalogBatchRegistrationResponse", { body: catalogBatchRegistrationRequestSchema.parse(body), context }),
@@ -1039,6 +1050,9 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.listRegistrations": "listRegistrations",
     "catalog.listUnregisteredSubjects": "listUnregisteredSubjects",
     "catalog.createBatchRegistration": "createBatchRegistration",
+    "catalog.exportModuleStructure": "exportModuleStructure",
+    "catalog.previewModuleStructure": "previewModuleStructure",
+    "catalog.applyModuleStructure": "applyModuleStructure",
     "catalog.createRegistration": "createRegistration",
     "catalog.getRegistration": "getRegistration",
     "catalog.retireRegistration": "retireRegistration",

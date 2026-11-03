@@ -13,6 +13,44 @@ import { emptyWritableInsertSql } from "../persistence/integrationHarness";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "./provisionRuntimeLogins";
 
 describe("existing API LOGIN privilege refresh after a parameter schema upgrade", () => {
+  it("adds immutable structure baselines to a populated organization without reprovisioning the API login", async () => {
+    await withTempDatabase({ prefix: "structure_baseline_upgrade", migrate: false }, async ({ db, connectionString }) => {
+      await applyMigrations(db, migrationsDir, { before: "0327" });
+      const token = `bu${randomBytes(5).toString("hex")}`;
+      const login = await provisionPublicationRuntimeLogins(connectionString, { mode: "lab", runToken: token });
+      const api = createPostgresDatabase(login.apiUrl);
+      try {
+        await db.query("insert into organizations(id,name) values ('baseline-upgrade','Upgrade')");
+        await db.query(`insert into parameter_modules(id,organization_id,name,path,kind,origin)
+          values ('baseline-module','baseline-upgrade','Existing','baseline-module','business','curated')`);
+        await applyMigrations(db, migrationsDir);
+        expect((await api.query("select id,name from parameter_modules where organization_id='baseline-upgrade'")).rows)
+          .toEqual([{ id: "baseline-module", name: "Existing" }]);
+        expect((await api.query("select * from parameter_catalog.module_deletion_references($1,$2::text[])", ["baseline-upgrade", ["baseline-module"]])).rows).toEqual([]);
+        expect((await db.query(`select p.prosecdef, has_function_privilege($1,p.oid,'EXECUTE') as worker_can_execute,
+          has_function_privilege('public',p.oid,'EXECUTE') as public_can_execute,
+          has_function_privilege('parameter_governance_writer_role',p.oid,'EXECUTE') as writer_can_execute
+          from pg_proc p where p.oid='parameter_catalog.module_deletion_references(text,text[])'::regprocedure`, [login.workerRole])).rows)
+          .toEqual([{ prosecdef: false, worker_can_execute: false, public_can_execute: false, writer_can_execute: false }]);
+        await api.query(`insert into parameter_catalog.module_structure_export_baselines(export_id,organization_id,document)
+          values ('upgrade-export','baseline-upgrade','{}')`);
+        await expect(api.query("update parameter_catalog.module_structure_export_baselines set document='{}' where false")).rejects.toMatchObject({ code: "42501" });
+        await expect(api.query("delete from parameter_catalog.module_structure_export_baselines where false")).rejects.toMatchObject({ code: "42501" });
+        expect((await api.query("select has_table_privilege($1,'parameter_catalog.module_structure_export_baselines','INSERT') as allowed", [login.workerRole])).rows)
+          .toEqual([{ allowed: false }]);
+        await api.query(`insert into parameter_catalog.module_structure_created_refs(organization_id,source_organization_id,export_id,package_ref,module_id,initial_snapshot)
+          values ('baseline-upgrade','baseline-upgrade','upgrade-export','new-ref','baseline-module','{}')`);
+        await expect(api.query("update parameter_catalog.module_structure_created_refs set initial_snapshot='{}' where false")).rejects.toMatchObject({ code: "42501" });
+        await expect(api.query("delete from parameter_catalog.module_structure_created_refs where false")).rejects.toMatchObject({ code: "42501" });
+        expect((await api.query("select has_table_privilege($1,'parameter_catalog.module_structure_created_refs','INSERT') as allowed", [login.workerRole])).rows)
+          .toEqual([{ allowed: false }]);
+      } finally {
+        await api.close();
+        await dropLabRuntimeLogins(connectionString, token);
+      }
+    });
+  }, 60_000);
+
   it.each(["0145", "0150"])("restores draft reads without rotating logins provisioned before %s", async (before) => {
     await withTempDatabase({ prefix: "draft_acl_upgrade", migrate: false }, async ({ db, connectionString }) => {
       await applyMigrations(db, migrationsDir, { before });

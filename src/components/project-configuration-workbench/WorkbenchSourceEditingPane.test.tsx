@@ -23,7 +23,7 @@ vi.mock("./WorkbenchDtsEditor", async () => {
   }) };
 });
 
-function setup() {
+function setup(override?: { storage: SourceDraftStorage; source: string; baseVersionId: string; configRevisionId: string }) {
   const records = new Map<string, StoredSourceDraft>();
   const storage: SourceDraftStorage = {
     async load(scope) { return structuredClone(records.get(sourceDraftKey(scope)) ?? { generation: 0, draft: null }); },
@@ -34,7 +34,7 @@ function setup() {
       return generation + 1;
     }, close() {}
   };
-  const session = createSourceEditSession({ storage, persistDelayMs: 0 });
+  const session = createSourceEditSession({ storage: override?.storage ?? storage, persistDelayMs: 0 });
   const createCandidate = vi.fn().mockResolvedValue({ id: "candidate", fileName: "board.dts", status: "ready" });
   const getCandidateSourcePreview = vi.fn().mockResolvedValue({ kind: "source_revision", candidateId: "candidate", canSubmit: true,
     proofToken: "proof", before: "/ { old; };", after: "/ { next; };", impact: { parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0 },
@@ -47,6 +47,7 @@ function setup() {
     canEdit: true, visible: true, legacyDraftsDirty: false, onOpenLegacyDrafts: vi.fn(), onDirtyChange: vi.fn(), onRefresh: vi.fn(),
     focusSpan: null, focusLine: null, findQuery: "", findNextToken: 0, onVisibleLineChange: vi.fn()
   };
+  if (override) Object.assign(props, { source: override.source, baseVersionId: override.baseVersionId, configRevisionId: override.configRevisionId });
   const view = render(<WorkbenchSourceEditingPane {...props} />);
   return { ...view, props, session, createCandidate, getCandidateSourcePreview, submitCandidateSourceReview };
 }
@@ -156,6 +157,21 @@ describe.each([
     expect(screen.getByText("已合并最新版本，请核对后保存")).toBeInTheDocument();
     await session.flush();
   });
+  it("shows the latest source after delayed recovery of an unchanged old snapshot", async () => {
+    let resolveLoad!: (value: StoredSourceDraft) => void;
+    const storage: SourceDraftStorage = { load: () => new Promise(resolve => { resolveLoad = resolve; }),
+      compareAndSet: async (_scope, _draft, generation) => generation + 1, close() {} };
+    const { props, session } = setup({ storage, source: "DirectV2", baseVersionId: "v2", configRevisionId: "c2" });
+    await waitFor(() => expect(resolveLoad).toBeTypeOf("function"));
+    await act(async () => resolveLoad({ generation: 1, draft: { version: 1, scope: props.scope,
+      base: { fileVersionId: "v1", configRevisionId: "c1", sourceDigest: createHash("sha256").update("DirectV1").digest("hex") },
+      sourceText: "DirectV1", baseSourceText: "DirectV1", position: { anchor: 0, head: 0, firstVisibleLine: 1, scrollTop: 0, scrollLeft: 0 },
+      generation: 1, updatedAt: "2026-01-01T00:00:00Z" } }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "test DTS" })).toHaveValue("DirectV2"));
+    expect(session.getFile(props.scope)).toMatchObject({ dirty: false, recoveryStatus: "none" });
+    await session.close();
+  });
+
   it("opens read-only and preserves direct source input across preview switching", async () => {
     const { session, props } = setup();
     const input = await screen.findByRole("textbox", { name: "test DTS" });

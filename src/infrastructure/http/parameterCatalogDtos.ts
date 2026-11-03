@@ -3,6 +3,11 @@ import type { ParameterRecord } from "@/domain/parameters/types";
 import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
 
 import type {
+  moduleStructureExportSchema,
+  moduleStructurePreviewRequestSchema,
+  moduleStructureApplyRequestSchema,
+  moduleStructurePreviewResponseSchema,
+  moduleStructureReceiptSchema,
   catalogBatchRegistrationRequestSchema,
   catalogBatchRegistrationResponseSchema,
   catalogUnregisteredSubjectsResponseSchema,
@@ -90,6 +95,12 @@ import type {
   projectValueDraftListResponseSchema,
   projectValueDraftRemovedResponseSchema
 } from "@wiseeff/dto-schemas";
+
+export type ModuleStructureDocument = z.infer<typeof moduleStructureExportSchema>;
+export type ModuleStructurePreviewRequest = z.input<typeof moduleStructurePreviewRequestSchema>;
+export type ModuleStructureApplyRequest = z.input<typeof moduleStructureApplyRequestSchema>;
+export type ModuleStructurePreviewResponse = z.infer<typeof moduleStructurePreviewResponseSchema>;
+export type ModuleStructureReceipt = z.infer<typeof moduleStructureReceiptSchema>;
 
 export type CatalogDefinitionDeletionPreviewResponse = z.infer<typeof catalogDefinitionDeletionPreviewResponseSchema>;
 export type CatalogDeleteDefinitionRequest = z.infer<typeof catalogDeleteDefinitionRequestSchema>;

@@ -1,5 +1,15 @@
 # 用户操作覆盖矩阵
 
+`MODULE-STRUCTURE-MIXED-001`：组织管理员一次确认混合结构更新；覆盖 UI、真实 API 和截图。自动化文件：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
+`MODULE-STRUCTURE-COPY-001`：组织管理员向非空目标组织复制模块并确认复用与新建；覆盖 UI、真实 API、数据库和截图。自动化文件：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
+`MODULE-STRUCTURE-RECOGNITION-001`：组织管理员验证、审阅并恢复识别继承；覆盖 UI、真实 API、数据库和截图。自动化文件：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
+`MODULE-STRUCTURE-EXPORT-001`：组织管理员在模块管理页面以键盘导出完整结构和填写说明，核对真实 API、PostgreSQL 数量、基准和审计，重试受控失败，并验证访客权限；覆盖 UI、API、数据库、审计与截图。自动化文件：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
+`MODULE-STRUCTURE-IMPORT-001`：组织管理员上传模块资料，解决冲突、刷新过期预览并确认回执；覆盖 UI、真实 API、数据库和截图。自动化文件：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
 > English: [English](../../developer/user-operation-coverage-matrix.md)
 
 这是日常开发文档，帮助开发者完成本地启动、环境配置、验证选择和验收覆盖判断。

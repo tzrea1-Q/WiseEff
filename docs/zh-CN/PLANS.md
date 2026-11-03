@@ -12,6 +12,8 @@ WiseEff 主要用于 PC。[界面质量检查清单](developer/ui-quality-checkl
 
 ## 使用方式
 
+已完成模块结构传输：[方案](exec-plans/completed/2026-11-03-module-structure-transfer.md)、规格 [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493)、实现与验收 [PR #1505](https://github.com/tzrea1-Q/WiseEff/pull/1505)。
+
 - [组织管理整改](exec-plans/active/2026-10-24-organization-management-remediation.md)：修复 40 项界面、流程与授权审查问题；实施及当前候选验证进行中。
 - [共享 UI 契约与开发验证闭环](exec-plans/active/2026-10-15-ui-contract-verification.md)：#1187/#1188 冻结剩余消费者、当前 main 失败、暂定 CI 分组及统一累计时间/计算预算；实施与效果指标仍待验收。
 - [统一 SearchField 与模糊搜索](exec-plans/active/2026-09-16-unified-fuzzy-search.md)：单一 SearchField 原语、仓库自研多字段模糊内核、明确的 Search Profile，并迁移全部搜索输入；不得替换服务端检索或原文查找引擎。

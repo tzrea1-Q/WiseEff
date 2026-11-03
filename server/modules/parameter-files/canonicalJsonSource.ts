@@ -10,6 +10,7 @@ import { NormalizedConfigurationSchemaId, type CatalogSnapshot } from "../catalo
 import { stabilizeCanonicalBinding, readSourceRegistrationAgreement, type Binding } from "../parameter-bindings/binding";
 import { writebackProtectedReference } from "../parameter-bindings/adapters";
 import { asValueClient } from "../parameter-bindings/catalogProjectValueSync";
+import { lockOrganizationModuleRecognition } from "../parameter-modules/recognitionLock";
 import { ParameterDefinitionId, SubjectRegistrationId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { insertConfigRevision, insertConfigRevisionMembers } from "../parameter-topology/repository";
@@ -45,6 +46,7 @@ export async function registerCanonicalJsonSource(
   if (!input.requestId.trim() || input.mappings.length === 0 || new Set(input.mappings.map((mapping) => mapping.definitionId)).size !== input.mappings.length) {
     throw new ApiError("VALIDATION_FAILED", "Explicit unique Definition mappings are required.");
   }
+  await lockOrganizationModuleRecognition(db, parameterOrganizationId(auth));
   const subject = snapshot.resolveSubject({ driverCompatibles: [], nodeTypeFallback: { kind: "absent" }, configurationSchemaIds: [NormalizedConfigurationSchemaId(input.configurationSchemaId)] });
   if (subject.status !== "matched" || subject.subject.kind !== "configuration-schema") throw new ApiError("CONFLICT", "A published ConfigurationSchema must be selected explicitly.");
   const definitions = input.mappings.map((mapping) => {

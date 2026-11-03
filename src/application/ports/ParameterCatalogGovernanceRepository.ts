@@ -1,4 +1,9 @@
 import type {
+  ModuleStructureDocument,
+  ModuleStructurePreviewRequest,
+  ModuleStructureApplyRequest,
+  ModuleStructurePreviewResponse,
+  ModuleStructureReceipt,
   CatalogBatchRegistrationRequest,
   CatalogBatchRegistrationResponse,
   CatalogUnregisteredSubjectsResponse,
@@ -68,6 +73,9 @@ export type CatalogConditionalWriteContext = CatalogIdempotentWriteContext & {
 
 /** SubjectGovernance + ReviewQueue + DefinitionProposal. Closed canonical governance seam. */
 export interface ParameterCatalogGovernanceRepository {
+  exportModuleStructure(organizationId: string): Promise<ModuleStructureDocument>;
+  previewModuleStructure(organizationId: string, body: ModuleStructurePreviewRequest): Promise<ModuleStructurePreviewResponse>;
+  applyModuleStructure(organizationId: string, body: ModuleStructureApplyRequest): Promise<ModuleStructureReceipt>;
   listUnregisteredSubjects(organizationId: string, source: "organization" | "all", catalogReleaseId: string): Promise<CatalogUnregisteredSubjectsResponse>;
   createBatchRegistration(organizationId: string, body: CatalogBatchRegistrationRequest, context: CatalogIdempotentWriteContext): Promise<CatalogBatchRegistrationResponse>;
   listRegistrations(

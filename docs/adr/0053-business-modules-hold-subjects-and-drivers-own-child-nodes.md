@@ -8,6 +8,8 @@ Date: 2026-11-02
 
 Accepted for [#1479](https://github.com/tzrea1-Q/WiseEff/issues/1479). Implementation plan: [module subject structure](../exec-plans/completed/2026-11-02-issue-1479-module-subject-structure.md), delivered in slices S1–S5. This ADR amends [ADR-0042](0042-organizations-register-canonical-subjects-once.md); ADR-0040's identity, release and synchronizer rules stay in force.
 
+[ADR-0054](0054-module-structure-transfer-is-explicit-organization-governance.md) adds the accepted design for organization structure transfer and retired-registration placement editing. Its implementation is pending; this ADR's Catalog ownership and child-lifecycle invariants remain in force.
+
 ## Context
 
 ADR-0042 placed each Subject registration into a module whose kind mirrored the subject kind (`driver-group`, `node-type`, or `business` for configuration schemas), and the database allowed one placement per module. Users therefore had to create a technical module named after each driver inside a business category, the "adjust placement" picker hid business categories, and a module's tree position looked like, but was not, a structural relation between a driver and its child nodes. The Catalog also drops a driver schema's `childNodes`, and node types are globally unique by name, so an identically named child node under another driver can match the wrong subject.

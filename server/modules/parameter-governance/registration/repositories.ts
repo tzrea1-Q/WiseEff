@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { lockOrganizationSubjectRegistration } from "../../parameter-modules/recognitionLock";
+import { lockOrganizationModuleStructure } from "../../parameter-modules/recognitionLock";
 import type { Queryable } from "../../../shared/database/client";
 
 import type { RegistrationCommand, RegisterSubjectCommand } from "./command";
@@ -53,7 +53,7 @@ export const lockOrganizationRegistrations = async (
   client: RegistrationWriterClient,
   organizationId: string,
 ): Promise<void> => {
-  await lockOrganizationSubjectRegistration(client as unknown as Queryable, organizationId);
+  await lockOrganizationModuleStructure(client as unknown as Queryable, organizationId);
   await client.query(
     `select id from parameter_catalog.organization_subject_registrations
      where organization_id = $1 order by id for update`,
@@ -204,13 +204,14 @@ export const insertRegistration = async (
     readonly proof: Record<string, unknown>;
     readonly placementId: string;
     readonly status?: "active" | "retired";
+    readonly cascadeRetired?: boolean;
     readonly displayAlias?: string;
   },
 ): Promise<RegistrationRow> => {
   const result = await client.query<RegistrationRow>(
     `insert into parameter_catalog.organization_subject_registrations (
-       id, organization_id, subject_id, status, registration_method, proof, current_placement_id, display_alias
-     ) values ($1,$2,$3,$7,$4,$5::jsonb,$6,$8)
+       id, organization_id, subject_id, status, registration_method, proof, current_placement_id, display_alias, cascade_retired
+     ) values ($1,$2,$3,$7,$4,$5::jsonb,$6,$8,$9)
      returning id, organization_id, subject_id, status, registration_method, current_placement_id,
        (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [
@@ -222,6 +223,7 @@ export const insertRegistration = async (
       input.placementId,
       input.status ?? "active",
       input.displayAlias ?? null,
+      input.cascadeRetired ?? false,
     ],
   );
   return result.rows[0]!;

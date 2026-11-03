@@ -36,6 +36,7 @@ export const CANONICAL_SOURCE_LOCK_RELATIONS = [
 ] as const;
 
 const CANONICAL_SOURCE_READ_FUNCTIONS = [
+  "parameter_catalog.module_deletion_references(text,text[])",
   "public.derive_shared_dtsi_switch_version(text,text,text,text)",
   "public.apply_shared_dtsi_switch(text,jsonb)",
   "public.shared_dtsi_private_source_is_restored(text)",
@@ -522,6 +523,16 @@ export async function provisionPublicationRuntimeLogins(
         await admin.query(
           `grant insert, update, delete on table parameter_catalog.${quoteIdent(table)} to ${quoteIdent(names.api)}`,
         );
+      }
+      if ((await admin.query<{ exists: boolean }>(
+        "select to_regclass('parameter_catalog.module_structure_export_baselines') is not null as exists",
+      )).rows[0]?.exists) {
+        await admin.query(`grant insert on parameter_catalog.module_structure_export_baselines to ${quoteIdent(names.api)}`);
+      }
+      if ((await admin.query<{ exists: boolean }>(
+        "select to_regclass('parameter_catalog.module_structure_created_refs') is not null as exists",
+      )).rows[0]?.exists) {
+        await admin.query(`grant insert on parameter_catalog.module_structure_created_refs to ${quoteIdent(names.api)}`);
       }
       // Replacement history stays immutable; the API owns only approval
       // consumption and the existing execution/continuation state columns.

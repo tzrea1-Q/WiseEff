@@ -21,6 +21,7 @@ import { insertReleaseBaseline, insertReleaseBaselineMember } from "../parameter
 import type { ProjectDeletionPreview, ProjectDeletionStatus } from "../../../src/domain/parameters/projectDeletionPreview";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { createDebugDeviceGatewayRegistry } from "../debugging/gatewayRegistry";
+import { lockOrganizationModuleRecognition } from "../parameter-modules/recognitionLock";
 
 describe("confirmed project purge HTTP", () => {
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
@@ -51,6 +52,30 @@ describe("confirmed project purge HTTP", () => {
   }
   const purge = (id: string, digest: string, objectStore = store) => requestJson<{ item: ProjectDeletionStatus }>(
     createWiseEffServer({ db, objectStore }), `${url(id)}/purge`, { method: "POST", headers, body: JSON.stringify({ stateDigest: digest }) });
+
+  it.each(["purge", "delete"] as const)("serializes project %s with recognition validation", async operation => {
+    const id = `${operation}-recognition`;
+    await createProject(db, { organizationId: "purge-org", id, name: "Recognition", code: operation.toUpperCase() });
+    const impact = operation === "purge" ? await preview(id) : null;
+    let release!: () => void;
+    let locked!: () => void;
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { locked = resolve; });
+    const holder = db.transaction(async tx => { await lockOrganizationModuleRecognition(tx, "purge-org"); locked(); await wait; });
+    await ready;
+    const pending = impact ? purge(id, impact.stateDigest)
+      : requestJson(createWiseEffServer({ db, objectStore: store }), url(id), { method: "DELETE", headers });
+    try {
+      await expect.poll(async () => (await db.query<{ waiting: boolean }>(`select exists (
+        select 1 from pg_catalog.pg_locks where locktype='advisory' and not granted
+          and database=(select oid from pg_database where datname=current_database())) as waiting`)).rows[0]!.waiting).toBe(true);
+      expect((await db.query("select id from public.projects where id=$1", [id])).rows).toHaveLength(1);
+    } finally {
+      release();
+      await holder;
+    }
+    expect((await pending).status).toBe(200);
+  });
   async function canonical(id: string, limit: number, objectStore = store) {
     await createProject(db, { organizationId: "purge-org", id, name: id, code: id.toUpperCase() });
     const set = await createConfigSet(db, auth, { projectId: id, name: "Canonical" });
