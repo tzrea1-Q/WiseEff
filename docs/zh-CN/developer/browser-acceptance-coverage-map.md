@@ -1,5 +1,7 @@
 # 浏览器验收覆盖图
 
+`MODULE-STRUCTURE-RECOGNITION-001`：在 1440×900 下，管理员通过真实 API 验证、审阅并恢复识别继承。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
 > English: [English](../../developer/browser-acceptance-coverage-map.md)
 
 这是日常开发文档，帮助开发者完成本地启动、环境配置、验证选择和验收覆盖判断。

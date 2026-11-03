@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { z } from "zod";
 import { createWiseEffServer } from "../../app";
@@ -6,9 +6,16 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../shared/databa
 import { requestJson } from "../../test/testClient";
 import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog";
 import { makeTestAuthContext } from "../../testing/authContext";
-import { installPublishedCatalogMatchChain } from "../catalog-kernel/runtime/catalogChain.fixture";
+import { installPublishedCatalogChain, nodeTypeAndSecondDriverSuccessorBundle, retiredPowerAliasSuccessorBundle } from "../catalog-kernel/runtime/catalogChain.fixture";
+import { compileCatalogRelease } from "../catalog-kernel/compiler";
+import { installPublishedRelease } from "../catalog-kernel/install/installer";
+import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
-import { moduleStructureExportSchema } from "../contracts/dtoSchemas/moduleStructure";
+import { moduleStructureExportSchema, moduleStructurePreviewResponseSchema } from "../contracts/dtoSchemas/moduleStructure";
+import { createCatalogKernel } from "../catalog-kernel/interface";
+import { captureCurrentCatalogPin } from "../catalog-publication/runtime";
+import { createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
+import { DefinitionRevisionId, ParameterDefinitionId } from "../parameter-catalog-contract";
 
 describe("module structure export", () => {
   let fixture: ParameterCatalogDatabase;
@@ -22,7 +29,13 @@ describe("module structure export", () => {
     fixture = await createDisposableParameterCatalogDatabase("structureexport");
     db = createPostgresDatabase(fixture.url);
     const pool = getRootPostgresPool(db)!;
-    await installPublishedCatalogMatchChain(pool);
+    const chain = await installPublishedCatalogChain(pool);
+    const bundle = nodeTypeAndSecondDriverSuccessorBundle();
+    const compiled = compileCatalogRelease(bundle);
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+    const installed = await installPublishedRelease(pool, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
+      expectedCurrent: chain.pinC, expectedTargetDigest: compiled.value.aggregateDigest });
+    if (!installed.ok) throw new Error(JSON.stringify(installed.error));
     await pool.query("insert into organizations(id,name) values ($1,'Export')", [org]);
     await pool.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
     await pool.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('export-role',$1,$2,'admin')", [user, org]);
@@ -76,8 +89,11 @@ describe("module structure export", () => {
   it("registers an explicitly requested Catalog root through the transfer", async () => {
     const org = "lifecycle-export-org";
     const user = "lifecycle-export-admin";
+    const guestUser = "lifecycle-export-guest";
     await db.query("insert into organizations(id,name) values ($1,'Lifecycle')", [org]);
     await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Guest','Guest',true)", [guestUser, org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('lifecycle-guest-role',$1,$2,'guest')", [guestUser, org]);
     await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('lifecycle-export-role',$1,$2,'admin')", [user, org]);
     await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('lifecycle-export-root',$1,'Root','lifecycle-export-root','business','curated')", [org]);
     const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
@@ -93,6 +109,10 @@ describe("module structure export", () => {
     const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(preview.status, preview.bodyText).toBe(200);
     expect(preview.body).toMatchObject({ changes: [expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })] });
+    const guest = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: guestUser, roles: [{ roleId: "guest", projectId: null }] }) } } });
+    const denied = await requestJson(guest, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "denied", reason: "Reviewed" }) });
+    expect(denied.status).toBe(403);
     const applyBody = JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "register-root", reason: "Reviewed registration" });
     const secondApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
@@ -484,15 +504,87 @@ describe("module structure export", () => {
     expect((await db.query(`select r.id,r.status,r.cascade_retired,r.current_placement_id,r.display_alias,
       rr.compatibles from parameter_catalog.organization_subject_registrations r left join registration_recognition_rules rr
       on rr.organization_id=r.organization_id and rr.registration_id=r.id where r.organization_id=$1 order by r.id`, [org])).rows).toEqual(retainedBefore);
-    const edited = structuredClone(result.body) as z.infer<typeof moduleStructureExportSchema>;
+    {
+    const reset = structuredClone(result.body) as z.infer<typeof moduleStructureExportSchema>;
+    const recognition = reset.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!;
+    recognition.mode = "inherit"; recognition.override = null;
+    const resetModule = reset.modules.find(module => module.sourceId === "export-root")!;
+    const oldDescription = resetModule.description;
+    resetModule.description = "Updated with recognition";
+    const resetPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: reset, resolutions: {} }) });
+    expect(resetPreview.status, resetPreview.bodyText).toBe(200);
+    expect(resetPreview.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: "csub_acme_power", field: "recognition" })]), conflicts: [] });
+    const resetBody = { document: reset, resolutions: {}, token: (resetPreview.body as { token: string }).token, idempotencyKey: "recognition-reset", reason: "Restore defaults" };
+    const viewerApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: "export-guest", roles: [{ roleId: "guest", projectId: null }] }) } } });
+    const deniedReset = await requestJson(viewerApp, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify(resetBody) });
+    expect(deniedReset.status).toBe(403);
+    await db.query(`create function public.fail_recognition_batch_audit() returns trigger language plpgsql as $$
+      begin if new.action='module-structure-update' then raise exception 'injected recognition batch failure'; end if; return new; end $$`);
+    await db.query("create trigger fail_recognition_batch_audit before insert on audit_events for each row execute function public.fail_recognition_batch_audit()");
+    try {
+      const failed = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify(resetBody) });
+      expect(failed.status).toBeGreaterThanOrEqual(500);
+      expect((await db.query("select 1 from registration_recognition_rules where registration_id='export-registration'")).rowCount).toBe(1);
+      expect((await db.query<{ description: string }>("select description from parameter_modules where id='export-root'")).rows[0]?.description).toBe(oldDescription);
+    } finally { await db.query("drop trigger fail_recognition_batch_audit on audit_events"); await db.query("drop function public.fail_recognition_batch_audit()"); }
+    const resetResult = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: reset, resolutions: {},
+      token: (resetPreview.body as { token: string }).token, idempotencyKey: "recognition-reset", reason: "Restore defaults" }) });
+    expect(resetResult.status, resetResult.bodyText).toBe(200);
+    expect((await db.query("select 1 from registration_recognition_rules where registration_id='export-registration'")).rowCount).toBe(0);
+    const inherited = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const edited = structuredClone(inherited.body) as z.infer<typeof moduleStructureExportSchema>;
+    const editedRule = edited.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!;
+    editedRule.mode = "override"; editedRule.override = { ...editedRule.effective, compatibles: ["acme,new"] };
+    const editPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(editPreview.status, editPreview.bodyText).toBe(200);
+    await db.query(`create function public.fail_recognition_batch_audit() returns trigger language plpgsql as $$
+      begin if new.action='module-structure-update' then raise exception 'injected recognition batch failure'; end if; return new; end $$`);
+    await db.query("create trigger fail_recognition_batch_audit before insert on audit_events for each row execute function public.fail_recognition_batch_audit()");
+    try {
+      const failed = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {},
+        token: (editPreview.body as { token: string }).token, idempotencyKey: "recognition-edit", reason: "Update matching" }) });
+      expect(failed.status).toBeGreaterThanOrEqual(500);
+      expect((await db.query("select 1 from registration_recognition_rules where registration_id='export-registration'")).rowCount).toBe(0);
+    } finally { await db.query("drop trigger fail_recognition_batch_audit on audit_events"); await db.query("drop function public.fail_recognition_batch_audit()"); }
+    const editResult = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {},
+      token: (editPreview.body as { token: string }).token, idempotencyKey: "recognition-edit", reason: "Update matching" }) });
+    expect(editResult.status, editResult.bodyText).toBe(200);
+    expect((await db.query<{ compatibles: string[] }>("select compatibles from registration_recognition_rules where registration_id='export-registration'")).rows[0]?.compatibles).toEqual(["acme,new"]);
+    const conflictExport = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const conflictDocument = structuredClone(conflictExport.body) as z.infer<typeof moduleStructureExportSchema>;
+    conflictDocument.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!.override!.compatibles = ["acme,file"];
+    await db.query("update registration_recognition_rules set compatibles=array['acme,current'] where registration_id='export-registration'");
+    const conflictPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: conflictDocument, resolutions: {} }) });
+    expect(conflictPreview.status, conflictPreview.bodyText).toBe(200);
+    expect(conflictPreview.body).toMatchObject({ conflicts: [expect.objectContaining({ key: "csub_acme_power:recognition.compatibles", baseline: ["acme,new"], file: ["acme,file"], current: ["acme,current"] })] });
+    const invalid = structuredClone(conflictDocument);
+    invalid.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!.override!.compatibles = ["invalid selector!"];
+    const invalidPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: invalid,
+      resolutions: { "csub_acme_power:recognition.compatibles": "file" } }) });
+    expect(invalidPreview.status).toBe(400);
+    const resolved = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: conflictDocument,
+      resolutions: { "csub_acme_power:recognition.compatibles": "file" } }) });
+    expect(resolved.status, resolved.bodyText).toBe(200);
+    await db.query("update registration_recognition_rules set compatibles=array['acme,later'] where registration_id='export-registration'");
+    const stale = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: conflictDocument,
+      resolutions: { "csub_acme_power:recognition.compatibles": "file" }, token: (resolved.body as { token: string }).token,
+      idempotencyKey: "recognition-stale", reason: "Review" }) });
+    expect(stale.status).toBe(409);
+    }
+    {
+    const combinedExport = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const edited = structuredClone(combinedExport.body) as z.infer<typeof moduleStructureExportSchema>;
     const previousDescription = edited.modules.find(module => module.sourceId === "export-root")!.description;
     edited.modules.find(module => module.sourceId === "export-root")!.description = "Combined placement update";
     const root = edited.subjects.find(subject => subject.subjectId === "csub_acme_power")!;
     root.placement = { kind: "unset" };
     root.displayAlias = null;
+    root.recognition!.override!.compatibles = ["acme,combined"];
     const placementPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, {
       method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(placementPreview.status, placementPreview.bodyText).toBe(200);
+    expect(() => moduleStructurePreviewResponseSchema.parse(placementPreview.body)).not.toThrow();
     await db.query("update parameter_catalog.organization_subject_registrations set display_alias='Concurrent' where id='export-registration'");
     const stalePlacement = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, {
       method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (placementPreview.body as { token: string }).token,
@@ -521,10 +613,12 @@ describe("module structure export", () => {
       join parameter_catalog.subject_placements p on p.id=r.current_placement_id where r.id='export-registration'`)).rows)
       .toEqual([{ status: "retired", display_alias: "Concurrent", module_id: "export-root" }]);
     expect((await db.query("select description from parameter_modules where id='export-root'")).rows[0]).toEqual({ description: previousDescription });
+    expect((await db.query<{ compatibles: string[] }>("select compatibles from registration_recognition_rules where registration_id='export-registration'")).rows[0]?.compatibles).toEqual(["acme,later"]);
     const placementApply = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, {
       method: "POST", body: JSON.stringify({ document: edited, resolutions, token: (resolved.body as { token: string }).token,
         idempotencyKey: "retired-unset-alias", reason: "Reorganize retired subject" }) });
     expect(placementApply.status, placementApply.bodyText).toBe(200);
+    expect((await db.query<{ compatibles: string[] }>("select compatibles from registration_recognition_rules where registration_id='export-registration'")).rows[0]?.compatibles).toEqual(["acme,combined"]);
     const replay = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, {
       method: "POST", body: JSON.stringify({ document: edited, resolutions, token: (resolved.body as { token: string }).token,
         idempotencyKey: "retired-unset-alias", reason: "Reorganize retired subject" }) });
@@ -571,6 +665,7 @@ describe("module structure export", () => {
       where registration_id='export-child'`)).rows).toEqual([{ module_id: "export-unclassified", via_owner_registration_id: "export-registration" }]);
     await db.query("update parameter_catalog.subject_placements set module_id=null where id='export-placement'");
     await db.query("delete from parameter_modules where id='export-unclassified'");
+    }
     await db.query("update parameter_catalog.organization_subject_registrations set status='active' where id='export-registration'");
     await db.query("update parameter_catalog.organization_subject_registrations set cascade_retired=false where id='export-child'");
     const active = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
@@ -579,6 +674,50 @@ describe("module structure export", () => {
       expect.objectContaining({ subjectId: "csub_acme_power", state: "active" }),
       expect.objectContaining({ subjectId: "csub_acme_charger", state: "retired", cascadeRetired: false }),
     ]));
+    const capacityDocument = structuredClone(active.body) as z.infer<typeof moduleStructureExportSchema>;
+    capacityDocument.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!.override!.instanceCardinality = "singleton-per-project";
+    const beforeCapacity = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: capacityDocument, resolutions: {} }) });
+    expect(beforeCapacity.status, beforeCapacity.bodyText).toBe(200);
+    await db.query("insert into projects(id,organization_id,name,code) values ('recognition-capacity-project',$1,'Capacity','CAP')", [org]);
+    const pool = getRootPostgresPool(db)!;
+    const pin = await captureCurrentCatalogPin(pool);
+    if (!pin) throw new Error("Missing Catalog release");
+    const loaded = await createCatalogKernel(pool).loadPinnedCatalog(pin);
+    if (!loaded.ok) throw new Error(JSON.stringify(loaded.error));
+    for (const logicalNodeId of ["capacity-one", "capacity-two"]) {
+      const binding = await createSourceBackedBindingService(pool).stabilize({ snapshot: loaded.value, organizationId: org,
+        projectId: "recognition-capacity-project", logicalNodeId, registrationId: "export-registration",
+        definitionId: ParameterDefinitionId("pdef_acme_power_iin_max"), effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_2"), expectedEffectiveRevisionId: null });
+      if (!binding.ok) throw new Error(JSON.stringify(binding.error));
+    }
+    const capacityPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: capacityDocument, resolutions: {} }) });
+    expect(capacityPreview.status, capacityPreview.bodyText).toBe(409);
+    expect(capacityPreview.bodyText).toContain("单例容量");
+    const capacityApply = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: capacityDocument,
+      resolutions: {}, token: (beforeCapacity.body as { token: string }).token, idempotencyKey: "capacity-race", reason: "Review" }) });
+    expect(capacityApply.status).toBe(409);
+    const releaseDocument = structuredClone(active.body) as z.infer<typeof moduleStructureExportSchema>;
+    releaseDocument.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!.override!.compatibles = ["acme,release-race"];
+    const releasePreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: releaseDocument, resolutions: {} }) });
+    expect(releasePreview.status, releasePreview.bodyText).toBe(200);
+    const gate = await pool.connect();
+    await gate.query("begin");
+    await gate.query("select pg_advisory_xact_lock(688004000041::bigint)");
+    const gatePid = (await gate.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
+    const bundle = retiredPowerAliasSuccessorBundle();
+    const compiled = compileCatalogRelease(bundle);
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+    const publication = installPublishedRelease(pool, { mode: "advance", source: jsonCatalogReleaseSource(bundle), expectedCurrent: pin, expectedTargetDigest: compiled.value.aggregateDigest });
+    let pending: ReturnType<typeof requestJson> | undefined;
+    try {
+      await vi.waitFor(async () => { expect((await pool.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [gatePid])).rowCount).toBeGreaterThan(0); });
+      pending = requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: releaseDocument,
+        resolutions: {}, token: (releasePreview.body as { token: string }).token, idempotencyKey: "release-race", reason: "Review" }) });
+      await vi.waitFor(async () => { expect((await pool.query("select pid from pg_stat_activity where wait_event='advisory' and datname=current_database()")).rowCount).toBeGreaterThan(1); });
+      await gate.query("commit");
+      expect((await publication).ok).toBe(true);
+      expect((await pending).status).toBe(409);
+    } finally { await gate.query("rollback"); gate.release(); await publication.catch(() => undefined); await pending?.catch(() => undefined); }
   });
 
   it("reads the release and module rows from one PostgreSQL snapshot", async () => {
