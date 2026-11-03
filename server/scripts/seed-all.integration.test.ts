@@ -4,12 +4,16 @@ import path from "node:path";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { runAllSeedScripts } from "../../scripts/seed-all";
 import { createWiseEffServer } from "../app";
-import { createPostgresDatabase, type RootDatabase } from "../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../shared/database/client";
 import { requestJson } from "../test/testClient";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../testing/testDatabase";
 import { maybeEnsureLocalPostCutoverOnApiBoot } from "../modules/parameter-topology/localPostCutover";
 import { seedQualityCanonicalBindings, seedQualityVisualReview } from "../../scripts/seed-quality-visual-review";
 import { createLocalObjectStore } from "../modules/logs/objectStore";
+import { seedPublishedCatalog, readSeededCatalogPointer } from "../testing/parameterCatalog/seedPublishedCatalog";
+import { seedCurrentDemoCatalog } from "../testing/parameterCatalog/seedCurrentDemoCatalog";
+import { claimCatalogChildOwners } from "../../scripts/catalog-claim-child-owners";
+import { VENDOR_OWNED_RELEASE_ID } from "../../scripts/compile-owned-vendor-catalog-release";
 
 let database: EphemeralTestDatabase;
 let db: RootDatabase;
@@ -169,6 +173,18 @@ it("organizes battery authentication as one driver and one owned checker with tw
   expect(apiRows).toHaveLength(5);
   expect(apiRows.filter((row) => row.propertyKey === "matchable").map((row) => row.rawValue).sort())
     .toEqual(["<&fm1230 &t91407>", "<&fm1230_1 &t91407_1>"].sort());
+  const subject = await requestJson<{ item: { registration: { id: string } } }>(
+    server, `/api/v2/catalog/subjects/${childId}`, { headers: { "X-WiseEff-User": "u-xu-yun" } });
+  expect(subject.status, subject.bodyText).toBe(200);
+  expect(subject.body.item).toMatchObject({ id: childId, ownerSubjectId: driverId, canonicalName: "battery_checker",
+    registration: { status: "active", placement: { structural: true, ownerSubjectId: driverId } },
+    definitionCounts: { active: 2, deprecated: 0, retired: 0 } });
+  const registration = await requestJson<{ item: unknown }>(server,
+    `/api/v2/organizations/org-chargelab/subject-registrations/${subject.body.item.registration.id}`,
+    { headers: { "X-WiseEff-User": "u-xu-yun" } });
+  expect(registration.status, registration.bodyText).toBe(200);
+  expect(registration.body.item).toMatchObject({ subjectId: childId, ownerSubjectId: driverId, structural: true,
+    impact: { bindingCount: 12, projectCount: 3 } });
 });
 
 it("quality and visual review seeds use canonical source pins without legacy parameter rows", async () => {
@@ -189,6 +205,23 @@ it("quality and visual review seeds use canonical source pins without legacy par
   } finally {
     vi.unstubAllEnvs();
   }
+}, 120_000);
+
+it("recovers an offline demo interrupted after owner claims but before successor installation", async () => {
+  const isolated = await createEphemeralTestDatabase("ownerretry");
+  const root = createPostgresDatabase(isolated.url);
+  try {
+    const pool = getRootPostgresPool(root)!;
+    const previous = await seedPublishedCatalog(pool);
+    const claimed = await claimCatalogChildOwners(root, path.join(process.cwd(), "schemas/dts"), true, { requireEmptyDemo: true });
+    expect(claimed.candidates).toHaveLength(6);
+    expect(claimed.candidates.every((row) => row.status === "claimed")).toBe(true);
+    expect(await readSeededCatalogPointer(pool)).toMatchObject({ kind: "installed", current: previous });
+    const before = (await root.query("select id, owner_subject_id from parameter_catalog.catalog_subjects order by id")).rows;
+    expect(await seedCurrentDemoCatalog(root)).toMatchObject({ id: VENDOR_OWNED_RELEASE_ID });
+    expect((await root.query("select id, owner_subject_id from parameter_catalog.catalog_subjects order by id")).rows).toEqual(before);
+    expect(await seedCurrentDemoCatalog(root)).toMatchObject({ id: VENDOR_OWNED_RELEASE_ID });
+  } finally { await root.close(); await isolated.drop(); }
 }, 120_000);
 
 it("preserves legacy finalize for a mixed cohort despite complete canonical source pins", async () => {

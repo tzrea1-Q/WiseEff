@@ -12,7 +12,7 @@ import { seedPublishedCatalog } from "./seedPublishedCatalog";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
-/** Fresh demo initialization only. Populated installations require the operator claim/publication workflow. */
+/** Offline fresh-demo initialization; stop API/manager traffic. Populated installations require the operator workflow. */
 export async function seedCurrentDemoCatalog(db: Database) {
   const pool = getRootPostgresPool(db);
   if (!pool) throw new Error("Current demo Catalog requires the root database.");
@@ -21,7 +21,7 @@ export async function seedCurrentDemoCatalog(db: Database) {
   if (pointer.kind === "installed" && pointer.current.id === VENDOR_OWNED_RELEASE_ID
     && pointer.current.digest === VENDOR_OWNED_AGGREGATE_DIGEST) return pointer.current;
 
-  // Refuse before even advancing the historical lineage of a populated database.
+  // Refuse populated installations before bootstrap; claims recheck under locks.
   const populated = await db.query<{ populated: boolean }>(`select
     exists(select 1 from parameter_catalog.organization_subject_registrations)
     or exists(select 1 from parameter_catalog.project_parameter_bindings)

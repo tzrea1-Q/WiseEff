@@ -98,7 +98,9 @@ npm run catalog:lane:env -- cleanup --abandoned
 
 普通 API 启动仍只校验，原始 `db:seed:all` 仍是数据夹具契约，不完成在线编写准备。种子成功或 `/health/live` 正常不足以判定开发环境可用；还须通过真实 publication-surface 与 manager 身份检查，发布进程运行后任务才能激活。`dev:setup` 可仅准备而不启动；`dev:publication` 单独启动已准备的 manager；低层 `dev:api` 不接管目录也不启动 manager。这些本地检查不能作为目标主机或生产就绪证据。
 
-`db:seed:all` 与 `db:seed:m1` **只通过 canonical owners 初始化参数数据**：M1 使用现有 Catalog installer 的 `seedPublishedCatalog` 安装钉扎的受约束 vendor Catalog，创建 taxonomy/modules，并导入 canonical-only 来源结构修订；随后注册 canonical Subjects，物化 canonical Bindings 和 Project values。不初始化 legacy Spec、Binding、flat Definition 或 PPV 行。Aurora 的 `watchdog_time` 演示历史来自真实 canonical 草稿 → 提交 → 审核 → source commit，不直接插入历史。种子保持幂等，重复运行不应增加重复的 canonical Catalog、Binding、value 或 history 行。
+`db:seed:all` 与 `db:seed:m1` **只通过 canonical owners 初始化参数数据**：使用 `seedCurrentDemoCatalog` 和现有 installer 安装钉扎的 vendor release 4，随后创建 taxonomy/modules、canonical-only 来源结构修订、主体登记、Binding 和项目值。初始化须停止 API/manager 流量；只有空的、未接管的目录才能在安装前认领已审查的子主体所属关系。已有业务数据的旧目录须走运维认领与正式发布流程；已接管目录保留当前版本。空库初始化在认领后中断也可重试。历史发布与 Definition 身份保持不变。Aurora 的 `watchdog_time` 演示历史来自真实 canonical 草稿 → 提交 → 审核 → source commit。重复初始化不得增加重复的 Catalog、登记、Binding、value 或 history 行。
+
+电池防伪示例的结构为 `Battery Authentication`（电池防伪）→ 驱动主体 `huawei,batt_info` → 所属节点主体 `battery_checker`。驱动拥有 `sn-check-type`，子主体拥有 `matchable` 和 `spare-cycles`。DTS 中的 `battery_checker@0` 与 `battery_checker@1` 共享该子主体及其 Definition，同时保留各自的逻辑节点、Binding 和来源值。子主体使用结构性 Placement，通过驱动获得有效业务模块，不再建立中间的驱动/节点 Module。
 
 空的本地开发库使用有序种子：
 
@@ -142,7 +144,7 @@ M1 会调用 vendor 文档同步。需要对本地演示库单独重跑时：
 npx tsx scripts/sync-vendor-property-docs.ts
 ```
 
-同步通过 `seedPublishedCatalog` 调用 Catalog installer，物化钉扎的 canonical Definition revisions；不直接 upsert legacy 文档/Definitions，也不重写已安装的修订。修改文档或新增 Catalog 文档必须走受治理的 Catalog publication，不能通过 seed/sync 重写。不要用钉扎演示 installer 覆盖更新的或独立治理的 Catalog。
+同步通过 `seedCurrentDemoCatalog` 调用 Catalog installer，物化钉扎的 canonical Definition revisions；不直接 upsert legacy 文档/Definitions，也不重写已安装的修订。修改文档或新增 Catalog 文档必须走受治理的 Catalog publication，不能通过 seed/sync 重写。不要用钉扎演示 installer 覆盖更新的或独立治理的 Catalog。
 
 ### Development 演示登录（API 模式）
 
