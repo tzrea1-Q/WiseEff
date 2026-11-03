@@ -17,7 +17,7 @@ type Preview = {
 };
 type Receipt = { id: string; organizationId: string; changedModules: number; changedFields: number };
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
-const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性" };
+const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块" };
 
 export function ModuleStructureImport({ apiClient, organizationId, canImport, onChanged }: {
   apiClient?: ApiClient; organizationId?: string; canImport: boolean; onChanged?: () => void;
@@ -76,7 +76,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
   const source = document && typeof document === "object" && "source" in document ? (document as { source?: { organizationId?: unknown } }).source?.organizationId : undefined;
   const modules = document && typeof document === "object" && "modules" in document && Array.isArray(document.modules) ? document.modules : [];
   const moduleLabel = (id: string) => {
-    const module = modules.find((entry: { sourceId?: string }) => entry.sourceId === id);
+    const module = modules.find((entry: { sourceId?: string; ref?: string }) => entry.sourceId === id || entry.ref === id);
     return typeof module?.name === "string" ? `${module.name}（${id}）` : id;
   };
   return <>
@@ -86,7 +86,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
       <ModalDialog open={!discard} onDismiss={busy ? undefined : requestClose} className="submission-dialog param-admin-module-edit-dialog module-structure-import" describedBy>
         {({ titleId, descriptionId }) => <>
           <div className="submission-dialog-head"><div><h2 id={titleId}>导入模块结构</h2>
-            <p id={descriptionId}>更新当前组织已有模块资料。新增、移动、删除、主体设置和跨组织复制尚不支持。</p></div></div>
+            <p id={descriptionId}>更新当前组织模块资料、新增模块或调整层级。删除、主体设置和跨组织复制尚不支持。</p></div></div>
           <div className="param-admin-module-edit-body">
             {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy} onChange={async event => {
               const file = event.target.files?.[0]; if (!file) return;

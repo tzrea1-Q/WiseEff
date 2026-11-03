@@ -845,6 +845,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       "definition_purge_rows",
       "log_erasures",
       "module_structure_export_baselines",
+      "module_structure_created_refs",
       "organization_log_erasure_objects",
       "organization_parameter_erasure_objects",
       "project_erasures",
@@ -859,6 +860,12 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
              has_table_privilege($1, 'parameter_catalog.module_structure_export_baselines', 'DELETE') as remove
     `, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
     expect(baselinePrivileges.rows).toEqual([{ read: true, insert: true, update: false, remove: false }]);
+    const mappingPrivileges = await client.query(`select
+      has_table_privilege($1, 'parameter_catalog.module_structure_created_refs', 'SELECT') as read,
+      has_table_privilege($1, 'parameter_catalog.module_structure_created_refs', 'INSERT') as insert,
+      has_table_privilege($1, 'parameter_catalog.module_structure_created_refs', 'UPDATE') as update,
+      has_table_privilege($1, 'parameter_catalog.module_structure_created_refs', 'DELETE') as remove`, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
+    expect(mappingPrivileges.rows).toEqual([{ read: true, insert: true, update: false, remove: false }]);
 
     const functions = await client.query<{ function_name: string; owner: string }>(`
       select procedure.proname as function_name, pg_catalog.pg_get_userbyid(procedure.proowner) as owner

@@ -5,7 +5,7 @@ import type { Queryable } from "../../../shared/database/client";
 import { asAuditTx, writeAuditEventInTx } from "../../audit/auditedWrite";
 import { assertTrustedInvocationMatchesScope, type TrustedInvocationContext } from "../../auth/trustedInvocation";
 import { lockOrganizationModuleStructure } from "../../parameter-modules/recognitionLock";
-import { updateParameterModule } from "../../parameters/parameterModuleRepository";
+import { createParameterModule, updateParameterModule } from "../../parameters/parameterModuleRepository";
 import { planModuleStructure, stable } from "./preview";
 import { moduleStructureApplyRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
 
@@ -39,14 +39,53 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     const plan = await planModuleStructure(client, organizationId, invocation, { mode: input.mode, document: input.document, resolutions: input.resolutions });
     if (plan.token !== input.token) throw new ApiError("CONFLICT", "Preview is stale; review the current state again.");
     if (plan.conflicts.length) throw new ApiError("CONFLICT", "Resolve all conflicts before applying.");
+    const createdRefs = new Set(plan.changes.filter(change => change.field === "create").map(change => change.moduleId));
     const changes = new Map<string, Record<string, unknown>>();
-    for (const change of plan.changes) changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
+    for (const change of plan.changes) if (!createdRefs.has(change.moduleId) && change.field !== "parentRef") changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
     // Temporary names make valid swaps safe under the immediate sibling-name index.
-    for (const [moduleId, values] of changes) if (values.name !== undefined) await client.query(
+    const structural = new Set(plan.changes.filter(change => !createdRefs.has(change.moduleId) && (change.field === "name" || change.field === "parentRef")).map(change => change.moduleId));
+    for (const moduleId of structural) await client.query(
       "update parameter_modules set name=$3 where organization_id=$1 and id=$2 and archived_at is null", [organizationId, moduleId, `__wiseeff_transfer_${randomUUID()}`]);
+    const pending = input.document.modules.filter(module => plan.changes.some(change => change.field === "create" && change.moduleId === module.ref));
+    while (pending.length) {
+      const index = pending.findIndex(module => !module.parentRef || !pending.some(parent => parent.ref === module.parentRef));
+      if (index < 0) throw new ApiError("CONFLICT", "Invalid module hierarchy.");
+      const module = pending.splice(index, 1)[0]!;
+      const created = await createParameterModule(client as unknown as Queryable, { organizationId, name: `__wiseeff_transfer_${randomUUID()}`,
+        parentId: module.parentRef ? plan.moduleIds.get(module.parentRef) ?? module.parentRef : null, description: module.description?.trim(),
+        scope: module.scope?.trim(), sortOrder: module.sortOrder, importance: module.importance });
+      plan.moduleIds.set(module.ref, created.id);
+      await client.query(`insert into parameter_catalog.module_structure_created_refs
+        (organization_id,source_organization_id,export_id,package_ref,module_id,initial_snapshot) values ($1,$2,$3,$4,$5,$6)`,
+        [organizationId, input.document.source.organizationId, input.document.source.exportId, module.ref, created.id, JSON.stringify({ ...module,
+          name: module.name?.trim(), description: module.description?.trim(), scope: module.scope?.trim() })]);
+    }
+    for (const module of input.document.modules) {
+      const id = plan.moduleIds.get(module.ref)!;
+      const originalId = plan.parents.has(id) ? id : module.ref;
+      const parent = plan.parents.get(originalId) ?? null;
+      const parentId = parent ? plan.moduleIds.get(parent) ?? parent : null;
+      if (structural.has(id) || !module.sourceId && plan.changes.some(change => change.field === "create" && change.moduleId === module.ref)) {
+        await client.query("update parameter_modules set parent_id=$3 where organization_id=$1 and id=$2", [organizationId, id, parentId]);
+        const values = changes.get(id) ?? {};
+        if (values.name === undefined) values.name = plan.namesById.get(originalId);
+        changes.set(id, values);
+      }
+    }
+    const moved = plan.changes.filter(change => change.field === "parentRef" || change.field === "create")
+      .map(change => plan.moduleIds.get(change.moduleId) ?? change.moduleId);
+    if (moved.length) await client.query(`with recursive tree as (
+      select id, id::text as path, 1 as depth from parameter_modules where organization_id=$1 and parent_id is null and archived_at is null
+      union all select m.id, tree.path || '/' || m.id, tree.depth+1 from parameter_modules m join tree on m.parent_id=tree.id
+      where m.organization_id=$1 and m.archived_at is null), affected as (
+      select id from parameter_modules where organization_id=$1 and id=any($2::text[])
+      union all select m.id from parameter_modules m join affected a on m.parent_id=a.id where m.organization_id=$1 and m.archived_at is null)
+      update parameter_modules m set path=tree.path,depth=tree.depth from tree where m.organization_id=$1 and m.id=tree.id
+      and m.id in (select id from affected) and (m.path,m.depth) is distinct from (tree.path,tree.depth)`, [organizationId, moved]);
     for (const [moduleId, values] of changes) await updateParameterModule(client as unknown as Queryable, { organizationId, moduleId, ...values });
-    const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules: changes.size, changedFields: plan.changes.length };
-    if (changes.size) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
+    const changedModules = new Set(plan.changes.map(change => change.moduleId)).size;
+    const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules, changedFields: plan.changes.length };
+    if (changedModules) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
       action: "module-structure-update", severity: "Medium", projectId: null, targetType: "organization", targetId: organizationId,
       metadata: { receiptId: receipt.id, reason: input.reason, exportId: input.document.source.exportId,
         sourceOrganizationId: input.document.source.organizationId, catalogReleaseId: input.document.source.catalogReleaseId,

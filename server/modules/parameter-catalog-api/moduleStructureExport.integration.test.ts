@@ -73,6 +73,83 @@ describe("module structure export", () => {
     expect(after.rows).toEqual(before.rows);
   });
 
+  it("creates package-local parent and child and reuses their identities after a rename", async () => {
+    const org = "create-tree-org";
+    const user = "create-tree-admin";
+    await db.query("insert into organizations(id,name) values ($1,'Tree')", [org]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('tree-role',$1,$2,'admin')", [user, org]);
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    const additions = [
+      { ref: "new-parent", name: "New parent", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" },
+      { ref: "new-child", name: "New child", parentRef: "new-parent", description: "", scope: "", sortOrder: 0, importance: "medium" },
+    ];
+    const edited = { ...document, modules: [...document.modules, ...additions] };
+    const previewPath = `/api/v2/organizations/${org}/module-structure/previews`;
+    const applyPath = `/api/v2/organizations/${org}/module-structure/applies`;
+    const preview = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    await db.query(`create function fail_created_ref() returns trigger language plpgsql as $$ begin raise exception 'injected mapping failure'; end $$;
+      create trigger fail_created_ref before insert on parameter_catalog.module_structure_created_refs for each row execute function fail_created_ref()`);
+    try {
+      const failed = await requestJson(app, applyPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "failed-tree", reason: "Create tree" }) });
+      expect(failed.status).toBe(500);
+      expect((await db.query("select id from parameter_modules where organization_id=$1", [org])).rows).toEqual([]);
+      expect((await db.query("select package_ref from parameter_catalog.module_structure_created_refs where organization_id=$1", [org])).rows).toEqual([]);
+    } finally {
+      await db.query("drop trigger fail_created_ref on parameter_catalog.module_structure_created_refs; drop function fail_created_ref()");
+    }
+    const secondApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const [applied, competing] = await Promise.all([app, secondApp].map((server, index) => requestJson(server, applyPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: `new-tree-${index}`, reason: "Create tree" }) })));
+    expect([applied.status, competing.status].sort()).toEqual([200, 409]);
+    const created = (await db.query<{ id: string; parent_id: string | null; name: string; path: string; depth: number }>("select id,parent_id,name,path,depth from parameter_modules where organization_id=$1 and name in ('New parent','New child') order by name", [org])).rows;
+    expect(created).toHaveLength(2);
+    expect(created[0].parent_id).toBe(created[1].id);
+    await db.query("update parameter_modules set name='Renamed parent' where id=$1", [created[1].id]);
+    const again = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(again.status, again.bodyText).toBe(200);
+    expect(again.body).toMatchObject({ changes: [], conflicts: [] });
+    const reapplied = await requestJson(app, applyPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (again.body as { token: string }).token, idempotencyKey: "new-tree-again", reason: "Repeat" }) });
+    expect(reapplied.status, reapplied.bodyText).toBe(200);
+    expect((await db.query("select name from parameter_modules where id=$1", [created[1].id])).rows[0]).toEqual({ name: "Renamed parent" });
+    await db.query("delete from parameter_modules where id=$1", [created[0].id]);
+    const deleted = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(deleted.status).toBe(409);
+  });
+
+  it("validates the final graph and moves a subtree into a vacated sibling name", async () => {
+    const org = "move-tree-org";
+    const user = "move-tree-admin";
+    await db.query("insert into organizations(id,name) values ($1,'Tree')", [org]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('move-tree-role',$1,$2,'admin')", [user, org]);
+    await db.query(`insert into parameter_modules(id,organization_id,parent_id,name,path,depth,kind,origin) values
+      ('move-a',$1,null,'A','move-a',1,'business','curated'), ('move-b',$1,null,'B','move-b',1,'business','curated'),
+      ('move-child',$1,'move-a','Child','move-a/move-child',2,'business','curated'),
+      ('move-leaf',$1,'move-child','Leaf','move-a/move-child/move-leaf',3,'business','curated'),
+      ('move-occupied',$1,'move-b','Child','move-b/move-occupied',2,'business','curated')`, [org]);
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    const child = document.modules.find(m => m.sourceId === "move-child")!;
+    const occupied = document.modules.find(m => m.sourceId === "move-occupied")!;
+    child.parentRef = "move-leaf";
+    const previewPath = `/api/v2/organizations/${org}/module-structure/previews`;
+    const cycle = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(cycle.status).toBe(409);
+    child.parentRef = "move-b"; occupied.parentRef = "move-a";
+    const preview = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "move", reason: "Move tree" }) });
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect((await db.query("select parent_id,path,depth from parameter_modules where id='move-leaf'")).rows[0]).toEqual({ parent_id: "move-child", path: "move-b/move-child/move-leaf", depth: 3 });
+  });
+
   it("merges independent field edits and asks for conflicting field choices", async () => {
     const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
