@@ -5,7 +5,7 @@ import { expect, test } from "playwright/test";
 import { createCatalogKernel } from "../../server/modules/catalog-kernel/interface";
 import { captureCurrentCatalogPin } from "../../server/modules/catalog-publication/runtime";
 import { createSourceBackedBindingService } from "../../server/modules/parameter-bindings/binding/__fixtures__/sourceBackedBinding";
-import { DefinitionRevisionId, ParameterDefinitionId } from "../../server/modules/parameter-catalog-contract";
+import { DefinitionRevisionId, ParameterDefinitionId, SubjectRegistrationId } from "../../server/modules/parameter-catalog-contract";
 import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
@@ -59,7 +59,7 @@ test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async
         const snapshot = await createCatalogKernel(pool).loadCurrentCatalog(pin);
         if (!snapshot.ok) throw new Error(JSON.stringify(snapshot.error));
         const binding = await createSourceBackedBindingService(pool).stabilize({ snapshot: snapshot.value,
-          organizationId: organization, projectId, logicalNodeId: `lifecycle_${suffix}`, registrationId: row.registration_id,
+          organizationId: organization, projectId, logicalNodeId: `lifecycle_${suffix}`, registrationId: SubjectRegistrationId(row.registration_id),
           definitionId: ParameterDefinitionId(row.definition_id), effectiveRevisionId: DefinitionRevisionId(row.revision_id), expectedEffectiveRevisionId: null });
         if (!binding.ok) throw new Error(JSON.stringify(binding.error));
       } finally { await pool.end(); }
