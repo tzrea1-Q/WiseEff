@@ -88,11 +88,11 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
     const subject = subjects.find((entry: { subjectId?: string }) => entry.subjectId === subjectId(id));
     if (subjectId(id)) return subject?.displayAlias || subject?.recognition?.effective?.nodeTypeName || subject?.recognition?.effective?.compatibles?.[0] || `主体 ${subjectId(id)}`;
     const module = modules.find((entry: { sourceId?: string; ref?: string }) => entry.sourceId === id || entry.ref === id);
-    return typeof module?.name === "string" ? `${module.name}（${id}）` : id;
+    return typeof module?.name === "string" ? module.name : id;
   };
   const displayValue = (item: unknown): string => {
     if (item === null) return "无";
-    if (typeof item === "string") return ({ active: "启用", retired: "停用", inherit: "继承目录设置", override: "自定义覆盖" } as Record<string, string>)[item] ?? item;
+    if (typeof item === "string") return ({ "": "空", active: "启用", retired: "停用", inherit: "继承目录设置", override: "自定义覆盖", low: "低", medium: "中", high: "高" } as Record<string, string>)[item] ?? item;
     if (Array.isArray(item)) return item.length ? item.join("、") : "无";
     if (!item || typeof item !== "object" || !("kind" in item)) return value(item);
     const placement = item as { kind: string; moduleRef?: string; sourceId?: string };
