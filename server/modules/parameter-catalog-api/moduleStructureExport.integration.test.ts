@@ -700,6 +700,11 @@ describe("module structure export", () => {
     releaseDocument.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!.override!.compatibles = ["acme,release-race"];
     const releasePreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: releaseDocument, resolutions: {} }) });
     expect(releasePreview.status, releasePreview.bodyText).toBe(200);
+    const lifecycleDocument = structuredClone(active.body) as z.infer<typeof moduleStructureExportSchema>;
+    const lifecycleRoot = lifecycleDocument.subjects.find(subject => subject.subjectId === "csub_acme_power")!;
+    Object.assign(lifecycleRoot, { operation: "retire" });
+    const lifecyclePreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {} }) });
+    expect(lifecyclePreview.status, lifecyclePreview.bodyText).toBe(200);
     const gate = await pool.connect();
     await gate.query("begin");
     await gate.query("select pg_advisory_xact_lock(688004000041::bigint)");
@@ -717,6 +722,14 @@ describe("module structure export", () => {
       await gate.query("commit");
       expect((await publication).ok).toBe(true);
       expect((await pending).status).toBe(409);
+      const staleLifecycle = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument,
+        resolutions: {}, token: (lifecyclePreview.body as { token: string }).token, idempotencyKey: "lifecycle-release-drift", reason: "Review" }) });
+      expect(staleLifecycle.status).toBe(409);
+      const refreshed = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: releaseDocument, resolutions: {} }) });
+      expect(refreshed.status, refreshed.bodyText).toBe(200);
+      const refreshedApply = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: releaseDocument,
+        resolutions: {}, token: (refreshed.body as { token: string }).token, idempotencyKey: "release-refreshed", reason: "Review" }) });
+      expect(refreshedApply.status, refreshedApply.bodyText).toBe(200);
     } finally { await gate.query("rollback"); gate.release(); await publication.catch(() => undefined); await pending?.catch(() => undefined); }
   });
 

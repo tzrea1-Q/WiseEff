@@ -89,7 +89,7 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     for (const [moduleId, values] of changes) await updateParameterModule(client as unknown as Queryable, { organizationId, moduleId, ...values });
     await applyLifecycle(client, organizationId, invocation, requestId, input.idempotencyKey, input.reason, plan.lifecycle);
     await applySubjectPlacement(client, organizationId, plan.subjectChanges, plan.moduleIds);
-    await applyRecognition(client as unknown as Database, organizationId, input.document.source.catalogReleaseId, invocation, requestId, input.idempotencyKey, plan.recognitionChanges);
+    await applyRecognition(client as unknown as Database, organizationId, plan.currentCatalogReleaseId, invocation, requestId, input.idempotencyKey, plan.recognitionChanges);
     const changedModules = new Set(plan.changes.filter(change => !change.moduleId.startsWith("subject:")).map(change => change.moduleId)).size;
     const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules, changedFields: plan.changes.length + plan.recognitionChanges.length };
     if (receipt.changedFields) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",

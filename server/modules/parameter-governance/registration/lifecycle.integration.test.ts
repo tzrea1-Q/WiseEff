@@ -188,6 +188,18 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     };
     await run(doc, "child-register");
     const child = (await admin.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, ownedNodeSubject])).rows[0]!.id;
+    exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
+    const childEdit = structuredClone(exported.body) as typeof doc;
+    childEdit.subjects.find(subject => subject.subjectId === ownedNodeSubject)!.operation = "retire";
+    const childPreview = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document: childEdit, resolutions: {} }) });
+    expect(childPreview.status).toBe(409);
+    const staleEdit = structuredClone(exported.body) as typeof doc;
+    staleEdit.subjects.find(subject => subject.subjectId === targetSubject)!.operation = "retire";
+    const stalePreview = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document: staleEdit, resolutions: {} }) });
+    expect(stalePreview.status, stalePreview.bodyText).toBe(200);
+    await admin.query("update parameter_catalog.organization_subject_registrations set updated_at=updated_at + interval '1 second' where id=$1", [child]);
+    const stale = await requestJson(app, `${base}/applies`, { method: "POST", body: JSON.stringify({ document: staleEdit, resolutions: {}, token: (stalePreview.body as { token: string }).token, idempotencyKey: "stale-child", reason: "Reviewed" }) });
+    expect(stale.status).toBe(409);
     for (const operation of ["retire", "restore"] as const) {
       exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
       const document = exported.body as typeof doc;

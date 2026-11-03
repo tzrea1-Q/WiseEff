@@ -1,7 +1,7 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { readFile } from "node:fs/promises";
 import { expect, test } from "playwright/test";
-import { authHeadersForRole, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
@@ -15,6 +15,50 @@ useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "POST", path: endp
   { method: "POST", path: `/api/v2/organizations/${org}/module-structure/previews`, status: 400 },
   { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, status: 409 },
   { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, status: 503 }] });
+
+test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async ({ page, request }, info) => {
+  // @acceptance MODULE-STRUCTURE-LIFECYCLE-001
+  // @operation MODULE-STRUCTURE-LIFECYCLE-001
+  const suffix = `${Date.now()}`;
+  const organization = `structure-life-${suffix}`, user = `structure-life-user-${suffix}`, moduleId = `structure-life-module-${suffix}`;
+  const email = `${user}@example.test`;
+  const subjects = await withPgClient(async client => {
+    await client.query("insert into organizations(id,name) values ($1,'Structure lifecycle')", [organization]);
+    await client.query("insert into users(id,organization_id,name,title,email,is_active) values ($1,$2,'Lifecycle admin','Admin',$3,true)", [user, organization, email]);
+    await client.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [`role-${suffix}`, user, organization]);
+    await client.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ($1,$2,'Lifecycle category',$1,'business','curated')", [moduleId, organization]);
+    return (await client.query<{ id: string }>(`select s.id from parameter_catalog.catalog_subjects s join parameter_catalog.catalog_state cs on cs.singleton
+      join parameter_catalog.catalog_release_subjects rs on rs.release_id=cs.current_catalog_release_id and rs.subject_id=s.id
+      where s.owner_subject_id is null and rs.lifecycle='active' order by s.id limit 2`)).rows.map(row => row.id);
+  });
+  expect(subjects).toHaveLength(2);
+  const base = `/api/v2/organizations/${organization}/module-structure`;
+  const headers = authHeadersForUser(user, email, "Lifecycle admin", organization);
+  const exportDocument = async () => { const response = await request.post(apiRoute(`${base}/exports`), { headers, data: {} }); expect(response.status(), await response.text()).toBe(200); return response.json(); };
+  const document = await exportDocument();
+  document.subjects.push(...subjects.map(subjectId => ({ subjectId, operation: "register", placement: { kind: "module", moduleRef: moduleId } })));
+  await signInBrowserAsUser(page, user, email, "Lifecycle admin", "/parameter-admin/modules", organization);
+  for (const operation of ["register", "retire", "restore"] as const) {
+    const edited = operation === "register" ? document : await exportDocument();
+    if (operation !== "register") for (const subject of edited.subjects) if (subjects.includes(subject.subjectId)) subject.operation = operation;
+    await page.getByRole("button", { name: "导入结构" }).click();
+    const dialog = page.getByRole("dialog", { name: "导入模块结构" });
+    await dialog.getByLabel("JSON 文件").setInputFiles({ name: `${operation}.json`, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
+    await dialog.getByRole("button", { name: "预览" }).click();
+    await expect(dialog.locator("li").filter({ hasText: "登记状态" })).toHaveCount(2);
+    await dialog.getByLabel("变更原因").fill(`Review ${operation}`);
+    if (operation === "retire") await page.screenshot({ path: info.outputPath("module-structure-lifecycle-1440x900.png"), animations: "disabled" });
+    const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `${base}/applies` && response.status() === 200);
+    await dialog.getByRole("button", { name: "确认提交" }).click();
+    await applied;
+    await expect(dialog.getByRole("status")).toContainText("回执");
+    await dialog.getByRole("button", { name: "关闭" }).click();
+    const after = await exportDocument();
+    for (const id of subjects) expect(after.subjects.find((item: { subjectId: string }) => item.subjectId === id).state).toBe(operation === "retire" ? "retired" : "active");
+  }
+  await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-LIFECYCLE-001", title: "Review root registration lifecycle", status: "passed", page, testInfo: info,
+    artifacts: [info.outputPath("module-structure-lifecycle-1440x900.png")], api: [], db: [], notes: "Real API batch registration, retirement and restoration at 1440×900." });
+});
 
 test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritance", async ({ page, request }, info) => {
   // @acceptance MODULE-STRUCTURE-RECOGNITION-001

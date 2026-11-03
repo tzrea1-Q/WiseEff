@@ -192,7 +192,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, mappings, subjectVersions: subjectVersions.rows, impact, recognition: recognition.evidence };
   return { changes: [...changes, ...subjectPlan.changes.map(({ subjectId, ...change }) => ({ moduleId: `subject:${subjectId}`, ...change })), ...lifecycle.map(change => ({ moduleId: `subject:${change.subjectId}`, field: "state", before: change.operation === "register" ? null : change.operation === "retire" ? "active" : "retired", after: change.operation === "retire" ? "retired" : "active" }))],
     conflicts: [...conflicts, ...subjectPlan.conflicts.map(({ subjectId, ...conflict }) => ({ moduleId: `subject:${subjectId}`, ...conflict })), ...recognition.conflicts],
-    subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, lifecycle, moduleIds, parents, namesById, impact: impact.map(({ bindingVersions: _versions, ...item }) => item), token: createHash("sha256").update(stable(evidence)).digest("hex") };
+    subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, lifecycle, moduleIds, parents, namesById, currentCatalogReleaseId: current.source.catalogReleaseId, impact: impact.map(({ bindingVersions: _versions, ...item }) => item), token: createHash("sha256").update(stable(evidence)).digest("hex") };
 }
 
 export async function previewModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, raw: unknown) {
