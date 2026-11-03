@@ -59,6 +59,20 @@ import {
 import { createCandidate } from "./candidateService";
 import { lockUserById } from "../users/repository";
 import type { ParameterFileFormat, ProjectParameterFileCandidateDto } from "./types";
+import { filterPreviouslySuspendedSourceBindings } from "./sourceManagedScope";
+
+/** Current operations exclude only receipt-proven history; workflow fencing
+ * still discovers and fingerprints the complete retained owner cohort. */
+async function loadCurrentSourceOperationCohort(db: Queryable, scope: {
+  organizationId: string; projectId: string; configSetId: string;
+}) {
+  const cohort = await loadSourceBindingCohortReadOnly(db, scope);
+  const revision = (await db.query<{ id: string }>(`select id from public.dts_config_revisions
+    where organization_id=$1 and project_id=$2 and config_set_id=$3
+      and status in ('resolved','validated','compiled','pending_approval') order by revision_number desc limit 1`,
+  [scope.organizationId, scope.projectId, scope.configSetId])).rows[0];
+  return revision ? filterPreviouslySuspendedSourceBindings(db, { ...scope, baseConfigRevisionId: revision.id }, cohort) : cohort;
+}
 
 export type CanonicalSourceWorkflowDto = {
   canonical: boolean;
@@ -620,7 +634,7 @@ async function inspectCandidate(
     }
   }
 
-  const bindings = await loadSourceBindingCohortReadOnly(db, {
+  const bindings = await loadCurrentSourceOperationCohort(db, {
     organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configSetId: workflow.configSetId
@@ -994,7 +1008,7 @@ async function prepareCanonicalCandidateBatchLocked(
   if (!workflow.canonical || !workflow.configSetId) {
     throw new ApiError("CONFLICT", "Candidate is not attached to a canonical source.", { reason: "file-is-not-canonical" });
   }
-  const cohortBeforeLock = await loadSourceBindingCohortReadOnly(tx, {
+  const cohortBeforeLock = await loadCurrentSourceOperationCohort(tx, {
     organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
     configSetId: workflow.configSetId
@@ -1035,7 +1049,8 @@ async function prepareCanonicalCandidateBatchLocked(
   const cohort = await loadCanonicalSourceCohort(tx, {
     organizationId: parameterOrganizationId(auth),
     projectId: input.projectId,
-    configSetId: inspection.workflow.configSetId
+    configSetId: inspection.workflow.configSetId,
+    baseConfigRevisionId: source.manifest.configRevisionId
   });
   const members = source.manifest.members.map((member) => ({
     ...member,
@@ -1266,7 +1281,8 @@ async function submitInspectedCandidate(
   await loadCanonicalSourceCohort(db, {
     organizationId: parameterOrganizationId(auth),
     projectId: change.pin.projectId,
-    configSetId: change.configSetId
+    configSetId: change.configSetId,
+    baseConfigRevisionId: change.pin.configRevisionId
   });
   const manual = await sourceSubmissionPolicy(db, auth, change.candidate);
   const reused = await ensureNoConflictingDraft(db, auth, objectStore, change, reason, manual);
@@ -1363,7 +1379,8 @@ async function lockCanonicalSourceScope(db: Database, pin: CanonicalValueSourceP
   await loadCanonicalSourceCohort(db, {
     organizationId: pin.organizationId,
     projectId: pin.projectId,
-    configSetId
+    configSetId,
+    baseConfigRevisionId: pin.configRevisionId
   });
 }
 
@@ -1593,10 +1610,13 @@ async function prepareCanonicalConflictDecisionLocked(
     organizationId: parameterOrganizationId(auth), projectId: input.projectId,
     bindingId: input.selectedBindingId, projectValueId: fileChange.pin.projectValueId
   });
-  const cohort = await loadSourceBindingCohortReadOnly(db, {
+  const cohort = await filterPreviouslySuspendedSourceBindings(db, {
+    organizationId: parameterOrganizationId(auth), projectId: input.projectId,
+    configSetId: source.workflow.configSetId, baseConfigRevisionId: sourceSnapshot.manifest.configRevisionId,
+  }, await loadSourceBindingCohortReadOnly(db, {
     organizationId: parameterOrganizationId(auth), projectId: input.projectId,
     configSetId: source.workflow.configSetId
-  });
+  }));
   if (cohort.some((entry) => !entry.sourcePinId || !entry.oldValueId || !entry.locator || !entry.valueDigest)) {
     throw new ApiError("CONFLICT", "Canonical conflict source cohort is incomplete.", { reason: "source-pin-missing" });
   }
@@ -2385,7 +2405,8 @@ export async function prepareCanonicalManualSyncBatchCandidate(
         bindingId: change.binding.bindingId, projectValueId: change.pin.projectValueId
       });
       const cohort = await loadCanonicalSourceCohort(tx, {
-        organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: change.configSetId
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: change.configSetId,
+        baseConfigRevisionId: source.manifest.configRevisionId
       });
       if (source.manifest.configRevisionId !== change.pin.configRevisionId) {
         throw new ApiError("CONFLICT", "Manual single source revision changed.", { reason: "source-proof-stale" });
@@ -2431,7 +2452,7 @@ export async function syncCanonicalSource(
     const file = await getProjectParameterFileById(tx, { organizationId: parameterOrganizationId(auth), fileId: input.fileId });
     if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
     if (file.currentVersionId !== input.versionId) throw new ApiError("CONFLICT", "Canonical manual sync only accepts the current pinned version.", { reason: "stale-base" });
-    const bindings = await loadSourceBindingCohortReadOnly(tx, {
+    const bindings = await loadCurrentSourceOperationCohort(tx, {
       organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,
       configSetId: workflow.configSetId
@@ -2446,7 +2467,8 @@ export async function syncCanonicalSource(
       if (!pin || !pin.configRevisionId.trim()) throw new ApiError("CONFLICT", "Canonical source has no exact config revision.", { reason: "source-config-revision-required" });
       await lockCanonicalSourceScope(tx, pin, workflow.configSetId);
       const cohort = await loadCanonicalSourceCohort(tx, {
-        organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: workflow.configSetId
+        organizationId: parameterOrganizationId(auth), projectId: input.projectId, configSetId: workflow.configSetId,
+        baseConfigRevisionId: pin.configRevisionId
       });
       if (JSON.stringify(cohort) !== JSON.stringify(bindings)) throw new ApiError("CONFLICT", "Canonical source cohort changed during validation.", { reason: "source-proof-busy" });
       const source = await loadExactSourceRevisionForProof(tx, objectStore, {

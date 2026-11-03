@@ -39,6 +39,7 @@ import {
   discoverCurrentSourceRevisionPins as queryCurrentSourceRevisionPins,
   discoverDeletedSourceRevisionPins as queryDeletedSourceRevisionPins,
   loadDeletedSourceAnchors as queryDeletedSourceAnchors,
+  loadRetainedSourceAnchors as queryRetainedSourceAnchors,
   loadSourceBindingCohort as querySourceBindingCohort,
   loadSourceBindingCohortReadOnly as querySourceBindingCohortReadOnly,
   findCurrentSourceBindingId as queryCurrentSourceBindingId,
@@ -116,6 +117,12 @@ export async function loadDeletedSourceAnchors(tx: Queryable, input: { organizat
   assertSourceReadScope(input);
   if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
   return queryDeletedSourceAnchors(tx,input);
+}
+
+export async function loadRetainedSourceAnchors(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
+  return queryRetainedSourceAnchors(tx,input);
 }
 
 export async function loadSourceBindingCohort(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {

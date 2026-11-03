@@ -1,0 +1,323 @@
+-- Unmanaged source remains editable, while its last managed value/pin remains
+-- historical. A historical present pin may re-enter a source cohort only after
+-- an exact, approved exclusion; this is evidence, not a new mutation authority.
+create function parameter_catalog.source_revision_exclusion_matches(
+  p_request_id text,p_binding_id text,p_value_id text,p_pin_id text,p_base_revision_id text)
+returns boolean language sql stable security definer
+set search_path=pg_catalog,parameter_catalog,public as $$
+select exists(
+  select 1 from public.project_parameter_value_change_requests request
+  cross join lateral jsonb_array_elements(request.source_revision_context->'excludedBindings') excluded
+  join parameter_catalog.project_parameter_bindings binding on binding.id=p_binding_id
+    and binding.organization_id=request.organization_id and binding.project_id=request.project_id
+  join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+    and occurrence.organization_id=binding.organization_id and occurrence.project_id=binding.project_id
+    and occurrence.config_set_id=request.source_revision_config_set_id
+  join parameter_catalog.project_parameter_values value on value.id=p_value_id and value.binding_id=binding.id
+    and value.definition_id=binding.definition_id and value.value_state='present'
+  join parameter_catalog.project_value_source_pins pin on pin.id=p_pin_id and pin.project_value_id=value.id
+    and pin.binding_id=binding.id and pin.definition_id=binding.definition_id
+    and pin.organization_id=binding.organization_id and pin.project_id=binding.project_id
+    and pin.source_occurrence_id=occurrence.id and pin.value_state='present'
+    and pin.config_revision_id=value.config_revision_id
+  join public.dts_config_revisions historical on historical.id=pin.config_revision_id
+    and historical.organization_id=binding.organization_id and historical.project_id=binding.project_id
+    and historical.config_set_id=occurrence.config_set_id
+  join public.dts_config_revisions excluded_revision on excluded_revision.id=request.applied_source_result->>'configRevisionId'
+    and excluded_revision.organization_id=binding.organization_id and excluded_revision.project_id=binding.project_id
+    and excluded_revision.config_set_id=occurrence.config_set_id
+    and excluded_revision.revision_number>historical.revision_number
+  join public.dts_config_revisions base on base.id=p_base_revision_id
+    and base.organization_id=binding.organization_id and base.project_id=binding.project_id
+    and base.config_set_id=occurrence.config_set_id and base.revision_number>=excluded_revision.revision_number
+  join public.audit_events audit on audit.id=request.applied_audit_ref
+    and audit.organization_id=binding.organization_id and audit.project_id=binding.project_id
+    and audit.target_id=request.id and audit.action='value-change-applied'
+    and audit.metadata->'result'=request.applied_source_result
+  where request.id=p_request_id and request.request_kind='source_revision'
+    and request.status='approved' and request.apply_outcome='committed'
+    and excluded @> jsonb_build_object('bindingId',binding.id,'oldValueId',value.id,'sourcePinId',pin.id,
+      'sourceOccurrenceId',occurrence.id,'definitionId',binding.definition_id,
+      'effectiveRevisionId',value.definition_revision_id,'catalogReleaseId',binding.catalog_release_id,
+      'registrationId',binding.registration_id,'subjectId',binding.subject_id,'valueDigest',value.value_digest,
+      'configRevisionId',pin.config_revision_id,'fileId',pin.file_id,'fileVersionId',pin.file_version_id,'format',pin.format)
+    and excluded->>'reason' in ('registration-inactive','subject-inactive','definition-inactive','owner-inactive','source-absent')
+    and not exists(select 1 from jsonb_array_elements(request.source_revision_context->'cohort') item
+      where item->>'bindingId'=binding.id)
+    and not exists(select 1 from jsonb_array_elements(request.applied_source_result->'results') item
+      where item->>'bindingId'=binding.id)
+)
+$$;
+
+create function parameter_catalog.assert_source_managed_scope_receipt()
+returns trigger language plpgsql security definer
+set search_path=pg_catalog,parameter_catalog,public as $$
+declare r public.project_parameter_value_change_requests%rowtype; excluded jsonb; resumed jsonb;
+  cohort jsonb; pin parameter_catalog.project_value_source_pins%rowtype; evidence_id text;
+begin
+  -- Lifecycle changes after approval cannot invalidate immutable history.
+  if tg_op='UPDATE' and (old.status='approved' or new.status<>'approved') then return null; end if;
+  select * into r from public.project_parameter_value_change_requests where id=new.id;
+  if r.request_kind<>'source_revision' or r.status not in ('pending','approved') then return null; end if;
+  if (r.source_revision_context ? 'excludedBindings' and jsonb_typeof(r.source_revision_context->'excludedBindings') is distinct from 'array')
+    or (r.source_revision_context ? 'resumptions' and jsonb_typeof(r.source_revision_context->'resumptions') is distinct from 'array') then
+    raise exception using errcode='23514',message='Source managed scope requires exact exclusion and resumption arrays';
+  end if;
+  if (jsonb_array_length(coalesce(r.source_revision_context->'excludedBindings','[]'))>0
+      or jsonb_array_length(coalesce(r.source_revision_context->'resumptions','[]'))>0)
+    and not exists(select 1 from parameter_catalog.catalog_state state
+      join parameter_catalog.catalog_releases release on release.id=state.current_catalog_release_id
+      where release.id=r.source_revision_context->'catalogRelease'->>'id'
+        and release.release_digest=r.source_revision_context->'catalogRelease'->>'digest') then
+    raise exception using errcode='23514',message='Source managed scope Catalog is no longer current';
+  end if;
+  if (select count(*) from jsonb_array_elements(coalesce(r.source_revision_context->'excludedBindings','[]')))
+      <>(select count(distinct item->>'bindingId') from jsonb_array_elements(coalesce(r.source_revision_context->'excludedBindings','[]')) item)
+    or (select count(*) from jsonb_array_elements(coalesce(r.source_revision_context->'resumptions','[]')))
+      <>(select count(distinct item->>'bindingId') from jsonb_array_elements(coalesce(r.source_revision_context->'resumptions','[]')) item) then
+    raise exception using errcode='23514',message='Source managed scope repeats a Binding';
+  end if;
+  for excluded in select value from jsonb_array_elements(coalesce(r.source_revision_context->'excludedBindings','[]')) loop
+    if not exists(
+      select 1 from parameter_catalog.project_parameter_bindings binding
+      join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+        and occurrence.organization_id=binding.organization_id and occurrence.project_id=binding.project_id
+        and occurrence.config_set_id=r.source_revision_config_set_id
+      join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
+        and value.binding_id=binding.id and value.definition_id=binding.definition_id and value.value_state='present'
+      join parameter_catalog.project_value_source_pins owned_pin on owned_pin.project_value_id=value.id
+        and owned_pin.binding_id=binding.id and owned_pin.source_occurrence_id=occurrence.id
+        and owned_pin.organization_id=binding.organization_id and owned_pin.project_id=binding.project_id
+        and owned_pin.definition_id=binding.definition_id and owned_pin.value_state='present'
+      join parameter_catalog.organization_subject_registrations registration on registration.id=binding.registration_id
+        and registration.organization_id=binding.organization_id and registration.subject_id=binding.subject_id
+      left join parameter_catalog.catalog_release_subjects subject on subject.release_id=r.source_revision_context->'catalogRelease'->>'id'
+        and subject.subject_id=binding.subject_id
+      left join parameter_catalog.catalog_release_definition_heads head on head.release_id=r.source_revision_context->'catalogRelease'->>'id'
+        and head.definition_id=binding.definition_id
+      left join parameter_catalog.definition_revisions definition on definition.id=head.revision_id and definition.definition_id=binding.definition_id
+      where binding.id=excluded->>'bindingId' and binding.organization_id=r.organization_id and binding.project_id=r.project_id
+        and excluded @> jsonb_build_object('oldValueId',value.id,'sourcePinId',owned_pin.id,
+          'sourceOccurrenceId',occurrence.id,'definitionId',binding.definition_id,'effectiveRevisionId',binding.effective_revision_id,
+          'catalogReleaseId',binding.catalog_release_id,'registrationId',binding.registration_id,'subjectId',binding.subject_id,
+          'valueDigest',value.value_digest,'configRevisionId',owned_pin.config_revision_id,
+          'fileId',owned_pin.file_id,'fileVersionId',owned_pin.file_version_id,'format',owned_pin.format)
+        and case excluded->>'reason'
+          when 'registration-inactive' then registration.status<>'active'
+          when 'subject-inactive' then subject.lifecycle is distinct from 'active'
+          when 'definition-inactive' then definition.id is null or definition.content->>'lifecycle'='retired'
+          when 'owner-inactive' then exists(select 1 from parameter_catalog.catalog_subjects identity
+            where identity.id=binding.subject_id and identity.owner_subject_id is not null and (
+              not exists(select 1 from parameter_catalog.catalog_release_subjects owner
+                where owner.release_id=r.source_revision_context->'catalogRelease'->>'id'
+                  and owner.subject_id=identity.owner_subject_id and owner.lifecycle='active')
+              or not exists(select 1 from parameter_catalog.organization_subject_registrations owner_registration
+                where owner_registration.organization_id=binding.organization_id
+                  and owner_registration.subject_id=identity.owner_subject_id and owner_registration.status='active')))
+          when 'source-absent' then owned_pin.format='dts' and exists(
+            select 1 from public.project_parameter_value_change_requests prior
+            where prior.id<>r.id and prior.organization_id=r.organization_id and prior.project_id=r.project_id
+              and prior.source_revision_config_set_id=r.source_revision_config_set_id
+              and parameter_catalog.source_revision_exclusion_matches(prior.id,binding.id,value.id,owned_pin.id,
+                r.source_revision_context->>'baseConfigRevisionId'))
+          else false end)
+      or exists(select 1 from jsonb_array_elements(r.source_revision_context->'cohort') item where item->>'bindingId'=excluded->>'bindingId')
+      or exists(select 1 from public.project_parameter_value_change_targets target where target.request_id=r.id and target.binding_id=excluded->>'bindingId')
+      or (r.status='approved' and exists(select 1 from jsonb_array_elements(r.applied_source_result->'results') item
+        where item->>'bindingId'=excluded->>'bindingId')) then
+      raise exception using errcode='23514',message='Source exclusion has no exact unmanaged historical Binding';
+    end if;
+  end loop;
+  -- Every explicitly claimed resumption must name an actually historical cohort
+  -- member; every historical present member must in turn have that evidence.
+  for resumed in select value from jsonb_array_elements(coalesce(r.source_revision_context->'resumptions','[]')) loop
+    if not exists(select 1 from jsonb_array_elements(r.source_revision_context->'cohort') item
+      join parameter_catalog.project_value_source_pins owned_pin on owned_pin.id=item->>'sourcePinId'
+      join parameter_catalog.project_parameter_bindings binding on binding.id=owned_pin.binding_id
+        and binding.organization_id=r.organization_id and binding.project_id=r.project_id
+      join parameter_catalog.catalog_subjects identity on identity.id=binding.subject_id
+      join parameter_catalog.organization_subject_registrations registration on registration.id=binding.registration_id
+        and registration.organization_id=binding.organization_id and registration.subject_id=binding.subject_id and registration.status='active'
+      join parameter_catalog.catalog_release_subjects subject on subject.release_id=r.source_revision_context->'catalogRelease'->>'id'
+        and subject.subject_id=binding.subject_id and subject.lifecycle='active'
+      join parameter_catalog.catalog_release_definition_heads head on head.release_id=subject.release_id and head.definition_id=binding.definition_id
+      join parameter_catalog.definition_revisions definition on definition.id=head.revision_id and definition.definition_id=binding.definition_id
+        and definition.content->>'lifecycle' in ('active','deprecated')
+      where item->>'bindingId'=resumed->>'bindingId' and owned_pin.value_state='present'
+        and (identity.owner_subject_id is null or (
+          exists(select 1 from parameter_catalog.catalog_release_subjects owner
+            where owner.release_id=subject.release_id and owner.subject_id=identity.owner_subject_id and owner.lifecycle='active')
+          and exists(select 1 from parameter_catalog.organization_subject_registrations owner_registration
+            where owner_registration.organization_id=binding.organization_id
+              and owner_registration.subject_id=identity.owner_subject_id and owner_registration.status='active')))
+        and owned_pin.config_revision_id<>r.source_revision_context->>'baseConfigRevisionId') then
+      raise exception using errcode='23514',message='Source resumption is not an exact historical cohort member';
+    end if;
+  end loop;
+  for cohort in select value from jsonb_array_elements(r.source_revision_context->'cohort') loop
+    select * into pin from parameter_catalog.project_value_source_pins where id=cohort->>'sourcePinId';
+    if not found or pin.value_state<>'present' or pin.config_revision_id=r.source_revision_context->>'baseConfigRevisionId' then continue; end if;
+    select item->>'priorRequestId' into evidence_id from jsonb_array_elements(coalesce(r.source_revision_context->'resumptions','[]')) item
+      where item->>'bindingId'=cohort->>'bindingId';
+    if evidence_id is null or evidence_id=r.id
+      or not parameter_catalog.source_revision_exclusion_matches(evidence_id,cohort->>'bindingId',cohort->>'oldValueId',pin.id,
+        r.source_revision_context->>'baseConfigRevisionId') then
+      raise exception using errcode='23514',message='Historical source resumption has no exact approved exclusion';
+    end if;
+    if pin.format='dts' then
+      if not exists(select 1 from public.project_parameter_value_change_targets target
+        where target.request_id=r.id and target.binding_id=pin.binding_id and target.source_pin_id=pin.id
+          and target.base_current_value_id=pin.project_value_id and target.action='set') then
+        raise exception using errcode='23514',message='Historical DTS source resumption requires a reviewed set target';
+      end if;
+    elsif pin.format='json' then
+      if exists(select 1 from public.project_parameter_value_change_targets target where target.request_id=r.id and target.binding_id=pin.binding_id)
+        or cohort->'locator' is distinct from pin.locator
+        or not exists(select 1 from public.dts_config_revision_members member
+          where member.config_revision_id=r.source_revision_context->>'baseConfigRevisionId'
+            and member.file_id=pin.file_id and member.file_version_id=pin.file_version_id)
+        or (r.status='approved' and not exists(
+          select 1 from jsonb_array_elements(r.applied_source_result->'results') item
+          join parameter_catalog.project_value_source_pins next_pin on next_pin.id=item->>'sourcePinId'
+            and next_pin.binding_id=pin.binding_id and next_pin.project_value_id=item->>'newValueId'
+            and next_pin.file_id=pin.file_id and next_pin.file_version_id=pin.file_version_id
+            and next_pin.locator=pin.locator and next_pin.locator_digest=pin.locator_digest
+            and next_pin.config_revision_id=r.applied_source_result->>'configRevisionId'
+          join parameter_catalog.project_parameter_values old_value on old_value.id=pin.project_value_id and old_value.binding_id=pin.binding_id
+          join parameter_catalog.project_parameter_values next_value on next_value.id=next_pin.project_value_id and next_value.binding_id=pin.binding_id
+            and next_value.value_state='present' and next_value.value_kind=old_value.value_kind
+            and next_value.value=old_value.value and next_value.value_digest=old_value.value_digest
+          where item->>'bindingId'=pin.binding_id and item->>'oldValueId'=pin.project_value_id and item->>'kind'='derived')) then
+        raise exception using errcode='23514',message='Historical JSON resumption requires exact unchanged source propagation';
+      end if;
+    else raise exception using errcode='23514',message='Unsupported historical source resumption';
+    end if;
+  end loop;
+  return null;
+end $$;
+
+create constraint trigger project_parameter_source_managed_scope_receipt_ck
+  after insert or update on public.project_parameter_value_change_requests
+  deferrable initially deferred for each row when(new.request_kind='source_revision')
+  execute function parameter_catalog.assert_source_managed_scope_receipt();
+alter function parameter_catalog.source_revision_exclusion_matches(text,text,text,text,text) owner to catalog_migration_owner;
+alter function parameter_catalog.assert_source_managed_scope_receipt() owner to catalog_migration_owner;
+revoke all on function parameter_catalog.source_revision_exclusion_matches(text,text,text,text,text) from public;
+revoke all on function parameter_catalog.assert_source_managed_scope_receipt() from public;
+
+-- Adjacent source operations may leave an already suspended current tip alone.
+-- They cannot create a suspension or silently admit an unexplained stale pin.
+create function parameter_catalog.source_binding_is_suspended(p_binding_id text,p_base_revision_id text)
+returns boolean language sql stable security definer
+set search_path=pg_catalog,parameter_catalog,public as $$
+select exists(select 1 from parameter_catalog.project_parameter_bindings binding
+  join parameter_catalog.project_value_source_pins pin on pin.binding_id=binding.id
+    and pin.project_value_id=binding.current_value_id and pin.source_occurrence_id=binding.source_occurrence_id
+  join public.project_parameter_value_change_requests prior on prior.organization_id=binding.organization_id
+    and prior.project_id=binding.project_id and prior.request_kind='source_revision' and prior.status='approved'
+  where binding.id=p_binding_id and pin.config_revision_id<>p_base_revision_id
+    and parameter_catalog.source_revision_exclusion_matches(prior.id,binding.id,pin.project_value_id,pin.id,p_base_revision_id))
+$$;
+
+-- Restore freezes its skipped identities so a later resumption cannot change
+-- the meaning of its immutable baseline-count and historical receipt checks.
+create function parameter_catalog.configuration_restore_suspension_matches(p_request_id text,p_item jsonb,p_require_current boolean)
+returns boolean language sql stable security definer
+set search_path=pg_catalog,parameter_catalog,public as $$
+select exists(select 1 from public.project_parameter_value_change_requests request
+  join parameter_catalog.project_parameter_bindings binding on binding.id=p_item->>'bindingId'
+    and binding.organization_id=request.organization_id and binding.project_id=request.project_id
+  join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+    and occurrence.organization_id=binding.organization_id and occurrence.project_id=binding.project_id
+    and occurrence.config_set_id=request.source_revision_config_set_id
+  join parameter_catalog.project_value_source_pins pin on pin.id=p_item->>'sourcePinId'
+    and pin.binding_id=binding.id and pin.source_occurrence_id=occurrence.id
+    and pin.project_value_id=p_item->>'oldValueId'
+  where request.id=p_request_id and request.request_kind='configuration_restore'
+    and (not p_require_current or binding.current_value_id=pin.project_value_id)
+    and parameter_catalog.source_revision_exclusion_matches(p_item->>'priorRequestId',binding.id,pin.project_value_id,pin.id,
+      request.source_revision_context->>'baseConfigRevisionId')
+    and p_item ? 'snapshotValueId' and (
+      (p_item->'snapshotValueId'='null'::jsonb and not exists(select 1 from parameter_catalog.project_value_source_pins historical
+        where historical.binding_id=binding.id and historical.value_state='present'
+          and historical.config_revision_id=request.source_revision_context->>'snapshotConfigRevisionId'))
+      or exists(select 1 from parameter_catalog.project_value_source_pins historical
+        where historical.binding_id=binding.id and historical.source_occurrence_id=occurrence.id
+          and historical.organization_id=request.organization_id and historical.project_id=request.project_id
+          and historical.project_value_id=p_item->>'snapshotValueId' and historical.value_state='present'
+          and historical.config_revision_id=request.source_revision_context->>'snapshotConfigRevisionId')))
+$$;
+
+do $$
+declare installed text; changed text; marker text; replacement text;
+begin
+  select pg_get_functiondef('parameter_catalog.assert_configuration_restore_receipt()'::regprocedure) into strict installed;
+  marker := '  result:=r.applied_source_result;';
+  replacement := marker || $guard$
+  if jsonb_typeof(coalesce(r.source_revision_context->'suspendedBindings','[]')) is distinct from 'array'
+    or (select count(*) from jsonb_array_elements(coalesce(r.source_revision_context->'suspendedBindings','[]')))
+      <>(select count(distinct item->>'bindingId') from jsonb_array_elements(coalesce(r.source_revision_context->'suspendedBindings','[]')) item)
+    or exists(select 1 from jsonb_array_elements(coalesce(r.source_revision_context->'suspendedBindings','[]')) suspended
+      where not parameter_catalog.configuration_restore_suspension_matches(r.id,suspended,not historical_receipt)
+        or exists(select 1 from jsonb_array_elements(r.source_revision_context->'cohort') frozen where frozen->>'bindingId'=suspended->>'bindingId')
+        or exists(select 1 from public.project_parameter_value_change_targets target where target.request_id=r.id and target.binding_id=suspended->>'bindingId')
+        or exists(select 1 from jsonb_array_elements(result->'results') receipt where receipt->>'bindingId'=suspended->>'bindingId')) then
+    raise exception using errcode='23514',message='Configuration restore suspension has no exact historical exclusion';
+  end if;$guard$;
+  if (length(installed)-length(replace(installed,marker,'')))/length(marker)<>1 then
+    raise exception 'Configuration restore scope admission marker changed'; end if;
+  changed:=replace(installed,marker,replacement);
+  marker := $old$(select count(*) from jsonb_array_elements(r.source_revision_context->'cohort') frozen
+        where frozen->>'snapshotValueId' is not null)$old$;
+  replacement := $new$((select count(*) from jsonb_array_elements(r.source_revision_context->'cohort') frozen
+        where frozen->>'snapshotValueId' is not null)
+        +(select count(*) from jsonb_array_elements(coalesce(r.source_revision_context->'suspendedBindings','[]')) suspended
+          where suspended->>'snapshotValueId' is not null))$new$;
+  if (length(changed)-length(replace(changed,marker,'')))/length(marker)<>1 then
+    raise exception 'Configuration restore frozen snapshot cardinality marker changed'; end if;
+  changed:=replace(changed,marker,replacement);
+  marker := $old$where binding.organization_id=r.organization_id and binding.project_id=r.project_id and occurrence.config_set_id=r.source_revision_config_set_id)$old$;
+  replacement := $new$where binding.organization_id=r.organization_id and binding.project_id=r.project_id and occurrence.config_set_id=r.source_revision_config_set_id
+        and not exists(select 1 from jsonb_array_elements(coalesce(r.source_revision_context->'suspendedBindings','[]')) suspended
+          where suspended->>'bindingId'=binding.id and suspended->>'oldValueId'=binding.current_value_id))$new$;
+  if (length(changed)-length(replace(changed,marker,'')))/length(marker)<>1 then
+    raise exception 'Configuration restore complete current cohort marker changed'; end if;
+  changed:=replace(changed,marker,replacement);
+  execute changed;
+
+  select pg_get_functiondef('parameter_catalog.assert_member_exposed_properties()'::regprocedure) into strict installed;
+  marker := $old$and occurrence.config_set_id=request_row.member_config_set_id
+    and (not historical_receipt or exists$old$;
+  replacement := $new$and occurrence.config_set_id=request_row.member_config_set_id
+    and (historical_receipt or not parameter_catalog.source_binding_is_suspended(binding.id,request_row.member_frozen_proof->>'configRevisionId'))
+    and (not historical_receipt or exists$new$;
+  if (length(installed)-length(replace(installed,marker,'')))/length(marker)<>1 then
+    raise exception 'Member removal complete exposed cohort marker changed'; end if;
+  execute replace(installed,marker,replacement);
+
+  select pg_get_functiondef('parameter_catalog.assert_member_removal_tombstone()'::regprocedure) into strict installed;
+  marker := $old$         and not exists (
+           select 1 from parameter_catalog.project_value_source_pins pin
+           where pin.project_value_id=binding.current_value_id and pin.binding_id=binding.id$old$;
+  replacement := $new$         and not parameter_catalog.source_binding_is_suspended(binding.id,new.config_revision_id)
+         and not exists (
+           select 1 from parameter_catalog.project_value_source_pins pin
+           where pin.project_value_id=binding.current_value_id and pin.binding_id=binding.id$new$;
+  if (length(installed)-length(replace(installed,marker,'')))/length(marker)<>1 then
+    raise exception 'Member removal exact removed cohort marker changed'; end if;
+  changed:=replace(installed,marker,replacement);
+  marker := $old$  select count(*) into surviving_count
+  from parameter_catalog.current_project_parameter_bindings binding
+  join parameter_catalog.project_parameter_source_occurrences occurrence
+    on occurrence.id=binding.source_occurrence_id$old$;
+  replacement := marker || E'\n    and not parameter_catalog.source_binding_is_suspended(binding.id,new.config_revision_id)';
+  if (length(changed)-length(replace(changed,marker,'')))/length(marker)<>1 then
+    raise exception 'Member removal complete surviving cohort marker changed'; end if;
+  changed:=replace(changed,marker,replacement);
+  execute changed;
+end $$;
+
+alter function parameter_catalog.source_binding_is_suspended(text,text) owner to catalog_migration_owner;
+alter function parameter_catalog.configuration_restore_suspension_matches(text,jsonb,boolean) owner to catalog_migration_owner;
+revoke all on function parameter_catalog.source_binding_is_suspended(text,text) from public;
+revoke all on function parameter_catalog.configuration_restore_suspension_matches(text,jsonb,boolean) from public;

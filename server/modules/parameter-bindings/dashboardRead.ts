@@ -1,5 +1,6 @@
 import type { Database, Queryable } from "../../shared/database/client";
 import type { HotspotDimension } from "../../../src/domain/parameters/dashboardTypes";
+import { currentManagedSourceBindingPredicate } from "./queries/currentManagedBindings";
 
 export type BindingDashboardScope = {
   organizationId: string;
@@ -121,7 +122,8 @@ const ACTIVE_SOURCE_BACKED_BINDINGS = `
   left join public.parameter_modules module on module.id = placement.module_id and module.organization_id = b.organization_id
   join parameter_catalog.parameter_definitions definition on definition.id = b.definition_id
   join parameter_catalog.definition_revisions revision
-    on revision.id = b.effective_revision_id and revision.definition_id = b.definition_id`;
+    on revision.id = b.effective_revision_id and revision.definition_id = b.definition_id
+   and ${currentManagedSourceBindingPredicate("b")}`;
 
 /** Tenant-wide inventory of displayable current source-backed Binding identities. */
 export async function countSourceBackedBindingsByProject(

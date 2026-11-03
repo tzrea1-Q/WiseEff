@@ -8,6 +8,7 @@ export {
   discoverCurrentSourceRevisionPins,
   discoverDeletedSourceRevisionPins,
   loadDeletedSourceAnchors,
+  loadRetainedSourceAnchors,
   loadSourceBindingCohort,
   loadSourceBindingCohortReadOnly,
   findCurrentSourceBindingId,

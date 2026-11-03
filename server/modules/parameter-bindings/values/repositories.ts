@@ -10,6 +10,7 @@ import {
   type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
 import type { CanonicalValueSourcePin, CanonicalSourceBindingPin, ProjectValueKind, ProjectValuePayload } from "./types";
+import { currentManagedSourceBindingPredicate } from "../queries/currentManagedBindings";
 
 export type ValueClient = {
   query: {
@@ -104,6 +105,31 @@ export async function loadDeletedSourceAnchors(
       order by value.created_at desc,pin.id desc`,
     [input.organizationId, input.projectId, input.configSetId],
   )).rows;
+}
+
+/** Present historical owners may outlive an unmanaged node's removal. Read their
+ * exact original locator so a reviewed reappearance can retain its identity. */
+export async function loadRetainedSourceAnchors(tx: Queryable,
+  input: { organizationId: string; projectId: string; configSetId: string },
+): Promise<DeletedSourceAnchorRow[]> {
+  return (await tx.query<DeletedSourceAnchorRow>(`select binding.id as "bindingId",value.id as "oldValueId",
+    pin.id as "sourcePinId",binding.source_occurrence_id as "sourceOccurrenceId",binding.definition_id as "definitionId",
+    binding.effective_revision_id as "effectiveRevisionId",binding.catalog_release_id as "catalogReleaseId",
+    binding.subject_id as "subjectId",binding.registration_id as "registrationId",value.value_digest as "valueDigest",
+    value.value_kind as "valueKind",occurrence.config_set_id as "configSetId",pin.file_version_id as "fileVersionId",
+    pin.config_revision_id as "baseConfigRevisionId",pin.format,pin.locator,pin.file_id as "fileId",
+    occurrence.logical_node_id as "logicalNodeId",logical.node_locator as "nodeLocator"
+    from parameter_catalog.current_project_parameter_bindings binding
+    join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+      and occurrence.organization_id=binding.organization_id and occurrence.project_id=binding.project_id
+    join parameter_catalog.${projectParameterValues} value on value.id=binding.current_value_id and value.binding_id=binding.id
+    join parameter_catalog.project_value_source_pins pin on pin.project_value_id=value.id and pin.binding_id=binding.id
+      and pin.organization_id=binding.organization_id and pin.project_id=binding.project_id
+    join public.dts_logical_node_revisions logical on logical.config_revision_id=pin.config_revision_id
+      and logical.logical_node_id=occurrence.logical_node_id
+    where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
+      and pin.format='dts' and pin.value_state='present' order by binding.id`,
+  [input.organizationId,input.projectId,input.configSetId])).rows;
 }
 
 /** Discovery only; source owners fence these identities before reading bytes or locking Bindings. */
@@ -317,7 +343,8 @@ export async function isCurrentGovernedSourceValue(tx: Queryable, input: { organ
     join parameter_catalog.organization_subject_registrations registration on registration.id=binding.registration_id
       and registration.organization_id=binding.organization_id and registration.subject_id=binding.subject_id
       and registration.status='active'
-    where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3 and binding.current_value_id=$4`,
+    where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3 and binding.current_value_id=$4
+      and ${currentManagedSourceBindingPredicate("binding")}`,
   [input.organizationId,input.projectId,input.bindingId,input.projectValueId]);
   return result.rows.length === 1;
 }

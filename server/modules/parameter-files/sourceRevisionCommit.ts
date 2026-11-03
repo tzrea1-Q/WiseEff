@@ -233,7 +233,8 @@ export async function commitSourceRevision(tx: Database, storage: ObjectStore, a
     metadata: { requestId: request.id, requestKind: "source_revision", applicationMode: request.source_revision_application_mode,
       ...(frozen.localOverride ? { sourceOperation: "project-local-override", localOverrideAction: frozen.localOverride.input.action,
         bindingId: frozen.localOverride.bindingId } : {}),
-      appliedByUserId: auth.user.id, sourceRevisionProofDigest: frozen.proofDigest, restoredParameters: frozen.restorations?.length ?? 0, result }, traceId: input.traceId });
+      appliedByUserId: auth.user.id, sourceRevisionProofDigest: frozen.proofDigest, restoredParameters: frozen.restorations?.length ?? 0,
+      excludedParameters: frozen.excludedBindings?.length ?? 0, resumedParameters: frozen.resumptions?.length ?? 0, result }, traceId: input.traceId });
   await tx.query(`update public.project_parameter_file_candidates set status='active',activated_at=now(),activated_by_user_id=$2,activated_version_id=$3 where id=$1`,
     [candidate.id, auth.user.id, version.id]);
   const approved = await tx.query(`update public.project_parameter_value_change_requests set status='approved',reviewer_user_id=$2,
