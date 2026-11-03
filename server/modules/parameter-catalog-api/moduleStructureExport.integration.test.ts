@@ -110,6 +110,7 @@ describe("module structure export", () => {
     expect(applied.body).toMatchObject({ organizationId: org, changedModules: 1 });
     expect(simultaneous.status, simultaneous.bodyText).toBe(200);
     expect(simultaneous.body).toEqual(applied.body);
+    await db.query("update users set name='Renamed administrator' where id=$1", [user]);
     const replay = await requestJson(app, path, { method: "POST", body: JSON.stringify(body) });
     expect(replay.status, replay.bodyText).toBe(200);
     expect(replay.body).toEqual(applied.body);
