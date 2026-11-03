@@ -149,8 +149,9 @@ describe("module structure export", () => {
           await db.query("drop function public.fail_lifecycle_audit()");
         }
       }
-      const done = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {}, token: (planned.body as { token: string }).token, idempotencyKey: operation, reason: "Reviewed lifecycle" }) });
-      expect(done.status, done.bodyText).toBe(200);
+      const writes = operation === "retire" ? [app, secondApp] : [app];
+      const results = await Promise.all(writes.map((server, index) => requestJson(server, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {}, token: (planned.body as { token: string }).token, idempotencyKey: `${operation}-${index}`, reason: "Reviewed lifecycle" }) })));
+      expect(results.map(result => result.status).sort()).toEqual(operation === "retire" ? [200, 409] : [200]);
       const stored = await db.query("select id,status from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [org, subjectId]);
       expect(stored.rows).toEqual([{ id: identity, status: operation === "retire" ? "retired" : "active" }]);
     }
