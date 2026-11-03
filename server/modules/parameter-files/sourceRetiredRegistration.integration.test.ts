@@ -11,7 +11,7 @@ describe("whole-source retired registration boundaries (PostgreSQL API role, too
   let registrationId: string;
 
   beforeAll(async () => {
-    f = await createSourceAdminFixture("source-retired-boundary", createUserInvocation);
+    f = await createSourceAdminFixture("retired-dts", createUserInvocation);
     const row = (await f.db.query<{ id: string; registration_id: string }>(
       `select id,registration_id from parameter_catalog.current_project_parameter_bindings
        where organization_id=$1 and project_id=$2`, [f.organizationId, f.projectId])).rows[0]!;
