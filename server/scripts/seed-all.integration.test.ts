@@ -197,7 +197,7 @@ it("lists owned demo reload candidates and resolves exact readback pins across r
     const response = await requestJson<{ items: ReloadCandidateDto[] }>(server,
       `/api/v1/dts-reload/projects/${projectId}/candidates`, { headers });
     expect(response.status, response.bodyText).toBe(200);
-    const current = await db.query<{ id: string; definition_release_id: string }>(`select binding.id,
+    const current = await db.query<{ id: string; subject_id: string; definition_release_id: string }>(`select binding.id, binding.subject_id,
       revision.catalog_release_id as definition_release_id
       from parameter_catalog.current_project_parameter_bindings binding
       join parameter_catalog.definition_revisions revision on revision.id = binding.effective_revision_id
@@ -205,8 +205,11 @@ it("lists owned demo reload candidates and resolves exact readback pins across r
     expect(current.rows.length).toBeGreaterThan(0);
     expect(current.rows.every((row) => row.definition_release_id !== VENDOR_OWNED_RELEASE_ID)).toBe(true);
     expect(response.body.items.map((row) => row.bindingId).sort()).toEqual(current.rows.map((row) => row.id).sort());
-    const battery = response.body.items.filter((row) => row.module === "Battery Authentication");
+    const batteryIds = new Set(current.rows.filter((row) =>
+      row.subject_id === "csub_drv_huawei_batt_info" || row.subject_id === "csub_nt_battery_checker").map((row) => row.id));
+    const battery = response.body.items.filter((row) => batteryIds.has(row.bindingId));
     expect(battery).toHaveLength(5);
+    expect(battery.every((row) => row.module === "Battery Authentication")).toBe(true);
     expect(new Set(battery.map((row) => row.moduleId)).size).toBe(1);
     for (const propertyKey of ["matchable", "spare-cycles"]) {
       expect(battery.filter((row) => row.propertyKey === propertyKey)
