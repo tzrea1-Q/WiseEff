@@ -8,6 +8,7 @@ import { lockOrganizationModuleStructure } from "../../parameter-modules/recogni
 import { createParameterModule, updateParameterModule } from "../../parameters/parameterModuleRepository";
 import { planModuleStructure, stable } from "./preview";
 import { moduleStructureApplyRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
+import { applySubjectPlacement } from "./subjects";
 
 export async function applyModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, requestId: string, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
@@ -41,7 +42,7 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     if (plan.conflicts.length) throw new ApiError("CONFLICT", "Resolve all conflicts before applying.");
     const createdRefs = new Set(plan.changes.filter(change => change.field === "create").map(change => change.moduleId));
     const changes = new Map<string, Record<string, unknown>>();
-    for (const change of plan.changes) if (!createdRefs.has(change.moduleId) && change.field !== "parentRef") changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
+    for (const change of plan.changes) if (!createdRefs.has(change.moduleId) && change.field !== "parentRef" && change.field !== "placement" && change.field !== "displayAlias") changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
     // Temporary names make valid swaps safe under the immediate sibling-name index.
     const structural = new Set(plan.changes.filter(change => !createdRefs.has(change.moduleId) && (change.field === "name" || change.field === "parentRef")).map(change => change.moduleId));
     for (const moduleId of structural) await client.query(
@@ -83,9 +84,10 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
       update parameter_modules m set path=tree.path,depth=tree.depth from tree where m.organization_id=$1 and m.id=tree.id
       and m.id in (select id from affected) and (m.path,m.depth) is distinct from (tree.path,tree.depth)`, [organizationId, moved]);
     for (const [moduleId, values] of changes) await updateParameterModule(client as unknown as Queryable, { organizationId, moduleId, ...values });
-    const changedModules = new Set(plan.changes.map(change => change.moduleId)).size;
+    await applySubjectPlacement(client, organizationId, plan.subjectChanges, plan.moduleIds);
+    const changedModules = new Set(plan.changes.filter(change => !change.moduleId.startsWith("subject:")).map(change => change.moduleId)).size;
     const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules, changedFields: plan.changes.length };
-    if (changedModules) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
+    if (plan.changes.length) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
       action: "module-structure-update", severity: "Medium", projectId: null, targetType: "organization", targetId: organizationId,
       metadata: { receiptId: receipt.id, reason: input.reason, exportId: input.document.source.exportId,
         sourceOrganizationId: input.document.source.organizationId, catalogReleaseId: input.document.source.catalogReleaseId,
