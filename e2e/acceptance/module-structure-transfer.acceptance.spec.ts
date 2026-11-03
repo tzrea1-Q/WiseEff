@@ -263,6 +263,53 @@ test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", 
   }
 });
 
+test("MODULE-STRUCTURE-DELETE-001: move a child into a new category and delete its parent", async ({ page, request }, info) => {
+  // @acceptance MODULE-STRUCTURE-DELETE-001
+  // @operation MODULE-STRUCTURE-DELETE-001
+  await seedAcceptanceRoleMatrix();
+  const headers = authHeadersForRole("admin"), base = `/api/v2/organizations/${org}/module-structure`, suffix = Date.now();
+  const create = async (name: string, parentId?: string) => {
+    const response = await request.post(apiRoute("/api/v1/parameter-modules"), { headers, data: { name, parentId } });
+    expect(response.status(), await response.text()).toBe(201); return (await response.json()).item.id as string;
+  };
+  const parent = await create(`Delete parent ${suffix}`), child = await create(`Move child ${suffix}`, parent);
+  let exportId = "";
+  try {
+    const exported = await request.post(apiRoute(endpoint), { headers, data: {} });
+    expect(exported.status(), await exported.text()).toBe(200);
+    const document = await exported.json(); exportId = document.source.exportId;
+    document.modules.find((item: { sourceId: string }) => item.sourceId === parent).operation = "delete";
+    document.modules.find((item: { sourceId: string }) => item.sourceId === child).parentRef = "new-destination";
+    document.modules.push({ ref: "new-destination", name: `Destination ${suffix}`, parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" });
+    await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
+    await page.getByRole("button", { name: "导入结构" }).click();
+    const dialog = page.getByRole("dialog", { name: "导入模块结构" });
+    await dialog.getByLabel("JSON 文件").setInputFiles({ name: "delete.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+    await dialog.getByRole("button", { name: "预览" }).click();
+    await expect(dialog.getByText(/删除模块/).first()).toBeVisible();
+    await expect(dialog.getByText(/上级模块/).first()).toContainText(`Destination ${suffix}`);
+    await expect(dialog.getByText(/将解除的遗留引用数/).first()).toBeVisible();
+    await page.screenshot({ path: info.outputPath("module-structure-delete-1440x900.png"), animations: "disabled" });
+    await dialog.getByLabel("变更原因").fill("Review category deletion");
+    await page.route(`**${base}/applies`, route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "SERVICE_UNAVAILABLE", message: "Temporary apply error", details: {}, requestId: "controlled" } }) }), { times: 1 });
+    await dialog.getByRole("button", { name: "确认提交" }).click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `${base}/applies` && response.status() === 200);
+    await dialog.getByRole("button", { name: "确认提交" }).click();
+    const response = await applied; await expect(dialog.getByRole("status")).toContainText("回执");
+    const rows = await withPgClient(async client => (await client.query("select id,parent_id from parameter_modules where id=any($1::text[]) order by id", [[parent, child]])).rows);
+    expect(rows).toHaveLength(1); expect(rows[0].id).toBe(child); expect(rows[0].parent_id).toBeTruthy();
+    await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-DELETE-001", title: "Review module deletion", status: "passed", page, testInfo: info,
+      artifacts: [info.outputPath("module-structure-delete-1440x900.png")], api: [summarizeApiResponse(response, { method: "POST", path: `${base}/applies`, responseSummary: "Deletion committed after retry." })],
+      db: [{ table: "parameter_modules", predicate: "deleted parent and moved child", observed: "Parent removed and child retained", rowCount: 1 }], notes: "Real API at 1440×900; controlled failure exercised retry." });
+  } finally {
+    await request.delete(apiRoute(`/api/v1/parameter-modules/${child}`), { headers });
+    const ids = await withPgClient(async client => (await client.query<{ module_id: string }>("select module_id from parameter_catalog.module_structure_created_refs where organization_id=$1 and export_id=$2", [org, exportId])).rows);
+    for (const row of ids) await request.delete(apiRoute(`/api/v1/parameter-modules/${row.module_id}`), { headers });
+    await request.delete(apiRoute(`/api/v1/parameter-modules/${parent}`), { headers });
+  }
+});
+
 test("MODULE-STRUCTURE-EXPORT-001: complete filtered download, retry and reader permissions", async ({ page, request }, info) => {
   // @acceptance MODULE-STRUCTURE-EXPORT-001
   // @operation MODULE-STRUCTURE-EXPORT-001
