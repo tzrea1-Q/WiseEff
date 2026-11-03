@@ -111,6 +111,8 @@ A Platform Admin with Catalog authoring and publication capabilities can leave t
 
 Under "Module management" (`/parameter-admin/modules`), use the Modules tab to search the tree and filter subjects by module, subject type, registration or definition count. Tree filters also constrain the subject list. Selection, tree state and subject filters are retained in the URL, including when returning from definition details. Module details are readable without write permission; only authorized Organization Admins maintain classifications and subject placement.
 
+Authorized Organization Admins can export the complete structure and download the [editing guide](module-structure-editing.md). The export is independent of the displayed filters; it records counts and the supported size limits.
+
 Business modules hold multiple root subjects. A driver's owned node subjects appear beneath that driver and inherit its placement; recognition is edited on the subject. Use **Adjust placement** to move a root subject to a business category or the reserved unclassified root. A root subject may have an Organization display alias without changing its Catalog identity. Technical modules are retained as read-only history.
 
 If a retained module detail shows an unmigrated recognition rule, its stored values are historical evidence and do not participate in matching. Ask an operator to run the module-structure migration preflight and resolve the reported conflict.

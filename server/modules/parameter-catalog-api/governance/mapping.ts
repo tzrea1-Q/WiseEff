@@ -47,6 +47,8 @@ export const catalogRecognitionCommandByRouteId = {
   "catalog.getRegistrationRecognition": "getRegistrationRecognition",
   "catalog.updateRegistrationRecognition": "updateRegistrationRecognition",
 } as const;
+export const catalogModuleStructureCommandByRouteId = { "catalog.exportModuleStructure": "exportModuleStructure" } as const;
+export const catalogModuleStructureRoutes = parameterCatalogCanonicalRoutes.filter(route => route.id in catalogModuleStructureCommandByRouteId);
 export const catalogRecognitionRoutes = parameterCatalogCanonicalRoutes.filter(
   (route) => route.id in catalogRecognitionCommandByRouteId,
 );
@@ -59,7 +61,8 @@ export type CatalogGovernanceCommandName =
   | (typeof catalogGovernanceCommandByRouteId)[keyof typeof catalogGovernanceCommandByRouteId]
   | (typeof catalogDefinitionReplacementCommandByRouteId)[keyof typeof catalogDefinitionReplacementCommandByRouteId]
   | (typeof catalogBatchRegistrationCommandByRouteId)[keyof typeof catalogBatchRegistrationCommandByRouteId]
-  | (typeof catalogRecognitionCommandByRouteId)[keyof typeof catalogRecognitionCommandByRouteId];
+  | (typeof catalogRecognitionCommandByRouteId)[keyof typeof catalogRecognitionCommandByRouteId]
+  | (typeof catalogModuleStructureCommandByRouteId)[keyof typeof catalogModuleStructureCommandByRouteId];
 
 const GOVERNANCE_GATES = new Set(["PCAT-API-04", "PCAT-API-05", "PCAT-API-06"]);
 const DEFINITION_REPLACEMENT_GATES = new Set(["PCAT-API-13"]);

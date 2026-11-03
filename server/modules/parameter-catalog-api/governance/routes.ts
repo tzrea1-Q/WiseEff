@@ -1,7 +1,7 @@
 import type { HttpMethod, WiseEffRouter } from "../../../shared/http/router";
 
 import { handleCatalogGovernance } from "./handlers";
-import { catalogBatchRegistrationRoutes, catalogDefinitionReplacementRoutes, catalogGovernanceRoutes, catalogRecognitionRoutes } from "./mapping";
+import { catalogBatchRegistrationRoutes, catalogDefinitionReplacementRoutes, catalogGovernanceRoutes, catalogRecognitionRoutes, catalogModuleStructureRoutes } from "./mapping";
 import type { CatalogGovernancePorts, CatalogGovernanceRequest } from "./types";
 
 function addRoute(
@@ -55,6 +55,7 @@ export function registerCatalogGovernanceRoutes(
 export function registerCatalogBatchRegistrationRoutes(router: WiseEffRouter, ports: CatalogGovernancePorts): void {
   registerRoutes(router, ports, catalogBatchRegistrationRoutes);
   registerRoutes(router, ports, catalogRecognitionRoutes);
+  registerRoutes(router, ports, catalogModuleStructureRoutes);
 }
 
 /**
@@ -72,6 +73,10 @@ export const catalogGovernanceRouteManifest = catalogGovernanceRoutes.map((route
   id: route.id,
   method: route.method,
   path: route.path,
+}));
+
+export const catalogModuleStructureRouteManifest = catalogModuleStructureRoutes.map(route => ({
+  id: route.id, method: route.method, path: route.path,
 }));
 
 export const catalogDefinitionReplacementRouteManifest = catalogDefinitionReplacementRoutes.map(

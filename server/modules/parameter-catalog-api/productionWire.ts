@@ -58,6 +58,7 @@ import {
 import { registerCatalogBatchRegistrationRoutes, registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
 import { listUnregisteredSubjects } from "../parameter-governance/registration/readRepository";
 import { executeBatchRegistration } from "../parameter-governance/registration/batch";
+import { exportModuleStructure } from "../parameter-governance/moduleStructure/export";
 import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
 import { registerDefinitionDeletionRoutes } from "./definitionDeletion/routes";
 import type { DefinitionArchiveStores } from "./definitionDeletion/archives";
@@ -449,6 +450,7 @@ const governanceScope = (auth: AuthContext, invocation?: ReturnType<typeof creat
     organizationId: invocation?.operatingOrganization?.id ?? auth.organization.id,
     actorKind,
     canReadGovernance: canViewParameters(auth),
+    canReadOrganizationSettings: auth.permissions.includes("users:manage"),
     canMutateOrganization: actorKind === "org-admin" || actorKind === "platform-admin",
     canReviewProposals: actorKind === "platform-admin",
     defaultDestinationModuleId: "",
@@ -483,7 +485,7 @@ const authenticateGovernance =
     const organizationDetail = matched?.id === "catalog.getRegistration";
     if (matched && (organizationDetail || [
       "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
-      "catalog.createRegistration", "catalog.createBatchRegistration", "catalog.listUnregisteredSubjects",
+      "catalog.createRegistration", "catalog.createBatchRegistration", "catalog.listUnregisteredSubjects", "catalog.exportModuleStructure",
       "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement", "catalog.updateRegistrationRecognition"
     ].includes(matched.id))) {
       const targetId = matched.params.organizationId;
@@ -769,6 +771,7 @@ const createGovernancePorts = (
 
   return {
     authenticate: authenticateGovernance(resolveAuth, pool),
+    exportModuleStructure: pool ? (organizationId, invocation, requestId) => exportModuleStructure(pool, organizationId, invocation, requestId) : undefined,
     readRegistrationRecognition: db ? (organizationId, registrationId) => readRegistrationRecognitionSettings(db, organizationId, registrationId) : undefined,
     updateRegistrationRecognition: db ? (input) => updateRegistrationRecognitionSettings(db, input) : undefined,
     listUnregisteredSubjects: pool ? (organizationId, releaseId, source) => listUnregisteredSubjects(pool, organizationId, releaseId, source) : undefined,

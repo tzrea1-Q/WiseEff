@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { moduleStructureExportSchema } from "./moduleStructure";
 import { dtsBuildInputsSchema, dtsPreprocessingReceiptSchema } from "./dtsPreprocessing";
 
 import {
@@ -1713,6 +1714,7 @@ export const projectValueDraftRemovedResponseSchema = itemEnvelopeSchema(
 );
 
 export const parameterCatalogDtoSchemaCatalog = {
+  ModuleStructureExport: moduleStructureExportSchema,
   CatalogLegacySpecListResponse: catalogLegacySpecListResponseSchema,
   CatalogLegacySpecResponse: catalogLegacySpecResponseSchema,
   CatalogProposalUnavailableResponse: catalogProposalUnavailableResponseSchema,
@@ -1962,6 +1964,11 @@ export const parameterCatalogCanonicalRoutes = [
     stability: "mvp"
   },
   {
+    id: "catalog.exportModuleStructure", method: "POST",
+    path: "/api/v2/organizations/:organizationId/module-structure/exports",
+    module: "catalog", stability: "mvp"
+  },
+  {
     id: "catalog.getRegistrationRecognition", method: "GET",
     path: "/api/v2/organizations/:organizationId/subject-registrations/:registrationId/recognition",
     module: "catalog", stability: "mvp"
@@ -2175,6 +2182,7 @@ export const parameterCatalogRouteGates: Record<
   "catalog.getPlacement": ["PCAT-API-04"],
   "catalog.updatePlacement": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.getRegistrationRecognition": ["PCAT-API-04"],
+  "catalog.exportModuleStructure": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.updateRegistrationRecognition": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.listObservations": ["PCAT-API-05"],
   "catalog.getObservation": ["PCAT-API-05"],
@@ -2237,6 +2245,7 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.getPlacement": "getPlacement",
   "catalog.updatePlacement": "updatePlacement",
   "catalog.getRegistrationRecognition": "getRegistrationRecognition",
+  "catalog.exportModuleStructure": "exportModuleStructure",
   "catalog.updateRegistrationRecognition": "updateRegistrationRecognition",
   "catalog.listObservations": "listObservations",
   "catalog.getObservation": "getObservation",
@@ -2614,6 +2623,10 @@ export const parameterCatalogSchemaRegistry = {
     summary: "Get organization recognition rules for a subject registration", tags: ["catalog"],
     responseBody: "CatalogRegistrationRecognitionResponse", additionalResponses: catalogReadErrors,
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
+  },
+  "catalog.exportModuleStructure": {
+    summary: "Export the complete organization module structure", tags: ["catalog"],
+    responseBody: "ModuleStructureExport", additionalResponses: catalogWriteErrors
   },
   "catalog.updateRegistrationRecognition": {
     summary: "Update organization recognition rules for a subject registration", tags: ["catalog"],

@@ -88,6 +88,8 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
       values ('parameter-home',$1,$2)`, [foreignModule.id, foreignRegistration]);
     await db.query(`insert into parameter_catalog.module_structure_migration_map(run_id,organization_id,module_id,registration_id,action)
       values ('00000000-0000-4000-8000-000000001479','parameter-home',$1,$2,'test')`, [foreignModule.id, foreignRegistration]);
+    await db.query(`insert into parameter_catalog.module_structure_export_baselines(export_id,organization_id,document)
+      values ('foreign-export','parameter-home','{}'),('target-export','parameter-target','{}')`);
     const placement = (await db.query<{ registration_id: string; module_id: string }>(`select r.id as registration_id, p.module_id
       from parameter_catalog.organization_subject_registrations r
       join parameter_catalog.subject_placements p on p.id=r.current_placement_id and p.organization_id=r.organization_id
@@ -135,6 +137,7 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
       { key: "public.registration_recognition_rules", category: "organization-parameters", count: 1 },
       { key: "public.registration_recognition_migration_map", category: "organization-parameters", count: 1 },
       { key: "parameter_catalog.module_structure_migration_map", category: "organization-parameters", count: 1 },
+      { key: "parameter_catalog.module_structure_export_baselines", category: "organization-parameters", count: 1 },
     ]));
     const started = await request<{ item: { id: string; status: string; domains: Record<string, { status: string; attempts: number }> } }>(`${target}/deletions`, "POST",
       { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: "parameter-target" });
@@ -144,6 +147,8 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
     expect((await db.query("select registration_id from public.registration_recognition_rules where organization_id='parameter-target'")).rows).toEqual([]);
     expect((await db.query("select registration_id from public.registration_recognition_migration_map where organization_id='parameter-target'")).rows).toEqual([]);
     expect((await db.query("select registration_id from parameter_catalog.module_structure_migration_map where organization_id='parameter-target'")).rows).toEqual([]);
+    expect((await db.query("select export_id from parameter_catalog.module_structure_export_baselines where organization_id='parameter-target'")).rows).toEqual([]);
+    expect((await db.query("select export_id from parameter_catalog.module_structure_export_baselines where organization_id='parameter-home'")).rows).toEqual([{ export_id: "foreign-export" }]);
     expect((await db.query("select id from public.parameter_modules where organization_id='parameter-target'")).rows).toEqual([]);
     expect((await db.query("select display_alias from parameter_catalog.organization_subject_registrations where id=$1", [foreignRegistration])).rows)
       .toEqual([{ display_alias: "Foreign alias" }]);

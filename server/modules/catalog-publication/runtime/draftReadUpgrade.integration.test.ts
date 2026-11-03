@@ -13,6 +13,32 @@ import { emptyWritableInsertSql } from "../persistence/integrationHarness";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "./provisionRuntimeLogins";
 
 describe("existing API LOGIN privilege refresh after a parameter schema upgrade", () => {
+  it("adds immutable structure baselines to a populated organization without reprovisioning the API login", async () => {
+    await withTempDatabase({ prefix: "structure_baseline_upgrade", migrate: false }, async ({ db, connectionString }) => {
+      await applyMigrations(db, migrationsDir, { before: "0326" });
+      const token = `bu${randomBytes(5).toString("hex")}`;
+      const login = await provisionPublicationRuntimeLogins(connectionString, { mode: "lab", runToken: token });
+      const api = createPostgresDatabase(login.apiUrl);
+      try {
+        await db.query("insert into organizations(id,name) values ('baseline-upgrade','Upgrade')");
+        await db.query(`insert into parameter_modules(id,organization_id,name,path,kind,origin)
+          values ('baseline-module','baseline-upgrade','Existing','baseline-module','business','curated')`);
+        await applyMigrations(db, migrationsDir);
+        expect((await api.query("select id,name from parameter_modules where organization_id='baseline-upgrade'")).rows)
+          .toEqual([{ id: "baseline-module", name: "Existing" }]);
+        await api.query(`insert into parameter_catalog.module_structure_export_baselines(export_id,organization_id,document)
+          values ('upgrade-export','baseline-upgrade','{}')`);
+        await expect(api.query("update parameter_catalog.module_structure_export_baselines set document='{}' where false")).rejects.toMatchObject({ code: "42501" });
+        await expect(api.query("delete from parameter_catalog.module_structure_export_baselines where false")).rejects.toMatchObject({ code: "42501" });
+        expect((await api.query("select has_table_privilege($1,'parameter_catalog.module_structure_export_baselines','INSERT') as allowed", [login.workerRole])).rows)
+          .toEqual([{ allowed: false }]);
+      } finally {
+        await api.close();
+        await dropLabRuntimeLogins(connectionString, token);
+      }
+    });
+  }, 60_000);
+
   it.each(["0145", "0150"])("restores draft reads without rotating logins provisioned before %s", async (before) => {
     await withTempDatabase({ prefix: "draft_acl_upgrade", migrate: false }, async ({ db, connectionString }) => {
       await applyMigrations(db, migrationsDir, { before });
