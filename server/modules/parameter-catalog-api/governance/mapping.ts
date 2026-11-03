@@ -47,7 +47,7 @@ export const catalogRecognitionCommandByRouteId = {
   "catalog.getRegistrationRecognition": "getRegistrationRecognition",
   "catalog.updateRegistrationRecognition": "updateRegistrationRecognition",
 } as const;
-export const catalogModuleStructureCommandByRouteId = { "catalog.exportModuleStructure": "exportModuleStructure" } as const;
+export const catalogModuleStructureCommandByRouteId = { "catalog.exportModuleStructure": "exportModuleStructure", "catalog.previewModuleStructure": "previewModuleStructure", "catalog.applyModuleStructure": "applyModuleStructure" } as const;
 export const catalogModuleStructureRoutes = parameterCatalogCanonicalRoutes.filter(route => route.id in catalogModuleStructureCommandByRouteId);
 export const catalogRecognitionRoutes = parameterCatalogCanonicalRoutes.filter(
   (route) => route.id in catalogRecognitionCommandByRouteId,

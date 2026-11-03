@@ -206,7 +206,7 @@
     },
     "server/modules/parameter-modules/adminMetadata.integration.test.ts": {
       "forbidden-catalog-internal-import": 5,
-      "legacy-catalog-raw-read": 4,
+      "legacy-catalog-raw-read": 3,
       "unresolved-boundary-expression": 3
     },
     "server/modules/parameter-modules/driverPlacement.ts": {

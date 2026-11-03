@@ -8,13 +8,8 @@ import { readModuleRecognitionSubjectDefaults } from "../queries/moduleRecogniti
 export const MODULE_STRUCTURE_MAX_BYTES = 4 * 1024 * 1024;
 const MAX_ENTRIES = 10_000;
 
-/** Capture the package and its immutable server baseline in the same snapshot. */
-export async function exportModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, requestId: string) {
-  if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
-  assertTrustedInvocationMatchesScope(invocation.principal, invocation, organizationId, "module structure export");
-  const client = await pool.connect();
-  try {
-    await client.query("begin isolation level repeatable read");
+/** Read a complete snapshot without writing a baseline or an audit event. */
+export async function captureModuleStructure(client: pg.PoolClient, organizationId: string, exportId: string) {
     const pin = await client.query<{ id: string }>("select current_catalog_release_id as id from parameter_catalog.catalog_state where singleton");
     if (!pin.rows[0]) throw new ApiError("CONFLICT", "Catalog is unavailable.");
     const modules = await client.query<{ id: string; parent_id: string | null; name: string; description: string; scope: string; sort_order: number; importance: string; importance_override: boolean; origin: string; kind: string; archived_at: Date | null }>(
@@ -45,7 +40,7 @@ export async function exportModuleStructure(pool: pg.Pool, organizationId: strin
     }
     const document = {
       format: "wiseeff-module-structure", version: 1,
-      source: { exportId: `msex_${randomUUID()}`, organizationId, catalogReleaseId: pin.rows[0].id },
+      source: { exportId, organizationId, catalogReleaseId: pin.rows[0].id },
       limits: { maxBytes: MODULE_STRUCTURE_MAX_BYTES, maxEntries: MAX_ENTRIES },
       counts: { modules: business.length, subjects: registrations.rows.length },
       modules: business.map(module => ({ ref: module.id, sourceId: module.id, operation: "upsert", name: module.name,
@@ -77,11 +72,22 @@ export async function exportModuleStructure(pool: pg.Pool, organizationId: strin
         .map(module => ({ sourceId: module.id, parentId: module.parent_id, name: module.name, kind: module.kind, archived: module.archived_at !== null })),
     };
     if (Buffer.byteLength(JSON.stringify(document), "utf8") > MODULE_STRUCTURE_MAX_BYTES) throw new ApiError("VALIDATION_FAILED", "Module structure exceeds the supported byte limit.");
+    return document;
+}
+
+/** Capture the package and its immutable server baseline in the same snapshot. */
+export async function exportModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, requestId: string) {
+  if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
+  assertTrustedInvocationMatchesScope(invocation.principal, invocation, organizationId, "module structure export");
+  const client = await pool.connect();
+  try {
+    await client.query("begin isolation level repeatable read");
+    const document = await captureModuleStructure(client, organizationId, `msex_${randomUUID()}`);
     await client.query("insert into parameter_catalog.module_structure_export_baselines(export_id,organization_id,document) values ($1,$2,$3)",
       [document.source.exportId, organizationId, JSON.stringify(document)]);
     await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-export",
       action: "module-structure-export", severity: "Medium", projectId: null, targetType: "organization", targetId: organizationId,
-      metadata: { exportId: document.source.exportId, catalogReleaseId: pin.rows[0].id, ...document.counts } });
+      metadata: { exportId: document.source.exportId, catalogReleaseId: document.source.catalogReleaseId, ...document.counts } });
     await client.query("commit");
     return document;
   } catch (error) {

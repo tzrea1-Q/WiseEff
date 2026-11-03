@@ -1614,6 +1614,22 @@ export async function handleCatalogGovernance(
   void asCommandName(matched.id);
   try {
   switch (matched.id) {
+    case "catalog.applyModuleStructure": {
+      const denied = authorizeOrganizationWrite(auth.scope, scopedRequest);
+      if (denied) return denied;
+      if (!auth.scope.canReadGovernance || !auth.scope.canReadOrganizationSettings || auth.scope.trustedActor?.initiator !== "user") return forbidden(request.requestId);
+      if (!ports.applyModuleStructure) return catalogNotReady(request.requestId);
+      return { status: 200, body: await ports.applyModuleStructure(scopedRequest.params.organizationId!, auth.scope.trustedActor, request.requestId, request.body),
+        headers: { "X-Request-Id": request.requestId } };
+    }
+    case "catalog.previewModuleStructure": {
+      const denied = authorizeOrganizationWrite(auth.scope, scopedRequest);
+      if (denied) return denied;
+      if (!auth.scope.canReadGovernance || !auth.scope.canReadOrganizationSettings || auth.scope.trustedActor?.initiator !== "user") return forbidden(request.requestId);
+      if (!ports.previewModuleStructure) return catalogNotReady(request.requestId);
+      return { status: 200, body: await ports.previewModuleStructure(scopedRequest.params.organizationId!, auth.scope.trustedActor, request.body),
+        headers: { "X-Request-Id": request.requestId } };
+    }
     case "catalog.exportModuleStructure": {
       const denied = authorizeOrganizationWrite(auth.scope, scopedRequest);
       if (denied) return denied;

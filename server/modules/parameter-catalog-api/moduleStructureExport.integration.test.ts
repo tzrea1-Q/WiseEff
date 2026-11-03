@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { z } from "zod";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import { requestJson } from "../../test/testClient";
@@ -50,6 +51,160 @@ describe("module structure export", () => {
     const cross = await requestJson(app, "/api/v2/organizations/another-org/module-structure/exports", { method: "POST", body: "{}",
       headers: { "x-wiseeff-actor-id": user, "x-wiseeff-organization-id": org } });
     expect(cross.status).toBe(403);
+  });
+
+  it("previews an unchanged package without writing another baseline or audit", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const document = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    expect(document.status, document.bodyText).toBe(200);
+    const before = await db.query(`select
+      (select count(*)::int from parameter_catalog.module_structure_export_baselines where organization_id=$1) as baselines,
+      (select count(*)::int from audit_events where organization_id=$1) as audits`, [org]);
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, {
+      method: "POST", body: JSON.stringify({ document: document.body, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    expect(preview.body).toMatchObject({ changes: [], conflicts: [], token: expect.any(String) });
+    const after = await db.query(`select
+      (select count(*)::int from parameter_catalog.module_structure_export_baselines where organization_id=$1) as baselines,
+      (select count(*)::int from audit_events where organization_id=$1) as audits`, [org]);
+    expect(after.rows).toEqual(before.rows);
+  });
+
+  it("merges independent field edits and asks for conflicting field choices", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    document.modules[0]!.description = "From file";
+    await db.query("update parameter_modules set scope='Current scope' where organization_id=$1 and id='export-root'", [org]);
+    const path = `/api/v2/organizations/${org}/module-structure/previews`;
+    const preview = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    expect(preview.body).toMatchObject({ changes: [expect.objectContaining({ moduleId: "export-root", field: "description", after: "From file" })], conflicts: [] });
+    await db.query("update parameter_modules set description='Current description' where organization_id=$1 and id='export-root'", [org]);
+    const conflict = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(conflict.body).toMatchObject({ changes: [], conflicts: [expect.objectContaining({ key: "export-root:description", file: "From file", current: "Current description" })] });
+    const resolved = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document, resolutions: { "export-root:description": "file" } }) });
+    expect(resolved.body).toMatchObject({ changes: [expect.objectContaining({ field: "description", after: "From file" })], conflicts: [] });
+  });
+
+  it("applies once and replays the committed receipt before checking stale state", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    document.modules[0]!.description = "Applied once";
+    const resolutions = {};
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions }) });
+    const token = (preview.body as { token: string }).token;
+    const body = { document, resolutions, token, idempotencyKey: "apply-once", reason: "Reviewed metadata" };
+    const path = `/api/v2/organizations/${org}/module-structure/applies`;
+    const secondApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const [applied, simultaneous] = await Promise.all([requestJson(app, path, { method: "POST", body: JSON.stringify(body) }),
+      requestJson(secondApp, path, { method: "POST", body: JSON.stringify(body) })]);
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect(applied.body).toMatchObject({ organizationId: org, changedModules: 1 });
+    expect(simultaneous.status, simultaneous.bodyText).toBe(200);
+    expect(simultaneous.body).toEqual(applied.body);
+    const replay = await requestJson(app, path, { method: "POST", body: JSON.stringify(body) });
+    expect(replay.status, replay.bodyText).toBe(200);
+    expect(replay.body).toEqual(applied.body);
+    const mismatch = await requestJson(app, path, { method: "POST", body: JSON.stringify({ ...body, reason: "Different reason" }) });
+    expect(mismatch.status).toBe(409);
+    expect((await db.query("select count(*)::int as count from audit_events where organization_id=$1 and action='module-structure-update'", [org])).rows[0]).toEqual({ count: 1 });
+    expect((await db.query("select description from parameter_modules where organization_id=$1 and id='export-root'", [org])).rows[0]).toEqual({ description: "Applied once" });
+  });
+
+  it("rejects stale confirmation and unsupported changes without writing", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    document.modules[0]!.description = "Not applied";
+    const resolutions = {};
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions }) });
+    await db.query("update parameter_modules set scope='Changed after preview' where organization_id=$1 and id='export-root'", [org]);
+    const result = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({
+      document, resolutions, token: (preview.body as { token: string }).token, idempotencyKey: "stale", reason: "Reviewed" }) });
+    expect(result.status).toBe(409);
+    expect((await db.query("select description from parameter_modules where organization_id=$1 and id='export-root'", [org])).rows[0]).toEqual({ description: "Applied once" });
+    document.modules[0]!.parentRef = "unsupported-parent";
+    const unsupported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions }) });
+    expect(unsupported.status).toBe(400);
+  });
+
+  it("rolls back metadata and retry identity when audit fails", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    document.modules[0]!.description = "Must roll back";
+    const resolutions = {};
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions }) });
+    await db.query(`create function public.fail_structure_update_audit() returns trigger language plpgsql as $$
+      begin if new.action='module-structure-update' then raise exception 'injected audit failure'; end if; return new; end $$`);
+    await db.query("create trigger fail_structure_update_audit before insert on audit_events for each row execute function public.fail_structure_update_audit()");
+    try {
+      const failed = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({
+        document, resolutions, token: (preview.body as { token: string }).token, idempotencyKey: "rollback", reason: "Reviewed" }) });
+      expect(failed.status).toBeGreaterThanOrEqual(500);
+    } finally {
+      await db.query("drop trigger fail_structure_update_audit on audit_events");
+      await db.query("drop function public.fail_structure_update_audit()");
+    }
+    expect((await db.query("select description from parameter_modules where organization_id=$1 and id='export-root'", [org])).rows[0]).toEqual({ description: "Applied once" });
+    expect((await db.query("select 1 from parameter_catalog.governance_command_idempotency where organization_id=$1 and idempotency_key='rollback'", [org])).rowCount).toBe(0);
+  });
+
+  it("accepts omitted fields, rejects foreign baselines and unknown writable fields, and preserves a no-op", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    const module = document.modules[0]!;
+    const partial = { ...document, modules: [{ ref: module.ref, sourceId: module.sourceId }], subjects: [] };
+    const path = `/api/v2/organizations/${org}/module-structure/previews`;
+    const preview = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: partial, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    expect(preview.body).toMatchObject({ changes: [], conflicts: [] });
+    const before = (await db.query("select origin,importance_override,updated_at from parameter_modules where organization_id=$1 and id='export-root'", [org])).rows[0];
+    const result = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({
+      document: partial, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "no-op", reason: "No changes" }) });
+    expect(result.body).toMatchObject({ changedModules: 0, changedFields: 0 });
+    expect((await db.query("select origin,importance_override,updated_at from parameter_modules where organization_id=$1 and id='export-root'", [org])).rows[0]).toEqual(before);
+    expect((await db.query("select count(*)::int as count from audit_events where organization_id=$1 and action='module-structure-update'", [org])).rows[0]).toEqual({ count: 1 });
+    const foreign = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: { ...partial, source: { ...partial.source, organizationId: "foreign" } }, resolutions: {} }) });
+    expect(foreign.status).toBe(403);
+    const unknown = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: { ...partial, modules: [{ ...partial.modules[0], invented: true }] }, resolutions: {} }) });
+    expect(unknown.status).toBe(400);
+    const duplicate = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document: { ...partial, modules: [partial.modules[0], partial.modules[0]] }, resolutions: {} }) });
+    expect(duplicate.status).toBe(400);
+  });
+
+  it("applies a valid sibling name swap without committing temporary names", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('export-swap',$1,'Other','export-swap','business','curated')", [org]);
+    try {
+      const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+      const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+      const root = document.modules.find(m => m.sourceId === "export-root")!;
+      const other = document.modules.find(m => m.sourceId === "export-swap")!;
+      [root.name, other.name] = [other.name, root.name];
+      const resolutions = {};
+      const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document, resolutions }) });
+      expect(preview.status, preview.bodyText).toBe(200);
+      const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({
+        document, resolutions, token: (preview.body as { token: string }).token, idempotencyKey: "name-swap", reason: "Swap names" }) });
+      expect(applied.status, applied.bodyText).toBe(200);
+      expect((await db.query("select id,name from parameter_modules where id in ('export-root','export-swap') order by id")).rows).toEqual([
+        { id: "export-root", name: "Other" }, { id: "export-swap", name: "Root" }]);
+    } finally {
+      await db.query("delete from parameter_modules where id='export-swap'");
+      await db.query("update parameter_modules set name='Root' where id='export-root'");
+    }
   });
 
   it("includes all modules and retained recognition settings without a page limit", async () => {

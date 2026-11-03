@@ -59,6 +59,8 @@ import { registerCatalogBatchRegistrationRoutes, registerCatalogGovernanceRoutes
 import { listUnregisteredSubjects } from "../parameter-governance/registration/readRepository";
 import { executeBatchRegistration } from "../parameter-governance/registration/batch";
 import { exportModuleStructure } from "../parameter-governance/moduleStructure/export";
+import { previewModuleStructure } from "../parameter-governance/moduleStructure/preview";
+import { applyModuleStructure } from "../parameter-governance/moduleStructure/apply";
 import { registerCatalogDriverCompatibleDiscoveryRoute } from "./driverDiscoveryRoute";
 import { registerDefinitionDeletionRoutes } from "./definitionDeletion/routes";
 import type { DefinitionArchiveStores } from "./definitionDeletion/archives";
@@ -485,7 +487,7 @@ const authenticateGovernance =
     const organizationDetail = matched?.id === "catalog.getRegistration";
     if (matched && (organizationDetail || [
       "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
-      "catalog.createRegistration", "catalog.createBatchRegistration", "catalog.listUnregisteredSubjects", "catalog.exportModuleStructure",
+      "catalog.createRegistration", "catalog.createBatchRegistration", "catalog.listUnregisteredSubjects", "catalog.exportModuleStructure", "catalog.previewModuleStructure", "catalog.applyModuleStructure",
       "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement", "catalog.updateRegistrationRecognition"
     ].includes(matched.id))) {
       const targetId = matched.params.organizationId;
@@ -772,6 +774,8 @@ const createGovernancePorts = (
   return {
     authenticate: authenticateGovernance(resolveAuth, pool),
     exportModuleStructure: pool ? (organizationId, invocation, requestId) => exportModuleStructure(pool, organizationId, invocation, requestId) : undefined,
+    previewModuleStructure: pool ? (organizationId, invocation, body) => previewModuleStructure(pool, organizationId, invocation, body) : undefined,
+    applyModuleStructure: pool ? (organizationId, invocation, requestId, body) => applyModuleStructure(pool, organizationId, invocation, requestId, body) : undefined,
     readRegistrationRecognition: db ? (organizationId, registrationId) => readRegistrationRecognitionSettings(db, organizationId, registrationId) : undefined,
     updateRegistrationRecognition: db ? (input) => updateRegistrationRecognitionSettings(db, input) : undefined,
     listUnregisteredSubjects: pool ? (organizationId, releaseId, source) => listUnregisteredSubjects(pool, organizationId, releaseId, source) : undefined,
