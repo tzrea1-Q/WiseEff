@@ -178,7 +178,7 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     const app = createWiseEffServer({ db: apiDatabase, auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ userId, organizationId, roles: [{ roleId: "admin", projectId: null }] }) } } });
     const base = `/api/v2/organizations/${organizationId}/module-structure`;
     let exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
-    const doc = exported.body as { subjects: Array<{ subjectId: string; operation?: string }>; [key: string]: unknown };
+    const doc = exported.body as { subjects: Array<{ subjectId: string; operation?: string; state?: "active" | "retired" }>; [key: string]: unknown };
     doc.subjects.push({ subjectId: targetSubject, operation: "register", placement: { kind: "module", moduleRef: moduleId } } as never);
     const run = async (document: unknown, key: string) => {
       const preview = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
@@ -190,11 +190,12 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     const child = (await admin.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, ownedNodeSubject])).rows[0]!.id;
     exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
     const childEdit = structuredClone(exported.body) as typeof doc;
-    childEdit.subjects.find(subject => subject.subjectId === ownedNodeSubject)!.operation = "retire";
+    childEdit.subjects.find(subject => subject.subjectId === ownedNodeSubject)!.state = "retired";
     const childPreview = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document: childEdit, resolutions: {} }) });
     expect(childPreview.status).toBe(409);
+    expect(childPreview.bodyText).toContain("owned by a driver");
     const staleEdit = structuredClone(exported.body) as typeof doc;
-    staleEdit.subjects.find(subject => subject.subjectId === targetSubject)!.operation = "retire";
+    staleEdit.subjects.find(subject => subject.subjectId === targetSubject)!.state = "retired";
     const stalePreview = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document: staleEdit, resolutions: {} }) });
     expect(stalePreview.status, stalePreview.bodyText).toBe(200);
     await admin.query("update parameter_catalog.organization_subject_registrations set updated_at=updated_at + interval '1 second' where id=$1", [child]);
@@ -203,7 +204,7 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     for (const operation of ["retire", "restore"] as const) {
       exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
       const document = exported.body as typeof doc;
-      document.subjects.find(subject => subject.subjectId === targetSubject)!.operation = operation;
+      document.subjects.find(subject => subject.subjectId === targetSubject)!.state = operation === "retire" ? "retired" : "active";
       await run(document, `child-${operation}`);
       expect((await admin.query("select id,status,cascade_retired from parameter_catalog.organization_subject_registrations where id=$1", [child])).rows).toEqual([{ id: child, status: operation === "retire" ? "retired" : "active", cascade_retired: operation === "retire" }]);
     }
@@ -211,7 +212,7 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     for (const operation of ["retire", "restore"] as const) {
       exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
       const document = exported.body as typeof doc;
-      document.subjects.find(subject => subject.subjectId === targetSubject)!.operation = operation;
+      document.subjects.find(subject => subject.subjectId === targetSubject)!.state = operation === "retire" ? "retired" : "active";
       await run(document, `historical-${operation}`);
     }
     expect((await admin.query("select status,cascade_retired from parameter_catalog.organization_subject_registrations where id=$1", [child])).rows).toEqual([{ status: "retired", cascade_retired: false }]);
