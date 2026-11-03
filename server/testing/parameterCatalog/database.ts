@@ -240,7 +240,11 @@ export const S2_SCH_0324_FINGERPRINT =
 export const S2_SCH_0325_FINGERPRINT =
   "c7b228e71b3302f8d27876ba6e772afab566c2946f18ff8f399ece92cbc160f2";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0325_FINGERPRINT;
+/** 0326 separates managed source scope and retains independently audited suspension receipts. */
+export const S2_SCH_0326_FINGERPRINT =
+  "26ead0a92d8585c9445a197a7212c5a7ae233c98c188b88ae7ac63dc86fce9f7";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0326_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

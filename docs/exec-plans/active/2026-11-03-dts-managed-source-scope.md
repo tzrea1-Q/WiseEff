@@ -2,7 +2,7 @@
 
 > Chinese: [DTS 源码编辑与参数纳管范围](../../zh-CN/exec-plans/active/2026-11-03-dts-managed-source-scope.md)
 
-Status: implementation and verification in progress. [PR #1492](https://github.com/tzrea1-Q/WiseEff/pull/1492) owns executable evidence and final merge status; this plan does not claim a PostgreSQL, browser or production pass.
+Status: implemented. [PR #1492](https://github.com/tzrea1-Q/WiseEff/pull/1492) owns executable verification evidence and final merge status; this plan does not substitute for PostgreSQL, browser or production acceptance.
 
 ## Problem and accepted behavior
 

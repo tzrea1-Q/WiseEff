@@ -88,6 +88,15 @@ describe("managed source exclusion and resumption SQL receipts", { timeout: 120_
     const resumed = await f.stage(`${sourceAdminText.replace("<36>", "<42>")}\n/* reconcile latest source */`, "scope-genuine-resumption");
     const proof = await inspect(resumed.input.candidateId);
     expect(proof.resumptions).toEqual([{ bindingId: retained.bindingId, priorRequestId: committed.requestId }]);
+    for (const [organizationId, projectId, configSetId, baseRevisionId] of [
+      ["another-organization", f.projectId, f.configSetId, proof.baseConfigRevisionId],
+      [f.organizationId, "another-project", f.configSetId, proof.baseConfigRevisionId],
+      [f.organizationId, f.projectId, "another-configuration", proof.baseConfigRevisionId],
+      [f.organizationId, f.projectId, f.configSetId, retained.configRevisionId],
+    ]) {
+      expect((await f.api.query(`select parameter_catalog.find_source_binding_suspension($1,$2,$3,$4,$5::jsonb) as receipt`,
+        [organizationId, projectId, configSetId, baseRevisionId, JSON.stringify(retained)])).rows).toEqual([{ receipt: null }]);
+    }
     expect(proof.targets).toEqual([expect.objectContaining({ bindingId: retained.bindingId, action: "set" })]);
     await expect(freezeForged({ ...proof, resumptions: [] }, "scope-missing-evidence")).rejects.toMatchObject({
       code: "23514", message: "Historical source resumption has no exact approved exclusion"

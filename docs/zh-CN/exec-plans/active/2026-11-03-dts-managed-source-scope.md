@@ -2,7 +2,7 @@
 
 > English: [DTS editing and managed parameter scope](../../../exec-plans/active/2026-11-03-dts-managed-source-scope.md)
 
-状态：实现与验证进行中。实际执行证据和最终合并状态记录在 [PR #1492](https://github.com/tzrea1-Q/WiseEff/pull/1492)；本方案不宣称 PostgreSQL、浏览器或生产验证已经通过。
+状态：实现已完成。实际验收证据和最终合并状态记录在 [PR #1492](https://github.com/tzrea1-Q/WiseEff/pull/1492)；本方案不能替代 PostgreSQL、浏览器或生产环境的验收结果。
 
 ## 问题与目标行为
 
