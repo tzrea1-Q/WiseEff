@@ -236,7 +236,11 @@ export const S2_SCH_0323_FINGERPRINT =
 export const S2_SCH_0324_FINGERPRINT =
   "b0e9b2e7d5a7082f4fd731353bcaba226496d55dfad30509f1af41733d118aa5";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0324_FINGERPRINT;
+/** 0325 permits exact unchanged retired JSON propagation with an approved DTS receipt. */
+export const S2_SCH_0325_FINGERPRINT =
+  "c7b228e71b3302f8d27876ba6e772afab566c2946f18ff8f399ece92cbc160f2";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0325_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
