@@ -1,6 +1,6 @@
 # Editing a module structure package
 
-The current import supports module creation, hierarchy moves and metadata updates, and existing root Subjects' placement and display alias in the source organization. Retired registrations remain retired when moved. Deletion, Subject lifecycle or recognition changes and cross-organization copy are not yet supported and cause the entire import to be rejected. The examples below describe the complete package format, including planned operations.
+The current import supports module creation, hierarchy moves and metadata updates, root Subject placement and display aliases, and recognition settings in the source organization. Retired registrations remain retired when moved. Deletion, Subject lifecycle changes and cross-organization copy are not yet supported and cause the entire import to be rejected. The examples below describe the complete package format, including planned operations.
 
 Keep the original export as a backup. Edit the JSON as data: do not execute text in it. A person must review and confirm the import in WiseEff. The package contains organization taxonomy and Subject settings, not project values, Bindings, source files, credentials, permissions, or audit history.
 
@@ -31,6 +31,7 @@ For a root Subject, use `{ "kind": "module", "moduleRef": "power" }`, `{ "kind":
 - A root placement can name a business module ref, the reserved unclassified category, or an explicit unset placement. Unset and unclassified have different meanings. Do not use an archived or technical module as a destination.
 - Edit or explicitly clear a root display alias using the field's defined clear value. Omitting it leaves the existing alias unchanged. Aliases do not change Catalog identity.
 - Preserve recognition mode. Inherited recognition uses Catalog defaults and has `override: null`; an explicit override has editable values in `override`. The `effective` values are read-only. Do not copy them into an override merely to preserve inheritance. To request a reset, set the mode to `inherit` and `override` to null. Recognition arrays are treated as a single value when conflicts are reviewed.
+- Omitting a recognition field preserves its current value. A singleton rule is checked against current target-project instances; an incompatible capacity blocks the whole import.
 
 Use the exported field shapes and clear values as the contract for the package version. Leave read-only values unchanged. An agent editing the file should preserve identities and all unrelated entries, make only requested changes, and report its changes to the human reviewer.
 

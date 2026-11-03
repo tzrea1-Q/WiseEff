@@ -261,6 +261,67 @@ export function registrationRecognitionEtag(settings: ModuleRecognitionSettings 
   return `"${createHash("sha256").update(JSON.stringify(settings)).digest("hex")}"`;
 }
 
+/** Validate the effective rule against current project usage before any governed write. */
+export async function validateRegistrationRecognitionSettings(db: Queryable, organizationId: string,
+  current: ModuleRecognitionSettings & { kind: "driver" | "node-type" }, body: UpdateModuleRecognition,
+): Promise<ModuleRecognitionSettings & { kind: "driver" | "node-type" }> {
+  if (!hasModuleRecognitionUpdate(body) ||
+    (current.kind === "driver" && body.nodeTypeName !== undefined) ||
+    (current.kind === "node-type" && (body.compatibles !== undefined || body.driverNature !== undefined || body.instanceCardinality !== undefined)) ||
+    body.compatibles?.some(value => !parseCanonicalCompatibleSelector(value).ok) ||
+    (body.nodeTypeName !== undefined && !parseCanonicalNodeName(body.nodeTypeName).ok)) {
+    throw new ApiError("VALIDATION_FAILED", "识别规则与主体类型不匹配，或识别标识格式无效。");
+  }
+  const next = { ...current, ...body, overridden: true };
+  if (body.compatibles) next.compatibles = validCompatibles(body.compatibles);
+  await validateRecognitionCapacity(db, organizationId, next);
+  return next;
+}
+
+export async function validateRecognitionCapacity(db: Queryable, organizationId: string, next: ModuleRecognitionSettings) {
+  if (next.instanceCardinality !== "singleton-per-project") return;
+  const multiple = await hasMultipleCurrentModuleSubjectInstances(db, organizationId, next.recognitionSubjectId);
+  const instances = await listModuleRecognitionInstances(db, organizationId, next);
+  const projects = new Map<string, Set<string>>();
+  for (const instance of instances) {
+    const nodes = projects.get(instance.projectId) ?? new Set<string>();
+    nodes.add(instance.logicalNodeId); projects.set(instance.projectId, nodes);
+  }
+  if (multiple || [...projects.values()].some(nodes => nodes.size > 1)) {
+    throw new ApiError("CONFLICT", "已有项目实例超过单例容量。");
+  }
+}
+
+/** Delete the override only after validating the published rule and the reviewed version. */
+export async function resetRegistrationRecognitionSettingsInTransaction(tx: Queryable, input: {
+  organizationId: string; registrationId: string; ifMatch: string; catalogReleaseId: string;
+}) {
+  await lockOrganizationModuleRecognition(tx, input.organizationId);
+  if (await lockCurrentRecognitionRelease(tx) !== input.catalogReleaseId) throw new ApiError("CONFLICT", "规范目录已更新，请刷新后重试。");
+  const current = await readRegistrationRecognitionSettings(tx, input.organizationId, input.registrationId);
+  if (!current || registrationRecognitionEtag(current) !== input.ifMatch) throw new ApiError("CONFLICT", "识别规则已变化，请刷新后重试。");
+  const inherited = await readInheritedRegistrationRecognitionSettings(tx, current, input.catalogReleaseId);
+  await validateRecognitionCapacity(tx, input.organizationId, inherited);
+  await tx.query("delete from public.registration_recognition_rules where organization_id=$1 and registration_id=$2", [input.organizationId, input.registrationId]);
+  return inherited;
+}
+
+export async function readInheritedRegistrationRecognitionSettings(tx: Queryable,
+  current: ModuleRecognitionSettings & { kind: "driver" | "node-type" }, catalogReleaseId: string) {
+  const published = (await readModuleRecognitionSubjectDefaults(tx, [current.recognitionSubjectId!], catalogReleaseId))[0];
+  if (!published) throw new ApiError("CONFLICT", "规范目录中的识别默认值不可用。");
+  const selector = published.selector_snapshot;
+  if ((current.kind === "driver" && selector.kind !== "driver-compatible") ||
+      (current.kind === "node-type" && selector.kind !== "node-type-name")) {
+    throw new ApiError("CONFLICT", "规范目录中的识别类型不匹配。");
+  }
+  return { ...current, overridden: false,
+    compatibles: selector.kind === "driver-compatible" ? validCompatibles([...(selector.values ?? []), ...published.aliases]) : [],
+    nodeTypeName: selector.kind === "node-type-name" ? selector.value ?? null : null,
+    driverNature: current.kind === "driver" ? published.nature ?? "physical-device" : null,
+    instanceCardinality: current.kind === "driver" ? published.cardinality ?? "multiple" : null };
+}
+
 export async function updateRegistrationRecognitionSettings(
   db: Database, input: { organizationId: string; registrationId: string; body: UpdateModuleRecognition;
     invocation: TrustedInvocationContext; requestId: string; ifMatch: string; idempotencyKey: string; catalogReleaseId: string },
@@ -292,27 +353,7 @@ export async function updateRegistrationRecognitionSettingsInTransaction(
     const current = await readRegistrationRecognitionSettings(tx, input.organizationId, input.registrationId);
     if (!current) return null;
     if (registrationRecognitionEtag(current) !== input.ifMatch) throw new ApiError("CONFLICT", "识别规则已变化，请刷新后重试。");
-    if (!hasModuleRecognitionUpdate(input.body) ||
-      (current.kind === "driver" && input.body.nodeTypeName !== undefined) ||
-      (current.kind === "node-type" && (input.body.compatibles !== undefined || input.body.driverNature !== undefined || input.body.instanceCardinality !== undefined)) ||
-      input.body.compatibles?.some(value => !parseCanonicalCompatibleSelector(value).ok) ||
-      (input.body.nodeTypeName !== undefined && !parseCanonicalNodeName(input.body.nodeTypeName).ok)) {
-      throw new ApiError("VALIDATION_FAILED", "识别规则与主体类型不匹配，或识别标识格式无效。");
-    }
-    const next = { ...current, ...input.body, overridden: true };
-    if (input.body.compatibles) next.compatibles = validCompatibles(input.body.compatibles);
-    if (next.instanceCardinality === "singleton-per-project") {
-      const multiple = await hasMultipleCurrentModuleSubjectInstances(tx, input.organizationId, next.recognitionSubjectId);
-      const instances = await listModuleRecognitionInstances(tx, input.organizationId, next);
-      const projects = new Map<string, Set<string>>();
-      for (const instance of instances) {
-        const nodes = projects.get(instance.projectId) ?? new Set<string>();
-        nodes.add(instance.logicalNodeId); projects.set(instance.projectId, nodes);
-      }
-      if (multiple || [...projects.values()].some(nodes => nodes.size > 1)) {
-        throw new ApiError("CONFLICT", "已有项目实例超过单例容量。");
-      }
-    }
+    const next = await validateRegistrationRecognitionSettings(tx, input.organizationId, current, input.body);
     await tx.query(`insert into public.registration_recognition_rules
       (organization_id, registration_id, canonical_subject_id, compatibles, driver_nature, instance_cardinality, node_type_name)
       values ($1,$2,$3,$4,$5,$6,$7)

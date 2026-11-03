@@ -8,6 +8,8 @@ import { lockOrganizationModuleStructure } from "../../parameter-modules/recogni
 import { createParameterModule, updateParameterModule } from "../../parameters/parameterModuleRepository";
 import { planModuleStructure, stable } from "./preview";
 import { moduleStructureApplyRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
+import { applyRecognition } from "./recognition";
+import type { Database } from "../../../shared/database/client";
 import { applySubjectPlacement } from "./subjects";
 
 export async function applyModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, requestId: string, raw: unknown) {
@@ -85,9 +87,10 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
       and m.id in (select id from affected) and (m.path,m.depth) is distinct from (tree.path,tree.depth)`, [organizationId, moved]);
     for (const [moduleId, values] of changes) await updateParameterModule(client as unknown as Queryable, { organizationId, moduleId, ...values });
     await applySubjectPlacement(client, organizationId, plan.subjectChanges, plan.moduleIds);
+    await applyRecognition(client as unknown as Database, organizationId, input.document.source.catalogReleaseId, invocation, requestId, input.idempotencyKey, plan.recognitionChanges);
     const changedModules = new Set(plan.changes.filter(change => !change.moduleId.startsWith("subject:")).map(change => change.moduleId)).size;
-    const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules, changedFields: plan.changes.length };
-    if (plan.changes.length) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
+    const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules, changedFields: plan.changes.length + plan.recognitionChanges.length };
+    if (receipt.changedFields) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
       action: "module-structure-update", severity: "Medium", projectId: null, targetType: "organization", targetId: organizationId,
       metadata: { receiptId: receipt.id, reason: input.reason, exportId: input.document.source.exportId,
         sourceOrganizationId: input.document.source.organizationId, catalogReleaseId: input.document.source.catalogReleaseId,

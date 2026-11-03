@@ -18,7 +18,9 @@ type Preview = {
 };
 type Receipt = { id: string; organizationId: string; changedModules: number; changedFields: number };
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
-const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块", placement: "归属", displayAlias: "展示别名" };
+const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块", placement: "归属", displayAlias: "展示别名",
+  recognition: "识别规则", "recognition.mode": "识别模式", "recognition.compatibles": "兼容标识", "recognition.driverNature": "驱动性质",
+  "recognition.instanceCardinality": "实例基数", "recognition.nodeTypeName": "节点名称" };
 
 export function ModuleStructureImport({ apiClient, organizationId, canImport, onChanged }: {
   apiClient?: ApiClient; organizationId?: string; canImport: boolean; onChanged?: () => void;
@@ -105,7 +107,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
       <ModalDialog open={!discard} onDismiss={busy ? undefined : requestClose} className="submission-dialog param-admin-module-edit-dialog module-structure-import" describedBy>
         {({ titleId, descriptionId }) => <>
           <div className="submission-dialog-head"><div><h2 id={titleId}>导入模块结构</h2>
-            <p id={descriptionId}>更新当前组织模块资料、新增模块、调整层级和根主体归属或展示别名。删除、主体生命周期、识别设置和跨组织复制尚不支持。</p></div></div>
+            <p id={descriptionId}>更新当前组织模块资料、新增模块、调整层级、根主体归属和展示别名及识别规则。删除、主体生命周期及跨组织复制尚不支持。</p></div></div>
           <div className="param-admin-module-edit-body">
             {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy} onChange={async event => {
               const file = event.target.files?.[0]; if (!file) return;
