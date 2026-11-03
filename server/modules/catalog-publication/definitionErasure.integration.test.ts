@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../testing/testDatabase";
 import { seedPublishedCatalog } from "../../testing/parameterCatalog/seedPublishedCatalog";
+import { seedCurrentDemoCatalog } from "../../testing/parameterCatalog/seedCurrentDemoCatalog";
+import { createPostgresDatabase } from "../../shared/database/client";
 import { compileCatalogRelease } from "../catalog-kernel/compiler/index";
 import { createCatalogKernel } from "../catalog-kernel/interface";
 import { CatalogReleaseDigest, CatalogReleaseId, ParameterDefinitionId } from "../parameter-catalog-contract/index";
@@ -25,6 +27,29 @@ describe("Catalog erasure from a native bootstrap without persisted artifacts", 
     await pool?.end();
     await database?.drop();
   });
+
+  it("recovers the owned demo source without persisted artifacts and retains child ownership", async () => {
+    const isolated = await createEphemeralTestDatabase("owned_erase_source");
+    const root = createPostgresDatabase(isolated.url);
+    try {
+      const current = await seedCurrentDemoCatalog(root);
+      expect((await root.query("select count(*)::int as count from catalog_publication.release_artifacts")).rows).toEqual([{ count: 0 }]);
+      await root.transaction(async (tx) => {
+        await tx.query("set transaction isolation level repeatable read, read only");
+        const plan = await prepareCatalogDefinitionErasure(tx, "pdef_acme_power_iin_max");
+        expect(plan.releases).toHaveLength(5);
+        expect(plan.artifacts).toHaveLength(1);
+        const parsed = parseBundleBytes(Buffer.from(plan.artifacts[0]!.artifactBytesBase64, "base64"));
+        if (!parsed.ok) throw new Error(parsed.detail);
+        expect(parsed.bundle.targetReleaseId).toBe(current.id);
+        const target = parsed.bundle.releases.at(-1)!;
+        expect(target.documents.find((item) => item.kind === "subject" && item.content.id === "csub_nt_battery_checker")?.content)
+          .toMatchObject({ ownerSubjectId: "csub_drv_huawei_batt_info" });
+        expect(target.documents.some((item) => item.content.id === "pdef_acme_power_iin_max")).toBe(false);
+        expect(compileCatalogRelease(parsed.bundle).ok).toBe(true);
+      });
+    } finally { await root.close(); await isolated.drop(); }
+  }, 120_000);
 
   it("verifies the populated seed and reconstructs all historical releases before erasing", async () => {
     const count = await client.query<{ count: string }>("select count(*)::text as count from catalog_publication.release_artifacts");

@@ -113,8 +113,8 @@ it("organizes battery authentication as one driver and one owned checker with tw
   const subjects = await db.query(`select id, kind, canonical_key, owner_subject_id
     from parameter_catalog.catalog_subjects where id = any($1::text[]) order by id`, [[driverId, childId]]);
   expect(subjects.rows).toEqual([
-    { id: driverId, kind: "driver", canonical_key: "driver:huawei,batt_info", owner_subject_id: null },
-    { id: childId, kind: "node-type", canonical_key: "node-type:battery_checker", owner_subject_id: driverId },
+    { id: driverId, kind: "driver", canonical_key: "huawei,batt_info", owner_subject_id: null },
+    { id: childId, kind: "node-type", canonical_key: "battery_checker", owner_subject_id: driverId },
   ]);
   const placements = await db.query<{ subject_id: string; module_id: string | null; effective_module_id: string; name: string; kind: string; status: string }>(`select
     registration.subject_id, registration.status, placement.module_id, effective.module_id as effective_module_id, module.name, module.kind
