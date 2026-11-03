@@ -13,6 +13,8 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { WorkbenchDtsEditorHandle, WorkbenchDtsEditorSessions, WorkbenchDtsEditorSnapshot } from "./WorkbenchDtsEditor";
 import { buildUnifiedDiff } from "./workbenchInspectorModel";
+import { digestSourceText } from "@/application/project-configuration/sourceDigest";
+import { createGovernanceIdempotencyKey as createUuid } from "@/features/parameter-catalog-governance/governanceState";
 import { sourceReviewReason } from "@/application/project-configuration/sourceReviewReason";
 import "./workbench-source-editing.css";
 
@@ -82,9 +84,8 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
   useEffect(() => {
     let cancelled = false;
     if (!configRevisionId) return;
-    void Promise.resolve().then(() => crypto.subtle.digest("SHA-256", new TextEncoder().encode(source))).then(async (bytes) => {
+    void Promise.resolve().then(() => digestSourceText(source)).then(async (sourceDigest) => {
       if (cancelled) return;
-      const sourceDigest = Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
       if (mergeEditor.current) mergeEditor.current.flush(); else editor.current?.flush();
       await session.open({ scope, base: { fileVersionId: baseVersionId, configRevisionId, sourceDigest }, sourceText: source });
     }).catch((cause) => { if (!cancelled) setError(presentError(cause, "读取 DTS 草稿失败。")); });
@@ -124,7 +125,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
       const previous = attempts.current.get(key);
       const next: Attempt = previous && previous.saved.sourceText === saved.sourceText
         && previous.saved.base.fileVersionId === saved.base.fileVersionId && previous.saved.base.configRevisionId === saved.base.configRevisionId
-        ? previous : { saved, mutationId: crypto.randomUUID() };
+        ? previous : { saved, mutationId: createUuid() };
       attempts.current.set(key, next);
       setAttempt({ ...next }); setSaveOpen(true); setBusy(true);
       if (!next.candidate) next.candidate = await repository.createCandidate(scope.projectId, {
@@ -197,10 +198,10 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
       }
       const buffered = editor.current?.flush();
       if (buffered?.sessionKey === key) change(buffered);
-      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(captured.saved.sourceText));
+      const sourceDigest = digestSourceText(captured.saved.sourceText);
       session.acknowledgeApplied(captured.saved, { fileVersionId: result.appliedSourceResult.fileVersionId,
         configRevisionId: result.appliedSourceResult.configRevisionId,
-        sourceDigest: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("") });
+        sourceDigest });
       attempts.current.delete(key);
       if (latestScope.current === key && operationEpoch.current === epoch) {
         setSaveOpen(false); setReason(""); setBufferDirty(session.getFile(scope)?.dirty ?? false);
@@ -229,12 +230,12 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     try {
       const request = await repository.getSourceRevisionRequest(scope.projectId, current.submission.requestId);
       if (request.status === "approved" && request.appliedSourceResult && request.after !== undefined) {
-        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(request.after));
+        const sourceDigest = digestSourceText(request.after);
         const buffered = editor.current?.flush();
         if (buffered?.sessionKey === key) change(buffered);
         session.acknowledgeApplied({ scope, base: current.base, sourceText: request.after, generation: current.submission.submittedGeneration }, {
           fileVersionId: request.appliedSourceResult.fileVersionId, configRevisionId: request.appliedSourceResult.configRevisionId,
-          sourceDigest: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+          sourceDigest
         });
         attempts.current.delete(key);
         if (latestScope.current === key) onDirtyChange(session.getFile(scope)?.dirty ?? false);
