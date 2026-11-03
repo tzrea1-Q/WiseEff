@@ -240,7 +240,11 @@ export const S2_SCH_0324_FINGERPRINT =
 export const S2_SCH_0325_FINGERPRINT =
   "c7b228e71b3302f8d27876ba6e772afab566c2946f18ff8f399ece92cbc160f2";
 
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0325_FINGERPRINT;
+/** 0326 adds retained module structure export baselines. */
+export const S2_SCH_0326_FINGERPRINT =
+  "ccadfb05a2069aab43a4ab282a05165b4bbd64e3b5638453eca6211df67b6712";
+
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0326_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

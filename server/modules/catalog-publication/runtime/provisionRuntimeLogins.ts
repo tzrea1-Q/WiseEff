@@ -521,6 +521,11 @@ export async function provisionPublicationRuntimeLogins(
           `grant insert, update, delete on table parameter_catalog.${quoteIdent(table)} to ${quoteIdent(names.api)}`,
         );
       }
+      if ((await admin.query<{ exists: boolean }>(
+        "select to_regclass('parameter_catalog.module_structure_export_baselines') is not null as exists",
+      )).rows[0]?.exists) {
+        await admin.query(`grant insert on parameter_catalog.module_structure_export_baselines to ${quoteIdent(names.api)}`);
+      }
       // Replacement history stays immutable; the API owns only approval
       // consumption and the existing execution/continuation state columns.
       await admin.query(`grant insert on table parameter_catalog.definition_replacement_previews,

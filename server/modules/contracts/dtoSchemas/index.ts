@@ -99,6 +99,7 @@ export * from "./skillDeletion";
 export * from "./debugging";
 export * from "./agent";
 export * from "./parameterCatalog";
+export * from "./moduleStructure";
 export * from "./canonicalConflict";
 export * from "./canonicalBatchRollback";
 export * from "./canonicalManualSync";

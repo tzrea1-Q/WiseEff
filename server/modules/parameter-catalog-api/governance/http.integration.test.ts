@@ -224,6 +224,19 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     await database?.drop();
   });
 
+  it("denies a trusted Agent export over HTTP even with administrator permissions", async () => {
+    const previous = scope;
+    const principal = makeTestAuthContext({ organizationId: ORG_ID, userId: "user-org-admin" });
+    scope = { ...scope, canReadOrganizationSettings: true, trustedActor: createAgentInvocation(principal,
+      { sessionId: "export-session", toolCallId: "export-call", approval: { required: false } }) };
+    try {
+      const result = await request("POST", `/api/v2/organizations/${ORG_ID}/module-structure/exports`,
+        { headers: { "x-wiseeff-role": "admin", "x-wiseeff-actor-kind": "user" }, body: {} });
+      expect(result.status).toBe(403);
+      expect((await pool.query("select 1 from parameter_catalog.module_structure_export_baselines where organization_id=$1", [ORG_ID])).rowCount).toBe(0);
+    } finally { scope = previous; }
+  });
+
   it("lists current unregistered subjects and filters bootstrap subjects from organization publications", async () => {
     const all = await request("GET", `/api/v2/organizations/${ORG_ID}/unregistered-subjects?source=all`);
     expect(all.status, JSON.stringify(all.body)).toBe(200);

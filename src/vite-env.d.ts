@@ -1,5 +1,7 @@
 /// <reference path="./js-yaml.d.ts" />
 
+declare module "*.md?raw" { const contents: string; export default contents; }
+
 declare module "node:fs" {
   export function existsSync(path: string): boolean;
   export function readFileSync(path: string | number, encoding: string): string;
