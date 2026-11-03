@@ -17,6 +17,11 @@ export type AcceptanceOperation = {
 };
 
 export const acceptanceOperations: AcceptanceOperation[] = [
+  { id: "MODULE-STRUCTURE-IMPORT-001", priority: "P1", area: "parameters", coverage: "automated",
+    route: "/parameter-admin/modules", roles: ["Org Admin"],
+    action: "Upload an edited structure, resolve a conflict, refresh a stale preview, and confirm the resulting receipt.",
+    acceptanceIds: ["MODULE-STRUCTURE-IMPORT-001"], specFiles: ["e2e/acceptance/module-structure-transfer.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "screenshot"] },
   { id: "PROJ-CONFIG-PRIVATE-SHARED-001", priority: "P1", area: "parameters", coverage: "automated",
     route: "/parameter-admin/projects/:projectId/configuration", roles: ["Admin"],
     action: "Independently publish private source, explicitly preview/cancel/confirm conversion to its exact shared closure, recover a current resource-retirement refusal with retained input, and read the unchanged source and Binding under shared ownership.",

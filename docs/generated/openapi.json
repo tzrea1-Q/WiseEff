@@ -13596,6 +13596,130 @@
         }
       }
     },
+    "/api/v2/organizations/{organizationId}/module-structure/previews": {
+      "post": {
+        "operationId": "catalog.previewModuleStructure",
+        "summary": "Preview an organization module structure update",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleStructurePreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleStructurePreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/organizations/{organizationId}/module-structure/applies": {
+      "post": {
+        "operationId": "catalog.applyModuleStructure",
+        "summary": "Apply a reviewed module structure update",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleStructureApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleStructureReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/organizations/{organizationId}/subject-registrations/{registrationId}/recognition": {
       "get": {
         "operationId": "catalog.getRegistrationRecognition",
@@ -88115,6 +88239,1024 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "ModuleStructureExport"
+      },
+      "ModuleStructurePreviewRequest": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "update"
+            ]
+          },
+          "document": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "wiseeff-module-structure"
+                ]
+              },
+              "version": {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              "source": {
+                "type": "object",
+                "properties": {
+                  "exportId": {
+                    "type": "string"
+                  },
+                  "organizationId": {
+                    "type": "string"
+                  },
+                  "catalogReleaseId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "exportId",
+                  "organizationId",
+                  "catalogReleaseId"
+                ],
+                "additionalProperties": false
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "maxBytes": {
+                    "type": "number"
+                  },
+                  "maxEntries": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "maxBytes",
+                  "maxEntries"
+                ],
+                "additionalProperties": false
+              },
+              "counts": {
+                "type": "object",
+                "properties": {
+                  "modules": {
+                    "type": "number"
+                  },
+                  "subjects": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "modules",
+                  "subjects"
+                ],
+                "additionalProperties": false
+              },
+              "modules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "upsert"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "parentRef": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "sortOrder": {
+                      "type": "number"
+                    },
+                    "importance": {
+                      "type": "string",
+                      "enum": [
+                        "high",
+                        "medium",
+                        "low"
+                      ]
+                    },
+                    "reference": {
+                      "type": "object",
+                      "properties": {
+                        "importanceOverride": {
+                          "type": "boolean"
+                        },
+                        "origin": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "importanceOverride",
+                        "origin"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "sourceId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "subjects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "driver",
+                        "node-type",
+                        "configuration-schema"
+                      ]
+                    },
+                    "ownerSubjectId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "retired"
+                      ]
+                    },
+                    "cascadeRetired": {
+                      "type": "boolean"
+                    },
+                    "placement": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unset"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unclassified"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "module"
+                                  ]
+                                },
+                                "moduleRef": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "moduleRef"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "reference"
+                                  ]
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "sourceId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "displayAlias": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "recognition": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "inherit",
+                            "override"
+                          ]
+                        },
+                        "override": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "effective": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "subjectId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "references": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "parentId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "archived": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "parentId",
+                    "name",
+                    "kind",
+                    "archived"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "format",
+              "version",
+              "source",
+              "limits",
+              "counts",
+              "modules",
+              "subjects",
+              "references"
+            ],
+            "additionalProperties": false
+          },
+          "resolutions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "current",
+                "file"
+              ]
+            }
+          }
+        },
+        "required": [
+          "document",
+          "resolutions"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ModuleStructurePreviewRequest"
+      },
+      "ModuleStructurePreviewResponse": {
+        "type": "object",
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "moduleId": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "before": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "after": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "moduleId",
+                "field",
+                "before",
+                "after"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "moduleId": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "baseline": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "file": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "current": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "key",
+                "moduleId",
+                "field",
+                "baseline",
+                "file",
+                "current"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "changes",
+          "conflicts",
+          "token"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ModuleStructurePreviewResponse"
+      },
+      "ModuleStructureApplyRequest": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "update"
+            ]
+          },
+          "document": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "wiseeff-module-structure"
+                ]
+              },
+              "version": {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              "source": {
+                "type": "object",
+                "properties": {
+                  "exportId": {
+                    "type": "string"
+                  },
+                  "organizationId": {
+                    "type": "string"
+                  },
+                  "catalogReleaseId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "exportId",
+                  "organizationId",
+                  "catalogReleaseId"
+                ],
+                "additionalProperties": false
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "maxBytes": {
+                    "type": "number"
+                  },
+                  "maxEntries": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "maxBytes",
+                  "maxEntries"
+                ],
+                "additionalProperties": false
+              },
+              "counts": {
+                "type": "object",
+                "properties": {
+                  "modules": {
+                    "type": "number"
+                  },
+                  "subjects": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "modules",
+                  "subjects"
+                ],
+                "additionalProperties": false
+              },
+              "modules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "upsert"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "parentRef": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "sortOrder": {
+                      "type": "number"
+                    },
+                    "importance": {
+                      "type": "string",
+                      "enum": [
+                        "high",
+                        "medium",
+                        "low"
+                      ]
+                    },
+                    "reference": {
+                      "type": "object",
+                      "properties": {
+                        "importanceOverride": {
+                          "type": "boolean"
+                        },
+                        "origin": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "importanceOverride",
+                        "origin"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "sourceId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "subjects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "driver",
+                        "node-type",
+                        "configuration-schema"
+                      ]
+                    },
+                    "ownerSubjectId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "retired"
+                      ]
+                    },
+                    "cascadeRetired": {
+                      "type": "boolean"
+                    },
+                    "placement": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unset"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "unclassified"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "module"
+                                  ]
+                                },
+                                "moduleRef": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "moduleRef"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "reference"
+                                  ]
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "sourceId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "displayAlias": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "recognition": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "inherit",
+                            "override"
+                          ]
+                        },
+                        "override": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "effective": {
+                          "type": "object",
+                          "properties": {
+                            "compatibles": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "nodeTypeName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "driverNature": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "physical-device",
+                                "logical-service"
+                              ]
+                            },
+                            "instanceCardinality": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "multiple",
+                                "singleton-per-project"
+                              ]
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "subjectId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "references": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "parentId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "archived": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "parentId",
+                    "name",
+                    "kind",
+                    "archived"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "format",
+              "version",
+              "source",
+              "limits",
+              "counts",
+              "modules",
+              "subjects",
+              "references"
+            ],
+            "additionalProperties": false
+          },
+          "resolutions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "current",
+                "file"
+              ]
+            }
+          },
+          "token": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "document",
+          "resolutions",
+          "token",
+          "idempotencyKey",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ModuleStructureApplyRequest"
+      },
+      "ModuleStructureReceipt": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "changedModules": {
+            "type": "number"
+          },
+          "changedFields": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "changedModules",
+          "changedFields"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ModuleStructureReceipt"
       },
       "CatalogRegistrationRecognitionUpdate": {
         "type": "object",

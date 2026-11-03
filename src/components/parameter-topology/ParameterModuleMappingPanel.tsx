@@ -28,6 +28,7 @@ import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/ht
 import { CanonicalSubjectPlacementPanel } from "@/components/parameter-admin-next/CanonicalSubjectPlacementPanel";
 import { CanonicalDriverDiscovery } from "@/components/parameter-admin-next/CanonicalDriverDiscovery";
 import { ModuleStructureExport } from "@/components/parameter-admin-next/ModuleStructureExport";
+import { ModuleStructureImport } from "@/components/parameter-admin-next/ModuleStructureImport";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { Button } from "@/components/ui/button";
@@ -402,6 +403,8 @@ export function ParameterModuleMappingPanel({
   return <section className="parameter-module-mapping-panel" aria-label={PARAMETER_ADMIN_UI.moduleMapping}>
     {canonicalEnabled ? <ModuleStructureExport apiClient={apiClient} organizationId={canonicalOrganizationId}
       canExport={canAdmin && canonicalActor !== "agent" && Boolean(canonicalSessionPermissions?.includes("users:manage"))} /> : null}
+    {canonicalEnabled ? <ModuleStructureImport apiClient={apiClient} organizationId={canonicalOrganizationId}
+      canImport={canManageTaxonomy && canonicalActor !== "agent"} onChanged={() => setRegistryRefresh(value => value + 1)} /> : null}
     {activeSubView !== "tree" ? <div className="navigator-workbench__toolbar" role="group" aria-label="工作台操作"><div className="navigator-workbench__controls">{tabs}</div>{refresh}</div> : null}
     {activeSubView === "tree" ? <NavigatorWorkbench pageKey="module-governance" navigatorLabel="模块导航" taskLabel={activeTab.label} resizableNavigator
       panelId={activeTab.panelId} tabId={activeTab.id} toolbar={tabs} primaryAction={<>

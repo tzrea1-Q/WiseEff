@@ -10,6 +10,16 @@ import { requestJson } from "./test/testClient";
 const samplePath = "/api/v1/log-skills/skill-1/sample";
 const sampleBodyLimit = Math.ceil(2 * 1024 * 1024 * 4 / 3) + 4 + 64 * 1024;
 
+describe("module structure transport body limit", () => {
+  it("bounds preview and apply before collecting their request bodies", async () => {
+    const cap = 8 * 1024 * 1024;
+    for (const path of ["/api/v2/organizations/org/module-structure/previews", "/api//v2//organizations//org//module-structure//applies//"]) {
+      expect(resolveRouteBodyLimit({ method: "POST", path })).toBe(cap);
+      expect(await requestDeclaredOversize(createHttpServer(createRouter(), { maxBodyBytes: resolveRouteBodyLimit }), path, "POST", cap + 1)).toMatchObject({ status: 413 });
+    }
+  });
+});
+
 describe("shared-source transport body limit",()=>{
   it("rejects oversized complete-package bodies before collecting bytes at either project import action",async()=>{
     const cap=24*1024*1024;

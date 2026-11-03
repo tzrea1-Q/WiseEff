@@ -4077,6 +4077,8 @@ test.describe("project configuration workbench post-cutover semantic identity", 
   });
 
   test("administrator explicitly converts a published private source with unchanged identity and recoverable confirmation",async({page,request},testInfo)=>{
+    // @acceptance PROJ-CONFIG-PRIVATE-SHARED-001
+    // @operation PROJ-CONFIG-PRIVATE-SHARED-001
     await seedAcceptanceRoleMatrix();await registerCatalogDriverSubjects(request,[{subjectId:"csub_drv_mt_mt5788",canonicalName:"mt,mt5788"}]);
     const sample='/dts-v1/; / { board { compatible = "mt,mt5788"; rx_fod_cond = "PrivateConversion", "keep"; }; };';
     const binding=await seedIsolatedBinding(request,{propertyKey:"rx_fod_cond",dts:sample,rawValuePattern:'"PrivateConversion", "keep"',nodeLocatorPattern:"board",reason:"#1429 explicit private conversion",timeoutMs:60_000});

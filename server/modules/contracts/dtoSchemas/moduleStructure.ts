@@ -20,3 +20,28 @@ export const moduleStructureExportSchema = z.object({
       override: recognitionValue.nullable(), effective: recognitionValue }).strict().nullable() }).strict()),
   references: z.array(z.object({ sourceId: z.string(), parentId: z.string().nullable(), name: z.string(), kind: z.string(), archived: z.boolean() }).strict()),
 }).strict();
+
+const moduleUpdate = moduleStructureExportSchema.shape.modules.element.extend({
+  operation: z.literal("upsert").optional(), parentRef: z.string().nullable().optional(),
+  reference: moduleStructureExportSchema.shape.modules.element.shape.reference.optional(),
+  name: z.string().optional(), description: z.string().optional(), scope: z.string().optional(),
+  sortOrder: z.number().int().min(-2147483648).max(2147483647).optional(), importance: z.enum(["high", "medium", "low"]).optional(),
+});
+const subjectUpdate = moduleStructureExportSchema.shape.subjects.element.partial().required({ subjectId: true }).extend({
+  recognition: z.object({ mode: z.enum(["inherit", "override"]).optional(), override: recognitionValue.partial().nullable().optional(),
+    effective: recognitionValue.partial().optional() }).strict().nullable().optional(),
+});
+export const moduleStructureUpdateDocumentSchema = moduleStructureExportSchema.extend({
+  modules: z.array(moduleUpdate).max(10_000), subjects: z.array(subjectUpdate).max(10_000),
+});
+const resolutions = z.record(z.string(), z.enum(["current", "file"]));
+export const moduleStructurePreviewRequestSchema = z.object({ mode: z.literal("update").default("update"), document: moduleStructureUpdateDocumentSchema, resolutions }).strict();
+export const moduleStructureApplyRequestSchema = moduleStructurePreviewRequestSchema.extend({ token: z.string().regex(/^[a-f0-9]{64}$/),
+  idempotencyKey: z.string().trim().min(1).max(200), reason: z.string().trim().min(1).max(1000) }).strict();
+const fieldValue = z.union([z.string(), z.number(), z.null()]);
+export const moduleStructurePreviewResponseSchema = z.object({
+  changes: z.array(z.object({ moduleId: z.string(), field: z.string(), before: fieldValue, after: fieldValue }).strict()),
+  conflicts: z.array(z.object({ key: z.string(), moduleId: z.string(), field: z.string(), baseline: fieldValue, file: fieldValue, current: fieldValue }).strict()),
+  token: z.string(),
+}).strict();
+export const moduleStructureReceiptSchema = z.object({ id: z.string(), organizationId: z.string(), changedModules: z.number().int(), changedFields: z.number().int() }).strict();
