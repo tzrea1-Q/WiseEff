@@ -88377,8 +88377,7 @@
                     }
                   },
                   "required": [
-                    "ref",
-                    "sourceId"
+                    "ref"
                   ],
                   "additionalProperties": false
                 }
@@ -89346,8 +89345,7 @@
                     }
                   },
                   "required": [
-                    "ref",
-                    "sourceId"
+                    "ref"
                   ],
                   "additionalProperties": false
                 }
