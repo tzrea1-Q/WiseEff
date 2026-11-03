@@ -14,6 +14,8 @@ import { seedPublishedCatalog, readSeededCatalogPointer } from "../testing/param
 import { seedCurrentDemoCatalog } from "../testing/parameterCatalog/seedCurrentDemoCatalog";
 import { claimCatalogChildOwners } from "../../scripts/catalog-claim-child-owners";
 import { VENDOR_OWNED_RELEASE_ID } from "../../scripts/compile-owned-vendor-catalog-release";
+import { resolveDebugNodeBindingForReloadTarget } from "../modules/dts-reload/behaviouralVerify";
+import type { ReloadCandidateDto } from "../modules/dts-reload/types";
 
 let database: EphemeralTestDatabase;
 let db: RootDatabase;
@@ -185,6 +187,56 @@ it("organizes battery authentication as one driver and one owned checker with tw
   expect(registration.status, registration.bodyText).toBe(200);
   expect(registration.body.item).toMatchObject({ subjectId: childId, ownerSubjectId: driverId, structural: true,
     impact: { bindingCount: 12, projectCount: 3 } });
+});
+
+it("lists owned demo reload candidates and resolves exact readback pins across reused definition revisions", async () => {
+  const server = createWiseEffServer({ db });
+  const headers = { "X-WiseEff-User": "u-xu-yun" };
+  let target: ReloadCandidateDto | undefined;
+  for (const projectId of ["atlas", "aurora", "nebula"]) {
+    const response = await requestJson<{ items: ReloadCandidateDto[] }>(server,
+      `/api/v1/dts-reload/projects/${projectId}/candidates`, { headers });
+    expect(response.status, response.bodyText).toBe(200);
+    const current = await db.query<{ id: string; definition_release_id: string }>(`select binding.id,
+      revision.catalog_release_id as definition_release_id
+      from parameter_catalog.current_project_parameter_bindings binding
+      join parameter_catalog.definition_revisions revision on revision.id = binding.effective_revision_id
+      where binding.organization_id = 'org-chargelab' and binding.project_id = $1`, [projectId]);
+    expect(current.rows.length).toBeGreaterThan(0);
+    expect(current.rows.every((row) => row.definition_release_id !== VENDOR_OWNED_RELEASE_ID)).toBe(true);
+    expect(response.body.items.map((row) => row.bindingId).sort()).toEqual(current.rows.map((row) => row.id).sort());
+    const battery = response.body.items.filter((row) => row.module === "Battery Authentication");
+    expect(battery).toHaveLength(5);
+    expect(new Set(battery.map((row) => row.moduleId)).size).toBe(1);
+    for (const propertyKey of ["matchable", "spare-cycles"]) {
+      expect(battery.filter((row) => row.propertyKey === propertyKey)
+        .map((row) => row.nodePath?.split("/").at(-1)).sort()).toEqual(["battery_checker@0", "battery_checker@1"]);
+    }
+    if (projectId === "atlas") target = battery.find((row) => row.propertyKey === "spare-cycles" && row.nodePath?.endsWith("battery_checker@0"));
+  }
+  expect(target).toBeDefined();
+  const nodePath = "/sys/devices/seed-battery-checker/spare_cycles";
+  const created = await requestJson(server, "/api/v1/debugging/admin/nodes", {
+    method: "POST", headers, body: JSON.stringify({
+      name: "Seed battery checker readback", module: "Battery Authentication",
+      canonicalBinding: { projectId: "atlas", bindingId: target!.bindingId },
+      bindings: [{ protocol: "hdc", nodePath, accessMode: "RO", enabled: true }],
+    }),
+  });
+  expect(created.status, created.bodyText).toBe(201);
+  const input = {
+    ...target!.protectedReferencePin,
+    organizationId: "org-chargelab", projectId: "atlas", bindingId: target!.bindingId,
+    sourceRef: target!.writebackSourcePin!.sourceRef, protocol: "hdc" as const,
+  };
+  expect(input.catalogReleaseId).toBe(VENDOR_OWNED_RELEASE_ID);
+  expect(await resolveDebugNodeBindingForReloadTarget(db, input)).toMatchObject({ nodePath, accessMode: "RO" });
+  for (const mismatch of [
+    { catalogReleaseId: "crel_vendor_catalog_3" }, { definitionRevisionId: "stale-revision" },
+    { sourcePinId: "stale-source-pin" }, { organizationId: "other-organization" }, { projectId: "aurora" },
+  ]) {
+    expect(await resolveDebugNodeBindingForReloadTarget(db, { ...input, ...mismatch })).toBeNull();
+  }
 });
 
 it("quality and visual review seeds use canonical source pins without legacy parameter rows", async () => {
