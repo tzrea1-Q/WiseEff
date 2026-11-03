@@ -105,10 +105,10 @@ describe("module structure export", () => {
       join parameter_catalog.catalog_state cs on cs.current_catalog_release_id=rs.release_id
       where s.owner_subject_id is null and s.kind='driver' and rs.lifecycle='active' order by s.id limit 1`);
     const subjectId = subject.rows[0]!.id;
-    const edited = { ...document, subjects: [...document.subjects, { subjectId, operation: "register", placement: { kind: "module", moduleRef: "lifecycle-export-root" } }] };
+    const edited = { ...document, modules: [...document.modules, { ref: "registration-destination", name: "Registration destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }], subjects: [...document.subjects, { subjectId, operation: "register", placement: { kind: "module", moduleRef: "registration-destination" }, recognition: { mode: "override", override: { compatibles: ["acme,new"] } } }] };
     const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(preview.status, preview.bodyText).toBe(200);
-    expect(preview.body).toMatchObject({ changes: [expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })] });
+    expect(preview.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })]) });
     const guest = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId: org, userId: guestUser, roles: [{ roleId: "guest", projectId: null }] }) } } });
     const denied = await requestJson(guest, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "denied", reason: "Reviewed" }) });
@@ -125,8 +125,11 @@ describe("module structure export", () => {
     const duplicate = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(duplicate.status).toBe(409);
     const next = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
-    expect(next.body).toMatchObject({ subjects: expect.arrayContaining([expect.objectContaining({ subjectId, state: "active", placement: { kind: "module", moduleRef: "lifecycle-export-root" } })]) });
+    const nextDocument = next.body as z.infer<typeof moduleStructureExportSchema>;
+    const destination = nextDocument.modules.find(module => module.name === "Registration destination")!;
+    expect(nextDocument.subjects).toEqual(expect.arrayContaining([expect.objectContaining({ subjectId, state: "active", placement: { kind: "module", moduleRef: destination.ref } })]));
     const identity = (await db.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [org, subjectId])).rows[0]!.id;
+    expect((await db.query("select compatibles from registration_recognition_rules where registration_id=$1", [identity])).rows).toEqual([{ compatibles: ["acme,new"] }]);
     for (const operation of ["retire", "restore"] as const) {
       const current = structuredClone(next.body) as z.infer<typeof moduleStructureExportSchema>;
       if (operation === "restore") {
@@ -134,7 +137,7 @@ describe("module structure export", () => {
         Object.assign(current, refreshed.body);
       }
       const root = current.subjects.find(row => row.subjectId === subjectId)!;
-      const lifecycleDocument = { ...current, subjects: current.subjects.map(row => row === root ? { ...row, operation } : row) };
+      const lifecycleDocument = { ...current, modules: [...current.modules.map(row => operation === "retire" && row.sourceId === "lifecycle-export-root" ? { ...row, operation: "delete" } : row), ...(operation === "restore" ? [{ ref: "restore-destination", name: "Restore destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }] : [])], subjects: current.subjects.map(row => row === root ? { ...row, operation, ...(operation === "restore" ? { placement: { kind: "module", moduleRef: "restore-destination" } } : {}), recognition: { ...row.recognition!, mode: "override", override: { ...row.recognition!.effective, compatibles: [operation === "retire" ? "acme,mixed" : "acme,restored"] } } } : row) };
       const planned = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {} }) });
       expect(planned.status, planned.bodyText).toBe(200);
       if (operation === "retire") {
@@ -154,6 +157,7 @@ describe("module structure export", () => {
       expect(results.map(result => result.status).sort()).toEqual(operation === "retire" ? [200, 409] : [200]);
       const stored = await db.query("select id,status from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [org, subjectId]);
       expect(stored.rows).toEqual([{ id: identity, status: operation === "retire" ? "retired" : "active" }]);
+      expect((await db.query("select compatibles from registration_recognition_rules where registration_id=$1", [identity])).rows).toEqual([{ compatibles: [operation === "retire" ? "acme,mixed" : "acme,restored"] }]);
     }
   });
 
@@ -626,8 +630,8 @@ describe("module structure export", () => {
     const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
     const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
     const additions = [
-      { ref: "new-parent", name: "New parent", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" },
       { ref: "new-child", name: "New child", parentRef: "new-parent", description: "", scope: "", sortOrder: 0, importance: "medium" },
+      { ref: "new-parent", name: "New parent", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" },
     ];
     const edited = { ...document, modules: [...document.modules, ...additions] };
     const previewPath = `/api/v2/organizations/${org}/module-structure/previews`;
