@@ -278,6 +278,188 @@ describe("module structure export", () => {
       .toEqual([{ status: "retired", current_placement_id: "delete-retired-placement", name: "New" }]);
   });
 
+  it("copies a retired driver and its cascade-retired child without activating either", async () => {
+    const target = "copy-subject-target", admin = "copy-subject-admin";
+    const sourceOrg = "copy-subject-source", sourceAdmin = "copy-subject-source-admin";
+    await db.query("insert into organizations(id,name) values ($1,'Source')", [sourceOrg]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [sourceAdmin, sourceOrg]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('copy-subject-source-role',$1,$2,'admin')", [sourceAdmin, sourceOrg]);
+    await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('copy-subject-module',$1,'Root','copy-subject-module','business','curated')", [sourceOrg]);
+    await db.query("insert into organizations(id,name) values ($1,'Target')", [target]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [admin, target]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('copy-subject-role',$1,$2,'admin')", [admin, target]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ('copy-subject-guest',$1,'Guest','Guest',true)", [target]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('copy-subject-guest-role','copy-subject-guest',$1,'guest')", [target]);
+    await db.query("select parameter_catalog.claim_catalog_subject_owner('csub_acme_charger','csub_acme_power')");
+    await db.transaction(async tx => {
+      await tx.query("set constraints all deferred");
+      await tx.query(`insert into parameter_catalog.organization_subject_registrations(id,organization_id,subject_id,status,registration_method,proof,current_placement_id,display_alias)
+        values ('copy-source-root',$1,'csub_acme_power','retired','explicit','{}','copy-source-root-place','Power alias')`, [sourceOrg]);
+      await tx.query(`insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin)
+        values ('copy-source-root-place','copy-source-root',$1,'copy-subject-module','curated')`, [sourceOrg]);
+      await tx.query(`insert into registration_recognition_rules(organization_id,registration_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
+        values ($1,'copy-source-root','csub_acme_power',array['acme,copy'],'physical-device','multiple')`, [sourceOrg]);
+      await tx.query(`insert into parameter_catalog.organization_subject_registrations(id,organization_id,subject_id,status,cascade_retired,registration_method,proof,current_placement_id)
+        values ('copy-source-child',$1,'csub_acme_charger','retired',true,'automatic','{}','copy-source-child-place')`, [sourceOrg]);
+      await tx.query(`insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin)
+        values ('copy-source-child-place','copy-source-child',$1,null,'curated')`, [sourceOrg]);
+    });
+    const source = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: sourceOrg, userId: sourceAdmin, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const destination = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: target, userId: admin, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const secondDestination = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: target, userId: admin, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(source, `/api/v2/organizations/${sourceOrg}/module-structure/exports`, { method: "POST", body: "{}" });
+    expect(exported.status, exported.bodyText).toBe(200);
+    const path = `/api/v2/organizations/${target}/module-structure`;
+    const input = { mode: "copy", document: exported.body, resolutions: {}, mappings: { "copy-subject-module": "create" } };
+    const viewer = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: target, userId: "copy-subject-guest", roles: [{ roleId: "guest", projectId: null }] }) } } });
+    expect((await requestJson(viewer, `${path}/previews`, { method: "POST", body: JSON.stringify(input) })).status).toBe(403);
+    const preview = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify(input) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    const invalidOwner = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    invalidOwner.subjects.find(subject => subject.subjectId === "csub_acme_charger")!.ownerSubjectId = null;
+    const incompatible = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input, document: invalidOwner }) });
+    expect(incompatible.status).toBe(409);
+    const missing = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    missing.subjects[0]!.subjectId = "missing-catalog-subject";
+    const missingCatalog = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input, document: missing }) });
+    expect(missingCatalog.status).toBe(409);
+    for (const [table, action] of [["parameter_modules", "insert"], ["parameter_catalog.module_structure_created_refs", "insert"],
+      ["parameter_catalog.organization_subject_registrations", "insert"], ["registration_recognition_rules", "insert"],
+      ["audit_events", "insert"], ["parameter_catalog.governance_command_idempotency", "update"]] as const) {
+      await db.query(`create function public.fail_copy_subject_stage() returns trigger language plpgsql as $$ begin raise exception 'injected copy failure'; end $$`);
+      await db.query(`create trigger fail_copy_subject_stage before ${action} on ${table} for each row execute function public.fail_copy_subject_stage()`);
+      try {
+        const failed = await requestJson(destination, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...input,
+          token: (preview.body as { token: string }).token, idempotencyKey: `failure-${table}`, reason: "Test rollback" }) });
+        expect(failed.status).toBeGreaterThanOrEqual(400);
+        expect((await db.query("select count(*)::int as count from parameter_modules where organization_id=$1", [target])).rows[0]).toEqual({ count: 0 });
+        expect((await db.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations where organization_id=$1", [target])).rows[0]).toEqual({ count: 0 });
+      } finally {
+        await db.query(`drop trigger fail_copy_subject_stage on ${table}`);
+        await db.query("drop function public.fail_copy_subject_stage()");
+      }
+    }
+    await db.query(`create function public.require_retired_copy_snapshot() returns trigger language plpgsql as $$ begin
+      if new.organization_id='copy-subject-target' and (new.status <> 'retired' or
+        (new.subject_id='csub_acme_charger' and not new.cascade_retired)) then raise exception 'copy activated a retained registration'; end if;
+      return new; end $$`);
+    await db.query("create trigger require_retired_copy_snapshot before insert on parameter_catalog.organization_subject_registrations for each row execute function public.require_retired_copy_snapshot()");
+    const command = JSON.stringify({ ...input, token: (preview.body as { token: string }).token, idempotencyKey: "copy-retired", reason: "Copy retained settings" });
+    const [applied, simultaneous] = await Promise.all([destination, secondDestination].map(app => requestJson(app, `${path}/applies`, { method: "POST", body: command })));
+    await db.query("drop trigger require_retired_copy_snapshot on parameter_catalog.organization_subject_registrations");
+    await db.query("drop function public.require_retired_copy_snapshot()");
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect(simultaneous.status, simultaneous.bodyText).toBe(200);
+    expect(simultaneous.body).toEqual(applied.body);
+    const replay = await requestJson(destination, `${path}/applies`, { method: "POST", body: command });
+    expect(replay.body).toEqual(applied.body);
+    const copied = await requestJson(destination, `${path}/exports`, { method: "POST", body: "{}" });
+    expect(copied.body).toMatchObject({ subjects: expect.arrayContaining([
+      expect.objectContaining({ subjectId: "csub_acme_power", state: "retired", displayAlias: "Power alias",
+        recognition: expect.objectContaining({ mode: "override", override: expect.objectContaining({ compatibles: ["acme,copy"] }) }) }),
+      expect.objectContaining({ subjectId: "csub_acme_charger", state: "retired", cascadeRetired: true }),
+    ]) });
+    const sourceAfter = await requestJson(source, `/api/v2/organizations/${sourceOrg}/module-structure/exports`, { method: "POST", body: "{}" });
+    expect((sourceAfter.body as { subjects: unknown[] }).subjects).toEqual((exported.body as { subjects: unknown[] }).subjects);
+    const identity = (await db.query<{ id: string; current_placement_id: string }>(`select id,current_placement_id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id='csub_acme_power'`, [target])).rows[0]!;
+    await db.query("update parameter_catalog.organization_subject_registrations set display_alias='Target alias' where id=$1", [identity.id]);
+    await db.query("update registration_recognition_rules set compatibles=array['target,rule'] where registration_id=$1", [identity.id]);
+    const repeated = { ...input, mappings: {} };
+    const conflict = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify(repeated) });
+    expect(conflict.status, conflict.bodyText).toBe(200);
+    expect(conflict.body).toMatchObject({ conflicts: expect.arrayContaining([
+      expect.objectContaining({ key: "subject:csub_acme_power:displayAlias" }),
+      expect.objectContaining({ key: "subject:csub_acme_power:recognition" }),
+    ]) });
+    const resolved = { ...repeated, resolutions: { "subject:csub_acme_power:displayAlias": "file", "subject:csub_acme_power:recognition": "file" } };
+    const resolution = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify(resolved) });
+    expect(resolution.status, resolution.bodyText).toBe(200);
+    const reapplied = await requestJson(destination, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...resolved,
+      token: (resolution.body as { token: string }).token, idempotencyKey: "copy-resolved", reason: "Resolve target settings" }) });
+    expect(reapplied.status, reapplied.bodyText).toBe(200);
+    expect((await db.query("select id,current_placement_id from parameter_catalog.organization_subject_registrations where id=$1", [identity.id])).rows[0]).toEqual(identity);
+    const resolvedExport = await requestJson(destination, `${path}/exports`, { method: "POST", body: "{}" });
+    expect(resolvedExport.body).toMatchObject({ subjects: expect.arrayContaining([expect.objectContaining({ subjectId: "csub_acme_power", displayAlias: "Power alias",
+      recognition: expect.objectContaining({ override: expect.objectContaining({ compatibles: ["acme,copy"] }) }) })]) });
+    const restore = structuredClone(resolvedExport.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
+    restore.subjects.find(subject => subject.subjectId === "csub_acme_power")!.operation = "restore";
+    const restoreInput = { document: restore, resolutions: {} };
+    const reviewed = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify(restoreInput) });
+    expect(reviewed.status, reviewed.bodyText).toBe(200);
+    const restored = await requestJson(destination, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...restoreInput,
+      token: (reviewed.body as { token: string }).token, idempotencyKey: "restore-copy", reason: "Restore driver" }) });
+    expect(restored.status, restored.bodyText).toBe(200);
+    const afterRestore = await requestJson(destination, `${path}/exports`, { method: "POST", body: "{}" });
+    expect(afterRestore.body).toMatchObject({ subjects: expect.arrayContaining([
+      expect.objectContaining({ subjectId: "csub_acme_power", state: "active" }),
+      expect.objectContaining({ subjectId: "csub_acme_charger", state: "active", cascadeRetired: false }),
+    ]) });
+    const secondTarget = "copy-subject-target-two", secondAdmin = "copy-subject-admin-two";
+    await db.query("insert into organizations(id,name) values ($1,'Target two')", [secondTarget]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [secondAdmin, secondTarget]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('copy-subject-role-two',$1,$2,'admin')", [secondAdmin, secondTarget]);
+    await db.query("update parameter_catalog.organization_subject_registrations set status='active' where id='copy-source-root'");
+    await db.query("update parameter_catalog.organization_subject_registrations set cascade_retired=false where id='copy-source-child'");
+    const historical = await requestJson(source, `/api/v2/organizations/${sourceOrg}/module-structure/exports`, { method: "POST", body: "{}" });
+    const secondApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: secondTarget, userId: secondAdmin, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const secondPath = `/api/v2/organizations/${secondTarget}/module-structure`;
+    const secondInput = { mode: "copy", document: historical.body, resolutions: {}, mappings: { "copy-subject-module": "create" } };
+    const secondPreview = await requestJson(secondApp, `${secondPath}/previews`, { method: "POST", body: JSON.stringify(secondInput) });
+    expect(secondPreview.status, secondPreview.bodyText).toBe(200);
+    const secondApply = await requestJson(secondApp, `${secondPath}/applies`, { method: "POST", body: JSON.stringify({ ...secondInput,
+      token: (secondPreview.body as { token: string }).token, idempotencyKey: "copy-historical", reason: "Copy historical child" }) });
+    expect(secondApply.status, secondApply.bodyText).toBe(200);
+    const historicalCopy = await requestJson(secondApp, `${secondPath}/exports`, { method: "POST", body: "{}" });
+    expect(historicalCopy.body).toMatchObject({ subjects: expect.arrayContaining([
+      expect.objectContaining({ subjectId: "csub_acme_power", state: "active" }),
+      expect.objectContaining({ subjectId: "csub_acme_charger", state: "retired", cascadeRetired: false }),
+    ]) });
+    for (const operation of ["retire", "restore"] as const) {
+      const snapshot = await requestJson(secondApp, `${secondPath}/exports`, { method: "POST", body: "{}" });
+      const edit = structuredClone(snapshot.body) as z.infer<typeof moduleStructureUpdateDocumentSchema>;
+      edit.subjects.find(subject => subject.subjectId === "csub_acme_power")!.operation = operation;
+      const lifecycleInput = { document: edit, resolutions: {} };
+      const planned = await requestJson(secondApp, `${secondPath}/previews`, { method: "POST", body: JSON.stringify(lifecycleInput) });
+      expect(planned.status, planned.bodyText).toBe(200);
+      const result = await requestJson(secondApp, `${secondPath}/applies`, { method: "POST", body: JSON.stringify({ ...lifecycleInput,
+        token: (planned.body as { token: string }).token, idempotencyKey: `historical-${operation}`, reason: "Check lifecycle" }) });
+      expect(result.status, result.bodyText).toBe(200);
+    }
+    const historicalRestored = await requestJson(secondApp, `${secondPath}/exports`, { method: "POST", body: "{}" });
+    expect(historicalRestored.body).toMatchObject({ subjects: expect.arrayContaining([
+      expect.objectContaining({ subjectId: "csub_acme_charger", state: "retired", cascadeRetired: false }),
+    ]) });
+    for (const [rootState, childState, suffix] of [["active", "active", "active"], ["retired", "active", "retired-active"], ["retired", "retired", "historical"]] as const) {
+      const targetId = `copy-subject-${suffix}`, userId = `copy-subject-admin-${suffix}`;
+      await db.query("insert into organizations(id,name) values ($1,'Copy status')", [targetId]);
+      await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, targetId]);
+      await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [`role-${userId}`, userId, targetId]);
+      await db.query("update parameter_catalog.organization_subject_registrations set status=$2 where id=$1", ["copy-source-root", rootState]);
+      await db.query("update parameter_catalog.organization_subject_registrations set status=$2,cascade_retired=false where id=$1", ["copy-source-child", childState]);
+      const snapshot = await requestJson(source, `/api/v2/organizations/${sourceOrg}/module-structure/exports`, { method: "POST", body: "{}" });
+      const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+        makeTestAuthContext({ organizationId: targetId, userId: userId, roles: [{ roleId: "admin", projectId: null }] }) } } });
+      const targetPath = `/api/v2/organizations/${targetId}/module-structure`;
+      const copy = { mode: "copy", document: snapshot.body, resolutions: {}, mappings: { "copy-subject-module": "create" } };
+      const plan = await requestJson(app, `${targetPath}/previews`, { method: "POST", body: JSON.stringify(copy) });
+      expect(plan.status, plan.bodyText).toBe(200);
+      const result = await requestJson(app, `${targetPath}/applies`, { method: "POST", body: JSON.stringify({ ...copy,
+        token: (plan.body as { token: string }).token, idempotencyKey: `copy-${suffix}`, reason: "Copy lifecycle snapshot" }) });
+      expect(result.status, result.bodyText).toBe(200);
+      const copiedStatus = await requestJson(app, `${targetPath}/exports`, { method: "POST", body: "{}" });
+      expect(copiedStatus.body).toMatchObject({ subjects: expect.arrayContaining([
+        expect.objectContaining({ subjectId: "csub_acme_power", state: rootState }),
+        expect.objectContaining({ subjectId: "csub_acme_charger", state: childState, cascadeRetired: false }),
+      ]) });
+    }
+  });
+
   it("copies modules into the authorized target only after explicit mapping choices", async () => {
     const target = "copy-target";
     const admin = "copy-target-admin";

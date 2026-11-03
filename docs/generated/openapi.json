@@ -88705,6 +88705,9 @@
                       "type": "number"
                     },
                     {
+                      "type": "boolean"
+                    },
+                    {
                       "type": "null"
                     },
                     {
@@ -89064,6 +89067,9 @@
                     },
                     {
                       "type": "number"
+                    },
+                    {
+                      "type": "boolean"
                     },
                     {
                       "type": "null"
@@ -89451,6 +89457,9 @@
                       "type": "number"
                     },
                     {
+                      "type": "boolean"
+                    },
+                    {
                       "type": "null"
                     },
                     {
@@ -89812,6 +89821,9 @@
                       "type": "number"
                     },
                     {
+                      "type": "boolean"
+                    },
+                    {
                       "type": "null"
                     },
                     {
@@ -90171,6 +90183,9 @@
                     },
                     {
                       "type": "number"
+                    },
+                    {
+                      "type": "boolean"
                     },
                     {
                       "type": "null"

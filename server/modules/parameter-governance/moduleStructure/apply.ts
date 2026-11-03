@@ -12,6 +12,7 @@ import { applyRecognition } from "./recognition";
 import type { Database } from "../../../shared/database/client";
 import { applySubjectPlacement } from "./subjects";
 import { applyLifecycle } from "./lifecycle";
+import { applyCopySubjects } from "./copySubjects";
 
 export async function applyModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, requestId: string, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
@@ -94,9 +95,10 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
       update parameter_modules m set path=tree.path,depth=tree.depth from tree where m.organization_id=$1 and m.id=tree.id
       and m.id in (select id from affected) and (m.path,m.depth) is distinct from (tree.path,tree.depth)`, [organizationId, moved]);
     for (const [moduleId, values] of changes) await updateParameterModule(client as unknown as Queryable, { organizationId, moduleId, ...values });
+    const copiedRecognition = await applyCopySubjects(client, organizationId, plan.copyCreates, plan.moduleIds, input.reason);
     await applyLifecycle(client, organizationId, invocation, requestId, input.idempotencyKey, input.reason, plan.lifecycle);
     await applySubjectPlacement(client, organizationId, plan.subjectChanges, plan.moduleIds);
-    await applyRecognition(client as unknown as Database, organizationId, plan.currentCatalogReleaseId, invocation, requestId, input.idempotencyKey, plan.recognitionChanges);
+    await applyRecognition(client as unknown as Database, organizationId, plan.currentCatalogReleaseId, invocation, requestId, input.idempotencyKey, [...plan.recognitionChanges, ...copiedRecognition]);
     const deletions = await client.query<{ id: string }>("select id from parameter_modules where organization_id=$1 and id=any($2::text[]) order by depth desc,id", [organizationId, [...plan.deleted]]);
     for (const row of deletions.rows) await deleteParameterModule(client as unknown as Queryable, { organizationId, moduleId: row.id });
     const changedModules = new Set(plan.changes.filter(change => !change.moduleId.startsWith("subject:")).map(change => change.moduleId)).size;
@@ -104,7 +106,7 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     if (receipt.changedFields || plan.copyMappings.length) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
       action: "module-structure-update", severity: "Medium", projectId: null, targetType: "organization", targetId: organizationId,
       metadata: { receiptId: receipt.id, reason: input.reason, exportId: input.document.source.exportId,
-        sourceOrganizationId: input.document.source.organizationId, catalogReleaseId: input.document.source.catalogReleaseId,
+        sourceOrganizationId: input.document.source.organizationId, catalogReleaseId: plan.currentCatalogReleaseId,
         changedModules: receipt.changedModules, changedFields: receipt.changedFields } });
     await client.query(`update parameter_catalog.governance_command_idempotency set state='committed',result_kind='module-structure-receipt',result_ref=$3,committed_at=now()
       where organization_id=$1 and command_family='module-structure-update' and idempotency_key=$2`, [organizationId, input.idempotencyKey, JSON.stringify(receipt)]);

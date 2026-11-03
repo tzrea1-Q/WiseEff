@@ -6,6 +6,8 @@ import type { UserInvocationContext } from "../../auth/trustedInvocation";
 import { moduleStructurePreviewRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
 import { captureModuleStructure } from "./export";
 import { stable } from "./preview";
+import { planCopySubjects } from "./copySubjects";
+import { moduleStructureExportSchema } from "../../contracts/dtoSchemas/moduleStructure";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance", "parentRef"] as const;
 const normalized = (field: typeof fields[number], value: unknown) => typeof value === "string" && field !== "parentRef" && field !== "importance" ? value.trim() : value;
@@ -17,7 +19,6 @@ type Conflict = { key: string; moduleId: string; field: string; baseline: unknow
 export async function planModuleCopy(client: pg.PoolClient, organizationId: string, invocation: UserInvocationContext, input: Input) {
   const { document, resolutions, mappings: choices } = input;
   if (document.source.organizationId === organizationId) throw new ApiError("VALIDATION_FAILED", "Copy requires another source organization.");
-  if (document.subjects.length) throw new ApiError("VALIDATION_FAILED", "Subject copying is not supported yet.", { path: "subjects" });
   const current = await captureModuleStructure(client, organizationId, document.source.exportId);
   const rows = (await client.query<{ id: string; parent_id: string | null; name: string; kind: string; path: string }>(
     "select id,parent_id,name,kind,path from parameter_modules where organization_id=$1 and archived_at is null order by id", [organizationId])).rows;
@@ -50,7 +51,8 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
   }
   const activeRefs = new Set(active.map(module => module.ref));
   for (const key of Object.keys(choices)) if (!activeRefs.has(key)) throw new ApiError("VALIDATION_FAILED", "Unknown module mapping.", { path: `mappings.${key}` });
-  const allowed = new Set(active.flatMap(module => fields.map(field => `${module.ref}:${field}`)));
+  const allowed = new Set([...active.flatMap(module => fields.map(field => `${module.ref}:${field}`)),
+    ...document.subjects.flatMap(subject => ["state", "cascadeRetired", "placement", "displayAlias", "recognition"].map(field => `subject:${subject.subjectId}:${field}`))]);
   for (const key of Object.keys(resolutions)) if (!allowed.has(key)) throw new ApiError("VALIDATION_FAILED", "Unknown conflict choice.", { path: `resolutions.${key}` });
   const byId = new Map(rows.map(row => [row.id, row]));
   const technicalAncestors = new Set<string>();
@@ -105,10 +107,10 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
   }
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
     roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
-  const token = createHash("sha256").update(stable({ organizationId, actor, input, current, rows, saved })).digest("hex");
+  let token = createHash("sha256").update(stable({ organizationId, actor, input, current, rows, saved })).digest("hex");
   const parents = new Map(rows.map(row => [row.id, row.parent_id])); const namesById = new Map(rows.map(row => [row.id, row.name]));
   const currentModules = new Map(current.modules.map(module => [module.sourceId, module]));
-  if (conflicts.length) return { changes, conflicts, subjectChanges: [], recognitionChanges: [], lifecycle: [], moduleIds, parents, namesById, deleted: new Set<string>(), impact: [], token, mappingSuggestions: suggestions, mappingTargets, copyMappings: [], currentCatalogReleaseId: current.source.catalogReleaseId };
+  if (conflicts.length) return { changes, conflicts, subjectChanges: [], recognitionChanges: [], lifecycle: [], copyCreates: [], moduleIds, parents, namesById, deleted: new Set<string>(), impact: [], token, mappingSuggestions: suggestions, mappingTargets, copyMappings: [], currentCatalogReleaseId: current.source.catalogReleaseId };
   const copyMappings: { ref: string; moduleId: string; snapshot: Input["document"]["modules"][number] }[] = [];
   for (const module of active) {
     const id = moduleIds.get(module.ref)!; const prior = savedByRef.get(module.ref); const target = currentModules.get(id);
@@ -146,5 +148,7 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
   }
   const siblingNames = new Set<string>();
   for (const [id, name] of namesById) { const key = stable([parents.get(id) ?? null, name]); if (siblingNames.has(key)) throw new ApiError("CONFLICT", "The resulting module names are not unique within their parent."); siblingNames.add(key); }
-  return { changes, conflicts, subjectChanges: [], recognitionChanges: [], lifecycle: [], moduleIds, parents, namesById, deleted: new Set<string>(), impact: [], token, mappingSuggestions: suggestions, mappingTargets, copyMappings, currentCatalogReleaseId: current.source.catalogReleaseId };
+  const subjects = await planCopySubjects(client, organizationId, input, moduleStructureExportSchema.parse(current).subjects, moduleIds, current.source.catalogReleaseId);
+  token = createHash("sha256").update(stable({ organizationId, actor, input, current, rows, saved, subjects: subjects.evidence })).digest("hex");
+  return { changes: [...changes, ...subjects.changes], conflicts: [...conflicts, ...subjects.conflicts], subjectChanges: subjects.placements, recognitionChanges: subjects.recognitionChanges, lifecycle: subjects.lifecycle, copyCreates: subjects.creates, moduleIds, parents, namesById, deleted: new Set<string>(), impact: subjects.impact, token, mappingSuggestions: suggestions, mappingTargets, copyMappings, currentCatalogReleaseId: current.source.catalogReleaseId };
 }
