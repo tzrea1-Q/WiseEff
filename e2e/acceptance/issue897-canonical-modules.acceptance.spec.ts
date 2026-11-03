@@ -69,68 +69,6 @@ test("Issue 1064: seeded canonical modules render without organization overlays"
   await page.screenshot({ path: info.outputPath("issue1064-canonical-tree-1440x900.png"), animations: "disabled" });
 });
 
-test("Issue 1067: historical provenance remains separate from editable organization metadata", async ({ page, request }, info) => {
-  await seedAcceptanceRoleMatrix();
-  const actor = acceptanceAdminOnlyUser;
-  const headers = authHeadersForUser(actor.userId, actor.email, actor.name);
-  const navigation = await request.get(apiRoute("/api/v2/parameter-modules"), { headers });
-  expect(navigation.status(), await navigation.text()).toBe(200);
-  const registry = (await navigation.json()).item;
-  expect(registry.navigationOnly).toBe(true);
-  expect(registry.mappings).toEqual([]);
-  for (const module of registry.modules) {
-    expect(module.sourceKey).toBeNull();
-    expect(module.attributionSubjectId).toBeNull();
-  }
-  const provenance = await request.get(apiRoute("/api/v2/parameter-modules/driver-registry"), { headers });
-  expect(provenance.status(), await provenance.text()).toBe(200);
-  const historical = (await provenance.json()).items.find((item: { moduleId: string }) =>
-    registry.modules.some((module: { id: string; kind: string }) =>
-      module.id === item.moduleId && module.kind === "driver-group"));
-  expect(historical).toBeDefined();
-  const structuralWrites: string[] = [];
-  page.on("request", call => {
-    const path = new URL(call.url()).pathname;
-    if (call.method() !== "GET" && path.includes("parameter-modules")) structuralWrites.push(path);
-  });
-  await signInBrowserAsUser(page, actor.userId, actor.email, actor.name, "/parameter-admin/modules");
-  await page.getByRole("tab", { name: "历史注册表" }).click();
-  const history = page.getByRole("region", { name: "历史驱动注册表" });
-  await expect(history).toHaveAttribute("aria-busy", "false");
-  await page.getByRole("tab", { name: "模块", exact: true }).click();
-  const ancestors = [];
-  let parentId = registry.modules.find((module: { id: string }) => module.id === historical.moduleId).parentId;
-  while (parentId) {
-    const parent = registry.modules.find((module: { id: string }) => module.id === parentId);
-    ancestors.unshift(parent);
-    parentId = parent.parentId;
-  }
-  for (const parent of ancestors) {
-    const expand = page.getByRole("region", { name: "模块导航", exact: true }).getByRole("button", { name: `展开 ${parent.name} 子模块`, exact: true });
-    if (await expand.count()) await expand.click();
-  }
-  await page.getByRole("button", { name: `修改模块 ${historical.name}`, exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: historical.name, exact: true });
-  await expect(dialog.getByRole("combobox", { name: "驱动性质", exact: true })).toBeDisabled();
-  await expect(dialog.getByRole("combobox", { name: "实例基数", exact: true })).toBeDisabled();
-  await expect(dialog.getByLabel("compatible 匹配规则", { exact: true })).toHaveAttribute("readonly");
-  await expect(dialog.getByText(/请在主体详情中修改/)).toBeVisible();
-  await expect(dialog.getByLabel("模块名称", { exact: true })).toBeEditable();
-  await expect(dialog.getByLabel("默认业务分类", { exact: true })).toHaveCount(0);
-  await expect(dialog.getByRole("button", { name: "从注册回放放置" })).toHaveCount(0);
-  await expect(dialog.getByRole("button", { name: "管理规范主体与归属" })).toBeVisible();
-  const provenanceRegion = dialog.getByRole("region", { name: "历史 compatible 溯源", exact: true });
-  for (const compatible of historical.compatibles) await expect(provenanceRegion.getByText(compatible, { exact: true })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "保存", exact: true })).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath("issue1067-provenance-preserved-1440x900.png"), animations: "disabled" });
-  await dialog.getByRole("button", { name: "取消", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  expect(structuralWrites).toEqual([]);
-  const unchangedProvenance = await request.get(apiRoute("/api/v2/parameter-modules/driver-registry"), { headers });
-  expect(unchangedProvenance.status(), await unchangedProvenance.text()).toBe(200);
-  expect((await unchangedProvenance.json()).items.find((item: { moduleId: string }) => item.moduleId === historical.moduleId)).toEqual(historical);
-});
-
 test("retired Platform console has no page or promotion history query", async ({ page, request }, info) => {
   // @acceptance DRV-PROMOTE-005
   // @operation DRV-PROMOTE-005
@@ -364,6 +302,70 @@ test.describe("Issue 897 canonical module ownership", () => {
     test.setTimeout(60_000);
     try { await runtime?.dispose(disposableRuntimeOutcomeFromTestInfo(info)); }
     finally { restoreProcessEnvFromDisposableRuntime(environment); }
+  });
+
+  // Fresh demos contain business modules only; historical UI coverage uses the explicit legacy fixture.
+  test("Issue 1067: historical provenance remains read-only alongside canonical organization metadata", async ({ page, request }, info) => {
+    await seedAcceptanceRoleMatrix();
+    const actor = acceptanceAdminOnlyUser;
+    const headers = authHeadersForUser(actor.userId, actor.email, actor.name);
+    const navigation = await request.get(apiRoute("/api/v2/parameter-modules"), { headers });
+    expect(navigation.status(), await navigation.text()).toBe(200);
+    const registry = (await navigation.json()).item;
+    expect(registry.navigationOnly).toBe(true);
+    expect(registry.mappings).toEqual([]);
+    for (const module of registry.modules) {
+      expect(module.sourceKey).toBeNull();
+      expect(module.attributionSubjectId).toBeNull();
+    }
+    const provenance = await request.get(apiRoute("/api/v2/parameter-modules/driver-registry"), { headers });
+    expect(provenance.status(), await provenance.text()).toBe(200);
+    const historical = (await provenance.json()).items.find((item: { moduleId: string }) =>
+      registry.modules.some((module: { id: string; kind: string }) =>
+        module.id === item.moduleId && module.id === "issue897-driver-a" && module.kind === "driver-group"));
+    expect(historical).toBeDefined();
+    expect(historical.compatibles).toEqual(["issue897,uncovered"]);
+    const structuralWrites: string[] = [];
+    page.on("request", call => {
+      const path = new URL(call.url()).pathname;
+      if (call.method() !== "GET" && path.includes("parameter-modules")) structuralWrites.push(path);
+    });
+    await signInBrowserAsUser(page, actor.userId, actor.email, actor.name, `${runtime.frontendUrl}/parameter-admin/modules`);
+    await page.getByRole("tab", { name: "历史注册表" }).click();
+    const history = page.getByRole("region", { name: "历史驱动注册表" });
+    await expect(history).toHaveAttribute("aria-busy", "false");
+    await page.getByRole("tab", { name: "模块", exact: true }).click();
+    const ancestors = [];
+    let parentId = registry.modules.find((module: { id: string }) => module.id === historical.moduleId).parentId;
+    while (parentId) {
+      const parent = registry.modules.find((module: { id: string }) => module.id === parentId);
+      ancestors.unshift(parent);
+      parentId = parent.parentId;
+    }
+    for (const parent of ancestors) {
+      const expand = page.getByRole("region", { name: "模块导航", exact: true }).getByRole("button", { name: `展开 ${parent.name} 子模块`, exact: true });
+      if (await expand.count()) await expand.click();
+    }
+    await page.getByRole("button", { name: `查看模块 ${historical.name}`, exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: historical.name, exact: true });
+    await expect(dialog.getByRole("combobox", { name: "驱动性质", exact: true })).toBeDisabled();
+    await expect(dialog.getByRole("combobox", { name: "实例基数", exact: true })).toBeDisabled();
+    await expect(dialog.getByLabel("compatible 匹配规则", { exact: true })).toHaveAttribute("readonly");
+    await expect(dialog.getByText(/请在主体详情中修改/)).toBeVisible();
+    await expect(dialog.getByLabel("模块名称", { exact: true })).toHaveAttribute("readonly");
+    await expect(dialog.getByLabel("默认业务分类", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "从注册回放放置" })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "管理规范主体与归属" })).toBeVisible();
+    const provenanceRegion = dialog.getByRole("region", { name: "历史 compatible 溯源", exact: true });
+    for (const compatible of historical.compatibles) await expect(provenanceRegion.getByText(compatible, { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "保存", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath("issue1067-provenance-preserved-1440x900.png"), animations: "disabled" });
+    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(structuralWrites).toEqual([]);
+    const unchangedProvenance = await request.get(apiRoute("/api/v2/parameter-modules/driver-registry"), { headers });
+    expect(unchangedProvenance.status(), await unchangedProvenance.text()).toBe(200);
+    expect((await unchangedProvenance.json()).items.find((item: { moduleId: string }) => item.moduleId === historical.moduleId)).toEqual(historical);
   });
 
   test("routes driver groups to canonical Placement and retires historical writes without changing provenance", async ({ page, request }, info) => {

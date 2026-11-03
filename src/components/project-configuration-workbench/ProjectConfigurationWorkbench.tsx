@@ -1,3 +1,4 @@
+import { digestSourceText } from "@/application/project-configuration/sourceDigest";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type {
@@ -567,10 +568,10 @@ export function ProjectConfigurationWorkbench({
     if (draft.before === draft.after) throw new Error("此值与当前本项目声明相同，没有需要保存的修改。");
     const scope = { userId: currentUserId, organizationId: resolvedOrganizationId, projectId: project.id,
       configSetId: selectedConfigSet.id, fileId: draft.fileId };
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(draft.before));
+    const sourceDigest = digestSourceText(draft.before);
     if (overrideContext.current !== context) return;
     await sourceEditSession.open({ scope, sourceText: draft.before, base: { fileVersionId: draft.baseVersionId,
-      configRevisionId: draft.configRevisionId, sourceDigest: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join(""),
+      configRevisionId: draft.configRevisionId, sourceDigest,
       ...(draft.localOverride ? { localOverride: { input: draft.localOverride, afterValue: draft.afterValue } } : {}) } });
     if (overrideContext.current !== context) return;
     if (sourceEditSession.getFile(scope)?.dirty) throw new Error("此文件已有恢复草稿，请先在项目源码中处理。");
