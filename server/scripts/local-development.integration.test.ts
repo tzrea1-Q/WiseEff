@@ -21,6 +21,8 @@ import { bindCatalogPublicationCommands } from "../modules/parameter-catalog-api
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../shared/database/client";
 import { dropLabRuntimeLogins, publicationRuntimeLoginNames } from "../testing/labRuntimeLogins";
 import { seedPublishedCatalog } from "../testing/parameterCatalog/seedPublishedCatalog";
+import { seedCurrentDemoCatalog } from "../testing/parameterCatalog/seedCurrentDemoCatalog";
+import { claimCatalogChildOwners } from "../../scripts/catalog-claim-child-owners";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../testing/testDatabase";
 
 type Fixture = {
@@ -81,7 +83,7 @@ describe.sequential("explicit local development Catalog preparation against Post
 
   beforeAll(async () => {
     local = await fixture("localdev");
-    await seedPublishedCatalog(getRootPostgresPool(local.db)!);
+    await seedCurrentDemoCatalog(local.db);
     expect((await publicationState(local.db)).adopted).toBe(false);
     runtime = await prepareLocalCatalogPublication(local.env, local.root);
     api = createPostgresDatabase(runtime.api);
@@ -121,6 +123,14 @@ describe.sequential("explicit local development Catalog preparation against Post
     expect(apiLogin.name).not.toBe(managerLogin.name);
   });
 
+  it("refuses demo-only owner claims after adoption even before any Subject registration", async () => {
+    expect((await local.db.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations")).rows).toEqual([{ count: 0 }]);
+    const before = await publicationState(local.db);
+    await expect(claimCatalogChildOwners(local.db, path.join(process.cwd(), "schemas/dts"), true, { requireEmptyDemo: true }))
+      .rejects.toThrow("requires-empty-database");
+    expect(await publicationState(local.db)).toEqual(before);
+  });
+
   it("reuses credentials and adoption without adding a Receipt or policy revision", async () => {
     const before = await publicationState(local.db);
     const repeated = await prepareLocalCatalogPublication(local.env, local.root);
@@ -143,6 +153,7 @@ describe.sequential("explicit local development Catalog preparation against Post
     const preview = await ports.previewCandidate({ ...scope, changeSet: [vendorIntegerChange("local_setup_probe", "Local setup probe")] });
     expect(preview.ok, JSON.stringify(preview)).toBe(true);
     if (!preview.ok) return;
+    if (!("id" in preview.value)) throw new Error("Expected a typed-change publication candidate");
     const queued = await ports.publishCandidate({ ...scope, candidateId: preview.value.id, idempotencyKey: "local-development-successor" });
     expect(queued.ok, JSON.stringify(queued)).toBe(true);
     if (!queued.ok) return;
@@ -159,6 +170,7 @@ describe.sequential("explicit local development Catalog preparation against Post
     expect(after.currentReleaseId).not.toBe(pointer.current.id);
     expect(after.receiptKinds).toContain("online-publication");
     expect((await seedPublishedCatalog(getRootPostgresPool(local.db)!)).id).toBe(after.currentReleaseId);
+    expect((await seedCurrentDemoCatalog(local.db)).id).toBe(after.currentReleaseId);
     await prepareLocalCatalogPublication(local.env, local.root);
     expect(await publicationState(local.db)).toEqual(after);
   }, 120_000);
@@ -192,7 +204,7 @@ describe.sequential("explicit local development Catalog preparation against Post
 
   it("rejects unsafe or partial credential storage before database writes and recovers after correction", async () => {
     const other = await fixture("localstorage");
-    await seedPublishedCatalog(getRootPostgresPool(other.db)!);
+    await seedCurrentDemoCatalog(other.db);
     const before = await publicationState(other.db);
     const target = localDevelopmentTarget(other.env, other.root);
     const names = publicationRuntimeLoginNames({ mode: "lab", runToken: target.runToken });

@@ -336,7 +336,8 @@ const canonicalReloadCandidateSelect = [
   "join parameter_catalog.definition_revisions revision",
   "  on revision.id = binding.effective_revision_id",
   " and revision.definition_id = binding.definition_id",
-  " and revision.catalog_release_id = binding.catalog_release_id",
+  // A successor may reuse a verified revision introduced by an earlier release.
+  // The Binding's release/revision FK pins membership; revision.id pins content.
   "join parameter_catalog.project_parameter_values value",
   "  on value.id = binding.current_value_id",
   " and value.binding_id = binding.id",

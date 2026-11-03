@@ -251,8 +251,8 @@ export const prepareCatalogDefinitionErasure = async (
     // Native bootstrap predates artifact persistence. Reuse its original source
     // provider, then independently verify every recovered DB projection before
     // treating those bytes as an erasure source. Unknown bootstraps fail closed.
-    const { compileLocalizedVendorCatalogSuccessor } = await import("../../../scripts/compile-vendor-catalog-release");
-    const native = compileLocalizedVendorCatalogSuccessor(fileURLToPath(new URL("../../../", import.meta.url))).bundle;
+    const { compileOwnedVendorCatalogSuccessor } = await import("../../../scripts/compile-owned-vendor-catalog-release");
+    const native = (await compileOwnedVendorCatalogSuccessor(fileURLToPath(new URL("../../../", import.meta.url)))).bundle;
     let recovered: CatalogReleaseBundle | undefined;
     for (const release of missing) {
       const index = native.releases.findIndex((node) => node.manifest.release.id === release.id

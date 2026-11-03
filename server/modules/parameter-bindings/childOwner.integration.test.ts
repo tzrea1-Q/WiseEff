@@ -32,6 +32,7 @@ import { stabilizeCanonicalBinding } from "./binding/service";
 import { lockOrganizationModuleRecognition, lockOrganizationSubjectRegistration } from "../parameter-modules/recognitionLock";
 import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
+import { seedCurrentDemoCatalog } from "../../testing/parameterCatalog/seedCurrentDemoCatalog";
 
 const ORG = "owner-integration-org";
 const PROJECT = "owner-integration-project";
@@ -181,6 +182,17 @@ describe("driver-scoped child ownership", () => {
   }, 180_000);
   let source: { configSetId: string; configRevisionId: string };
   afterAll(async () => { await root?.close(); await database?.drop(); if (tempRoot) await rm(tempRoot, { recursive: true, force: true }); });
+
+  it("refuses demo initialization and demo-only claims on populated databases without changing owners", async () => {
+    const owners = async () => (await pool.query("select id, owner_subject_id from parameter_catalog.catalog_subjects order by id")).rows;
+    const before = await owners();
+    await expect(seedCurrentDemoCatalog(root)).rejects.toThrow("requires-empty-database");
+    for (const apply of [false, true]) {
+      await expect(claimCatalogChildOwners(root, schemasRoot, apply, { requireEmptyDemo: true }))
+        .rejects.toThrow("requires-empty-database");
+    }
+    expect(await owners()).toEqual(before);
+  });
 
   it("migrates the original charge-mode case while retaining all twelve bindings and their histories", async () => {
     const organizationId = "s4-charge-case";

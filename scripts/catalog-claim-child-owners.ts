@@ -44,7 +44,10 @@ export function childOwnerDeclarations(schemasRoot: string): Declaration[] {
   });
 }
 
-export async function claimCatalogChildOwners(db: Database, schemasRoot: string, apply = false) {
+export async function claimCatalogChildOwners(
+  db: Database, schemasRoot: string, apply = false,
+  options: { requireEmptyDemo?: boolean; expectedReleaseId?: string } = {},
+) {
   const declarations = childOwnerDeclarations(schemasRoot);
   return db.transaction(async (tx) => {
     await tx.query(apply ? "set transaction isolation level read committed" : "set transaction isolation level repeatable read, read only");
@@ -66,8 +69,19 @@ export async function claimCatalogChildOwners(db: Database, schemasRoot: string,
         parameter_catalog.definition_erasures, public.project_parameter_value_change_requests,
         public.dts_config_revisions, public.dts_config_revision_members, public.dts_logical_node_revisions in share mode`);
     }
+    // Recheck under the maintenance locks: a racing registration/adoption must
+    // never turn fresh-demo initialization into a populated-data migration.
+    if (options.requireEmptyDemo) {
+      const populated = await tx.query<{ populated: boolean }>(`select
+        exists(select 1 from parameter_catalog.catalog_activation_receipts)
+        or exists(select 1 from parameter_catalog.organization_subject_registrations)
+        or exists(select 1 from parameter_catalog.project_parameter_bindings)
+        or exists(select 1 from parameter_catalog.parameter_observations) as populated`);
+      if (populated.rows[0]?.populated) throw new Error("catalog-owned-seed-requires-empty-database");
+    }
     const current = (await tx.query<{ id: string }>(`select current_catalog_release_id as id from parameter_catalog.catalog_state where singleton`)).rows[0];
     if (!current) throw new Error("catalog-owner-current-release-missing");
+    if (options.expectedReleaseId && current.id !== options.expectedReleaseId) throw new Error("catalog-owner-current-release-changed");
     const loaded = await loadProjection(asValueClient(tx) as unknown as CatalogSnapshotClient, current.id, "current");
     if (!loaded) throw new Error("catalog-owner-current-release-unavailable");
     const snapshot = loaded.snapshot;
@@ -165,6 +179,9 @@ export async function claimCatalogChildOwners(db: Database, schemasRoot: string,
       report.push({ name: declaration.name, subjectId: subject.id, ...(ownerId ? { ownerSubjectId: ownerId } : {}), status, conflicts });
     }
     if (apply) {
+      if (options.requireEmptyDemo && report.some((item) => item.status !== "ready" && item.status !== "already-claimed")) {
+        throw new Error("catalog-owned-seed-claim-conflict");
+      }
       const ready = report.filter((item) => item.status === "ready");
       for (const item of ready) {
         await tx.query(`select parameter_catalog.claim_catalog_subject_owner($1,$2)`, [item.subjectId, item.ownerSubjectId]);

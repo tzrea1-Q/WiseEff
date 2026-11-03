@@ -2039,8 +2039,11 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     const fileName = "readiness-battery.dts";
     const source = `/dts-v1/;
 / {
-  battery0 {
-    cccv_0 = <4500 0>;
+  battery_charge_balance {
+    compatible = "huawei,battery_charge_balance";
+    battery0 {
+      cccv_0 = <4500 0>;
+    };
   };
 };
 `;
@@ -2138,7 +2141,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       expect(bindings.status(), await bindings.text()).toBe(200);
       const { items } = await bindings.json() as { items: Array<{ id: string; propertyKey: string; rawValue: string }> };
       const binding = items.find((item) => item.propertyKey === "cccv_0");
-      expect(binding, "Parent-seeded published Catalog and battery0 registration must materialize cccv_0").toBeTruthy();
+      expect(binding, "Published Catalog must materialize cccv_0 under battery0's owning driver").toBeTruthy();
       expect(binding!.rawValue).toBe("<4500 0>");
       bindingId = binding!.id;
 

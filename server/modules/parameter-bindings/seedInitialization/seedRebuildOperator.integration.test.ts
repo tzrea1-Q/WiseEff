@@ -525,6 +525,7 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
         expect(children.rows).toEqual([
           { child: "battery0", owner: "huawei,battery_charge_balance" },
           { child: "battery1", owner: "huawei,battery_charge_balance" },
+          { child: "battery_checker", owner: "huawei,batt_info" },
           { child: "cccv_para0", owner: "huawei,battery_cccv" },
           { child: "middle_cpu", owner: "hisilicon,hisi_vbat_drop_protect_v2" },
           { child: "scharger_v800", owner: "hisilicon,spmi" },

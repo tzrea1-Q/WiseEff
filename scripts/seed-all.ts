@@ -1,9 +1,8 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import pg from "pg";
-
-import { seedPublishedCatalog } from "../server/testing/parameterCatalog/seedPublishedCatalog";
+import { createPostgresDatabase } from "../server/shared/database/client";
+import { seedCurrentDemoCatalog } from "../server/testing/parameterCatalog/seedCurrentDemoCatalog";
 
 const seedScripts = ["db:seed:m0", "db:seed:m1", "db:seed:m2", "db:seed:m3"] as const;
 
@@ -20,12 +19,12 @@ export async function runAllSeedScripts(env: NodeJS.ProcessEnv = process.env) {
     }
     if (script === "db:seed:m0") {
       if (!env.DATABASE_URL?.trim()) throw new Error("DATABASE_URL is required to seed the Catalog.");
-      const pool = new pg.Pool({ connectionString: env.DATABASE_URL });
+      const db = createPostgresDatabase(env.DATABASE_URL);
       try {
-        const release = await seedPublishedCatalog(pool);
+        const release = await seedCurrentDemoCatalog(db);
         console.log(`Seeded published Catalog ${release.id} (${release.digest}).`);
       } finally {
-        await pool.end();
+        await db.close();
       }
     }
   }

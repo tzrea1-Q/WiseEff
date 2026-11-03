@@ -148,7 +148,7 @@ export async function resolveDebugNodeBindingForReloadTarget(
     join parameter_catalog.definition_revisions revision
       on revision.id = b.effective_revision_id
      and revision.definition_id = b.definition_id
-     and revision.catalog_release_id = b.catalog_release_id
+    -- The exact Binding release above may reuse an earlier verified revision.
     join parameter_catalog.project_value_source_pins pin
       on pin.id = $11
      and pin.project_value_id = value.id

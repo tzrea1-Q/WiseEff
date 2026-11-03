@@ -4,12 +4,19 @@ import path from "node:path";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { runAllSeedScripts } from "../../scripts/seed-all";
 import { createWiseEffServer } from "../app";
-import { createPostgresDatabase, type RootDatabase } from "../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../shared/database/client";
 import { requestJson } from "../test/testClient";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../testing/testDatabase";
 import { maybeEnsureLocalPostCutoverOnApiBoot } from "../modules/parameter-topology/localPostCutover";
 import { seedQualityCanonicalBindings, seedQualityVisualReview } from "../../scripts/seed-quality-visual-review";
 import { createLocalObjectStore } from "../modules/logs/objectStore";
+import { seedPublishedCatalog, readSeededCatalogPointer } from "../testing/parameterCatalog/seedPublishedCatalog";
+import { seedCurrentDemoCatalog } from "../testing/parameterCatalog/seedCurrentDemoCatalog";
+import { claimCatalogChildOwners } from "../../scripts/catalog-claim-child-owners";
+import { VENDOR_OWNED_RELEASE_ID } from "../../scripts/compile-owned-vendor-catalog-release";
+import { resolveDebugNodeBindingForReloadTarget } from "../modules/dts-reload/behaviouralVerify";
+import type { ReloadCandidateDto } from "../modules/dts-reload/types";
+import { createDebugDeviceGatewayRegistry } from "../modules/debugging/gatewayRegistry";
 
 let database: EphemeralTestDatabase;
 let db: RootDatabase;
@@ -40,6 +47,8 @@ it("seeds twice through canonical owners without legacy rows and serves seeded h
     (select count(*)::int from parameter_catalog.project_parameter_bindings) as bindings,
     (select count(*)::int from parameter_catalog.project_parameter_values) as values,
     (select count(*)::int from parameter_catalog.binding_history_events) as history,
+    (select count(*)::int from parameter_catalog.organization_subject_registrations) as registrations,
+    (select count(*)::int from parameter_catalog.subject_placements) as placements,
     (select count(*)::int from dts_config_revisions) as source_revisions,
     (select count(*)::int from project_parameter_file_versions) as source_versions,
     (select count(*)::int from parameter_specs) as legacy_specs,
@@ -76,11 +85,11 @@ it("seeds twice through canonical owners without legacy rows and serves seeded h
   expect(source.rows[0]!.index_length).toBeGreaterThan(2);
   expect((await createLocalObjectStore(storage).get(source.rows[0]!.storage_key)).toString("utf8")).toContain("watchdog_time = <6000>;");
   const placement = await db.query<{ kind: string; name: string; module_id: string; logical_node_id: string }>(`select
-    module.kind, module.name, placement.module_id, binding.logical_node_id
+    module.kind, module.name, effective.module_id, binding.logical_node_id
     from parameter_catalog.current_project_parameter_bindings binding
     join parameter_catalog.organization_subject_registrations registration on registration.id = binding.registration_id
-    left join parameter_catalog.subject_placements placement on placement.registration_id = registration.id
-    left join parameter_modules module on module.id = placement.module_id
+    left join parameter_catalog.registration_effective_module effective on effective.registration_id = registration.id
+    left join parameter_modules module on module.id = effective.module_id
     where binding.project_id = 'aurora'`);
   expect(placement.rows.length).toBeGreaterThan(0);
   expect(placement.rows.every((row) => row.module_id !== null)).toBe(true);
@@ -101,6 +110,139 @@ it("seeds twice through canonical owners without legacy rows and serves seeded h
   expect(new Set(instances.rows.map((row) => row.module_id)).size).toBe(1);
 }, 600_000);
 
+it("organizes battery authentication as one driver and one owned checker with two independent instances", async () => {
+  const driverId = "csub_drv_huawei_batt_info";
+  const childId = "csub_nt_battery_checker";
+  const subjects = await db.query(`select id, kind, canonical_key, owner_subject_id
+    from parameter_catalog.catalog_subjects where id = any($1::text[]) order by id`, [[driverId, childId]]);
+  expect(subjects.rows).toEqual([
+    { id: driverId, kind: "driver", canonical_key: "huawei,batt_info", owner_subject_id: null },
+    { id: childId, kind: "node-type", canonical_key: "battery_checker", owner_subject_id: driverId },
+  ]);
+  const placements = await db.query<{ subject_id: string; module_id: string | null; effective_module_id: string; name: string; kind: string; status: string }>(`select
+    registration.subject_id, registration.status, placement.module_id, effective.module_id as effective_module_id, module.name, module.kind
+    from parameter_catalog.organization_subject_registrations registration
+    join parameter_catalog.subject_placements placement on placement.id = registration.current_placement_id
+    join parameter_catalog.registration_effective_module effective on effective.registration_id = registration.id
+    join parameter_modules module on module.id = effective.module_id
+    where registration.organization_id = 'org-chargelab' and registration.subject_id = any($1::text[])
+    order by registration.subject_id`, [[driverId, childId]]);
+  expect(placements.rows).toHaveLength(2);
+  expect(placements.rows[0]).toMatchObject({ subject_id: driverId, module_id: expect.any(String), name: "Battery Authentication", kind: "business", status: "active" });
+  expect(placements.rows[1]).toMatchObject({ subject_id: childId, module_id: null, name: "Battery Authentication", kind: "business", status: "active" });
+  expect(placements.rows[1]!.effective_module_id).toBe(placements.rows[0]!.effective_module_id);
+
+  const definitions = await db.query(`select subject_id, property_key from parameter_catalog.parameter_definitions
+    where subject_id = any($1::text[]) order by subject_id, property_key`, [[driverId, childId]]);
+  expect(definitions.rows).toEqual([
+    { subject_id: driverId, property_key: "sn-check-type" },
+    { subject_id: childId, property_key: "matchable" },
+    { subject_id: childId, property_key: "spare-cycles" },
+  ]);
+  const bindings = await db.query<{ id: string; project_id: string; logical_node_id: string; definition_id: string; property_key: string; value: unknown; node_locator: string }>(`select
+    binding.id, binding.project_id, binding.logical_node_id, binding.definition_id, definition.property_key, value.value, logical.node_locator
+    from parameter_catalog.current_project_parameter_bindings binding
+    join parameter_catalog.parameter_definitions definition on definition.id = binding.definition_id
+    join parameter_catalog.project_parameter_values value on value.id = binding.current_value_id
+    join parameter_catalog.project_value_source_pins pin on pin.project_value_id = value.id and pin.binding_id = binding.id
+    join dts_logical_node_revisions logical on logical.logical_node_id = binding.logical_node_id and logical.config_revision_id = pin.config_revision_id
+    where binding.organization_id = 'org-chargelab' and binding.subject_id = any($1::text[])
+    order by binding.project_id, logical.node_locator, definition.property_key`, [[driverId, childId]]);
+  for (const project of ["atlas", "aurora", "nebula"]) {
+    const rows = bindings.rows.filter((row) => row.project_id === project);
+    expect(rows).toHaveLength(5);
+    expect(new Set(rows.map((row) => row.logical_node_id)).size).toBe(3);
+    expect(new Set(rows.map((row) => row.id)).size).toBe(5);
+    for (const property of ["matchable", "spare-cycles"]) {
+      const instances = rows.filter((row) => row.property_key === property);
+      expect(instances).toHaveLength(2);
+      expect(instances.map((row) => row.node_locator.split("/").at(-1))).toEqual(["battery_checker@0", "battery_checker@1"]);
+      expect(new Set(instances.map((row) => row.definition_id)).size).toBe(1);
+    }
+    const refs = rows.filter((row) => row.property_key === "matchable");
+    expect(JSON.stringify(refs[0]!.value)).toContain("fm1230");
+    expect(JSON.stringify(refs[0]!.value)).toContain("t91407");
+    expect(JSON.stringify(refs[0]!.value)).not.toContain("fm1230_1");
+    expect(JSON.stringify(refs[1]!.value)).toContain("fm1230_1");
+    expect(JSON.stringify(refs[1]!.value)).toContain("t91407_1");
+  }
+  expect(bindings.rows.filter((row) => row.project_id === "atlas" && row.property_key === "spare-cycles").map((row) => row.value)).toEqual([167, 167]);
+  const server = createWiseEffServer({ db });
+  const response = await requestJson<{ items: Array<{ id: string; propertyKey: string; rawValue: string }> }>(
+    server, "/api/v2/projects/atlas/parameter-bindings?limit=500", { headers: { "X-WiseEff-User": "u-xu-yun" } });
+  expect(response.status, response.bodyText).toBe(200);
+  const ids = new Set(bindings.rows.filter((row) => row.project_id === "atlas").map((row) => row.id));
+  const apiRows = response.body.items.filter((row) => ids.has(row.id));
+  expect(apiRows).toHaveLength(5);
+  expect(apiRows.filter((row) => row.propertyKey === "matchable").map((row) => row.rawValue).sort())
+    .toEqual(["<&fm1230 &t91407>", "<&fm1230_1 &t91407_1>"].sort());
+  const subject = await requestJson<{ item: { registration: { id: string } } }>(
+    server, `/api/v2/catalog/subjects/${childId}`, { headers: { "X-WiseEff-User": "u-xu-yun" } });
+  expect(subject.status, subject.bodyText).toBe(200);
+  expect(subject.body.item).toMatchObject({ id: childId, ownerSubjectId: driverId, canonicalName: "battery_checker",
+    registration: { status: "active", placement: { structural: true, ownerSubjectId: driverId } },
+    definitionCounts: { active: 2, deprecated: 0, retired: 0 } });
+  const registration = await requestJson<{ item: unknown }>(server,
+    `/api/v2/organizations/org-chargelab/subject-registrations/${subject.body.item.registration.id}`,
+    { headers: { "X-WiseEff-User": "u-xu-yun" } });
+  expect(registration.status, registration.bodyText).toBe(200);
+  expect(registration.body.item).toMatchObject({ subjectId: childId, ownerSubjectId: driverId, structural: true,
+    impact: { bindingCount: 12, projectCount: 3 } });
+});
+
+it("lists owned demo reload candidates and resolves exact readback pins across reused definition revisions", async () => {
+  const server = createWiseEffServer({ db, debugGatewayRegistry: createDebugDeviceGatewayRegistry({}) });
+  const headers = { "X-WiseEff-User": "u-xu-yun" };
+  let target: ReloadCandidateDto | undefined;
+  for (const projectId of ["atlas", "aurora", "nebula"]) {
+    const response = await requestJson<{ items: ReloadCandidateDto[] }>(server,
+      `/api/v1/dts-reload/projects/${projectId}/candidates`, { headers });
+    expect(response.status, response.bodyText).toBe(200);
+    const current = await db.query<{ id: string; subject_id: string; definition_release_id: string }>(`select binding.id, binding.subject_id,
+      revision.catalog_release_id as definition_release_id
+      from parameter_catalog.current_project_parameter_bindings binding
+      join parameter_catalog.definition_revisions revision on revision.id = binding.effective_revision_id
+      where binding.organization_id = 'org-chargelab' and binding.project_id = $1`, [projectId]);
+    expect(current.rows.length).toBeGreaterThan(0);
+    expect(current.rows.every((row) => row.definition_release_id !== VENDOR_OWNED_RELEASE_ID)).toBe(true);
+    expect(response.body.items.map((row) => row.bindingId).sort()).toEqual(current.rows.map((row) => row.id).sort());
+    const batteryIds = new Set(current.rows.filter((row) =>
+      row.subject_id === "csub_drv_huawei_batt_info" || row.subject_id === "csub_nt_battery_checker").map((row) => row.id));
+    const battery = response.body.items.filter((row) => batteryIds.has(row.bindingId));
+    expect(battery).toHaveLength(5);
+    expect(battery.every((row) => row.module === "Battery Authentication")).toBe(true);
+    expect(new Set(battery.map((row) => row.moduleId)).size).toBe(1);
+    for (const propertyKey of ["matchable", "spare-cycles"]) {
+      expect(battery.filter((row) => row.propertyKey === propertyKey)
+        .map((row) => row.nodePath?.split("/").at(-1)).sort()).toEqual(["battery_checker@0", "battery_checker@1"]);
+    }
+    if (projectId === "atlas") target = battery.find((row) => row.propertyKey === "spare-cycles" && row.nodePath?.endsWith("battery_checker@0"));
+  }
+  expect(target).toBeDefined();
+  const nodePath = "/sys/devices/seed-battery-checker/spare_cycles";
+  const created = await requestJson(server, "/api/v1/debugging/admin/nodes", {
+    method: "POST", headers, body: JSON.stringify({
+      name: "Seed battery checker readback", module: "Battery Authentication",
+      canonicalBinding: { projectId: "atlas", bindingId: target!.bindingId },
+      bindings: [{ protocol: "hdc", nodePath, accessMode: "RO", enabled: true }],
+    }),
+  });
+  expect(created.status, created.bodyText).toBe(201);
+  const input = {
+    ...target!.protectedReferencePin,
+    organizationId: "org-chargelab", projectId: "atlas", bindingId: target!.bindingId,
+    sourceRef: target!.writebackSourcePin!.sourceRef, protocol: "hdc" as const,
+  };
+  expect(input.catalogReleaseId).toBe(VENDOR_OWNED_RELEASE_ID);
+  expect(await resolveDebugNodeBindingForReloadTarget(db, input)).toMatchObject({ nodePath, accessMode: "RO" });
+  for (const mismatch of [
+    { catalogReleaseId: "crel_vendor_catalog_3" }, { definitionRevisionId: "stale-revision" },
+    { sourcePinId: "stale-source-pin" }, { organizationId: "other-organization" }, { projectId: "aurora" },
+  ]) {
+    expect(await resolveDebugNodeBindingForReloadTarget(db, { ...input, ...mismatch })).toBeNull();
+  }
+});
+
 it("quality and visual review seeds use canonical source pins without legacy parameter rows", async () => {
   vi.stubEnv("WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE", "true");
   vi.stubEnv("WISEEFF_QUALITY_FIXTURE_DATABASE_NAME", new URL(database.url).pathname.slice(1));
@@ -119,6 +261,23 @@ it("quality and visual review seeds use canonical source pins without legacy par
   } finally {
     vi.unstubAllEnvs();
   }
+}, 120_000);
+
+it("recovers an offline demo interrupted after owner claims but before successor installation", async () => {
+  const isolated = await createEphemeralTestDatabase("ownerretry");
+  const root = createPostgresDatabase(isolated.url);
+  try {
+    const pool = getRootPostgresPool(root)!;
+    const previous = await seedPublishedCatalog(pool);
+    const claimed = await claimCatalogChildOwners(root, path.join(process.cwd(), "schemas/dts"), true, { requireEmptyDemo: true });
+    expect(claimed.candidates).toHaveLength(6);
+    expect(claimed.candidates.every((row) => row.status === "claimed")).toBe(true);
+    expect(await readSeededCatalogPointer(pool)).toMatchObject({ kind: "installed", current: previous });
+    const before = (await root.query("select id, owner_subject_id from parameter_catalog.catalog_subjects order by id")).rows;
+    expect(await seedCurrentDemoCatalog(root)).toMatchObject({ id: VENDOR_OWNED_RELEASE_ID });
+    expect((await root.query("select id, owner_subject_id from parameter_catalog.catalog_subjects order by id")).rows).toEqual(before);
+    expect(await seedCurrentDemoCatalog(root)).toMatchObject({ id: VENDOR_OWNED_RELEASE_ID });
+  } finally { await root.close(); await isolated.drop(); }
 }, 120_000);
 
 it("preserves legacy finalize for a mixed cohort despite complete canonical source pins", async () => {

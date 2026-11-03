@@ -15,7 +15,7 @@ import { adoptPreexistingCatalog } from "../server/modules/catalog-publication/r
 import { provisionPublicationRuntimeLogins, publicationRuntimeLoginNames } from "../server/modules/catalog-publication/runtime/provisionRuntimeLogins";
 import { writeRuntimeLoginSecrets } from "../server/modules/catalog-publication/runtime/runtimeLoginSecrets";
 import { createPostgresDatabase, getRootPostgresPool } from "../server/shared/database/client";
-import { compileLocalizedVendorCatalogSuccessor } from "./compile-vendor-catalog-release";
+import { compileOwnedVendorCatalogSuccessor } from "./compile-owned-vendor-catalog-release";
 
 const actorId = "u-xu-yun";
 
@@ -83,7 +83,7 @@ export async function prepareLocalCatalogPublication(env: NodeJS.ProcessEnv, roo
     let snapshot = await collectPublicationPolicyInstanceSnapshot(db);
     assertLocalPublicationPolicy(snapshot);
     if (!snapshot.adopted) {
-      const seed = compileLocalizedVendorCatalogSuccessor();
+      const seed = await compileOwnedVendorCatalogSuccessor();
       if (snapshot.currentReleaseId !== seed.compiled.release.id || snapshot.currentReleaseDigest !== seed.compiled.release.digest) {
         throw new Error("Local adoption requires the exact committed demo Catalog; use operator inspect/adopt for other catalogs");
       }
