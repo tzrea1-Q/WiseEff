@@ -6,6 +6,9 @@ import { jsonCatalogReleaseSource, type CatalogSnapshot } from "../../modules/ca
 import { installPublishedRelease } from "../../modules/catalog-kernel/install/installer";
 import { CURRENT_POINTER_LOCK_KEY } from "../../modules/catalog-kernel/install/lockProtocol";
 import { CatalogCommitInjectedFailure } from "./failureInjection";
+import { CatalogArtifactId } from "../../modules/parameter-catalog-contract";
+import { encodeBundleBytes } from "../../modules/catalog-publication/builder/bundleCodec";
+import { persistArtifact } from "../../modules/catalog-publication/persistence/store";
 
 /** Advance the driver fixture through its real compiler and publication owner. */
 export async function advanceSourceRevisionCatalogFixture(db: Database, current: CatalogSnapshot["release"]) {
@@ -23,7 +26,7 @@ export async function advanceSourceRevisionCatalogFixture(db: Database, current:
 
 type SourceRevisionLifecycleFixtureInput = (
   { target: "subject"; lifecycle: "active" | "retired" } | { target: "definition"; lifecycle: "active" | "deprecated" | "retired" }
-) & { previousBundle?: CatalogReleaseBundle; includeManagedSibling?: boolean };
+) & { previousBundle?: CatalogReleaseBundle; includeManagedSibling?: boolean; retainArtifactForErasure?: boolean };
 
 export function sourceRevisionLifecycleFixtureBundle(current: CatalogSnapshot["release"], input: SourceRevisionLifecycleFixtureInput): CatalogReleaseBundle {
   const initial = validCatalogReleaseBundle();
@@ -45,9 +48,11 @@ export function sourceRevisionLifecycleFixtureBundle(current: CatalogSnapshot["r
       document.content.tombstone = input.lifecycle === "retired" ? { reason: "Source management fixture",
         withdrawnByReleaseId: next.manifest.release.id, previousSelector: document.content.normalizedSelector } : null;
     }
-    if (input.target === "definition" && document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max") {
-      document.content.revision = { ...document.content.revision, id: `drev_acme_power_iin_max_${sequence}`,
-        number: sequence, lifecycle: input.lifecycle };
+    if (input.target === "definition" && document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max"
+      && document.content.revision.lifecycle !== input.lifecycle) {
+      const revisionNumber = document.content.revision.number + 1;
+      document.content.revision = { ...document.content.revision, id: `drev_acme_power_iin_max_${revisionNumber}`,
+        number: revisionNumber, lifecycle: input.lifecycle };
       if (input.lifecycle === "deprecated") document.content.revision.successorDefinitionId = "pdef_acme_power_iin_min";
       else delete document.content.revision.successorDefinitionId;
     }
@@ -78,6 +83,13 @@ export async function publishSourceRevisionLifecycleFixture(db: Database, curren
   const installed = await installPublishedRelease(pool, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
     expectedCurrent: current, expectedTargetDigest: compiled.value.aggregateDigest });
   if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+  if (input.retainArtifactForErasure) {
+    const stored = await persistArtifact(db, { id: CatalogArtifactId(`cart_source_revision_${compiled.value.release.id}`),
+      artifactDigest: compiled.value.aggregateDigest, artifactBytes: encodeBundleBytes(bundle), sourceKind: "repository-bundle",
+      targetReleaseId: compiled.value.release.id, targetReleaseDigest: compiled.value.release.digest,
+      predecessorReleaseId: current.id, predecessorReleaseDigest: current.digest, toolchain: bundle.releases.at(-1)!.manifest.toolchain });
+    if (!stored.ok) throw new Error(JSON.stringify(stored.error));
+  }
   return { bundle, release: compiled.value.release };
 }
 

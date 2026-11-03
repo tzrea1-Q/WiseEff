@@ -49,6 +49,9 @@ const catalogDml = [
   "update parameter_catalog.catalog_state set current_catalog_release_id = current_catalog_release_id where false",
   "delete from parameter_catalog.catalog_activation_receipts where false",
   "update parameter_catalog.catalog_activation_receipts set id = id where false",
+  "insert into parameter_catalog.source_binding_suspension_receipts select * from parameter_catalog.source_binding_suspension_receipts where false",
+  "update parameter_catalog.source_binding_suspension_receipts set id = id where false",
+  "delete from parameter_catalog.source_binding_suspension_receipts where false",
 ] as const;
 
 const assert42501 = async (client: pg.Client, sql: string): Promise<void> => {
@@ -57,6 +60,17 @@ const assert42501 = async (client: pg.Client, sql: string): Promise<void> => {
 };
 
 const assertCanonicalSourceAcl = async (client: pg.Client, api: boolean): Promise<void> => {
+  const suspension = await client.query(`select
+    has_function_privilege(current_user, 'parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)', 'EXECUTE') as execute,
+    has_table_privilege(current_user, 'parameter_catalog.source_binding_suspension_receipts', 'SELECT') as table_read`);
+  expect(suspension.rows).toEqual([{ execute: api, table_read: false }]);
+  if (api) {
+    expect((await client.query(`select parameter_catalog.find_source_binding_suspension(
+      'missing-org','missing-project','missing-set','missing-base','{}'::jsonb) as receipt`)).rows).toEqual([{ receipt: null }]);
+  } else {
+    await assert42501(client, `select parameter_catalog.find_source_binding_suspension(
+      'missing-org','missing-project','missing-set','missing-base','{}'::jsonb)`);
+  }
   for (const [name, argumentsOid] of [
     ["is_replaced_current_binding", "25"],
     ["resolve_current_binding_by_source_occurrence", "25 25 25"],

@@ -40,6 +40,8 @@ import {
   discoverDeletedSourceRevisionPins as queryDeletedSourceRevisionPins,
   loadDeletedSourceAnchors as queryDeletedSourceAnchors,
   loadRetainedSourceAnchors as queryRetainedSourceAnchors,
+  findOwnedSourceSuspension as queryOwnedSourceSuspension,
+  type SourceBindingSuspensionIdentity,
   loadSourceBindingCohort as querySourceBindingCohort,
   loadSourceBindingCohortReadOnly as querySourceBindingCohortReadOnly,
   findCurrentSourceBindingId as queryCurrentSourceBindingId,
@@ -123,6 +125,17 @@ export async function loadRetainedSourceAnchors(tx: Queryable, input: { organiza
   assertSourceReadScope(input);
   if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
   return queryRetainedSourceAnchors(tx,input);
+}
+
+export async function findOwnedSourceSuspension(tx: Queryable, input: {
+  organizationId: string; projectId: string; configSetId: string; baseConfigRevisionId: string;
+  identity: SourceBindingSuspensionIdentity;
+}): Promise<string | null> {
+  assertSourceReadScope(input);
+  if (![input.configSetId, input.baseConfigRevisionId, ...Object.values(input.identity)].every(controlFree)) {
+    throw new ApiError("CONFLICT", "Source suspension identity is invalid.");
+  }
+  return queryOwnedSourceSuspension(tx, input);
 }
 
 export async function loadSourceBindingCohort(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {

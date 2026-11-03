@@ -1,5 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
-import { loadOwnedProjectValueSourcePin, readOwnedCurrentBinding, readOwnedProjectValueIdentity, type CanonicalSourceBindingPin } from "../parameter-bindings/values";
+import { findOwnedSourceSuspension, loadOwnedProjectValueSourcePin, readOwnedCurrentBinding, readOwnedProjectValueIdentity, type CanonicalSourceBindingPin } from "../parameter-bindings/values";
 import type { SourceRevisionCohort } from "./sourceRevisionService";
 
 /** Retained provenance is historical evidence, never an assertion about new source bytes. */
@@ -19,22 +19,7 @@ export type ExcludedSourceBinding = Pick<SourceRevisionCohort,
 export async function findSourceSuspension(tx: Queryable,
   scope: { organizationId: string; projectId: string; configSetId: string; baseConfigRevisionId: string },
   binding: Omit<ExcludedSourceBinding, "reason">): Promise<string | null> {
-  const row = (await tx.query<{ id: string }>(`select request.id
-    from public.project_parameter_value_change_requests request
-    join public.dts_config_revisions suspended on suspended.id=request.applied_source_result->>'configRevisionId'
-      and suspended.organization_id=request.organization_id and suspended.project_id=request.project_id
-      and suspended.config_set_id=request.source_revision_config_set_id
-    join public.dts_config_revisions base on base.id=$4 and base.organization_id=request.organization_id
-      and base.project_id=request.project_id and base.config_set_id=suspended.config_set_id
-    join public.dts_config_revisions previous on previous.id=$5 and previous.config_set_id=base.config_set_id
-    where request.organization_id=$1 and request.project_id=$2 and request.source_revision_config_set_id=$3
-      and request.request_kind='source_revision' and request.status='approved' and request.apply_outcome='committed'
-      and suspended.revision_number>previous.revision_number and suspended.revision_number<=base.revision_number
-      and request.source_revision_context->'excludedBindings' @> $6::jsonb
-    order by suspended.revision_number desc,request.id limit 1`,
-  [scope.organizationId, scope.projectId, scope.configSetId, scope.baseConfigRevisionId,
-    binding.configRevisionId, JSON.stringify([binding])])).rows[0];
-  return row?.id ?? null;
+  return findOwnedSourceSuspension(tx, { ...scope, identity: binding });
 }
 
 /**

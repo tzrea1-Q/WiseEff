@@ -321,3 +321,276 @@ alter function parameter_catalog.source_binding_is_suspended(text,text) owner to
 alter function parameter_catalog.configuration_restore_suspension_matches(text,jsonb,boolean) owner to catalog_migration_owner;
 revoke all on function parameter_catalog.source_binding_is_suspended(text,text) from public;
 revoke all on function parameter_catalog.configuration_restore_suspension_matches(text,jsonb,boolean) from public;
+
+-- Multi-parameter approvals are erased as a whole when any referenced
+-- Definition is permanently deleted. Preserve each unaffected suspension as
+-- its own trusted receipt and audit, without a FK or JSON link to the shared
+-- request/audit. Definition, project and organization erasure still own it.
+create table parameter_catalog.source_binding_suspension_receipts (
+  id text primary key,
+  request_id text not null,
+  organization_id text not null references public.organizations(id) on delete restrict,
+  project_id text not null references public.projects(id) on delete restrict,
+  config_set_id text not null references public.dts_config_set(id) on delete restrict,
+  binding_id text not null references parameter_catalog.project_parameter_bindings(id) on delete restrict,
+  definition_id text not null references parameter_catalog.parameter_definitions(id) on delete restrict,
+  old_value_id text not null references parameter_catalog.project_parameter_values(id) on delete restrict,
+  source_pin_id text not null references parameter_catalog.project_value_source_pins(id) on delete restrict,
+  applied_config_revision_id text not null references public.dts_config_revisions(id) on delete restrict,
+  source_proof_digest text not null check(source_proof_digest ~ '^[0-9a-f]{64}$'),
+  excluded_identity jsonb not null check(jsonb_typeof(excluded_identity)='object'),
+  audit_event_id text not null references public.audit_events(id) on delete restrict,
+  unique(request_id,binding_id)
+);
+alter table parameter_catalog.source_binding_suspension_receipts owner to catalog_migration_owner;
+revoke all on parameter_catalog.source_binding_suspension_receipts from public;
+
+create function parameter_catalog.protect_source_binding_suspension_receipt()
+returns trigger language plpgsql security definer set search_path=pg_catalog,parameter_catalog,public as $$
+begin
+  if tg_op='DELETE' and parameter_catalog.definition_purge_allows_change(TG_TABLE_SCHEMA,TG_TABLE_NAME,to_jsonb(old),'DELETE') then return old; end if;
+  if tg_op<>'INSERT' then raise exception using errcode='55000',message='Source suspension receipts are immutable'; end if;
+  if not exists(select 1 from public.project_parameter_value_change_requests request
+    join public.audit_events original on original.id=request.applied_audit_ref
+      and original.organization_id=request.organization_id and original.project_id=request.project_id
+      and original.target_id=request.id and original.action='value-change-applied'
+      and original.metadata->'result'=request.applied_source_result
+    join public.audit_events retained on retained.id=new.audit_event_id
+    where request.id=new.request_id and request.organization_id=new.organization_id and request.project_id=new.project_id
+      and request.source_revision_config_set_id=new.config_set_id and request.request_kind='source_revision'
+      and request.status='approved' and request.apply_outcome='committed'
+      and request.source_revision_proof_digest=new.source_proof_digest
+      and request.applied_source_result->>'configRevisionId'=new.applied_config_revision_id
+      and request.source_revision_context->'excludedBindings' @> jsonb_build_array(new.excluded_identity)
+      and new.excluded_identity->>'bindingId'=new.binding_id and new.excluded_identity->>'definitionId'=new.definition_id
+      and new.excluded_identity->>'oldValueId'=new.old_value_id and new.excluded_identity->>'sourcePinId'=new.source_pin_id
+      and parameter_catalog.source_revision_exclusion_matches(request.id,new.binding_id,new.old_value_id,new.source_pin_id,new.applied_config_revision_id)
+      and to_jsonb(retained)=to_jsonb(original)||jsonb_build_object('id',new.audit_event_id,
+        'action','source-binding-suspended','target_type','project-parameter-binding','target_id',new.binding_id,
+        'metadata',jsonb_build_object('identity',new.excluded_identity,'configRevisionId',new.applied_config_revision_id,
+          'proofDigest',new.source_proof_digest))) then
+    raise exception using errcode='23514',message='Source suspension receipt requires an exact approved exclusion and independent audit';
+  end if;
+  return new;
+end $$;
+create trigger source_binding_suspension_receipt_immutable before insert or update or delete
+  on parameter_catalog.source_binding_suspension_receipts for each row
+  execute function parameter_catalog.protect_source_binding_suspension_receipt();
+
+create function parameter_catalog.mint_source_binding_suspensions()
+returns trigger language plpgsql security definer set search_path=pg_catalog,parameter_catalog,public as $$
+declare request public.project_parameter_value_change_requests%rowtype; excluded jsonb;
+  original public.audit_events%rowtype; retained public.audit_events%rowtype; audit_id text; receipt_id text;
+begin
+  if tg_op='UPDATE' and old.status='approved' then return null; end if;
+  select * into request from public.project_parameter_value_change_requests where id=new.id;
+  if request.request_kind<>'source_revision' or request.status<>'approved' then return null; end if;
+  select * into original from public.audit_events where id=request.applied_audit_ref;
+  if not found then raise exception using errcode='23514',message='Source suspension has no original applied audit'; end if;
+  for excluded in select value from jsonb_array_elements(coalesce(request.source_revision_context->'excludedBindings','[]')) loop
+    receipt_id:='ssusp_'||md5(request.id||chr(31)||(excluded->>'bindingId'));
+    audit_id:='audit_'||receipt_id;
+    retained:=jsonb_populate_record(null::public.audit_events,to_jsonb(original)||jsonb_build_object('id',audit_id,
+      'action','source-binding-suspended','target_type','project-parameter-binding','target_id',excluded->>'bindingId',
+      'metadata',jsonb_build_object('identity',excluded,'configRevisionId',request.applied_source_result->>'configRevisionId',
+        'proofDigest',request.source_revision_proof_digest)));
+    insert into public.audit_events select retained.* on conflict(id) do nothing;
+    if not exists(select 1 from public.audit_events actual where actual.id=audit_id and to_jsonb(actual)=to_jsonb(retained)) then
+      raise exception using errcode='23514',message='Independent suspension audit identity was reused'; end if;
+    insert into parameter_catalog.source_binding_suspension_receipts
+      (id,request_id,organization_id,project_id,config_set_id,binding_id,definition_id,old_value_id,source_pin_id,
+       applied_config_revision_id,source_proof_digest,excluded_identity,audit_event_id)
+    values(receipt_id,request.id,request.organization_id,request.project_id,request.source_revision_config_set_id,
+      excluded->>'bindingId',excluded->>'definitionId',excluded->>'oldValueId',excluded->>'sourcePinId',
+      request.applied_source_result->>'configRevisionId',request.source_revision_proof_digest,excluded,audit_id)
+    on conflict(request_id,binding_id) do nothing;
+    if not exists(select 1 from parameter_catalog.source_binding_suspension_receipts receipt
+      where receipt.id=receipt_id and receipt.request_id=request.id and receipt.binding_id=excluded->>'bindingId'
+        and receipt.organization_id=request.organization_id and receipt.project_id=request.project_id
+        and receipt.config_set_id=request.source_revision_config_set_id and receipt.definition_id=excluded->>'definitionId'
+        and receipt.old_value_id=excluded->>'oldValueId' and receipt.source_pin_id=excluded->>'sourcePinId'
+        and receipt.excluded_identity=excluded and receipt.audit_event_id=audit_id
+        and receipt.applied_config_revision_id=request.applied_source_result->>'configRevisionId'
+        and receipt.source_proof_digest=request.source_revision_proof_digest) then
+      raise exception using errcode='23514',message='Source suspension receipt identity was reused'; end if;
+  end loop;
+  return null;
+end $$;
+create constraint trigger source_binding_suspensions_mint after insert or update
+  on public.project_parameter_value_change_requests deferrable initially deferred
+  for each row when(new.request_kind='source_revision') execute function parameter_catalog.mint_source_binding_suspensions();
+
+-- The retained path requires its own immutable row and audit, together with the
+-- exact surviving value/pin and the same organization/project/configuration.
+do $$ declare installed text;
+begin
+  select prosrc into strict installed from pg_proc
+    where oid='parameter_catalog.source_revision_exclusion_matches(text,text,text,text,text)'::regprocedure;
+  execute format($definition$create or replace function parameter_catalog.source_revision_exclusion_matches(
+    p_request_id text,p_binding_id text,p_value_id text,p_pin_id text,p_base_revision_id text)
+    returns boolean language sql stable security definer set search_path=pg_catalog,parameter_catalog,public as %L$definition$,
+    installed||$retained$
+or exists(select 1 from parameter_catalog.source_binding_suspension_receipts receipt
+  join parameter_catalog.project_parameter_bindings binding on binding.id=receipt.binding_id
+    and binding.organization_id=receipt.organization_id and binding.project_id=receipt.project_id
+    and binding.definition_id=receipt.definition_id
+  join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
+    and occurrence.config_set_id=receipt.config_set_id and occurrence.organization_id=binding.organization_id and occurrence.project_id=binding.project_id
+  join parameter_catalog.project_parameter_values value on value.id=receipt.old_value_id and value.binding_id=binding.id
+    and value.definition_id=binding.definition_id and value.value_state='present'
+  join parameter_catalog.project_value_source_pins pin on pin.id=receipt.source_pin_id and pin.project_value_id=value.id
+    and pin.binding_id=binding.id and pin.definition_id=binding.definition_id and pin.source_occurrence_id=occurrence.id
+    and pin.organization_id=binding.organization_id and pin.project_id=binding.project_id and pin.value_state='present'
+    and pin.config_revision_id=value.config_revision_id
+  join public.dts_config_revisions historical on historical.id=pin.config_revision_id
+    and historical.organization_id=binding.organization_id and historical.project_id=binding.project_id and historical.config_set_id=receipt.config_set_id
+  join public.dts_config_revisions suspended on suspended.id=receipt.applied_config_revision_id
+    and suspended.organization_id=binding.organization_id and suspended.project_id=binding.project_id and suspended.config_set_id=receipt.config_set_id
+    and suspended.revision_number>historical.revision_number
+  join public.dts_config_revisions base on base.id=p_base_revision_id
+    and base.organization_id=binding.organization_id and base.project_id=binding.project_id and base.config_set_id=receipt.config_set_id
+    and base.revision_number>=suspended.revision_number
+  join public.audit_events audit on audit.id=receipt.audit_event_id
+    and audit.organization_id=binding.organization_id and audit.project_id=binding.project_id
+    and audit.target_id=binding.id and audit.target_type='project-parameter-binding' and audit.action='source-binding-suspended'
+    and audit.metadata=jsonb_build_object('identity',receipt.excluded_identity,
+      'configRevisionId',receipt.applied_config_revision_id,'proofDigest',receipt.source_proof_digest)
+  where receipt.request_id=p_request_id and binding.id=p_binding_id and value.id=p_value_id and pin.id=p_pin_id
+    and receipt.excluded_identity @> jsonb_build_object('bindingId',binding.id,'oldValueId',value.id,'sourcePinId',pin.id,
+      'sourceOccurrenceId',occurrence.id,'definitionId',binding.definition_id,'effectiveRevisionId',value.definition_revision_id,
+      'catalogReleaseId',binding.catalog_release_id,'registrationId',binding.registration_id,'subjectId',binding.subject_id,
+      'valueDigest',value.value_digest,'configRevisionId',pin.config_revision_id,'fileId',pin.file_id,'fileVersionId',pin.file_version_id,'format',pin.format))
+$retained$);
+end $$;
+
+create function parameter_catalog.find_source_binding_suspension(
+  p_org text,p_project text,p_config_set text,p_base_revision text,p_identity jsonb)
+returns text language sql stable security definer set search_path=pg_catalog,parameter_catalog,public as $$
+select evidence.request_id from (
+  select request.id as request_id,request.organization_id,request.project_id,request.source_revision_config_set_id as config_set_id,
+    request.applied_source_result->>'configRevisionId' as applied_revision_id,excluded as identity
+  from public.project_parameter_value_change_requests request
+  cross join lateral jsonb_array_elements(request.source_revision_context->'excludedBindings') excluded
+  where request.request_kind='source_revision' and request.status='approved' and request.apply_outcome='committed'
+  union all select receipt.request_id,receipt.organization_id,receipt.project_id,receipt.config_set_id,
+    receipt.applied_config_revision_id,receipt.excluded_identity from parameter_catalog.source_binding_suspension_receipts receipt
+) evidence
+join public.dts_config_revisions applied on applied.id=evidence.applied_revision_id
+where evidence.organization_id=p_org and evidence.project_id=p_project and evidence.config_set_id=p_config_set
+  and evidence.identity-'reason'=p_identity
+  and parameter_catalog.source_revision_exclusion_matches(evidence.request_id,p_identity->>'bindingId',p_identity->>'oldValueId',
+    p_identity->>'sourcePinId',p_base_revision)
+order by applied.revision_number desc,evidence.request_id limit 1
+$$;
+
+-- All callers that enumerate possible evidence must include independent rows;
+-- an erased parent request must not disappear before the predicate can run.
+do $$ declare installed text; changed text; marker text; replacement text;
+begin
+  select pg_get_functiondef('parameter_catalog.source_binding_is_suspended(text,text)'::regprocedure) into strict installed;
+  marker:=$old$join public.project_parameter_value_change_requests prior on prior.organization_id=binding.organization_id
+    and prior.project_id=binding.project_id and prior.request_kind='source_revision' and prior.status='approved'$old$;
+  replacement:=$new$join (select id,organization_id,project_id from public.project_parameter_value_change_requests
+      where request_kind='source_revision' and status='approved'
+    union select request_id,organization_id,project_id from parameter_catalog.source_binding_suspension_receipts) prior
+    on prior.organization_id=binding.organization_id and prior.project_id=binding.project_id$new$;
+  if (length(installed)-length(replace(installed,marker,'')))/length(marker)<>1 then raise exception 'Suspended binding evidence marker changed'; end if;
+  execute replace(installed,marker,replacement);
+  select pg_get_functiondef('parameter_catalog.assert_source_managed_scope_receipt()'::regprocedure) into strict installed;
+  marker:=$old$from public.project_parameter_value_change_requests prior
+            where prior.id<>r.id$old$;
+  replacement:=$new$from (select id,organization_id,project_id,source_revision_config_set_id from public.project_parameter_value_change_requests
+                where request_kind='source_revision' and status='approved'
+              union select request_id,organization_id,project_id,config_set_id from parameter_catalog.source_binding_suspension_receipts) prior
+            where prior.id<>r.id$new$;
+  if (length(installed)-length(replace(installed,marker,'')))/length(marker)<>1 then raise exception 'Absent source suspension evidence marker changed'; end if;
+  execute replace(installed,marker,replacement);
+end $$;
+
+-- Keep the existing exact erasure capabilities and fixed ownership inventories.
+do $$ declare installed text; changed text; marker text;
+begin
+  select pg_get_functiondef('parameter_catalog.preview_project_deletion_catalog(text,text,text)'::regprocedure) into strict installed;
+  marker:=$old$  return query select 'source-pins'::text$old$;
+  if (length(installed)-length(replace(installed,marker,'')))/length(marker)<>1 then raise exception 'Project suspension inventory marker changed'; end if;
+  execute replace(installed,marker,$new$  return query select 'source-suspensions'::text, count(*),
+    encode(sha256(convert_to(coalesce(string_agg(fingerprint, '' order by fingerprint), ''), 'UTF8')), 'hex')
+    from (select encode(sha256(convert_to(to_jsonb(r)::text, 'UTF8')), 'hex') as fingerprint
+      from (select * from parameter_catalog.source_binding_suspension_receipts
+        where organization_id=p_organization_id and project_id=p_project_id) r) scoped;
+
+  return query select 'source-pins'::text$new$);
+  select pg_get_functiondef('parameter_catalog.purge_project(text,text,text,text)'::regprocedure) into strict installed;
+  marker:='for entry in select * from (values';
+  if (length(installed)-length(replace(installed,marker,'')))/length(marker)<>1 then raise exception 'Project suspension purge marker changed'; end if;
+  execute replace(installed,marker,marker||E'\n    (-7,''parameter_catalog.source_binding_suspension_receipts'',''organization_id=$1 and project_id=$2''),');
+  select pg_get_functiondef('parameter_catalog.lock_project_erasure(text,text,text)'::regprocedure) into strict installed;
+  marker:='lock table public.member_addition_intents,';
+  if (length(installed)-length(replace(installed,marker,'')))/length(marker)<>1 then raise exception 'Project suspension lock marker changed'; end if;
+  execute replace(installed,marker,'lock table parameter_catalog.source_binding_suspension_receipts,public.member_addition_intents,');
+  select pg_get_functiondef('parameter_catalog.preview_organization_deletion_0276(text,text)'::regprocedure) into strict installed;
+  marker:='for target in select * from (values';
+  if (length(installed)-length(replace(installed,marker,'')))/length(marker)<>1 then raise exception 'Organization suspension inventory marker changed'; end if;
+  execute replace(installed,marker,marker||E'\n    (''parameter_catalog.source_binding_suspension_receipts'',''catalog'',''r.organization_id=$1''),');
+  select pg_get_functiondef('parameter_catalog.purge_organization_parameter_assets(text,text,text)'::regprocedure) into strict installed;
+  marker:='  -- Fixed ownership closure, never recursive FK discovery or arbitrary tables.';
+  if (length(installed)-length(replace(installed,marker,'')))/length(marker)<>1 then raise exception 'Organization suspension lock marker changed'; end if;
+  changed:=replace(installed,marker,E'  lock table parameter_catalog.source_binding_suspension_receipts in share row exclusive mode;\n'||marker);
+  marker:='for entry in select * from (values';
+  if (length(changed)-length(replace(changed,marker,'')))/length(marker)<>1 then raise exception 'Organization suspension purge marker changed'; end if;
+  execute replace(changed,marker,marker||E'\n    (''parameter_catalog.source_binding_suspension_receipts'',''organization_id=$1''),');
+end $$;
+
+alter function parameter_catalog.protect_source_binding_suspension_receipt() owner to catalog_migration_owner;
+alter function parameter_catalog.mint_source_binding_suspensions() owner to catalog_migration_owner;
+alter function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) owner to catalog_migration_owner;
+revoke all on function parameter_catalog.protect_source_binding_suspension_receipt() from public;
+revoke all on function parameter_catalog.mint_source_binding_suspensions() from public;
+revoke all on function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) from public;
+do $$ begin
+  if exists(select 1 from pg_roles where rolname='wiseeff_api') then
+    revoke all on parameter_catalog.source_binding_suspension_receipts from wiseeff_api;
+    grant execute on function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) to wiseeff_api;
+  end if;
+end $$;
+
+-- A member tombstone retires its managed manifest. An owner already suspended
+-- before that removal was not deleted by it and must remain discoverable for a
+-- later whole-source reconciliation, including a reviewed physical transfer.
+-- Inline the exact evidence predicate, as 0236 does, so existing column-only
+-- view readers need no new DEFINER-function EXECUTE capability.
+do $$
+declare view_sql text; evidence_sql text; predicate_sql text; options text[];
+  marker text := 'occurrence.id = binding.source_occurrence_id';
+begin
+  select pg_get_viewdef('parameter_catalog.current_project_parameter_bindings'::regclass,true),reloptions
+    into strict view_sql,options from pg_class
+    where oid='parameter_catalog.current_project_parameter_bindings'::regclass;
+  select prosrc into strict evidence_sql from pg_proc
+    where oid='parameter_catalog.source_revision_exclusion_matches(text,text,text,text,text)'::regprocedure;
+  evidence_sql:=replace(replace(replace(replace(replace(evidence_sql,
+    'p_request_id','suspension_input.request_id'),'p_binding_id','suspension_input.binding_id'),
+    'p_value_id','suspension_input.value_id'),'p_pin_id','suspension_input.pin_id'),
+    'p_base_revision_id','suspension_input.base_revision_id');
+  predicate_sql:=$predicate$exists(select 1 from parameter_catalog.project_value_source_pins retained_pin
+    join (select id,organization_id,project_id,source_revision_config_set_id from public.project_parameter_value_change_requests
+        where request_kind='source_revision' and status='approved'
+      union select request_id,organization_id,project_id,config_set_id from parameter_catalog.source_binding_suspension_receipts) prior
+      on prior.organization_id=binding.organization_id and prior.project_id=binding.project_id
+        and prior.source_revision_config_set_id=tombstone.config_set_id
+    where retained_pin.binding_id=binding.id and retained_pin.project_value_id=binding.current_value_id
+      and retained_pin.source_occurrence_id=binding.source_occurrence_id
+      and retained_pin.file_id=tombstone.file_id and retained_pin.config_revision_id<>tombstone.config_revision_id
+      and not exists(select 1 from jsonb_array_elements(tombstone.binding_manifest) removed
+        where removed->>'bindingId'=binding.id)
+      and (select (__EVIDENCE__) from (select prior.id as request_id,binding.id as binding_id,
+        retained_pin.project_value_id as value_id,retained_pin.id as pin_id,
+        tombstone.config_revision_id as base_revision_id) suspension_input))$predicate$;
+  predicate_sql:=replace(predicate_sql,'__EVIDENCE__',evidence_sql);
+  if (length(view_sql)-length(replace(view_sql,marker,'')))/length(marker)<>1 then
+    raise exception 'Retained source membership view marker changed'; end if;
+  view_sql:=replace(view_sql,marker,'('||marker||' and not ('||predicate_sql||'))');
+  execute 'create or replace view parameter_catalog.current_project_parameter_bindings'
+    ||case when coalesce(array_length(options,1),0)>0 then ' with ('||array_to_string(options,',')||')' else '' end
+    ||' as '||view_sql;
+end $$;

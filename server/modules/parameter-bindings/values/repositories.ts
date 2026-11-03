@@ -12,6 +12,24 @@ import {
 import type { CanonicalValueSourcePin, CanonicalSourceBindingPin, ProjectValueKind, ProjectValuePayload } from "./types";
 import { currentManagedSourceBindingPredicate } from "../queries/currentManagedBindings";
 
+export type SourceBindingSuspensionIdentity = Pick<CanonicalSourceBindingPin,
+  "bindingId" | "oldValueId" | "sourcePinId" | "sourceOccurrenceId" | "definitionId" |
+  "effectiveRevisionId" | "catalogReleaseId" | "valueDigest"> & {
+  registrationId: string; subjectId: string; configRevisionId: string;
+  fileId: string; fileVersionId: string; format: "dts" | "json";
+};
+
+/** The database returns only a scoped, immutable suspension receipt identity. */
+export async function findOwnedSourceSuspension(tx: Queryable, input: {
+  organizationId: string; projectId: string; configSetId: string; baseConfigRevisionId: string;
+  identity: SourceBindingSuspensionIdentity;
+}): Promise<string | null> {
+  return (await tx.query<{ requestId: string | null }>(
+    `select parameter_catalog.find_source_binding_suspension($1,$2,$3,$4,$5::jsonb) as "requestId"`,
+    [input.organizationId, input.projectId, input.configSetId, input.baseConfigRevisionId, JSON.stringify(input.identity)]
+  )).rows[0]?.requestId ?? null;
+}
+
 export type ValueClient = {
   query: {
     <Row extends pg.QueryResultRow>(

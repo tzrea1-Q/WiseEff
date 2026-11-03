@@ -489,6 +489,30 @@ jobs:
         id: docs
         run: npm run docs:check
 
+      - name: Diagnose managed source migration artifacts
+        if: failure() && steps.docs.outcome == 'failure' && matrix.shard == 1
+        run: |
+          node --import tsx --input-type=module <<'NODE'
+          import { writeFile, rm } from 'node:fs/promises';
+          import { spawnSync } from 'node:child_process';
+          import { createEphemeralTestDatabase } from './server/testing/testDatabase.ts';
+          import { createPostgresDatabase } from './server/shared/database/client.ts';
+          import { readCanonicalSchemaFingerprint } from './server/testing/parameterCatalog/database.ts';
+          import { renderDbSchemaFromDatabase } from './scripts/dbSchemaDoc.ts';
+          const lane = await createEphemeralTestDatabase('managed-source-artifacts');
+          const db = createPostgresDatabase(lane.url);
+          const output = `${process.env.RUNNER_TEMP}/managed-source-schema.md`;
+          try {
+            console.log('Measured managed source schema fingerprint:', await readCanonicalSchemaFingerprint(lane.url));
+            await writeFile(output, await renderDbSchemaFromDatabase(db));
+            const diff = spawnSync('diff', ['-u', 'docs/generated/db-schema.md', output], { encoding: 'utf8' });
+            process.stdout.write(diff.stdout);
+            if (diff.status !== 0 && diff.status !== 1) throw new Error(diff.stderr || 'Schema diff failed');
+          } finally {
+            await db.close(); await lane.drop(); await rm(output, { force: true });
+          }
+          NODE
+
       - name: Backend tests (duration-balanced inventory)
         id: server
         run: node --experimental-strip-types scripts/ci-required-results.ts test server

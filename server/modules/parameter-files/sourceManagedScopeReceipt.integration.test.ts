@@ -51,6 +51,15 @@ describe("managed source exclusion and resumption SQL receipts", { timeout: 120_
     });
   }
 
+  it("grants only the bounded suspension lookup to the runtime API", async () => {
+    const privilege = (await f.api.query<{ table_write: boolean; table_read: boolean; mint: boolean; lookup: boolean }>(`
+      select has_table_privilege(current_user,'parameter_catalog.source_binding_suspension_receipts','INSERT,UPDATE,DELETE') as table_write,
+        has_table_privilege(current_user,'parameter_catalog.source_binding_suspension_receipts','SELECT') as table_read,
+        has_function_privilege(current_user,'parameter_catalog.mint_source_binding_suspensions()','EXECUTE') as mint,
+        has_function_privilege(current_user,'parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)','EXECUTE') as lookup`)).rows[0];
+    expect(privilege).toEqual({ table_write: false, table_read: false, mint: false, lookup: true });
+  });
+
   it("refuses excluding a currently managed binding by claiming retirement", async () => {
     const staged = await f.stage(sourceAdminText.replace("<36>", "<41>"), "scope-active-forgery");
     const proof = await inspect(staged.input.candidateId);

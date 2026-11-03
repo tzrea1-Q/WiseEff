@@ -8,7 +8,8 @@ import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service"
 import { reviewCanonicalValueChange, submitCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
 import { loadOwnedProjectValueSourcePin, loadSourceBindingCohortReadOnly, readOwnedCurrentBinding, readOwnedProjectValueIdentity } from "../parameter-bindings/values";
 import { listCatalogBindingRowsForProject, loadPublishedCatalog, loadRetiredOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
-import { createSourceAdminFixture, sourceAdminText } from "./sourceAdministration.testHelpers";
+import { createSourceAdminFixture, sourceAdminText, sourceAdminToolchain } from "./sourceAdministration.testHelpers";
+import { applyAdministratorMemberRemoval, previewAdministratorMemberRemoval } from "./canonicalMemberRemoval";
 
 describe("whole-source retired registration boundaries (PostgreSQL API role, toolchain stub)", () => {
   let f: Awaited<ReturnType<typeof createSourceAdminFixture>>;
@@ -336,5 +337,56 @@ describe("retired source origin movement", () => {
     const currentPin = await loadOwnedProjectValueSourcePin(f.api, { ...scope, projectValueId: resumed.binding.currentValueId });
     expect(currentPin?.fileId).toBe(f.includeFileIds.get("defaults.dtsi"));
     expect((await readSourceRevisionBindingState(f.api, scope)).historyCount).toBe(before.historyCount + 1);
+  }, 120_000);
+});
+
+describe("retained source owner after member removal", () => {
+  let f: Awaited<ReturnType<typeof createSourceAdminFixture>>;
+  const surviving = sourceAdminText.replace("<36>", "<18>");
+  beforeAll(async () => {
+    f = await createSourceAdminFixture("ret-unmount", createUserInvocation, {
+      sourceText: `${surviving}\n/include/ "override.dtsi"\n`,
+      includes: [{ fileName: "override.dtsi", content: "&charger { iin_max = <36>; };\n" }]
+    });
+  }, 120_000);
+  afterAll(async () => { await f?.close(); });
+
+  it("keeps the suspended owner discoverable after its original member is removed and resumes the same binding", async () => {
+    const row = (await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId }))[0]!;
+    const scope = { organizationId: f.organizationId, projectId: f.projectId, bindingId: row.id };
+    const original = await readOwnedCurrentBinding(f.api, scope);
+    if (original.status !== "current") throw new Error("Original source owner unavailable");
+    const pin = await loadOwnedProjectValueSourcePin(f.api, { ...scope, projectValueId: original.binding.currentValueId });
+    const removedFileId = f.includeFileIds.get("override.dtsi")!;
+    expect(pin?.fileId).toBe(removedFileId);
+    const before = await readSourceRevisionBindingState(f.api, scope);
+    await setSourceRevisionRegistrationStatus(f.db, { organizationId: f.organizationId,
+      registrationId: original.binding.registrationId, status: "retired" });
+    const moved = await f.stage(`${surviving}\n/* property now belongs to board.dts */`, "suspended-before-unmount");
+    await moved.apply();
+    expect(await readSourceRevisionBindingState(f.api, scope)).toEqual(before);
+    const target = { projectId: f.projectId, configSetId: f.configSetId, fileId: removedFileId };
+    const options = { toolchain: sourceAdminToolchain };
+    const preview = await previewAdministratorMemberRemoval(f.api, f.storage, f.auth, target, options);
+    await applyAdministratorMemberRemoval(f.api, f.storage, f.auth, { ...target, expectedProofToken: preview.proofToken,
+      reason: "Remove the now-unused historical source member", clientMutationId: "remove-suspended-owner-member" }, f.security, options);
+    expect((await f.api.query("select config_set_id from public.project_parameter_files where id=$1", [removedFileId])).rows).toEqual([{ config_set_id: null }]);
+    expect(await readOwnedCurrentBinding(f.api, scope)).toEqual(original);
+    expect((await loadSourceBindingCohortReadOnly(f.api, { ...scope, configSetId: f.configSetId })).map(entry => entry.bindingId)).toEqual([row.id]);
+    expect(await readSourceRevisionBindingState(f.api, scope)).toEqual(before);
+    expect(await loadOwnedProjectValueSourcePin(f.api, { ...scope, projectValueId: original.binding.currentValueId })).toEqual(pin);
+    expect(await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId })).toHaveLength(0);
+    await setSourceRevisionRegistrationStatus(f.db, { organizationId: f.organizationId,
+      registrationId: original.binding.registrationId, status: "active" });
+    expect(await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId })).toHaveLength(0);
+    await (await f.stage(`${surviving}\n/* reconcile surviving source */`, "resume-after-owner-unmount")).apply();
+    expect(await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId })).toMatchObject([{ id: row.id, rawValue: "<18>" }]);
+    const resumed = await readOwnedCurrentBinding(f.api, scope);
+    if (resumed.status !== "current") throw new Error("Resumed source owner unavailable");
+    expect(resumed.binding.sourceOccurrenceId).toBe(original.binding.sourceOccurrenceId);
+    expect(resumed.binding.logicalNodeId).toBe(original.binding.logicalNodeId);
+    expect((await loadOwnedProjectValueSourcePin(f.api, { ...scope, projectValueId: resumed.binding.currentValueId }))?.fileId).toBe(f.fileId);
+    expect((await readSourceRevisionBindingState(f.api, scope)).historyCount).toBe(before.historyCount + 1);
+    expect(await loadOwnedProjectValueSourcePin(f.api, { ...scope, projectValueId: original.binding.currentValueId })).toEqual(pin);
   }, 120_000);
 });

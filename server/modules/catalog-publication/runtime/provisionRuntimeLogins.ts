@@ -41,6 +41,7 @@ const CANONICAL_SOURCE_READ_FUNCTIONS = [
   "public.shared_dtsi_private_source_is_restored(text)",
   "public.restore_private_shared_dtsi_source(text,text)",
   "parameter_catalog.source_origin_matches(text, text, text)",
+  "parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)",
   "parameter_catalog.source_member_is_restored(text, text)",
   "parameter_catalog.is_replaced_current_binding(text)",
   "parameter_catalog.resolve_current_binding_by_source_occurrence(text, text, text)",
@@ -552,6 +553,14 @@ export async function provisionPublicationRuntimeLogins(
         if (!functionExists.rows[0]?.exists) continue;
         await admin.query(`revoke execute on function ${routine} from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
         await admin.query(`grant execute on function ${routine} to ${quoteIdent(names.api)}`);
+      }
+
+      // Suspension provenance is read only through the exact scoped RPC. The
+      // generic schema SELECT grant must not expose independent receipt rows.
+      if ((await admin.query<{ present: boolean }>(
+        "select to_regclass('parameter_catalog.source_binding_suspension_receipts') is not null as present"
+      )).rows[0]?.present) {
+        await admin.query(`revoke all on parameter_catalog.source_binding_suspension_receipts from ${quoteIdent(names.api)}, ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
       }
 
       await grantMembership(admin, CATALOG_PUBLICATION_COORDINATOR_ROLE, names.api);
