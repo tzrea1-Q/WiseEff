@@ -5,6 +5,7 @@ import { assertTrustedInvocationMatchesScope, type TrustedInvocationContext, typ
 import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
 import type { z } from "zod";
 import { captureModuleStructure, MODULE_STRUCTURE_MAX_BYTES } from "./export";
+import { planRecognition } from "./recognition";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance"] as const;
 
@@ -47,10 +48,11 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     const base = subjectBaselines.get(subject.subjectId);
     if (!base || seenSubjects.has(subject.subjectId)) throw new ApiError("VALIDATION_FAILED", "Unknown or duplicate Subject.", { path: `subjects.${index}.subjectId` });
     seenSubjects.add(subject.subjectId);
-    for (const [field, value] of Object.entries(subject)) if (!unchangedSubset(value, base[field as keyof typeof base]))
+    for (const [field, value] of Object.entries(subject)) if (field !== "recognition" && !unchangedSubset(value, base[field as keyof typeof base]))
       throw new ApiError("VALIDATION_FAILED", "Subject changes are not supported.", { path: `subjects.${index}.${field}` });
   }
-  const allowedChoices = new Set(document.modules.flatMap(module => fields.map(field => `${module.ref}:${field}`)));
+  const allowedChoices = new Set([...document.modules.flatMap(module => fields.map(field => `${module.ref}:${field}`)),
+    ...document.subjects.flatMap(subject => ["mode", "compatibles", "driverNature", "instanceCardinality", "nodeTypeName"].map(field => `${subject.subjectId}:recognition.${field}`))]);
   for (const key of Object.keys(resolutions)) if (!allowedChoices.has(key)) throw new ApiError("VALIDATION_FAILED", "Unknown conflict choice.", { path: `resolutions.${key}` });
   for (const [index, module] of document.modules.entries()) {
     if (seen.has(module.ref) || seen.has(`id:${module.sourceId}`)) throw new ApiError("VALIDATION_FAILED", "Duplicate module reference.", { path: `modules.${index}.ref` });
@@ -83,17 +85,21 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     if (siblingNames.has(key)) throw new ApiError("CONFLICT", "The resulting module names are not unique within their parent.");
     siblingNames.add(key);
   }
+  const recognition = await planRecognition(client, organizationId, current.source.catalogReleaseId, document.subjects, baseline.subjects,
+    moduleStructureExportSchema.parse(current).subjects, resolutions);
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
     roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
-  const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows };
-  return { changes, conflicts, token: createHash("sha256").update(stable(evidence)).digest("hex") };
+  const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, recognition: recognition.evidence };
+  return { changes, conflicts: [...conflicts, ...recognition.conflicts], recognitionChanges: recognition.changes,
+    token: createHash("sha256").update(stable(evidence)).digest("hex") };
 }
 
 export async function previewModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
   assertTrustedInvocationMatchesScope(invocation.principal, invocation, organizationId, "module structure preview");
   const client = await pool.connect();
-  try { await client.query("begin isolation level repeatable read read only"); const plan = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit"); return plan; }
+  try { await client.query("begin isolation level repeatable read read only"); const plan = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit");
+    return { changes: [...plan.changes, ...plan.recognitionChanges.map(change => ({ moduleId: change.subjectId, field: "recognition", before: change.before, after: change.after }))], conflicts: plan.conflicts, token: plan.token }; }
   catch (error) { await client.query("rollback").catch(() => undefined); throw error; }
   finally { client.release(); }
 }

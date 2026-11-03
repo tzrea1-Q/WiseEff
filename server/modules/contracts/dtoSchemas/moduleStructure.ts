@@ -38,7 +38,7 @@ const resolutions = z.record(z.string(), z.enum(["current", "file"]));
 export const moduleStructurePreviewRequestSchema = z.object({ mode: z.literal("update").default("update"), document: moduleStructureUpdateDocumentSchema, resolutions }).strict();
 export const moduleStructureApplyRequestSchema = moduleStructurePreviewRequestSchema.extend({ token: z.string().regex(/^[a-f0-9]{64}$/),
   idempotencyKey: z.string().trim().min(1).max(200), reason: z.string().trim().min(1).max(1000) }).strict();
-const fieldValue = z.union([z.string(), z.number(), z.null()]);
+const fieldValue = z.union([z.string(), z.number(), z.null(), z.array(z.string()), z.record(z.string(), z.unknown())]);
 export const moduleStructurePreviewResponseSchema = z.object({
   changes: z.array(z.object({ moduleId: z.string(), field: z.string(), before: fieldValue, after: fieldValue }).strict()),
   conflicts: z.array(z.object({ key: z.string(), moduleId: z.string(), field: z.string(), baseline: fieldValue, file: fieldValue, current: fieldValue }).strict()),

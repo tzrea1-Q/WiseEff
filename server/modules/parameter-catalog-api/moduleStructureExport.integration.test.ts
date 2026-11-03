@@ -341,6 +341,46 @@ describe("module structure export", () => {
     expect((await db.query(`select r.id,r.status,r.cascade_retired,r.current_placement_id,r.display_alias,
       rr.compatibles from parameter_catalog.organization_subject_registrations r left join registration_recognition_rules rr
       on rr.organization_id=r.organization_id and rr.registration_id=r.id where r.organization_id=$1 order by r.id`, [org])).rows).toEqual(retainedBefore);
+    const reset = structuredClone(result.body) as z.infer<typeof moduleStructureExportSchema>;
+    const recognition = reset.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!;
+    recognition.mode = "inherit"; recognition.override = null;
+    const resetPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: reset, resolutions: {} }) });
+    expect(resetPreview.status, resetPreview.bodyText).toBe(200);
+    expect(resetPreview.body).toMatchObject({ changes: [expect.objectContaining({ moduleId: "csub_acme_power", field: "recognition" })], conflicts: [] });
+    const resetResult = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: reset, resolutions: {},
+      token: (resetPreview.body as { token: string }).token, idempotencyKey: "recognition-reset", reason: "Restore defaults" }) });
+    expect(resetResult.status, resetResult.bodyText).toBe(200);
+    expect((await db.query("select 1 from registration_recognition_rules where registration_id='export-registration'")).rowCount).toBe(0);
+    const inherited = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const edited = structuredClone(inherited.body) as z.infer<typeof moduleStructureExportSchema>;
+    const editedRule = edited.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!;
+    editedRule.mode = "override"; editedRule.override = { ...editedRule.effective, compatibles: ["acme,new"] };
+    const editPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(editPreview.status, editPreview.bodyText).toBe(200);
+    const editResult = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {},
+      token: (editPreview.body as { token: string }).token, idempotencyKey: "recognition-edit", reason: "Update matching" }) });
+    expect(editResult.status, editResult.bodyText).toBe(200);
+    expect((await db.query<{ compatibles: string[] }>("select compatibles from registration_recognition_rules where registration_id='export-registration'")).rows[0]?.compatibles).toEqual(["acme,new"]);
+    const conflictExport = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const conflictDocument = structuredClone(conflictExport.body) as z.infer<typeof moduleStructureExportSchema>;
+    conflictDocument.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!.override!.compatibles = ["acme,file"];
+    await db.query("update registration_recognition_rules set compatibles=array['acme,current'] where registration_id='export-registration'");
+    const conflictPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: conflictDocument, resolutions: {} }) });
+    expect(conflictPreview.status, conflictPreview.bodyText).toBe(200);
+    expect(conflictPreview.body).toMatchObject({ conflicts: [expect.objectContaining({ key: "csub_acme_power:recognition.compatibles", baseline: ["acme,new"], file: ["acme,file"], current: ["acme,current"] })] });
+    const invalid = structuredClone(conflictDocument);
+    invalid.subjects.find(subject => subject.subjectId === "csub_acme_power")!.recognition!.override!.compatibles = ["invalid selector!"];
+    const invalidPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: invalid,
+      resolutions: { "csub_acme_power:recognition.compatibles": "file" } }) });
+    expect(invalidPreview.status).toBe(400);
+    const resolved = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: conflictDocument,
+      resolutions: { "csub_acme_power:recognition.compatibles": "file" } }) });
+    expect(resolved.status, resolved.bodyText).toBe(200);
+    await db.query("update registration_recognition_rules set compatibles=array['acme,later'] where registration_id='export-registration'");
+    const stale = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: conflictDocument,
+      resolutions: { "csub_acme_power:recognition.compatibles": "file" }, token: (resolved.body as { token: string }).token,
+      idempotencyKey: "recognition-stale", reason: "Review" }) });
+    expect(stale.status).toBe(409);
     await db.query("update parameter_catalog.organization_subject_registrations set status='active' where id='export-registration'");
     await db.query("update parameter_catalog.organization_subject_registrations set cascade_retired=false where id='export-child'");
     const active = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
