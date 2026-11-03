@@ -439,6 +439,10 @@ export const LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES =
 export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
 
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  if (method === "POST" && /^\/+api\/+v2\/+organizations\/+[^/]+\/+module-structure\/+(?:previews|applies)\/*$/.test(path)) {
+    // A 4 MiB document plus bounded conflict choices and the confirmation envelope.
+    return 8 * 1024 * 1024;
+  }
   // The ZIP is base64 encoded in a small JSON envelope.
   if (method === "POST" && /^\/+api\/+v2\/+shared-dtsi\/+import-preview\/*$/u.test(path)) return Math.ceil(sharedDtsiImportLimits.maxArchiveBytes / 3) * 4 + 64 * 1024;
   // Base64 of a bounded 17 MiB ZIP plus the name, ownership choice and confirmation.

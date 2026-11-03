@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { moduleStructureExportSchema } from "./moduleStructure";
+import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema, moduleStructurePreviewResponseSchema, moduleStructureApplyRequestSchema, moduleStructureReceiptSchema } from "./moduleStructure";
 import { dtsBuildInputsSchema, dtsPreprocessingReceiptSchema } from "./dtsPreprocessing";
 
 import {
@@ -1715,6 +1715,10 @@ export const projectValueDraftRemovedResponseSchema = itemEnvelopeSchema(
 
 export const parameterCatalogDtoSchemaCatalog = {
   ModuleStructureExport: moduleStructureExportSchema,
+  ModuleStructurePreviewRequest: moduleStructurePreviewRequestSchema,
+  ModuleStructurePreviewResponse: moduleStructurePreviewResponseSchema,
+  ModuleStructureApplyRequest: moduleStructureApplyRequestSchema,
+  ModuleStructureReceipt: moduleStructureReceiptSchema,
   CatalogLegacySpecListResponse: catalogLegacySpecListResponseSchema,
   CatalogLegacySpecResponse: catalogLegacySpecResponseSchema,
   CatalogProposalUnavailableResponse: catalogProposalUnavailableResponseSchema,
@@ -1969,6 +1973,12 @@ export const parameterCatalogCanonicalRoutes = [
     module: "catalog", stability: "mvp"
   },
   {
+    id: "catalog.previewModuleStructure", method: "POST",
+    path: "/api/v2/organizations/:organizationId/module-structure/previews",
+    module: "catalog", stability: "mvp"
+  },
+  { id: "catalog.applyModuleStructure", method: "POST", path: "/api/v2/organizations/:organizationId/module-structure/applies", module: "catalog", stability: "mvp" },
+  {
     id: "catalog.getRegistrationRecognition", method: "GET",
     path: "/api/v2/organizations/:organizationId/subject-registrations/:registrationId/recognition",
     module: "catalog", stability: "mvp"
@@ -2183,6 +2193,8 @@ export const parameterCatalogRouteGates: Record<
   "catalog.updatePlacement": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.getRegistrationRecognition": ["PCAT-API-04"],
   "catalog.exportModuleStructure": ["PCAT-API-04", "PCAT-API-10"],
+  "catalog.previewModuleStructure": ["PCAT-API-04", "PCAT-API-10"],
+  "catalog.applyModuleStructure": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.updateRegistrationRecognition": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.listObservations": ["PCAT-API-05"],
   "catalog.getObservation": ["PCAT-API-05"],
@@ -2246,6 +2258,8 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.updatePlacement": "updatePlacement",
   "catalog.getRegistrationRecognition": "getRegistrationRecognition",
   "catalog.exportModuleStructure": "exportModuleStructure",
+  "catalog.previewModuleStructure": "previewModuleStructure",
+  "catalog.applyModuleStructure": "applyModuleStructure",
   "catalog.updateRegistrationRecognition": "updateRegistrationRecognition",
   "catalog.listObservations": "listObservations",
   "catalog.getObservation": "getObservation",
@@ -2628,6 +2642,11 @@ export const parameterCatalogSchemaRegistry = {
     summary: "Export the complete organization module structure", tags: ["catalog"],
     responseBody: "ModuleStructureExport", additionalResponses: catalogWriteErrors
   },
+  "catalog.previewModuleStructure": {
+    summary: "Preview an organization module structure update", tags: ["catalog"],
+    requestBody: "ModuleStructurePreviewRequest", responseBody: "ModuleStructurePreviewResponse", additionalResponses: catalogWriteErrors
+  },
+  "catalog.applyModuleStructure": { summary: "Apply a reviewed module structure update", tags: ["catalog"], requestBody: "ModuleStructureApplyRequest", responseBody: "ModuleStructureReceipt", additionalResponses: catalogWriteErrors },
   "catalog.updateRegistrationRecognition": {
     summary: "Update organization recognition rules for a subject registration", tags: ["catalog"],
     requestBody: "CatalogRegistrationRecognitionUpdate", responseBody: "CatalogRegistrationRecognitionResponse",
