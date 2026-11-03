@@ -6,6 +6,7 @@ import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema } from
 import type { z } from "zod";
 import { captureModuleStructure, MODULE_STRUCTURE_MAX_BYTES } from "./export";
 import { planSubjectPlacement } from "./subjects";
+import type { LifecycleChange } from "./lifecycle";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance"] as const;
 
@@ -44,14 +45,34 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     stable(document.references) !== stable(baseline.references)) throw new ApiError("VALIDATION_FAILED", "Unsupported changes outside module metadata.");
   const subjectBaselines = new Map(baseline.subjects.map(subject => [subject.subjectId, subject]));
   const seenSubjects = new Set<string>();
+  const lifecycle: LifecycleChange[] = [];
   for (const [index, subject] of document.subjects.entries()) {
     const base = subjectBaselines.get(subject.subjectId);
-    if (!base || seenSubjects.has(subject.subjectId)) throw new ApiError("VALIDATION_FAILED", "Unknown or duplicate Subject.", { path: `subjects.${index}.subjectId` });
+    if (seenSubjects.has(subject.subjectId)) throw new ApiError("VALIDATION_FAILED", "Duplicate Subject.", { path: `subjects.${index}.subjectId` });
     seenSubjects.add(subject.subjectId);
-    for (const [field, value] of Object.entries(subject)) if (field !== "placement" && field !== "displayAlias" && !unchangedSubset(value, base[field as keyof typeof base]))
+    if (subject.operation) {
+      const target = current.subjects.find(row => row.subjectId === subject.subjectId);
+      const catalog = (await client.query<{ kind: LifecycleChange["kind"]; owner_subject_id: string | null; lifecycle: string; registration_id: string | null }>(`select s.kind,s.owner_subject_id,rs.lifecycle,r.id as registration_id
+        from parameter_catalog.catalog_subjects s join parameter_catalog.catalog_state cs on cs.singleton
+        join parameter_catalog.catalog_release_subjects rs on rs.release_id=cs.current_catalog_release_id and rs.subject_id=s.id
+        left join parameter_catalog.organization_subject_registrations r on r.organization_id=$1 and r.subject_id=s.id where s.id=$2`, [organizationId, subject.subjectId])).rows[0];
+      if (!catalog || catalog.owner_subject_id || (subject.operation !== "retire" && catalog.lifecycle !== "active")) throw new ApiError("CONFLICT", "Catalog Subject is unavailable or owned by a driver.", { path: `subjects.${index}.subjectId` });
+      if (subject.operation === "register") {
+        if (base || target) throw new ApiError("CONFLICT", "Subject is already registered; restore retired registrations explicitly.");
+        if (!subject.placement || (subject.placement.kind !== "module" && subject.placement.kind !== "unclassified")) throw new ApiError("VALIDATION_FAILED", "Registration requires a business module or unclassified.");
+        const moduleId = subject.placement.kind === "module" ? current.modules.find(module => module.ref === (subject.placement as { moduleRef: string }).moduleRef)?.sourceId :
+          (await client.query<{ id: string }>("select id from parameter_modules where organization_id=$1 and kind='unclassified' and parent_id is null and archived_at is null", [organizationId])).rows[0]?.id;
+        if (!moduleId) throw new ApiError("CONFLICT", "Placement destination is unavailable.");
+        lifecycle.push({ subjectId: subject.subjectId, operation: "register", kind: catalog.kind, moduleId, ...(subject.displayAlias ? { displayAlias: subject.displayAlias } : {}) });
+      } else {
+        if (!base || !target || base.ownerSubjectId || !catalog.registration_id || base.state !== target.state || target.state !== (subject.operation === "retire" ? "active" : "retired")) throw new ApiError("CONFLICT", "Subject lifecycle changed after export.");
+        lifecycle.push({ subjectId: subject.subjectId, operation: subject.operation, kind: catalog.kind, registrationId: catalog.registration_id });
+      }
+    } else if (!base) throw new ApiError("VALIDATION_FAILED", "Unknown Subject.", { path: `subjects.${index}.subjectId` });
+    for (const [field, value] of Object.entries(subject)) if (field !== "subjectId" && field !== "operation" && field !== "placement" && field !== "displayAlias" && (!base || !unchangedSubset(value, base[field as keyof typeof base])))
       throw new ApiError("VALIDATION_FAILED", "Subject changes are not supported.", { path: `subjects.${index}.${field}` });
   }
-  const subjectPlan = planSubjectPlacement(document.subjects, baseline.subjects, moduleStructureExportSchema.parse(current).subjects, resolutions);
+  const subjectPlan = planSubjectPlacement(document.subjects.filter(subject => subject.operation !== "register"), baseline.subjects, moduleStructureExportSchema.parse(current).subjects, resolutions);
   const moduleIds = new Map(current.modules.map(module => [module.ref, module.sourceId]));
   for (const change of subjectPlan.changes) if (change.field === "placement" && typeof change.after === "object" && change.after?.kind === "module" && !moduleIds.has(change.after.moduleRef))
     throw new ApiError("CONFLICT", "Placement destination is unavailable.");
@@ -64,12 +85,14 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     join parameter_catalog.subject_placements p on p.id=r.current_placement_id and p.organization_id=r.organization_id
     join parameter_catalog.catalog_subjects s on s.id=r.subject_id
     where r.organization_id=$1 order by r.subject_id`, [organizationId]);
-  const impactedIds = [...new Set([...subjectPlan.changes, ...subjectPlan.conflicts].map(change => change.subjectId))];
-  const impact = impactedIds.length ? (await client.query<{ subjectId: string; projectId: string }>(`select distinct owner.subject_id as "subjectId", b.project_id as "projectId"
+  const impactedIds = [...new Set([...subjectPlan.changes, ...subjectPlan.conflicts, ...lifecycle].map(change => change.subjectId))];
+  const impact = impactedIds.length ? (await client.query<{ subjectId: string; projectId: string; bindingCount: number; definitions: string[]; bindingVersions: string[] }>(`select owner.subject_id as "subjectId", b.project_id as "projectId", count(*)::int as "bindingCount",
+    array_agg(distinct b.definition_id order by b.definition_id) as definitions,
+    array_agg(b.id || ':' || b.effective_revision_id || ':' || b.updated_at::text order by b.id) as "bindingVersions"
     from parameter_catalog.organization_subject_registrations owner
     join parameter_catalog.catalog_subjects s on s.id=owner.subject_id or s.owner_subject_id=owner.subject_id
     join parameter_catalog.project_parameter_bindings b on b.organization_id=owner.organization_id and b.subject_id=s.id
-    where owner.organization_id=$1 and owner.subject_id=any($2::text[]) order by 1,2`, [organizationId, impactedIds])).rows : [];
+    where owner.organization_id=$1 and owner.subject_id=any($2::text[]) group by 1,2 order by 1,2`, [organizationId, impactedIds])).rows : [];
   const allowedChoices = new Set([...document.modules.flatMap(module => fields.map(field => `${module.ref}:${field}`)),
     ...document.subjects.flatMap(subject => ["placement", "displayAlias"].map(field => `subject:${subject.subjectId}:${field}`))]);
   for (const key of Object.keys(resolutions)) if (!allowedChoices.has(key)) throw new ApiError("VALIDATION_FAILED", "Unknown conflict choice.", { path: `resolutions.${key}` });
@@ -107,16 +130,16 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
     roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
   const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, subjectVersions: subjectVersions.rows, impact };
-  return { changes: [...changes, ...subjectPlan.changes.map(({ subjectId, ...change }) => ({ moduleId: `subject:${subjectId}`, ...change }))],
+  return { changes: [...changes, ...subjectPlan.changes.map(({ subjectId, ...change }) => ({ moduleId: `subject:${subjectId}`, ...change })), ...lifecycle.map(change => ({ moduleId: `subject:${change.subjectId}`, field: "state", before: change.operation === "register" ? null : change.operation === "retire" ? "active" : "retired", after: change.operation === "retire" ? "retired" : "active" }))],
     conflicts: [...conflicts, ...subjectPlan.conflicts.map(({ subjectId, ...conflict }) => ({ moduleId: `subject:${subjectId}`, ...conflict }))],
-    subjectChanges: subjectPlan.changes, moduleIds, impact, token: createHash("sha256").update(stable(evidence)).digest("hex") };
+    subjectChanges: subjectPlan.changes, lifecycle, moduleIds, impact: impact.map(({ bindingVersions: _versions, ...item }) => item), token: createHash("sha256").update(stable(evidence)).digest("hex") };
 }
 
 export async function previewModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
   assertTrustedInvocationMatchesScope(invocation.principal, invocation, organizationId, "module structure preview");
   const client = await pool.connect();
-  try { await client.query("begin isolation level repeatable read read only"); const { subjectChanges: _subjectChanges, moduleIds: _moduleIds, ...plan } = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit"); return plan; }
+  try { await client.query("begin isolation level repeatable read read only"); const { subjectChanges: _subjectChanges, lifecycle: _lifecycle, moduleIds: _moduleIds, ...plan } = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit"); return plan; }
   catch (error) { await client.query("rollback").catch(() => undefined); throw error; }
   finally { client.release(); }
 }

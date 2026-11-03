@@ -73,6 +73,46 @@ describe("module structure export", () => {
     expect(after.rows).toEqual(before.rows);
   });
 
+  it("registers an explicitly requested Catalog root through the transfer", async () => {
+    const org = "lifecycle-export-org";
+    await db.query("insert into organizations(id,name) values ($1,'Lifecycle')", [org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('lifecycle-export-role',$1,$2,'admin')", [user, org]);
+    await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('lifecycle-export-root',$1,'Root','lifecycle-export-root','business','curated')", [org]);
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    const subject = await db.query<{ id: string }>(`select s.id from parameter_catalog.catalog_subjects s
+      join parameter_catalog.catalog_release_subjects rs on rs.subject_id=s.id
+      join parameter_catalog.catalog_state cs on cs.current_catalog_release_id=rs.release_id
+      where s.owner_subject_id is null and s.kind='driver' and rs.lifecycle='active' order by s.id limit 1`);
+    const subjectId = subject.rows[0]!.id;
+    const edited = { ...document, subjects: [...document.subjects, { subjectId, operation: "register", placement: { kind: "module", moduleRef: "lifecycle-export-root" } }] };
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    expect(preview.body).toMatchObject({ changes: [expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })] });
+    const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "register-root", reason: "Reviewed registration" }) });
+    expect(applied.status, applied.bodyText).toBe(200);
+    const next = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+    expect(next.body).toMatchObject({ subjects: expect.arrayContaining([expect.objectContaining({ subjectId, state: "active", placement: { kind: "module", moduleRef: "lifecycle-export-root" } })]) });
+    const identity = (await db.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [org, subjectId])).rows[0]!.id;
+    for (const operation of ["retire", "restore"] as const) {
+      const current = structuredClone(next.body) as z.infer<typeof moduleStructureExportSchema>;
+      if (operation === "restore") {
+        const refreshed = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+        Object.assign(current, refreshed.body);
+      }
+      const root = current.subjects.find(row => row.subjectId === subjectId)!;
+      const lifecycleDocument = { ...current, subjects: current.subjects.map(row => row === root ? { ...row, operation } : row) };
+      const planned = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {} }) });
+      expect(planned.status, planned.bodyText).toBe(200);
+      const done = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: lifecycleDocument, resolutions: {}, token: (planned.body as { token: string }).token, idempotencyKey: operation, reason: "Reviewed lifecycle" }) });
+      expect(done.status, done.bodyText).toBe(200);
+      const stored = await db.query("select id,status from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [org, subjectId]);
+      expect(stored.rows).toEqual([{ id: identity, status: operation === "retire" ? "retired" : "active" }]);
+    }
+  });
+
   it("merges independent field edits and asks for conflicting field choices", async () => {
     const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });

@@ -14,11 +14,11 @@ type Preview = {
   token: string;
   changes: { moduleId: string; field: string; before: unknown; after: unknown }[];
   conflicts: { key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }[];
-  impact?: { subjectId: string; projectId: string }[];
+  impact?: { subjectId: string; projectId: string; bindingCount: number; definitions: string[] }[];
 };
 type Receipt = { id: string; organizationId: string; changedModules: number; changedFields: number };
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
-const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", placement: "归属", displayAlias: "展示别名" };
+const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", placement: "归属", displayAlias: "展示别名", state: "登记状态" };
 
 export function ModuleStructureImport({ apiClient, organizationId, canImport, onChanged }: {
   apiClient?: ApiClient; organizationId?: string; canImport: boolean; onChanged?: () => void;
@@ -105,7 +105,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
       <ModalDialog open={!discard} onDismiss={busy ? undefined : requestClose} className="submission-dialog param-admin-module-edit-dialog module-structure-import" describedBy>
         {({ titleId, descriptionId }) => <>
           <div className="submission-dialog-head"><div><h2 id={titleId}>导入模块结构</h2>
-            <p id={descriptionId}>更新当前组织已有模块资料、根主体归属和展示别名。新增、模块移动、删除、识别设置和跨组织复制尚不支持。</p></div></div>
+            <p id={descriptionId}>更新当前组织已有模块资料、根主体登记状态、归属和展示别名。新增模块、模块移动、删除、识别设置和跨组织复制尚不支持。</p></div></div>
           <div className="param-admin-module-edit-body">
             {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy} onChange={async event => {
               const file = event.target.files?.[0]; if (!file) return;
@@ -122,7 +122,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
             {preview && !receipt ? <>
               <h3>变更（{preview.changes.length}）</h3>
               {preview.changes.length ? <ul>{preview.changes.map((change, index) => <li key={`${change.moduleId}:${change.field}:${index}`}>{moduleLabel(change.moduleId)} · {fieldLabels[change.field] ?? change.field}：{displayValue(change.before)} → {displayValue(change.after)}</li>)}</ul> : <p>没有领域数据变更。</p>}
-              {preview.impact?.length ? <><h3>受影响项目</h3><ul>{preview.impact.map(item => <li key={`${item.subjectId}:${item.projectId}`}>主体 {item.subjectId} · 项目 {item.projectId}</li>)}</ul></> : null}
+              {preview.impact?.length ? <><h3>受影响项目</h3><ul>{preview.impact.map(item => <li key={`${item.subjectId}:${item.projectId}`}>主体 {item.subjectId} · 项目 {item.projectId} · 绑定 {item.bindingCount} · 定义 {item.definitions.join("、")}</li>)}</ul></> : null}
               <h3>待解决冲突（{preview.conflicts.length}）</h3>
               {preview.conflicts.map(conflict => <div key={conflict.key}>
                 <strong>{moduleLabel(conflict.moduleId)} · {fieldLabels[conflict.field] ?? conflict.field}</strong>
