@@ -921,11 +921,20 @@ describe("module structure export", () => {
     try {
       const exported = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
       expect(exported.status, exported.bodyText).toBe(200);
-      const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+      let document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+      const padding = 4 * 1024 * 1024 - Buffer.byteLength(JSON.stringify(document));
+      expect(padding).toBeGreaterThanOrEqual(0);
+      await db.query("update parameter_modules set description=description || $1 where id='export-root'", ["x".repeat(padding)]);
+      const exact = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
+      expect(exact.status, exact.bodyText).toBe(200);
+      document = structuredClone(exact.body) as z.infer<typeof moduleStructureExportSchema>;
+      expect(Buffer.byteLength(JSON.stringify(document))).toBe(4 * 1024 * 1024);
       const path = `/api/v2/organizations/${org}/module-structure/previews`;
       const accepted = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
       expect(accepted.status, accepted.bodyText).toBe(200);
-      document.modules[0]!.description += "x".repeat(8192);
+      const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (accepted.body as { token: string }).token, idempotencyKey: "byte-limit-noop", reason: "Verify full round trip" }) });
+      expect(applied.status, applied.bodyText).toBe(200);
+      document.modules[0]!.description += "x";
       const rejected = await requestJson(app, path, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
       expect(rejected.status).toBe(400);
     } finally { await db.query("update parameter_modules set description=$1 where id='export-root'", [original]); }
@@ -1244,6 +1253,15 @@ describe("module structure export", () => {
     const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: maximum.body, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "maximum-noop", reason: "Verify full round trip" }) });
     expect(applied.status, applied.bodyText).toBe(200);
     expect(applied.body).toMatchObject({ changedModules: 0, changedFields: 0 });
+    const edited = structuredClone(maximum.body) as z.infer<typeof moduleStructureExportSchema>;
+    edited.modules.find(module => module.sourceId === "export-root")!.description = "Scale update";
+    edited.modules.find(module => module.sourceId === "export-scale-1")!.parentRef = "export-root";
+    const mixedPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(mixedPreview.status, mixedPreview.bodyText).toBe(200);
+    const mixedApply = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (mixedPreview.body as { token: string }).token, idempotencyKey: "maximum-mixed", reason: "Verify full package" }) });
+    expect(mixedApply.status, mixedApply.bodyText).toBe(200);
+    expect((await db.query("select description from parameter_modules where id='export-root'")).rows).toEqual([{ description: "Scale update" }]);
+    expect((await db.query("select parent_id from parameter_modules where id='export-scale-1'")).rows).toEqual([{ parent_id: "export-root" }]);
     const before = (await db.query("select count(*)::int as count from parameter_catalog.module_structure_export_baselines where organization_id=$1", [org])).rows[0];
     await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ('export-excess',$1,'Excess','export-excess','business','curated')", [org]);
     const excess = await requestJson(app, path, { method: "POST", body: "{}" });
