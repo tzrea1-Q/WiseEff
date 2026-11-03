@@ -298,6 +298,10 @@ describe("module structure export", () => {
     const preview = await requestJson(targetApp, `${path}/previews`, { method: "POST", body: JSON.stringify(input) });
     expect(preview.status, preview.bodyText).toBe(200);
     expect(preview.body).toMatchObject({ mappings: expect.arrayContaining([expect.objectContaining({ ref: "export-root", candidates: expect.arrayContaining([expect.objectContaining({ id: "copy-existing" })]) })]) });
+    const withoutName = { ...document, modules: document.modules.map(module => module.ref === "export-root" ? { ref: module.ref, sourceId: module.sourceId } : module) };
+    const partialChoice = await requestJson(targetApp, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input, document: withoutName }) });
+    expect(partialChoice.status, partialChoice.bodyText).toBe(200);
+    expect(partialChoice.body).toMatchObject({ conflicts: expect.arrayContaining([expect.objectContaining({ key: "mapping:export-root", file: null })]) });
     const choices = { "export-root": "copy-existing", "copy-child": "create" };
     await db.query("update parameter_modules set description='Target description' where id='copy-existing'");
     const conflicting = await requestJson(targetApp, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input, mappings: choices }) });

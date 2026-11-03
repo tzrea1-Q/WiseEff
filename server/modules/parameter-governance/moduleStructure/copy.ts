@@ -91,7 +91,7 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
   for (const module of active) {
     const prior = savedByRef.get(module.ref); const choice = prior?.module_id ?? choices[module.ref];
     if (prior && choices[module.ref] && choices[module.ref] !== prior.module_id) throw new ApiError("CONFLICT", "A saved module mapping cannot be changed.");
-    if (!choice) { conflicts.push({ key: `mapping:${module.ref}`, moduleId: module.ref, field: "mapping", baseline: null, file: module.name, current: null }); continue; }
+    if (!choice) { conflicts.push({ key: `mapping:${module.ref}`, moduleId: module.ref, field: "mapping", baseline: null, file: module.name ?? null, current: null }); continue; }
     if (choice !== "create") {
       const target = byId.get(choice);
       if (!target || target.kind !== "business") throw new ApiError("CONFLICT", prior ? "A mapped module was deleted." : "The selected target module is unavailable.");
