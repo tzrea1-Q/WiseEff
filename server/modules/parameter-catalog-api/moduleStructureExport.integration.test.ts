@@ -329,6 +329,17 @@ describe("module structure export", () => {
         expect.objectContaining({ subjectId: "csub_acme_charger", ownerSubjectId: "csub_acme_power", state: "retired", cascadeRetired: true,
           placement: null, recognition: expect.objectContaining({ mode: "inherit", override: null }) })]) });
     expect((result.body as { modules: unknown[] }).modules).toHaveLength(251);
+    const retainedBefore = (await db.query(`select r.id,r.status,r.cascade_retired,r.current_placement_id,r.display_alias,
+      rr.compatibles from parameter_catalog.organization_subject_registrations r left join registration_recognition_rules rr
+      on rr.organization_id=r.organization_id and rr.registration_id=r.id where r.organization_id=$1 order by r.id`, [org])).rows;
+    const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: result.body, resolutions: {} }) });
+    expect(preview.body).toMatchObject({ changes: [], conflicts: [] });
+    const roundTrip = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({
+      document: result.body, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "populated-no-op", reason: "Round trip" }) });
+    expect(roundTrip.status, roundTrip.bodyText).toBe(200);
+    expect((await db.query(`select r.id,r.status,r.cascade_retired,r.current_placement_id,r.display_alias,
+      rr.compatibles from parameter_catalog.organization_subject_registrations r left join registration_recognition_rules rr
+      on rr.organization_id=r.organization_id and rr.registration_id=r.id where r.organization_id=$1 order by r.id`, [org])).rows).toEqual(retainedBefore);
     await db.query("update parameter_catalog.organization_subject_registrations set status='active' where id='export-registration'");
     await db.query("update parameter_catalog.organization_subject_registrations set cascade_retired=false where id='export-child'");
     const active = await requestJson(app, `/api/v2/organizations/${org}/module-structure/exports`, { method: "POST", body: "{}" });
