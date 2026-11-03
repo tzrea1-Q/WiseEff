@@ -12,7 +12,7 @@ import { loadOrganizationCatalogSnapshot } from "../parameter-modules/recognitio
 import { resolveDtsConfigSetAsync } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import { loadPublishedCatalog, rawTextToPayload, resolveObservedSubject, parseCompatibles, nearestAncestorCompatibles,
-  lockSourceCatalogGovernance, loadActiveOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
+  lockSourceCatalogGovernance, loadActiveOrganizationSourceRegistrations, loadRetiredOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
 import { loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin,
   loadProjectBindingCatalogReleaseIds, readOwnedCurrentBinding, readOwnedProjectValueIdentity,
   hasSourceConfigurationDrafts } from "../parameter-bindings/values";
@@ -273,6 +273,10 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     restorationNodes: sourceRestorationNodes(anchors) });
   const registrations = await loadActiveOrganizationSourceRegistrations(tx, { organizationId: parameterOrganizationId(auth) });
   const registered = new Map(registrations.map((row) => [row.subjectId, row.id]));
+  // Retirement excludes new adoption, but unchanged retained values still need
+  // an exact source pin in the successor configuration (ADR-0042).
+  const retired = new Map((await loadRetiredOrganizationSourceRegistrations(tx, { organizationId: parameterOrganizationId(auth) }))
+    .map((row) => [row.subjectId, row.id]));
   const sourceProperties: SourceRevisionNewProperty[] = [];
   if (snapshot) for (const node of resolved.effective.nodesByLocator.values()) {
     if (node.deleted) continue;
@@ -309,10 +313,12 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
     }
     const currentBinding = await readOwnedCurrentBinding(tx, { organizationId: parameterOrganizationId(auth),
       projectId: input.projectId, bindingId: entry.bindingId });
-    if (currentBinding.status !== "current" || registered.get(currentBinding.binding.subjectId) !== currentBinding.binding.registrationId) {
-      conflict("A current source Binding's organization registration is no longer active.");
-    }
+    if (currentBinding.status !== "current") conflict("A source Binding is no longer current.");
     const registration = currentBinding.binding;
+    const registrationActive = registered.get(registration.subjectId) === registration.registrationId;
+    if (!registrationActive && retired.get(registration.subjectId) !== registration.registrationId) {
+      conflict("A current source Binding's organization registration no longer matches.");
+    }
     const definition = pinnedSnapshot.getDefinitionRevision({ definitionId: ParameterDefinitionId(entry.definitionId), revisionId: DefinitionRevisionId(entry.effectiveRevisionId) });
     if (definition.status !== "found") conflict("A pinned parameter Definition is unavailable.");
     const old = await readOwnedProjectValueIdentity(tx, { organizationId: parameterOrganizationId(auth),
@@ -348,6 +354,12 @@ export async function inspectSourceRevision(tx: Database, storage: ObjectStore, 
       && resolvedSubject?.subjectId === registration.subjectId
       ? { payload: rawTextToPayload(pin.locator.propertyName, property.rawText), fileId: originMember.fileId, propertyName: pin.locator.propertyName }
       : null;
+    if (!registrationActive && (!source || source.fileId !== pin.fileId || !sameSourceRevision(old.value.payload, source.payload))) {
+      throw new ApiError("CONFLICT", `参数「${pin.locator.propertyName}」的组织登记已停用，不能修改、删除或转移其来源。请保持该参数不变，或先恢复登记。`, {
+        reason: "source-registration-retired-change", bindingId: entry.bindingId,
+        registrationId: registration.registrationId, subjectId: registration.subjectId, propertyName: pin.locator.propertyName
+      });
+    }
     const frozen = { ...entry, fileId: pin.fileId, fileVersionId: pin.fileVersionId, logicalNodeId: pin.logicalNodeId,
       propertyName: pin.locator.propertyName, valueState: "present" as const, locator: pin.locator };
     cohort.push(frozen);
