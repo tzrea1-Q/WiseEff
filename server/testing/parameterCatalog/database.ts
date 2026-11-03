@@ -242,7 +242,7 @@ export const S2_SCH_0325_FINGERPRINT =
 
 /** 0326 separates managed source scope and retains independently audited suspension receipts. */
 export const S2_SCH_0326_FINGERPRINT =
-  "26ead0a92d8585c9445a197a7212c5a7ae233c98c188b88ae7ac63dc86fce9f7";
+  "4620e1d2052d7b2156c4f50cc5fd44ee2c09fe425953e9e79055b2305444fb43";
 
 export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0326_FINGERPRINT;
 

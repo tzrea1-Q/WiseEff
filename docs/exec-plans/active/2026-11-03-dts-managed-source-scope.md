@@ -13,7 +13,7 @@ The source editor currently rejects a whole DTS save when a retained parameter's
 | Eligible current subject and definition, active registration and required owner | Allowed after normal source validation and authorization | Append values and exact source pins, including ordinary deletion receipts | Current synchronized value |
 | Inactive registration, current subject, required owner or current definition | Allow modification, removal and origin movement | Freeze an exclusion; retain the prior value, pin and history | Excluded |
 | Unknown or unregistered property | Preserve as valid source content | No implicit definition, registration or Binding creation | Excluded |
-| Restored eligibility with a historical pin | Allow source editing | Reconcile the same Binding from latest effective source during the next authorized save | Hidden until reconciliation |
+| Restored eligibility with an exact trusted suspension receipt for the retained tip | Allow source editing | Reconcile the same Binding from latest effective source during the next authorized save | Hidden until reconciliation |
 | Restored eligibility whose property is still absent | Allow source editing | Keep the historical Binding and exclusion; do not write the old value into source | Excluded |
 
 A `deprecated` Definition remains eligible for synchronization and current reads; only `retired` leaves the managed definition scope. A subject requiring an owning subject is eligible only while that owner and its Organization registration are active. An inactive owner yields `owner-inactive`, even if the child's own registration remains active.

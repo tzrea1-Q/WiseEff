@@ -2053,6 +2053,10 @@ Constraints:
 - `source_binding_suspension_receipts_source_pin_id_fkey`: FOREIGN KEY (source_pin_id) REFERENCES parameter_catalog.project_value_source_pins(id) ON DELETE RESTRICT
 - `source_binding_suspension_receipts_source_proof_digest_check`: CHECK ((source_proof_digest ~ '^[0-9a-f]{64}$'::text))
 
+Indexes:
+
+- `source_binding_suspension_receipts_current_tip_idx`: INDEX source_binding_suspension_receipts_current_tip_idx ON parameter_catalog.source_binding_suspension_receipts USING btree (binding_id, old_value_id)
+
 ### parameter_catalog.subject_placements
 
 | Column | Type | Nullable | Default |
