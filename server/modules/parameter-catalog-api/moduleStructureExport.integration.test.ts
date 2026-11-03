@@ -93,8 +93,13 @@ describe("module structure export", () => {
     const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(preview.status, preview.bodyText).toBe(200);
     expect(preview.body).toMatchObject({ changes: [expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })] });
-    const applied = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "register-root", reason: "Reviewed registration" }) });
+    const applyBody = JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "register-root", reason: "Reviewed registration" });
+    const secondApp = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const [applied, simultaneous] = await Promise.all([app, secondApp].map(server => requestJson(server, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: applyBody })));
     expect(applied.status, applied.bodyText).toBe(200);
+    expect(simultaneous.status, simultaneous.bodyText).toBe(200);
+    expect(simultaneous.body).toEqual(applied.body);
     const replay = await requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "register-root", reason: "Reviewed registration" }) });
     expect(replay.body).toEqual(applied.body);
     const duplicate = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });

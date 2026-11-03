@@ -64,14 +64,16 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
       if (!catalog || catalog.owner_subject_id || (subject.operation !== "retire" && catalog.lifecycle !== "active")) throw new ApiError("CONFLICT", "Catalog Subject is unavailable or owned by a driver.", { path: `subjects.${index}.subjectId` });
       if (subject.operation === "register") {
         if (base || target) throw new ApiError("CONFLICT", "Subject is already registered; restore retired registrations explicitly.");
+        if (subject.displayAlias !== undefined && subject.displayAlias !== null && (!subject.displayAlias.trim() || subject.displayAlias !== subject.displayAlias.trim() || [...subject.displayAlias].length > 128 || /[\u0000-\u001f\u007f-\u009f]/u.test(subject.displayAlias)))
+          throw new ApiError("VALIDATION_FAILED", "Invalid display alias.", { path: `subjects.${index}.displayAlias` });
         if (!subject.placement || (subject.placement.kind !== "module" && subject.placement.kind !== "unclassified")) throw new ApiError("VALIDATION_FAILED", "Registration requires a business module or unclassified.");
         const moduleId = subject.placement.kind === "module" ? current.modules.find(module => module.ref === (subject.placement as { moduleRef: string }).moduleRef)?.sourceId :
           (await client.query<{ id: string }>("select id from parameter_modules where organization_id=$1 and kind='unclassified' and parent_id is null and archived_at is null", [organizationId])).rows[0]?.id;
         if (!moduleId) throw new ApiError("CONFLICT", "Placement destination is unavailable.");
         lifecycle.push({ subjectId: subject.subjectId, operation: "register", kind: catalog.kind, moduleId, ...(subject.displayAlias ? { displayAlias: subject.displayAlias } : {}) });
       } else {
-        if (!base || !target || base.ownerSubjectId || !catalog.registration_id || base.state !== target.state || target.state !== (subject.operation === "retire" ? "active" : "retired")) throw new ApiError("CONFLICT", "Subject lifecycle changed after export.");
-        lifecycle.push({ subjectId: subject.subjectId, operation: subject.operation, kind: catalog.kind, registrationId: catalog.registration_id });
+        if (!base || !target || base.ownerSubjectId || !catalog.registration_id || base.state !== (subject.operation === "retire" ? "active" : "retired")) throw new ApiError("CONFLICT", "Subject lifecycle changed after export.");
+        if (target.state === base.state) lifecycle.push({ subjectId: subject.subjectId, operation: subject.operation, kind: catalog.kind, registrationId: catalog.registration_id });
       }
     } else if (!base) throw new ApiError("VALIDATION_FAILED", "Unknown Subject.", { path: `subjects.${index}.subjectId` });
     for (const [field, value] of Object.entries(subject)) if (field !== "subjectId" && field !== "operation" && field !== "placement" && field !== "displayAlias" && (!base || !unchangedSubset(value, base[field as keyof typeof base])))
