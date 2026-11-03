@@ -334,17 +334,21 @@ describe("module structure export", () => {
     missing.subjects[0]!.subjectId = "missing-catalog-subject";
     const missingCatalog = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input, document: missing }) });
     expect(missingCatalog.status).toBe(409);
+    const auditsBeforeFailure = (await db.query("select count(*)::int as count from audit_events where organization_id=$1", [target])).rows[0];
     for (const [table, action] of [["parameter_modules", "insert"], ["parameter_catalog.module_structure_created_refs", "insert"],
       ["parameter_catalog.organization_subject_registrations", "insert"], ["registration_recognition_rules", "insert"],
       ["audit_events", "insert"], ["parameter_catalog.governance_command_idempotency", "update"]] as const) {
       await db.query(`create function public.fail_copy_subject_stage() returns trigger language plpgsql as $$ begin raise exception 'injected copy failure'; end $$`);
-      await db.query(`create trigger fail_copy_subject_stage before ${action} on ${table} for each row execute function public.fail_copy_subject_stage()`);
+      await db.query(`create trigger fail_copy_subject_stage after ${action} on ${table} for each row execute function public.fail_copy_subject_stage()`);
       try {
         const failed = await requestJson(destination, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...input,
           token: (preview.body as { token: string }).token, idempotencyKey: `failure-${table}`, reason: "Test rollback" }) });
-        expect(failed.status).toBeGreaterThanOrEqual(400);
+        expect(failed.status).toBeGreaterThanOrEqual(500);
         expect((await db.query("select count(*)::int as count from parameter_modules where organization_id=$1", [target])).rows[0]).toEqual({ count: 0 });
         expect((await db.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations where organization_id=$1", [target])).rows[0]).toEqual({ count: 0 });
+        expect((await db.query("select count(*)::int as count from parameter_catalog.module_structure_created_refs where organization_id=$1", [target])).rows[0]).toEqual({ count: 0 });
+        expect((await db.query("select count(*)::int as count from parameter_catalog.governance_command_idempotency where organization_id=$1 and command_family='module-structure-update'", [target])).rows[0]).toEqual({ count: 0 });
+        expect((await db.query("select count(*)::int as count from audit_events where organization_id=$1", [target])).rows[0]).toEqual(auditsBeforeFailure);
       } finally {
         await db.query(`drop trigger fail_copy_subject_stage on ${table}`);
         await db.query("drop function public.fail_copy_subject_stage()");
