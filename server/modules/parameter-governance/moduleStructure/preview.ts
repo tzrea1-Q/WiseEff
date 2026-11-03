@@ -58,10 +58,19 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   const subjectEdits = new Map(document.subjects.map(subject => [subject.subjectId, subject]));
   const seenSubjects = new Set<string>();
   const lifecycle: LifecycleChange[] = [];
-  for (const [index, subject] of document.subjects.entries()) {
+  const normalizedSubjects = document.subjects.map(subject => ({ ...subject }));
+  for (const [index, subject] of normalizedSubjects.entries()) {
     const base = subjectBaselines.get(subject.subjectId);
     if (seenSubjects.has(subject.subjectId)) throw new ApiError("VALIDATION_FAILED", "Duplicate Subject.", { path: `subjects.${index}.subjectId` });
     seenSubjects.add(subject.subjectId);
+    const requested = subject.state === undefined || subject.state === base?.state ? undefined
+      : !base && subject.state === "active" ? "register"
+      : base && subject.state === "retired" ? "retire"
+      : base && subject.state === "active" ? "restore" : undefined;
+    if (!base && subject.state === "retired") throw new ApiError("VALIDATION_FAILED", "A new registration must be active.");
+    if (subject.operation && subject.state !== undefined && subject.state !== (subject.operation === "retire" ? "retired" : "active"))
+      throw new ApiError("VALIDATION_FAILED", "State and lifecycle operation disagree.", { path: `subjects.${index}.state` });
+    if (requested) subject.operation = requested;
     if (subject.operation) {
       const target = current.subjects.find(row => row.subjectId === subject.subjectId);
       const catalog = (await client.query<{ kind: LifecycleChange["kind"]; owner_subject_id: string | null; lifecycle: string; registration_id: string | null }>(`select s.kind,s.owner_subject_id,rs.lifecycle,r.id as registration_id
@@ -83,7 +92,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
         if (target.state === base.state) lifecycle.push({ subjectId: subject.subjectId, operation: subject.operation, kind: catalog.kind, registrationId: catalog.registration_id });
       }
     } else if (!base) throw new ApiError("VALIDATION_FAILED", "Unknown Subject.", { path: `subjects.${index}.subjectId` });
-    for (const [field, value] of Object.entries(subject)) if (field !== "subjectId" && field !== "operation" && field !== "placement" && field !== "displayAlias" && field !== "recognition" && (!base || !unchangedSubset(value, base[field as keyof typeof base])))
+    for (const [field, value] of Object.entries(subject)) if (field !== "subjectId" && field !== "operation" && field !== "placement" && field !== "displayAlias" && field !== "recognition" && field !== "state" && (!base || !unchangedSubset(value, base[field as keyof typeof base])))
       throw new ApiError("VALIDATION_FAILED", "Subject changes are not supported.", { path: `subjects.${index}.${field}` });
   }
   const currentSubjects = moduleStructureExportSchema.parse(current).subjects.map(subject => {
@@ -92,7 +101,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
       ? { ...subject, placement: { ...placement, moduleRef: mappings.find(mapping => mapping.module_id === placement.moduleRef)?.package_ref ?? placement.moduleRef } }
       : subject;
   });
-  const subjectPlan = planSubjectPlacement(document.subjects.filter(subject => subject.operation !== "register"), baseline.subjects, currentSubjects, resolutions);
+  const subjectPlan = planSubjectPlacement(normalizedSubjects.filter(subject => subject.operation !== "register"), baseline.subjects, currentSubjects, resolutions);
   const moduleIds = new Map(current.modules.map(module => [module.ref, module.sourceId]));
   for (const module of document.modules) moduleIds.set(module.ref, module.sourceId ?? mapped.get(module.ref)?.module_id ?? module.ref);
   for (const change of subjectPlan.changes) if (change.field === "placement" && typeof change.after === "object" && change.after?.kind === "module" && !moduleIds.has(change.after.moduleRef))
@@ -208,9 +217,9 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   for (const id of deleted) { parents.delete(id); namesById.delete(id); }
   const validated = new Set<string>();
   for (const [id, parent] of parents) {
-    if (parent && !parents.has(parent)) throw new ApiError("VALIDATION_FAILED", "Parent reference is missing or invalid.");
+    if (parent && !parents.has(parent)) throw new ApiError("VALIDATION_FAILED", "Parent reference is missing or invalid.", { path: `modules.${document.modules.findIndex(module => moduleIds.get(module.ref) === id)}.parentRef` });
     const visited = new Set([id]); let next = parent;
-    while (next && !validated.has(next)) { if (visited.has(next)) throw new ApiError("CONFLICT", "The resulting module hierarchy contains a cycle."); visited.add(next); next = parents.get(next) ?? null; }
+    while (next && !validated.has(next)) { if (visited.has(next)) throw new ApiError("CONFLICT", "The resulting module hierarchy contains a cycle.", { path: `modules.${document.modules.findIndex(module => changes.some(change => change.field === "parentRef" && change.moduleId === moduleIds.get(module.ref) && visited.has(change.moduleId)))}.parentRef` }); visited.add(next); next = parents.get(next) ?? null; }
     for (const node of visited) validated.add(node);
   }
   const newIds = new Set(document.modules.filter(module => !module.sourceId && !mapped.has(module.ref)).map(module => moduleIds.get(module.ref)!));
@@ -232,7 +241,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     if (siblingNames.has(key)) throw new ApiError("CONFLICT", "The resulting module names are not unique within their parent.");
     siblingNames.add(key);
   }
-  const recognition = await planRecognition(client, organizationId, current.source.catalogReleaseId, document.subjects, baseline.subjects,
+  const recognition = await planRecognition(client, organizationId, current.source.catalogReleaseId, normalizedSubjects, baseline.subjects,
     moduleStructureExportSchema.parse(current).subjects, resolutions, lifecycle);
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
     roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };

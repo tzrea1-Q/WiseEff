@@ -49,16 +49,15 @@ test("MODULE-STRUCTURE-MIXED-001: review one mixed update", async ({ page, reque
   document.modules.push({ ref: "new-parent", name: "New parent", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" },
     { ref: "new-child", name: "New child", parentRef: "new-parent", description: "", scope: "", sortOrder: 0, importance: "medium" });
   const retired = document.subjects.find((item: { subjectId: string }) => item.subjectId === subjects[0]);
-  retired.placement = { kind: "module", moduleRef: "new-child" }; retired.operation = "restore";
+  retired.placement = { kind: "module", moduleRef: "new-child" };
   retired.recognition.mode = "override"; retired.recognition.override = { ...retired.recognition.effective, compatibles: [`wiseeff,mixed-${suffix}`] };
-  document.subjects.push({ subjectId: subjects[1], operation: "register", placement: { kind: "module", moduleRef: "new-child" } });
+  document.subjects.push({ subjectId: subjects[1], state: "active", placement: { kind: "module", moduleRef: "new-child" } });
   await signInBrowserAsUser(page, user, email, "Mixed admin", "/parameter-admin/modules", organization);
   await page.getByRole("button", { name: "导入结构" }).click();
   const dialog = page.getByRole("dialog", { name: "导入模块结构" });
   await dialog.getByLabel("JSON 文件").setInputFiles({ name: "mixed.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
   await dialog.getByRole("button", { name: "预览" }).click();
   await expect(dialog.getByText(/Retired driver/).first()).toBeVisible();
-  await expect(dialog.getByText(/停用 → 启用/)).toBeVisible();
   await expect(dialog.getByText(/New parent \/ New child/).first()).toBeVisible();
   await expect(dialog.getByText(`wiseeff,mixed-${suffix}`, { exact: false }).first()).toBeVisible();
   await expect(dialog.getByText(/删除模块/).first()).toBeVisible();
@@ -69,10 +68,11 @@ test("MODULE-STRUCTURE-MIXED-001: review one mixed update", async ({ page, reque
   await expect(dialog.getByRole("status")).toContainText("回执");
   const after = await request.post(apiRoute(`${base}/exports`), { headers, data: {} }); const result = await after.json();
   expect(result.modules.some((item: { sourceId: string }) => item.sourceId === oldModule)).toBe(false);
-  expect(result.subjects.filter((item: { subjectId: string; state: string }) => subjects.includes(item.subjectId) && item.state === "active")).toHaveLength(2);
+  expect(result.subjects.find((item: { subjectId: string }) => item.subjectId === subjects[0]).state).toBe("retired");
+  expect(result.subjects.find((item: { subjectId: string }) => item.subjectId === subjects[1]).state).toBe("active");
   await recordOperationEvidence({ operationId: "MODULE-STRUCTURE-MIXED-001", title: "Review a mixed structure update", status: "passed", page, testInfo: info,
     artifacts: [info.outputPath("module-structure-mixed-1440x900.png")], api: [summarizeApiResponse(response, { method: "POST", path: `${base}/applies`, responseSummary: "Mixed update committed." })],
-    notes: "Real API at 1440×900: new parent and child, registration, retired placement, recognition, restoration and deletion." });
+    notes: "Real API at 1440×900: new parent and child, registration, retired placement, recognition and deletion." });
 });
 
 test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async ({ page, request }, info) => {
@@ -96,7 +96,7 @@ test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async
   const headers = authHeadersForUser(user, email, "Lifecycle admin", organization);
   const exportDocument = async () => { const response = await request.post(apiRoute(`${base}/exports`), { headers, data: {} }); expect(response.status(), await response.text()).toBe(200); return response.json(); };
   const document = await exportDocument();
-  document.subjects.push(...subjects.map(subjectId => ({ subjectId, operation: "register", placement: { kind: "module", moduleRef: moduleId } })));
+  document.subjects.push(...subjects.map(subjectId => ({ subjectId, state: "active", placement: { kind: "module", moduleRef: moduleId } })));
   await signInBrowserAsUser(page, user, email, "Lifecycle admin", "/parameter-admin/modules", organization);
   let lastResponse: Awaited<ReturnType<typeof page.waitForResponse>> | undefined;
   for (const operation of ["register", "retire", "restore"] as const) {
@@ -119,7 +119,7 @@ test("MODULE-STRUCTURE-LIFECYCLE-001: register, retire and restore roots", async
       } finally { await pool.end(); }
     }
     const edited = operation === "register" ? document : await exportDocument();
-    if (operation !== "register") for (const subject of edited.subjects) if (subjects.includes(subject.subjectId)) subject.operation = operation;
+    if (operation !== "register") for (const subject of edited.subjects) if (subjects.includes(subject.subjectId)) subject.state = operation === "retire" ? "retired" : "active";
     await page.getByRole("button", { name: "导入结构" }).click();
     const dialog = page.getByRole("dialog", { name: "导入模块结构" });
     await dialog.getByLabel("JSON 文件").setInputFiles({ name: `${operation}.json`, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
