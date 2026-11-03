@@ -1236,6 +1236,17 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
   });
 
   it("does not restore a cascade-retired child whose release membership was retired", async () => {
+    const userId = `catalog-drift-admin-${randomUUID()}`;
+    await admin.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await admin.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [randomUUID(), userId, organizationId]);
+    const app = createWiseEffServer({ db: apiDatabase, auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ userId, organizationId, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const path = `/api/v2/organizations/${organizationId}/module-structure`;
+    const exported = await requestJson(app, `${path}/exports`, { method: "POST", body: "{}" });
+    expect(exported.status, exported.bodyText).toBe(200);
+    const document = exported.body as { subjects: unknown[]; [key: string]: unknown };
+    document.subjects.push({ subjectId: nodeSubject, operation: "register", placement: { kind: "module", moduleRef: moduleId } });
+    const preview = await requestJson(app, `${path}/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
     const driver = await registerTarget(targetSubject, moduleId);
     const service = createRegistrationService(api);
     const retired = await service.execute(lifecycle("retire", driver));
@@ -1250,9 +1261,9 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     const next = refreshSuccessorSource({ ...structuredClone(base), manifest: { ...structuredClone(base.manifest),
       release: { ...base.manifest.release, id: nextId, version: "1.2.0", sequence: 2,
         publishedAt: "2026-09-02T00:00:00Z", predecessor: { id: pin.id, digest: pin.digest } } },
-    documents: [...base.documents.map((document) => document.kind === "subject" && document.content.id === ownedNodeSubject ? {
+    documents: [...base.documents.map((document) => document.kind === "subject" && (document.content.id === ownedNodeSubject || document.content.id === nodeSubject) ? {
       ...structuredClone(document), content: { ...structuredClone(document.content), lifecycle: "retired" as const,
-        tombstone: { reason: "withdrawn", withdrawnByReleaseId: nextId, previousSelector: "owned_lifecycle_node" } },
+        tombstone: { reason: "withdrawn", withdrawnByReleaseId: nextId, previousSelector: document.content.id === nodeSubject ? "battery1" : "owned_lifecycle_node" } },
     } : structuredClone(document)), addedChild] }, base.sources[0]!.path);
     const bundle = { ...initialBundle, targetReleaseId: nextId, releases: [base, next] };
     const compiled = compileCatalogRelease(bundle);
@@ -1260,6 +1271,11 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     const installed = await installPublishedRelease(admin, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
       expectedCurrent: pin, expectedTargetDigest: compiled.value.aggregateDigest });
     if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+    const stale = await requestJson(app, `${path}/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: "retired-catalog-subject", reason: "Reviewed" }) });
+    expect(stale.status).toBe(409);
+    const currentPreview = await requestJson(app, `${path}/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(currentPreview.status).toBe(409);
+    expect((await admin.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, nodeSubject])).rowCount).toBe(0);
     const restored = await service.execute({ ...lifecycle("restore", retired.value), expectedRelease: { id: compiled.value.release.id, digest: compiled.value.release.digest } });
     expect(restored.ok).toBe(true);
     expect((await api.query(`select status,cascade_retired from parameter_catalog.organization_subject_registrations
