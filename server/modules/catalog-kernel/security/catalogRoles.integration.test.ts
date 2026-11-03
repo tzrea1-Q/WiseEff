@@ -847,6 +847,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       "organization_log_erasure_objects",
       "organization_parameter_erasure_objects",
       "project_erasures",
+      "source_binding_suspension_receipts",
     ].sort());
     expect(new Set(tables.rows.map((row) => row.tableowner))).toEqual(
       new Set([CATALOG_MIGRATION_OWNER]),
@@ -911,6 +912,25 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     );
     expect(typed.code).toBe("PCA04");
     expect(typed.detail).toBe("PCAT-GUARD-DRIFT");
+  });
+
+  it("bounds planning and execution of current Binding reads without suspensions", async () => {
+    expect((await client.query("select count(*)::integer as count from parameter_catalog.source_binding_suspension_receipts")).rows)
+      .toEqual([{ count: 0 }]);
+    await client.query("begin");
+    try {
+      // A source-free catalog must not spend ordinary read latency compiling a
+      // deeply nested historical proof. Keep normal planner/JIT settings and
+      // bound this statement, rather than increasing workflow test timeouts.
+      await client.query("set local statement_timeout='5s'");
+      const result = await client.query<{ "QUERY PLAN": Array<{ "Planning Time": number; "Execution Time": number }> }>(
+        "explain (analyze,buffers,settings,format json) select count(*) from parameter_catalog.current_project_parameter_bindings",
+      );
+      const plan = result.rows[0]["QUERY PLAN"][0];
+      expect(plan["Planning Time"] + plan["Execution Time"]).toBeLessThan(5000);
+    } finally {
+      await client.query("rollback");
+    }
   });
 
   it("T3: re-running 0138 at its historical migration boundary is idempotent", async () => {
@@ -1514,7 +1534,23 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       const intentInvoker = branch.identity === "guard_member_addition_intent()" && !branch.security_definer && branch.migration_executor_owner
         && /^\s*declare event_id text; event_action text;\s*begin\s*if tg_op='DELETE' then\s*if parameter_catalog\.definition_purge_allows_change\(tg_table_schema,tg_table_name,to_jsonb\(old\),'DELETE'\) then return old; end if;\s*raise exception using errcode='55000',message='Member operation identity is immutable';\s*end if;/i.test(branch.source)
         && branch.source.match(/definition_purge_allows_change/gi)?.length === 1;
-      expect(explicitOwner || privateInvoker || leasedPrivateProbe || privatePinOwner || intentInvoker, branch.identity).toBe(true);
+      const privateSuspensionOwner = branch.identity === "parameter_catalog.protect_source_binding_suspension_receipt()"
+        && branch.security_definer && branch.owner === CATALOG_MIGRATION_OWNER && !branch.runtime_execute
+        && /^\s*begin\s+if tg_op='DELETE' and parameter_catalog\.definition_purge_allows_change\(TG_TABLE_SCHEMA,TG_TABLE_NAME,to_jsonb\(old\),'DELETE'\) then return old; end if;\s+if tg_op<>'INSERT' then raise exception using errcode='55000',message='Source suspension receipts are immutable'; end if;/i.test(branch.source)
+        && branch.source.match(/definition_purge_allows_change/gi)?.length === 1;
+      expect(explicitOwner || privateInvoker || leasedPrivateProbe || privatePinOwner || intentInvoker || privateSuspensionOwner, branch.identity).toBe(true);
+      if (privateSuspensionOwner) {
+        expect(branch.settings).toEqual(["search_path=pg_catalog, parameter_catalog, public"]);
+        const attached = await client.query(`select c.oid::regclass::text as target from pg_trigger t join pg_class c on c.oid=t.tgrelid
+          where t.tgfoid='parameter_catalog.protect_source_binding_suspension_receipt()'::regprocedure and not t.tgisinternal`);
+        expect(attached.rows).toEqual([{ target: "parameter_catalog.source_binding_suspension_receipts" }]);
+        for (const role of roles) {
+          const permission = await client.query(`select
+            has_table_privilege($1,'parameter_catalog.source_binding_suspension_receipts','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') as receipt_access,
+            has_function_privilege($1,'parameter_catalog.mint_source_binding_suspensions()','EXECUTE') as can_mint`, [role]);
+          expect(permission.rows, role).toEqual([{ receipt_access: false, can_mint: false }]);
+        }
+      }
       if (intentInvoker) {
         expect(branch.settings).toEqual(["search_path=pg_catalog, public, parameter_catalog"]);
         const attached = await client.query(`select c.oid::regclass::text as target from pg_trigger t join pg_class c on c.oid=t.tgrelid

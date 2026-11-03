@@ -547,46 +547,93 @@ alter function parameter_catalog.find_source_binding_suspension(text,text,text,t
 revoke all on function parameter_catalog.protect_source_binding_suspension_receipt() from public;
 revoke all on function parameter_catalog.mint_source_binding_suspensions() from public;
 revoke all on function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) from public;
-do $$ begin
-  if exists(select 1 from pg_roles where rolname='wiseeff_api') then
-    revoke all on parameter_catalog.source_binding_suspension_receipts from wiseeff_api;
-    grant execute on function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) to wiseeff_api;
-  end if;
+-- Existing provisioned NOINHERIT logins must be repaired during upgrade,
+-- without reprovisioning or copying broad default SELECT onto this private
+-- table. Ownership plus an existing direct source-write grant in THIS database
+-- identifies the API; a role name or cluster-wide membership alone does not.
+do $$
+declare runtime record;
+begin
+  for runtime in
+    with owned_runtime as (
+      select role.oid,role.rolname,role.rolsuper,role.rolinherit,role.rolcreaterole,role.rolcreatedb,role.rolreplication,
+        exists(select 1 from information_schema.role_table_grants authority
+        where authority.grantee=role.rolname and authority.table_schema='parameter_catalog'
+          and authority.table_name='project_value_source_pins' and authority.privilege_type='INSERT') as source_writer
+      from pg_roles role where role.rolcanlogin
+        and (shobj_description(role.oid,'pg_authid')='wiseeff-publication-runtime:official'
+          or shobj_description(role.oid,'pg_authid') ~ '^wiseeff-publication-runtime:lab:[a-z0-9]{6,24}$'))
+    select role.rolname,role.source_writer and not role.rolsuper and not role.rolinherit and not role.rolcreaterole
+      and not role.rolcreatedb and not role.rolreplication
+      and pg_has_role(role.oid,'parameter_governance_writer_role','SET') as source_api
+    from owned_runtime role
+    where role.source_writer
+      or exists(select 1 from pg_class relation cross join lateral aclexplode(relation.relacl) acl
+        where relation.oid='parameter_catalog.source_binding_suspension_receipts'::regclass and acl.grantee=role.oid)
+      or exists(select 1 from pg_proc routine cross join lateral aclexplode(routine.proacl) acl
+        where routine.oid='parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb)'::regprocedure
+          and acl.grantee=role.oid)
+  loop
+    execute format('revoke all on parameter_catalog.source_binding_suspension_receipts from %I',runtime.rolname);
+    execute format('revoke execute on function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) from %I',runtime.rolname);
+    if runtime.source_api then
+      execute format('grant execute on function parameter_catalog.find_source_binding_suspension(text,text,text,text,jsonb) to %I',runtime.rolname);
+    end if;
+  end loop;
 end $$;
 
 -- A member tombstone retires its managed manifest. An owner already suspended
 -- before that removal was not deleted by it and must remain discoverable for a
 -- later whole-source reconciliation, including a reviewed physical transfer.
--- Inline the exact evidence predicate, as 0236 does, so existing column-only
--- view readers need no new DEFINER-function EXECUTE capability.
+-- Every approved exclusion created by this migration has an immutable,
+-- per-Binding receipt. Use that exact receipt directly: inlining the generic
+-- request-or-receipt resolver here duplicates a large correlated join tree in
+-- every ordinary Binding read, even when no suspension or tombstone exists.
+-- Keep owner-mediated reads, as 0236 does, without granting a new DEFINER RPC.
 do $$
-declare view_sql text; evidence_sql text; predicate_sql text; options text[];
+declare view_sql text; predicate_sql text; options text[];
   marker text := 'occurrence.id = binding.source_occurrence_id';
 begin
   select pg_get_viewdef('parameter_catalog.current_project_parameter_bindings'::regclass,true),reloptions
     into strict view_sql,options from pg_class
     where oid='parameter_catalog.current_project_parameter_bindings'::regclass;
-  select prosrc into strict evidence_sql from pg_proc
-    where oid='parameter_catalog.source_revision_exclusion_matches(text,text,text,text,text)'::regprocedure;
-  evidence_sql:=replace(replace(replace(replace(replace(evidence_sql,
-    'p_request_id','suspension_input.request_id'),'p_binding_id','suspension_input.binding_id'),
-    'p_value_id','suspension_input.value_id'),'p_pin_id','suspension_input.pin_id'),
-    'p_base_revision_id','suspension_input.base_revision_id');
-  predicate_sql:=$predicate$exists(select 1 from parameter_catalog.project_value_source_pins retained_pin
-    join (select id,organization_id,project_id,source_revision_config_set_id from public.project_parameter_value_change_requests
-        where request_kind='source_revision' and status='approved'
-      union select request_id,organization_id,project_id,config_set_id from parameter_catalog.source_binding_suspension_receipts) prior
-      on prior.organization_id=binding.organization_id and prior.project_id=binding.project_id
-        and prior.source_revision_config_set_id=tombstone.config_set_id
-    where retained_pin.binding_id=binding.id and retained_pin.project_value_id=binding.current_value_id
-      and retained_pin.source_occurrence_id=binding.source_occurrence_id
-      and retained_pin.file_id=tombstone.file_id and retained_pin.config_revision_id<>tombstone.config_revision_id
+  predicate_sql:=$predicate$exists(select 1 from parameter_catalog.source_binding_suspension_receipts suspended_owner
+    join parameter_catalog.project_value_source_pins retained_pin on retained_pin.id=suspended_owner.source_pin_id
+      and retained_pin.binding_id=binding.id and retained_pin.project_value_id=binding.current_value_id
+      and retained_pin.definition_id=binding.definition_id and retained_pin.source_occurrence_id=occurrence.id
+      and retained_pin.organization_id=binding.organization_id and retained_pin.project_id=binding.project_id
+      and retained_pin.file_id=tombstone.file_id and retained_pin.value_state='present'
+    join parameter_catalog.project_parameter_values retained_value on retained_value.id=retained_pin.project_value_id
+      and retained_value.binding_id=binding.id and retained_value.definition_id=binding.definition_id
+      and retained_value.config_revision_id=retained_pin.config_revision_id and retained_value.value_state='present'
+    join public.dts_config_revisions historical on historical.id=retained_pin.config_revision_id
+      and historical.organization_id=binding.organization_id and historical.project_id=binding.project_id
+      and historical.config_set_id=tombstone.config_set_id
+    join public.dts_config_revisions suspended on suspended.id=suspended_owner.applied_config_revision_id
+      and suspended.organization_id=binding.organization_id and suspended.project_id=binding.project_id
+      and suspended.config_set_id=tombstone.config_set_id and suspended.revision_number>historical.revision_number
+    join public.dts_config_revisions removed on removed.id=tombstone.config_revision_id
+      and removed.organization_id=binding.organization_id and removed.project_id=binding.project_id
+      and removed.config_set_id=tombstone.config_set_id and removed.revision_number>=suspended.revision_number
+    join public.audit_events suspension_audit on suspension_audit.id=suspended_owner.audit_event_id
+      and suspension_audit.organization_id=binding.organization_id and suspension_audit.project_id=binding.project_id
+      and suspension_audit.target_id=binding.id and suspension_audit.target_type='project-parameter-binding'
+      and suspension_audit.action='source-binding-suspended'
+      and suspension_audit.metadata=jsonb_build_object('identity',suspended_owner.excluded_identity,
+        'configRevisionId',suspended_owner.applied_config_revision_id,'proofDigest',suspended_owner.source_proof_digest)
+    where suspended_owner.binding_id=binding.id and suspended_owner.old_value_id=binding.current_value_id
+      and suspended_owner.definition_id=binding.definition_id and suspended_owner.config_set_id=tombstone.config_set_id
+      and suspended_owner.organization_id=binding.organization_id and suspended_owner.project_id=binding.project_id
+      and occurrence.organization_id=binding.organization_id and occurrence.project_id=binding.project_id
+      and occurrence.config_set_id=suspended_owner.config_set_id
+      and suspended_owner.excluded_identity @> jsonb_build_object('bindingId',binding.id,'oldValueId',retained_value.id,
+        'sourcePinId',retained_pin.id,'sourceOccurrenceId',occurrence.id,'definitionId',binding.definition_id,
+        'effectiveRevisionId',retained_value.definition_revision_id,'catalogReleaseId',binding.catalog_release_id,
+        'registrationId',binding.registration_id,'subjectId',binding.subject_id,'valueDigest',retained_value.value_digest,
+        'configRevisionId',retained_pin.config_revision_id,'fileId',retained_pin.file_id,
+        'fileVersionId',retained_pin.file_version_id,'format',retained_pin.format)
       and not exists(select 1 from jsonb_array_elements(tombstone.binding_manifest) removed
-        where removed->>'bindingId'=binding.id)
-      and (select (__EVIDENCE__) from (select prior.id as request_id,binding.id as binding_id,
-        retained_pin.project_value_id as value_id,retained_pin.id as pin_id,
-        tombstone.config_revision_id as base_revision_id) suspension_input))$predicate$;
-  predicate_sql:=replace(predicate_sql,'__EVIDENCE__',evidence_sql);
+        where removed->>'bindingId'=binding.id))$predicate$;
   if (length(view_sql)-length(replace(view_sql,marker,'')))/length(marker)<>1 then
     raise exception 'Retained source membership view marker changed'; end if;
   view_sql:=replace(view_sql,marker,'('||marker||' and not ('||predicate_sql||'))');

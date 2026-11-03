@@ -514,6 +514,81 @@ jobs:
           path: ${{ runner.temp }}/wiseeff-ci-shard/receipt.json
           if-no-files-found: error
 
+  managed-source-diagnostics:
+    name: Managed source diagnostics ${{ matrix.shard }}/3
+    needs: detect
+    if: needs.detect.outputs.run_l1 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: wiseeff
+          POSTGRES_PASSWORD: wiseeff
+          # Deliberately not named `wiseeff`. The managed-instance publication
+          # policy specs in this job refuse the shared compose app database on
+          # loopback:5432 (server/testing/testDatabase.ts,
+          # isForbiddenComposeAppPostgres), so this ephemeral, job-dedicated
+          # service creates its own database for the backend suite instead.
+          POSTGRES_DB: wiseeff_l1_server
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wiseeff -d wiseeff_l1_server"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_l1_server
+    steps:
+      - name: Check out repository
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        id: node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        id: install
+        run: npm ci
+      - name: Install and verify DTS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-dts-toolchain
+      - name: Enable pgvector extension
+        id: vector
+        run: |
+          node --input-type=module -e '
+            import pg from "pg";
+            const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+            await client.connect();
+            await client.query("create extension if not exists vector");
+            const row = await client.query(
+              "select extname from pg_extension where extname = $1",
+              ["vector"],
+            );
+            if (row.rowCount !== 1) {
+              throw new Error("pgvector extension was not created");
+            }
+            await client.end();
+          '
+      - name: Diagnose managed source regressions
+        id: managed_diagnostics
+        run: |
+          case '${{ matrix.shard }}' in
+            1) npm run test:server -- server/modules/parameter-files/sourceRetiredRegistration.integration.test.ts server/modules/parameter-files/sourceSuspensionErasure.integration.test.ts server/modules/parameter-files/sourceSuspendedWorkflows.integration.test.ts server/modules/parameter-files/retiredJsonSourceRevision.integration.test.ts --reporter=verbose ;;
+            2) npm run test:server -- server/modules/catalog-kernel/security/catalogRoles.integration.test.ts server/modules/parameter-bindings/binding/sourceOccurrenceMigration.integration.test.ts server/modules/catalog-publication/runtime/sourceSuspensionUpgrade.integration.test.ts server/modules/parameter-files/sourceManagedScopeReceipt.integration.test.ts server/modules/parameter-bindings/queries/currentManagedBindings.integration.test.ts --reporter=verbose ;;
+            3) npm run test:server -- server/modules/parameter-files/canonicalManualSync.integration.test.ts server/modules/parameter-files/projectLocalOverrideHttp.integration.test.ts server/modules/parameter-bindings/seedInitialization/canonicalBindingMaterialization.integration.test.ts server/modules/parameter-files/administratorMemberRemoval.integration.test.ts --reporter=verbose ;;
+          esac
+
   l1-server:
     name: L1 backend
     if: always() && needs.detect.outputs.selected != 'false'
