@@ -13,6 +13,7 @@ import {
 } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import { listRegisteredCompatibles } from "../parameter-modules/repository";
+import { lockOrganizationModuleRecognition } from "../parameter-modules/recognitionLock";
 import { buildIngestDriverSummary } from "../parameter-modules/ingestDriverSummary";
 import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
@@ -1043,6 +1044,7 @@ export async function activateCandidate(
 
   function runActivationTransaction(): Promise<ActivateCandidateResult> {
     return db.transaction(async (tx) => {
+    await lockOrganizationModuleRecognition(tx, parameterOrganizationId(auth));
     const locked = await getParameterFileCandidateById(tx, {
       organizationId: parameterOrganizationId(auth),
       projectId: input.projectId,

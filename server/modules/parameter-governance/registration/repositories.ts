@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { lockOrganizationSubjectRegistration } from "../../parameter-modules/recognitionLock";
+import { lockOrganizationModuleStructure } from "../../parameter-modules/recognitionLock";
 import type { Queryable } from "../../../shared/database/client";
 
 import type { RegistrationCommand, RegisterSubjectCommand } from "./command";
@@ -53,7 +53,7 @@ export const lockOrganizationRegistrations = async (
   client: RegistrationWriterClient,
   organizationId: string,
 ): Promise<void> => {
-  await lockOrganizationSubjectRegistration(client as unknown as Queryable, organizationId);
+  await lockOrganizationModuleStructure(client as unknown as Queryable, organizationId);
   await client.query(
     `select id from parameter_catalog.organization_subject_registrations
      where organization_id = $1 order by id for update`,

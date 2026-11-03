@@ -515,7 +515,7 @@ describe("administrator module metadata through the API database role", () => {
     expect(registry.modules.find(m => m.id === sibling.id)?.parentId).toBe(f.parent.id);
   });
 
-  it("audits the actual previous parent after another move invalidates its preflight read", async () => {
+  it("audits the committed previous parent after a competing move", async () => {
     const f = await fixture("overlapping-move-audit", "node-type", "auto");
     const module = await createParameterModule(pool, {
       organizationId: f.auth.organization.id, name: "First", parentId: f.parent.id,
@@ -523,19 +523,27 @@ describe("administrator module metadata through the API database role", () => {
     const sibling = await createParameterModule(pool, {
       organizationId: f.auth.organization.id, name: "Sibling", parentId: f.parent.id,
     });
-    let moved = false;
-    const interleaved: Database = {
-      transaction: fn => apiDb.transaction(fn),
-      async query<Row>(sql: string, values?: unknown[]) {
-        const result = await apiDb.query<Row>(sql, values);
-        if (!moved && sql.includes("from parameter_modules") && sql.includes("id = $2")) {
-          moved = true;
-          await moveParameterModuleForAuth(apiDb, f.auth, module.id, { parentId: sibling.id });
-        }
-        return result;
-      },
-    };
-    await moveParameterModuleForAuth(interleaved, f.auth, module.id, { parentId: f.target.id });
+    let firstMoved!: () => void;
+    let releaseFirst!: () => void;
+    const moved = new Promise<void>(resolve => { firstMoved = resolve; });
+    const release = new Promise<void>(resolve => { releaseFirst = resolve; });
+    const first = apiDb.transaction(async tx => {
+      await moveParameterModuleForAuth(tx, f.auth, module.id, { parentId: sibling.id });
+      firstMoved();
+      await release;
+    });
+    await moved;
+    const second = moveParameterModuleForAuth(apiDb, f.auth, module.id, { parentId: f.target.id });
+    try {
+      await expect.poll(async () => (await apiDb.query<{ waiting: boolean }>(
+        `select exists (select 1 from pg_catalog.pg_locks where locktype = 'advisory' and not granted
+          and database = (select oid from pg_database where datname = current_database())) as waiting`,
+      )).rows[0]!.waiting).toBe(true);
+    } finally {
+      releaseFirst();
+      await first;
+    }
+    await second;
     const audits = await apiDb.query<{ metadata: { previousParentId: string } }>(
       `select metadata from public.audit_events where target_id = $1 and kind = 'parameter-module-admin-move'`, [module.id],
     );

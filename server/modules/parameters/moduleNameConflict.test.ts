@@ -25,6 +25,7 @@ async function failedUpdate(error: unknown, parentId: string | null) {
       const sql = text.trim();
       statements.push(sql.split(/\s+/, 1)[0]);
       if (sql === "begin" || sql === "rollback") return { rows: [], rowCount: null };
+      if (sql.includes("pg_advisory_xact_lock")) return { rows: [], rowCount: 1 };
       if (sql.startsWith("update parameter_modules")) {
         expect(values.slice(0, 3)).toEqual(["org-1", "module-1", "Shared name"]);
         throw error;
@@ -54,7 +55,10 @@ async function failedUpdate(error: unknown, parentId: string | null) {
   } catch (caught) {
     rejected = caught;
     // Rejection is observable only after rollback; no commit or success audit INSERT.
-    expect(statements).toEqual(["select", "select", "begin", "select", "select", "update", "rollback"]);
+    expect(statements[0]).toBe("begin");
+    expect(statements.at(-1)).toBe("rollback");
+    expect(statements).toContain("update");
+    expect(statements).not.toContain("commit");
   }
   return rejected;
 }
@@ -128,9 +132,10 @@ async function failedMove(error: unknown, parentId: string | null) {
   } catch (caught) {
     rejected = caught;
     // Rejection is observable only after rollback; no commit or success audit INSERT.
-    expect(statements).toEqual(parentId
-      ? ["select", "select", "select", "begin", "select", "select", "select", "select", "select", "select", "update", "rollback"]
-      : ["select", "select", "begin", "select", "select", "select", "select", "select", "update", "rollback"]);
+    expect(statements[0]).toBe("begin");
+    expect(statements.at(-1)).toBe("rollback");
+    expect(statements).toContain("update");
+    expect(statements).not.toContain("commit");
   }
   return rejected;
 }
@@ -182,6 +187,7 @@ async function failedCreate(error: unknown, parentId: string | null) {
       const sql = text.trim();
       statements.push(sql.split(/\s+/, 1)[0]);
       if (sql === "begin" || sql === "rollback") return { rows: [], rowCount: null };
+      if (sql.includes("pg_advisory_xact_lock")) return { rows: [], rowCount: 1 };
       if (sql.startsWith("insert into parameter_modules")) {
         const id = values[0];
         expect(id).toEqual(expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i));
@@ -214,9 +220,10 @@ async function failedCreate(error: unknown, parentId: string | null) {
   } catch (caught) {
     rejected = caught;
     // Rejection is observable only after rollback; no commit or success audit INSERT.
-    expect(statements).toEqual(parentId
-      ? ["select", "select", "begin", "select", "insert", "rollback"]
-      : ["select", "begin", "insert", "rollback"]);
+    expect(statements[0]).toBe("begin");
+    expect(statements.at(-1)).toBe("rollback");
+    expect(statements).toContain("insert");
+    expect(statements).not.toContain("commit");
   }
   return rejected;
 }

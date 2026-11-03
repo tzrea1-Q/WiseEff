@@ -7,6 +7,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
+import { lockOrganizationModuleRecognition } from "../parameter-modules/recognitionLock";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { diffResolvedDts, type StructuralChange } from "./baselineDiff";
@@ -530,6 +531,7 @@ export async function rollbackToBaseline(
   requireParameterFileAdmin(auth);
 
   return db.transaction(async (tx) => {
+    await lockOrganizationModuleRecognition(tx, parameterOrganizationId(auth));
     const baseline = await getReleaseBaselineById(tx, { organizationId: parameterOrganizationId(auth), baselineId });
     if (!baseline) {
       throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });

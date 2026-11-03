@@ -265,7 +265,14 @@ export async function updateRegistrationRecognitionSettings(
   db: Database, input: { organizationId: string; registrationId: string; body: UpdateModuleRecognition;
     invocation: TrustedInvocationContext; requestId: string; ifMatch: string; idempotencyKey: string; catalogReleaseId: string },
 ): Promise<(ModuleRecognitionSettings & { kind: "driver" | "node-type" }) | null> {
-  return db.transaction(async tx => {
+  return db.transaction(tx => updateRegistrationRecognitionSettingsInTransaction(tx, input));
+}
+
+/** Governance callers must own the surrounding transaction. */
+export async function updateRegistrationRecognitionSettingsInTransaction(
+  tx: Database, input: { organizationId: string; registrationId: string; body: UpdateModuleRecognition;
+    invocation: TrustedInvocationContext; requestId: string; ifMatch: string; idempotencyKey: string; catalogReleaseId: string },
+): Promise<(ModuleRecognitionSettings & { kind: "driver" | "node-type" }) | null> {
     if (input.invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "只有组织管理员可以修改识别规则。");
     assertTrustedInvocationMatchesScope(input.invocation.principal, input.invocation, input.organizationId, "registration recognition");
     await lockOrganizationModuleRecognition(tx, input.organizationId);
@@ -321,5 +328,4 @@ export async function updateRegistrationRecognitionSettings(
         driverNature: next.driverNature, instanceCardinality: next.instanceCardinality, nodeTypeName: next.nodeTypeName },
     });
     return next;
-  });
 }

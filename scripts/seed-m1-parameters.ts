@@ -20,6 +20,7 @@ import { buildDtsPowerSeed, buildSeedModuleMappings, type DtsPowerSeedParameter,
 import { resolveDts } from "../server/modules/dts";
 import { loadCommittedDtsSeedFiles } from "./compile-dts-seed";
 import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
+import { lockOrganizationModuleStructure } from "../server/modules/parameter-modules/recognitionLock";
 import { ensurePublishedVendorCatalog } from "./sync-vendor-property-docs";
 import { getAuthContext } from "../server/modules/auth/repository";
 import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
@@ -234,6 +235,7 @@ export async function seedM1Parameters(
   config: PowerManagementConfig
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    await lockOrganizationModuleStructure(tx, organizationId);
     await provisionChargingSkill(tx, organizationId);
     for (const project of config.projects) {
       await tx.query(

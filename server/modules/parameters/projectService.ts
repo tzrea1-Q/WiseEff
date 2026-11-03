@@ -6,6 +6,7 @@ import { ensureDefaultConfigSetInTx } from "../parameter-files/configSetService"
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { canAdminParameters } from "../parameter-kernel/policy";
+import { lockOrganizationModuleRecognition } from "../parameter-modules/recognitionLock";
 import { createProject, deleteProject, updateProject } from "../projects/repository";
 import type { ProjectAdminSummaryDto } from "../projects/types";
 
@@ -132,6 +133,7 @@ export async function deleteProjectForAuth(
   requireCanAdmin(auth);
 
   const result = await withAuditedWrite(db, parameterInvocation(auth) ?? createUserInvocation(auth), context, async (tx) => {
+    await lockOrganizationModuleRecognition(tx, parameterOrganizationId(auth));
     const result = await deleteProject(tx, {
       organizationId: parameterOrganizationId(auth),
       projectId: input.projectId

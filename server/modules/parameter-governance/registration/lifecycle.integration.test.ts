@@ -27,7 +27,8 @@ import { assertCatalogSubjectActive } from "./guardAdapter";
 import { createSourceBackedBindingService } from "../../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import { aggregateBindingDashboardHotspots } from "../../parameter-bindings/dashboardRead";
 import { readRegistry } from "../../parameter-modules/repository";
-import { createPostgresDatabase } from "../../../shared/database/client";
+import { createDatabase, createPostgresDatabase } from "../../../shared/database/client";
+import { createParameterModuleForAuth, deleteParameterModuleForAuth, moveParameterModuleForAuth, updateParameterModuleForAuth } from "../../parameters/service";
 import type { Queryable } from "../../../shared/database/client";
 import { lockOrganizationModuleRecognition } from "../../parameter-modules/recognitionLock";
 import { lockSourceCatalogGovernance } from "../../parameter-bindings/catalogProjectValueSync";
@@ -180,6 +181,141 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     ]));
     expect(rows.rows).toHaveLength(4);
     expect((await api.query("select * from parameter_catalog.registration_effective_module where organization_id = $1", ["other-org"])).rows).toEqual([]);
+  });
+
+  it("rechecks an apparent no-op move after a competing move commits", async () => {
+    const parent = await createModule("Parent");
+    const child = await createModule("Child");
+    const userId = `module-admin-${randomUUID()}`;
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await admin.query("update public.parameter_modules set parent_id=$1,path=$1||'/'||id,depth=2 where id=$2", [parent, child]);
+    const holder = await admin.connect();
+    const caller = await api.connect();
+    try {
+      await holder.query("begin");
+      await holder.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-tree:${organizationId}`]);
+      await holder.query("update public.parameter_modules set parent_id=null,path=id,depth=1 where id=$1", [child]);
+      const pending = moveParameterModuleForAuth(createDatabase(caller as unknown as Queryable),
+        makeTestAuthContext({ userId, organizationId }), child, { parentId: parent });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await holder.query("commit");
+      expect((await pending).parentId).toBe(parent);
+      expect((await admin.query("select parent_id from public.parameter_modules where id=$1", [child])).rows[0].parent_id).toBe(parent);
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+      caller.release();
+    }
+  });
+
+  it("serializes opposing moves without committing a cycle", async () => {
+    const first = await createModule("First");
+    const second = await createModule("Second");
+    const userId = `module-admin-${randomUUID()}`;
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    const callers = await Promise.all([api.connect(), api.connect()]);
+    try {
+      const auth = makeTestAuthContext({ userId, organizationId });
+      const results = await Promise.allSettled([
+        moveParameterModuleForAuth(createDatabase(callers[0] as unknown as Queryable), auth, first, { parentId: second }),
+        moveParameterModuleForAuth(createDatabase(callers[1] as unknown as Queryable), auth, second, { parentId: first }),
+      ]);
+      expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
+      const rows = (await admin.query("select id,parent_id from public.parameter_modules where id=any($1::text[])", [[first, second]])).rows;
+      expect(rows.filter(row => row.parent_id === null)).toHaveLength(1);
+    } finally {
+      callers.forEach(client => client.release());
+    }
+  });
+
+  it("creates a child using its parent's committed path after a competing move", async () => {
+    const grandparent = await createModule("Grandparent");
+    const parent = await createModule("Parent");
+    const userId = `module-admin-${randomUUID()}`;
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await admin.query("update public.parameter_modules set parent_id=$1,path=$1||'/'||id,depth=2 where id=$2", [grandparent, parent]);
+    const holder = await admin.connect();
+    const caller = await api.connect();
+    try {
+      await holder.query("begin");
+      await holder.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-tree:${organizationId}`]);
+      await holder.query("update public.parameter_modules set parent_id=null,path=id,depth=1 where id=$1", [parent]);
+      const pending = createParameterModuleForAuth(createDatabase(caller as unknown as Queryable),
+        makeTestAuthContext({ userId, organizationId }), { name: "Child", parentId: parent });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await holder.query("commit");
+      const created = await pending;
+      expect(created.path).toBe(`${parent}/${created.id}`);
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+      caller.release();
+    }
+  });
+
+  it("serializes module creation with organization recognition updates", async () => {
+    const userId = `module-admin-${randomUUID()}`;
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    const holder = await api.connect();
+    const caller = await api.connect();
+    try {
+      await holder.query("begin");
+      await lockOrganizationModuleRecognition(holder as unknown as Queryable, organizationId);
+      const pending = createParameterModuleForAuth(createDatabase(caller as unknown as Queryable),
+        makeTestAuthContext({ userId, organizationId }), { name: "Concurrent" });
+      const completedWhileLocked = await Promise.race([pending.then(() => true), new Promise<false>(resolve => setTimeout(() => resolve(false), 100))]);
+      await holder.query("commit");
+      await pending;
+      expect(completedWhileLocked).toBe(false);
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+      caller.release();
+    }
+  });
+
+  it.each(["update", "delete"] as const)("serializes module %s with recognition updates", async (operation) => {
+    const userId = `module-admin-${randomUUID()}`;
+    const target = await createModule("Concurrent");
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    const holder = await api.connect();
+    const caller = await api.connect();
+    try {
+      await holder.query("begin");
+      await lockOrganizationModuleRecognition(holder as unknown as Queryable, organizationId);
+      const db = createDatabase(caller as unknown as Queryable);
+      const auth = makeTestAuthContext({ userId, organizationId });
+      const pending = operation === "update" ? updateParameterModuleForAuth(db, auth, target, { name: "Changed" })
+        : deleteParameterModuleForAuth(db, auth, target);
+      const completedWhileLocked = await Promise.race([pending.then(() => true), new Promise<false>(resolve => setTimeout(() => resolve(false), 100))]);
+      await holder.query("commit");
+      await pending;
+      expect(completedWhileLocked).toBe(false);
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+      caller.release();
+    }
+  });
+
+  it("rolls back a module creation when its audit fails", async () => {
+    const userId = `module-admin-${randomUUID()}`;
+    const requestId = `reject-module-audit-${randomUUID()}`;
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await admin.query(`create function public.reject_module_test_audit() returns trigger language plpgsql as $$
+      begin if new.trace_id like 'reject-module-audit-%' then raise exception 'module audit failure'; end if; return new; end $$;
+      create trigger reject_module_test_audit before insert on public.audit_events for each row execute function public.reject_module_test_audit()`);
+    const caller = await api.connect();
+    try {
+      await expect(createParameterModuleForAuth(createDatabase(caller as unknown as Queryable),
+        makeTestAuthContext({ userId, organizationId }), { name: "Rollback" }, { requestId })).rejects.toThrow("module audit failure");
+      expect((await admin.query("select id from public.parameter_modules where organization_id=$1 and name='Rollback'", [organizationId])).rows).toEqual([]);
+      expect((await admin.query("select id from public.audit_events where trace_id=$1", [requestId])).rows).toEqual([]);
+    } finally {
+      caller.release();
+      await admin.query("drop trigger reject_module_test_audit on public.audit_events; drop function public.reject_module_test_audit()");
+    }
   });
 
   it("registers active owned subjects with their driver", async () => {
@@ -621,6 +757,29 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     expect(await service.execute(command)).toMatchObject({ ok: true, value: { outcome: "replayed", moduleId: destination } });
     expect((await admin.query("select kind,parent_id,attribution_subject_id from public.parameter_modules where id=$1", [destination])).rows)
       .toEqual([{ kind: "business", parent_id: moduleId, attribution_subject_id: null }]);
+  });
+
+  it("creates a registration category against the committed parent tree", async () => {
+    const grandparent = await createModule("Grandparent");
+    await admin.query("update public.parameter_modules set parent_id=$1,path=$1||'/'||id,depth=2 where id=$2", [grandparent, moduleId]);
+    const holder = await admin.connect();
+    const destination = `new-business-${randomUUID()}`;
+    try {
+      await holder.query("begin");
+      await holder.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-tree:${organizationId}`]);
+      await holder.query("update public.parameter_modules set parent_id=null,path=id,depth=1 where id=$1", [moduleId]);
+      const pending = createRegistrationService(api).execute({ kind: "move-placement", organizationId,
+        registrationId: registration.registrationId, expectedRelease: pin, destinationModuleId: destination,
+        newDestination: { parentModuleId: moduleId, name: "Created category" }, idempotencyKey: randomUUID(), context });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await holder.query("commit");
+      expect(await pending).toMatchObject({ ok: true, value: { moduleId: destination } });
+      expect((await admin.query("select path from public.parameter_modules where id=$1", [destination])).rows[0].path)
+        .toBe(`${moduleId}/${destination}`);
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+    }
   });
 
   it("keeps other organizations independent, rejects stale releases, and never auto-restores a removed subject", async () => {
