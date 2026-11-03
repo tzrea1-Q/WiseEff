@@ -709,6 +709,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
   };
 
   const governance: ParameterCatalogGovernanceRepository = {
+    async exportModuleStructure() { throw new WiseEffApiError("SERVICE_UNAVAILABLE", "Module structure transfer requires API mode.", { reason: "mock-module-structure-unavailable" }, "mock"); },
+    async previewModuleStructure() { throw new WiseEffApiError("SERVICE_UNAVAILABLE", "Module structure transfer requires API mode.", { reason: "mock-module-structure-unavailable" }, "mock"); },
+    async applyModuleStructure() { throw new WiseEffApiError("SERVICE_UNAVAILABLE", "Module structure transfer requires API mode.", { reason: "mock-module-structure-unavailable" }, "mock"); },
     async listUnregisteredSubjects() { throw new WiseEffApiError("SERVICE_UNAVAILABLE", "", { reason: "mock-batch-unavailable" }, "mock"); },
     async createBatchRegistration() { throw new WiseEffApiError("SERVICE_UNAVAILABLE", "", { reason: "mock-batch-unavailable" }, "mock"); },
     async listDriverCompatibleDiscovery() {
