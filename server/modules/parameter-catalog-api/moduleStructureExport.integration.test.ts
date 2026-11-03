@@ -161,6 +161,32 @@ describe("module structure export", () => {
     }
   });
 
+  it("preserves a long historical encoded path on unchanged and metadata-only updates", async () => {
+    const org = "historical-path-org", user = "historical-path-admin";
+    await db.query("insert into organizations(id,name) values ($1,'Historical')", [org]);
+    await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [user, org]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('historical-path-role',$1,$2,'admin')", [user, org]);
+    await db.query(`with recursive tree as (
+      select 1 as n, 'h0001'::text as id, null::text as parent_id, 'h0001'::text as path
+      union all select n+1, 'h'||lpad((n+1)::text,4,'0'), id, path||'/'||'h'||lpad((n+1)::text,4,'0') from tree where n<450)
+      insert into parameter_modules(id,organization_id,name,parent_id,path,depth,kind,origin)
+      select id,$1,'Historical '||n,parent_id,path,n,'business','curated' from tree order by n`, [org]);
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const path = `/api/v2/organizations/${org}/module-structure`;
+    const exported = await requestJson(app, `${path}/exports`, { method: "POST", body: "{}" });
+    expect(exported.status, exported.bodyText).toBe(200);
+    const document = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    for (const metadata of [false, true]) {
+      if (metadata) document.modules.find(module => module.sourceId === "h0450")!.description = "Retained path";
+      const preview = await requestJson(app, `${path}/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+      expect(preview.status, preview.bodyText).toBe(200);
+      const applied = await requestJson(app, `${path}/applies`, { method: "POST", body: JSON.stringify({ document, resolutions: {}, token: (preview.body as { token: string }).token, idempotencyKey: `historical-${metadata}`, reason: "Retain history" }) });
+      expect(applied.status, applied.bodyText).toBe(200);
+    }
+    expect((await db.query("select length(path) as length,description from parameter_modules where id='h0450'")).rows).toEqual([{ length: 2699, description: "Retained path" }]);
+  });
+
   it("requires explicit disposition of children before deleting a populated module", async () => {
     const org = "delete-tree-org", user = "delete-tree-admin";
     await db.query("insert into organizations(id,name) values ($1,'Delete tree')", [org]);
@@ -536,6 +562,12 @@ describe("module structure export", () => {
     expect(partialChoice.status, partialChoice.bodyText).toBe(200);
     expect(partialChoice.body).toMatchObject({ conflicts: expect.arrayContaining([expect.objectContaining({ key: "mapping:export-root", file: null })]) });
     const choices = { "export-root": "copy-existing", "copy-child": "create" };
+    const deepModules = Array.from({ length: 75 }, (_, index) => 74 - index).map(index => ({ ref: `copy-limit-${index}`, name: `Copy limit ${index}`, parentRef: index ? `copy-limit-${index - 1}` : null, description: "", scope: "", sortOrder: 0, importance: "medium" }));
+    const deepCopy = await requestJson(targetApp, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input,
+      document: { ...document, modules: [...document.modules, ...deepModules] },
+      mappings: { ...choices, ...Object.fromEntries(deepModules.map(module => [module.ref, "create"])) } }) });
+    expect(deepCopy.status, deepCopy.bodyText).toBe(400);
+    expect(deepCopy.bodyText).toContain("encoded path");
     await db.query("update parameter_modules set description='Target description' where id='copy-existing'");
     const conflicting = await requestJson(targetApp, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input, mappings: choices }) });
     expect(conflicting.status, conflicting.bodyText).toBe(200);
@@ -644,6 +676,10 @@ describe("module structure export", () => {
     const edited = { ...document, modules: [...document.modules, ...additions] };
     const previewPath = `/api/v2/organizations/${org}/module-structure/previews`;
     const applyPath = `/api/v2/organizations/${org}/module-structure/applies`;
+    const tooDeep = { ...document, modules: [...document.modules, ...Array.from({ length: 75 }, (_, index) => 74 - index).map(index => ({ ref: `limit-${index}`, name: `Limit ${index}`, parentRef: index ? `limit-${index - 1}` : null, description: "", scope: "", sortOrder: 0, importance: "medium" }))] };
+    const rejected = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document: tooDeep, resolutions: {} }) });
+    expect(rejected.status, rejected.bodyText).toBe(400);
+    expect(rejected.bodyText).toContain("encoded path");
     const preview = await requestJson(app, previewPath, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(preview.status, preview.bodyText).toBe(200);
     await db.query(`create function fail_created_ref() returns trigger language plpgsql as $$ begin raise exception 'injected mapping failure'; end $$;
@@ -1164,12 +1200,28 @@ describe("module structure export", () => {
     if (!pin) throw new Error("Missing Catalog release");
     const loaded = await createCatalogKernel(pool).loadPinnedCatalog(pin);
     if (!loaded.ok) throw new Error(JSON.stringify(loaded.error));
-    for (const logicalNodeId of ["capacity-one", "capacity-two"]) {
-      const binding = await createSourceBackedBindingService(pool).stabilize({ snapshot: loaded.value, organizationId: org,
+    const stabilize = (logicalNodeId: string) => createSourceBackedBindingService(pool).stabilize({ snapshot: loaded.value, organizationId: org,
         projectId: "recognition-capacity-project", logicalNodeId, registrationId: SubjectRegistrationId("export-registration"),
         definitionId: ParameterDefinitionId("pdef_acme_power_iin_max"), effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_2"), expectedEffectiveRevisionId: null });
+    const sourceGate = await pool.connect();
+    await sourceGate.query("begin");
+    await sourceGate.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-recognition:${org}`]);
+    const sourceGatePid = (await sourceGate.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid;
+    let sourceWrite: ReturnType<typeof stabilize> | undefined;
+    let competingApply: ReturnType<typeof requestJson> | undefined;
+    try {
+      sourceWrite = stabilize("capacity-one");
+      await vi.waitFor(async () => { expect((await pool.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [sourceGatePid])).rowCount).toBeGreaterThan(0); });
+      competingApply = requestJson(app, `/api/v2/organizations/${org}/module-structure/applies`, { method: "POST", body: JSON.stringify({ document: capacityDocument,
+        resolutions: {}, token: (beforeCapacity.body as { token: string }).token, idempotencyKey: "source-instance-race", reason: "Review" }) });
+      await vi.waitFor(async () => { expect((await pool.query("select pid from pg_stat_activity where $1=any(pg_blocking_pids(pid))", [sourceGatePid])).rowCount).toBeGreaterThan(1); });
+      await sourceGate.query("commit");
+      const binding = await sourceWrite;
       if (!binding.ok) throw new Error(JSON.stringify(binding.error));
-    }
+      expect((await competingApply).status).toBe(409);
+    } finally { await sourceGate.query("rollback"); sourceGate.release(); await sourceWrite?.catch(() => undefined); await competingApply?.catch(() => undefined); }
+    const secondBinding = await stabilize("capacity-two");
+    if (!secondBinding.ok) throw new Error(JSON.stringify(secondBinding.error));
     const capacityPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: capacityDocument, resolutions: {} }) });
     expect(capacityPreview.status, capacityPreview.bodyText).toBe(409);
     expect(capacityPreview.bodyText).toContain("单例容量");

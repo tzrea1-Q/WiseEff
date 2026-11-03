@@ -9,6 +9,7 @@ import { planRecognition } from "./recognition";
 import { planSubjectPlacement } from "./subjects";
 import { planModuleCopy } from "./copy";
 import type { LifecycleChange } from "./lifecycle";
+import { validateChangedPaths } from "./pathBudget";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance", "parentRef"] as const;
 
@@ -213,6 +214,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
     for (const node of visited) validated.add(node);
   }
   const newIds = new Set(document.modules.filter(module => !module.sourceId && !mapped.has(module.ref)).map(module => moduleIds.get(module.ref)!));
+  validateChangedPaths(organizationId, parents, names.rows, changes);
   for (const change of lifecycle) if (change.operation === "register" && change.moduleId) {
     const id = moduleIds.get(change.moduleId) ?? change.moduleId;
     const isUnclassified = subjectEdits.get(change.subjectId)?.placement?.kind === "unclassified";
