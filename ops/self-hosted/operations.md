@@ -195,6 +195,14 @@ On a memory-constrained development host that intentionally alternates between a
 
 This compatibility helper runs Compose `down` in `dev` mode and a generic Compose `up` in `selfhost` mode. Do not use it on a commit-SHA production deployment: it removes the existing containers and can lose their immutable image identity. Use `compose stop`/`start` there.
 
+### PostgreSQL memory and connection recovery
+
+The default PostgreSQL container limits are 2 GiB memory and 3 GiB memory plus swap. Override `WISEEFF_POSTGRES_MEMORY_LIMIT` and `WISEEFF_POSTGRES_MEMORY_SWAP_LIMIT` in the deployment env file when sizing the host. These are ceilings, not reservations; they do not change PostgreSQL `shared_buffers` or `work_mem`. Swap availability also depends on the host.
+
+If PostgreSQL reports a backend killed by signal 9 and the kernel reports a matching memory-cgroup OOM, API `Connection terminated unexpectedly` errors may be a consequence of database recovery. Capture the database/kernel logs and container limits before changing them. A healthy readiness response establishes availability, not query performance.
+
+For an emergency live adjustment, `docker update --memory 2g --memory-swap 3g <postgres-container>` changes the existing container without recreation. Persist the same settings in the deployment env file and Compose configuration: `docker update` alone is lost on recreation, and `compose restart` does not apply changed Compose limits. Use the normal upgrade lifecycle when applying the persisted configuration; do not remove the database volume. After recovery, verify readiness and the previously slow API while observing PostgreSQL activity.
+
 ## Start, Stop, And Restart
 
 ### Start an already-created deployment

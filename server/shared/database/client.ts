@@ -151,6 +151,19 @@ function statementType(text: string) {
 
 export function createPostgresDatabase(connectionString: string, options: DatabaseOptions = {}): RootDatabase {
   const pool = new pg.Pool({ connectionString });
+  const connectionErrors = new WeakMap<pg.PoolClient, Error>();
+  const recordConnectionError = (error: Error, client: pg.PoolClient) => {
+    if (connectionErrors.has(client)) return;
+    connectionErrors.set(client, error);
+    // Error objects and clients may contain SQL, credentials and connection state.
+    console.error("[database] PostgreSQL connection failed.");
+  };
+  pool.on("connect", (client) => {
+    // pg-pool removes its idle error listener while a client is checked out.
+    // Keep a listener for transactions and callers borrowing the raw root pool.
+    client.on("error", (error) => recordConnectionError(error, client));
+  });
+  pool.on("error", recordConnectionError);
   let closed = false;
   const query = <Row,>(text: string, values: unknown[] = []) =>
     traceQuery(options.tracing, text, values, async () => {
@@ -166,6 +179,8 @@ export function createPostgresDatabase(connectionString: string, options: Databa
       const session: Queryable = {
         query: <Row,>(text: string, values: unknown[] = []) =>
           traceQuery(options.tracing, text, values, async () => {
+            const connectionError = connectionErrors.get(client);
+            if (connectionError) throw connectionError;
             const result = await client.query(text, values);
             return { rows: result.rows as Row[], rowCount: result.rowCount };
           })
@@ -190,6 +205,7 @@ export function createPostgresDatabase(connectionString: string, options: Databa
         }
         throw error;
       } finally {
+        releaseError ??= connectionErrors.get(client);
         if (releaseError) client.release(releaseError);
         else client.release();
       }
