@@ -32,6 +32,8 @@ describe("child owner claims with approved historical source exclusions", { time
     { label: "missing", ancestor: "", expected: "ready" },
     { label: "consistent", ancestor: 'compatible = "acme,power";', expected: "ready" },
     { label: "contradictory", ancestor: 'compatible = "vendor,other";', expected: "conflict" },
+    { label: "gap", ancestor: "", expected: "conflict" },
+    { label: "cycle", ancestor: "", expected: "conflict" },
   ])("$label ancestor retains exact history and respects claim evidence", async ({ label, ancestor, expected }) => {
     const lane = await createEphemeralTestDatabase("owner-history-" + label);
     const db = createPostgresDatabase(lane.url), pool = getRootPostgresPool(db)!;
@@ -76,16 +78,20 @@ describe("child owner claims with approved historical source exclusions", { time
       await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('history-role',$1,$2,'admin')", [userId, organizationId]);
       await db.query("insert into projects(id,organization_id,name,code,status,initialization_status) values ($1,$2,'History','HISTORY','active','initialized')", [projectId, organizationId]);
       const business = await createLegacyParameterModule(db, { organizationId, name: "Business", kind: "business", origin: "curated" });
-      await db.transaction(async tx => {
+      const registrationClient = await pool.connect();
+      try {
+        await registrationClient.query("begin");
         for (const [subjectId, subjectKind] of [["csub_acme_power", "driver"], ["history-other-driver", "driver"], ["history-child", "node-type"]] as const) {
-          const registration = await writeGuardedRegistration(tx, { kind: "register", organizationId,
+          const registration = await writeGuardedRegistration(registrationClient, { kind: "register", organizationId,
             subjectId: CatalogSubjectId(subjectId), subjectKind, expectedRelease: release, placement: { mode: "use-default" },
             destinationModuleId: "module-" + subjectId, newDestination: { parentModuleId: business.id, name: subjectId },
             method: "explicit", proof: { reason: "Historical source claim test" }, idempotencyKey: "register-" + subjectId,
             context: { actorKind: "org-admin", principalId: userId } });
           if (!registration.ok) throw new Error(JSON.stringify(registration));
         }
-      });
+        await registrationClient.query("commit");
+      } catch (error) { await registrationClient.query("rollback"); throw error; }
+      finally { registrationClient.release(); }
       const storage = createMemoryObjectStore();
       const configSetId = (await createConfigSet(db, auth, { projectId, name: "History" })).id;
       const text = "/dts-v1/; / { bus { " + ancestor + " legacy_child { weight = <21>; }; }; };";
@@ -95,6 +101,16 @@ describe("child owner claims with approved historical source exclusions", { time
       const revision = await ingestConfigRevision(db, { organizationId, projectId, configSetId,
         entryFile: "board.dts", includeSearchPaths: ["."], overlayOrder: [],
         members: [{ fileId, fileVersionId: uploaded.version.id, fileName: "board.dts", role: "base", sortOrder: 0, content: text }] }, auth);
+      // Model malformed legacy topology before any pin makes the revision immutable.
+      // No trigger or constraint is disabled; parent identity need not have a row
+      // in this revision, and the schema permits a cycle.
+      if (label === "gap") {
+        await db.query("insert into dts_logical_nodes(id,organization_id,project_id,config_set_id) values ('history-orphan',$1,$2,$3)",
+          [organizationId, projectId, configSetId]);
+        await db.query("update dts_logical_node_revisions set parent_logical_node_id='history-orphan' where config_revision_id=$1 and node_locator='/bus'", [revision.id]);
+      } else if (label === "cycle") {
+        await db.query("update dts_logical_node_revisions set parent_logical_node_id=logical_node_id where config_revision_id=$1 and node_locator='/bus'", [revision.id]);
+      }
       await syncPublishedCatalogProjectValues(pool, { organizationId, projectId, configSetId, configRevisionId: revision.id });
       const binding = (await db.query<{ id: string; registration_id: string; current_value_id: string; logical_node_id: string }>(
         "select id,registration_id,current_value_id,logical_node_id from parameter_catalog.project_parameter_bindings where subject_id='history-child'"
@@ -137,6 +153,10 @@ describe("child owner claims with approved historical source exclusions", { time
         "join parameter_catalog.project_value_source_pins p on p.project_value_id=v.id and p.binding_id=b.id where b.id=$1", [binding.id]
       )).rows;
       const retained = await history();
+      expect(retained).toEqual([expect.objectContaining({
+        binding: expect.objectContaining({ current_value_id: binding.current_value_id, logical_node_id: binding.logical_node_id }),
+        pin: expect.objectContaining({ config_revision_id: revision.id, file_version_id: uploaded.version.id }),
+      })]);
       expect(await report()).toMatchObject({ status: expected });
       if (label === "missing") {
         const historicalEvidence = [{ bindingId: binding.id, organizationId, requestId: applied.requestId, reason: "approved-source-exclusion" }];

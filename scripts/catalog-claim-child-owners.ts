@@ -16,7 +16,7 @@ import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } fr
 type Declaration = { name: string; compatibles: readonly string[]; conflict?: string };
 type Evidence = {
   kind: string; id: string; organizationId: string; subjectId: string; ancestorCompatible: string | null;
-  sourceNodeFound: boolean; historicalExclusionRequestId: string | null;
+  sourceNodeFound: boolean; ancestorChainComplete: boolean; historicalExclusionRequestId: string | null;
 };
 type HistoricalEvidence = { bindingId: string; organizationId: string; requestId: string; reason: "approved-source-exclusion" };
 
@@ -135,6 +135,7 @@ export async function claimCatalogChildOwners(
       )
       select evidence.kind, evidence.id, evidence.organization_id as "organizationId", evidence.subject_id as "subjectId",
         ancestor.compatible as "ancestorCompatible", node.id is not null as "sourceNodeFound",
+        ancestor.chain_complete as "ancestorChainComplete",
         evidence.historical_exclusion_request_id as "historicalExclusionRequestId"
       from evidence
       left join public.dts_config_revisions revision on revision.id=evidence.config_revision_id
@@ -151,7 +152,10 @@ export async function claimCatalogChildOwners(
           from parents join public.dts_logical_node_revisions p on p.config_revision_id=node.config_revision_id
             and p.logical_node_id=parents.parent_logical_node_id
           where not p.logical_node_id=any(parents.visited)
-        ) select compatible from parents where compatible is not null order by depth limit 1
+        ) select (select compatible from parents where compatible is not null order by depth limit 1) as compatible,
+          (node.parent_logical_node_id is null or exists(
+            select 1 from parents where parent_logical_node_id is null
+          )) as chain_complete
       ) ancestor on true
       order by evidence.subject_id,evidence.organization_id,evidence.kind,evidence.id`,
     [listed.page.items.map((item) => item.id)])).rows;
@@ -191,7 +195,7 @@ export async function claimCatalogChildOwners(
           // A verified exclusion preserves history; it is not positive ancestor
           // evidence and never overrides a known incompatible ancestor. The unique
           // reviewed vendor declaration above supplies the proposed Catalog owner.
-          if (item.kind === "binding" && item.sourceNodeFound && item.ancestorCompatible === null
+          if (item.kind === "binding" && item.sourceNodeFound && item.ancestorChainComplete && item.ancestorCompatible === null
             && item.historicalExclusionRequestId) {
             historicalEvidence.push({ bindingId: item.id, organizationId: item.organizationId,
               requestId: item.historicalExclusionRequestId, reason: "approved-source-exclusion" });
