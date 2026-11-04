@@ -196,6 +196,14 @@ chmod 600 .build-network.env
 
 该兼容工具在 `dev` 模式执行 Compose `down`，在 `selfhost` 模式执行普通 Compose `up`。commit SHA 生产部署禁止使用它：原容器会被删除，不可变镜像身份可能随之丢失。此类环境应使用 `compose stop`/`start`。
 
+### PostgreSQL 内存与断连恢复
+
+PostgreSQL 容器默认限制为 2 GiB 内存、3 GiB 内存与 swap 合计。可在部署 env 文件中通过 `WISEEFF_POSTGRES_MEMORY_LIMIT` 和 `WISEEFF_POSTGRES_MEMORY_SWAP_LIMIT` 按宿主机容量调整。这是上限而非预留量，不会修改 PostgreSQL 的 `shared_buffers` 或 `work_mem`；能否使用 swap 也取决于宿主机。
+
+如果 PostgreSQL 日志显示后端进程被 signal 9 终止，且内核日志存在对应的内存 cgroup OOM，API 的 `Connection terminated unexpectedly` 可能是数据库恢复的后果。修改前保留数据库、内核日志和容器限制。就绪检查成功只能说明可用，不能证明查询性能正常。
+
+紧急情况下，`docker update --memory 2g --memory-swap 3g <postgres-container>` 可以直接调整现有容器，无需重建。同时把相同设置写入部署 env 文件和 Compose 配置：仅执行 `docker update` 的设置会在重建后丢失，`compose restart` 也不会应用修改后的 Compose 限制。通过正常升级流程应用持久配置，不要删除数据库卷。恢复后检查就绪状态，并在观察 PostgreSQL 活动时复测原先缓慢的 API。
+
 ## 启动、停止与重启
 
 ### 启动已经创建的部署

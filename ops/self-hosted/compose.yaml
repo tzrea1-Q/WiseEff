@@ -38,8 +38,8 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
-    mem_limit: 256m
-    memswap_limit: 384m
+    mem_limit: ${WISEEFF_POSTGRES_MEMORY_LIMIT:-2g}
+    memswap_limit: ${WISEEFF_POSTGRES_MEMORY_SWAP_LIMIT:-3g}
     env_file: ${WISEEFF_ENV_FILE:-.env}
     environment:
       POSTGRES_USER: wiseeff

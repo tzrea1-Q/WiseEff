@@ -247,7 +247,9 @@ export const S2_SCH_0326_FINGERPRINT =
 export const S2_SCH_0330_FINGERPRINT = "c428a966478fdba35dbef9493ef887d57353b3caf38e2b2d87eb5cf5b8a033c3";
 /** 0331 adds the invoker-scoped module deletion reference inventory. */
 export const S2_SCH_0331_FINGERPRINT = "9262af10a2c614fa73c8af50a2df24acd1896f367cb1b2df00e628119eb18f3d";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0331_FINGERPRINT;
+/** 0332 defers suspension proof planning until an exact current-tip receipt exists. */
+export const S2_SCH_0332_FINGERPRINT = "de38c205ecaf327189aac0c97c973c0245e33ac26a3701146778f8b5d2e42ccd";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0332_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

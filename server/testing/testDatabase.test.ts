@@ -123,6 +123,8 @@ describe("fresh database fixture policy", () => {
       "server/modules/catalog-publication/runtime/definitionCleanupUpgrade.integration.test.ts": ["cleanup_acl_upgrade:false"],
       "server/modules/catalog-publication/runtime/draftReadUpgrade.integration.test.ts": ["draft_acl_upgrade:false", "structure_baseline_upgrade:false"],
       "server/modules/catalog-publication/runtime/sourceSuspensionUpgrade.integration.test.ts": ["scope_acl_upgrade:false"],
+      // Replay 0331 with existing API logins before replacing the bounded read RPC.
+      "server/modules/catalog-publication/runtime/sourceSuspensionReadUpgrade.integration.test.ts": ["suspension_read_upgrade:false"],
       // Replay pre-0260 authors and published revisions to prove truthful backfill.
       "server/modules/knowledge/historicalAttribution.migration.integration.test.ts": ["history1386upgrade:false"],
       "server/modules/logs/sourceIndexWorker.integration.test.ts": ["stmtupgrade:false"],
@@ -147,6 +149,8 @@ describe("fresh database fixture policy", () => {
       // Replay existing API LOGIN grants before the durable cleanup boundary exists.
       "server/modules/users/organizationErasure.integration.test.ts": ["erasureupgrade:false"],
       "server/modules/users/organizationLifecycle.integration.test.ts": ["lifecycleupgrade:false"],
+      // Backend termination must own its database and physical connections.
+      "server/shared/database/clientConnectionRecovery.integration.test.ts": ["client_pool_recovery:false", "client_tx_recovery:false"],
       "server/shared/database/migrationCompatibility.integration.test.ts": ["purge_bounds:false", "purge_cutover:false", "purge_existing:false", "purge_retry:false"],
       "server/testing/testDatabase.test.ts": ["cleanup_race:false", "emptycompare:false", "freshcompare:true", "freshguard:true", "role_lease_a:false", "role_lease_b:false"]
     });
