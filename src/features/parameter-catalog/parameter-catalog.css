@@ -1290,6 +1290,7 @@ button.parameter-catalog__tree-toggle:hover {
 
 .claimed-owner-publication-dialog .parameter-catalog__table {
   width: 100%;
+  min-width: 0;
   table-layout: fixed;
 }
 
