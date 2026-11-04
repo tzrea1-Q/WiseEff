@@ -236,6 +236,8 @@ Stop if either backup command fails; listing an archive is not a restore rehears
 
 Preflight is read-only and is also the default mode. Inspect the JSON `candidates`: `ready`, `already-claimed`, `missing` and `conflict`, including each conflict reason. Evidence spans organizations. Active child registrations require an active owner-driver registration in every affected organization; missing or contradictory nearest-compatible-ancestor evidence is not guessed. Resolve or explicitly account for every missing/conflicting candidate before proceeding; rerun preflight after corrections.
 
+A narrow exception is reported as `historicalEvidence`: a still-retired registration may retain a binding whose original DTS node exists but whose ancestor compatible is absent, when an approved, committed source exclusion verifies that exact current value and source pin (including tenant/configuration and audit). The unique reviewed vendor declaration supplies the proposed Catalog owner; the exclusion only explains why that missing historical ancestor is not current evidence. Known incompatible or unresolvable ancestors, observations, active registrations, and missing/unverified provenance still block. The claim does not map old nodes to new nodes by path or rewrite historical bindings/pins. Review `historicalEvidence` before applying; it is also recorded in the claim audit. Deploy the normal migrations, including `0326`, before using this version of the CLI; no manual data patch is required.
+
 After reviewing the report and taking the backup above:
 
 ```bash
