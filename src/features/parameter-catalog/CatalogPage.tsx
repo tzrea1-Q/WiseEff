@@ -158,6 +158,7 @@ export type CatalogPageProps = {
   definitionPublishingAllowed?: boolean;
   definitionAuthoringAllowed?: boolean;
   onImportDefinitions?: () => void;
+  onPublishClaimedOwners?: () => void;
   onOpenUnregisteredSubjects?: () => void;
   definitionDeletionAllowed?: boolean;
   definitionAuthoringDisabledReason?: string;
@@ -255,6 +256,7 @@ export function CatalogPage({
   definitionPublishingAllowed = false,
   definitionAuthoringAllowed = false,
   onImportDefinitions,
+  onPublishClaimedOwners,
   onOpenUnregisteredSubjects,
   definitionDeletionAllowed = false,
   definitionAuthoringDisabledReason = catalogAuthoringAccessHint,
@@ -960,10 +962,11 @@ export function CatalogPage({
               onChange={(event) => toggleRetiredSubjects(event.target.checked)} />
             包含已停用和退役主体
           </label>
-          {actions.length > 0 || onOpenPendingWork || onImportDefinitions || onOpenUnregisteredSubjects ? (
+          {actions.length > 0 || onOpenPendingWork || onImportDefinitions || onPublishClaimedOwners || onOpenUnregisteredSubjects ? (
             <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
               {onOpenUnregisteredSubjects ? <button type="button" className="button subtle sm" onClick={onOpenUnregisteredSubjects}>待登记主体</button> : null}
               {onImportDefinitions ? <button type="button" className="button subtle sm" onClick={onImportDefinitions}>批量导入定义</button> : null}
+              {onPublishClaimedOwners ? <button type="button" className="button subtle sm" onClick={onPublishClaimedOwners}>发布已认领归属</button> : null}
               {onOpenPendingWork ? (
                 <button
                   type="button"

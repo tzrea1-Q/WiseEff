@@ -865,18 +865,25 @@ export const catalogMarkdownImportRequestSchema = catalogObject({
   markdownImport: catalogObject({ document: z.string().max(1_048_576), fileName: z.string().min(1).max(255) })
 });
 export const catalogCreatePublicationCandidateRequestSchema = z.union([
-  catalogTypedPublicationCandidateRequestSchema, catalogMarkdownImportRequestSchema
+  catalogTypedPublicationCandidateRequestSchema, catalogMarkdownImportRequestSchema,
+  catalogObject({ claimedOwners: z.literal(true) })
 ]);
 
 export const catalogPublishPublicationCandidateRequestSchema = catalogObject({
   idempotencyKey: z.string().min(1)
 });
 
+export const catalogOwnerDeclarationSchema = catalogObject({
+  subjectId: z.string(), subjectName: z.string(), ownerSubjectId: z.string(), ownerName: z.string()
+});
+
 export const catalogPublicationImpactSummaryDtoSchema = catalogObject({
   addedDefinitionCount: z.number().int().nonnegative(),
   changedDefinitionCount: z.number().int().nonnegative(),
   addedSubjectCount: z.number().int().nonnegative(),
-  addedSubjectIds: z.array(z.string()).optional()
+  addedSubjectIds: z.array(z.string()).optional(),
+  ownerDeclarations: z.array(catalogOwnerDeclarationSchema).optional(),
+  ownerPublicationOnly: z.boolean().optional()
 });
 
 export const catalogPublicationCapabilityContractDtoSchema = catalogObject({
@@ -1537,8 +1544,11 @@ export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObj
   })),
   source: catalogObject({ fileName: z.string(), sha256: z.string(), parserVersion: z.string() })
 }));
+export const catalogClaimedOwnersResponseSchema = itemEnvelopeSchema(catalogObject({
+  candidate: catalogPublicationCandidateDtoSchema.nullable(), noChange: z.boolean()
+}));
 export const catalogPublicationPreviewResponseSchema = z.union([
-  catalogPublicationCandidateResponseSchema, catalogMarkdownImportResponseSchema
+  catalogPublicationCandidateResponseSchema, catalogMarkdownImportResponseSchema, catalogClaimedOwnersResponseSchema
 ]);
 export const catalogPublicationJobResponseSchema = itemEnvelopeSchema(
   catalogPublicationJobDtoSchema

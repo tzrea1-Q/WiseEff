@@ -24,6 +24,7 @@ import {
   catalogCreateProposalRequestSchema,
   catalogCreatePublicationCandidateRequestSchema,
   catalogMarkdownImportResponseSchema,
+  catalogClaimedOwnersResponseSchema,
   catalogRevisionDocumentResponseSchema,
   catalogCreateReplacementRequestSchema,
   catalogContinueReplacementRequestSchema,
@@ -677,6 +678,9 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
           context
         }
       ),
+    previewClaimedOwners: (context: Pick<CatalogWriteContext, "catalogReleaseId">) =>
+      request("POST", canonical("catalog.createPublicationCandidate"), catalogClaimedOwnersResponseSchema,
+        "CatalogPublicationPreviewResponse", { body: { claimedOwners: true }, context }),
     previewMarkdownImport: (
       body: CatalogMarkdownImportRequest,
       context: Pick<CatalogWriteContext, "catalogReleaseId">

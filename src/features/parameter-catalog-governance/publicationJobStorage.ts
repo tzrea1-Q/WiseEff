@@ -11,6 +11,7 @@ export type StoredPublicationJob = {
   draft: PublicationDraft;
   addedSubjectIds?: readonly string[];
   markdownImport?: boolean;
+  claimedOwners?: boolean;
   idempotencyKey: string;
 };
 

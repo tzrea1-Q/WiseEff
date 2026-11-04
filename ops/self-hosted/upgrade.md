@@ -209,7 +209,7 @@ Follow this order: **upgrade → instance-wide child-owner claim → authorized 
 
 Rehearse both CLIs against a staging database or an isolated copy of the instance before production. Source review and CI are not evidence that these commands have succeeded on the target deployment. Arrange a maintenance window for the manual writes: the claim takes instance-wide locks, and these CLIs do not perform the upgrade controller's traffic drain or recovery-point capture.
 
-Run the commands below from `ops/self-hosted/` using the **upgraded running API container**; the host does not need Node.js. They consume that container's `DATABASE_URL`. The standard setup generates the `wiseeff` PostgreSQL owner connection, but customized deployments must verify that the selected connection is authorized for maintenance, including the owner-claim function, required locks and audited writes. Do not assume that a restricted API login has these permissions or change production grants just to make the commands pass.
+Run the commands below from `ops/self-hosted/` using the **upgraded running API container**; the host does not need Node.js. After dedicated logins are provisioned, `DATABASE_URL` is the restricted API login and is not suitable for owner claims or module migration. These commands switch only the maintenance process to the container's existing `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL`; they do not edit `.env` or the running API connection. A missing maintenance URL stops the command; do not fall back to the runtime login or grant it table access.
 
 Keep the successful upgrade's `run_id` and verified whole-state recovery point. Before **each** manual `--apply`, take a fresh supplementary database backup. For the standard bundled PostgreSQL service, use an operator-writable secured directory outside the checkout and Docker data root:
 
@@ -230,8 +230,10 @@ Stop if either backup command fails; listing an archive is not a restore rehears
 ### 1. Claim Catalog child owners across the instance
 
 ```bash
-./scripts/compose --env-file .env exec -T api \
-  npx tsx scripts/catalog-claim-child-owners.ts --preflight
+./scripts/compose --env-file .env exec -T api sh -c '
+  export DATABASE_URL="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:?maintenance database URL required}"
+  exec npx tsx "$@"
+' sh scripts/catalog-claim-child-owners.ts --preflight
 ```
 
 Preflight is read-only and is also the default mode. Inspect the JSON `candidates`: `ready`, `already-claimed`, `missing` and `conflict`, including each conflict reason. Evidence spans organizations. Active child registrations require an active owner-driver registration in every affected organization; missing or contradictory nearest-compatible-ancestor evidence is not guessed. Resolve or explicitly account for every missing/conflicting candidate before proceeding; rerun preflight after corrections.
@@ -241,21 +243,27 @@ A narrow exception is reported as `historicalEvidence`: a still-retired registra
 After reviewing the report and taking the backup above:
 
 ```bash
-./scripts/compose --env-file .env exec -T api \
-  npx tsx scripts/catalog-claim-child-owners.ts --apply
+./scripts/compose --env-file .env exec -T api sh -c '
+  export DATABASE_URL="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:?maintenance database URL required}"
+  exec npx tsx "$@"
+' sh scripts/catalog-claim-child-owners.ts --apply
 ```
 
 Apply rechecks under locks and claims only `ready` subjects in one audited transaction. A report containing conflicts does **not** prevent other ready candidates from being claimed, and exit code `0` does not mean all candidates were claimed. Inspect the apply report and rerun preflight; completed claims appear as `already-claimed`. Registration, Binding, value and definition identities are preserved. Repeating apply does not change an established owner. **Ownership is permanent**; moving a child to another driver requires a new subject and the definition-replacement process.
 
-Publish the Catalog successor through the normal authorized publication flow before continuing. Claiming changes ownership but is not itself a Catalog release activation. Do not bypass publication authorization or an inherited publication freeze.
+Before continuing, open **Organization configuration → Parameter definitions** (`/parameter-admin/specs`) and select **Publish claimed owners** (localized in the UI). Confirm the pending-owner preview: the server compares permanent claims with the current artifact and lists unpublished child/driver pairs; an empty result creates no release. Review the pairs, then confirm publication through the existing high-risk authorization flow. Organization admins retain the existing self-approval rule; other authors can share the candidate ID under the publication details with a same-organization reviewer, who loads it under the existing-candidate review section in the same dialog. Freeze, disabled policy, missing capabilities and stale candidates still block; this entry changes no policy or grants. Queued/running is not activation: wait for effective publication before module migration.
+
+This entry only publishes already-claimed owners. It cannot claim ownership, edit definitions/project values, or approve a mixed candidate containing other changes. The ordinary API login uses the existing server-side authorization; bootstrap credentials never enter the browser. A failed new preview invalidates the previous preview's publish eligibility. Reloading can resume the current user's and organization's pending owner-publication job.
 
 ### 2. Migrate legacy technical modules for each organization
 
 Run this only after the child-owner review/claim and successor publication:
 
 ```bash
-./scripts/compose --env-file .env exec -T api \
-  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --preflight
+./scripts/compose --env-file .env exec -T api sh -c '
+  export DATABASE_URL="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:?maintenance database URL required}"
+  exec npx tsx "$@"
+' sh scripts/migrate-module-structure.ts --organization <organization-id> --preflight
 ```
 
 Inspect the JSON array's `changes`, `conflicts`, `information`, and any `error`. Preflight performs no persistent writes. Resolve conflicts through the supported administration flows and rerun it before applying:
@@ -274,10 +282,14 @@ Review `information` entries such as `renamed-module`: valid legacy display name
 Once the preflight is clean, take a fresh backup and apply:
 
 ```bash
-./scripts/compose --env-file .env exec -T api \
-  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --apply
-./scripts/compose --env-file .env exec -T api \
-  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --preflight
+./scripts/compose --env-file .env exec -T api sh -c '
+  export DATABASE_URL="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:?maintenance database URL required}"
+  exec npx tsx "$@"
+' sh scripts/migrate-module-structure.ts --organization <organization-id> --apply
+./scripts/compose --env-file .env exec -T api sh -c '
+  export DATABASE_URL="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:?maintenance database URL required}"
+  exec npx tsx "$@"
+' sh scripts/migrate-module-structure.ts --organization <organization-id> --preflight
 ```
 
 Apply rechecks under organization locks. Each organization has its own audited transaction: an exception rolls back that organization, but **reported conflicts are not exceptions** and can coexist with committed changes. `--all` replaces `--organization <organization-id>` to process organizations independently; a later failure does not undo earlier commits. Prefer reviewing one organization first, and inspect every report rather than relying on the command's exit status.

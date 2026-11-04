@@ -32,6 +32,8 @@
 - 存在未迁移识别规则的模块会继续显示，并在每次预检中报告，直到规则得到处理。之后删除没有活动子模块的业务模块时，其已归档子模块仍可按 ID 查询并保留原路径，但父模块链接会清空；活动子模块仍会阻止删除。
 - 知识库语义检索需要 PostgreSQL 安装 pgvector 扩展并配置 `EMBEDDING_API_*` 端点；缺任一项时知识库降级为 FTS-only（全文 + trigram）且保持完全可用，检索 API 与 `/knowledge-admin` 检索模式横幅会如实上报。迁移 `0104` 在扩展缺失时不会失败；先迁移后装扩展的部署只需在 PostgreSQL 服务器装好 pgvector 后重启 API——启动 ensure（`server/modules/knowledge/indexing/vectorEnsure.ts`）会在 advisory lock 下自动创建扩展、补 `knowledge_chunks.embedding` 列（多副本安全）并把全部已发布条目重新入队重建，无需手动 SQL；数据库角色无建扩展权限时 ensure 会诚实记日志并保持 FTS-only，手动 SQL 步骤仅作参考保留（见英文版）。chunk 与嵌入是派生数据，靠已发布修订重建（更换 `EMBEDDING_MODEL` 后在 `/knowledge-admin` 全量重建），不依赖备份恢复。启用细节见英文版 “Knowledge Retrieval: pgvector And FTS-Only Degradation”。
 
+认领完成后的版本发布入口位于 `/parameter-admin/specs` 的“发布已认领归属”。先确认预览、核对子节点和驱动，再按现有高风险授权规则确认发布；同组织审核人可读取候选编号。只有任务回执确认发布生效后才迁移模块。该入口不做认领，也不放行混合变更、维护冻结或陈旧候选。完整命令与操作顺序见[升级指南](../../../ops/self-hosted/upgrade.zh-CN.md)。运行账号 `DATABASE_URL` 不等于维护账号；CLI 维护进程应显式使用已有 `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL`，不得给 API 补私有凭据表权限。
+
 ## 同类中文文档
 
 - [docs/zh-CN/runbooks/README.md](README.md)

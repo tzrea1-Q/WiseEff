@@ -209,7 +209,7 @@ cd /srv/wiseeff/ops/self-hosted
 
 生产执行前，先在 staging 数据库或实例的隔离副本上演练两个 CLI。源码核对和 CI 通过不代表目标部署已执行成功。为手动写入安排维护窗口：认领会取得全实例锁，这两个 CLI 不会自动执行升级控制器的流量排空和恢复点创建。
 
-以下命令均在 `ops/self-hosted/` 下执行，使用**升级后正在运行的 API 容器**，宿主机无需 Node.js。脚本读取该容器的 `DATABASE_URL`。标准 setup 生成的是 `wiseeff` PostgreSQL owner 连接；定制部署必须核实所选连接具备维护授权，包括归属认领函数、所需锁和审计写入权限。不能假定受限 API 账号有这些权限，也不要为了让命令通过而直接修改生产权限。
+以下命令均在 `ops/self-hosted/` 下执行，使用**升级后正在运行的 API 容器**，宿主机无需 Node.js。配置独立 LOGIN 后，`DATABASE_URL` 是受限 API 账号，不能用于归属认领或模块迁移。下面的命令仅为该维护进程切换到容器内已有的 `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL`；不会修改 `.env` 或运行中的 API 连接。缺少维护连接时立即停止，不回退到运行账号，也不补表权限。
 
 保留成功升级的 `run_id` 和已验证的整套恢复点。**每次**手动 `--apply` 前，再补充一份数据库备份。标准内置 PostgreSQL 服务可使用以下命令，目录必须由运维账号可写、受保护，并位于 checkout 和 Docker 数据根目录之外：
 
@@ -230,8 +230,10 @@ migration_backup_file="$migration_backup_dir/before-apply-$(date -u +%Y%m%dT%H%M
 ### 1. 全实例认领 Catalog 子节点归属
 
 ```bash
-./scripts/compose --env-file .env exec -T api \
-  npx tsx scripts/catalog-claim-child-owners.ts --preflight
+./scripts/compose --env-file .env exec -T api sh -c '
+  export DATABASE_URL="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:?maintenance database URL required}"
+  exec npx tsx "$@"
+' sh scripts/catalog-claim-child-owners.ts --preflight
 ```
 
 预检只读，不传模式时也默认预检。检查 JSON `candidates` 中的 `ready`、`already-claimed`、`missing`、`conflict` 以及每条冲突原因。证据跨组织汇总：每个存在活跃子节点登记的组织，都必须存在活跃的拥有者驱动登记；缺失或矛盾的最近 compatible 祖先证据不会被猜测处理。继续前应处理或明确记录每一项缺失与冲突，修正后重跑预检。
@@ -241,21 +243,27 @@ migration_backup_file="$migration_backup_dir/before-apply-$(date -u +%Y%m%dT%H%M
 审阅报告并完成上述备份后执行：
 
 ```bash
-./scripts/compose --env-file .env exec -T api \
-  npx tsx scripts/catalog-claim-child-owners.ts --apply
+./scripts/compose --env-file .env exec -T api sh -c '
+  export DATABASE_URL="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:?maintenance database URL required}"
+  exec npx tsx "$@"
+' sh scripts/catalog-claim-child-owners.ts --apply
 ```
 
 Apply 在锁内重新核验，将 `ready` 主体放在同一个审计事务中认领。报告中有冲突**不会**阻止其他就绪主体被认领，退出码 `0` 也不代表所有候选均已认领。检查 apply 报告并重跑预检，已完成项应显示 `already-claimed`。登记、Binding、值和定义身份保持不变；重复 apply 不改变已有归属。**归属永久有效**，改挂其他驱动必须新建主体并走定义替换流程。
 
-继续下一步前，通过正常的授权发布流程发布 Catalog 后继版本。认领会改变归属，但本身不是 Catalog 版本激活；不得绕过发布授权或继承的发布冻结。
+继续下一步前，在“组织配置 → 参数定义管理”（`/parameter-admin/specs`）点击“发布已认领归属”。点击“预览待发布归属”并确认后，服务器比较永久认领记录与当前发布包，列出尚未发布的子节点及其驱动；没有待发布项时不会创建版本。逐项核对，再点击“确认发布归属”，沿用现有高风险发布授权规则。组织管理员可按既有规则自批；其他编写者可将“发布与审核信息”中的候选编号交给同组织审核人，由其在同一弹窗“审核已有归属候选”中读取并确认。冻结、策略关闭、权限不足、过期候选仍会阻断，不改变发布策略或权限。任务入队或运行不等于生效，必须等到页面显示发布已生效，再开始模块迁移。
+
+此入口只发布已认领归属，不执行认领、不修改定义或项目值，也不接受包含其他变更的混合候选。普通 API 账号经既有服务端权限完成预览与发布，不需要 bootstrap 凭据进入浏览器。重新预览失败会使旧预览失去可发布资格；刷新页面后可恢复本账号、本组织尚在运行的归属发布任务。
 
 ### 2. 按组织迁移旧技术模块
 
 仅在子节点归属核对/认领和后继版本发布之后执行：
 
 ```bash
-./scripts/compose --env-file .env exec -T api \
-  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --preflight
+./scripts/compose --env-file .env exec -T api sh -c '
+  export DATABASE_URL="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:?maintenance database URL required}"
+  exec npx tsx "$@"
+' sh scripts/migrate-module-structure.ts --organization <organization-id> --preflight
 ```
 
 检查 JSON 数组中各报告的 `changes`、`conflicts`、`information` 以及可能出现的 `error`。预检不持久化写入。通过受支持的管理流程处理冲突，再次预检后才能 apply：
@@ -274,10 +282,14 @@ Apply 在锁内重新核验，将 `ready` 主体放在同一个审计事务中�
 预检干净后重新备份，再执行迁移和复检：
 
 ```bash
-./scripts/compose --env-file .env exec -T api \
-  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --apply
-./scripts/compose --env-file .env exec -T api \
-  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --preflight
+./scripts/compose --env-file .env exec -T api sh -c '
+  export DATABASE_URL="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:?maintenance database URL required}"
+  exec npx tsx "$@"
+' sh scripts/migrate-module-structure.ts --organization <organization-id> --apply
+./scripts/compose --env-file .env exec -T api sh -c '
+  export DATABASE_URL="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:?maintenance database URL required}"
+  exec npx tsx "$@"
+' sh scripts/migrate-module-structure.ts --organization <organization-id> --preflight
 ```
 
 Apply 在组织锁内重新核验，每个组织使用独立审计事务：抛出异常才回滚该组织，**报告中的冲突不等于异常**，可能与已提交的修改同时存在。用 `--all` 替代 `--organization <organization-id>` 可逐组织处理；后续组织失败不会撤销之前组织已提交的修改。建议先审阅一个组织，逐份检查报告，不要只看命令退出码。

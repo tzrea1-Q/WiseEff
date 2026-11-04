@@ -22,6 +22,7 @@ import { DefinitionLifecycleDialog, type DefinitionLifecycleIntent } from "./Def
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import { PublicationDialog } from "./PublicationDialog";
 import { DefinitionImportDialog } from "./DefinitionImportDialog";
+import { ClaimedOwnerPublicationDialog } from "./ClaimedOwnerPublicationDialog";
 import { BatchRegistrationTable, type BatchRegistrationEntry } from "./BatchRegistrationTable";
 import { onBatchRegistrationHandoff, takeBatchRegistrationHandoff } from "./batchRegistrationHandoff";
 import {
@@ -120,6 +121,7 @@ export function CatalogOrganizationSurface({
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [claimedOwnersOpen, setClaimedOwnersOpen] = useState(false);
   const [importDocument, setImportDocument] = useState<string | undefined>();
   const [handoffEpoch, setHandoffEpoch] = useState(0);
   useEffect(() => onDefinitionImportHandoff(() => setHandoffEpoch((value) => value + 1)), []);
@@ -353,6 +355,9 @@ export function CatalogOrganizationSurface({
         onDomainStateChange={setDomainState}
         onAction={handleAction}
         onImportDefinitions={canImportDefinitions ? () => { setImportDocument(undefined); setImportOpen(true); } : undefined}
+        onPublishClaimedOwners={actor !== "agent" && organizationId && catalogReleaseId && sessionPermissions?.some(permission =>
+          ["catalog:author", "catalog:publish", "catalog:review-high-risk"].includes(permission))
+          ? () => setClaimedOwnersOpen(true) : undefined}
         onOpenUnregisteredSubjects={registrationAllowed && organizationId && catalogReleaseId ? () => { setBatchEntry({}); setBatchEpoch((value) => value + 1); } : undefined}
         onOpenPendingWork={reviewQueueAllowed ? () => setPendingWorkOpen(true) : undefined}
         onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
@@ -534,6 +539,10 @@ export function CatalogOrganizationSurface({
           }}
         />
       ) : null}
+      {claimedOwnersOpen && organizationId && catalogReleaseId ? <ClaimedOwnerPublicationDialog
+        key={`claimed-owners-${organizationId}-${currentPersonId}`} catalog={catalog} catalogReleaseId={catalogReleaseId}
+        currentPersonId={currentPersonId} organizationId={organizationId} actor={actor} surface={publicationSurface}
+        runtimeMode={runtimeMode} onClose={() => setClaimedOwnersOpen(false)} onRefreshEvidence={async () => { await refreshCurrentCatalog(); }} /> : null}
       {catalogReleaseId && domainState && organizationId && importOpen ? <DefinitionImportDialog key={`markdown-import-${organizationId}-${currentPersonId}`}
         open initialDocument={importDocument} runtimeMode={runtimeMode} actor={actor} sessionPermissions={sessionPermissions} domainState={domainState} catalog={catalog} governance={governance} moduleRegistry={moduleRegistry}
         catalogReleaseId={catalogReleaseId} currentPersonId={currentPersonId} organizationId={organizationId}

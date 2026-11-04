@@ -10,6 +10,7 @@ import {
 } from "../parameter-catalog-contract/index";
 import type { Database } from "../../shared/database/client";
 import { classifyImpact } from "./authorization/classify";
+import type { OwnerDeclaration } from "./claimedOwners";
 import type { ImpactFacts, PublicationRiskClass } from "./authorization/types";
 import {
   buildCompleteSuccessor,
@@ -73,6 +74,8 @@ export type PreviewPublicationValue = {
     readonly changedDefinitionCount: number;
     readonly addedSubjectCount: number;
     readonly addedSubjectIds?: readonly string[];
+    readonly ownerDeclarations?: readonly OwnerDeclaration[];
+    readonly ownerPublicationOnly?: boolean;
   };
 };
 
@@ -467,7 +470,17 @@ export async function previewPublicationCandidate(input: {
     };
   }
 
-  const impactSummary = impactSummaryFromReport(built.value.impact);
+  const ownerDeclarations = input.changeSet.flatMap(change => {
+    if (change.op !== "declare-subject-owner") return [];
+    const subject = predecessorTarget.documents.find(document => document.kind === "subject" && document.content.id === change.subjectId);
+    const owner = predecessorTarget.documents.find(document => document.kind === "subject" && document.content.id === change.ownerSubjectId);
+    return [{ subjectId: change.subjectId, ownerSubjectId: change.ownerSubjectId,
+      subjectName: subject?.kind === "subject" ? subject.content.selector.value : change.subjectId,
+      ownerName: owner?.kind === "subject" ? owner.content.selector.value : change.ownerSubjectId }];
+  });
+  const impactSummary = { ...impactSummaryFromReport(built.value.impact),
+    ...(ownerDeclarations.length ? { ownerDeclarations,
+      ownerPublicationOnly: ownerDeclarations.length === input.changeSet.length } : {}) };
   const persisted = await persistSuccessorBuild(
     {
       db: input.db,
