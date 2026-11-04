@@ -43,6 +43,13 @@ import {
 
 const openApi = buildOpenApiDocument();
 
+it("preserves the driver owner through the real child-publication request contract", () => {
+  const change = { op: "create-subject", kind: "node-type", canonicalKey: "node-type:battery_checker",
+    ownerSubjectId: "csub_driver", selector: { kind: "node-type-name", value: "battery_checker" } };
+  expect(catalogCreatePublicationCandidateRequestSchema.parse({ changeSet: [change] }))
+    .toEqual({ changeSet: [change] });
+});
+
 describe("canonical definition authoring after legacy contract removal", () => {
   const content = {
     displayName: "Current limit",

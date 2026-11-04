@@ -781,6 +781,7 @@ export const catalogNestedDefinitionDraftSchema = catalogObject({
 const catalogSubjectCreationFields = {
   kind: z.enum(["driver", "node-type"]),
   canonicalKey: z.string(),
+  ownerSubjectId: z.string().min(1).optional(),
   selector: catalogObject({
     kind: z.enum(["driver-compatible", "node-type-name"]),
     value: z.string()

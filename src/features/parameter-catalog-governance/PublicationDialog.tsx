@@ -363,6 +363,9 @@ export function PublicationDialog({
   const status = job ? publicationStatusCopy(job) : null;
   const catalogSucceeded = job ? publicationSuccessKind(job) : null;
   const addedSubjectId = candidate?.impactSummary.addedSubjectIds?.[0] ?? null;
+  const registrationTargetId = requiresOwner
+    ? (publishedDrivers.find((item) => item.id === draft.ownerSubjectId)?.registration.status === "unregistered" ? draft.ownerSubjectId : null)
+    : addedSubjectId;
   const describedById = `${formId}-help`;
   const fieldMessageId = `${formId}-field`;
 
@@ -666,7 +669,8 @@ export function PublicationDialog({
                 {candidate && !previewStale && draft.mode === "revise-definition" && draft.reviseClass === "semantic" ? (
                   <p>{publicationCopy.catalogNotAdopted}</p>
                 ) : null}
-                {catalogSucceeded && addedSubjectId && !onBatchRegistration ? (
+                {catalogSucceeded && addedSubjectId && requiresOwner ? <p>子节点随所属驱动登记和启停，可在模块管理中查看所属驱动。</p> : null}
+                {catalogSucceeded && addedSubjectId && !requiresOwner && !onBatchRegistration ? (
                   <p>{publicationCopy.registerFollowupHint}</p>
                 ) : null}
               </div>
@@ -722,14 +726,14 @@ export function PublicationDialog({
               ) : null}
               {catalogSucceeded && addedSubjectId && onAddDefinition ? <button type="button" className="button primary sm"
                 onClick={() => onAddDefinition(addedSubjectId)}>新增参数定义</button> : null}
-              {catalogSucceeded && addedSubjectId && onBatchRegistration ? (
+              {catalogSucceeded && registrationTargetId && onBatchRegistration ? (
                 <button
                   type="button"
                   className="button sm"
                   disabled={pending}
-                  onClick={() => onBatchRegistration(addedSubjectId)}
+                  onClick={() => onBatchRegistration(registrationTargetId)}
                 >
-                  {publicationCopy.batchRegistration}
+                  {requiresOwner ? "前往登记所属驱动" : publicationCopy.batchRegistration}
                 </button>
               ) : null}
               {job && publicationJobIsPending(job.status) ? (

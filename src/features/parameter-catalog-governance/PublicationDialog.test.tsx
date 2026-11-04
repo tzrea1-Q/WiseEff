@@ -623,6 +623,26 @@ describe("PublicationDialog", () => {
     expect(register).not.toHaveBeenCalled();
   });
 
+  it.each(["active", "unregistered"] as const)("hands off only an unregistered parent after owned-child publication (%s)", async (status) => {
+    const onBatchRegistration = vi.fn();
+    renderDialog({ intent: "create-subject", initialOwnerSubjectId: registeredSubject.id,
+      actor: "org-admin", publicationOutcome: "active", onBatchRegistration,
+      prepare: (ports) => { vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue({
+        items: [{ ...registeredSubject, registration: status === "active" ? registeredSubject.registration : { status: "unregistered" } }],
+        totalCount: 1, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID }); } });
+    await userEvent.type(await screen.findByLabelText("节点名称"), "battery_extra");
+    await userEvent.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await userEvent.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    expect(await screen.findByText(/子节点随所属驱动登记和启停/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "前往批量登记" })).not.toBeInTheDocument();
+    if (status === "unregistered") {
+      await userEvent.click(screen.getByRole("button", { name: "前往登记所属驱动" }));
+      expect(onBatchRegistration).toHaveBeenCalledWith(registeredSubject.id);
+    } else expect(onBatchRegistration).not.toHaveBeenCalled();
+  });
+
   it("preserves the new subject for batch registration when a queued publication is reopened", async () => {
     const onBatchRegistration = vi.fn();
     const first = renderDialog({ intent: "create-subject", actor: "org-admin", publicationOutcome: "queued", onBatchRegistration,

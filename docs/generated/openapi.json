@@ -93110,6 +93110,9 @@
                         "canonicalKey": {
                           "type": "string"
                         },
+                        "ownerSubjectId": {
+                          "type": "string"
+                        },
                         "selector": {
                           "type": "object",
                           "properties": {
@@ -93242,6 +93245,9 @@
                           ]
                         },
                         "canonicalKey": {
+                          "type": "string"
+                        },
+                        "ownerSubjectId": {
                           "type": "string"
                         },
                         "selector": {

@@ -3,6 +3,7 @@ import { SelectControl } from "@/components/common/SelectControl";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Input } from "@/components/ui/input";
+import { SearchField } from "@/components/common/SearchField";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { CatalogUnregisteredSubjectsResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -178,7 +179,7 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
     <p className="muted">为待登记主体选择业务分类，再确认本次登记范围。每批最多登记 128 个主体。</p>
     <div className="batch-registration__toolbar"><label>来源<SelectControl ariaLabel="来源" value={source} disabled={loading || pending} onValueChange={(value) => { checkInitialSource.current = false; setEvidenceFresh(false); setRows([]); setSearch(""); setSource(value); }} options={[
       { value: "organization", label: "本组织发布引入" }, { value: "all", label: "全部 Catalog 主体" }]} /></label>
-    {rows.length ? <label className="batch-registration__search">搜索主体<Input type="search" aria-label="搜索待登记主体" placeholder="主体名称、类型或展示别名" value={search} onChange={event => setSearch(event.target.value)} /></label> : null}
+    {rows.length ? <label className="batch-registration__search">搜索主体<SearchField ariaLabel="搜索待登记主体" placeholder="主体名称、类型或展示别名" value={search} onValueChange={setSearch} /></label> : null}
     <button type="button" className="button subtle" onClick={() => void refresh()} disabled={loading || pending}>重新读取</button></div>
     {loading ? <p>正在读取待登记主体…</p> : null}
     {error ? <p role="alert">{error}</p> : null}

@@ -83,7 +83,7 @@ export function SubjectRecognitionDialog({ governance, organizationId, registrat
       </> : settings ? <label className="field">节点类型名<input aria-label="节点类型名"
         value={nodeTypeName} readOnly={!canAdmin || busy || !etag} onChange={event => setNodeTypeName(event.target.value)} /></label> : null}
       </div>
-      <div className="submission-dialog-actions"><button type="button" className="button subtle" disabled={busy} onClick={requestClose}>关闭</button>
+      <div className="dialog-actions"><button type="button" className="button subtle" disabled={busy} onClick={requestClose}>关闭</button>
         {canAdmin ? <button type="button" className="button primary" disabled={!settings || !etag || !isDirty || busy} onClick={() => void save()}>{busy ? "正在保存…" : "保存"}</button> : null}</div>
     </>}
   </ModalDialog><ConfirmDialog open={leaveOpen} title="放弃未保存的识别规则？" description="关闭后会丢失本次输入的规则。"
