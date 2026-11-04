@@ -72,7 +72,7 @@ export function ClaimedOwnerPublicationDialog(props: {
 
   return <>
     <ModalDialog open onDismiss={pending ? undefined : props.onClose}
-      className="confirm-dialog governance-confirm-dialog modal-card--lg parameter-catalog-publication-dialog"
+      className="confirm-dialog governance-confirm-dialog modal-card--lg parameter-catalog-publication-dialog claimed-owner-publication-dialog"
       backdropClassName="param-admin-modal-backdrop" describedBy>
       {({ titleId, descriptionId }) => <>
         <h2 id={titleId}>发布已认领归属</h2>
@@ -105,7 +105,7 @@ export function ClaimedOwnerPublicationDialog(props: {
             <button type="button" className="button subtle" disabled={pending || !reviewId.trim()} onClick={() => void review()}>读取待审核候选</button>
           </details> : null}
         </div></div>
-        <div className="confirm-dialog__actions">
+        <div className="dialog-actions">
           <button type="button" className="button subtle" disabled={pending} onClick={props.onClose}>关闭</button>
           <button type="button" className="button subtle" disabled={pending || inFlight} onClick={() => {
             flow.setPending(true);

@@ -1,7 +1,7 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect, type Page } from "playwright/test";
+import { expect } from "playwright/test";
 import { catalogRuntimeTest as test } from "./helpers/catalogFixtureRuntime";
-import { openCatalogAt, catalogScreenshot, CATALOG_EXPECTED_API_FAILURES } from "./helpers/catalogBrowser";
+import { openCatalogAt, catalogScreenshot, confirmGovernanceDialog, CATALOG_EXPECTED_API_FAILURES } from "./helpers/catalogBrowser";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
@@ -24,12 +24,6 @@ import { acceptanceCast } from "./helpers/cast";
 test.use({ catalogRuntimeScope: import.meta.url, viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: [...CATALOG_EXPECTED_API_FAILURES,
   { method: "GET", path: "/api/v2/catalog/publication-candidates", status: 404 }] });
-
-async function confirm(page: Page, action: "preview" | "publish") {
-  const dialog = page.getByRole("dialog", { name: action === "preview" ? "确认预览发布候选" : "确认发布到目录" });
-  await dialog.getByRole("checkbox").check();
-  await dialog.getByRole("button", { name: action === "preview" ? "确认预览" : "确认发布" }).click();
-}
 
 test("publishes maintenance claims through the real UI, survives reload, and reports empty after activation", async ({ page, catalogRuntime }, testInfo) => {
   test.setTimeout(180_000);
@@ -71,9 +65,10 @@ test("publishes maintenance claims through the real UI, survives reload, and rep
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog", { name: "发布已认领归属", exact: true });
     await dialog.getByRole("button", { name: "预览待发布归属" }).click();
-    await confirm(page, "preview");
+    await confirmGovernanceDialog(page, "确认预览");
     await expect(dialog.getByRole("table")).toContainText("claimed_child");
     await expect(dialog.getByRole("table")).toContainText("acme,power");
+    expect(await dialog.locator(".confirm-dialog__scroll").evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
     await catalogScreenshot(page, testInfo, "claimed-owners-preview-desktop");
 
     await dialog.getByText("审核已有归属候选", { exact: true }).click();
@@ -83,10 +78,10 @@ test("publishes maintenance claims through the real UI, survives reload, and rep
     await expect(dialog.getByRole("button", { name: "确认发布归属" })).toBeDisabled();
     await catalogScreenshot(page, testInfo, "claimed-owners-read-failure-desktop");
     await dialog.getByRole("button", { name: "预览待发布归属" }).click();
-    await confirm(page, "preview");
+    await confirmGovernanceDialog(page, "确认预览");
     await expect(dialog.getByRole("button", { name: "确认发布归属" })).toBeEnabled();
     await dialog.getByRole("button", { name: "确认发布归属" }).click();
-    await confirm(page, "publish");
+    await confirmGovernanceDialog(page, "确认发布");
     await expect(dialog.getByRole("status").filter({ hasText: /入队|排队/ })).toBeVisible();
     await expect(dialog.getByText(/归属发布已生效/)).toHaveCount(0);
     await page.reload();
@@ -100,7 +95,7 @@ test("publishes maintenance claims through the real UI, survives reload, and rep
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await entry.click();
     await dialog.getByRole("button", { name: "预览待发布归属" }).click();
-    await confirm(page, "preview");
+    await confirmGovernanceDialog(page, "确认预览");
     await expect(dialog.getByText("没有待发布的已认领归属，无需创建新版本。")).toBeVisible();
   } finally { await db.close(); }
 });

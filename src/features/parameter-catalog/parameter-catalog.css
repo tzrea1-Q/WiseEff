@@ -1281,6 +1281,22 @@ button.parameter-catalog__tree-toggle:hover {
   max-height: min(88vh, 52rem);
 }
 
+.claimed-owner-publication-dialog .confirm-dialog__scroll,
+.claimed-owner-publication-dialog .governance-confirm-dialog__body {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  overflow-wrap: anywhere;
+}
+
+.claimed-owner-publication-dialog .parameter-catalog__table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.claimed-owner-publication-dialog .parameter-catalog__table td {
+  white-space: normal;
+}
+
 .parameter-catalog-import-dialog__table {
   width: 100%;
   min-width: 0;
