@@ -34,6 +34,7 @@ export {
   S2_SCH_0326_FINGERPRINT,
   S2_SCH_0330_FINGERPRINT,
   S2_SCH_0331_FINGERPRINT,
+  S2_SCH_0332_FINGERPRINT,
   S2_SCH_LIVE_FINGERPRINT,
   assertCheckedEmptyCatalog,
   assertCheckedEmptyDatabase,
