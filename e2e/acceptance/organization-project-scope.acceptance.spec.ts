@@ -113,10 +113,12 @@ test.describe("fixed-target project and configuration administration", () => {
     const deletion = page.getByRole("dialog", { name: /项目删除影响预览/ });
     await expect(deletion.getByRole("button", { name: "彻底删除", exact: true })).toBeEnabled();
     await deletion.getByRole("button", { name: "彻底删除", exact: true }).click();
-    await expect(deletion.getByRole("status")).toContainText("项目彻底删除已完成");
+    const cleanup = page.getByRole("dialog", { name: "项目清理状态", exact: true });
+    await expect(cleanup.getByRole("status")).toContainText("项目彻底删除已完成");
     await page.keyboard.press("Escape"); await page.reload();
-    await page.getByRole("button", { name: `查看清理状态 ${projectId}`, exact: true }).click();
-    await expect(page.getByRole("dialog").getByRole("status").filter({ hasText: "项目彻底删除已完成" })).toBeVisible();
+    await page.getByRole("table", { name: "项目清理记录", exact: true }).getByRole("row")
+      .filter({ has: page.getByText(projectId, { exact: true }) }).getByRole("button", { name: "查看详情", exact: true }).click();
+    await expect(cleanup.getByRole("status").filter({ hasText: "项目彻底删除已完成" })).toBeVisible();
     const me = await page.request.get(apiRoute("/api/v1/me"), { headers });
     expect((await me.json() as { user: { organizationId: string } }).user.organizationId).toBe(home);
     await homePage.close();
