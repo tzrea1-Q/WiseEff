@@ -1,7 +1,7 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { expect } from "playwright/test";
+import { expect, type Page } from "playwright/test";
 import { catalogRuntimeTest as test } from "./helpers/catalogFixtureRuntime";
-import { openCatalogAt, catalogScreenshot, confirmGovernanceDialog, CATALOG_EXPECTED_API_FAILURES } from "./helpers/catalogBrowser";
+import { openCatalogAt, catalogScreenshot, CATALOG_EXPECTED_API_FAILURES } from "./helpers/catalogBrowser";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { createPostgresDatabase, getRootPostgresPool } from "../../server/shared/database/client";
@@ -24,6 +24,20 @@ import { acceptanceCast } from "./helpers/cast";
 test.use({ catalogRuntimeScope: import.meta.url, viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: [...CATALOG_EXPECTED_API_FAILURES,
   { method: "GET", path: "/api/v2/catalog/publication-candidates", status: 404 }] });
+
+async function confirmGovernanceDialog(page: Page, label: "确认预览" | "确认发布") {
+  const dialog = page.getByRole("dialog", {
+    name: label === "确认预览" ? "确认预览发布候选" : "确认发布到目录", exact: true
+  });
+  await expect(dialog).toBeVisible();
+  const checkbox = dialog.getByRole("checkbox");
+  await expect(checkbox).not.toBeChecked();
+  await checkbox.check();
+  await expect(checkbox).toBeChecked();
+  const button = dialog.getByRole("button", { name: label, exact: true });
+  await expect(button).toBeEnabled();
+  await button.click();
+}
 
 test("publishes maintenance claims through the real UI, survives reload, and reports empty after activation", async ({ page, catalogRuntime }, testInfo) => {
   test.setTimeout(180_000);
