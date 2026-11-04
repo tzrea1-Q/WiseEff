@@ -864,6 +864,7 @@ export function CanonicalSubjectPlacementPanel({
         onOpenChange: (open) => { if (!open) closeSubjectCreation(); },
         onBatchRegistration: onNavigate && mayRegisterInOrganization(actor, sessionPermissions) ? (subjectId) => {
           setCreateSubjectOpen(false);
+          setCreateOwnerSubjectId(undefined);
           openBatchRegistration({ organizationId, userId: currentPersonId, subjectIds: [subjectId] });
           onNavigate(buildCatalogHref(EMPTY_CATALOG_URL_ANCHOR));
         } : undefined,
