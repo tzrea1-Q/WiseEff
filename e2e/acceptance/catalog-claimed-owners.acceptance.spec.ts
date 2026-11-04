@@ -1,5 +1,4 @@
 import "./helpers/loadAcceptanceEnvironment";
-import pg from "pg";
 import { expect, type Page } from "playwright/test";
 import { catalogRuntimeTest as test } from "./helpers/catalogFixtureRuntime";
 import { openCatalogAt, catalogScreenshot, CATALOG_EXPECTED_API_FAILURES } from "./helpers/catalogBrowser";
@@ -11,12 +10,16 @@ import { refreshAuthoritativeSource } from "../../server/modules/catalog-kernel/
 import { compileCatalogRelease } from "../../server/modules/catalog-kernel/compiler";
 import { jsonCatalogReleaseSource } from "../../server/modules/catalog-kernel/interface";
 import { installPublishedRelease, createCatalogInstaller } from "../../server/modules/catalog-kernel/install/installer";
-import { persistArtifact } from "../../server/modules/catalog-publication/persistence/store";
-import { enablePublicationPolicy } from "../../server/modules/catalog-publication/authorization/testHarness";
+import { adoptPreexistingCatalog } from "../../server/modules/catalog-publication/runtime/adoption";
+import { revisePublicationPolicy } from "../../server/modules/catalog-publication/authorization/policy";
+import { collectPublicationPolicyInstanceSnapshot } from "../../server/modules/catalog-publication/authorization/instanceSnapshot";
+import { MANAGED_INSTANCE_POLICY_CONFIRMATION } from "../../server/modules/catalog-publication/authorization/types";
+import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "../../server/modules/catalog-publication/builder/types";
 import { runPublicationManagerOnce } from "../../server/modules/catalog-publication/jobs/manager";
-import { CatalogArtifactId, CatalogReleaseDigest } from "../../server/modules/parameter-catalog-contract";
+import { CatalogReleaseDigest } from "../../server/modules/parameter-catalog-contract";
 import { createUserInvocation } from "../../server/modules/auth/trustedInvocation";
 import { getAuthContext } from "../../server/modules/auth/repository";
+import { acceptanceCast } from "./helpers/cast";
 
 test.use({ catalogRuntimeScope: import.meta.url, viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: [...CATALOG_EXPECTED_API_FAILURES,
@@ -31,9 +34,7 @@ async function confirm(page: Page, action: "preview" | "publish") {
 test("publishes maintenance claims through the real UI, survives reload, and reports empty after activation", async ({ page, catalogRuntime }, testInfo) => {
   test.setTimeout(180_000);
   const db = createPostgresDatabase(catalogRuntime.databaseUrl), pool = getRootPostgresPool(db)!;
-  const client = new pg.Client({ connectionString: catalogRuntime.databaseUrl });
   try {
-    await client.connect();
     await seedAcceptanceRoleMatrix();
     const first = firstAcmePredecessor();
     const template = first.first.documents.find(document => document.kind === "subject")!;
@@ -48,11 +49,20 @@ test("publishes maintenance claims through the real UI, survives reload, and rep
     if (!compiled.ok) throw new Error(JSON.stringify(compiled));
     expect((await installPublishedRelease(pool, { mode: "bootstrap", source: jsonCatalogReleaseSource(bundle),
       expectedTargetDigest: compiled.value.aggregateDigest })).ok).toBe(true);
-    expect((await persistArtifact(db, { id: CatalogArtifactId("cart_claimed_owner_browser_base"),
-      artifactDigest: compiled.value.aggregateDigest, artifactBytes: Buffer.from(JSON.stringify(bundle)), sourceKind: "repository-bundle",
-      targetReleaseId: compiled.value.release.id, targetReleaseDigest: CatalogReleaseDigest(compiled.value.aggregateDigest),
-      predecessorReleaseId: null, predecessorReleaseDigest: null, toolchain: { ...release.manifest.toolchain } })).ok).toBe(true);
-    await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: false });
+    const actorId = acceptanceCast.acceptanceAdmin.userId;
+    const pin = { id: compiled.value.release.id, digest: CatalogReleaseDigest(compiled.value.aggregateDigest) };
+    const verification = await pool.query<{ compiled_fingerprint: string }>(
+      "select compiled_fingerprint from parameter_catalog.catalog_materializations where release_id=$1", [pin.id]);
+    expect((await adoptPreexistingCatalog(pool, { expectedCurrent: pin, actorPrincipalId: actorId,
+      sourceBytes: Buffer.from(JSON.stringify(bundle)), artifactDigest: pin.digest, evidenceKind: "synthetic-fixture",
+      adoptionEvidence: { source_bundle_digest: pin.digest, verification_digest: verification.rows[0]!.compiled_fingerprint,
+        data_mode: "fresh", collected_at: new Date().toISOString(), approved_by: actorId } })).ok).toBe(true);
+    const snapshot = await collectPublicationPolicyInstanceSnapshot(db);
+    expect((await revisePublicationPolicy(db, { trustedActor: createUserInvocation(await getAuthContext(db, actorId)),
+      publicationEnabled: true, lowRiskSingleActorPublish: false, capabilityContractRevision: CATALOG_CAPABILITY_CONTRACT_REVISION,
+      mode: "execute", managedInstance: { confirmation: MANAGED_INSTANCE_POLICY_CONFIRMATION,
+        expectedDatabaseOid: snapshot.databaseOid, expectedCurrentId: pin.id, expectedCurrentDigest: pin.digest,
+        expectedPolicyRevision: snapshot.policyRevision, expectedFrozen: snapshot.frozen, expectedAdopted: snapshot.adopted } })).ok).toBe(true);
     await db.query("select parameter_catalog.claim_catalog_subject_owner('claimed_child','csub_acme_power')");
 
     await openCatalogAt(page, "org-admin");
@@ -92,5 +102,5 @@ test("publishes maintenance claims through the real UI, survives reload, and rep
     await dialog.getByRole("button", { name: "预览待发布归属" }).click();
     await confirm(page, "preview");
     await expect(dialog.getByText("没有待发布的已认领归属，无需创建新版本。")).toBeVisible();
-  } finally { await client.end(); await db.close(); }
+  } finally { await db.close(); }
 });

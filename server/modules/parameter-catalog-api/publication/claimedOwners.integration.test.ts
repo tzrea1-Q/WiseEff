@@ -10,10 +10,10 @@ import { compileCatalogRelease } from "../../catalog-kernel/compiler";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease, createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
-import { persistArtifact } from "../../catalog-publication/persistence/store";
+import { adoptPreexistingCatalog } from "../../catalog-publication/runtime/adoption";
 import { enablePublicationPolicy } from "../../catalog-publication/authorization/testHarness";
 import { runPublicationManagerOnce } from "../../catalog-publication/jobs/manager";
-import { CatalogArtifactId, CatalogReleaseDigest } from "../../parameter-catalog-contract";
+import { CatalogReleaseDigest } from "../../parameter-catalog-contract";
 import { catalogClaimedOwnersResponseSchema, catalogPublicationJobResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 import { bindCatalogPublicationCommands } from "./ports";
 import { listenCatalogPublicationHttpServer } from "./http";
@@ -41,10 +41,13 @@ it("publishes only claimed owners through authenticated HTTP and the real manage
     expect((await installPublishedRelease(pool, { mode: "bootstrap", source: jsonCatalogReleaseSource(bundle),
       expectedTargetDigest: compiled.value.aggregateDigest })).ok).toBe(true);
     const bytes = Buffer.from(JSON.stringify(bundle));
-    expect((await persistArtifact(db, { id: CatalogArtifactId("cart_claimed_owner_base"), artifactDigest: compiled.value.aggregateDigest,
-      artifactBytes: bytes, sourceKind: "repository-bundle", targetReleaseId: compiled.value.release.id,
-      targetReleaseDigest: CatalogReleaseDigest(compiled.value.aggregateDigest), predecessorReleaseId: null,
-      predecessorReleaseDigest: null, toolchain: { ...release.manifest.toolchain } })).ok).toBe(true);
+    const pin = { id: compiled.value.release.id, digest: CatalogReleaseDigest(compiled.value.aggregateDigest) };
+    const verification = await pool.query<{ compiled_fingerprint: string }>(
+      "select compiled_fingerprint from parameter_catalog.catalog_materializations where release_id=$1", [pin.id]);
+    expect((await adoptPreexistingCatalog(pool, { expectedCurrent: pin, actorPrincipalId: "owner-publisher",
+      sourceBytes: bytes, artifactDigest: pin.digest, evidenceKind: "synthetic-fixture", adoptionEvidence: {
+        source_bundle_digest: pin.digest, verification_digest: verification.rows[0]!.compiled_fingerprint,
+        data_mode: "fresh", collected_at: new Date().toISOString(), approved_by: "owner-publisher" } })).ok).toBe(true);
     await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: false });
     const auth = makeTestAuthContext({ userId: "owner-publisher", organizationId: "owner-org", roleId: "admin",
       permissions: ["catalog:author", "catalog:publish", "catalog:review-high-risk"] });
@@ -81,7 +84,7 @@ it("publishes only claimed owners through authenticated HTTP and the real manage
     const candidate = catalogClaimedOwnersResponseSchema.parse(result.body).item.candidate!;
     expect(candidate).toMatchObject({ riskClass: "high", capabilityContract: { revision: "catalog-capability/v6" },
       impactSummary: { addedDefinitionCount: 0, changedDefinitionCount: 0, addedSubjectCount: 0,
-        ownerDeclarations: [{ subjectId: "claimed_child", ownerSubjectId: "csub_acme_power" }] } });
+        ownerPublicationOnly: true, ownerDeclarations: [{ subjectId: "claimed_child", ownerSubjectId: "csub_acme_power" }] } });
     expect(candidate.impactSummary.ownerDeclarations).toHaveLength(1);
     scope = { ...admin, organizationId: "another-org" };
     expect((await request("GET", `publication-candidates/${candidate.id}`)).status).toBe(404);
