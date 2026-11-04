@@ -1,7 +1,7 @@
--- Keep the bounded read RPC and its existing owner/ACL. PostgreSQL 16 SQL
--- functions plan the nested evidence query even when no receipt can match.
--- First enumerate the exact current-tip candidates using a cached PL/pgSQL
--- statement; only prepare/evaluate the expensive proof path when one exists.
+-- Keep the bounded read RPC and its existing owner/ACL. Enumerate exact
+-- current-tip candidates in a cached PL/pgSQL statement, then evaluate the
+-- existing proof predicate in a separate reusable expression. This separates
+-- receipt lookup from expensive proof planning on repeated suspension reads.
 -- This caches plans, never suspension results: every call reads its snapshot.
 create or replace function parameter_catalog.current_source_binding_is_suspended(p_org text,p_project text,p_binding text)
 returns boolean language plpgsql stable security definer set search_path=pg_catalog,parameter_catalog,public as $$

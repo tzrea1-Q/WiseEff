@@ -6,7 +6,8 @@ import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createUserInvocation } from "../../auth/trustedInvocation";
-import { createSourceAdminFixture } from "../../parameter-files/sourceAdministration.testHelpers";
+import { createSourceAdminFixture, sourceAdminText } from "../../parameter-files/sourceAdministration.testHelpers";
+import { setSourceRevisionRegistrationStatus } from "../../../testing/parameterCatalog/sourceRevision";
 
 const visibility = "parameter_catalog.current_source_binding_is_suspended(text,text,text)";
 
@@ -20,7 +21,7 @@ async function explainLookups(db: Database, scope: string[]) {
   const result = await db.query<{ "QUERY PLAN": Array<{ "Execution Time": number; Plan: { "Actual Rows": number } }> }>(`
     explain (analyze, buffers, format json)
     select n from generate_series(1,124) n
-    where not parameter_catalog.current_source_binding_is_suspended(
+    where parameter_catalog.current_source_binding_is_suspended(
       $1,$2,$3 || repeat('',n))`, scope);
   const plan = result.rows[0]!["QUERY PLAN"][0]!;
   expect(plan.Plan["Actual Rows"]).toBe(124);
@@ -55,10 +56,10 @@ it("upgrades suspension reads without changing existing runtime authority", asyn
   });
 }, 120_000);
 
-it("avoids repeated evidence planning for existing current bindings with no suspension receipt", async () => {
+it("reuses proof planning for an existing binding with an approved suspension receipt", async () => {
   const f = await createSourceAdminFixture("susp-read-perf", createUserInvocation);
   try {
-    const binding = (await f.api.query<{ id: string }>(`select id from parameter_catalog.current_project_parameter_bindings
+    const binding = (await f.api.query<{ id: string; registration_id: string }>(`select id,registration_id from parameter_catalog.current_project_parameter_bindings
       where organization_id=$1 and project_id=$2 order by id limit 1`, [f.organizationId, f.projectId])).rows[0];
     expect(binding).toBeDefined();
     expect((await f.db.query(`select count(*)::integer as count from parameter_catalog.source_binding_suspension_receipts`)).rows)
@@ -70,8 +71,23 @@ it("avoids repeated evidence planning for existing current bindings with no susp
     const historicalMigration = await readFile(join(migrationsDir, "0326_source_managed_scope_receipts.sql"), "utf8");
     const historical = historicalMigration.match(/create function parameter_catalog\.current_source_binding_is_suspended[\s\S]+?\$\$;/)?.[0];
     if (!historical) throw new Error("Historical suspension function was not found");
+    const definitions = [historical.replace("create function", "create or replace function"), optimized];
+    const lookup = "select parameter_catalog.current_source_binding_is_suspended($1,$2,$3) as suspended";
+    for (const definition of definitions) {
+      await f.db.query(definition);
+      expect((await f.api.query(lookup, scope)).rows).toEqual([{ suspended: false }]);
+    }
+    // Create genuine immutable evidence through the source workflow. An empty
+    // receipt table does not exercise the costly nested proof path: both old
+    // and new implementations already finish that case in milliseconds.
+    const registration = { organizationId: f.organizationId, registrationId: binding!.registration_id };
+    await setSourceRevisionRegistrationStatus(f.db, { ...registration, status: "retired" });
+    await (await f.stage(sourceAdminText.replace("<36>", "<42>"), "susp-perf-approval")).apply();
+    await setSourceRevisionRegistrationStatus(f.db, { ...registration, status: "active" });
+    expect((await f.db.query(`select count(*)::integer as count from parameter_catalog.source_binding_suspension_receipts`)).rows)
+      .toEqual([{ count: 1 }]);
     const timings: number[] = [];
-    for (const definition of [historical.replace("create function", "create or replace function"), optimized]) {
+    for (const definition of definitions) {
       await f.db.query(definition);
       timings.push(await f.api.transaction(async tx => {
         await tx.query("set local jit=off");
@@ -81,7 +97,7 @@ it("avoids repeated evidence planning for existing current bindings with no susp
       }));
     }
     const [beforeMs, afterMs] = timings as [number, number];
-    console.info("Suspension lookup upgrade (124 existing-binding reads)", { beforeMs, afterMs });
+    console.info("Suspension lookup upgrade (124 approved-receipt reads)", { beforeMs, afterMs });
     // Compare on the same server instead of imposing a fixed hardware budget.
     expect(afterMs).toBeLessThan(beforeMs / 2);
   } finally {
