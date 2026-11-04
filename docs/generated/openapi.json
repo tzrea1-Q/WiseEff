@@ -93595,6 +93595,21 @@
               "markdownImport"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "claimedOwners": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              }
+            },
+            "required": [
+              "claimedOwners"
+            ],
+            "additionalProperties": false
           }
         ],
         "x-wiseeff-schema": "CatalogCreatePublicationCandidateRequest"
@@ -93640,6 +93655,36 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "ownerDeclarations": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "subjectId": {
+                              "type": "string"
+                            },
+                            "subjectName": {
+                              "type": "string"
+                            },
+                            "ownerSubjectId": {
+                              "type": "string"
+                            },
+                            "ownerName": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "subjectId",
+                            "subjectName",
+                            "ownerSubjectId",
+                            "ownerName"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "ownerPublicationOnly": {
+                        "type": "boolean"
                       }
                     },
                     "required": [
@@ -93727,6 +93772,36 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "ownerDeclarations": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "subjectId": {
+                                  "type": "string"
+                                },
+                                "subjectName": {
+                                  "type": "string"
+                                },
+                                "ownerSubjectId": {
+                                  "type": "string"
+                                },
+                                "ownerName": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "subjectId",
+                                "subjectName",
+                                "ownerSubjectId",
+                                "ownerName"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "ownerPublicationOnly": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -93987,6 +94062,133 @@
               "item"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "item": {
+                "type": "object",
+                "properties": {
+                  "candidate": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "expectedBaseReleaseId": {
+                        "type": "string"
+                      },
+                      "expectedBaseReleaseDigest": {
+                        "type": "string"
+                      },
+                      "riskClass": {
+                        "type": "string",
+                        "enum": [
+                          "low",
+                          "high"
+                        ]
+                      },
+                      "impactSummary": {
+                        "type": "object",
+                        "properties": {
+                          "addedDefinitionCount": {
+                            "type": "number"
+                          },
+                          "changedDefinitionCount": {
+                            "type": "number"
+                          },
+                          "addedSubjectCount": {
+                            "type": "number"
+                          },
+                          "addedSubjectIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "ownerDeclarations": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "subjectId": {
+                                  "type": "string"
+                                },
+                                "subjectName": {
+                                  "type": "string"
+                                },
+                                "ownerSubjectId": {
+                                  "type": "string"
+                                },
+                                "ownerName": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "subjectId",
+                                "subjectName",
+                                "ownerSubjectId",
+                                "ownerName"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "ownerPublicationOnly": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "addedDefinitionCount",
+                          "changedDefinitionCount",
+                          "addedSubjectCount"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "capabilityContract": {
+                        "type": "object",
+                        "properties": {
+                          "revision": {
+                            "type": "string"
+                          },
+                          "allowListId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "revision",
+                          "allowListId"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "expectedBaseReleaseId",
+                      "expectedBaseReleaseDigest",
+                      "riskClass",
+                      "impactSummary",
+                      "capabilityContract"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "noChange": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "candidate",
+                  "noChange"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "item"
+            ],
+            "additionalProperties": false
           }
         ],
         "x-wiseeff-schema": "CatalogPublicationPreviewResponse"
@@ -94036,6 +94238,36 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "ownerDeclarations": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "subjectId": {
+                              "type": "string"
+                            },
+                            "subjectName": {
+                              "type": "string"
+                            },
+                            "ownerSubjectId": {
+                              "type": "string"
+                            },
+                            "ownerName": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "subjectId",
+                            "subjectName",
+                            "ownerSubjectId",
+                            "ownerName"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "ownerPublicationOnly": {
+                        "type": "boolean"
                       }
                     },
                     "required": [
@@ -94337,6 +94569,36 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "ownerDeclarations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "subjectId": {
+                          "type": "string"
+                        },
+                        "subjectName": {
+                          "type": "string"
+                        },
+                        "ownerSubjectId": {
+                          "type": "string"
+                        },
+                        "ownerName": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "subjectId",
+                        "subjectName",
+                        "ownerSubjectId",
+                        "ownerName"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "ownerPublicationOnly": {
+                    "type": "boolean"
                   }
                 },
                 "required": [

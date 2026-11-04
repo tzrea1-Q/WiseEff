@@ -1,4 +1,5 @@
-import { catalogApiFailureReasonSchema } from "../../contracts/dtoSchemas/parameterCatalog";
+import { catalogApiFailureReasonSchema, catalogOwnerDeclarationSchema } from "../../contracts/dtoSchemas/parameterCatalog";
+import { planClaimedOwners } from "../../catalog-publication/claimedOwners";
 import {
   CatalogCandidateId,
   CatalogReleaseDigest,
@@ -91,11 +92,14 @@ const impactSummaryOf = (
   const addedSubjectIds = Array.isArray(record?.addedSubjectIds)
     ? record.addedSubjectIds.filter((id): id is string => typeof id === "string")
     : allocatedIds;
+  const owners = catalogOwnerDeclarationSchema.array().safeParse(record?.ownerDeclarations);
   return {
     addedDefinitionCount,
     changedDefinitionCount,
     addedSubjectCount,
     ...(addedSubjectIds.length > 0 ? { addedSubjectIds } : {}),
+    ...(owners.success ? { ownerDeclarations: owners.data } : {}),
+    ...(typeof record?.ownerPublicationOnly === "boolean" ? { ownerPublicationOnly: record.ownerPublicationOnly } : {}),
   };
 };
 
@@ -234,7 +238,7 @@ export function bindCatalogPublicationCommands(input: {
   const { db, pool } = input;
   return {
     async previewCandidate(command) {
-      if (command.markdownImport && !command.permissions.includes("catalog:author")) {
+      if ((command.markdownImport || command.claimedOwners) && !command.permissions.includes("catalog:author")) {
         return { ok: false, error: { kind: "forbidden", reason: "publication-capability-missing" } };
       }
       if (
@@ -289,7 +293,19 @@ export function bindCatalogPublicationCommands(input: {
         }
         if (!plan.changeSet) return { ok: true, value: { candidate: null, noChange: plan.noChange, entries: publicImportEntries(plan.entries), source: plan.source, placementHints } };
       }
-      const parsed = plan?.changeSet ?? parsePublicationChangeSet(command.changeSet);
+      let claimedChanges;
+      if (command.claimedOwners) {
+        const artifact = await getArtifactByDigest(db, pointer.current.digest);
+        if (!artifact.ok) return { ok: false, error: { kind: "reason", reason: "artifact-missing" } };
+        const bundle = parseBundleBytes(artifact.value.artifactBytes);
+        const predecessor = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
+        if (!predecessor) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
+        const planned = await planClaimedOwners(db, predecessor);
+        if (!planned.ok) return { ok: false, error: { kind: "reason", reason: "candidate-stale" } };
+        if (!planned.changes.length) return { ok: true, value: { candidate: null, noChange: true } };
+        claimedChanges = planned.changes;
+      }
+      const parsed = claimedChanges ?? plan?.changeSet ?? parsePublicationChangeSet(command.changeSet);
       if ("error" in parsed) return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
       const previewed = await previewPublicationCandidate({
         db,
@@ -328,7 +344,8 @@ export function bindCatalogPublicationCommands(input: {
         capabilityContract: capabilityOf(previewed.value.candidate),
         authorOrganizationId: command.organizationId,
       };
-      return { ok: true, value: plan ? { candidate, noChange: plan.noChange, entries: publicImportEntries(plan.entries), source: plan.source, placementHints } : candidate };
+      return { ok: true, value: command.claimedOwners ? { candidate, noChange: false }
+        : plan ? { candidate, noChange: plan.noChange, entries: publicImportEntries(plan.entries), source: plan.source, placementHints } : candidate };
     },
     async getCandidate(query) {
       let candidateId: ReturnType<typeof CatalogCandidateId>;

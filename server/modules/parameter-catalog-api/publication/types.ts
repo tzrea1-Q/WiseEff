@@ -3,6 +3,7 @@ import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
 import type { BackendPermission } from "../../auth/types";
 import type { catalogPublicationCommandByRouteId } from "./mapping";
 import type { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
+import type { OwnerDeclaration } from "../../catalog-publication/claimedOwners";
 import type { UsageProjectScope } from "../../parameter-bindings/usage";
 
 export type PlacementHintWithWarnings = ReturnType<typeof planMarkdownImport>["placementHints"][number];
@@ -55,6 +56,8 @@ export type PublicationCandidateView = {
     readonly changedDefinitionCount: number;
     readonly addedSubjectCount: number;
     readonly addedSubjectIds?: readonly string[];
+    readonly ownerDeclarations?: readonly OwnerDeclaration[];
+    readonly ownerPublicationOnly?: boolean;
   };
   readonly capabilityContract: {
     readonly revision: string;
@@ -99,6 +102,7 @@ export type PreviewPublicationCommand = {
   readonly projectScope?: UsageProjectScope;
   readonly catalogReleaseId: string;
   readonly changeSet?: unknown;
+  readonly claimedOwners?: true;
   readonly markdownImport?: { readonly document: string; readonly fileName: string };
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
@@ -134,7 +138,7 @@ export type CatalogPublicationPorts = {
   readonly currentRelease: () => Promise<CatalogReleasePin | null>;
   readonly previewCandidate: (
     command: PreviewPublicationCommand,
-  ) => Promise<{ ok: true; value: PublicationCandidateView | { candidate: PublicationCandidateView | null; noChange: boolean; entries: ReturnType<typeof planMarkdownImport>["entries"]; source: { fileName: string; sha256: string; parserVersion: string }; placementHints: PlacementHintWithWarnings[] } } | { ok: false; error: CatalogPublicationFailure }>;
+  ) => Promise<{ ok: true; value: PublicationCandidateView | { candidate: PublicationCandidateView | null; noChange: boolean } | { candidate: PublicationCandidateView | null; noChange: boolean; entries: ReturnType<typeof planMarkdownImport>["entries"]; source: { fileName: string; sha256: string; parserVersion: string }; placementHints: PlacementHintWithWarnings[] } } | { ok: false; error: CatalogPublicationFailure }>;
   readonly getCandidate: (input: {
     readonly candidateId: string;
     readonly organizationId: string;

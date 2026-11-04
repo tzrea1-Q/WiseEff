@@ -32,6 +32,7 @@ export function createApiParameterCatalogRepository(
     getLegacyIdentifier: (legacyType, legacyId) => client.getLegacyIdentifier(legacyType, legacyId),
     createPublicationCandidate: (body, context) => client.createPublicationCandidate(body, context),
     previewMarkdownImport: (body, context) => client.previewMarkdownImport(body, context),
+    previewClaimedOwners: (context) => client.previewClaimedOwners(context),
     exportRevisionDocument: (ids, query) => client.exportRevisionDocument(ids, query),
     getPublicationCandidate: (candidateId) => client.getPublicationCandidate(candidateId),
     publishPublicationCandidate: (candidateId, body, context) =>

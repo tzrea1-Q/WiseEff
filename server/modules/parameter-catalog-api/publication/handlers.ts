@@ -154,7 +154,7 @@ async function dispatch(
       actorKind: scope.actorKind,
       projectScope: scope.projectScope,
       catalogReleaseId: pin.pin.id,
-      ...("markdownImport" in parsed.data
+      ...("claimedOwners" in parsed.data ? { claimedOwners: parsed.data.claimedOwners } : "markdownImport" in parsed.data
         ? { markdownImport: parsed.data.markdownImport }
         : { changeSet: parsed.data.changeSet, proposalId: parsed.data.proposalId, proposalRevisionId: parsed.data.proposalRevisionId }),
     });

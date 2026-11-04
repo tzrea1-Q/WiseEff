@@ -215,6 +215,8 @@ Avoid `./scripts/compose down -v` unless the operator explicitly intends to dele
 
 ## Upgrade
 
+After child-owner claims, use **Publish claimed owners** (localized in the UI) on `/parameter-admin/specs` to preview the server-derived unpublished child/driver pairs and confirm publication through the existing high-risk authorization flow. A same-organization reviewer can load the frozen candidate ID. Only an effective publication receipt completes this step; migrate modules afterwards. This entry neither claims ownership nor admits mixed changes, frozen publication or stale candidates. See the [upgrade guide](../../ops/self-hosted/upgrade.md) for the complete sequence. The runtime `DATABASE_URL` is not a maintenance identity: CLI maintenance processes must explicitly use the existing `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL`, without granting the API access to private receipt tables.
+
 Use the dedicated [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md) entry for an already running checkout. It is the only normal path for a full data-preserving restart:
 
 ```bash

@@ -15,6 +15,7 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "getLegacyIdentifier",
   "createPublicationCandidate",
   "previewMarkdownImport",
+  "previewClaimedOwners",
   "exportRevisionDocument",
   "getPublicationCandidate",
   "publishPublicationCandidate",

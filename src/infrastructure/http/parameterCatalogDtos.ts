@@ -25,6 +25,7 @@ import type {
   catalogTypedPublicationCandidateRequestSchema,
   catalogMarkdownImportRequestSchema,
   catalogMarkdownImportResponseSchema,
+  catalogClaimedOwnersResponseSchema,
   catalogRevisionDocumentResponseSchema,
   catalogBindingExportResponseSchema,
   catalogBindingDraftDtoSchema,
@@ -157,6 +158,7 @@ export type CatalogCreatePublicationCandidateRequest = z.infer<
 >;
 export type CatalogMarkdownImportRequest = z.infer<typeof catalogMarkdownImportRequestSchema>;
 export type CatalogMarkdownImportResponse = z.infer<typeof catalogMarkdownImportResponseSchema>;
+export type CatalogClaimedOwnersResponse = z.infer<typeof catalogClaimedOwnersResponseSchema>;
 export type CatalogRevisionDocumentResponse = z.infer<typeof catalogRevisionDocumentResponseSchema>;
 export type CatalogPublishPublicationCandidateRequest = z.infer<
   typeof catalogPublishPublicationCandidateRequestSchema
