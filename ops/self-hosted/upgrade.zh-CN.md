@@ -197,6 +197,102 @@ cd /srv/wiseeff/ops/self-hosted
 
 恢复点默认写到 `/var/backups/wiseeff/upgrades/<run-id>`，被 Git 忽略的 journal 写到 `ops/self-hosted/.state/upgrades/<run-id>`。主机有专用且受保护的文件系统时可用 `--backup-root`、`--state-dir` 覆盖。环境文件权限必须保持 `600`。
 
+## 模块结构升级：手动数据迁移
+
+已有实例升级到 `34efd15da52c1933ea45a8dc5c983b7918fa8f06` 或包含 `0320`–`0324` 迁移的后继版本时，先完成正常的 `upgrade.sh apply`。这些迁移增加放置、归属、识别规则、级联、别名和归档结构，**不会**自动执行下面两个数据迁移 CLI。`0322` 还会复制能够唯一对应到一个登记、且与原 canonical 主体一致的旧识别规则；其他规则保留在旧表等待核对。
+
+手动迁移前，旧 `driver-group` / `node-type` 技术模块仍可读取，但只读。新的直接放置使用业务模块或未分类根节点；已归属子节点继承拥有者的放置。V05 发布门禁接受保留的旧放置。这不代表全部旧识别规则仍参与匹配：未迁移规则仅供查看核对，不参与匹配。
+
+严格按顺序执行：**正常升级 → 全实例认领子节点归属 → 授权发布 Catalog 后继版本 → 按组织迁移模块**。认领契约见[运行手册](../../docs/zh-CN/runbooks/self-hosted-runtime.md)，发布边界见[Catalog 发布运维](catalog-publication.zh-CN.md)。本流程以主机已经满足常规升级条件为前提，不替代历史参数身份切换或初始化的前置要求。
+
+### 准备与恢复点
+
+生产执行前，先在 staging 数据库或实例的隔离副本上演练两个 CLI。源码核对和 CI 通过不代表目标部署已执行成功。为手动写入安排维护窗口：认领会取得全实例锁，这两个 CLI 不会自动执行升级控制器的流量排空和恢复点创建。
+
+以下命令均在 `ops/self-hosted/` 下执行，使用**升级后正在运行的 API 容器**，宿主机无需 Node.js。脚本读取该容器的 `DATABASE_URL`。标准 setup 生成的是 `wiseeff` PostgreSQL owner 连接；定制部署必须核实所选连接具备维护授权，包括归属认领函数、所需锁和审计写入权限。不能假定受限 API 账号有这些权限，也不要为了让命令通过而直接修改生产权限。
+
+保留成功升级的 `run_id` 和已验证的整套恢复点。**每次**手动 `--apply` 前，再补充一份数据库备份。标准内置 PostgreSQL 服务可使用以下命令，目录必须由运维账号可写、受保护，并位于 checkout 和 Docker 数据根目录之外：
+
+```bash
+umask 077
+migration_backup_dir=/var/backups/wiseeff/module-structure
+mkdir -p "$migration_backup_dir"
+migration_backup_file="$migration_backup_dir/before-apply-$(date -u +%Y%m%dT%H%M%SZ)-$$.dump"
+./scripts/compose --env-file .env exec -T postgres sh -c \
+  'exec pg_dump -U "${POSTGRES_USER:-wiseeff}" -d "${POSTGRES_DB:-wiseeff}" -Fc' \
+  > "$migration_backup_file" && \
+./scripts/compose --env-file .env exec -T postgres pg_restore --list \
+  < "$migration_backup_file" > /dev/null
+```
+
+任一备份命令失败都应停止；能够列出归档不等于已做恢复演练。若应用使用外部数据库，应按批准的流程备份实际目标数据库。单库 dump 只是升级恢复点的补充，不是应用回滚，也不能替代 PostgreSQL、对象存储和 Redis 的一致性恢复。
+
+### 1. 全实例认领 Catalog 子节点归属
+
+```bash
+./scripts/compose --env-file .env exec -T api \
+  npx tsx scripts/catalog-claim-child-owners.ts --preflight
+```
+
+预检只读，不传模式时也默认预检。检查 JSON `candidates` 中的 `ready`、`already-claimed`、`missing`、`conflict` 以及每条冲突原因。证据跨组织汇总：每个存在活跃子节点登记的组织，都必须存在活跃的拥有者驱动登记；缺失或矛盾的最近 compatible 祖先证据不会被猜测处理。继续前应处理或明确记录每一项缺失与冲突，修正后重跑预检。
+
+审阅报告并完成上述备份后执行：
+
+```bash
+./scripts/compose --env-file .env exec -T api \
+  npx tsx scripts/catalog-claim-child-owners.ts --apply
+```
+
+Apply 在锁内重新核验，将 `ready` 主体放在同一个审计事务中认领。报告中有冲突**不会**阻止其他就绪主体被认领，退出码 `0` 也不代表所有候选均已认领。检查 apply 报告并重跑预检，已完成项应显示 `already-claimed`。登记、Binding、值和定义身份保持不变；重复 apply 不改变已有归属。**归属永久有效**，改挂其他驱动必须新建主体并走定义替换流程。
+
+继续下一步前，通过正常的授权发布流程发布 Catalog 后继版本。认领会改变归属，但本身不是 Catalog 版本激活；不得绕过发布授权或继承的发布冻结。
+
+### 2. 按组织迁移旧技术模块
+
+仅在子节点归属核对/认领和后继版本发布之后执行：
+
+```bash
+./scripts/compose --env-file .env exec -T api \
+  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --preflight
+```
+
+检查 JSON 数组中各报告的 `changes`、`conflicts`、`information` 以及可能出现的 `error`。预检不持久化写入。通过受支持的管理流程处理冲突，再次预检后才能 apply：
+
+| 报告 action | 运维处理 |
+| --- | --- |
+| `owner-not-registered` | 在该组织登记拥有者驱动，同时核实其启用状态和业务放置。 |
+| `no-business-ancestor` | 给相关独立登记指定业务分类；检查需要有效父级的业务子树。 |
+| `unmigrated-recognition-rule` | 在主体登记详情重新确认目标识别规则，并确认下一次报告中旧规则已得到处理。 |
+| `invalid-display-alias` | 通过受支持的流程设置合法登记别名；名称须非空、无首尾空白、不超过 128 字符且不含控制字符。 |
+| `business-name-conflict` | 先处理迁移目标下的同名业务模块，再调整父级。 |
+| `module-not-empty` | 处理残留放置或活跃子模块，不要强制归档。 |
+
+还要检查 `information` 中的 `renamed-module` 等提示：合法旧模块名可以转为登记别名，已有别名保留，已归属子节点不会复制该别名。未认领子节点仍保持独立；应回到全实例认领报告核对证据，不能从模块树推断归属。如果无法通过受支持的 UI/API 处理冲突，应停止该组织的迁移并排查，不要手改身份或迁移映射表。
+
+预检干净后重新备份，再执行迁移和复检：
+
+```bash
+./scripts/compose --env-file .env exec -T api \
+  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --apply
+./scripts/compose --env-file .env exec -T api \
+  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --preflight
+```
+
+Apply 在组织锁内重新核验，每个组织使用独立审计事务：抛出异常才回滚该组织，**报告中的冲突不等于异常**，可能与已提交的修改同时存在。用 `--all` 替代 `--organization <organization-id>` 可逐组织处理；后续组织失败不会撤销之前组织已提交的修改。建议先审阅一个组织，逐份检查报告，不要只看命令退出码。
+
+完成迁移后，登记、主体、Binding、值和定义身份不变；符合条件的空技术模块归档保留历史。每个已完成组织的最终预检必须没有 `error`、没有冲突、没有待执行修改；还应在 UI 核实“业务模块 → 驱动 → 所属子节点”的导航和相关识别规则。已完成后重跑不会产生修改。
+
+### 回滚边界
+
+两个手动 CLI 都没有反向模式。若要回到升级前的应用和数据状态，按[回滚流程](#回滚与整点恢复)，使用成功升级时的已验证整套恢复点及精确 run token：
+
+```bash
+./scripts/upgrade.sh rollback --run-id <run-id> \
+  --restore-data --confirm restore-<run-id>
+```
+
+这会丢弃**该恢复点之后的全部写入**，包括正常升级结束到手动迁移之间的业务写入。补充的单库 dump 可用于事故排查或另行规划的恢复，但不是两个 CLI 的自动撤销入口。决定恢复前，应记录已经部分提交的修改和剩余冲突。
+
 ## 状态与中断
 
 ### 历史身份切换兼容

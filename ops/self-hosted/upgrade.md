@@ -197,6 +197,102 @@ The command asks for the literal word `upgrade` immediately before it stops traf
 
 The recovery root defaults to `/var/backups/wiseeff/upgrades/<run-id>` and the ignored journal to `ops/self-hosted/.state/upgrades/<run-id>`. Override them with `--backup-root` and `--state-dir` when the host has a secured dedicated filesystem. The environment file must remain mode `600`.
 
+## Module structure upgrade: manual data migration
+
+For an existing instance upgrading to `34efd15da52c1933ea45a8dc5c983b7918fa8f06` or a successor containing migrations `0320`–`0324`, complete the normal `upgrade.sh apply` first. These migrations add the placement, owner, recognition, cascade, alias and archival structures. They do **not** run the two data-migration CLIs below. Migration `0322` also copies legacy recognition rules only when a module resolves to exactly one registration with the saved canonical subject; other rules remain in the legacy table for review.
+
+Until the manual migration, legacy `driver-group` / `node-type` modules remain readable but read-only. New direct placements use business modules or the unclassified root; owned children inherit their owner's placement. The V05 publication gate accepts retained legacy placements. This compatibility does not mean every legacy recognition rule is active: unmigrated rules are displayed for review and do not participate in matching.
+
+Follow this order: **upgrade → instance-wide child-owner claim → authorized Catalog successor publication → organization-by-organization module migration**. See the [runtime runbook](../../docs/runbooks/self-hosted-runtime.md#claim-existing-catalog-child-node-owners) for the claim contract and [Catalog publication operations](catalog-publication.md) for publication boundaries. This procedure assumes the host already qualifies for normal upgrades; it does not replace historical identity-cutover or initialization prerequisites.
+
+### Preparation and recovery point
+
+Rehearse both CLIs against a staging database or an isolated copy of the instance before production. Source review and CI are not evidence that these commands have succeeded on the target deployment. Arrange a maintenance window for the manual writes: the claim takes instance-wide locks, and these CLIs do not perform the upgrade controller's traffic drain or recovery-point capture.
+
+Run the commands below from `ops/self-hosted/` using the **upgraded running API container**; the host does not need Node.js. They consume that container's `DATABASE_URL`. The standard setup generates the `wiseeff` PostgreSQL owner connection, but customized deployments must verify that the selected connection is authorized for maintenance, including the owner-claim function, required locks and audited writes. Do not assume that a restricted API login has these permissions or change production grants just to make the commands pass.
+
+Keep the successful upgrade's `run_id` and verified whole-state recovery point. Before **each** manual `--apply`, take a fresh supplementary database backup. For the standard bundled PostgreSQL service, use an operator-writable secured directory outside the checkout and Docker data root:
+
+```bash
+umask 077
+migration_backup_dir=/var/backups/wiseeff/module-structure
+mkdir -p "$migration_backup_dir"
+migration_backup_file="$migration_backup_dir/before-apply-$(date -u +%Y%m%dT%H%M%SZ)-$$.dump"
+./scripts/compose --env-file .env exec -T postgres sh -c \
+  'exec pg_dump -U "${POSTGRES_USER:-wiseeff}" -d "${POSTGRES_DB:-wiseeff}" -Fc' \
+  > "$migration_backup_file" && \
+./scripts/compose --env-file .env exec -T postgres pg_restore --list \
+  < "$migration_backup_file" > /dev/null
+```
+
+Stop if either backup command fails; listing an archive is not a restore rehearsal. If the application uses an external database, back up that actual database through its approved procedure. A database-only dump supplements the upgrade recovery point; it is not an application rollback or a replacement for consistent PostgreSQL/object-store/Redis restoration.
+
+### 1. Claim Catalog child owners across the instance
+
+```bash
+./scripts/compose --env-file .env exec -T api \
+  npx tsx scripts/catalog-claim-child-owners.ts --preflight
+```
+
+Preflight is read-only and is also the default mode. Inspect the JSON `candidates`: `ready`, `already-claimed`, `missing` and `conflict`, including each conflict reason. Evidence spans organizations. Active child registrations require an active owner-driver registration in every affected organization; missing or contradictory nearest-compatible-ancestor evidence is not guessed. Resolve or explicitly account for every missing/conflicting candidate before proceeding; rerun preflight after corrections.
+
+After reviewing the report and taking the backup above:
+
+```bash
+./scripts/compose --env-file .env exec -T api \
+  npx tsx scripts/catalog-claim-child-owners.ts --apply
+```
+
+Apply rechecks under locks and claims only `ready` subjects in one audited transaction. A report containing conflicts does **not** prevent other ready candidates from being claimed, and exit code `0` does not mean all candidates were claimed. Inspect the apply report and rerun preflight; completed claims appear as `already-claimed`. Registration, Binding, value and definition identities are preserved. Repeating apply does not change an established owner. **Ownership is permanent**; moving a child to another driver requires a new subject and the definition-replacement process.
+
+Publish the Catalog successor through the normal authorized publication flow before continuing. Claiming changes ownership but is not itself a Catalog release activation. Do not bypass publication authorization or an inherited publication freeze.
+
+### 2. Migrate legacy technical modules for each organization
+
+Run this only after the child-owner review/claim and successor publication:
+
+```bash
+./scripts/compose --env-file .env exec -T api \
+  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --preflight
+```
+
+Inspect the JSON array's `changes`, `conflicts`, `information`, and any `error`. Preflight performs no persistent writes. Resolve conflicts through the supported administration flows and rerun it before applying:
+
+| Report action | Operator response |
+| --- | --- |
+| `owner-not-registered` | Register the owner driver in this organization; also review its active status and business placement. |
+| `no-business-ancestor` | Assign affected standalone registrations to a business classification; review business subtrees that need a valid parent. |
+| `unmigrated-recognition-rule` | Reconfirm the intended rule in the subject's registration details; verify that the legacy rule is resolved in the next report. |
+| `invalid-display-alias` | Set a valid registration display alias through the supported flow; names must be trimmed, nonempty, at most 128 characters and contain no control characters. |
+| `business-name-conflict` | Resolve the destination's same-name business-module collision before reparenting. |
+| `module-not-empty` | Resolve remaining placements or active children; do not force archive the module. |
+
+Review `information` entries such as `renamed-module`: valid legacy display names can become registration aliases, existing aliases are preserved, and owned children do not receive a copied alias. Unclaimed children remain standalone; reconcile ownership evidence in the instance-wide claim report instead of inferring ownership from the module tree. If a conflict cannot be resolved through the supported UI/API, stop that organization's rollout and investigate; do not patch identity or migration-map rows manually.
+
+Once the preflight is clean, take a fresh backup and apply:
+
+```bash
+./scripts/compose --env-file .env exec -T api \
+  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --apply
+./scripts/compose --env-file .env exec -T api \
+  npx tsx scripts/migrate-module-structure.ts --organization <organization-id> --preflight
+```
+
+Apply rechecks under organization locks. Each organization has its own audited transaction: an exception rolls back that organization, but **reported conflicts are not exceptions** and can coexist with committed changes. `--all` replaces `--organization <organization-id>` to process organizations independently; a later failure does not undo earlier commits. Prefer reviewing one organization first, and inspect every report rather than relying on the command's exit status.
+
+Completed migration preserves registration, subject, Binding, value and definition identities; eligible empty technical modules are archived for history. The final preflight must have no `error`, no conflicts and no proposed changes for each completed organization. Verify the business-module → driver → owned-child navigation and affected recognition rules in the UI. A completed rerun makes no changes.
+
+### Rollback boundary
+
+Neither manual CLI has a reverse mode. To return to the pre-upgrade application and data state, use the successful upgrade's verified whole-state recovery point and the exact run-bound token, under the [rollback procedure](#rollback-and-whole-state-restore):
+
+```bash
+./scripts/upgrade.sh rollback --run-id <run-id> \
+  --restore-data --confirm restore-<run-id>
+```
+
+This discards **all writes after that recovery point**, including writes between the normal upgrade and the manual migration. The fresh database dumps can support incident investigation or a separately planned recovery, but are not an automatic undo command for either CLI. Record any partial application and remaining conflicts before deciding on recovery.
+
 ## Status and interruption
 
 ### Historical identity-cutover compatibility
