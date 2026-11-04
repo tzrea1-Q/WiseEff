@@ -613,7 +613,8 @@ test.describe("Issue 897 canonical module ownership", () => {
     await expect(discovery.getByText("acme,power", { exact: true })).toBeVisible();
     await expect(discovery.getByText(/已识别主体：acme,power/)).toBeVisible();
     const refreshedDiscovery = page.waitForResponse(response => response.url().includes("/driver-compatible-discovery") && response.status() === 200);
-    await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
+    await page.getByRole("tab", { name: "模块", exact: true }).click();
+    await page.getByRole("tab", { name: "来源识别" }).click();
     await refreshedDiscovery;
     await expect(discovery.getByText(/已识别主体：acme,power/)).toBeVisible();
     await page.screenshot({ path: info.outputPath("canonical-driver-discovery.png"), animations: "disabled" });
@@ -753,11 +754,11 @@ test.describe("Issue 897 canonical module ownership", () => {
     await page.getByRole("searchbox", { name: "筛选规范主体" }).fill("");
     expectedApiFailures.push({ method: "GET", path: "/api/v2/catalog/subjects", status: 500 });
     await page.route("**/api/v2/catalog/subjects?*", route => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "Injected subject query failure" } }) }));
-    await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
+    await page.reload();
     await expect(page.getByRole("region", { name: "规范主体归属" }).getByRole("alert")).toBeVisible();
     await page.screenshot({ path: info.outputPath("canonical-module-query-error.png"), animations: "disabled" });
     await page.unroute("**/api/v2/catalog/subjects?*");
-    await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
+    await page.getByRole("region", { name: "规范主体归属" }).getByRole("button", { name: "重新读取完整目录" }).click();
     await expect(driver.getByText("归属：Issue 897 Modules / Output business", { exact: true })).toBeVisible();
     await page.getByRole("tree", { name: "模块归属树" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("canonical-module-tree-after-move.png"), animations: "disabled" });
@@ -957,7 +958,7 @@ test.describe("Issue 897 canonical module ownership", () => {
     await expect(discovery.getByRole("alert")).toContainText("目录发布已变化");
     await expect(discovery.getByText("vendor,device-50")).toBeVisible();
     phase = "zero";
-    await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).focus();
+    await discovery.getByRole("button", { name: "重新读取发现" }).focus();
     await page.keyboard.press("Enter");
     await expect(discovery.getByText("当前范围没有来源观察记录。")).toBeVisible();
     await expect(discovery.getByText(/已忽略复核项：无权查看/)).toBeVisible();
@@ -1096,7 +1097,7 @@ test.describe("Issue 897 canonical module ownership", () => {
 
     const refreshedResponse = page.waitForResponse(response => new URL(response.url()).pathname === discoveryPath &&
       !new URL(response.url()).searchParams.has("cursor") && response.status() === 200);
-    await page.getByRole("group", { name: "工作台操作", exact: true }).getByRole("button", { name: "刷新", exact: true }).click();
+    await discovery.getByRole("button", { name: "重新读取发现" }).click();
     expect((await (await refreshedResponse).json()).catalogRelease.id).toBe(successor.manifest.release.id);
     await discovery.locator(".canonical-driver-discovery__item").first().locator("summary").click();
     await expect(discovery.locator(".canonical-driver-discovery__item").first().getByText(successor.manifest.release.id, { exact: true })).toBeVisible();

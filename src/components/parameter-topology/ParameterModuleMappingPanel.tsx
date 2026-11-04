@@ -101,6 +101,15 @@ export function ParameterModuleMappingPanel({
   const [busy, setBusy] = useState(false);
   const [canonicalDiscoveryRefresh, setCanonicalDiscoveryRefresh] = useState(0);
   const [registryRefresh, setRegistryRefresh] = useState(0);
+  useEffect(() => {
+    const refreshOnFocus = () => {
+      if (busy) return;
+      setRegistryRefresh((value) => value + 1);
+      setCanonicalDiscoveryRefresh((value) => value + 1);
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
+  }, [busy]);
   const [localSubView, setLocalSubView] = useState<{ location: string; value: ParameterAdminModulesSubView } | null>(null);
   const [localSelection, setLocalSelection] = useState<{ location: string; value: string | null } | null>(null);
   const [treeSubjects, setTreeSubjects] = useState<ModuleTreeSubject[]>([]);
@@ -163,7 +172,7 @@ export function ParameterModuleMappingPanel({
     let cancelled = false;
     void refreshDriverRegistry(() => cancelled);
     return () => { cancelled = true; };
-  }, [refreshDriverRegistry, activeSubView]);
+  }, [refreshDriverRegistry, activeSubView, registryRefresh]);
 
   useEffect(() => {
     if (activeSubView !== "tree") return;
@@ -370,13 +379,17 @@ export function ParameterModuleMappingPanel({
 
   const tabs = <ViewSwitch variant="tabs" ariaLabel="模块治理视图" value={activeSubView}
     onValueChange={(value) => selectTab(value as ParameterAdminModulesSubView)} items={[...moduleTabs]} />;
-  const refresh = <Button type="button" variant="outline" size="sm"
-    disabled={busy || (activeSubView === "tree" ? loading : activeSubView === "registry" && driverRegistryLoading)}
-    onClick={() => {
-      if (activeSubView === "tree") setRegistryRefresh((value) => value + 1);
-      setCanonicalDiscoveryRefresh((value) => value + 1);
-      if (activeSubView !== "queue") void refreshDriverRegistry();
-    }}>刷新</Button>;
+  const structureActions = canonicalEnabled ? <div className="module-structure-actions" role="group" aria-label="模块结构操作">
+    <ModuleStructureImport apiClient={apiClient} organizationId={canonicalOrganizationId}
+      canImport={canManageTaxonomy && canonicalActor !== "agent"} onChanged={() => {
+        setRegistryRefresh(value => value + 1);
+        setCanonicalDiscoveryRefresh(value => value + 1);
+      }} />
+    <details className="module-structure-disclosure"><summary className="button subtle sm">导出与填写说明</summary>
+      <ModuleStructureExport apiClient={apiClient} organizationId={canonicalOrganizationId}
+        canExport={canAdmin && canonicalActor !== "agent" && Boolean(canonicalSessionPermissions?.includes("users:manage"))} />
+    </details>
+  </div> : null;
   const selectedModule = registry.modules.find((module) => module.id === selectedModuleId);
   const modulePath: string[] = [];
   const seenModules = new Set<string>();
@@ -401,14 +414,10 @@ export function ParameterModuleMappingPanel({
   ];
 
   return <section className="parameter-module-mapping-panel" aria-label={PARAMETER_ADMIN_UI.moduleMapping}>
-    {canonicalEnabled ? <ModuleStructureExport apiClient={apiClient} organizationId={canonicalOrganizationId}
-      canExport={canAdmin && canonicalActor !== "agent" && Boolean(canonicalSessionPermissions?.includes("users:manage"))} /> : null}
-    {canonicalEnabled ? <ModuleStructureImport apiClient={apiClient} organizationId={canonicalOrganizationId}
-      canImport={canManageTaxonomy && canonicalActor !== "agent"} onChanged={() => setRegistryRefresh(value => value + 1)} /> : null}
-    {activeSubView !== "tree" ? <div className="navigator-workbench__toolbar" role="group" aria-label="工作台操作"><div className="navigator-workbench__controls">{tabs}</div>{refresh}</div> : null}
+    {activeSubView !== "tree" ? <div className="navigator-workbench__toolbar" role="group" aria-label="工作台操作"><div className="navigator-workbench__controls">{tabs}</div>{structureActions}</div> : null}
     {activeSubView === "tree" ? <NavigatorWorkbench pageKey="module-governance" navigatorLabel="模块导航" taskLabel={activeTab.label} resizableNavigator
       panelId={activeTab.panelId} tabId={activeTab.id} toolbar={tabs} primaryAction={<>
-        {refresh}
+        {structureActions}
         {canManageTaxonomy ? <Button type="button" size="sm" disabled={busy || !registryLoaded}
           onClick={() => setCreateRootRequest((value) => value + 1)}>新建模块</Button> : null}
       </>}
@@ -419,7 +428,9 @@ export function ParameterModuleMappingPanel({
           <dt>定义</dt><dd>{selectedModule.definitionCount}</dd><dt>实测处</dt><dd>{selectedModule.parameterCount}</dd></dl> : null}
         {visibleModuleIds ? <span className="module-governance-filter-scope" role="status">列表已应用模块树筛选，包含匹配模块的子模块</span> : null}
       </div> : undefined}
-      notice={error ? <p className="parameter-module-mapping-panel__error" role="alert"><AlertCircle size={15} aria-hidden="true" />{error}</p> : undefined}
+      notice={error ? <div className="parameter-module-mapping-panel__error" role="alert"><AlertCircle size={15} aria-hidden="true" />{error}
+        <Button type="button" variant="outline" size="sm" disabled={loading || busy}
+          onClick={() => setRegistryRefresh(value => value + 1)}>重试模块读取</Button></div> : undefined}
       navigator={!registryLoaded ? <SectionSkeleton label="正在加载模块注册表…" /> : moduleTree}
       taskState={!registryLoaded ? { kind: "loading", message: "正在加载模块注册表…" } : undefined}>
       {canonicalAvailable && canonicalCatalog && canonicalGovernance && canonicalOrganizationId ? <CanonicalSubjectPlacementPanel

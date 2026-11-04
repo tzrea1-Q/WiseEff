@@ -69,4 +69,16 @@ describe("project deletion confirmation", () => {
     expect(loadPreview).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "重试对象清理" })).toBeEnabled();
   });
+
+  it("describes a completed historical receipt as cleanup status", () => {
+    const loadPreview = vi.fn();
+    render(<ProjectDeletionPreviewDialog projectId={preview.projectId}
+      initialStatus={{ ...pending, objects: "complete", pendingObjects: 0 }}
+      loadPreview={loadPreview} onClose={() => {}} />);
+    expect(screen.getByRole("dialog", { name: "项目清理状态" })).toBeVisible();
+    expect(screen.getByText("数据库清理与存储对象清理的当前结果。")).toBeVisible();
+    expect(screen.queryByText(/永久删除项目配置/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关闭" })).toBeEnabled();
+    expect(loadPreview).not.toHaveBeenCalled();
+  });
 });

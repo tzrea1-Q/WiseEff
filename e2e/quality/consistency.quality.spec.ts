@@ -524,7 +524,8 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(scope).toBeVisible();
           await expect(discovery.getByRole("link", { name: "打开待审核事项", exact: true }))
             .toHaveAttribute("href", "/parameter-admin/specs?review=open");
-          await expect(panel.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
+          await expect(panel.getByRole("button", { name: "刷新", exact: true })).toHaveCount(0);
+          await expect(panel.getByRole("group", { name: "模块结构操作", exact: true })).toBeVisible();
           await expect(panel.getByRole("tree", { name: "模块归属树", exact: true })).toHaveCount(0);
           await expect(panel.locator(".navigator-workbench")).toHaveCount(0);
           const empty = discovery.locator(".canonical-discovery-empty");
@@ -612,7 +613,8 @@ for (const route of consistencyReadOnlyRoutes) {
           await expect(list.getByRole("searchbox", { name: "搜索历史记录", exact: true })).toBeVisible();
           await expect(list.getByRole("combobox", { name: "筛选历史业务分类", exact: true })).toBeVisible();
           await expect(list.getByRole("combobox", { name: "筛选历史观察状态", exact: true })).toBeVisible();
-          await expect(panel.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
+          await expect(panel.getByRole("button", { name: "刷新", exact: true })).toHaveCount(0);
+          await expect(panel.getByRole("group", { name: "模块结构操作", exact: true })).toBeVisible();
           await expect(list.getByRole("group", { name: "历史注册表操作", exact: true })).toHaveCount(0);
           await expect(panel.getByRole("tree", { name: "模块归属树", exact: true })).toHaveCount(0);
           await expect(panel.locator(".navigator-workbench")).toHaveCount(0);

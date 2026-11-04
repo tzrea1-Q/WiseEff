@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialState } from "@/mockData";
@@ -21,8 +21,8 @@ afterEach(() => vi.restoreAllMocks());
 const item = { id: "aurora", name: "Aurora 旗舰项目", code: "AUR", status: "initialized", initializationStatus: "initialized",
   moduleCount: 0, parameterCount: 0, openConflictCount: 0, releasedBaselineCount: 0, updatedAt: "2026-10-15T00:00:00Z" };
 
-function setup(path: string, listProjects = vi.fn().mockResolvedValue([item]), updateProject = vi.fn().mockResolvedValue(item)) {
-  vi.spyOn(adminClient, "createParameterAdminClient").mockReturnValue({ listProjects, updateProject } as unknown as adminClient.ParameterAdminClient);
+function setup(path: string, listProjects = vi.fn().mockResolvedValue([item]), updateProject = vi.fn().mockResolvedValue(item), client: Partial<adminClient.ParameterAdminClient> = {}) {
+  vi.spyOn(adminClient, "createParameterAdminClient").mockReturnValue({ listProjects, updateProject, ...client } as unknown as adminClient.ParameterAdminClient);
   const onNavigate = vi.fn();
   const url = new URL(path, "http://localhost");
   render(<ParameterAdminNextPage area="projects" pathname={url.pathname} search={url.search}
@@ -33,6 +33,44 @@ function setup(path: string, listProjects = vi.fn().mockResolvedValue([item]), u
 }
 
 describe("project operations recovery and navigation", () => {
+  const receipt = { projectId: "deleted-project-with-a-long-identifier", stateDigest: "digest", database: "deleted" as const, objects: "complete" as const, pendingObjects: 0 };
+
+  it("paginates cleanup receipts and opens a completed record with a concise action", async () => {
+    const records = Array.from({ length: 11 }, (_, index) => ({ ...receipt, projectId: `${receipt.projectId}-${index}` }));
+    const previewProjectDeletion = vi.fn();
+    setup("/parameter-admin/projects", undefined, undefined, {
+      listProjectDeletions: vi.fn().mockResolvedValue(records), previewProjectDeletion
+    });
+    const table = await screen.findByRole("table", { name: "项目清理记录" });
+    expect(within(table).getAllByRole("button", { name: "查看详情" })).toHaveLength(10);
+    expect(within(table).queryByText(records[10]!.projectId)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "下一页" }));
+    expect(within(table).getByText(records[10]!.projectId)).toBeVisible();
+    await userEvent.click(within(table).getByRole("button", { name: "查看详情" }));
+    expect(screen.getByRole("dialog", { name: "项目清理状态" })).toHaveTextContent(records[10]!.projectId);
+    expect(previewProjectDeletion).not.toHaveBeenCalled();
+  });
+
+  it.each(["configuration", "review-roles"])("keeps cleanup records outside the %s subpage", async (view) => {
+    const listProjectDeletions = vi.fn().mockResolvedValue([receipt]);
+    setup(`/parameter-admin/projects/aurora/${view}`, undefined, undefined, {
+      listProjectDeletions
+    });
+    await screen.findByText(view === "configuration" ? "配置内容已加载" : `${item.name} 项目审核角色配置`);
+    await waitFor(() => expect(listProjectDeletions).toHaveBeenCalled());
+    expect(screen.queryByRole("region", { name: "项目清理记录" })).not.toBeInTheDocument();
+    expect(screen.queryByText(receipt.projectId)).not.toBeInTheDocument();
+  });
+
+  it("retries a failed cleanup read from the project list", async () => {
+    const listProjectDeletions = vi.fn().mockRejectedValueOnce(new Error("Unavailable")).mockResolvedValueOnce([receipt]);
+    setup("/parameter-admin/projects", undefined, undefined, { listProjectDeletions });
+    const region = await screen.findByRole("region", { name: "项目清理记录" });
+    await userEvent.click(within(region).getByRole("button", { name: "重试清理记录" }));
+    expect(await within(region).findByText(receipt.projectId)).toBeVisible();
+    expect(within(region).queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it.each([["initialized", "归档", "确认归档", "archived"], ["archived", "恢复项目", "恢复项目", "initialized"]])("confirms %s project lifecycle changes through the existing status API", async (status, label, confirmLabel, nextStatus) => {
     const updateProject = vi.fn().mockResolvedValue({ ...item, status: nextStatus });
     setup(`/parameter-admin/projects${status === "archived" ? "?status=archived" : ""}`, vi.fn().mockResolvedValue([{ ...item, status }]), updateProject);

@@ -512,6 +512,7 @@ test("MODULE-STRUCTURE-EXPORT-001: complete filtered download, retry and reader 
   expect(counts.modules).toBeGreaterThan(0);
   await signInBrowserAsUser(page, acceptanceAdminOnlyUser.userId, acceptanceAdminOnlyUser.email, acceptanceAdminOnlyUser.name, "/parameter-admin/modules");
   await page.getByRole("searchbox", { name: "搜索模块" }).fill("no-matching-module-1495");
+  await page.getByText("导出与填写说明", { exact: true }).click();
   const controls = page.getByRole("group", { name: "模块结构导出" });
   const exportButton = controls.getByRole("button", { name: "导出完整结构" });
   await expect(exportButton).toBeEnabled();

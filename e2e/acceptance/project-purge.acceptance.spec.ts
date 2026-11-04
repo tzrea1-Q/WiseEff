@@ -47,15 +47,17 @@ test("confirms project purge by keyboard, retries a failed request and reloads h
   await page.keyboard.press("Tab");
   await expect(confirm).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(dialog.getByRole("status")).toContainText("数据库清理：已完成");
-  await expect(dialog.getByRole("status")).toContainText("项目彻底删除已完成");
+  const cleanup = page.getByRole("dialog", { name: "项目清理状态", exact: true });
+  await expect(cleanup.getByRole("status")).toContainText("数据库清理：已完成");
+  await expect(cleanup.getByRole("status")).toContainText("项目彻底删除已完成");
   const screenshot = testInfo.outputPath("project-purge-result-1440.png");
   await page.screenshot({ path: screenshot, fullPage: true });
   await testInfo.attach("project-purge-result-1440", { path: screenshot, contentType: "image/png" });
   await page.keyboard.press("Escape");
   await page.reload();
-  await page.getByRole("button", { name: `查看清理状态 ${id}`, exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("status")).toContainText("项目彻底删除已完成");
+  await page.getByRole("table", { name: "项目清理记录", exact: true }).getByRole("row")
+    .filter({ has: page.getByText(id, { exact: true }) }).getByRole("button", { name: "查看详情", exact: true }).click();
+  await expect(cleanup.getByRole("status")).toContainText("项目彻底删除已完成");
   const status = await request.get(apiRoute(`/api/v1/parameters/admin/projects/${id}/deletion-status`), { headers });
   expect(status.status()).toBe(200);
   expect((await status.json()).item).toMatchObject({ database: "deleted", objects: "complete", pendingObjects: 0 });
