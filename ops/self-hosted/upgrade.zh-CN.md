@@ -236,6 +236,8 @@ migration_backup_file="$migration_backup_dir/before-apply-$(date -u +%Y%m%dT%H%M
 
 预检只读，不传模式时也默认预检。检查 JSON `candidates` 中的 `ready`、`already-claimed`、`missing`、`conflict` 以及每条冲突原因。证据跨组织汇总：每个存在活跃子节点登记的组织，都必须存在活跃的拥有者驱动登记；缺失或矛盾的最近 compatible 祖先证据不会被猜测处理。继续前应处理或明确记录每一项缺失与冲突，修正后重跑预检。
 
+一个受限例外会列入 `historicalEvidence`：登记仍已停用、原始 DTS 节点存在且祖先链完整无环，但祖先 compatible 缺失，且已批准并提交的源码排除记录能精确核实该绑定当前值和 source pin（包括组织、配置及审计）时，将该记录作为历史保留证据报告。认领目标来自经过审阅且唯一的厂商声明；排除凭据仅说明缺失的历史祖先不再是当前证据。断链或循环的祖先关系、已知不一致或无法解析的祖先、observation、活跃登记，以及缺失或无法核实的来源证据仍然阻断。脚本不会按路径把旧节点关联到新节点，也不会改写历史绑定或 pin。Apply 前审阅 `historicalEvidence`，这些信息也写入认领审计。使用此版本 CLI 前应随正常升级执行包括 `0326` 在内的数据库迁移，无需手工修补数据。
+
 审阅报告并完成上述备份后执行：
 
 ```bash

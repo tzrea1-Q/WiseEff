@@ -14,7 +14,11 @@ import { inventoryVendorCatalog, parseVendorYamlFile } from "../server/modules/c
 import { loadOrganizationCatalogSnapshot, lockOrganizationModuleRecognition } from "../server/modules/parameter-modules/recognitionSettings";
 
 type Declaration = { name: string; compatibles: readonly string[]; conflict?: string };
-type Evidence = { kind: string; id: string; organizationId: string; subjectId: string; ancestorCompatible: string | null };
+type Evidence = {
+  kind: string; id: string; organizationId: string; subjectId: string; ancestorCompatible: string | null;
+  sourceNodeFound: boolean; ancestorChainComplete: boolean; historicalExclusionRequestId: string | null;
+};
+type HistoricalEvidence = { bindingId: string; organizationId: string; requestId: string; reason: "approved-source-exclusion" };
 
 /** Read the reviewed repository inventory; ambiguous names are reported, never guessed. */
 export function childOwnerDeclarations(schemasRoot: string): Declaration[] {
@@ -67,6 +71,7 @@ export async function claimCatalogChildOwners(
         parameter_catalog.parameter_observation_matches, parameter_catalog.project_parameter_source_occurrences,
         parameter_catalog.project_source_member_tombstones, parameter_catalog.definition_replacement_projects,
         parameter_catalog.definition_erasures, public.project_parameter_value_change_requests,
+        parameter_catalog.source_binding_suspension_receipts, public.audit_events,
         public.dts_config_revisions, public.dts_config_revision_members, public.dts_logical_node_revisions in share mode`);
     }
     // Recheck under the maintenance locks: a racing registration/adoption must
@@ -90,21 +95,48 @@ export async function claimCatalogChildOwners(
     if (listed.status !== "found") throw new Error("catalog-owner-subject-list-unavailable");
     const evidence = (await tx.query<Evidence>(`
       with recursive evidence as (
-        select 'binding'::text as kind, b.id, b.organization_id, b.project_id, b.subject_id, occurrence.logical_node_id, pin.config_revision_id
+        select 'binding'::text as kind, b.id, b.organization_id, b.project_id, b.subject_id, occurrence.logical_node_id, pin.config_revision_id,
+          suspension.request_id as historical_exclusion_request_id
         from parameter_catalog.project_parameter_bindings b
         left join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=b.source_occurrence_id
           and occurrence.organization_id=b.organization_id and occurrence.project_id=b.project_id and occurrence.logical_node_id=b.logical_node_id
         left join parameter_catalog.project_value_source_pins pin on pin.binding_id=b.id and pin.project_value_id=b.current_value_id
           and pin.source_occurrence_id=occurrence.id
+        left join parameter_catalog.organization_subject_registrations registration on registration.id=b.registration_id
+          and registration.organization_id=b.organization_id and registration.subject_id=b.subject_id
+        left join lateral (
+          -- Support both original approved requests and independently retained receipts.
+          -- The existing SQL verifier checks the exact value, pin, scope and applied audit.
+          select exclusion.request_id from (
+            select request.id as request_id, request.applied_source_result->>'configRevisionId' as applied_revision_id
+            from public.project_parameter_value_change_requests request
+            where request.organization_id=b.organization_id and request.project_id=b.project_id
+              and request.source_revision_config_set_id=occurrence.config_set_id
+              and request.request_kind='source_revision' and request.status='approved' and request.apply_outcome='committed'
+              and request.source_revision_context->'excludedBindings' @> jsonb_build_array(jsonb_build_object('bindingId',b.id))
+            union
+            select receipt.request_id, receipt.applied_config_revision_id
+            from parameter_catalog.source_binding_suspension_receipts receipt
+            where receipt.organization_id=b.organization_id and receipt.project_id=b.project_id
+              and receipt.config_set_id=occurrence.config_set_id and receipt.binding_id=b.id
+              and receipt.old_value_id=b.current_value_id and receipt.source_pin_id=pin.id
+          ) exclusion
+          where registration.status='retired'
+            and parameter_catalog.source_revision_exclusion_matches(
+              exclusion.request_id,b.id,b.current_value_id,pin.id,exclusion.applied_revision_id)
+          order by exclusion.request_id limit 1
+        ) suspension on true
         where b.subject_id = any($1::text[])
         union all
-        select 'observation', m.id, m.organization_id, m.project_id, m.subject_id, o.logical_node_id, o.config_revision_id
+        select 'observation', m.id, m.organization_id, m.project_id, m.subject_id, o.logical_node_id, o.config_revision_id, null::text
         from parameter_catalog.parameter_observation_matches m
         join parameter_catalog.parameter_observations o on o.id=m.observation_id and o.organization_id=m.organization_id
         where m.subject_id = any($1::text[])
       )
       select evidence.kind, evidence.id, evidence.organization_id as "organizationId", evidence.subject_id as "subjectId",
-        ancestor.compatible as "ancestorCompatible"
+        ancestor.compatible as "ancestorCompatible", node.id is not null as "sourceNodeFound",
+        ancestor.chain_complete as "ancestorChainComplete",
+        evidence.historical_exclusion_request_id as "historicalExclusionRequestId"
       from evidence
       left join public.dts_config_revisions revision on revision.id=evidence.config_revision_id
         and revision.organization_id=evidence.organization_id and revision.project_id=evidence.project_id
@@ -120,7 +152,10 @@ export async function claimCatalogChildOwners(
           from parents join public.dts_logical_node_revisions p on p.config_revision_id=node.config_revision_id
             and p.logical_node_id=parents.parent_logical_node_id
           where not p.logical_node_id=any(parents.visited)
-        ) select compatible from parents where compatible is not null order by depth limit 1
+        ) select (select compatible from parents where compatible is not null order by depth limit 1) as compatible,
+          (node.parent_logical_node_id is null or exists(
+            select 1 from parents where parent_logical_node_id is null
+          )) as chain_complete
       ) ancestor on true
       order by evidence.subject_id,evidence.organization_id,evidence.kind,evidence.id`,
     [listed.page.items.map((item) => item.id)])).rows;
@@ -131,7 +166,7 @@ export async function claimCatalogChildOwners(
     for (const organizationId of new Set(evidence.map((item) => item.organizationId))) {
       effectiveSnapshots.set(organizationId, await loadOrganizationCatalogSnapshot(tx, organizationId, snapshot));
     }
-    const report: { name: string; subjectId?: string; ownerSubjectId?: string; status: "ready" | "conflict" | "missing" | "already-claimed" | "claimed"; conflicts: string[] }[] = [];
+    const report: { name: string; subjectId?: string; ownerSubjectId?: string; status: "ready" | "conflict" | "missing" | "already-claimed" | "claimed"; conflicts: string[]; historicalEvidence?: HistoricalEvidence[] }[] = [];
     for (const declaration of declarations) {
       const driver = snapshot.resolveSubject({ driverCompatibles: declaration.compatibles.map(DriverCompatible), nodeTypeFallback: { kind: "absent" } });
       const subjects = listed.page.items.filter((item) => item.membership.selector.kind === "node-type-name"
@@ -142,6 +177,7 @@ export async function claimCatalogChildOwners(
       const existing = ownerId && subjects.find((subject) => subject.owner === ownerId);
       const subject = unowned.length === 1 ? unowned[0] : existing;
       const conflicts = declaration.conflict ? [declaration.conflict] : [];
+      const historicalEvidence: HistoricalEvidence[] = [];
       if (!ownerId) conflicts.push("声明的驱动无法在当前目录中唯一解析。");
       if (unowned.length > 1 || (unowned.length && existing)) conflicts.push("节点主体身份不唯一。");
       if (!subject) {
@@ -156,6 +192,15 @@ export async function claimCatalogChildOwners(
           where child.subject_id=$1 and child.status='active' and owner.id is null`, [subject.id, ownerId ?? ""]);
         for (const row of inactiveOwner.rows) conflicts.push(`组织 ${row.organization_id} 的所属驱动尚未登记或已停用。`);
         for (const item of evidence.filter((row) => row.subjectId === subject.id)) {
+          // A verified exclusion preserves history; it is not positive ancestor
+          // evidence and never overrides a known incompatible ancestor. The unique
+          // reviewed vendor declaration above supplies the proposed Catalog owner.
+          if (item.kind === "binding" && item.sourceNodeFound && item.ancestorChainComplete && item.ancestorCompatible === null
+            && item.historicalExclusionRequestId) {
+            historicalEvidence.push({ bindingId: item.id, organizationId: item.organizationId,
+              requestId: item.historicalExclusionRequestId, reason: "approved-source-exclusion" });
+            continue;
+          }
           const match = effectiveSnapshots.get(item.organizationId)!.resolveSubject({ driverCompatibles: parseCompatibles(item.ancestorCompatible).map(DriverCompatible), nodeTypeFallback: { kind: "absent" } });
           if (!item.ancestorCompatible || match.status !== "matched" || match.subject.id !== ownerId) {
             conflicts.push(`${item.kind}:${item.id}（组织 ${item.organizationId}）缺少一致的最近祖先驱动。`);
@@ -176,7 +221,8 @@ export async function claimCatalogChildOwners(
         if (collision.rows[0]?.collision) conflicts.push("目标驱动下已存在相同主体或别名。");
       }
       const status = conflicts.length ? "conflict" : subject.owner ? "already-claimed" : "ready";
-      report.push({ name: declaration.name, subjectId: subject.id, ...(ownerId ? { ownerSubjectId: ownerId } : {}), status, conflicts });
+      report.push({ name: declaration.name, subjectId: subject.id, ...(ownerId ? { ownerSubjectId: ownerId } : {}), status, conflicts,
+        ...(historicalEvidence.length ? { historicalEvidence } : {}) });
     }
     if (apply) {
       if (options.requireEmptyDemo && report.some((item) => item.status !== "ready" && item.status !== "already-claimed")) {
@@ -190,7 +236,8 @@ export async function claimCatalogChildOwners(
       if (ready.length) await writeTrustedAuditEventInTx(asAuditTx(tx), {
         invocation: createSystemInvocation({ kind: "job", name: "catalog-claim-child-owners" }), projectId: null,
         app: "parameters", kind: "catalog-child-owners-claimed", action: "claim", severity: "High",
-        targetType: "catalog-release", targetId: current.id, metadata: { claims: ready.map(({ subjectId, ownerSubjectId }) => ({ subjectId, ownerSubjectId })) },
+        targetType: "catalog-release", targetId: current.id, metadata: { claims: ready.map(({ subjectId, ownerSubjectId, historicalEvidence }) => ({ subjectId, ownerSubjectId,
+          ...(historicalEvidence ? { historicalEvidence } : {}) })) },
         traceId: randomUUID(),
       });
     }
