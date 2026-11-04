@@ -96,12 +96,16 @@ it("publishes only claimed owners through authenticated HTTP and the real manage
     expect((await request("POST", `publication-candidates/${candidate.id}/publish`, { idempotencyKey: "owner-publication" })).body).toMatchObject({ item: { id: job.id } });
     expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool),
       resolvePublisherActor: async () => admin.trustedActor, ownerId: "owner-publication-manager" })).toBe("claimed");
-    const finished = await request("GET", `publications/${job.id}`);
-    expect(finished.body).toMatchObject({ item: { effective: true, isCurrent: true, currentness: "active" } });
+    expect((await request("GET", `publications/${job.id}`)).body).toMatchObject({
+      error: { details: { reason: "release-drift" } },
+    });
     const pointer = await readCurrentCatalogPointer(pool);
     if (pointer.kind !== "installed") throw new Error("missing published release");
     expect(pointer.current.id).not.toBe(releaseId);
     releaseId = pointer.current.id;
+    const finished = await request("GET", `publications/${job.id}`);
+    expect(finished.status).toBe(200);
+    expect(finished.body).toMatchObject({ item: { effective: true, isCurrent: true, currentness: "active" } });
     expect(await preview()).toMatchObject({ status: 200, body: { item: { candidate: null, noChange: true } } });
     expect((await db.query(`select jsonb_agg(to_jsonb(s) order by id) as data from parameter_catalog.catalog_subjects s`)).rows).toEqual(before);
     expect((await db.query(`select owner_subject_id from parameter_catalog.catalog_subjects where id='unclaimed_child'`)).rows[0]).toEqual({ owner_subject_id: null });
