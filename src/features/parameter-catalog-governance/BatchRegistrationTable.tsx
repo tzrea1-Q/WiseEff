@@ -11,6 +11,7 @@ import { catalogSubjectTypeLabel } from "@/features/parameter-catalog/catalogPre
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
 import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
 import { catalogErrorCopy } from "@/features/parameter-catalog/copy";
+import "./batch-registration.css";
 
 export type BatchRegistrationEntry = { subjectIds?: readonly string[]; hints?: Readonly<Record<string, { categoryPath?: string | readonly string[]; displayAlias?: string }>> };
 type Item = CatalogUnregisteredSubjectsResponse["items"][number];
@@ -43,6 +44,7 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
   const [rows, setRows] = useState<Row[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
   const [bulkCategory, setBulkCategory] = useState("");
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [successCount, setSuccessCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,6 +117,8 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
   };
   const selected = rows.filter((row) => row.selected);
   const batch = rows.filter((row) => row.inBatch);
+  const query = search.trim().toLocaleLowerCase();
+  const visibleRows = rows.filter(row => `${row.subject.canonicalName} ${row.displayAlias} ${catalogSubjectTypeLabel(row.subject.kind)}`.toLocaleLowerCase().includes(query));
   const categories = modules.filter((module) => module.kind === "business");
   const options = [{ value: "", label: "请选择业务分类" }, { value: "unclassified", label: "未分类" },
     ...categories.map((category) => ({ value: `category:${category.id}`, label: modulePathSegments(category, modules).join(" / ") }))];
@@ -132,6 +136,7 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
     };
     const invalid = batch.some((row) => rowError(row));
     if (invalid) {
+      setSearch("");
       setRows((current) => current.map((row) => !row.inBatch ? row : { ...row, error: rowError(row) }));
       return;
     }
@@ -169,40 +174,48 @@ export function BatchRegistrationTable({ repository, organizationId, catalogRele
     if (label) groups.set(label, (groups.get(label) ?? 0) + 1);
   }
   const content = (descriptionId?: string) => <>
-    <div id={descriptionId} className="confirm-dialog__scroll"><section aria-label="待登记主体">
-    <div className="flex flex-nowrap items-end gap-2"><label>来源<SelectControl ariaLabel="来源" value={source} onValueChange={(value) => { checkInitialSource.current = false; setEvidenceFresh(false); setRows([]); setSource(value); }} options={[
+    <div id={descriptionId} className="confirm-dialog__scroll"><section aria-label="待登记主体" className="batch-registration">
+    <p className="muted">为待登记主体选择业务分类，再确认本次登记范围。每批最多登记 128 个主体。</p>
+    <div className="batch-registration__toolbar"><label>来源<SelectControl ariaLabel="来源" value={source} disabled={loading || pending} onValueChange={(value) => { checkInitialSource.current = false; setEvidenceFresh(false); setRows([]); setSearch(""); setSource(value); }} options={[
       { value: "organization", label: "本组织发布引入" }, { value: "all", label: "全部 Catalog 主体" }]} /></label>
+    {rows.length ? <label className="batch-registration__search">搜索主体<Input type="search" aria-label="搜索待登记主体" placeholder="主体名称、类型或展示别名" value={search} onChange={event => setSearch(event.target.value)} /></label> : null}
     <button type="button" className="button subtle" onClick={() => void refresh()} disabled={loading || pending}>重新读取</button></div>
     {loading ? <p>正在读取待登记主体…</p> : null}
     {error ? <p role="alert">{error}</p> : null}
     {successCount !== null ? <p role="status">已登记 {successCount} 个主体。</p> : null}
-    <div className="flex flex-wrap items-end gap-2"><label>批量业务分类<SelectControl ariaLabel="批量业务分类" value={bulkCategory} onValueChange={setBulkCategory} options={options} /></label>
+    {rows.length ? <><div className="batch-registration__bulk"><p>勾选用于批量设置业务分类。实际登记范围由每行“加入本批 / 移出本批”决定。批量操作包含搜索隐藏的已勾选主体。</p>
+    <div className="batch-registration__toolbar"><label>批量业务分类<SelectControl ariaLabel="批量业务分类" value={bulkCategory} disabled={loading || pending} onValueChange={setBulkCategory} options={options} /></label>
       <button type="button" className="button subtle" disabled={!bulkCategory || !selected.length || loading || pending} onClick={() => {
         setEditedSubjects((current) => new Set([...current, ...selected.map((row) => row.subject.id)]));
         const moduleId = bulkCategory === "unclassified" ? modules.find((module) => module.kind === "unclassified" && module.parentId === null)?.id ?? "" : bulkCategory.slice("category:".length);
         setRows((current) => current.map((row) => row.selected ? { ...row,
           moduleId: moduleId && row.subject.availableModuleIds.includes(moduleId) ? moduleId : "", error: null } : row));
-      }}>设置业务分类</button></div>
-    <div className="definition-editor__table-wrap"><table className="definition-editor__table"><thead><tr><th><input type="checkbox" aria-label="全选" checked={rows.length > 0 && selected.length === rows.length} onChange={(event) => setRows((current) => current.map((row) => ({ ...row, selected: event.target.checked })))} /></th><th>主体</th><th>业务分类</th><th>展示别名（可选）</th><th>本批</th></tr></thead><tbody>
-      {rows.map((row) => {
+      }}>设置业务分类</button><span className="muted">已勾选 {selected.length} 个用于批量编辑，本批登记 {batch.length} 个。</span></div></div>
+      <p className="muted">当前显示 {visibleRows.length} / {rows.length} 个主体，筛选不会移出本批。</p></> : null}
+    <div className="definition-editor__table-wrap"><table className="definition-editor__table"><thead><tr><th><input type="checkbox" aria-label="全选" disabled={!rows.length || loading || pending} checked={rows.length > 0 && selected.length === rows.length} onChange={(event) => {
+      setEditedSubjects(current => new Set([...current, ...rows.map(row => row.subject.id)]));
+      setRows((current) => current.map((row) => ({ ...row, selected: event.target.checked })));
+    }} />批量编辑</th><th>主体</th><th>业务分类</th><th>展示别名（可选）</th><th>本批登记</th></tr></thead><tbody>
+      {visibleRows.map((row) => {
         const errorId = `${rowPrefix}-${row.subject.id}-error`;
-        return <tr key={row.subject.id} className={row.inBatch ? undefined : "opacity-50"}><td><input type="checkbox" aria-label={`选择 ${row.subject.canonicalName}`} checked={row.selected} onChange={(event) => update(row.subject.id, { selected: event.target.checked })} /></td>
+        return <tr key={row.subject.id} data-in-batch={row.inBatch}><td><input type="checkbox" aria-label={`选择 ${row.subject.canonicalName}`} checked={row.selected} disabled={loading || pending} onChange={(event) => update(row.subject.id, { selected: event.target.checked })} /></td>
           <td>{row.subject.canonicalName} · {catalogSubjectTypeLabel(row.subject.kind)}{row.subject.childCount ? <p>含 {row.subject.childCount} 个子节点，将随驱动一同登记。</p> : null}{row.error?.field === "subject" ? <p className="field-error" role="alert">{row.error.message}</p> : null}</td>
-          <td><SelectControl ariaLabel={`${row.subject.canonicalName} 的业务分类`} value={row.moduleId} onValueChange={(moduleId) => update(row.subject.id, { moduleId })}
+          <td><SelectControl ariaLabel={`${row.subject.canonicalName} 的业务分类`} value={row.moduleId} disabled={loading || pending} onValueChange={(moduleId) => update(row.subject.id, { moduleId })}
             ariaInvalid={row.error?.field === "category"} ariaDescribedBy={row.error?.field === "category" ? errorId : undefined} options={[
             { value: "", label: "请选择业务分类" },
             ...modules.filter((module) => (module.kind === "business" || (module.kind === "unclassified" && module.parentId === null)) && row.subject.availableModuleIds.includes(module.id)).map((module) => ({ value: module.id, label: modulePathSegments(module, modules).join(" / ") })),
             ...(row.moduleId && (!row.subject.availableModuleIds.includes(row.moduleId) || !modules.some((module) => module.id === row.moduleId)) ? [{ value: row.moduleId, label: "目标模块已不可用", hidden: true }] : []),
           ]} />{row.error?.field === "category" ? <p id={errorId} className="field-error" role="alert">{row.error.message}</p> : null}</td>
-          <td><Input aria-label={`${row.subject.canonicalName} 的展示别名`} value={row.displayAlias} onChange={(event) => update(row.subject.id, { displayAlias: event.target.value })} maxLength={128}
+          <td><Input aria-label={`${row.subject.canonicalName} 的展示别名`} value={row.displayAlias} disabled={loading || pending} onChange={(event) => update(row.subject.id, { displayAlias: event.target.value })} maxLength={128}
             aria-invalid={row.error?.field === "name"} aria-describedby={row.error?.field === "name" ? errorId : undefined} />
-            {row.error?.field === "name" ? <p id={errorId} className="field-error" role="alert">{row.error.message}</p> : null}</td><td><button type="button" className="button subtle" onClick={() => update(row.subject.id, { inBatch: !row.inBatch })}>{row.inBatch ? "移出本批" : "加入本批"}</button></td></tr>;
+            {row.error?.field === "name" ? <p id={errorId} className="field-error" role="alert">{row.error.message}</p> : null}</td><td><span className="batch-registration__membership">{row.inBatch ? "已加入" : "未加入"}</span><button type="button" className="button subtle" disabled={loading || pending} onClick={() => update(row.subject.id, { inBatch: !row.inBatch })}>{row.inBatch ? "移出本批" : "加入本批"}</button></td></tr>;
       })}
+      {!loading && rows.length > 0 && !visibleRows.length ? <tr><td colSpan={5}>没有匹配的主体，请调整搜索内容。</td></tr> : null}
       {!loading && !rows.length && !error ? <tr><td colSpan={5}>{source === "organization" ? "本组织发布引入的主体都已登记。可切换来源查看全部 Catalog 主体。" : "当前目录中没有待登记主体。"}</td></tr> : null}
     </tbody></table></div>
     </section></div>
     <div className="dialog-actions">{onClose ? <button type="button" className="button subtle" onClick={requestClose} disabled={pending}>关闭</button> : null}
-      <button type="button" className="button primary" onClick={prepare} disabled={loading || pending || !evidenceFresh || !batch.length}>继续确认（{batch.length}）</button></div>
+      {rows.length ? <button type="button" className="button primary" onClick={prepare} disabled={loading || pending || !evidenceFresh || !batch.length}>继续确认（{batch.length}）</button> : null}</div>
     <ConfirmDialog open={confirm} title="确认批量登记" confirmLabel="确认登记" pending={pending} onCancel={() => setConfirm(false)} onConfirm={() => void submit()}
       description={<><p>登记 {batch.length} 个主体。</p>{[...groups].map(([name, count]) => <p key={name}>{name}：{count} 个</p>)}</>} />
     <ConfirmDialog open={leaveOpen} title="放弃未保存的登记修改？" description="关闭将丢失当前选择、业务分类和展示别名。"

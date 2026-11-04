@@ -136,6 +136,7 @@ export function CanonicalSubjectPlacementPanel({
   const [localSearch, setLocalSearch] = useState("");
   const params = useMemo(() => new URLSearchParams(searchProp ?? localSearch), [searchProp, localSearch]);
   const [createSubjectOpen, setCreateSubjectOpen] = useState(false);
+  const [createOwnerSubjectId, setCreateOwnerSubjectId] = useState<string | undefined>();
   const [recognitionSubject, setRecognitionSubject] = useState<{ registrationId: string; name: string } | null>(null);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationError, setPublicationError] = useState("");
@@ -155,6 +156,7 @@ export function CanonicalSubjectPlacementPanel({
   const publicationAdvisory = publicationSurface ? publicationSurfaceAdvisory(publicationSurface) : null;
   const closeSubjectCreation = () => {
     setCreateSubjectOpen(false);
+    setCreateOwnerSubjectId(undefined);
     const sourceReturn=params.get("sourceReturn");
     if(params.has("sourceResource") && sourceReturn?.startsWith("/parameter-admin/sources?") && onNavigate){onNavigate(sourceReturn);return;}
     if (params.has("createSubject")) updateQuery({ createSubject: null, returnTo: null });
@@ -725,6 +727,9 @@ export function CanonicalSubjectPlacementPanel({
                           : "未登记"}
                       </span>
                       <div className="parameter-module-mapping-panel__actions canonical-subject-actions">
+                        {subject.type === "driver" && subject.membership.status === "active" && canCreateSubject ? <button
+                          type="button" className="button subtle" aria-label={`新增子节点类型：${subject.canonicalName}`}
+                          onClick={() => { setCreateOwnerSubjectId(subject.id); setCreateSubjectOpen(true); }}>新增子节点类型</button> : null}
                         {registrationId && subject.type !== "configuration-schema" ? <button type="button" className="button subtle"
                           aria-label={`识别规则：${subject.canonicalName}`}
                           onClick={() => setRecognitionSubject({ registrationId, name: subject.canonicalName })}>识别规则</button> : null}
@@ -783,6 +788,12 @@ export function CanonicalSubjectPlacementPanel({
                           {registrationStatus === "retired" ? `恢复${subjectLabel}` : `移除${subjectLabel}`}
                         </button> : null}
                       </div>
+                      {subject.ownerSubjectId ? <div className="canonical-subject-owner-guidance">
+                        <span>业务归属与启停随所属驱动统一管理。</span>
+                        {onNavigate ? <button type="button" className="button subtle sm"
+                          aria-label={`管理 ${subject.canonicalName} 的所属驱动`}
+                          onClick={() => onNavigate(`/parameter-admin/modules?selectedSubject=${encodeURIComponent(subject.ownerSubjectId!)}`)}>管理所属驱动</button> : null}
+                      </div> : null}
                       {rowErrors[subject.id] ? <div className="canonical-subject-row-error" role="alert">
                         {rowErrors[subject.id]}<button type="button" className="button subtle sm" onClick={() => void openPlacement(subject, registrationId ?? "")}>重试读取归属</button>
                       </div> : null}
@@ -846,7 +857,7 @@ export function CanonicalSubjectPlacementPanel({
 
       {subjectCreationRequested && (params.get("sourceProposal")==="1" ? catalogActionsForSession({actor,permissions:sessionPermissions}).some(action=>action==="create-proposal"||action==="accept-proposal") : canAuthorSubject) && catalogReleaseId ? <SharedDtsiSubjectCreation apiClient={apiClient}
         sourceQuery={params.has("sourceResource") ? params.toString() : null} publicationProps={{
-        open: true, intent:"create-subject", actor, sessionPermissions,
+        open: true, intent:"create-subject", initialOwnerSubjectId: createOwnerSubjectId, actor, sessionPermissions,
         domainState, catalog, governance, organizationId,
         currentPersonId, catalogReleaseId, publicationSurface,
         onCompleted: () => void handleCompleted(), onRefreshEvidence: async () => { await loadCanonical(); },

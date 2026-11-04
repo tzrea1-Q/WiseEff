@@ -12,6 +12,8 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import { ProjectDeletionPreviewDialog } from "@/components/admin/ProjectDeletionPreviewDialog";
+import { DataTable } from "@/components/admin/DataTable";
+import { Badge } from "@/components/ui/badge";
 import { ProjectConfigurationWorkbench } from "@/components/project-configuration-workbench/ProjectConfigurationWorkbench";
 import { ProjectReviewRolesPanel } from "./ProjectReviewRolesPanel";
 import type { ApiClient } from "@/infrastructure/http/apiClient";
@@ -419,11 +421,31 @@ export function ProjectsOperationsPanel({
         />
       ) : null}
 
-      {cleanupError ? <div role="alert">{cleanupError}<Button type="button" variant="outline" onClick={() => void loadProjects()}>重试清理记录</Button></div> : null}
-      {canAdmin && deletions.length ? <section aria-label="项目清理记录"><h3>项目清理记录</h3>
-        <ul>{deletions.map(item => <li key={item.projectId}>{item.projectId} · 数据库已清理 · {item.objects === "complete" ? "对象清理完成" : `对象待清理 ${item.pendingObjects} 个`}
-          <Button type="button" variant="outline" onClick={() => setDeletionPreviewProjectId(item.projectId)}>查看清理状态 {item.projectId}</Button>
-        </li>)}</ul></section> : null}
+      {!projectId && canAdmin && (cleanupError || deletions.length > 0) ? (
+        <section className="min-w-0 space-y-3" aria-label="项目清理记录">
+          <div>
+            <h3 className="m-0 text-base font-semibold">项目清理记录</h3>
+            <p className="mt-1 text-sm text-muted-foreground">已删除项目的数据库与存储对象清理结果，待清理对象可在详情中重试。</p>
+          </div>
+          {cleanupError ? <div className="flex flex-wrap items-center gap-3" role="alert">
+            <p>{cleanupError}</p>
+            <Button type="button" variant="outline" disabled={loading} onClick={() => void loadProjects()}>重试清理记录</Button>
+          </div> : null}
+          {deletions.length > 0 ? <DataTable
+            ariaLabel="项目清理记录"
+            rows={deletions}
+            rowKey={(item) => item.projectId}
+            fluid
+            tableClassName="table-fixed min-w-0"
+            columns={[
+              { key: "project", header: "项目 ID", widthClass: "w-1/2", render: (item) => <span className="break-all font-mono text-xs">{item.projectId}</span> },
+              { key: "database", header: "数据库", render: () => <Badge variant="secondary">已清理</Badge> },
+              { key: "objects", header: "存储对象", render: (item) => <Badge variant={item.objects === "complete" ? "secondary" : "outline"}>{item.objects === "complete" ? "清理完成" : `待清理 ${item.pendingObjects} 个`}</Badge> }
+            ]}
+            renderRowActions={(item) => <Button type="button" variant="outline" size="sm" onClick={() => setDeletionPreviewProjectId(item.projectId)}>查看详情</Button>}
+          /> : null}
+        </section>
+      ) : null}
       {deletionPreviewProjectId ? <ProjectDeletionPreviewDialog key={deletionPreviewProjectId} projectId={deletionPreviewProjectId}
         loadPreview={adminClient.previewProjectDeletion} purgeProject={adminClient.purgeProject}
         initialStatus={deletions.find(item => item.projectId === deletionPreviewProjectId)} onDeleted={() => {

@@ -217,6 +217,17 @@ describe("publication operator state", () => {
     expect(JSON.stringify(buildPublicationChangeSet(draft))).not.toMatch(/csub_|subjectId/i);
   });
 
+  it("scopes a new node type to its driver and invalidates a preview when the owner changes", () => {
+    const draft = { ...emptyPublicationDraft(), mode: "create-subject" as const,
+      subjectKind: "node-type" as const, selectorValue: "battery_checker", ownerSubjectId: "driver-a" };
+    expect(buildPublicationChangeSet(draft)).toEqual([{
+      op: "create-subject", kind: "node-type", canonicalKey: "node-type:battery_checker",
+      selector: { kind: "node-type-name", value: "battery_checker" }, ownerSubjectId: "driver-a"
+    }]);
+    expect(publicationPreviewIsStale(fingerprintPublicationDraft(draft), { ...draft, ownerSubjectId: "driver-b" })).toBe(true);
+    expect(buildPublicationChangeSet({ ...draft, subjectKind: "driver" })[0]).not.toHaveProperty("ownerSubjectId");
+  });
+
   it("builds a revise-definition ChangeSet from the selected definition", () => {
     const draft = {
       ...emptyPublicationDraft(),

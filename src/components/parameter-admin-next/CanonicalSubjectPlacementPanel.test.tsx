@@ -279,11 +279,15 @@ describe("CanonicalSubjectPlacementPanel", () => {
     const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
     ports.listRegistrations.mockResolvedValue({ ...registrations, totalCount: 2, items: [...registrations.items,
       { ...registrations.items[0]!, id: "owned-registration", subjectId: child.id, ownerSubjectId: driver.id, structural: true }] });
-    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+    const onNavigate = vi.fn();
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin onNavigate={onNavigate} />);
     const childRow = await screen.findByRole("listitem", { name: "battery1（节点类型）" });
     expect(childRow).toHaveAttribute("data-owner-subject-id", driver.id);
     expect(within(childRow).queryByRole("button", { name: /登记主体|调整归属|移除节点类型|恢复节点类型/ })).not.toBeInTheDocument();
     expect(screen.getByText("含 1 个子节点")).toBeInTheDocument();
+    expect(within(childRow).getByText("业务归属与启停随所属驱动统一管理。")).toBeInTheDocument();
+    await userEvent.click(within(childRow).getByRole("button", { name: "管理 battery1 的所属驱动" }));
+    expect(onNavigate).toHaveBeenCalledWith(`/parameter-admin/modules?selectedSubject=${driver.id}`);
   });
   it("edits recognition rules on a registered subject", async () => {
     const ports = createPorts();
@@ -348,6 +352,17 @@ describe("CanonicalSubjectPlacementPanel", () => {
     const dialog = await screen.findByRole("dialog", { name: "新增主体" });
     expect(within(dialog).getByLabelText("compatible 标识")).toBeVisible();
     expect(within(dialog).queryByLabelText("属性键")).not.toBeInTheDocument();
+  });
+
+  it("opens child creation with the chosen driver as owner", async () => {
+    const ports = createPorts();
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID}
+      actor="org-admin" canAdmin sessionPermissions={["catalog:author", "catalog:publish"]} />);
+    const create = await screen.findByRole("button", { name: "新增子节点类型：vendor,driver" });
+    await userEvent.click(create);
+    const dialog = await screen.findByRole("dialog", { name: "新增主体" });
+    expect(within(dialog).getByLabelText("节点名称")).toBeVisible();
+    expect(within(dialog).getByRole("combobox", { name: "所属驱动" })).toHaveTextContent("vendor,driver");
   });
 
   it.each(["active", "retired"] as const)("counts %s registrations in shared business destinations even when their subject is absent from the current list", async (status) => {

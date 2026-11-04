@@ -56,6 +56,7 @@ export type PublicationDialogProps = {
   open: boolean;
   intent?: "create-definition" | "create-subject";
   initialSubjectId?: string;
+  initialOwnerSubjectId?: string;
   sourcePrefill?: { compatible: string; label: string; href: string; reference: SharedDtsiRecognitionReference };
   onAddDefinition?: (subjectId: string) => void;
   onBatchRegistration?: (subjectId: string) => void;
@@ -78,6 +79,7 @@ export function PublicationDialog({
   open,
   intent = "create-definition",
   initialSubjectId = "",
+  initialOwnerSubjectId = "",
   sourcePrefill,
   onAddDefinition,
   onBatchRegistration,
@@ -120,7 +122,8 @@ export function PublicationDialog({
   } = flow;
   const formId = useId();
   const initialDraft = (): PublicationDraft => ({ ...emptyPublicationDraft(), mode: intent, subjectId: initialSubjectId,
-    ...(intent === "create-subject" ? { nature: "", cardinality: "", selectorValue: sourcePrefill?.compatible ?? "" } : {}) });
+    ...(intent === "create-subject" ? { nature: "", cardinality: "", selectorValue: sourcePrefill?.compatible ?? "",
+      ...(initialOwnerSubjectId ? { subjectKind: "node-type", ownerSubjectId: initialOwnerSubjectId } : {}) } : {}) });
   const [draft, setDraft] = useState<PublicationDraft>(initialDraft);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
   const [subjectReadEpoch, setSubjectReadEpoch] = useState(0);
@@ -138,7 +141,11 @@ export function PublicationDialog({
   const selectedSubject = subjects.find((item) => item.id === draft.subjectId) ?? null;
   const publishedSubjects = subjects.filter((item) => item.membership.status === "active" && item.registration.status !== "retired");
   const publishedSubjectIds = new Set(publishedSubjects.map((item) => item.id));
-  const targetAllowed = !loading && !loadError && (draft.mode === "create-subject" ||
+  const publishedDrivers = publishedSubjects.filter((item) => item.type === "driver");
+  const requiresOwner = draft.mode === "create-subject" && draft.subjectKind === "node-type" &&
+    Boolean(draft.ownerSubjectId || initialOwnerSubjectId);
+  const ownerAllowed = !requiresOwner || publishedDrivers.some((item) => item.id === draft.ownerSubjectId);
+  const targetAllowed = !loading && !loadError && ((draft.mode === "create-subject" && ownerAllowed) ||
     (draft.mode === "create-definition" && publishedSubjectIds.has(draft.subjectId)));
   const targetUnavailable = !loading && !loadError && draft.mode === "create-definition" &&
     Boolean(draft.subjectId) && !targetAllowed;
@@ -201,7 +208,7 @@ export function PublicationDialog({
       setDraft(initialDraft());
     }
     return flow.stopPolling;
-  }, [open, catalog, currentPersonId, organizationId, intent, initialSubjectId, sourcePrefill]);
+  }, [open, catalog, currentPersonId, organizationId, intent, initialSubjectId, initialOwnerSubjectId, sourcePrefill]);
 
   useEffect(() => {
     if (!open) return;
@@ -414,6 +421,9 @@ export function PublicationDialog({
                 {targetUnavailable ? <p role="alert" className="governance-confirm-dialog__error">
                   所选主体当前不可编写，请重新选择有效主体。
                 </p> : null}
+                {!loading && !loadError && !ownerAllowed ? <p role="alert" className="governance-confirm-dialog__error">
+                  所选驱动当前不可编写，请重新选择有效驱动。
+                </p> : null}
                 {!loading && draft.mode === "create-definition" && publishedSubjects.length === 0 ? (
                   <p>{publicationCopy.unpublishedEmpty}</p>
                 ) : null}
@@ -429,15 +439,26 @@ export function PublicationDialog({
                           {publicationCopy.subjectKindPick}
                           <SelectControl
                             ariaLabel={publicationCopy.subjectKindPick}
-                            disabled={Boolean(sourcePrefill)}
+                            disabled={Boolean(sourcePrefill || initialOwnerSubjectId)}
                             value={draft.subjectKind}
                             onValueChange={(value) =>
-                              patchDraft({ subjectKind: value as PublicationSubjectKind })
+                              patchDraft({ subjectKind: value as PublicationSubjectKind, ownerSubjectId: "" })
                             }
                             options={[{ value: "driver", label: publicationCopy.driver }, { value: "node-type", label: publicationCopy.nodeType },
                               { value: "configuration-schema", label: publicationCopy.configurationSchema }]}
                           />
                         </label>
+                        {draft.subjectKind === "node-type" ? <label>
+                          所属驱动
+                          <SelectControl ariaLabel="所属驱动" value={draft.ownerSubjectId} disabled={loading || pending}
+                            onValueChange={(value) => patchDraft({ ownerSubjectId: value })}
+                            options={[
+                              { value: "", label: initialOwnerSubjectId ? "选择所属驱动" : "独立节点类型（无所属驱动）" },
+                              ...(draft.ownerSubjectId && !ownerAllowed ? [{ value: draft.ownerSubjectId, label: "原驱动（当前不可编写）", disabled: true }] : []),
+                              ...publishedDrivers.map((item) => ({ value: item.id, label: item.canonicalName }))
+                            ]} />
+                          <span className="muted">子节点继承所属驱动的业务归属与登记状态。发布后所属驱动不可变更。</span>
+                        </label> : null}
                         <label>
                           {publicationCopy.selectorValue[draft.subjectKind]}
                           <Input

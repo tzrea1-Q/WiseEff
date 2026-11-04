@@ -288,23 +288,36 @@ it("links a server category failure to the category control", async () => {
   expect(category).toHaveAccessibleDescription("业务分类不存在或不可用。");
 });
 
-it("shows source-specific empty states inside the table and puts the disabled count action beside close", async () => {
+it("shows source-specific empty states without batch editing or a zero-count confirm action", async () => {
   const listUnregisteredSubjects = vi.fn().mockResolvedValue({ catalogReleaseId: "release-1", items: [], modules: [rootModule] });
   const onClose = vi.fn();
   render(<BatchRegistrationTable repository={{ listUnregisteredSubjects, createBatchRegistration: vi.fn() }} organizationId="org" catalogReleaseId="release-1" onClose={onClose} />);
   const empty = await screen.findByText("本组织发布引入的主体都已登记。可切换来源查看全部 Catalog 主体。");
   expect(empty.tagName).toBe("TD");
   expect(empty).toHaveAttribute("colspan", "5");
-  const confirm = screen.getByRole("button", { name: "继续确认（0）" });
-  expect(confirm).toBeDisabled();
+  expect(screen.queryByRole("button", { name: /继续确认/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("combobox", { name: "批量业务分类" })).not.toBeInTheDocument();
   const close = screen.getByRole("button", { name: "关闭" });
-  expect(confirm.parentElement).toBe(close.parentElement);
-  expect(close.nextElementSibling).toBe(confirm);
   await selectControlOption(screen.getByRole("combobox", { name: "来源" }), "all");
   const allEmpty = await screen.findByText("当前目录中没有待登记主体。");
   expect(allEmpty.tagName).toBe("TD");
   await userEvent.setup().click(close);
   expect(onClose).toHaveBeenCalledOnce();
+});
+
+it("explains bulk-edit selection independently of submission and keeps filtered batch rows", async () => {
+  const items = ["a", "b"].map(id => ({ id, kind: "driver" as const, canonicalName: `driver-${id}`, availableModuleIds: ["root"] }));
+  render(<BatchRegistrationTable repository={{ listUnregisteredSubjects: vi.fn().mockResolvedValue({ catalogReleaseId: "release-1", items, modules: [rootModule] }), createBatchRegistration: vi.fn() }} organizationId="org" catalogReleaseId="release-1" />);
+  const user = userEvent.setup();
+  await screen.findByRole("checkbox", { name: "选择 driver-a" });
+  expect(screen.getByText(/勾选用于批量设置业务分类/)).toBeVisible();
+  await user.click(screen.getByRole("checkbox", { name: "选择 driver-a" }));
+  expect(screen.getByRole("button", { name: "继续确认（2）" })).toBeEnabled();
+  expect(screen.getByText("已勾选 1 个用于批量编辑，本批登记 2 个。")).toBeVisible();
+  await user.type(screen.getByRole("searchbox", { name: "搜索待登记主体" }), "driver-a");
+  expect(screen.queryByRole("row", { name: /driver-b/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "继续确认（2）" })).toBeEnabled();
+  expect(screen.getByText("当前显示 1 / 2 个主体，筛选不会移出本批。" )).toBeVisible();
 });
 
 it("waits for the first read before showing an empty result", async () => {

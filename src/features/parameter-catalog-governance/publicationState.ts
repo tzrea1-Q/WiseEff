@@ -61,6 +61,7 @@ export type PublicationDraft = {
   mode: PublicationMode;
   subjectId: string;
   subjectKind: PublicationSubjectKind;
+  ownerSubjectId: string;
   canonicalKey: string;
   selectorValue: string;
   nature: PublicationDriverNature | "";
@@ -84,6 +85,7 @@ export const emptyPublicationDraft = (): PublicationDraft => ({
   mode: "create-definition",
   subjectId: "",
   subjectKind: "driver",
+  ownerSubjectId: "",
   canonicalKey: "",
   selectorValue: "",
   nature: "physical-device",
@@ -207,6 +209,7 @@ export function fingerprintPublicationDraft(draft: PublicationDraft): string {
     mode: draft.mode,
     subjectId: draft.subjectId,
     subjectKind: draft.subjectKind,
+    ownerSubjectId: (draft.ownerSubjectId ?? "").trim(),
     canonicalKey: (draft.canonicalKey ?? "").trim(),
     selectorValue: (draft.selectorValue ?? "").trim(),
     nature: draft.nature,
@@ -489,6 +492,8 @@ export function buildPublicationChangeSet(
         kind: draft.subjectKind,
         canonicalKey,
         selector: { kind: selectorKind, value: selectorValue },
+        ...(draft.subjectKind === "node-type" && draft.ownerSubjectId.trim()
+          ? { ownerSubjectId: draft.ownerSubjectId.trim() } : {}),
         ...(draft.subjectKind === "driver"
           ? { nature: draft.nature || undefined, cardinality: draft.cardinality || undefined }
           : {}),

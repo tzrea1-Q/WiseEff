@@ -44,14 +44,14 @@ export function ProjectDeletionPreviewDialog({ projectId, loadPreview, purgeProj
   return <ModalDialog open onDismiss={() => { if (!pending) onClose(); }} describedBy className="submission-dialog project-admin-form-dialog">
     {({ titleId, descriptionId }) => <>
       <div className="submission-dialog-head param-admin-editor-dialog-head">
-        <div><h2 id={titleId}>项目删除影响预览{preview ? ` · ${preview.projectName}` : ""}</h2>
-          <p id={descriptionId}>永久删除项目配置、参数、历史修订、部署记录及离线迁移归档，无法恢复。共享定义、独立知识正文、日志及设备保留。</p></div>
+        <div><h2 id={titleId}>{result ? "项目清理状态" : `项目删除影响预览${preview ? ` · ${preview.projectName}` : ""}`}</h2>
+          <p id={descriptionId}>{result ? "数据库清理与存储对象清理的当前结果。" : "永久删除项目配置、参数、历史修订、部署记录及离线迁移归档，无法恢复。共享定义、独立知识正文、日志及设备保留。"}</p></div>
       </div>
       <div className="project-admin-form-body overflow-y-auto" aria-busy={loading}>
         {loading ? <p role="status">正在检查项目数据、共享引用与阻塞…</p> : null}
         {error ? <p role="alert">{error}</p> : null}
         {result ? <div role="status" aria-live="polite">
-          <p>项目：{result.projectId}</p><p>数据库清理：已完成。</p>
+          <p className="break-all">项目：{result.projectId}</p><p>数据库清理：已完成。</p>
           <p>{result.objects === "complete" ? "对象清理：已完成。项目彻底删除已完成。" : `对象清理：尚有 ${result.pendingObjects} 个对象未完成；请重试清理。`}</p>
         </div> : null}
         {preview && !result ? <>
@@ -84,7 +84,7 @@ export function ProjectDeletionPreviewDialog({ projectId, loadPreview, purgeProj
         {purgeProject && (!result || result.objects === "pending") ? <Button type="button" variant="destructive"
           disabled={loading || pending || (!result && !preview?.executionAvailable)} onClick={() => void execute()}>
           {pending ? "正在清理…" : result ? "重试对象清理" : "彻底删除"}</Button> : null}
-        <Button type="button" disabled={pending} onClick={onClose}>关闭预览</Button>
+        <Button type="button" disabled={pending} onClick={onClose}>{result ? "关闭" : "关闭预览"}</Button>
       </div>
     </>}
   </ModalDialog>;

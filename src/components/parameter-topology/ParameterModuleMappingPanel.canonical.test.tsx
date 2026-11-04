@@ -142,7 +142,7 @@ describe("canonical module page request boundary", () => {
     }
   });
 
-  it("uses canonical discovery on load, refresh and placement change without legacy hints or mapping writes", async () => {
+  it("reloads discovery on window focus and placement change without a permanent refresh action", async () => {
     const getRegistry = vi.fn().mockResolvedValue(EMPTY_PARAMETER_MODULE_REGISTRY);
     const getDiscoveryHints = vi.fn();
     const listDriverRegistry = vi.fn().mockResolvedValue({ items: [] });
@@ -163,7 +163,9 @@ describe("canonical module page request boundary", () => {
     expect(getDiscoveryHints).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("tab", { name: "来源识别" }));
     expect(await screen.findByText("当前范围没有来源观察记录。")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    expect(screen.queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "模块结构操作" })).getByRole("button", { name: "导入结构" })).toBeInTheDocument();
+    fireEvent(window, new Event("focus"));
     await waitFor(() => expect(listDriverCompatibleDiscovery).toHaveBeenCalledTimes(2));
     await userEvent.click(screen.getByRole("tab", { name: "模块" }));
     fireEvent.click(screen.getByRole("button", { name: "完成规范登记" }));

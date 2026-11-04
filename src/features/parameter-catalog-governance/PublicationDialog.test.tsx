@@ -32,6 +32,7 @@ function renderDialog(
   options: {
     actor?: CatalogActorKind;
     intent?: "create-definition" | "create-subject";
+    initialOwnerSubjectId?: string;
     permissions?: readonly string[];
     publicationOutcome?: "queued" | "active" | "active-superseded" | "needs-rebase" | "policy-disabled" | "frozen";
     createIdempotencyKey?: () => string;
@@ -63,6 +64,7 @@ function renderDialog(
     <PublicationDialog
       open
       intent={options.intent}
+      initialOwnerSubjectId={options.initialOwnerSubjectId}
       actor={options.actor ?? "user"}
       sessionPermissions={options.permissions ?? ["catalog:author", "catalog:publish"]}
       domainState={ready}
@@ -145,6 +147,54 @@ it("saves and previews multiline DTS examples through the create form", async ()
 });
 
 describe("PublicationDialog", () => {
+  it("creates a child node from a driver context through the existing draft and preview flow", async () => {
+    const { createCandidate, createProposal } = renderDialog({ actor: "org-admin", intent: "create-subject",
+      initialOwnerSubjectId: CATALOG_SUBJECT_ID });
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByLabelText("所属驱动")).toHaveTextContent(registeredSubject.canonicalName));
+    expect(screen.getByLabelText("主体类型")).toBeDisabled();
+    await user.type(screen.getByLabelText("节点名称"), "battery_checker");
+    await user.type(screen.getByLabelText("变更说明"), "为所属驱动新增子节点类型");
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(createProposal).toHaveBeenCalledWith(expect.objectContaining({ requestedChange: {
+      kind: "create-subject", changeSet: [expect.objectContaining({ kind: "node-type", ownerSubjectId: CATALOG_SUBJECT_ID })]
+    } }), expect.anything()));
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledWith(expect.objectContaining({
+      changeSet: [expect.objectContaining({ kind: "node-type", ownerSubjectId: CATALOG_SUBJECT_ID })]
+    }), expect.anything()));
+  });
+
+  it("blocks saving and previewing when the context driver is unavailable", async () => {
+    const { createCandidate, createProposal } = renderDialog({ actor: "org-admin", intent: "create-subject",
+      initialOwnerSubjectId: retiredSubject.id, prepare: (ports) => {
+        vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue({ items: [retiredSubject], totalCount: 1,
+          hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+      } });
+    const user = userEvent.setup();
+    await screen.findByText("所选驱动当前不可编写，请重新选择有效驱动。");
+    await user.type(screen.getByLabelText("节点名称"), "battery_checker");
+    await user.type(screen.getByLabelText("变更说明"), "新增子节点类型");
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "预览发布" })).toBeDisabled();
+    expect(createCandidate).not.toHaveBeenCalled();
+    expect(createProposal).not.toHaveBeenCalled();
+  });
+
+  it("offers the driver selector in the generic new-node form", async () => {
+    const { createCandidate } = renderDialog({ actor: "org-admin", intent: "create-subject" });
+    const user = userEvent.setup();
+    await selectControlOption(await screen.findByLabelText("主体类型"), "node-type");
+    await selectControlOption(screen.getByLabelText("所属驱动"), CATALOG_SUBJECT_ID);
+    await user.type(screen.getByLabelText("节点名称"), "battery_checker");
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledWith(expect.objectContaining({
+      changeSet: [expect.objectContaining({ kind: "node-type", ownerSubjectId: CATALOG_SUBJECT_ID })]
+    }), expect.anything()));
+  });
+
   it("explains duplicate definitions and preserves the draft without offering publication", async () => {
     const { publish } = renderDialog({ prepare: (ports) => {
       vi.mocked(ports.catalog.createPublicationCandidate).mockRejectedValue(catalogApiFailure("definition-already-exists"));
