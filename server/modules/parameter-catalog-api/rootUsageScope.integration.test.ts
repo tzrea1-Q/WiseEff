@@ -9,7 +9,8 @@ import { z } from "zod";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
 import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog";
-import { firstReleaseBundle, compileOrThrow } from "../catalog-kernel/runtime/catalogChain.fixture";
+import { firstReleaseBundle, compileOrThrow, refreshReleaseSource } from "../catalog-kernel/runtime/catalogChain.fixture";
+import type { CatalogReleaseNode } from "../catalog-kernel/compiler/types";
 import { createCatalogInstaller } from "../catalog-kernel/install/installer";
 import { createCatalogKernel, jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId } from "../parameter-catalog-contract/index";
@@ -29,6 +30,7 @@ import { createLocalObjectStore } from "../logs/objectStore";
 const definitionId = ParameterDefinitionId("pdef_acme_power_iin_max");
 const revisionId = DefinitionRevisionId("drev_acme_power_iin_max_1");
 const failureReasonSchema = z.object({ error: z.object({ details: z.object({ reason: z.string() }) }) });
+type Mutable<T> = T extends readonly (infer U)[] ? Mutable<U>[] : T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
 const actors: { id: string; organizationId: string; roles: RoleBinding[]; projects: number; current: number }[] = [
   { id: "only-a", organizationId: "scope-org-a", roles: [{ roleId: "software-user", projectId: "scope-project-a" }], projects: 2, current: 3 },
   { id: "guest-b", organizationId: "scope-org-a", roles: [{ roleId: "guest", projectId: "scope-project-b" }], projects: 2, current: 3 },
@@ -86,6 +88,14 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       } as typeof query;
     });
     const bundle = firstReleaseBundle();
+    const release = bundle.releases[0] as Mutable<CatalogReleaseNode>;
+    const template = release.documents.find((document) => document.kind === "definition");
+    if (!template || template.kind !== "definition") throw new Error("Expected a definition fixture");
+    const earlier = structuredClone(template);
+    Object.assign(earlier.content, { id: "pdef_scope_earlier", propertyKey: "aaa_scope_unused" });
+    Object.assign(earlier.content.revision, { id: "drev_scope_earlier_1", matching: { ...earlier.content.revision.matching, sourceProperty: "aaa_scope_unused" } });
+    release.documents.push(earlier);
+    refreshReleaseSource(release);
     const compiled = compileOrThrow(bundle);
     const installed = await createCatalogInstaller(pool).installPublishedRelease({ mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: compiled.aggregateDigest });
     if (!installed.ok) throw new Error("fixture install failed");
@@ -242,8 +252,9 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     expect(Number.isNaN(Date.parse(body.readAt))).toBe(false);
     expect(body.items).toHaveLength(3);
     expect(body.items.filter((item: { projectId: string }) => item.projectId === "scope-project-b")).toHaveLength(2);
-    expect(body.items.every((item: { valuePreview: string }) => item.valuePreview === "<1001>")).toBe(true);
-    const bindingId = body.items[0].bindingId;
+    const instances = body.items.filter((item) => item.kind === "instance");
+    expect(instances.every((item) => item.valuePreview === "<1001>")).toBe(true);
+    const bindingId = instances[0]!.bindingId;
     const selected = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?selectedBindingId=${bindingId}&limit=1`, {
       headers: { authorization: "Bearer scope-only-a" },
     });
@@ -255,7 +266,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       headers: { authorization: "Bearer scope-only-a" },
     });
     const secondPage = catalogProjectConfigurationsResponseSchema.parse(await second.json());
-    expect(secondPage.items[0]?.bindingId).not.toBe(first.items[0]?.bindingId);
+    expect(secondPage.items[0]).not.toEqual(first.items[0]);
     const third = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?cursor=${secondPage.nextCursor}&limit=1`, {
       headers: { authorization: "Bearer scope-only-a" },
     });
@@ -283,7 +294,55 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     });
     expect(compare.status).toBe(200);
     expect(bindingCompareListResponseSchema.parse(await compare.json()).items.map((item) => item.bindingId).sort())
-      .toEqual(body.items.slice(1).map((item: { bindingId: string }) => item.bindingId).sort());
+      .toEqual(instances.slice(1).map((item) => item.bindingId).sort());
+  });
+
+  it("filters configurations without confusing unmatched rows with unconfigured projects", async () => {
+    const pool = getRootPostgresPool(root)!;
+    await pool.query("insert into public.projects(id,organization_id,name,code) values ('scope-empty','scope-org-a','Empty','EMPTY')");
+    try {
+      const headers = { authorization: "Bearer scope-only-a" };
+      const read = async (query: string) => {
+        const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?${query}`, { headers });
+        expect(response.status).toBe(200);
+        return catalogProjectConfigurationsResponseSchema.parse(await response.json());
+      };
+      const coverage = await read("includeUnconfigured=true");
+      expect(coverage.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+      expect(coverage.totalCount).toBe(4);
+      expect(coverage.items).toContainEqual({ kind: "project-status", projectId: "scope-empty", projectName: "Empty", status: "unconfigured" });
+      const filtered = await read("includeUnconfigured=true&search=no-such-source");
+      expect(filtered.summary.configuredInstanceCount).toBe(3);
+      expect(filtered.totalCount).toBe(0);
+      const project = await read("projectId=scope-project-b");
+      expect(project.totalCount).toBe(2);
+      expect(project.items.every((item) => item.projectId === "scope-project-b")).toBe(true);
+      const set = project.items.find((item) => item.kind === "instance");
+      if (!set || set.kind !== "instance") throw new Error("Expected configured instance");
+      expect((await read(`projectId=scope-project-b&configSetId=${set.configSetId}`)).totalCount).toBeGreaterThan(0);
+      const wrongOwner = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?projectId=scope-project-a&configSetId=${set.configSetId}`, { headers });
+      expect(wrongOwner.status).toBe(404);
+      const first = await read("limit=1");
+      const retargeted = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?limit=1&projectId=scope-project-b&cursor=${first.nextCursor}`, { headers });
+      expect(retargeted.status).toBe(400);
+    } finally {
+      await pool.query("delete from public.projects where id='scope-empty'");
+    }
+  });
+
+  it("applies configured and project usage before definition pagination", async () => {
+    const headers = { authorization: "Bearer scope-only-a" };
+    const unfiltered = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=1`, { headers });
+    expect(catalogDefinitionListResponseSchema.parse(await unfiltered.json()).items.map((item) => item.id)).not.toContain(definitionId);
+    for (const query of ["configured=true", "usageProjectId=scope-project-b"]) {
+      const response = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=1&${query}`, { headers });
+      expect(response.status).toBe(200);
+      const body = catalogDefinitionListResponseSchema.parse(await response.json());
+      expect(body.items.map((item) => item.id)).toEqual([definitionId]);
+      expect(body.totalCount).toBe(1);
+    }
+    const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions?usageProjectId=scope-project-c`, { headers });
+    expect(foreign.status).toBe(404);
   });
 
   it("compares explicitly selected current Bindings across pages without widening scope", async () => {
@@ -298,10 +357,19 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     expect(body.totalCount).toBe(3);
     expect(body.items).toHaveLength(1);
     const all = catalogProjectConfigurationsResponseSchema.parse(await (await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations`, { headers })).json());
-    const expression = all.items.find((item) => item.projectId === "scope-project-b" && item.bindingId !== base)!;
+    const expression = all.items.find((item) => item.kind === "instance" && item.projectId === "scope-project-b" && item.bindingId !== base)!;
+    if (expression.kind !== "instance") throw new Error("Expected instance");
     const complex = catalogProjectConfigurationsResponseSchema.parse(await (await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?baselineBindingId=${base}&targetBindingId=${expression.bindingId}`, { headers })).json());
     expect(complex.target?.comparison).toMatchObject({ status: "unsupported", reason: "complex-dts" });
     expect(complex.target?.comparison?.delta).toBeUndefined();
+    const focus = all.items.find((item) => item.kind === "instance" && item.bindingId === target);
+    if (!focus || focus.kind !== "instance") throw new Error("Expected target");
+    const filtered = catalogProjectConfigurationsResponseSchema.parse(await (await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?baselineBindingId=${base}&targetBindingId=${target}&projectId=${focus.projectId}&configSetId=${focus.configSetId}&search=${encodeURIComponent(focus.fileName)}&includeUnconfigured=true`, { headers })).json());
+    expect(filtered.baseline?.bindingId).toBe(base);
+    expect(filtered.target?.bindingId).toBe(target);
+    expect(filtered.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+    expect(filtered.totalCount).toBe(1);
+    expect(filtered.items).toEqual([expect.objectContaining({ bindingId: target, comparison: expect.objectContaining({ status: "same" }) })]);
     const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?baselineBindingId=${bindingIds.get("scope-project-c")}`, { headers });
     expect(foreign.status).toBe(404);
   });
@@ -361,6 +429,8 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       expect(compare.status).toBe(409);
       const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-only-a" } });
       expect(catalogDefinitionResponseSchema.parse(await detail.json()).item.configurationSummary).toBeNull();
+      const filtered = await fetch(`${baseUrl}/api/v2/catalog/definitions?configured=true`, { headers: { authorization: "Bearer scope-only-a" } });
+      expect(filtered.status).toBe(409);
     } finally {
       await pool.query("update parameter_catalog.project_value_source_pins set definition_id=$2 where binding_id=$1", [bindingId, definitionId]);
       await pool.query("alter table parameter_catalog.project_value_source_pins enable trigger all");

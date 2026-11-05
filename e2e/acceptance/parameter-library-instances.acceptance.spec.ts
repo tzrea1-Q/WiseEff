@@ -1,5 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
 import pg from "pg";
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "playwright/test";
 import { compileOrThrow, firstReleaseBundle, refreshReleaseSource } from "../../server/modules/catalog-kernel/runtime/catalogChain.fixture";
 import type { CatalogReleaseNode } from "../../server/modules/catalog-kernel/compiler/types";
@@ -105,6 +106,7 @@ test("reads grouped DTS and software instances with exact counts and full values
         if (!binding.ok) throw new Error("DTS fixture failed");
       }
     }
+    await pool.query("insert into public.projects(id,organization_id,name,code,status) values ('parlib-instances-empty',$1,'无配置项目','parlib-instances-empty','initialized')", [organizationId]);
     const booleanBinding = await createSourceBackedBindingService(pool, { objectStore: storage, sourceRawValue: null,
       initialPayload: { kind: "boolean", value: true } }).stabilize({ snapshot: loaded.value, organizationId,
       projectId: "parlib-instances-a", logicalNodeId: "parlib-boolean-node", registrationId: driver.value.registrationId,
@@ -143,8 +145,28 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(/<0x3e[9a]>/);
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${jsonDefinition}&tab=configurations`);
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("软件配置集");
+    await page.getByRole("combobox", { name: "项目", exact: true }).selectOption("parlib-instances-b");
+    await page.getByRole("combobox", { name: "配置集", exact: true }).selectOption(set.id);
+    await page.reload();
+    await expect(page.getByRole("combobox", { name: "配置集", exact: true })).toHaveValue(set.id);
+    await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("筛选结果 1 条");
     await page.getByRole("button", { name: "查看 settings.json 的完整值" }).click();
     await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(fullSourceToken);
+    await page.getByLabel("实例 / 来源").fill("nothing-matches");
+    await page.getByRole("button", { name: "筛选", exact: true }).click();
+    await expect(page.getByText(/没有匹配的项目配置/)).toBeVisible();
+    await page.getByRole("button", { name: "重置筛选" }).click();
+    await page.getByLabel("显示无当前配置项目").check();
+    await expect(page.getByRole("heading", { name: "无配置项目", exact: true })).toBeVisible();
+    await expect(page.getByText("无当前配置", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "项目", exact: true })).toBeEnabled();
+    await page.getByRole("combobox", { name: "项目", exact: true }).focus();
+    await expect(page.getByRole("combobox", { name: "项目", exact: true })).toBeFocused();
+    expect((await new AxeBuilder({ page }).include(".parameter-library-filters").analyze()).violations).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("filters-1440.png") });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.screenshot({ path: testInfo.outputPath("filters-1280.png") });
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=pdef_parlib_boolean&tab=configurations`);
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("存在");
     await page.getByRole("button", { name: /查看 .* 的完整值/ }).click();
@@ -171,6 +193,11 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.getByRole("button", { name: "设为基准" }).click();
     const baselineUrl = page.url();
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
+    await page.getByRole("combobox", { name: "项目", exact: true }).selectOption("parlib-instances-b");
+    await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
+    await expect(page.getByRole("tabpanel", { name: "对比" })).toContainText("筛选结果 1 条");
+    await expect(page.getByRole("table", { name: "软件项目 的当前配置" })).toBeVisible();
+    await page.getByRole("combobox", { name: "项目", exact: true }).selectOption("parlib-instances-a");
     await page.getByRole("button", { name: "下一页" }).click();
     await page.getByRole("button", { name: "查看对比" }).click();
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
@@ -221,10 +248,21 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.getByRole("button", { name: "设为基准" }).click();
     await page.getByRole("button", { name: "查看对比" }).click();
     await expect(page.getByRole("region", { name: "实例对比" })).toContainText(fullSourceToken);
+    await page.getByRole("textbox", { name: "基准实例原值" }).focus();
+    await expect(page.getByRole("textbox", { name: "基准实例原值" })).toBeFocused();
     await page.screenshot({ path: testInfo.outputPath("compare-long-1280.png"), fullPage: true });
     await recordOperationEvidence({ operationId: "PARLIB-COMPARE-001", title: "Explicit instance comparison", status: "passed", page, testInfo,
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: 200, responseSummary: "Explicit baseline and target on separate pages, current values read from one API response." }] });
     await page.unroute("**/project-configurations*");
+    await page.goto(`${runtime.frontendUrl}/parameters/definitions`);
+    await page.getByLabel("有当前配置").check();
+    await expect(page.getByText("未使用的定义", { exact: true })).toHaveCount(0);
+    await page.getByRole("combobox", { name: "项目使用" }).selectOption("parlib-instances-b");
+    await expect(page).toHaveURL(/usageProjectId=parlib-instances-b/);
+    await page.reload();
+    await expect(page.getByRole("combobox", { name: "项目使用" })).toHaveValue("parlib-instances-b");
+    await recordOperationEvidence({ operationId: "PARLIB-FILTER-001", title: testInfo.title, status: "passed", page, testInfo,
+      assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: response.status(), responseSummary: "Filtered project and configuration set, with optional unconfigured projects." }] });
     await recordOperationEvidence({ operationId: "PARLIB-INSTANCES-001", title: testInfo.title, status: "passed", page, testInfo,
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: response.status(), responseSummary: "Two projects, three exact DTS instances." }] });
   } finally {

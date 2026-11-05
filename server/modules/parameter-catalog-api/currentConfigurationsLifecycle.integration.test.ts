@@ -24,7 +24,9 @@ async function request(f: Fixture, query = "") {
 async function read(f: Fixture, query = "") {
   const response = await request(f, query);
   expect(response.status).toBe(200);
-  return catalogProjectConfigurationsResponseSchema.parse(response.body);
+  const result = catalogProjectConfigurationsResponseSchema.parse(response.body);
+  expect(result.items.every((item) => item.kind === "instance")).toBe(true);
+  return { ...result, items: result.items.filter((item) => item.kind === "instance") };
 }
 
 it.each([

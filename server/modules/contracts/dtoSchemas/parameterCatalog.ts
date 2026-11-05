@@ -405,8 +405,12 @@ export const catalogProjectConfigurationInstanceSchema = catalogObject({
 });
 
 export const catalogProjectConfigurationsResponseSchema = catalogObject({
-  items: z.array(catalogProjectConfigurationInstanceSchema),
+  items: z.array(z.union([catalogProjectConfigurationInstanceSchema, catalogObject({
+    kind: z.literal("project-status"), projectId: z.string(), projectName: z.string(), status: z.literal("unconfigured")
+  })])),
   summary: catalogObject({ configuredProjectCount: z.number().int().nonnegative(), configuredInstanceCount: z.number().int().nonnegative() }),
+  projects: z.array(catalogObject({ id: z.string(), name: z.string() })).optional(),
+  configSets: z.array(catalogObject({ id: z.string(), name: z.string(), projectId: z.string() })).optional(),
   totalCount: z.number().int().nonnegative(), readAt: z.string(),
   nextCursor: z.string().nullable(), continuedProjectId: z.string().nullable(), selected: catalogProjectConfigurationInstanceSchema.nullable(),
   baseline: catalogProjectConfigurationInstanceSchema.nullable().optional(), target: catalogProjectConfigurationInstanceSchema.nullable().optional(),
@@ -2588,6 +2592,8 @@ export const parameterCatalogSchemaRegistry = {
           "Organization module id; selects definitions of subjects placed at or below the module subtree before pagination."
       },
       { name: "propertyKey", in: "query" },
+      { name: "configured", in: "query", description: "Select definitions with a current configured instance before pagination." },
+      { name: "usageProjectId", in: "query", description: "Select definitions configured in this current-Organization project before pagination." },
       { name: "registration", in: "query" },
       {
         name: "lifecycle",
@@ -2614,7 +2620,9 @@ export const parameterCatalogSchemaRegistry = {
     additionalResponses: catalogReadErrors,
     requestParameters: [
       { name: "cursor", in: "query" }, { name: "limit", in: "query" },
-      { name: "selectedBindingId", in: "query" }, { name: "baselineBindingId", in: "query" }, { name: "targetBindingId", in: "query" }
+      { name: "selectedBindingId", in: "query" }, { name: "baselineBindingId", in: "query" }, { name: "targetBindingId", in: "query" },
+      { name: "projectId", in: "query" }, { name: "configSetId", in: "query" },
+      { name: "search", in: "query" }, { name: "includeUnconfigured", in: "query" }
     ]
   },
   "catalog.listDefinitionRevisions": {

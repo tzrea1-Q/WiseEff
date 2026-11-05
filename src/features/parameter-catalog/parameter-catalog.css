@@ -1557,4 +1557,13 @@ button.parameter-catalog__tree-toggle:hover {
 .parameter-library-compare__detail { min-width: 0; padding: 0.75rem; background: var(--surface-muted, #f6f8fa); border-radius: 0.5rem; overflow-wrap: anywhere; }
 .parameter-library-compare__detail h3 { margin-top: 0; }
 .parameter-library-compare__detail p { margin: 0.25rem 0; }
-.parameter-library-compare__detail pre { max-height: 8rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.parameter-library-compare__detail [role="textbox"] { max-height: 8rem; overflow: auto; }
+.parameter-library-compare__detail pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.parameter-library-filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); margin: var(--space-3) 0; }
+.parameter-library-filters label { display: flex; align-items: center; gap: var(--space-2); }
+.parameter-library-filters select, .parameter-library-filters input:not([type="checkbox"]) {
+  width: 10rem; min-width: 0; height: 2rem; padding: 0 var(--space-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
+}
+.parameter-library-configurations .parameter-library-project-status { display: flex; align-items: baseline; gap: var(--space-4); margin: var(--space-2) 0; }
+.parameter-library-project-status h3, .parameter-library-project-status p { margin: 0; }
