@@ -10,7 +10,7 @@
 
 - `PARLIB-FILTER-001`：筛选项目使用情况并查看无当前配置的项目；自动化覆盖 UI、真实 API 和截图，测试归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
 
-- `PARLIB-COMPARE-001`：选择确切实例基准并查看保守的类型化对比。
+- `PARLIB-COMPARE-001`：选择确切实例基准并查看保守的类型化对比；自动化覆盖 UI、真实 API 和截图，测试归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
 
 - `PARLIB-RETURN-001`：打开确切项目／配置集／Binding 并返回参数库上下文。
 

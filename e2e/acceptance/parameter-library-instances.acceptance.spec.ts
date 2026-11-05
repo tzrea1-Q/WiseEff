@@ -30,6 +30,7 @@ type Mutable<T> = T extends readonly (infer U)[] ? Mutable<U>[] : T extends obje
 test.use({ viewport: { width: 1440, height: 900 } });
 test("reads grouped DTS and software instances with exact counts and full values", async ({ page, request }, testInfo) => {
   // @acceptance PARLIB-INSTANCES-001
+  // @acceptance PARLIB-COMPARE-001
   // @operation PARLIB-INSTANCES-001
   // @operation PARLIB-COMPARE-001
   test.setTimeout(180_000);
@@ -209,6 +210,7 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
     await expect(page.getByRole("region", { name: "实例对比" }).getByRole("status")).toContainText("类型化值不同");
     await expect(page.getByRole("region", { name: "实例对比" }).getByRole("status")).toContainText(/目标 − 基准：-?1/);
+    expect((await new AxeBuilder({ page }).include(".parameter-library-compare").analyze()).violations).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath("compare-1440.png"), fullPage: true });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: testInfo.outputPath("compare-1280.png"), fullPage: true });
