@@ -108,7 +108,7 @@ export const navigationItems: PageConfig[] = [
     group: "参数管理",
     icon: LibraryBig,
     title: "参数库",
-    subtitle: "浏览已发布的参数定义与修订历史"
+    subtitle: "浏览参数定义、当前项目配置与实例对比"
   },
   {
     key: "parameter-submissions",
@@ -228,7 +228,7 @@ export function getPageByPath(path: string): PageConfig {
       group: "参数管理",
       icon: LibraryBig,
       title: "参数库",
-      subtitle: "只读浏览已发布的规范参数定义与修订历史"
+      subtitle: "浏览参数定义、当前项目配置与实例对比"
     };
   }
   if (isOrganizationAdminPath(path)) {
