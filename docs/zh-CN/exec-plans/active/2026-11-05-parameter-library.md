@@ -6,7 +6,7 @@
 
 ## 任务和责任
 
-#1514 定义阅读、#1515 组织读取范围可并行；两者完成后实施 #1516 当前实例和准确用量。随后并行推进 #1517 筛选、#1518 实例对比、#1519 编辑往返；#1520 分享与复制依赖 #1517、#1518。当前全部待实施。
+#1514 定义阅读、#1515 组织读取范围已集成，#1516 当前实例和准确用量正在实施。随后并行推进 #1517 筛选、#1518 实例对比、#1519 编辑往返；#1520 分享与复制依赖 #1517、#1518，其余票据待实施。
 
 协调者负责集成、运行环境、重验证及 PR。每票由 GPT-6.1 Terra、xhigh 推理子智能体在独立托管工作区按 TDD 实施，合并子智能体负责集成。全部完成后独立进行规范和规格双轴审查，再由单一实施智能体修复发现。
 
@@ -17,6 +17,8 @@
 ## 验证
 
 已确认边界为公开 HTTP＋真实 PostgreSQL，以及真实 API 浏览器流程。实施者运行聚焦红绿测试与静态检查；协调者运行基于上述基线的 `npm run test:impact -- --base <base>`，遵循两个 fallback 标志，承担选定回归、构建、UI 与文档检查。
+
+草稿 [PR #1521](https://github.com/tzrea1-Q/WiseEff/pull/1521) 已打开。#1514 聚焦 HTTP／PostgreSQL 51/51、前端 77/77、浏览器 1/1 通过；#1515 聚焦 HTTP／PostgreSQL 22/22、关联 58/58、浏览器 1/1 通过。首次影响选择的 Vitest 与浏览器均触发全量回退，协调者仍保留集成候选的全部选定检查。上述聚焦结果不代表最终验收完成；独立审查、最终界面认可和回归仍待完成。权限浏览器归属单独的 `e2e/acceptance/parameter-library-scope.acceptance.spec.ts`。
 
 新增浏览器文件 `e2e/acceptance/parameter-library.acceptance.spec.ts`；需求／操作 ID 为 `PARLIB-READ-001`、`PARLIB-SCOPE-001`、`PARLIB-INSTANCES-001`、`PARLIB-FILTER-001`、`PARLIB-COMPARE-001`、`PARLIB-RETURN-001`、`PARLIB-SHARE-001`。通过原生验收流程记录操作证据。检查 1440×900，并对密集表格和对比补充 1280×800；覆盖 DTS、软件配置、键盘、长值、错误及过期响应。采用独立数据库和运行通道，不把 mock 或跳过当作后端验收。
 
@@ -32,7 +34,7 @@
 | 可靠性 | Review | `docs/RELIABILITY.md`；预计无新服务和部署。 |
 | 安全 | Update | `docs/SECURITY.md` 及配套，仅调整当前配置读取。 |
 | 前端和用户 | Review | `docs/FRONTEND.md`、UI 设计体系、适用用户指南及配套。 |
-| 生成物 | Review | `docs/openapi.yaml`、`docs/DB_SCHEMA.md`，核实实际 API 文档位置；预计无表结构变化。 |
+| 生成物 | Review | `docs/generated/openapi.json`、`docs/generated/db-schema.md`，通过原生命令生成 API 契约；预计无表结构变化。 |
 | 引用 | Review | 关联目录和项目工作台文档，保留历史证据。 |
 
 ## 文档更新门禁

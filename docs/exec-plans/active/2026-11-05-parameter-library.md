@@ -8,9 +8,9 @@ Implement [specification #1513](https://github.com/tzrea1-Q/WiseEff/issues/1513)
 
 | Issue | Slice | Prerequisites | Status |
 | --- | --- | --- | --- |
-| #1514 | Global entry and complete definition reading | None | Pending |
-| #1515 | Organization-scoped configuration reading | None | Pending |
-| #1516 | Current instances and exact usage | #1514, #1515 | Pending |
+| #1514 | Global entry and complete definition reading | None | Integrated; focused HTTP/PG 51/51, frontend 77/77, browser 1/1 passed |
+| #1515 | Organization-scoped configuration reading | None | Integrated; scoped HTTP/PG 22/22, related 58/58, browser 1/1 passed |
+| #1516 | Current instances and exact usage | #1514, #1515 | In progress |
 | #1517 | Usage filters and unconfigured coverage | #1516 | Pending |
 | #1518 | Explicit instance comparison | #1516 | Pending |
 | #1519 | Exact project edit and return | #1516 | Pending |
@@ -28,6 +28,8 @@ Approved behavior seams are public HTTP plus real PostgreSQL, and browser journe
 
 Browser ownership: `e2e/acceptance/parameter-library.acceptance.spec.ts`, requirement and operation IDs `PARLIB-READ-001`, `PARLIB-SCOPE-001`, `PARLIB-INSTANCES-001`, `PARLIB-FILTER-001`, `PARLIB-COMPARE-001`, `PARLIB-RETURN-001`, `PARLIB-SHARE-001`. Record real operation evidence through the native acceptance runner. Inspect 1440×900 and a compact 1280×800 state for dense table/comparison layout; cover DTS and software configuration, keyboard focus, long values, errors and stale responses. Use isolated runtime/database lane names. Existing Catalog and project-workbench regression owners remain intact.
 
+Draft [PR #1521](https://github.com/tzrea1-Q/WiseEff/pull/1521) is open. Initial selection has both Vitest and browser full-fallback flags; the coordinator retains the full selected gates for the integrated candidate. Focused worker results above do not complete those gates. Scope browser coverage lives in `e2e/acceptance/parameter-library-scope.acceptance.spec.ts`. Independent review, final visual approval and final regression remain pending.
+
 ## Documentation Impact Matrix
 
 | Area | Action | Paths and decision |
@@ -40,7 +42,7 @@ Browser ownership: `e2e/acceptance/parameter-library.acceptance.spec.ts`, requir
 | Reliability | Review | `docs/RELIABILITY.md`; no new runtime service or deployment expected. |
 | Security | Update | `docs/SECURITY.md` and Chinese companion; current-configuration reads only. |
 | Frontend and users | Review | `docs/FRONTEND.md`, `docs/design-docs/ui-design-system.md`, applicable user guides and companions. |
-| Generated artifacts | Review | `docs/openapi.yaml`, `docs/DB_SCHEMA.md`; update API contract when present, no schema change planned. |
+| Generated artifacts | Review | `docs/generated/openapi.json`, `docs/generated/db-schema.md`; regenerate the native API contract, no schema change planned. |
 | References | Review | Linked Catalog and parameter-workbench docs; preserve historical acceptance. |
 
 ## Documentation Update Gate
