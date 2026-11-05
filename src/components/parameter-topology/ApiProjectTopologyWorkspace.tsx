@@ -78,6 +78,7 @@ export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
   projectName?: string;
   requestedBindingId?: string;
+  requestedConfigSetId?: string;
   notice?: React.ReactNode;
   canEdit?: boolean;
   layoutMode?: TopologyLayoutMode;
@@ -260,12 +261,13 @@ async function loadWorkspace(
   projectId: string,
   topology: ParameterTopologyRepository,
   listConfigSets: (projectId: string) => Promise<Array<{ id: string; name: string }>>,
-  preferredRevisionId?: string
+  preferredRevisionId?: string,
+  requestedConfigSetId?: string
 ): Promise<LoadState> {
   const configSets = await listConfigSets(projectId);
-  const configSet = pickConfigSet(configSets);
+  const configSet = requestedConfigSetId ? configSets.find((set) => set.id === requestedConfigSetId) : pickConfigSet(configSets);
   if (!configSet) {
-    return { kind: "empty", message: "该项目尚无参数配置，请联系项目管理员导入 DTS 文件。" };
+    return { kind: "empty", message: requestedConfigSetId ? "目标配置集不可用，请返回参数库重新选择。" : "该项目尚无参数配置，请联系项目管理员导入 DTS 文件。" };
   }
 
   const revisionKey = preferredRevisionId ?? "current";
@@ -332,6 +334,7 @@ export function ApiProjectTopologyWorkspace({
   projectId,
   projectName,
   requestedBindingId,
+  requestedConfigSetId,
   notice,
   canEdit = true,
   layoutMode = "desktop",
@@ -541,7 +544,7 @@ export function ApiProjectTopologyWorkspace({
     const missingDrafts = bindingDrafts.filter((draft) => !existing.some((pending) => pending.draftId === draft.id));
     if (missingDrafts.length === 0) return;
     const sharedTip = resolveSharedWorkingTip(bindingDrafts);
-    if (existing.length === 0 && sharedTip && loadState.revisionId !== sharedTip) {
+    if (!requestedConfigSetId && existing.length === 0 && sharedTip && loadState.revisionId !== sharedTip) {
       setPreferredRevision({ projectId, revisionId: sharedTip });
       return;
     }
@@ -562,7 +565,7 @@ export function ApiProjectTopologyWorkspace({
     if (hydratedBindingIds.length > 0) {
       setSelectedDraftBindingIds((selected) => new Set([...selected, ...hydratedBindingIds]));
     }
-  }, [loadState, moduleRegistry, projectId, serverDrafts]);
+  }, [loadState, moduleRegistry, projectId, serverDrafts, requestedConfigSetId]);
 
   useEffect(() => {
     if (!hasProjectDrafts) {
@@ -618,7 +621,7 @@ export function ApiProjectTopologyWorkspace({
       listConfigSetsRef.current ??
       ((id: string) => resolveDtsStructuredRepository(runtimeMode).listConfigSets(id));
 
-    loadWorkspace(projectId, repository, resolveConfigSets, preferredRevisionId)
+    loadWorkspace(projectId, repository, resolveConfigSets, requestedConfigSetId ? undefined : preferredRevisionId, requestedConfigSetId)
       .then((next) => {
         if (!cancelled) setLoadState(next);
       })
@@ -635,7 +638,7 @@ export function ApiProjectTopologyWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [projectId, preferredRevisionId, repository, runtimeMode, reloadToken]);
+  }, [projectId, preferredRevisionId, repository, runtimeMode, reloadToken, requestedConfigSetId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1330,7 +1333,7 @@ export function ApiProjectTopologyWorkspace({
     [loadBindingHistory]
   );
 
-  const requestedBinding = requestedBindingId
+  const requestedBinding = requestedBindingId && (!requestedConfigSetId || (loadState.kind === "ready" && loadState.configSetId === requestedConfigSetId))
     ? jsonBindings.find((binding) => binding.id === requestedBindingId)
       ?? (loadState.kind === "ready" ? loadState.bindings.find((binding) =>
         binding.id === requestedBindingId && binding.effectiveValue.kind !== "json") : undefined)
@@ -1490,7 +1493,7 @@ export function ApiProjectTopologyWorkspace({
       notice={notice}
     />
   ) : jsonState?.state === "loading" || !jsonState ? <p role="status">正在加载项目 JSON 绑定…</p> : null;
-  const unavailableBinding = requestedBindingId && !requestedBinding && jsonState?.state === "ready"
+  const unavailableBinding = requestedBindingId && !requestedBinding && jsonState?.state === "ready" && loadState.kind !== "loading" && !refreshingWorkspace
     ? <p role="status">关联参数在当前项目中不可用。</p> : null;
   const jsonFormatPanel = jsonBindingCount > 0 ? (
     <div key="json" id="format-panel-json" role="tabpanel"

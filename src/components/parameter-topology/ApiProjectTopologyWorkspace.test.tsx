@@ -217,6 +217,15 @@ async function expectGpioEditorPermission(workspace: HTMLElement, enabled: boole
 }
 
 describe("ApiProjectTopologyWorkspace", () => {
+  it("loads the resolved configuration set before opening its exact Binding", async () => {
+    const binding = protectedJsonBinding();
+    const repository = createRepository({ listBindings: vi.fn().mockResolvedValue([binding]) });
+    render(<ApiProjectTopologyWorkspace projectId="aurora" requestedBindingId={binding.id} requestedConfigSetId="nondefault"
+      topologyRepository={repository} listConfigSets={async () => [{ id: "default", name: "default" }, { id: "nondefault", name: "other" }]}
+      canonicalRepository={protectedRepository(vi.fn().mockResolvedValue({ items: [binding] }))} />);
+    await screen.findByRole("dialog");
+    await waitFor(() => expect(repository.getTopology).toHaveBeenCalledWith("aurora", "nondefault", "current", "effective"));
+  });
   it("keeps topology loading in the shared task region", () => {
     render(<ApiProjectTopologyWorkspace projectId="aurora" topologyRepository={createRepository()}
       listConfigSets={() => new Promise(() => undefined)} />);
