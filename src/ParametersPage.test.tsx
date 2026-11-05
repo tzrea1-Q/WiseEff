@@ -1688,6 +1688,16 @@ describe("ParametersPage API topology workspace", () => {
     resetUnsavedParameterWork();
   });
 
+  it("does not open a hinted Binding when the exact resolution service is unavailable", async () => {
+    const topologyRepository = createApiBoundaryRepository();
+    render(<TopBarActionsHarness><ParametersPage state={createParametersPageState()} dispatch={vi.fn()} onNavigate={vi.fn()}
+      search={`?project=aurora&bindingId=${API_SENTINEL_BINDING.id}&definitionId=definition&configSetId=other-set`} runtimeMode="api"
+      topologyRepository={topologyRepository} canonicalRepository={{ ...createTestAppPorts().parameterCatalogRepository, getProjectConfigurations: undefined }} /></TopBarActionsHarness>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("该实例不可用");
+    expect(topologyRepository.getTopology).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("combines the mature workbench boundary with semantic DTS rows in API mode", async () => {
     const listWorkflowAssignees = vi.fn().mockResolvedValue({
       hardwareCommitters: [{ id: "u-hw", name: "Hardware API" }],
