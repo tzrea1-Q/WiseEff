@@ -157,7 +157,8 @@ export function ParametersPage({
   const [leaveOpen, setLeaveOpen] = useState(false);
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
   useEffect(() => {
-    if (!isApiMode || !handoffBinding || !resolvedProjectId || !canonicalRepository?.getProjectConfigurations) return;
+    if (!isApiMode || !handoffBinding || !resolvedProjectId) return;
+    if (!canonicalRepository?.getProjectConfigurations) { setResolvedHandoff({ key: handoffKey, error: true }); return; }
     let active = true;
     setResolvedHandoff(null);
     const resolve = async () => {
@@ -181,7 +182,8 @@ export function ParametersPage({
   useEffect(() => {
     if (!isApiMode) return;
     const guard = (event: Event) => {
-      if (event.defaultPrevented || consumeParameterLeaveBypass() || unsavedParameterWorkCount() === 0) return;
+      const bypass = consumeParameterLeaveBypass();
+      if (event.defaultPrevented || bypass || unsavedParameterWorkCount() === 0) return;
       event.preventDefault();
       if (!leaveDecision.current) {
         let resolve!: (allowed: boolean) => void;
@@ -195,7 +197,7 @@ export function ParametersPage({
     return () => { window.removeEventListener("wiseeff:settings-before-leave", guard); leaveDecision.current?.resolve(false); leaveDecision.current = null; };
   }, [isApiMode]);
   const finishLeave = (allowed: boolean) => { leaveDecision.current?.resolve(allowed); leaveDecision.current = null; setLeaveOpen(false); };
-  const needsHandoffResolution = Boolean(isApiMode && handoffBinding && resolvedProjectId && canonicalRepository?.getProjectConfigurations);
+  const needsHandoffResolution = Boolean(isApiMode && handoffBinding && resolvedProjectId);
   const currentHandoff = resolvedHandoff?.key === handoffKey ? resolvedHandoff : null;
   const deleteDraft = useMemo(
     () =>
