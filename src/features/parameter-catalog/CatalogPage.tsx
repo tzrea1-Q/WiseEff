@@ -317,7 +317,7 @@ export function CatalogPage({
   const [shareState, setShareState] = useState<"success" | "error" | null>(null);
   useEffect(() => setShareState(null), [resolvedSearch, organizationId]);
   const shareControl = <div className="parameter-library-share">
-    <button type="button" className="button subtle sm" onClick={async () => {
+    <button type="button" className="button subtle sm" disabled={!anchor.catalogReleaseId} onClick={async () => {
       try { await navigator.clipboard.writeText(new URL(buildCatalogShareHref(anchor), window.location.origin).href); setShareState("success"); }
       catch { setShareState("error"); }
     }}>复制当前视图链接</button>
