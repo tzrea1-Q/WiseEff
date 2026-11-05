@@ -29,7 +29,7 @@ In **Compare**, explicitly choose a baseline instance, then a target. Multiple i
 2. Search the parameter table and filter by module or importance. Open a row's details to check its property key, node or configuration instance, current value, definition revision, source location, and history. Parameters with the same name can have different meanings; use these details to tell them apart.
 3. Open "Cross-project comparison" from the row details, still within `/parameters`. Select the peer configuration instance and compare values and revision information. If editing is permitted, "Use this project configuration in a draft" prepares a change; it does not apply the peer value immediately.
 
-The former "Comparison analysis" page (`/parameter-comparison`) is unavailable. Use row-level comparison instead.
+The former "Comparison analysis" page (`/parameter-comparison`) is unavailable. Use the Parameter library's Compare tab or project row-level comparison.
 
 ![Aurora parameter workbench and module navigation](images/parameter-management-workbench.png)
 
