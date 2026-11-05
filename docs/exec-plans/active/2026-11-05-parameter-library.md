@@ -34,16 +34,16 @@ Draft [PR #1521](https://github.com/tzrea1-Q/WiseEff/pull/1521) is open. Initial
 
 | Area | Action | Paths and decision |
 | --- | --- | --- |
-| Repository maps | Review | `ARCHITECTURE.md`, `CONTEXT.md`; add only changed ownership/terminology. |
-| Planning | Update | `docs/PLANS.md`, this plan and Chinese companions. |
-| Product | Update | `docs/design-docs/2026-11-05-parameter-library-design.md` and Chinese companion; record final status. |
-| Architecture | Update | `docs/adr/0055-parameter-configuration-reads-share-organization-scope.md`, `docs/design-docs/domain-model.md` and companions. |
-| Quality | Update | `docs/developer/browser-acceptance-coverage-map.md`, `e2e/acceptance/operationMatrix.ts`, generated `docs/developer/user-operation-coverage-matrix.md` and companions. |
-| Reliability | Review | `docs/RELIABILITY.md`; no new runtime service or deployment expected. |
-| Security | Update | `docs/SECURITY.md` and Chinese companion; current-configuration reads only. |
-| Frontend and users | Review | `docs/FRONTEND.md`, `docs/design-docs/ui-design-system.md`, applicable user guides and companions. |
-| Generated artifacts | Review | `docs/generated/openapi.json`, `docs/generated/db-schema.md`; regenerate the native API contract, no schema change planned. |
-| References | Review | Linked Catalog and parameter-workbench docs; preserve historical acceptance. |
+| Repository maps | Updated | `ARCHITECTURE.md` and `CONTEXT.md` name the definition-first surface and canonical query/source owners. |
+| Planning | Updated | `docs/PLANS.md`, this plan and Chinese companions track the single integration PR and verification ownership. |
+| Product | Updated | The bilingual accepted design records implementation authorization and links this execution plan. |
+| Architecture | Updated | ADR-0055 and the bilingual domain model distinguish Organization-wide current configuration reads from project-authorized writes. |
+| Quality | Updated | Browser coverage maps, `operationMatrix.ts` and generated operation coverage describe the seven real-API journeys; final execution results remain below. |
+| Reliability | Unchanged | No new service, migration, device command, deployment or recovery procedure. The bootstrap readiness fix preserves the same strict Docker capability proof and runtime limits. |
+| Security | Updated | Bilingual `docs/SECURITY.md` documents current-configuration read scope; project writes and human approval remain unchanged. |
+| Frontend and users | Updated / unchanged | Bilingual frontend and parameter user guides describe reading, filtering, comparison, sharing and exact project return. The UI design system is unchanged: existing tokens, controls, Markdown renderer and navigation layout are reused. |
+| Generated artifacts | Updated / unchanged | Native `contract:openapi` updates `docs/generated/openapi.json`; there are no migrations, so `docs/generated/db-schema.md` remains unchanged and is checked by `docs:check`. |
+| References | Updated / unchanged | User guidance for the retired comparison route now points to the library or project row comparison. Historical Catalog/workbench acceptance records remain unchanged. |
 
 ## Documentation Update Gate
 
