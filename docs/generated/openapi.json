@@ -12207,6 +12207,24 @@
             }
           },
           {
+            "name": "configured",
+            "in": "query",
+            "required": false,
+            "description": "Select definitions with a current configured instance before pagination.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "usageProjectId",
+            "in": "query",
+            "required": false,
+            "description": "Select definitions configured in this current-Organization project before pagination.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "registration",
             "in": "query",
             "required": false,
@@ -12458,6 +12476,54 @@
           },
           {
             "name": "selectedBindingId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "baselineBindingId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetBindingId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeUnconfigured",
             "in": "query",
             "required": false,
             "schema": {
@@ -86721,135 +86787,206 @@
           "items": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "enum": [
-                    "instance"
-                  ]
-                },
-                "bindingId": {
-                  "type": "string"
-                },
-                "projectId": {
-                  "type": "string"
-                },
-                "projectName": {
-                  "type": "string"
-                },
-                "configSetId": {
-                  "type": "string"
-                },
-                "configSetName": {
-                  "type": "string"
-                },
-                "sourceOccurrenceId": {
-                  "type": "string"
-                },
-                "sourceFormat": {
-                  "type": "string",
-                  "enum": [
-                    "dts",
-                    "json"
-                  ]
-                },
-                "fileId": {
-                  "type": "string"
-                },
-                "fileVersionId": {
-                  "type": "string"
-                },
-                "fileName": {
-                  "type": "string"
-                },
-                "sourceLocator": {
+              "anyOf": [
+                {
                   "type": "object",
-                  "additionalProperties": {}
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "instance"
+                      ]
+                    },
+                    "bindingId": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "projectName": {
+                      "type": "string"
+                    },
+                    "configSetId": {
+                      "type": "string"
+                    },
+                    "configSetName": {
+                      "type": "string"
+                    },
+                    "sourceOccurrenceId": {
+                      "type": "string"
+                    },
+                    "sourceFormat": {
+                      "type": "string",
+                      "enum": [
+                        "dts",
+                        "json"
+                      ]
+                    },
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileVersionId": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "sourceLocator": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "sourceLocation": {
+                      "type": "string"
+                    },
+                    "currentValueId": {
+                      "type": "string"
+                    },
+                    "definitionRevisionId": {
+                      "type": "string"
+                    },
+                    "definitionRevisionNumber": {
+                      "type": "string"
+                    },
+                    "effectiveRevisionId": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "definitionLifecycle": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "deprecated",
+                        "retired"
+                      ]
+                    },
+                    "valueState": {
+                      "type": "string",
+                      "enum": [
+                        "present",
+                        "unset"
+                      ]
+                    },
+                    "valueKind": {
+                      "type": "string",
+                      "enum": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "string-array",
+                        "number-array",
+                        "json"
+                      ]
+                    },
+                    "valuePreview": {
+                      "type": "string"
+                    },
+                    "valuePreviewTruncated": {
+                      "type": "boolean"
+                    },
+                    "rawValue": {
+                      "type": "string"
+                    },
+                    "comparison": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "same",
+                            "different",
+                            "different-semantics",
+                            "unsupported",
+                            "unavailable"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "typed-values",
+                            "revision-semantics",
+                            "revision-unavailable",
+                            "unset",
+                            "complex-dts"
+                          ]
+                        },
+                        "revisionChanged": {
+                          "type": "boolean"
+                        },
+                        "delta": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "reason",
+                        "revisionChanged"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "bindingId",
+                    "projectId",
+                    "projectName",
+                    "configSetId",
+                    "configSetName",
+                    "sourceOccurrenceId",
+                    "sourceFormat",
+                    "fileId",
+                    "fileVersionId",
+                    "fileName",
+                    "sourceLocator",
+                    "sourceLocation",
+                    "currentValueId",
+                    "definitionRevisionId",
+                    "definitionRevisionNumber",
+                    "effectiveRevisionId",
+                    "unit",
+                    "definitionLifecycle",
+                    "valueState",
+                    "valueKind",
+                    "valuePreview",
+                    "valuePreviewTruncated"
+                  ],
+                  "additionalProperties": false
                 },
-                "sourceLocation": {
-                  "type": "string"
-                },
-                "currentValueId": {
-                  "type": "string"
-                },
-                "definitionRevisionId": {
-                  "type": "string"
-                },
-                "definitionRevisionNumber": {
-                  "type": "string"
-                },
-                "effectiveRevisionId": {
-                  "type": "string"
-                },
-                "unit": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "definitionLifecycle": {
-                  "type": "string",
-                  "enum": [
-                    "active",
-                    "deprecated",
-                    "retired"
-                  ]
-                },
-                "valueState": {
-                  "type": "string",
-                  "enum": [
-                    "present",
-                    "unset"
-                  ]
-                },
-                "valueKind": {
-                  "type": "string",
-                  "enum": [
-                    "string",
-                    "number",
-                    "boolean",
-                    "string-array",
-                    "number-array",
-                    "json"
-                  ]
-                },
-                "valuePreview": {
-                  "type": "string"
-                },
-                "valuePreviewTruncated": {
-                  "type": "boolean"
-                },
-                "rawValue": {
-                  "type": "string"
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "project-status"
+                      ]
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "projectName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "unconfigured"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "projectId",
+                    "projectName",
+                    "status"
+                  ],
+                  "additionalProperties": false
                 }
-              },
-              "required": [
-                "kind",
-                "bindingId",
-                "projectId",
-                "projectName",
-                "configSetId",
-                "configSetName",
-                "sourceOccurrenceId",
-                "sourceFormat",
-                "fileId",
-                "fileVersionId",
-                "fileName",
-                "sourceLocator",
-                "sourceLocation",
-                "currentValueId",
-                "definitionRevisionId",
-                "definitionRevisionNumber",
-                "effectiveRevisionId",
-                "unit",
-                "definitionLifecycle",
-                "valueState",
-                "valueKind",
-                "valuePreview",
-                "valuePreviewTruncated"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "summary": {
@@ -86867,6 +87004,48 @@
               "configuredInstanceCount"
             ],
             "additionalProperties": false
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "configSets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "projectId"
+              ],
+              "additionalProperties": false
+            }
           },
           "totalCount": {
             "type": "number"
@@ -86991,6 +87170,385 @@
               },
               "rawValue": {
                 "type": "string"
+              },
+              "comparison": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "same",
+                      "different",
+                      "different-semantics",
+                      "unsupported",
+                      "unavailable"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "typed-values",
+                      "revision-semantics",
+                      "revision-unavailable",
+                      "unset",
+                      "complex-dts"
+                    ]
+                  },
+                  "revisionChanged": {
+                    "type": "boolean"
+                  },
+                  "delta": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "status",
+                  "reason",
+                  "revisionChanged"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "kind",
+              "bindingId",
+              "projectId",
+              "projectName",
+              "configSetId",
+              "configSetName",
+              "sourceOccurrenceId",
+              "sourceFormat",
+              "fileId",
+              "fileVersionId",
+              "fileName",
+              "sourceLocator",
+              "sourceLocation",
+              "currentValueId",
+              "definitionRevisionId",
+              "definitionRevisionNumber",
+              "effectiveRevisionId",
+              "unit",
+              "definitionLifecycle",
+              "valueState",
+              "valueKind",
+              "valuePreview",
+              "valuePreviewTruncated"
+            ],
+            "additionalProperties": false
+          },
+          "baseline": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "instance"
+                ]
+              },
+              "bindingId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "projectName": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "configSetName": {
+                "type": "string"
+              },
+              "sourceOccurrenceId": {
+                "type": "string"
+              },
+              "sourceFormat": {
+                "type": "string",
+                "enum": [
+                  "dts",
+                  "json"
+                ]
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "fileVersionId": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "sourceLocator": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sourceLocation": {
+                "type": "string"
+              },
+              "currentValueId": {
+                "type": "string"
+              },
+              "definitionRevisionId": {
+                "type": "string"
+              },
+              "definitionRevisionNumber": {
+                "type": "string"
+              },
+              "effectiveRevisionId": {
+                "type": "string"
+              },
+              "unit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "definitionLifecycle": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "deprecated",
+                  "retired"
+                ]
+              },
+              "valueState": {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "unset"
+                ]
+              },
+              "valueKind": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "string-array",
+                  "number-array",
+                  "json"
+                ]
+              },
+              "valuePreview": {
+                "type": "string"
+              },
+              "valuePreviewTruncated": {
+                "type": "boolean"
+              },
+              "rawValue": {
+                "type": "string"
+              },
+              "comparison": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "same",
+                      "different",
+                      "different-semantics",
+                      "unsupported",
+                      "unavailable"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "typed-values",
+                      "revision-semantics",
+                      "revision-unavailable",
+                      "unset",
+                      "complex-dts"
+                    ]
+                  },
+                  "revisionChanged": {
+                    "type": "boolean"
+                  },
+                  "delta": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "status",
+                  "reason",
+                  "revisionChanged"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "kind",
+              "bindingId",
+              "projectId",
+              "projectName",
+              "configSetId",
+              "configSetName",
+              "sourceOccurrenceId",
+              "sourceFormat",
+              "fileId",
+              "fileVersionId",
+              "fileName",
+              "sourceLocator",
+              "sourceLocation",
+              "currentValueId",
+              "definitionRevisionId",
+              "definitionRevisionNumber",
+              "effectiveRevisionId",
+              "unit",
+              "definitionLifecycle",
+              "valueState",
+              "valueKind",
+              "valuePreview",
+              "valuePreviewTruncated"
+            ],
+            "additionalProperties": false
+          },
+          "target": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "instance"
+                ]
+              },
+              "bindingId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "projectName": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "configSetName": {
+                "type": "string"
+              },
+              "sourceOccurrenceId": {
+                "type": "string"
+              },
+              "sourceFormat": {
+                "type": "string",
+                "enum": [
+                  "dts",
+                  "json"
+                ]
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "fileVersionId": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "sourceLocator": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "sourceLocation": {
+                "type": "string"
+              },
+              "currentValueId": {
+                "type": "string"
+              },
+              "definitionRevisionId": {
+                "type": "string"
+              },
+              "definitionRevisionNumber": {
+                "type": "string"
+              },
+              "effectiveRevisionId": {
+                "type": "string"
+              },
+              "unit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "definitionLifecycle": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "deprecated",
+                  "retired"
+                ]
+              },
+              "valueState": {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "unset"
+                ]
+              },
+              "valueKind": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "string-array",
+                  "number-array",
+                  "json"
+                ]
+              },
+              "valuePreview": {
+                "type": "string"
+              },
+              "valuePreviewTruncated": {
+                "type": "boolean"
+              },
+              "rawValue": {
+                "type": "string"
+              },
+              "comparison": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "same",
+                      "different",
+                      "different-semantics",
+                      "unsupported",
+                      "unavailable"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "typed-values",
+                      "revision-semantics",
+                      "revision-unavailable",
+                      "unset",
+                      "complex-dts"
+                    ]
+                  },
+                  "revisionChanged": {
+                    "type": "boolean"
+                  },
+                  "delta": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "status",
+                  "reason",
+                  "revisionChanged"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [

@@ -326,11 +326,25 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       expect(filtered.summary.configuredInstanceCount).toBe(3);
       expect(filtered.totalCount).toBe(0);
       const project = await read("projectId=scope-project-b");
+      expect(project.summary).toEqual({ configuredProjectCount: 1, configuredInstanceCount: 2 });
       expect(project.totalCount).toBe(2);
       expect(project.items.every((item) => item.projectId === "scope-project-b")).toBe(true);
       const set = project.items.find((item) => item.kind === "instance");
       if (!set || set.kind !== "instance") throw new Error("Expected configured instance");
-      expect((await read(`projectId=scope-project-b&configSetId=${set.configSetId}`)).totalCount).toBeGreaterThan(0);
+      const selectedSet = await read(`projectId=scope-project-b&configSetId=${set.configSetId}`);
+      expect(selectedSet.summary).toEqual({ configuredProjectCount: 1, configuredInstanceCount: 1 });
+      expect(selectedSet.totalCount).toBe(1);
+      const noMatch = await read(`projectId=scope-project-b&configSetId=${set.configSetId}&search=no-such-source&includeUnconfigured=true`);
+      expect(noMatch.summary).toEqual(selectedSet.summary);
+      expect(noMatch.totalCount).toBe(0);
+      await pool.query("insert into public.dts_config_set(id,organization_id,project_id,name) values ('scope-empty-set','scope-org-a','scope-project-b','Empty set')");
+      try {
+        const emptySet = await read("configSetId=scope-empty-set&includeUnconfigured=true");
+        expect(emptySet.summary).toEqual({ configuredProjectCount: 0, configuredInstanceCount: 0 });
+        expect(emptySet.items).toEqual([{ kind: "project-status", projectId: "scope-project-b", projectName: "B", status: "unconfigured" }]);
+        expect(emptySet.totalCount).toBe(1);
+        expect((await read("configSetId=scope-empty-set")).items).toEqual([]);
+      } finally { await pool.query("delete from public.dts_config_set where id='scope-empty-set'"); }
       const wrongOwner = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?projectId=scope-project-a&configSetId=${set.configSetId}`, { headers });
       expect(wrongOwner.status).toBe(404);
       const first = await read("limit=1");
@@ -345,12 +359,15 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     const headers = { authorization: "Bearer scope-only-a" };
     const unfiltered = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=1`, { headers });
     expect(catalogDefinitionListResponseSchema.parse(await unfiltered.json()).items.map((item) => item.id)).not.toContain(definitionId);
-    for (const query of ["configured=true", "usageProjectId=scope-project-b"]) {
+    for (const query of ["configured=true", "usageProjectId=scope-project-b", "configured=true&usageProjectId=scope-project-b"]) {
       const response = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=1&${query}`, { headers });
       expect(response.status).toBe(200);
       const body = catalogDefinitionListResponseSchema.parse(await response.json());
       expect(body.items.map((item) => item.id)).toEqual([definitionId]);
       expect(body.totalCount).toBe(1);
+      expect(body.items[0]?.configurationSummary).toEqual(query.includes("usageProjectId")
+        ? { configuredProjectCount: 1, configuredInstanceCount: 2 }
+        : { configuredProjectCount: 2, configuredInstanceCount: 3 });
     }
     const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions?usageProjectId=scope-project-c`, { headers });
     expect(foreign.status).toBe(404);
@@ -378,11 +395,19 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     const filtered = catalogProjectConfigurationsResponseSchema.parse(await (await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?baselineBindingId=${base}&targetBindingId=${target}&projectId=${focus.projectId}&configSetId=${focus.configSetId}&search=${encodeURIComponent(focus.fileName)}&includeUnconfigured=true`, { headers })).json());
     expect(filtered.baseline?.bindingId).toBe(base);
     expect(filtered.target?.bindingId).toBe(target);
-    expect(filtered.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+    expect(filtered.summary).toEqual({ configuredProjectCount: 1, configuredInstanceCount: 1 });
     expect(filtered.totalCount).toBe(1);
     expect(filtered.items).toEqual([expect.objectContaining({ bindingId: target, comparison: expect.objectContaining({ status: "same" }) })]);
     const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?baselineBindingId=${bindingIds.get("scope-project-c")}`, { headers });
     expect(foreign.status).toBe(404);
+    for (const query of [`selectedBindingId=${target}`, `baselineBindingId=${base}`, `baselineBindingId=${bindingIds.get("scope-project-c")}&targetBindingId=${target}`]) {
+      const recipient = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?${query}`, { headers: { authorization: "Bearer scope-other-org" } });
+      expect(recipient.status).toBe(404);
+      const denied = await recipient.json();
+      expect(denied).not.toHaveProperty("summary");
+      expect(denied).not.toHaveProperty("baseline");
+      expect(denied).not.toHaveProperty("target");
+    }
   });
 
   it("classifies complete value-pinned revision content rather than DTO projections", async () => {
@@ -436,6 +461,10 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations`, { headers: { authorization: "Bearer scope-only-a" } });
       expect(response.status).toBe(409);
       expect(failureReasonSchema.parse(await response.json()).error.details.reason).toBe("invalid-source-pin");
+      for (const query of ["projectId=scope-project-b", `projectId=scope-project-a&baselineBindingId=${bindingId}`]) {
+        const scoped = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?${query}`, { headers: { authorization: "Bearer scope-only-a" } });
+        expect(scoped.status).toBe(409);
+      }
       const compare = await fetch(`${baseUrl}/api/v2/projects/scope-project-a/bindings/${bindingIds.get("scope-project-a")}/compare`, { headers: { authorization: "Bearer scope-only-a" } });
       expect(compare.status).toBe(409);
       const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-only-a" } });

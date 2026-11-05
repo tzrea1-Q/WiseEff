@@ -112,23 +112,24 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
       await assertCurrentInstancesValid(tx, organizationId, [definitionId]);
       const params = [organizationId, [definitionId], projectId ?? null, configSetId ?? null, search ?? null, includeUnconfigured === "true"];
       const configured = `value_state = 'present' and source_ref <> 'canonical-binding-identity'`;
+      const scope = `($3::text is null or project_id = $3) and ($4::text is null or config_set_id = $4)`;
       const visible = `value_state = 'present' and (source_ref <> 'canonical-binding-identity' or exists (
-        select 1 from candidates configured where configured.project_id = candidates.project_id
+        select 1 from scoped configured where configured.project_id = candidates.project_id
           and configured.value_state = 'present' and configured.source_ref <> 'canonical-binding-identity'))`;
-      const rowsCte = `, result_rows as (
+      const rowsCte = `, scoped as (select * from candidates where ${scope}), result_rows as (
         select 'instance:' || binding_id as row_key, project_id, project_name, to_jsonb(candidates) as row_data
-          from candidates where value_state = 'present' and ($6::boolean or ${visible})
-            and ($3::text is null or project_id = $3) and ($4::text is null or config_set_id = $4)
+          from scoped candidates where value_state = 'present' and ($6::boolean or ${visible})
             and ($5::text is null or position(lower($5) in lower(concat_ws(' ', project_name, config_set_name, file_name, source_location, binding_id))) > 0)
         union all
         select 'project:' || project.id, project.id, project.name, null::jsonb from public.projects project
-          where project.organization_id = $1 and $6::boolean and $4::text is null and $5::text is null
+          where project.organization_id = $1 and $6::boolean and $5::text is null
             and ($3::text is null or project.id = $3)
-            and not exists (select 1 from candidates where candidates.project_id = project.id and value_state = 'present')
+            and ($4::text is null or exists (select 1 from public.dts_config_set selected_set where selected_set.id=$4 and selected_set.organization_id=$1 and selected_set.project_id=project.id))
+            and not exists (select 1 from scoped where scoped.project_id = project.id and value_state = 'present')
       )`;
       const summary = await tx.query<{ projects: string; instances: string; total_rows: string; read_at: string; fingerprint: string }>(`${currentInstancesCte}${rowsCte}
-        select count(distinct project_id) filter (where value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as projects,
-          count(distinct binding_id) filter (where value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as instances,
+        select count(distinct project_id) filter (where ${scope} and value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as projects,
+          count(distinct binding_id) filter (where ${scope} and value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as instances,
           (select count(*)::text from result_rows) as total_rows, transaction_timestamp()::text as read_at,
           md5(coalesce(string_agg(binding_id || ':' || current_value_id || ':' || project_id || ':' || project_name, E'\\n' order by binding_id), '') ||
             coalesce((select string_agg(row_key || ':' || project_name, E'\\n' order by row_key) from result_rows), '') || json_build_array($3::text, $4::text, $5::text, $6::boolean)::text) as fingerprint
