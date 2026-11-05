@@ -8,7 +8,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `PARLIB-READ-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Read global definitions, search all subject kinds and inspect exact revision history. | ui, api, screenshot | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
 | `PARLIB-SCOPE-001` | P1 | parameters | automated | `/parameters` | Software User | Read Organization configurations without gaining project write permissions. | ui, api, screenshot | `e2e/acceptance/parameter-library-scope.acceptance.spec.ts` |
-| `PARLIB-INSTANCES-001` | P1 | parameters | future | `/parameters/definitions` | Hardware User, Software User, Org Admin | Inspect all current instances and exact configured-project/value counts. | ui, api, screenshot | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
+| `PARLIB-INSTANCES-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Inspect all current instances and exact configured-project/value counts. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `PARLIB-FILTER-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Filter project usage and include projects without current configuration. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `PARLIB-COMPARE-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Select an explicit instance baseline and inspect conservative typed comparisons. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `PARLIB-RETURN-001` | P1 | parameters | future | `/parameters/definitions` | Hardware User, Software User, Org Admin | Open the owning project/config set/Binding and return to library context. | ui, api, screenshot | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
@@ -220,7 +220,6 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 ## Deferred Or Conditional Operations
 
-- `PARLIB-INSTANCES-001`: Implementation authorized under #1513; native browser automation and evidence pending.
 - `PARLIB-RETURN-001`: Implementation authorized under #1513; native browser automation and evidence pending.
 - `PARLIB-SHARE-001`: Implementation authorized under #1513; native browser automation and evidence pending.
 - `ORG-OPERATING-LIFECYCLE-001`: Requires actual local password sessions in an isolated local-auth API lane; HMAC/OIDC lanes skip this provider-specific workflow. The signed OIDC companion has its own conditional operation and evidence.
