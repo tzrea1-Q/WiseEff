@@ -39,6 +39,20 @@ function runRequired(command: string, args: string[], cwd: string) {
   }
 }
 
+export async function requirePinnedDtsPreprocessor() {
+  const preprocessing = await probeDtsPreprocessor();
+  if (preprocessing.available) return;
+  if (preprocessing.diagnostic === "docker-info:timeout") {
+    try {
+      const diagnostic = await probeDtsPreprocessor("bootstrap-diagnostic");
+      console.log(`docker-info diagnostic: ${diagnostic.available ? "available" : diagnostic.diagnostic}; elapsed_ms=${diagnostic.infoElapsedMs ?? "unavailable"}`);
+    } catch {
+      console.log("docker-info diagnostic: error; elapsed_ms=unavailable");
+    }
+  }
+  throw new Error(`Pinned isolated DTS preprocessing is unavailable (${preprocessing.diagnostic}).`);
+}
+
 async function main() {
   const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
   const paths = resolveDtsToolchainVenvPaths(rootDir);
@@ -54,8 +68,7 @@ async function main() {
   console.log(`Pinned dtc/fdtoverlay: ${dtcEnsure}`);
   const cpp = pinnedDtsPreprocessor();
   runRequired("docker", ["pull", "--platform", cpp.platform, cpp.image], rootDir);
-  const preprocessing = await probeDtsPreprocessor();
-  if (!preprocessing.available) throw new Error(`Pinned isolated DTS preprocessing is unavailable (${preprocessing.diagnostic}).`);
+  await requirePinnedDtsPreprocessor();
 
   runRequired(
     paths.python,
