@@ -79,7 +79,7 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
       async wait(deletion: ReturnType<typeof start>, namespaceBlocked?: Promise<void>) {
         await Promise.race([
           namespaceBlocked ? Promise.all([reached, namespaceBlocked]) : reached,
-          deletion.then(result => { throw new Error(`Deletion settled before the required erasure checkpoint: HTTP ${result.status}, status ${result.body?.item?.status}`); }),
+          deletion.then(result => { throw new Error(`Deletion settled before the required erasure checkpoint: HTTP ${result.status}, body ${result.bodyText}`); }),
         ]);
       },
       restore() { checkpointer.inspectStore = inspectStore; },
@@ -159,6 +159,19 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
     await handle.ensureSetup();
     checkpointer = createXiaozeCheckpointer({ mode: "postgres", saver: handle.saver, withNamespaceLease: handle.withNamespaceLease, ensureReady: handle.ensureSetup });
     const key = "runtime-target:runtime-member:separate-store", original = await getAuthContext(db, "runtime-member");
+    let checkpointCommitted!: () => void;
+    const beforeModelCommitted = new Promise<void>(resolve => { checkpointCommitted = resolve; });
+    const put = handle.saver.put.bind(handle.saver), putWrites = handle.saver.putWrites.bind(handle.saver);
+    const pendingWrites: Promise<void>[] = [];
+    handle.saver.putWrites = (...args) => {
+      const write = putWrites(...args); pendingWrites.push(write); return write;
+    };
+    handle.saver.put = async (...args) => {
+      const result = await put(...args);
+      // The intent node's checkpoint precedes the held perceive/model node.
+      if (args[2].step === 1) checkpointCommitted();
+      return result;
+    };
     let release!: () => void, entered!: () => void;
     const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
     const graph = createPlanningAgent({ checkpointer, listTools: () => [], runTool: async () => { throw new Error("No tool expected"); },
@@ -177,6 +190,9 @@ describe("Organization runtime erasure through HTTP and PostgreSQL", () => {
     };
     let deletion!: ReturnType<typeof start>;
     try {
+      // Model entry does not await LangGraph's asynchronous initial writes.
+      // Commit them before previewing so admission tests the held lease, not a stale digest.
+      await beforeModelCommitted; await Promise.all(pendingWrites);
       const submit = await prepareDeletion();
       deletion = submit();
       await observed.wait(deletion, namespaceBlocked);
