@@ -2,6 +2,7 @@ import pg from "pg";
 
 import { ParameterDefinitionId } from "../../parameter-catalog-contract/index";
 import { IDENTITY_PLACEHOLDER_SOURCE } from "../values/repositories";
+import { currentInstancesCte, currentInstancesSummarySql } from "../queries/currentInstances";
 
 import type {
   Result,
@@ -76,6 +77,9 @@ type UsageRow = {
   definition_id: string;
   project_count: string;
   current_value_count: string;
+  valid?: boolean | null;
+  projects?: string | null;
+  instances?: string | null;
 };
 
 export const summarizeUsage = async (
@@ -97,6 +101,9 @@ export const summarizeUsage = async (
   if (query.projectScope.kind === "only" && query.projectScope.ids.some((id) => !isUsableToken(id))) {
     return fail({ kind: "invalid-query", reason: "projectScope" });
   }
+  if (query.configurationProjectId != null && !isUsableToken(query.configurationProjectId)) {
+    return fail({ kind: "invalid-query", reason: "configurationProjectId" });
+  }
 
   const valuesRelation = ["project_parameter", "values"].join("_");
 
@@ -104,8 +111,9 @@ export const summarizeUsage = async (
     return await withReadTransaction(source, async (client) => {
       const allowedProjects =
         query.projectScope.kind === "only" ? [...query.projectScope.ids] : null;
+      const includeConfiguration = query.configurationProjectId !== undefined;
       const result = await client.query<UsageRow>(
-        `select
+        `${includeConfiguration ? `${currentInstancesCte}, usage as (` : ""}select
            binding.definition_id,
            count(distinct binding.project_id)::text as project_count,
            count(*) filter (
@@ -118,12 +126,16 @@ export const summarizeUsage = async (
         where binding.organization_id = $1
           and binding.definition_id = any($2::text[])
           and ($4::text[] is null or binding.project_id = any($4::text[]))
-        group by binding.definition_id`,
+        group by binding.definition_id${includeConfiguration ? `), configuration as (${currentInstancesSummarySql})
+        select coalesce(usage.definition_id, configuration.definition_id) as definition_id,
+          usage.project_count, usage.current_value_count, configuration.valid, configuration.projects, configuration.instances
+        from usage full join configuration on configuration.definition_id = usage.definition_id` : ""}`,
         [
           query.organizationId,
           [...query.definitionIds],
           IDENTITY_PLACEHOLDER_SOURCE,
           allowedProjects,
+          ...(includeConfiguration ? [query.configurationProjectId] : []),
         ],
       );
       const byDefinition = new Map(result.rows.map((row) => [row.definition_id, row]));
@@ -134,6 +146,9 @@ export const summarizeUsage = async (
           policyCount: null,
           projectCount: Number(row?.project_count ?? 0),
           currentValueCount: Number(row?.current_value_count ?? 0),
+          ...(includeConfiguration ? { configurationSummary: row?.valid === false ? null : {
+            configuredProjectCount: Number(row?.projects ?? 0), configuredInstanceCount: Number(row?.instances ?? 0),
+          } } : {}),
         };
       });
       return {

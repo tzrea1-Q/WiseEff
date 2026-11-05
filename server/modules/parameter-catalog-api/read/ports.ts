@@ -231,7 +231,7 @@ export function createRegistrationProjectionFromQueries(
   };
 }
 
-export function createUsageProjectionFromQueries(queries: UsageQueries): UsageProjectionPort {
+export function createUsageProjectionFromQueries(queries: UsageQueries, includeConfiguration = false): UsageProjectionPort {
   const summarizeMany: UsageProjectionPort["summarizeMany"] = async (input) => {
     const principalId = requirePrincipal(input.principalId, "summarizeUsage");
     const scope = input.projectScope;
@@ -247,12 +247,14 @@ export function createUsageProjectionFromQueries(queries: UsageQueries): UsagePr
       definitionIds,
       projectScope,
       authScope: { organizationId: input.organizationId, principalId },
+      ...(includeConfiguration ? { configurationProjectId: input.configurationProjectId ?? null } : {}),
     });
     if (!result.ok) throw new CatalogProjectionError(result.error);
     const summaries = new Map(result.value.summaries.map((summary) => [summary.definitionId, {
       policyCount: summary.policyCount,
       projectCount: summary.projectCount,
       currentValueCount: summary.currentValueCount,
+      ...(includeConfiguration ? { configurationSummary: summary.configurationSummary ?? null } : {}),
     }]));
     if (definitionIds.some((id) => !summaries.has(id))) {
       throw new CatalogProjectionError({ kind: "query-unavailable", operation: "summarizeUsage" });

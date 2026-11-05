@@ -170,7 +170,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     expect(listed.status).toBe(200);
     expect(item?.usageSummary).toMatchObject({ policyCount: null, projectCount: actor.projects, currentValueCount: actor.current });
     expect(item?.configurationSummary).toEqual({ configuredProjectCount: actor.projects, configuredInstanceCount: actor.current });
-    expect(businessSql).toHaveLength(6);
+    expect(businessSql).toHaveLength(5);
     expect(usageParameters).toHaveLength(1);
     const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers });
     expect(detail.status).toBe(200);
@@ -368,6 +368,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       expect(body.items[0]?.configurationSummary).toEqual(query.includes("usageProjectId")
         ? { configuredProjectCount: 1, configuredInstanceCount: 2 }
         : { configuredProjectCount: 2, configuredInstanceCount: 3 });
+      expect(body.items[0]?.usageSummary).toEqual({ policyCount: null, projectCount: 2, currentValueCount: 3 });
     }
     const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions?usageProjectId=scope-project-c`, { headers });
     expect(foreign.status).toBe(404);
@@ -469,6 +470,10 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       expect(compare.status).toBe(409);
       const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-only-a" } });
       expect(catalogDefinitionResponseSchema.parse(await detail.json()).item.configurationSummary).toBeNull();
+      const list = await fetch(`${baseUrl}/api/v2/catalog/definitions?registration=active`, { headers: { authorization: "Bearer scope-only-a" } });
+      const listed = catalogDefinitionListResponseSchema.parse(await list.json()).items.find((item) => item.id === definitionId);
+      expect(listed?.configurationSummary).toBeNull();
+      expect(listed?.usageSummary).toEqual({ policyCount: null, projectCount: 2, currentValueCount: 3 });
       const filtered = await fetch(`${baseUrl}/api/v2/catalog/definitions?configured=true`, { headers: { authorization: "Bearer scope-only-a" } });
       expect(filtered.status).toBe(409);
     } finally {
