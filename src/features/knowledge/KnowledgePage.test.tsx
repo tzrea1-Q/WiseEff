@@ -666,6 +666,40 @@ describe("KnowledgePage", () => {
     });
   });
 
+  it("keeps restore confirmation open when the post-edit list refresh finishes late", async () => {
+    const { repository } = renderPage({ initialEntryId: "mock-kb-1" });
+    const user = userEvent.setup();
+    const detail = await screen.findByRole("dialog", { name: /快充温控调参经验/ });
+    const listEntries = repository.list.bind(repository);
+    const refresh = deferred<{ items: KnowledgeEntry[] }>();
+    const list = vi.spyOn(repository, "list").mockImplementationOnce(() => refresh.promise);
+    const restore = vi.spyOn(repository, "restoreRevision");
+
+    await user.click(within(detail).getByRole("button", { name: "编辑" }));
+    const editor = await screen.findByRole("dialog", { name: "编辑知识条目" });
+    await user.clear(within(editor).getByLabelText("Markdown 内容"));
+    await user.type(within(editor).getByLabelText("Markdown 内容"), "新的修订正文");
+    await user.click(within(editor).getByRole("button", { name: "保存为新修订" }));
+    await waitFor(() => expect(editor).not.toBeInTheDocument());
+    expect(list).toHaveBeenCalledTimes(1);
+
+    await user.click(within(detail).getByRole("button", { name: "修订历史" }));
+    const revisions = await screen.findByRole("dialog", { name: /修订历史/ });
+    await user.click(await within(revisions).findByRole("button", { name: "查看修订 #1" }));
+    await user.click(within(revisions).getByRole("button", { name: "恢复此版本" }));
+    const confirm = await screen.findByRole("dialog", { name: "恢复修订 #1" });
+
+    await act(async () => refresh.resolve(await listEntries()));
+    expect(confirm).toBeInTheDocument();
+    expect(within(revisions).getByLabelText("修订 #1 完整内容")).toHaveTextContent("初版");
+    await user.click(within(confirm).getByRole("button", { name: "恢复为新修订" }));
+    expect(restore).toHaveBeenCalledWith("mock-kb-1", expect.any(String), 3);
+    await waitFor(async () => {
+      expect(await repository.get("mock-kb-1")).toMatchObject({ headRevisionNumber: 4, contentMarkdown: expect.stringContaining("初版") });
+      expect(revisions).not.toBeInTheDocument();
+    });
+  });
+
   it("labels a retained revision whose author account was deleted", async () => {
     const repository = createMockKnowledgeRepository();
     const listRevisions = repository.listRevisions.bind(repository);

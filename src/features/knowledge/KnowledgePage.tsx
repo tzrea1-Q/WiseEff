@@ -123,6 +123,7 @@ export function KnowledgePage({
   const listRequest = useRef(0);
   const searchRequest = useRef(0);
   const citationResult = useRef<{ entry: KnowledgeEntry } | null>(null);
+  const loadRevisions = useCallback((entryId: string) => repository.listRevisions(entryId), [repository]);
 
   const loadEntries = useCallback(async () => {
     const request = ++listRequest.current;
@@ -713,7 +714,7 @@ export function KnowledgePage({
       <KnowledgeRevisionsDialog
         open={Boolean(revisionsEntry)}
         entry={revisionsEntry}
-        loadRevisions={(entryId) => repository.listRevisions(entryId)}
+        loadRevisions={loadRevisions}
         onViewFile={async (revision) => {
           if (!revisionsEntry) return;
           const tab = window.open("", "_blank");
