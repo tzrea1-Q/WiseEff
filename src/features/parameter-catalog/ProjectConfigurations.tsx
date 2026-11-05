@@ -59,7 +59,7 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   const detail = (item: NonNullable<typeof result.baseline>, label: string) => <article className="parameter-library-compare__detail">
     <h3>{label}</h3><strong>{item.projectName} / {item.configSetName}</strong>
     <p>{item.fileName} · {item.sourceLocation}</p><p>值固定修订 #{item.definitionRevisionNumber} · {item.effectiveRevisionId === item.definitionRevisionId ? "生效修订相同" : `生效修订 ${item.effectiveRevisionId}`} · 单位 {item.unit ?? "未说明"}</p>
-    <pre>{item.rawValue || (item.sourceFormat === "dts" && item.valueKind === "boolean" ? "（布尔属性存在，无值文本）" : "（空值）")}</pre>
+    <pre tabIndex={0} aria-label={`${label}原值`}>{item.rawValue || (item.sourceFormat === "dts" && item.valueKind === "boolean" ? "（布尔属性存在，无值文本）" : "（空值）")}</pre>
     <details><summary>实例与值身份</summary><p>Binding {item.bindingId}<br />ProjectValue {item.currentValueId}<br />值固定修订 {item.definitionRevisionId}</p></details>
   </article>;
   return <div className="parameter-library-configurations">
