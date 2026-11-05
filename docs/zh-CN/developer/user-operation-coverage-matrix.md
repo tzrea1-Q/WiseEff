@@ -12,7 +12,7 @@
 
 - `PARLIB-COMPARE-001`：选择确切实例基准并查看保守的类型化对比；自动化覆盖 UI、真实 API 和截图，测试归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
 
-- `PARLIB-RETURN-001`：打开确切项目／配置集／Binding 并返回参数库上下文。
+- `PARLIB-RETURN-001`：打开确切项目／配置集／Binding 并返回参数库上下文；自动化覆盖 UI、真实 API 和截图，测试归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
 
 - `PARLIB-SHARE-001`：分享当前视图并复制选定的完整原始值。
 

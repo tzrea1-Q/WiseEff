@@ -70,6 +70,14 @@ it("labels a DTS boolean as present even when its source value has no text", asy
   expect(await screen.findByText("存在")).toBeVisible();
 });
 
+it("opens the exact project and configuration set from an instance row", async () => {
+  const repository = { ...createMockParameterCatalogRepository(), getProjectConfigurations: vi.fn().mockResolvedValue(response("项目", "42")) };
+  const onOpenProject = vi.fn();
+  render(<ProjectConfigurations repository={repository} definitionId="definition" onChange={() => {}} onOpenProject={onOpenProject} />);
+  fireEvent.click(await screen.findByRole("button", { name: "在项目中打开 board.dts /charger · limit" }));
+  expect(onOpenProject).toHaveBeenCalledWith(expect.objectContaining({ bindingId: "项目", projectId: "项目", configSetId: "set" }));
+});
+
 it("requires an explicit baseline and keeps its identity visible when a target is selected", async () => {
   const data = response("项目", "<1001>");
   const onChange = vi.fn();

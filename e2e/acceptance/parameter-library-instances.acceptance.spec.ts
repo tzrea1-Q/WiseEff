@@ -32,9 +32,11 @@ test("reads grouped DTS and software instances with exact counts and full values
   // @acceptance PARLIB-INSTANCES-001
   // @acceptance PARLIB-COMPARE-001
   // @acceptance PARLIB-FILTER-001
+  // @acceptance PARLIB-RETURN-001
   // @operation PARLIB-INSTANCES-001
   // @operation PARLIB-COMPARE-001
   // @operation PARLIB-FILTER-001
+  // @operation PARLIB-RETURN-001
   test.setTimeout(180_000);
   const environment = captureProcessEnvForDisposableRuntime();
   if (!environment.databaseUrl) throw new Error("A dedicated PostgreSQL lane is required");
@@ -107,6 +109,9 @@ test("reads grouped DTS and software instances with exact counts and full values
           definitionId, effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_1"), expectedEffectiveRevisionId: null,
         });
         if (!binding.ok) throw new Error("DTS fixture failed");
+        if (projectId === "parlib-instances-a" && index === 0) await pool.query(`update public.dts_config_set set name='default'
+          where id=(select occurrence.config_set_id from parameter_catalog.project_parameter_bindings binding
+            join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id where binding.id=$1)`, [binding.value.binding.id]);
       }
     }
     await pool.query("insert into public.projects(id,organization_id,name,code,status) values ('parlib-instances-empty',$1,'无配置项目','parlib-instances-empty','initialized')", [organizationId]);
@@ -144,6 +149,44 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("已配置项目 2 · 已配置实例 3");
     const group = page.getByRole("table", { name: "多实例项目 的当前配置" });
     await expect(group.locator("tbody tr")).toHaveCount(2);
+    const dtsReturn = page.url();
+    const [handoffResponse] = await Promise.all([
+      page.waitForResponse((result) => result.url().includes("selectedBindingId=") && result.url().includes("hintProjectId=")),
+      group.locator("tbody tr").filter({ hasText: "default" }).getByRole("button", { name: /在项目中打开/ }).click(),
+    ]);
+    expect(handoffResponse.status()).toBe(200);
+    await expect(page).toHaveURL(/\/parameters\?/);
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("return-dts-1440.png") });
+    await page.getByRole("dialog").getByRole("textbox", { name: "目标值" }).fill("1002");
+    await page.getByRole("button", { name: "关闭参数详情" }).click();
+    await page.getByRole("button", { name: "返回参数库" }).focus();
+    await expect(page.getByRole("button", { name: "返回参数库" })).toBeFocused();
+    expect((await new AxeBuilder({ page }).include(".permission-inline-note").analyze()).violations).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("return-action-1440.png") });
+    await page.getByRole("button", { name: "返回参数库" }).click();
+    await page.getByRole("dialog", { name: "放弃未保存的修改？" }).getByRole("button", { name: "继续编辑" }).click();
+    await page.goBack();
+    await page.getByRole("dialog", { name: "放弃未保存的修改？" }).getByRole("button", { name: "继续编辑" }).click();
+    await expect(page).toHaveURL(/\/parameters\?/);
+    await page.getByRole("button", { name: /参数详情/ }).first().click();
+    await expect(page.getByRole("dialog").getByRole("textbox", { name: "目标值" })).toHaveValue("1002");
+    await page.getByRole("button", { name: "关闭参数详情" }).click();
+    await page.getByRole("button", { name: "返回参数库" }).click();
+    await page.getByRole("dialog", { name: "放弃未保存的修改？" }).getByRole("button", { name: "放弃并离开" }).click();
+    await expect(page).toHaveURL(dtsReturn);
+    await group.locator("tbody tr").filter({ hasNotText: "default" }).getByRole("button", { name: /在项目中打开/ }).click();
+    await expect(page.getByRole("dialog")).toContainText("1002");
+    const directBinding = new URL(page.url()).searchParams.get("bindingId");
+    expect(directBinding).toBeTruthy();
+    await page.reload();
+    await expect(page.getByRole("dialog")).toContainText("1002");
+    await page.getByRole("button", { name: "关闭参数详情" }).click();
+    await page.getByRole("button", { name: "返回参数库" }).click();
+    await expect(page).toHaveURL(dtsReturn);
+    await page.goto(`${runtime.frontendUrl}/parameters?project=parlib-instances-a&binding=${directBinding}`);
+    await expect(page.getByRole("dialog")).toContainText("1002");
+    await page.goto(dtsReturn);
     await group.getByRole("button", { name: /查看 .* 的完整值/ }).first().click();
     await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(/<0x3e[9a]>/);
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${jsonDefinition}&tab=configurations`);
@@ -157,6 +200,13 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.goForward();
     await expect(page.getByRole("combobox", { name: "配置集", exact: true })).toHaveValue(set.id);
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("筛选结果 1 条");
+    const jsonReturn = page.url();
+    await page.getByRole("button", { name: /在项目中打开 settings.json/ }).click();
+    await expect(page.getByRole("dialog")).toContainText(fullValue);
+    await page.screenshot({ path: testInfo.outputPath("return-json-1440.png") });
+    await page.getByRole("button", { name: "关闭参数详情" }).click();
+    await page.getByRole("button", { name: "返回参数库" }).click();
+    await expect(page).toHaveURL(jsonReturn);
     await page.getByRole("table", { name: "软件项目 的当前配置" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath("instances-1440.png") });
     await page.getByRole("button", { name: "查看 settings.json 的完整值" }).click();
@@ -210,6 +260,14 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.getByRole("button", { name: "下一页" }).click();
     await page.getByRole("button", { name: "查看对比" }).click();
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
+    const compareReturn = page.url();
+    await page.getByRole("table", { name: "多实例项目 的当前配置" }).getByRole("button", { name: /在项目中打开/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByRole("button", { name: "关闭参数详情" }).click();
+    await page.getByRole("button", { name: "返回参数库" }).click();
+    await expect(page).toHaveURL(compareReturn);
+    await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
     await expect(page.getByRole("region", { name: "实例对比" }).getByRole("status")).toContainText("类型化值不同");
     await expect(page.getByRole("region", { name: "实例对比" }).getByRole("status")).toContainText(/目标 − 基准：-?1/);
     expect((await new AxeBuilder({ page }).include(".parameter-library-compare").analyze()).violations).toEqual([]);
@@ -241,6 +299,8 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.reload();
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/parameters\?/);
     await page.goBack();
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
     expect(baselineUrl).toContain("baseline=");
@@ -279,6 +339,22 @@ test("reads grouped DTS and software instances with exact counts and full values
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: response.status(), responseSummary: "Filtered project and configuration set, with optional unconfigured projects." }] });
     await recordOperationEvidence({ operationId: "PARLIB-INSTANCES-001", title: testInfo.title, status: "passed", page, testInfo,
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: response.status(), responseSummary: "Two projects, three exact DTS instances." }] });
+    const defaultSet = await createConfigSet(db, auth, { projectId: "parlib-instances-b", name: "default" });
+    const defaultFile = await uploadProjectParameterFile(db, storage, auth, { projectId: "parlib-instances-b", fileName: "default-settings.json", bytes: Buffer.from('{"software_value":"default source"}') });
+    await addConfigSetFile(db, auth, { configSetId: defaultSet.id, fileId: defaultFile.file.id, role: "base", sortOrder: 0 });
+    await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, auth, loaded.value, {
+      projectId: "parlib-instances-b", configSetId: defaultSet.id, fileId: defaultFile.file.id, fileVersionId: defaultFile.version.id,
+      configurationSchemaId: "parlib.software", rootPointer: "", mappings: [{ definitionId: jsonDefinition, pointer: "/software_value" }],
+      invocation: createUserInvocation(auth), requestId: "parlib-default-json", refusalSink: createTrustedRefusalAuditSink(db),
+    }));
+    await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${jsonDefinition}&tab=configurations`);
+    await page.getByRole("button", { name: /在项目中打开 default-settings.json/ }).click();
+    await expect(page.getByRole("dialog")).toContainText("default source");
+    await page.getByRole("button", { name: "关闭参数详情" }).click();
+    await page.getByRole("button", { name: "返回参数库" }).click();
+    await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("default-settings.json");
+    await recordOperationEvidence({ operationId: "PARLIB-RETURN-001", title: "Exact project configuration return", status: "passed", page, testInfo,
+      assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: handoffResponse.status(), responseSummary: "Resolved the exact Binding and verified project and configuration-set hints." }] });
   } finally {
     setParameterIdentityMode(null);
     await db.close(); await pool.end();

@@ -118,7 +118,7 @@ import {
 import { clearSessionDraftsForLogout, clearSharedSwitchTasksForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { invalidateSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
 import { AppToastLayer } from "@/components/common/AppToastLayer";
-import { unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
+import { bypassNextParameterLeave, unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -1772,6 +1772,7 @@ function TopBar({
         tone="danger"
         onConfirm={() => {
           if (pendingProjectSwitch) {
+            bypassNextParameterLeave();
             commitProjectChange(pendingProjectSwitch.projectId);
           }
           setPendingProjectSwitch(null);

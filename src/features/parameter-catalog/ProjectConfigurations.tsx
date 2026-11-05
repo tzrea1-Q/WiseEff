@@ -5,11 +5,12 @@ import type { ParameterCatalogRepository } from "@/application/ports/ParameterCa
 import type { CatalogProjectConfigurationsResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
-export function ProjectConfigurations({ repository, organizationId, definitionId, cursor, selectedId, compare = false, baselineId, targetId, projectId, configSetId, search, includeUnconfigured, onChange }: {
+export function ProjectConfigurations({ repository, organizationId, definitionId, cursor, selectedId, compare = false, baselineId, targetId, projectId, configSetId, search, includeUnconfigured, onChange, onOpenProject }: {
   repository: ParameterCatalogRepository; organizationId?: string; definitionId: string;
   cursor?: string | null; selectedId?: string | null;
   compare?: boolean; baselineId?: string | null; targetId?: string | null;
   projectId?: string | null; configSetId?: string | null; search?: string | null; includeUnconfigured?: string | null;
+  onOpenProject?: (row: { bindingId: string; projectId: string; configSetId: string }) => void;
   onChange: (update: { instance?: string | null; instanceCursor?: string | null; baseline?: string | null; target?: string | null; configProjectId?: string | null; configSetId?: string | null; configSearch?: string | null; includeUnconfigured?: string | null }) => void;
 }) {
   const [loaded, setLoaded] = useState<{ organizationId?: string; definitionId: string; data: CatalogProjectConfigurationsResponse } | null>(null);
@@ -102,10 +103,12 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
           { key: "revision", header: "值固定修订", render: (row) => <>#{row.definitionRevisionNumber}</> },
           ...(compare ? [{ key: "comparison", header: "相对基准", render: (row: Extract<(typeof result.items)[number], { kind: "instance" }>) => row.comparison ? status(row.comparison) : "尚未选择基准" }] : []),
         ]}
-        renderRowActions={(row) => compare ? <div><button type="button" className="button subtle sm" disabled={row.valueState === "unset"}
+        renderRowActions={(row) => <div>{compare ? <><button type="button" className="button subtle sm" disabled={row.valueState === "unset"}
           onClick={() => onChange({ baseline: row.bindingId, target: null })}>设为基准</button>{baselineId ? <button type="button" className="button subtle sm" disabled={row.valueState === "unset"}
-          onClick={() => onChange({ target: row.bindingId })}>查看对比</button> : null}</div> : <button type="button" className="button subtle sm" aria-label={`查看 ${row.fileName} 的完整值`}
-          disabled={row.valueState === "unset"} onClick={() => onChange({ instance: row.bindingId })}>查看完整值</button>} />}
+          onClick={() => onChange({ target: row.bindingId })}>查看对比</button> : null}</> : <button type="button" className="button subtle sm" aria-label={`查看 ${row.fileName} 的完整值`}
+          disabled={row.valueState === "unset"} onClick={() => onChange({ instance: row.bindingId })}>查看完整值</button>}
+          {onOpenProject ? <button type="button" className="button subtle sm" disabled={row.valueState === "unset"} aria-label={`在项目中打开 ${row.fileName} ${row.sourceLocation}`}
+            onClick={() => onOpenProject(row)}>在项目中打开</button> : null}</div>} />}
     </section>)}
     {result.selected ? <section aria-label="选中的完整值"><h3>完整值 · {result.selected.projectName} / {result.selected.fileName}</h3>
       {result.selected.sourceFormat === "dts" && result.selected.valueKind === "boolean" ? <p>布尔属性以存在表示，无值文本。</p> : null}<pre>{result.selected.rawValue}</pre>

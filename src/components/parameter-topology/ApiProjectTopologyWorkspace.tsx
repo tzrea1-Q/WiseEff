@@ -532,10 +532,11 @@ export function ApiProjectTopologyWorkspace({
   useEffect(() => {
     if (!serverDrafts || loadState.kind !== "ready") return;
     const logicalNodeIds = new Set(loadState.effectiveNodes.map((node) => node.logicalNodeId));
+    const bindingIds = new Set(loadState.bindings.map((binding) => binding.id));
     const bindingDrafts = serverDrafts.filter(
       (draft) =>
         draft.projectId === projectId &&
-        (draft.projectParameterBindingId ||
+        ((draft.projectParameterBindingId && bindingIds.has(draft.projectParameterBindingId)) ||
           (draft.editSubjectKind === "node-enablement" && draft.logicalNodeId && logicalNodeIds.has(draft.logicalNodeId)))
     );
     if (bindingDrafts.length === 0) return;
@@ -544,7 +545,7 @@ export function ApiProjectTopologyWorkspace({
     const missingDrafts = bindingDrafts.filter((draft) => !existing.some((pending) => pending.draftId === draft.id));
     if (missingDrafts.length === 0) return;
     const sharedTip = resolveSharedWorkingTip(bindingDrafts);
-    if (!requestedConfigSetId && existing.length === 0 && sharedTip && loadState.revisionId !== sharedTip) {
+    if (existing.length === 0 && sharedTip && loadState.revisionId !== sharedTip) {
       setPreferredRevision({ projectId, revisionId: sharedTip });
       return;
     }
@@ -565,7 +566,7 @@ export function ApiProjectTopologyWorkspace({
     if (hydratedBindingIds.length > 0) {
       setSelectedDraftBindingIds((selected) => new Set([...selected, ...hydratedBindingIds]));
     }
-  }, [loadState, moduleRegistry, projectId, serverDrafts, requestedConfigSetId]);
+  }, [loadState, moduleRegistry, projectId, serverDrafts]);
 
   useEffect(() => {
     if (!hasProjectDrafts) {
@@ -621,7 +622,7 @@ export function ApiProjectTopologyWorkspace({
       listConfigSetsRef.current ??
       ((id: string) => resolveDtsStructuredRepository(runtimeMode).listConfigSets(id));
 
-    loadWorkspace(projectId, repository, resolveConfigSets, requestedConfigSetId ? undefined : preferredRevisionId, requestedConfigSetId)
+    loadWorkspace(projectId, repository, resolveConfigSets, preferredRevisionId, requestedConfigSetId)
       .then((next) => {
         if (!cancelled) setLoadState(next);
       })
