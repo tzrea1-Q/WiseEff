@@ -394,7 +394,8 @@ export const catalogProjectConfigurationInstanceSchema = catalogObject({
   fileId: z.string(), fileVersionId: z.string(), fileName: z.string(), sourceLocator: z.record(z.string(), z.unknown()),
   currentValueId: z.string(), definitionRevisionId: z.string(), definitionRevisionNumber: z.string(), effectiveRevisionId: z.string(),
   unit: z.string().nullable(), definitionLifecycle: z.enum(["active", "deprecated", "retired"]),
-  valueState: z.enum(["present", "unset"]), valuePreview: z.string(), valuePreviewTruncated: z.boolean(), rawValue: z.string().optional(),
+  valueState: z.enum(["present", "unset"]), valueKind: z.enum(["string", "number", "boolean", "string-array", "number-array", "json"]),
+  valuePreview: z.string(), valuePreviewTruncated: z.boolean(), rawValue: z.string().optional(),
 });
 
 export const catalogProjectConfigurationsResponseSchema = catalogObject({

@@ -1,5 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CircleX } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
@@ -422,6 +422,14 @@ export function CatalogPage({
 
 
   const loadGeneration = useRef(0);
+  const snapshotOrganization = useRef(organizationId);
+  useLayoutEffect(() => {
+    if (snapshotOrganization.current === organizationId) return;
+    snapshotOrganization.current = organizationId;
+    loadGeneration.current += 1;
+    setSnapshot(null);
+    setError(undefined);
+  }, [organizationId]);
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
     setInFlight(true);

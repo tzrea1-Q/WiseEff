@@ -3,6 +3,8 @@ import { ApiError } from "../../shared/http/errors";
 import type { WiseEffRouter } from "../../shared/http/router";
 import { payloadToBindingView } from "../parameter-bindings/catalogProjectValueSync";
 import { assertCurrentInstancesValid, currentInstancesCte } from "../parameter-bindings/queries/currentInstances";
+import { readCurrentInstanceSourceValue } from "../parameter-bindings/queries/currentInstanceSource";
+import type { ObjectStore } from "../logs/objectStore";
 import type { ProjectValuePayload } from "../parameter-bindings/values";
 import type { CatalogReadPorts } from "./read/types";
 
@@ -19,7 +21,7 @@ function token(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 200 && value.trim() === value && !/[\u0000-\u001f\u007f-\u009f]/u.test(value);
 }
 
-function present(row: Instance, full: boolean) {
+function present(row: Instance) {
   const unset = row.source_ref === "canonical-binding-identity";
   const raw = unset ? "" : payloadToBindingView({ kind: row.value_kind, value: row.value } as ProjectValuePayload, row.source_format).rawValue;
   return {
@@ -28,13 +30,12 @@ function present(row: Instance, full: boolean) {
     fileId: row.file_id, fileVersionId: row.file_version_id, fileName: row.file_name, sourceLocator: row.source_locator,
     currentValueId: row.current_value_id, definitionRevisionId: row.definition_revision_id, definitionRevisionNumber: row.value_revision_number,
     unit: row.value_unit, definitionLifecycle: row.value_lifecycle,
-    effectiveRevisionId: row.effective_revision_id, valueState: unset ? "unset" as const : "present" as const,
+    effectiveRevisionId: row.effective_revision_id, valueState: unset ? "unset" as const : "present" as const, valueKind: row.value_kind,
     valuePreview: raw.slice(0, 160), valuePreviewTruncated: raw.length > 160,
-    ...(full && !unset ? { rawValue: raw } : {}),
   };
 }
 
-export function registerProjectConfigurations(router: WiseEffRouter, db: Database | undefined, ports: CatalogReadPorts): void {
+export function registerProjectConfigurations(router: WiseEffRouter, db: Database | undefined, ports: CatalogReadPorts, objectStore?: ObjectStore): void {
   router.get("/api/v2/catalog/definitions/:definitionId/project-configurations", async (request) => {
     const identity = await ports.authenticate({ method: "GET", path: request.path, params: request.params,
       query: request.query, headers: request.headers, requestId: request.requestId });
@@ -92,13 +93,16 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
         select *, row_number() over (order by project_name, project_id, binding_id) as position from candidates where ${visible}
       ) select * from ordered where position > coalesce((select position from ordered where binding_id = $3), 0)
         order by position limit $4`, [...params, afterBindingId, limit + 1]);
-      let selected: ReturnType<typeof present> | null = null;
+      let selected: (ReturnType<typeof present> & { rawValue: string }) | null = null;
       if (selectedBindingId) {
         const value = await tx.query<Instance>(`${currentInstancesCte} select * from candidates where binding_id = $3 and ${configured}`, [...params, selectedBindingId]);
         if (!value.rows[0]) throw new ApiError("NOT_FOUND", "Current configuration instance not found.");
-        selected = present(value.rows[0], true);
+        const row = value.rows[0];
+        const rawValue = await readCurrentInstanceSourceValue(tx, objectStore, { organizationId, projectId: row.project_id,
+          bindingId: row.binding_id, projectValueId: row.current_value_id, payload: { kind: row.value_kind, value: row.value } as ProjectValuePayload });
+        selected = { ...present(row), rawValue };
       }
-      const items = page.rows.slice(0, limit).map((row) => present(row, false));
+      const items = page.rows.slice(0, limit).map(present);
       return { items, summary: { configuredProjectCount: Number(summary.rows[0]?.projects), configuredInstanceCount: Number(summary.rows[0]?.instances) },
         nextCursor: page.rows.length > limit && items.length ? Buffer.from(JSON.stringify({ organizationId, definitionId, fingerprint, bindingId: items.at(-1)!.bindingId })).toString("base64url") : null,
         continuedProjectId: items[0]?.projectId === previousProjectId ? previousProjectId : null, selected };

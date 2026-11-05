@@ -25,6 +25,30 @@ export const currentInstancesCte = `with candidates as (
           and (member.file_id is not null and member.source_name is not null or (value.value_state = 'deleted' and pin.member_config_revision_id is null
             and pin.locator->>'kind' = 'dts-source-absence' and pin.delete_proof is not null))
           and file.id is not null and pin.format = occurrence.occurrence_kind and pin.value_state = value.value_state
+          and (value.value_state <> 'present' or (
+            (pin.format = 'json' and pin.property_occurrence_id is null
+              and pin.locator = jsonb_build_object('kind', 'json-pointer', 'pointer', pin.locator->>'pointer')
+              and pin.locator->>'pointer' is not null
+              and (occurrence.root_pointer = '' or pin.locator->>'pointer' = occurrence.root_pointer
+                or left(pin.locator->>'pointer', length(occurrence.root_pointer) + 1) = occurrence.root_pointer || '/')
+              and occurrence.configuration_schema_subject_id = b.subject_id
+              and pin.locator_digest = 'sha256:' || encode(sha256(convert_to(E'{\\n  "kind": "json-pointer",\\n  "pointer": ' || to_json(pin.locator->>'pointer')::text || E'\\n}\\n', 'UTF8')), 'hex'))
+            or (pin.format = 'dts' and exists (
+              select 1 from public.dts_property_occurrences property
+              join public.dts_occurrence_effects effect on effect.property_occurrence_id = property.id
+                and effect.node_occurrence_id = property.node_occurrence_id and effect.config_revision_id = property.config_revision_id
+              join public.dts_logical_node_revisions logical on logical.id = effect.logical_node_revision_id
+                and logical.logical_node_id = occurrence.logical_node_id and logical.config_revision_id = property.config_revision_id
+              join parameter_catalog.parameter_definitions definition on definition.id = b.definition_id
+              where property.id = pin.property_occurrence_id and property.config_revision_id = pin.config_revision_id
+                and property.file_version_id = pin.file_version_id and property.property_name = definition.property_key
+                and pin.locator = jsonb_build_object('kind', 'dts-property', 'propertyOccurrenceId', property.id,
+                  'nodeOccurrenceId', property.node_occurrence_id, 'fileVersionId', property.file_version_id, 'propertyName', property.property_name)
+                and pin.locator_digest = 'sha256:' || encode(sha256(convert_to(
+                  E'{\\n  "fileVersionId": ' || to_json(property.file_version_id)::text || E',\\n  "kind": "dts-property",\\n  "nodeOccurrenceId": ' ||
+                  to_json(property.node_occurrence_id)::text || E',\\n  "propertyName": ' || to_json(property.property_name)::text ||
+                  E',\\n  "propertyOccurrenceId": ' || to_json(property.id)::text || E'\\n}\\n', 'UTF8')), 'hex')
+            ))))
           and (occurrence.file_id = pin.file_id or parameter_catalog.source_origin_matches(b.id, occurrence.id, pin.file_id))) as valid
     from parameter_catalog.current_project_parameter_bindings b
     join public.projects project on project.id = b.project_id and project.organization_id = b.organization_id

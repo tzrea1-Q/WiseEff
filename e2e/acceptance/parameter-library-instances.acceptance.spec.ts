@@ -1,7 +1,4 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import pg from "pg";
 import { expect, test } from "playwright/test";
 import { compileOrThrow, firstReleaseBundle, refreshReleaseSource } from "../../server/modules/catalog-kernel/runtime/catalogChain.fixture";
@@ -40,11 +37,12 @@ test("reads grouped DTS and software instances with exact counts and full values
   applyDisposableRuntimeEnv(runtime);
   const pool = new pg.Pool({ connectionString: runtime.databaseUrl });
   const db = createPostgresDatabase(runtime.databaseUrl);
-  const directory = await mkdtemp(path.join(tmpdir(), "parlib-instances-"));
+  const storage = createLocalObjectStore(runtime.objectStoreRoot);
   const organizationId = "org-chargelab";
   const definitionId = ParameterDefinitionId("pdef_acme_power_iin_max");
   const jsonDefinition = "pdef_parlib_software_value";
   const fullValue = "software configuration ".repeat(12);
+  const fullSourceToken = JSON.stringify(fullValue).replace("software", "\\u0073oftware");
   setParameterIdentityMode("semantic");
   try {
     const bundle = firstReleaseBundle();
@@ -93,7 +91,7 @@ test("reads grouped DTS and software instances with exact counts and full values
     for (const [projectId, name, count] of [["parlib-instances-a", "多实例项目", 2], ["parlib-instances-b", "软件项目", 1]] as const) {
       await pool.query("insert into public.projects(id,organization_id,name,code,status) values ($1,$2,$3,$1,'initialized')", [projectId, organizationId, name]);
       for (let index = 0; index < count; index += 1) {
-        const binding = await createSourceBackedBindingService(pool, { initialPayload: { kind: "number", value: 1001 + index } }).stabilize({
+        const binding = await createSourceBackedBindingService(pool, { objectStore: storage, sourceRawValue: `<0x${(1001 + index).toString(16)}>`, initialPayload: { kind: "number", value: 1001 + index } }).stabilize({
           snapshot: loaded.value, organizationId, projectId, logicalNodeId: `${projectId}-node-${index}`, registrationId: driver.value.registrationId,
           definitionId, effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_1"), expectedEffectiveRevisionId: null,
         });
@@ -101,9 +99,8 @@ test("reads grouped DTS and software instances with exact counts and full values
       }
     }
     const auth = makeTestAuthContext({ userId: acceptanceCast.xuYun.userId, organizationId, permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"] });
-    const storage = createLocalObjectStore(directory);
     const set = await createConfigSet(db, auth, { projectId: "parlib-instances-b", name: "软件配置集" });
-    const uploaded = await uploadProjectParameterFile(db, storage, auth, { projectId: "parlib-instances-b", fileName: "settings.json", bytes: Buffer.from(JSON.stringify({ software_value: fullValue, software_empty: "", software_null: null, software_false: false })) });
+    const uploaded = await uploadProjectParameterFile(db, storage, auth, { projectId: "parlib-instances-b", fileName: "settings.json", bytes: Buffer.from(`{"software_value":${fullSourceToken},"software_empty":"","software_null":null,"software_false":false}`) });
     await addConfigSetFile(db, auth, { configSetId: set.id, fileId: uploaded.file.id, role: "base", sortOrder: 0 });
     await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, auth, loaded.value, {
       projectId: "parlib-instances-b", configSetId: set.id, fileId: uploaded.file.id, fileVersionId: uploaded.version.id,
@@ -125,11 +122,11 @@ test("reads grouped DTS and software instances with exact counts and full values
     const group = page.getByRole("table", { name: "多实例项目 的当前配置" });
     await expect(group.locator("tbody tr")).toHaveCount(2);
     await group.getByRole("button", { name: /查看 .* 的完整值/ }).first().click();
-    await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText("<100");
+    await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(/<0x3e[9a]>/);
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${jsonDefinition}&tab=configurations`);
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("软件配置集");
     await page.getByRole("button", { name: "查看 settings.json 的完整值" }).click();
-    await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(fullValue);
+    await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(fullSourceToken);
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=pdef_parlib_unused&tab=configurations`);
     await expect(page.getByText("当前没有可显示的项目配置。")).toBeVisible();
     await page.route("**/project-configurations*", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR" } }) }));
@@ -144,7 +141,7 @@ test("reads grouped DTS and software instances with exact counts and full values
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: response.status(), responseSummary: "Two projects, three exact DTS instances." }] });
   } finally {
     setParameterIdentityMode(null);
-    await db.close(); await pool.end(); await rm(directory, { recursive: true, force: true });
+    await db.close(); await pool.end();
     try { await runtime.dispose(disposableRuntimeOutcomeFromTestInfo(testInfo)); } finally { restoreProcessEnvFromDisposableRuntime(environment); }
   }
 });

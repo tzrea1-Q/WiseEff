@@ -1007,7 +1007,7 @@ export const registerParameterCatalogApi = (
   const readPorts = createReadPorts(pool, options.resolveAuth, options.db, options.catalogPublication ?? {});
   const governancePorts = createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore);
   registerCatalogReadRoutes(router, readPorts);
-  registerProjectConfigurations(router, options.db, readPorts);
+  registerProjectConfigurations(router, options.db, readPorts, options.objectStore);
   registerCatalogGovernanceRoutes(
     router,
     governancePorts,
