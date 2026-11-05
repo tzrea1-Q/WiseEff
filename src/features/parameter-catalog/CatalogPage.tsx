@@ -300,6 +300,8 @@ export function CatalogPage({
     params.delete("tab");
     params.delete("instance");
     params.delete("instanceCursor");
+    params.delete("baseline");
+    params.delete("target");
     params.delete("configProjectId");
     params.delete("configSetId");
     params.delete("configSearch");
@@ -782,7 +784,7 @@ export function CatalogPage({
       {
         ...anchor,
         definitionId: item.id,
-        history: null, tab: null, instance: null, instanceCursor: null
+        history: null, tab: null, instance: null, instanceCursor: null, baseline: null, target: null
       },
       "push"
     );
@@ -996,7 +998,7 @@ export function CatalogPage({
       data-runtime-state={error && !reading ? "error" : inFlight && !reading ? "loading" : "ready"} aria-busy={inFlight && !reading}>
       <button type="button" className="button subtle" onClick={() => {
         setHistoryOpen(false);
-        commitAnchor({ ...anchor, definitionId: null, history: null, tab: null, instance: null, instanceCursor: null }, "push");
+        commitAnchor({ ...anchor, definitionId: null, history: null, tab: null, instance: null, instanceCursor: null, baseline: null, target: null }, "push");
       }}>返回参数库</button>
       {inFlight && !reading ? <SectionSkeleton label={catalogLoadingLabel} />
         : error ? <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />
@@ -1010,14 +1012,15 @@ export function CatalogPage({
                 : "所选发布"} · 修订 #{revision.revisionNumber} · {snapshot?.document.item.catalogReleaseId}</p>
               {onOpenGovernance ? <button type="button" className="button subtle sm" onClick={() => onOpenGovernance(anchor)}>打开定义治理</button> : null}
             </header>
-            <ViewSwitch variant="tabs" ariaLabel="参数详情" value={anchor.tab === "configurations" ? "configurations" : "definition"}
-              onValueChange={(value) => commitAnchor({ ...anchor, tab: value === "configurations" ? value : null }, "push")}
+            <ViewSwitch variant="tabs" ariaLabel="参数详情" value={anchor.tab === "configurations" || anchor.tab === "compare" ? anchor.tab : "definition"}
+              onValueChange={(value) => commitAnchor({ ...anchor, tab: value === "definition" ? null : value }, "push")}
               items={[{ value: "definition", label: "定义", id: "library-tab-definition", panelId: "library-panel-definition" },
-                { value: "configurations", label: "当前项目配置", id: "library-tab-configurations", panelId: "library-panel-configurations" }]} />
-            {anchor.tab === "configurations" ? <section role="tabpanel" id="library-panel-configurations" aria-labelledby="library-tab-configurations">
-              <h2>当前项目配置</h2>
+                { value: "configurations", label: "当前项目配置", id: "library-tab-configurations", panelId: "library-panel-configurations" },
+                { value: "compare", label: "对比", id: "library-tab-compare", panelId: "library-panel-compare" }]} />
+            {anchor.tab === "configurations" || anchor.tab === "compare" ? <section role="tabpanel" id={`library-panel-${anchor.tab}`} aria-labelledby={`library-tab-${anchor.tab}`}>
+              <h2>{anchor.tab === "compare" ? "实例对比" : "当前项目配置"}</h2>
               <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
-                cursor={anchor.instanceCursor} selectedId={anchor.instance}
+                cursor={anchor.instanceCursor} selectedId={anchor.instance} compare={anchor.tab === "compare"} baselineId={anchor.baseline} targetId={anchor.target}
                 projectId={anchor.configProjectId} configSetId={anchor.configSetId} search={anchor.configSearch} includeUnconfigured={anchor.includeUnconfigured}
                 onChange={(update) => commitAnchor({ ...anchor, ...update }, "push")} />
             </section> : <div role="tabpanel" id="library-panel-definition" aria-labelledby="library-tab-definition">
