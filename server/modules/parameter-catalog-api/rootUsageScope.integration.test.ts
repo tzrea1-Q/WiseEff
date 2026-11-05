@@ -247,6 +247,17 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     });
     const first = catalogProjectConfigurationsResponseSchema.parse(await selected.json());
     expect(first.selected?.rawValue).toBe("<0x3e9>");
+    const target = first.selected!;
+    const handoff = new URLSearchParams({ selectedBindingId: bindingId, projectId: target.projectId, configSetId: target.configSetId });
+    const exact = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?${handoff}`, { headers: { authorization: "Bearer scope-only-a" } });
+    expect(exact.status).toBe(200);
+    expect(catalogProjectConfigurationsResponseSchema.parse(await exact.json()).selected).toMatchObject({ bindingId, projectId: target.projectId, configSetId: target.configSetId });
+    for (const [key, value] of [["projectId", "scope-project-c"], ["configSetId", "wrong-set"]]) {
+      const mismatch = new URLSearchParams(handoff);
+      mismatch.set(key!, value!);
+      const rejected = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?${mismatch}`, { headers: { authorization: "Bearer scope-only-a" } });
+      expect(rejected.status).toBe(404);
+    }
     expect(first.items).toHaveLength(1);
     expect(first.nextCursor).toEqual(expect.any(String));
     const second = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?cursor=${first.nextCursor}&limit=1`, {

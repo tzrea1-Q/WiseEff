@@ -133,6 +133,19 @@ export function buildCatalogHref(anchor: CatalogUrlAnchor): string {
   return `${CATALOG_PAGE_PATH}${serializeCatalogUrlAnchor(anchor)}`;
 }
 
+/** A return destination carries library state, never a navigation or organization instruction. */
+export function normalizeLibraryReturnPath(value: string | null): string | null {
+  if (!value || !value.startsWith(`${CATALOG_READ_PAGE_PATH}?`) || /[\u0000-\u001f\u007f#\\]/u.test(value)) return null;
+  const params = new URLSearchParams(value.slice(CATALOG_READ_PAGE_PATH.length + 1));
+  const allowed = new Set<string>([...ANCHOR_KEYS.filter((key) => key !== "reviewItemId"), "pageSize", "includeRetiredSubjects"]);
+  const seen = new Set<string>();
+  for (const key of params.keys()) {
+    if (!allowed.has(key) || seen.has(key)) return null;
+    seen.add(key);
+  }
+  return `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor(parseCatalogUrlAnchor(params.toString()))}`;
+}
+
 export type CatalogLegacyBookmark = {
   legacyType: "parameter-spec";
   legacyId: string;

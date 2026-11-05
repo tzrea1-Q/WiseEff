@@ -44,10 +44,12 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
     if (identity.scope.projectScope.kind !== "all") throw new ApiError("FORBIDDEN", "Organization configuration read is not authorized.");
     const definitionId = request.params.definitionId;
     if (identity.scope.definitions.kind === "only" && !identity.scope.definitions.ids.some((id) => id === definitionId)) throw new ApiError("NOT_FOUND", "Definition not found.");
-    const { cursor, selectedBindingId, limit: rawLimit } = request.query;
+    const { cursor, selectedBindingId, projectId, configSetId, limit: rawLimit } = request.query;
     const limit = rawLimit === undefined ? 50 : Number(rawLimit);
     if (!token(definitionId) || (cursor !== undefined && (typeof cursor !== "string" || cursor.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(cursor))) ||
       (selectedBindingId !== undefined && !token(selectedBindingId)) ||
+      (projectId !== undefined && !token(projectId)) || (configSetId !== undefined && !token(configSetId)) ||
+      ((projectId !== undefined || configSetId !== undefined) && selectedBindingId === undefined) ||
       !Number.isInteger(limit) || limit < 1 || limit > 100 || (rawLimit !== undefined && !/^\d+$/.test(String(rawLimit)))) {
       throw new ApiError("VALIDATION_FAILED", "Invalid configuration read identity or pagination.");
     }
@@ -97,7 +99,8 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
       let selected: (ReturnType<typeof present> & { rawValue: string }) | null = null;
       if (selectedBindingId) {
         const value = await tx.query<Instance>(`${currentInstancesCte} select * from candidates where binding_id = $3 and ${configured}`, [...params, selectedBindingId]);
-        if (!value.rows[0]) throw new ApiError("NOT_FOUND", "Current configuration instance not found.");
+        if (!value.rows[0] || (projectId !== undefined && value.rows[0].project_id !== projectId) ||
+          (configSetId !== undefined && value.rows[0].config_set_id !== configSetId)) throw new ApiError("NOT_FOUND", "Current configuration instance not found.");
         const row = value.rows[0];
         const rawValue = await readCurrentInstanceSourceValue(tx, objectStore, { organizationId, projectId: row.project_id,
           bindingId: row.binding_id, projectValueId: row.current_value_id, payload: { kind: row.value_kind, value: row.value } as ProjectValuePayload });
