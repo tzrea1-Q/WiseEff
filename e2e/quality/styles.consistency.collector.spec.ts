@@ -744,10 +744,14 @@ styleTest("admin navigation fits without scrolling and the existing compact draw
   await expect(page.locator('footer[aria-label="页脚信息"]').getByRole("button", { name: "问题反馈" })).toHaveCount(1);
   await expect(sidebar).toHaveClass(/sidebar-expanded/);
   const navigation = sidebar.getByRole("navigation", { name: "主导航" });
+  await test.info().attach("admin-navigation-1440x900", { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
   const viewport = sidebar.locator('[data-slot="scroll-area-viewport"]');
   expect(await viewport.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
   for (const item of await navigation.getByRole("link").all()) await expect(item).toBeInViewport({ ratio: 1 });
   await expect(navigation.getByRole("link", { name: "知识后台", exact: true })).toBeInViewport({ ratio: 1 });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await test.info().attach("admin-navigation-1280x800", { contentType: "image/png", body: await page.screenshot({ animations: "disabled" }) });
+  await page.setViewportSize({ width: 1440, height: 900 });
   const bottomInset = await sidebar.evaluate((element) => parseFloat(getComputedStyle(element).paddingBottom));
   expect((await bounds(sidebar.locator(".utility-nav"))).bottom).toBeCloseTo((await bounds(sidebar)).bottom - bottomInset, 0);
   await sidebar.getByRole("button", { name: "收起侧边栏" }).click();

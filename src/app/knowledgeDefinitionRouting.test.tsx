@@ -20,6 +20,21 @@ describe("Knowledge Definition navigation", () => {
     vi.spyOn(moduleRegistryResolve, "resolveParameterModuleRegistryRepository")
       .mockReturnValue(createMockParameterModuleRegistryRepository());
   });
+  it.each([undefined, "org-selected"])("preserves only the explicit operating organization when pinning the library release (%s)", async (operatingOrganizationId) => {
+    const ports = createMockCatalogPorts();
+    const navigate = vi.fn();
+    render(<ToastProvider><PageRouter page={getPageByPath("/parameters/definitions")}
+      search={operatingOrganizationId ? `?organizationId=${operatingOrganizationId}` : ""}
+      organizationId="org-home" state={{ ...initialState, activeRoleId: "admin" }} dispatch={() => undefined}
+      runtime={{ parameterCatalogRepository: ports.catalog, operatingOrganizationId } as AppRuntime}
+      runtimeMode="api" onNavigate={navigate} onFeedback={() => undefined} sessionPermissions={[]}
+      DebuggingAdminPage={() => null} /></ToastProvider>);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    const destination = new URL(navigate.mock.calls.at(-1)![0], "http://localhost");
+    expect(destination.pathname).toBe("/parameters/definitions");
+    expect(destination.searchParams.get("catalogReleaseId")).toBe(CATALOG_RELEASE_ID);
+    expect(destination.searchParams.get("organizationId")).toBe(operatingOrganizationId ?? null);
+  });
   it.each([false, true])("gates definition-page linking by knowledge:edit (%s)", async (canEdit) => {
     const repository = createMockKnowledgeRepository({ userId: initialState.currentUserId, canManage: false });
     const entry = await repository.createMarkdown({ title: "定义页关联条目", tags: [], contentMarkdown: "说明" });

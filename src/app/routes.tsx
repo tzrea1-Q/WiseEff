@@ -340,7 +340,7 @@ export function PageRouter({
           repository={runtime.parameterCatalogRepository}
           actor="user"
           search={search}
-          onAnchorChange={(href, mode) => onNavigate(withOrganizationScope(href.replace(CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH), runtime.operatingOrganizationId ?? organizationId), { replace: mode === "replace" })}
+          onAnchorChange={(href, mode) => onNavigate(withOrganizationScope(href.replace(CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH), runtime.operatingOrganizationId), { replace: mode === "replace" })}
         />;
       }
       return (
