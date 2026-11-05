@@ -1215,7 +1215,7 @@ export function CatalogPage({
               </select></label>
               {projectOptionsError ? <button type="button" className="button subtle sm" onClick={() => setProjectOptionsRetry((value) => value + 1)}>项目读取失败，重试</button> : null}
               {(anchor.configured || anchor.usageProjectId) ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, configured: null, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
-              <span className="parameter-catalog__muted">数量为当前组织已配置数量</span>
+              <span className="parameter-catalog__muted">数量为{anchor.usageProjectId ? "所选项目" : "当前组织"}已配置数量</span>
             </div> : null}
             {definitionPublishingAllowed && onBatchDefinitionCommand ? <>
               {anchor.subjectId && release ? <button type="button" className="button subtle sm" disabled={selectingSubject}

@@ -101,13 +101,13 @@ export async function assertCurrentInstancesValid(db: Queryable, organizationId:
   });
 }
 
-export async function summarizeCurrentInstances(db: Queryable, organizationId: string, definitionIds: readonly string[]) {
+export async function summarizeCurrentInstances(db: Queryable, organizationId: string, definitionIds: readonly string[], projectId?: string) {
   if (!definitionIds.length) return new Map<string, { configuredProjectCount: number; configuredInstanceCount: number } | null>();
   const result = await db.query<{ definition_id: string; valid: boolean; projects: string; instances: string }>(`${currentInstancesCte}
     select definition_id, bool_and(coalesce(valid, false)) as valid,
       count(distinct project_id) filter (where value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as projects,
       count(distinct binding_id) filter (where value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as instances
-    from candidates group by definition_id`, [organizationId, [...definitionIds]]);
+    from candidates where ($3::text is null or project_id=$3) group by definition_id`, [organizationId, [...definitionIds], projectId ?? null]);
   const rows = new Map(result.rows.map((row) => [row.definition_id, row]));
   return new Map(definitionIds.map((id) => {
     const row = rows.get(id);
