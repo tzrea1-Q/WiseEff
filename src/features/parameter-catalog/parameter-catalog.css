@@ -1497,3 +1497,46 @@ button.parameter-catalog__tree-toggle:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.parameter-library-detail {
+  overflow: auto;
+  padding: var(--space-6) var(--space-8);
+}
+
+.parameter-library-detail__body {
+  max-width: 960px;
+  margin: var(--space-6) auto;
+  overflow-wrap: anywhere;
+}
+
+.parameter-library-detail__body h1 {
+  width: fit-content;
+  margin: var(--space-2) 0;
+  font-size: var(--text-2xl);
+  font-weight: 700;
+}
+
+.parameter-library-detail__body h2 {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.parameter-library-detail__body section,
+.parameter-library-detail__body details {
+  margin: var(--space-8) 0;
+}
+
+.parameter-library-detail__body pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.parameter-library-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

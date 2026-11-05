@@ -2480,7 +2480,8 @@ export const parameterCatalogSchemaRegistry = {
       {
         name: "lifecycle",
         in: "query",
-        schema: { type: "string", enum: [...subjectLifecycles] }
+        schema: { type: "string" },
+        description: "Comma-separated subject lifecycles: active, retired. Omitted defaults to active."
       },
       { name: "registration", in: "query" },
       {
@@ -2526,6 +2527,8 @@ export const parameterCatalogSchemaRegistry = {
     requestParameters: [
       { name: "catalogReleaseId", in: "query" },
       { name: "subjectId", in: "query" },
+      { name: "type", in: "query", schema: { type: "string", enum: [...catalogSubjectKinds] },
+        description: "Filter definitions by subject type before pagination." },
       {
         name: "subjectLifecycle",
         in: "query",
@@ -2551,7 +2554,8 @@ export const parameterCatalogSchemaRegistry = {
       {
         name: "lifecycle",
         in: "query",
-        schema: { type: "string", enum: [...definitionLifecycles] }
+        schema: { type: "string" },
+        description: "Comma-separated definition lifecycles: active, deprecated, retired. Omitted defaults to active."
       },
       { name: "search", in: "query" },
       ...pageQueryParameters

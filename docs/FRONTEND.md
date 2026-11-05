@@ -658,3 +658,4 @@ Testing priorities:
 - Agent actions and confirmation behavior.
 - Runtime mode parsing and API error mapping.
 - Domain pure functions and DTO conversions.
+The read-only Parameter library at `/parameters/definitions` is a peer of Project parameters. It uses the canonical Catalog reads, defaults to active subjects and definitions without an implicit Organization registration filter, and preserves collection and revision-history state in the URL. Organization registration and module filters are explicit. The full-page reader renders documentation with the shared safe Markdown subset, labels examples, and keeps schema and identities secondary; it does not present legacy usage totals as configured-project counts.

@@ -13,6 +13,10 @@ When operating in another Organization, check the **Current operating Organizati
 
 The UI is Chinese-first. The English page names below translate its labels; use the routes to find each page. For role requests, see [Account and access](account-and-access.md).
 
+## Browse the parameter library
+
+Open **Parameter library** (`/parameters/definitions`) beside Project parameters; no project selection is needed. Search the published definitions or browse Driver, Node type and Configuration model subjects. The default includes active definitions of active subjects even when the current Organization has not registered them or has retired its registration. Registration and business module are optional Organization filters. Select a definition to read its documentation, type, unit, constraints and explicitly labelled examples; expand technical details or revision history when needed. Examples are not project defaults. The library is read-only and does not create a registration or change request.
+
 ## Find a parameter and compare projects
 
 1. Open "Parameter changes" (`/parameters`) and select the project. "My workbench" (`/parameter-home`) also lets you find work and pending actions by project.

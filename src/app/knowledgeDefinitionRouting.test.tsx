@@ -84,11 +84,11 @@ describe("Knowledge Definition navigation", () => {
     if (roleId !== "admin" && roleId !== "platform-admin") {
       expect(within(detail).getByText(activeDefinition.propertyKey)).toBeInTheDocument();
       expect(destination.pathname).toBe("/parameters/definitions");
-      expect(screen.getByRole("heading", { name: `查看 ${activeDefinition.propertyKey}` })).toBeInTheDocument();
+      expect(within(detail).getByRole("heading", { name: activeDefinition.currentRevision.displayName })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: `编辑 ${activeDefinition.propertyKey}` })).not.toBeInTheDocument();
       expect(within(detail).queryByRole("textbox")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
-      await userEvent.setup().click(screen.getByRole("button", { name: "关闭定义详情" }));
+      await userEvent.setup().click(screen.getByRole("button", { name: "返回参数库" }));
       await waitFor(() => expect(new URL(navigate.mock.calls.at(-1)![0], "http://localhost").pathname)
         .toBe("/parameters/definitions"));
       const closedDestination = new URL(navigate.mock.calls.at(-1)![0], "http://localhost");

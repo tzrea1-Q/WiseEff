@@ -475,3 +475,4 @@ npm run test:e2e
 ```bash
 VITE_WISEEFF_RUNTIME_MODE=mock npm test
 ```
+只读参数库 `/parameters/definitions` 与项目参数并列，复用规范 Catalog 读取；默认筛选有效主体和有效定义，不隐式筛选组织登记状态。组织登记和模块筛选需要明确选择，列表与修订历史状态保存在 URL。完整定义页复用安全 Markdown 子集，明确标记示例，将 schema 和身份放在次级区域，也不会把旧使用量字段冒充已配置项目计数。
