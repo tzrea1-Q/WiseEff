@@ -10,9 +10,9 @@ Implement [specification #1513](https://github.com/tzrea1-Q/WiseEff/issues/1513)
 | --- | --- | --- | --- |
 | #1514 | Global entry and complete definition reading | None | Integrated; focused HTTP/PG 51/51, frontend 77/77, browser 1/1 passed |
 | #1515 | Organization-scoped configuration reading | None | Integrated; scoped HTTP/PG 22/22, related 58/58, browser 1/1 passed |
-| #1516 | Current instances and exact usage | #1514, #1515 | In progress |
-| #1517 | Usage filters and unconfigured coverage | #1516 | Pending |
-| #1518 | Explicit instance comparison | #1516 | Pending |
+| #1516 | Current instances and exact usage | #1514, #1515 | Integrated; scoped HTTP/PG 62/62, focused frontend 22/22, browser 1/1 passed |
+| #1517 | Usage filters and unconfigured coverage | #1516 | In progress |
+| #1518 | Explicit instance comparison | #1516 | In progress |
 | #1519 | Exact project edit and return | #1516 | Pending |
 | #1520 | Share current view and copy full values | #1517, #1518 | Pending |
 
