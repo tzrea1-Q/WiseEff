@@ -112,3 +112,17 @@ export async function summarizeCurrentInstances(db: Queryable, organizationId: s
     return [id, row && !row.valid ? null : { configuredProjectCount: Number(row?.projects ?? 0), configuredInstanceCount: Number(row?.instances ?? 0) }];
   }));
 }
+
+export async function selectConfiguredDefinitions(db: Queryable, organizationId: string, definitionIds: readonly string[], projectId?: string) {
+  if (projectId && !(await db.query("select 1 from public.projects where organization_id=$1 and id=$2", [organizationId, projectId])).rows.length) {
+    throw new ApiError("NOT_FOUND", "Project not found.");
+  }
+  const result = await db.query<{ definition_id: string; valid: boolean; missing_value: boolean; matches: boolean }>(`${currentInstancesCte}
+    select definition_id, bool_and(coalesce(valid, false)) as valid,
+      bool_or(id is null) as missing_value,
+      bool_or(value_state='present' and source_ref <> 'canonical-binding-identity' and ($3::text is null or project_id=$3)) as matches
+    from candidates group by definition_id`, [organizationId, [...definitionIds], projectId ?? null]);
+  const invalid = result.rows.find((row) => !row.valid);
+  if (invalid) throw new ApiError("CONFLICT", "Current configuration evidence is unavailable.", { reason: invalid.missing_value ? "missing-current-value" : "invalid-source-pin" });
+  return result.rows.filter((row) => row.matches).map((row) => row.definition_id);
+}

@@ -203,6 +203,8 @@ function appendQuery(path: string, query?: CatalogListQuery) {
   }
   if (query.placementModuleId) params.set("placementModuleId", query.placementModuleId);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
+  if (query.configured) params.set("configured", "true");
+  if (query.usageProjectId) params.set("usageProjectId", query.usageProjectId);
   if (query.catalogReleaseId) params.set("catalogReleaseId", query.catalogReleaseId);
   const encoded = params.toString();
   return encoded ? `${path}?${encoded}` : path;
@@ -382,12 +384,16 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogDefinitionResponseSchema,
         "CatalogDefinitionResponse"
       ),
-    getProjectConfigurations: (definitionId: string, query?: { cursor?: string; selectedBindingId?: string; projectId?: string; configSetId?: string }) => {
+    getProjectConfigurations: (definitionId: string, query?: { cursor?: string; selectedBindingId?: string; projectId?: string; configSetId?: string; search?: string; includeUnconfigured?: boolean; hintProjectId?: string; hintConfigSetId?: string }) => {
       const params = new URLSearchParams();
       if (query?.cursor) params.set("cursor", query.cursor);
       if (query?.selectedBindingId) params.set("selectedBindingId", query.selectedBindingId);
       if (query?.projectId) params.set("projectId", query.projectId);
       if (query?.configSetId) params.set("configSetId", query.configSetId);
+      if (query?.search) params.set("search", query.search);
+      if (query?.includeUnconfigured) params.set("includeUnconfigured", "true");
+      if (query?.hintProjectId) params.set("hintProjectId", query.hintProjectId);
+      if (query?.hintConfigSetId) params.set("hintConfigSetId", query.hintConfigSetId);
       return request("GET", `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}/project-configurations?${params}`,
         catalogProjectConfigurationsResponseSchema, "CatalogProjectConfigurationsResponse");
     },

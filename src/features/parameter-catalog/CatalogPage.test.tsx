@@ -37,6 +37,19 @@ import type { CatalogModule } from "./catalogModuleScope";
 
 type PageProps = ComponentProps<typeof CatalogPage>;
 
+it("does not show delayed project options from another Organization", async () => {
+  const previous = deferred<Array<{ id: string; name: string; code: string }>>();
+  const current = deferred<Array<{ id: string; name: string; code: string }>>();
+  const projectRepository = { listProjects: vi.fn().mockReturnValueOnce(previous.promise).mockReturnValueOnce(current.promise) };
+  const repository = createMockParameterCatalogRepository();
+  const view = render(<CatalogPage libraryMode repository={repository} projectRepository={projectRepository} actor="user" organizationId="old" />);
+  view.rerender(<CatalogPage libraryMode repository={repository} projectRepository={projectRepository} actor="user" organizationId="new" />);
+  await act(async () => previous.resolve([{ id: "old", name: "旧组织项目", code: "old" }]));
+  expect(screen.queryByRole("option", { name: "旧组织项目" })).not.toBeInTheDocument();
+  await act(async () => current.resolve([{ id: "new", name: "新组织项目", code: "new" }]));
+  expect(await screen.findByRole("option", { name: "新组织项目" })).toBeInTheDocument();
+});
+
 function moduleRegistry(modules: CatalogModule[]): NonNullable<PageProps["moduleRegistry"]> {
   return { getRegistry: vi.fn(async () => ({ mappings: [], modules: modules.map(module => ({
     description: "", scope: "", importance: "medium" as const, kind: "business" as const,

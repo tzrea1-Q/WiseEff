@@ -1,6 +1,6 @@
 # 浏览器验收覆盖图
 
-参数库 #1513 新增以下需求／操作。除范围操作外，其余实施及原生浏览器证据待完成，测试归属 `e2e/acceptance/parameter-library.acceptance.spec.ts`：
+参数库 #1513 新增以下需求／操作。具体测试归属见各项；尚未完成的操作仍待实施及原生浏览器证据：
 
 - `PARLIB-READ-001`：浏览全局定义、搜索三类主体并阅读确切修订历史。
 
@@ -8,7 +8,7 @@
 
 - `PARLIB-INSTANCES-001`：查看全部当前实例及准确的已配置项目／值数量。
 
-- `PARLIB-FILTER-001`：筛选项目使用情况并查看无当前配置的项目。
+- `PARLIB-FILTER-001`：筛选项目使用情况并查看无当前配置的项目；真实 API 浏览器验收归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
 
 - `PARLIB-COMPARE-001`：选择确切实例基准并查看保守的类型化对比。
 

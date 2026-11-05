@@ -98,7 +98,7 @@ import { CATALOG_SUNSET_HTTP_DATE } from "./legacy/headers";
 import type { LegacyCatalogOptions } from "./legacy/types";
 import { registerCatalogReadRoutes } from "./read/routes";
 import { registerProjectConfigurations } from "./projectConfigurations";
-import { summarizeCurrentInstances } from "../parameter-bindings/queries/currentInstances";
+import { selectConfiguredDefinitions, summarizeCurrentInstances } from "../parameter-bindings/queries/currentInstances";
 import { handleCatalogRead } from "./read/handlers";
 import {
   createRegistrationProjectionFromQueries,
@@ -708,6 +708,7 @@ const createReadPorts = (
     registration: createRegistrationProjectionFromQueries(queries),
     usage: createUsageProjectionFromQueries(usage),
     configurationSummaries: (organizationId, definitionIds) => summarizeCurrentInstances(pool, organizationId, definitionIds),
+    selectConfiguredDefinitions: (organizationId, definitionIds, projectId) => selectConfiguredDefinitions(pool, organizationId, definitionIds, projectId),
     timeline: kernelOnlyTimelineComposer,
     authenticate: authenticateCatalog(resolveAuth, db),
     loadRevisionExportSnapshot: async (pin) => {
