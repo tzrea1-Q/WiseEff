@@ -4,7 +4,7 @@
 
 ## Status
 
-Accepted design on 2026-11-05 through Q4 of the [parameter library design](../design-docs/2026-11-05-parameter-library-design.md); the user subsequently finalized the complete design on the same date. Not implemented or deployed by this documentation change.
+Accepted design on 2026-11-05 through Q4 of the [parameter library design](../design-docs/2026-11-05-parameter-library-design.md). Catalog configuration-usage scope is implemented by #1515; the remaining library experience and deployment are separate work.
 
 ## Decision
 
@@ -20,6 +20,6 @@ Keeping project-limited aggregates was a real alternative: it would retain the c
 
 ## Implementation evidence required
 
-The current `parameterUsageProjectScope` and `rootUsageScope.integration.test.ts` still enforce the old aggregate rule. Preserve their existing behavior until an explicitly authorized implementation changes the shared seam and its callers. Replace the affected assertions with coverage for the accepted rule; do not delete the authorization coverage or reinterpret old passes as acceptance.
+Catalog's configuration-usage projection now uses Organization scope after authenticating an active user with `parameter:view`. The existing `parameterUsageProjectScope` remains project-scoped for publication and shared-DTSI governance callers; changing those unrelated scopes is outside this decision. `rootUsageScope.integration.test.ts` covers the new Catalog rule and retains adversarial authorization cases.
 
 Implementation requires independent review and role-faithful PostgreSQL evidence for same-Organization nonparticipant reads, project-role readers, readers without `parameter:view`, inactive users, cross-Organization identifiers, Organization-scoped cache/query reuse, and denied writes by readers. Counts and rows must derive from the same current-instance selection, including configuration sets, source availability, deletion and retirement rules. Missing environments remain unrun evidence. No live policy, production publication or data migration is authorized by this ADR.

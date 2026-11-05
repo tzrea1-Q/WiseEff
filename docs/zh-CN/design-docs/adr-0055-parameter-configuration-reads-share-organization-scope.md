@@ -4,7 +4,7 @@
 
 ## 状态
 
-2026-11-05 经[参数库设计](2026-11-05-parameter-library-design.md) Q4 确认，用户随后于同日确认完整方案并定稿。设计已接受；本文档变更不代表已实施或部署。
+2026-11-05 经[参数库设计](2026-11-05-parameter-library-design.md) Q4 确认，用户随后于同日确认完整方案并定稿。#1515 已实施 Catalog 配置用量范围；其余参数库体验和部署属于独立工作。
 
 ## 决策
 
@@ -20,6 +20,6 @@
 
 ## 实施所需证据
 
-当前 `parameterUsageProjectScope` 与 `rootUsageScope.integration.test.ts` 仍执行原有统计范围。在获得实施授权并修改共享入口及调用方之前，保留现有行为。实施时以新确认规则的覆盖替换受影响断言，不删除授权覆盖，也不将历史通过结果当作新验收。
+Catalog 配置用量投影在鉴权启用用户及 `parameter:view` 后使用组织范围。发布与共享 DTSI 治理调用方仍使用 `parameterUsageProjectScope` 原有项目范围；本决策不扩大这些无关权限。`rootUsageScope.integration.test.ts` 覆盖新的 Catalog 规则并保留对抗性授权用例。
 
 实施需要独立审查和按真实角色运行的 PostgreSQL 证据，覆盖同组织非参与者、项目角色读者、缺少 `parameter:view`、禁用用户、跨组织标识、查询／缓存组织隔离，以及读者修改被拒绝。数量和明细必须来自同一当前实例集合，覆盖配置集、来源可用性、删除与退役规则。环境不可用时明确记录未运行。此 ADR 不授权线上策略变更、生产发布或数据迁移。
