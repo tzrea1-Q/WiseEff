@@ -66,11 +66,12 @@ it("keeps rows, counts and selected source on one snapshot across a concurrent c
   try {
     const initial = await read(f);
     const bindingId = initial.items.find((item) => item.valuePreview === "<36>")!.bindingId;
+    const otherBindingId = initial.items.find((item) => item.valuePreview === "<43>")!.bindingId;
     const firstPage = await read(f, "?limit=1");
     expect(firstPage.nextCursor).toBeTruthy();
     const staged = await f.stage(source.replace("<36>", "<42>"), "parlib-snapshot-change");
     pool.on("acquire", intercept);
-    const pending = read(f, `?selectedBindingId=${bindingId}`);
+    const pending = read(f, `?selectedBindingId=${bindingId}&baselineBindingId=${bindingId}&targetBindingId=${otherBindingId}`);
     await paused;
     await staged.apply();
     resume();
@@ -78,9 +79,14 @@ it("keeps rows, counts and selected source on one snapshot across a concurrent c
     expect(before.summary).toEqual({ configuredProjectCount: 1, configuredInstanceCount: 2 });
     expect(before.items.find((item) => item.bindingId === bindingId)?.valuePreview).toBe("<36>");
     expect(before.selected?.rawValue).toBe("<36>");
-    const after = await read(f, `?selectedBindingId=${bindingId}`);
+    expect(before.baseline?.rawValue).toBe("<36>");
+    expect(before.target?.rawValue).toBe("<43>");
+    expect(before.target?.comparison).toMatchObject({ status: "different", delta: 7 });
+    const after = await read(f, `?selectedBindingId=${bindingId}&baselineBindingId=${bindingId}&targetBindingId=${otherBindingId}`);
     expect(after.items.find((item) => item.bindingId === bindingId)?.valuePreview).toBe("<42>");
     expect(after.selected?.rawValue).toBe("<42>");
+    expect(after.baseline?.rawValue).toBe("<42>");
+    expect(after.target?.comparison).toMatchObject({ status: "different", delta: 1 });
     const stale = await request(f, `?cursor=${firstPage.nextCursor}`);
     expect(stale.status).toBe(400);
   } finally {
@@ -88,6 +94,28 @@ it("keeps rows, counts and selected source on one snapshot across a concurrent c
     for (const [client, query] of originals) client.query = query;
     await f.close();
   }
+}, 120_000);
+
+it("preserves array order and distinguishes numeric and text values without inventing scalar deltas", async () => {
+  const source = sourceAdminText.replace("<36>", "<1 2>").replace(/};$/, ' auxiliary { compatible = "acme,power"; iin_max = <2 1>; }; numeric { compatible = "acme,power"; iin_max = <1>; }; textual { compatible = "acme,power"; iin_max = "1"; }; };');
+  const f = await createSourceAdminFixture("parlib-array", createUserInvocation, { sourceText: source });
+  try {
+    const initial = await read(f);
+    const first = initial.items.find((item) => item.kind === "instance" && item.valuePreview === "<1 2>");
+    const second = initial.items.find((item) => item.kind === "instance" && item.valuePreview === "<2 1>");
+    if (!first || first.kind !== "instance" || !second || second.kind !== "instance") throw new Error("Expected both arrays");
+    const compared = await read(f, `?baselineBindingId=${first.bindingId}&targetBindingId=${second.bindingId}`);
+    expect(compared.target?.comparison).toMatchObject({ status: "different", reason: "typed-values" });
+    expect(compared.target?.comparison?.delta).toBeUndefined();
+    expect(compared.baseline?.rawValue).toBe("<1 2>");
+    expect(compared.target?.rawValue).toBe("<2 1>");
+    const number = initial.items.find((item) => item.kind === "instance" && item.valuePreview === "<1>");
+    const text = initial.items.find((item) => item.kind === "instance" && item.valuePreview === '"1"');
+    if (!number || number.kind !== "instance" || !text || text.kind !== "instance") throw new Error("Expected numeric and text values");
+    const mixed = await read(f, `?baselineBindingId=${number.bindingId}&targetBindingId=${text.bindingId}`);
+    expect(mixed.target?.comparison).toMatchObject({ status: "different", reason: "typed-values" });
+    expect(mixed.target?.comparison?.delta).toBeUndefined();
+  } finally { await f.close(); }
 }, 120_000);
 
 it("excludes persisted draft, pending review and device debug values", async () => {

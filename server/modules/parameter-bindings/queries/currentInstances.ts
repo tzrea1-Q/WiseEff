@@ -9,8 +9,9 @@ export const currentInstancesCte = `with candidates as (
          b.definition_id, b.effective_revision_id, b.current_value_id, b.source_occurrence_id,
          value.id, value.definition_revision_id, value_revision.revision_number::text as value_revision_number,
          value_revision.content->>'unit' as value_unit, value_revision.content->>'lifecycle' as value_lifecycle,
-         value.source_ref, value.value_kind, value.value,
-         value.value_state, pin.format as source_format, pin.format as source_pin_format,
+         value_revision.content as value_revision_content,
+         value.source_ref, value.value_kind, value.value, value.value::text as value_json_text,
+         value.value_state, pin.format as source_format, pin.format as source_pin_format, source_property.raw_text as source_raw_text,
          occurrence.config_set_id, config_set.name as config_set_name, pin.file_id, pin.file_version_id,
          coalesce(member.source_name, file.file_name) as file_name,
          pin.locator as source_locator,
@@ -67,6 +68,7 @@ export const currentInstancesCte = `with candidates as (
       on pin.project_value_id = value.id and pin.binding_id = b.id and pin.definition_id = b.definition_id
      and pin.organization_id = b.organization_id and pin.project_id = b.project_id
      and pin.source_occurrence_id = b.source_occurrence_id and pin.config_revision_id = value.config_revision_id
+    left join public.dts_property_occurrences source_property on source_property.id = pin.property_occurrence_id
     left join parameter_catalog.project_parameter_source_occurrences occurrence
       on occurrence.id = pin.source_occurrence_id and occurrence.organization_id = b.organization_id
      and occurrence.project_id = b.project_id

@@ -103,7 +103,5 @@ test("opens a global definition from the library without a project", async ({ pa
       responseSummary: "Published definition read in the fixture Catalog release." }] });
 });
 
-// @operation-planned PARLIB-FILTER-001
-// @operation-planned PARLIB-COMPARE-001
 // @operation-planned PARLIB-RETURN-001
 // @operation-planned PARLIB-SHARE-001

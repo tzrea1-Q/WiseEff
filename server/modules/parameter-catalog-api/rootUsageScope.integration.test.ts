@@ -124,7 +124,9 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       for (const [projectId, currentCount] of projects) {
         for (let index = 0; index <= currentCount; index += 1) {
           if (index === currentCount) continue;
-          const binding = await createSourceBackedBindingService(pool, { objectStore: storage, sourceRawValue: "<0x3e9>", initialPayload: { kind: "number", value: 1001 } }).stabilize({ snapshot: loaded.value, organizationId, projectId, logicalNodeId: `${projectId}-node-${index}`, registrationId: registration.value.registrationId, definitionId, effectiveRevisionId: revisionId, expectedEffectiveRevisionId: null });
+          const binding = await createSourceBackedBindingService(pool, { objectStore: storage,
+            sourceRawValue: projectId === "scope-project-b" && index === 0 ? "<(1000 + 1)>" : "<0x3e9>",
+            initialPayload: { kind: "number", value: 1001 } }).stabilize({ snapshot: loaded.value, organizationId, projectId, logicalNodeId: `${projectId}-node-${index}`, registrationId: registration.value.registrationId, definitionId, effectiveRevisionId: revisionId, expectedEffectiveRevisionId: null });
           if (!binding.ok) throw new Error("fixture binding failed");
           bindingIds.set(projectId, binding.value.binding.id);
         }
@@ -341,6 +343,77 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     }
     const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions?usageProjectId=scope-project-c`, { headers });
     expect(foreign.status).toBe(404);
+  });
+
+  it("compares explicitly selected current Bindings across pages without widening scope", async () => {
+    const headers = { authorization: "Bearer scope-only-a" };
+    const base = bindingIds.get("scope-project-b")!;
+    const target = bindingIds.get("scope-project-a")!;
+    const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?limit=1&baselineBindingId=${base}&targetBindingId=${target}`, { headers });
+    expect(response.status).toBe(200);
+    const body = catalogProjectConfigurationsResponseSchema.parse(await response.json());
+    expect(body.baseline).toMatchObject({ bindingId: base, rawValue: "<0x3e9>" });
+    expect(body.target).toMatchObject({ bindingId: target, rawValue: "<0x3e9>", comparison: { status: "same", delta: 0 } });
+    expect(body.totalCount).toBe(3);
+    expect(body.items).toHaveLength(1);
+    const all = catalogProjectConfigurationsResponseSchema.parse(await (await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations`, { headers })).json());
+    const expression = all.items.find((item) => item.kind === "instance" && item.projectId === "scope-project-b" && item.bindingId !== base)!;
+    if (expression.kind !== "instance") throw new Error("Expected instance");
+    const complex = catalogProjectConfigurationsResponseSchema.parse(await (await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?baselineBindingId=${base}&targetBindingId=${expression.bindingId}`, { headers })).json());
+    expect(complex.target?.comparison).toMatchObject({ status: "unsupported", reason: "complex-dts" });
+    expect(complex.target?.comparison?.delta).toBeUndefined();
+    const focus = all.items.find((item) => item.kind === "instance" && item.bindingId === target);
+    if (!focus || focus.kind !== "instance") throw new Error("Expected target");
+    const filtered = catalogProjectConfigurationsResponseSchema.parse(await (await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?baselineBindingId=${base}&targetBindingId=${target}&projectId=${focus.projectId}&configSetId=${focus.configSetId}&search=${encodeURIComponent(focus.fileName)}&includeUnconfigured=true`, { headers })).json());
+    expect(filtered.baseline?.bindingId).toBe(base);
+    expect(filtered.target?.bindingId).toBe(target);
+    expect(filtered.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+    expect(filtered.totalCount).toBe(1);
+    expect(filtered.items).toEqual([expect.objectContaining({ bindingId: target, comparison: expect.objectContaining({ status: "same" }) })]);
+    const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?baselineBindingId=${bindingIds.get("scope-project-c")}`, { headers });
+    expect(foreign.status).toBe(404);
+  });
+
+  it("classifies complete value-pinned revision content rather than DTO projections", async () => {
+    const pool = getRootPostgresPool(root)!;
+    const base = bindingIds.get("scope-project-a")!;
+    const target = bindingIds.get("scope-project-b")!;
+    const headers = { authorization: "Bearer scope-only-a" };
+    await pool.query(`insert into parameter_catalog.catalog_releases
+      (id, release_sequence, release_version, release_digest, predecessor_release_id, compiled_model_digest, toolchain_digest, published_at)
+      select 'parlib-compare-release', release_sequence + 1, 'parlib-compare', 'parlib-compare-digest', id, compiled_model_digest, toolchain_digest, now()
+      from parameter_catalog.catalog_releases where id=$1`, [releaseId]);
+    await pool.query(`insert into parameter_catalog.definition_revisions(id, definition_id, revision_number, catalog_release_id, content_digest, content)
+      select 'parlib-compare-revision', definition_id, 999999, 'parlib-compare-release', 'parlib-compare-content', content
+      from parameter_catalog.definition_revisions where id=$1`, [revisionId]);
+    await pool.query("alter table parameter_catalog.project_parameter_values disable trigger all");
+    await pool.query("alter table parameter_catalog.definition_revisions disable trigger all");
+    try {
+      await pool.query(`update parameter_catalog.project_parameter_values set definition_revision_id='parlib-compare-revision'
+        where id=(select current_value_id from parameter_catalog.project_parameter_bindings where id=$1)`, [target]);
+      for (const [field, value, expected] of [
+        ["documentation", "A documentation-only change", "same"],
+        ["unit", "A", "different-semantics"],
+        ["valueSchema", { type: "integer", minimum: 99 }, "different-semantics"],
+        ["matching", { sourceProperty: "other", selectorKind: "driver-compatible" }, "different-semantics"],
+        ["lifecycle", "deprecated", "different-semantics"],
+        ["matching", null, "unavailable"],
+      ] as const) {
+        await pool.query(`update parameter_catalog.definition_revisions set content=(select content from parameter_catalog.definition_revisions where id=$1) || jsonb_build_object($2::text, $3::jsonb)
+          where id='parlib-compare-revision'`, [revisionId, field, JSON.stringify(value)]);
+        const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?baselineBindingId=${base}&targetBindingId=${target}`, { headers });
+        expect(response.status).toBe(200);
+        const body = catalogProjectConfigurationsResponseSchema.parse(await response.json());
+        expect(body.target?.comparison).toMatchObject({ status: expected, revisionChanged: true });
+        if (expected !== "same") expect(body.target?.comparison?.delta).toBeUndefined();
+        expect(body.target?.definitionRevisionId).toBe("parlib-compare-revision");
+      }
+    } finally {
+      await pool.query(`update parameter_catalog.project_parameter_values set definition_revision_id=$2
+        where id=(select current_value_id from parameter_catalog.project_parameter_bindings where id=$1)`, [target, revisionId]);
+      await pool.query("alter table parameter_catalog.project_parameter_values enable trigger all");
+      await pool.query("alter table parameter_catalog.definition_revisions enable trigger all");
+    }
   });
 
   it("fails explicitly when a current instance loses its owned source pin", async () => {

@@ -21,6 +21,8 @@ export type CatalogUrlAnchor = {
   tab?: string | null;
   instance?: string | null;
   instanceCursor?: string | null;
+  baseline?: string | null;
+  target?: string | null;
   usageProjectId?: string | null;
   configured?: string | null;
   configProjectId?: string | null;
@@ -64,6 +66,8 @@ const ANCHOR_KEYS = [
   "tab",
   "instance",
   "instanceCursor",
+  "baseline",
+  "target",
   "usageProjectId",
   "configured",
   "configProjectId",
@@ -108,6 +112,8 @@ export function parseCatalogUrlAnchor(search: string): CatalogUrlAnchor {
     tab: readOpaque(params, "tab"),
     instance: readOpaque(params, "instance"),
     instanceCursor: readOpaque(params, "instanceCursor"),
+    baseline: readOpaque(params, "baseline"),
+    target: readOpaque(params, "target"),
     usageProjectId: readOpaque(params, "usageProjectId"),
     configured: params.get("configured") === "true" ? "true" : null,
     configProjectId: readOpaque(params, "configProjectId"),
