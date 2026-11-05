@@ -147,6 +147,7 @@ export type CatalogUsageSummary = {
   readonly policyCount: number | null;
   readonly projectCount: number;
   readonly currentValueCount: number;
+  readonly configurationSummary?: { readonly configuredProjectCount: number; readonly configuredInstanceCount: number } | null;
 };
 
 export type UsageProjectionPort = {
@@ -155,6 +156,7 @@ export type UsageProjectionPort = {
     readonly definitionIds: readonly ParameterDefinitionId[];
     readonly principalId?: string;
     readonly projectScope: UsageProjectScope;
+    readonly configurationProjectId?: string;
   }): Promise<ReadonlyMap<ParameterDefinitionId, CatalogUsageSummary>>;
   summarize(input: {
     readonly organizationId: string;
@@ -193,7 +195,6 @@ export type CatalogReadPorts = {
   readonly readiness: CatalogReadinessPort;
   readonly registration: RegistrationProjectionPort;
   readonly usage: UsageProjectionPort;
-  readonly configurationSummaries?: (organizationId: string, definitionIds: readonly string[], projectId?: string) => Promise<ReadonlyMap<string, { configuredProjectCount: number; configuredInstanceCount: number } | null>>;
   readonly selectConfiguredDefinitions?: (organizationId: string, definitionIds: readonly string[], projectId?: string) => Promise<readonly string[]>;
   readonly timeline: TimelineComposerPort;
   readonly authenticate: (request: CatalogReadRequest) => Promise<CatalogReadAuthResult>;

@@ -140,7 +140,7 @@ export function mapCatalogDefinition(
     lifecycle: definition.selectedRevision.content.lifecycle,
     currentRevision: mapDefinitionRevision(definition.selectedRevision),
     registration,
-    usageSummary: usage,
+    usageSummary: { policyCount: usage.policyCount, projectCount: usage.projectCount, currentValueCount: usage.currentValueCount },
     links: {
       revisions: `/api/v2/catalog/definitions/${definition.id}/revisions`,
       timeline: `/api/v2/catalog/definitions/${definition.id}/timeline`,
