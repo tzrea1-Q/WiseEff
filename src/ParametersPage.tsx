@@ -151,7 +151,7 @@ export function ParametersPage({
   const handoffSet = handoffParams.get("configSetId") ?? "";
   const handoffBinding = handoffParams.get("bindingId") ?? handoffParams.get("binding") ?? "";
   const returnPath = normalizeLibraryReturnPath(handoffParams.get("returnTo"));
-  const handoffKey = `${resolvedProjectId}\n${handoffBinding}\n${handoffDefinition}\n${handoffSet}`;
+  const handoffKey = JSON.stringify([resolvedProjectId, handoffBinding, handoffDefinition, handoffSet]);
   const [resolvedHandoff, setResolvedHandoff] = useState<{ key: string; setId?: string; error?: boolean } | null>(null);
   const [handoffRetry, setHandoffRetry] = useState(0);
   const [leaveOpen, setLeaveOpen] = useState(false);
