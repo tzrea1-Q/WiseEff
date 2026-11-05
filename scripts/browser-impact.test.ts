@@ -102,6 +102,7 @@ describe("browser impact selection", () => {
       "e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts",
       "e2e/acceptance/parameter-catalog.acceptance.spec.ts",
       "e2e/acceptance/parameter-home.acceptance.spec.ts",
+      "e2e/acceptance/parameter-library.acceptance.spec.ts",
       "e2e/acceptance/permissions-matrix.acceptance.spec.ts",
       "e2e/acceptance/platform-organizations.acceptance.spec.ts",
       "e2e/acceptance/project-configuration-workbench.acceptance.spec.ts",

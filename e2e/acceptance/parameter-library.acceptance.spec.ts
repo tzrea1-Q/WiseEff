@@ -1,6 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { expect } from "playwright/test";
-import { test } from "./helpers/catalogFixtureRuntime";
+import { catalogAppUrl, test } from "./helpers/catalogFixtureRuntime";
 import { CATALOG_EXPECTED_API_FAILURES, catalogJson, catalogScreenshot, dismissXiaozeHint, signInCatalogActor } from "./helpers/catalogBrowser";
 import { recordOperationEvidence } from "./helpers/operationEvidence";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
@@ -77,7 +77,7 @@ test("opens a global definition from the library without a project", async ({ pa
   await page.getByRole("button", { name: "返回参数库" }).click();
   const response = await catalogJson(page.request, "GET", `/api/v2/catalog/definitions/${fixture.xDefinitionId}?catalogReleaseId=${fixture.chain.pinC.id}`);
   expect(response.status).toBe(200);
-  await page.goto(`${page.url().split("?")[0]}?catalogReleaseId=${fixture.chain.pinC.id}`);
+  await page.goto(catalogAppUrl(`/parameters/definitions?catalogReleaseId=${fixture.chain.pinC.id}`));
   await expect(page.getByRole("table", { name: "参数定义列表" })).toBeVisible();
   await search.fill("iin_max");
   await search.press("Enter");
