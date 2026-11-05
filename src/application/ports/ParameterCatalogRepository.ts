@@ -101,7 +101,7 @@ export interface ParameterCatalogRepository {
   ): Promise<CatalogDefinitionListResponse>;
   listDefinitions(query?: CatalogListQuery): Promise<CatalogDefinitionListResponse>;
   getDefinition(definitionId: string, query?: CatalogListQuery): Promise<CatalogDefinitionResponse>;
-  getProjectConfigurations?(definitionId: string, query?: { cursor?: string; selectedBindingId?: string }): Promise<CatalogProjectConfigurationsResponse>;
+  getProjectConfigurations?(definitionId: string, query?: { cursor?: string; selectedBindingId?: string; baselineBindingId?: string; targetBindingId?: string }): Promise<CatalogProjectConfigurationsResponse>;
   previewDefinitionDeletion?(definitionId: string): Promise<CatalogDefinitionDeletionPreviewResponse>;
   listDefinitionErasures?(): Promise<CatalogDefinitionErasureListResponse>;
   retryDefinitionCleanup?(definitionId: string): Promise<CatalogDefinitionDeletedResponse>;

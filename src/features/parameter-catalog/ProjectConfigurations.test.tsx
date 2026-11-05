@@ -58,3 +58,18 @@ it("labels a DTS boolean as present even when its source value has no text", asy
   render(<ProjectConfigurations repository={repository} organizationId="org-a" definitionId="definition" onChange={() => {}} />);
   expect(await screen.findByText("存在")).toBeVisible();
 });
+
+it("requires an explicit baseline and keeps its identity visible when a target is selected", async () => {
+  const data = response("项目", "<1001>");
+  const onChange = vi.fn();
+  const repository = { ...createMockParameterCatalogRepository(), getProjectConfigurations: vi.fn().mockResolvedValue(data) };
+  const view = render(<ProjectConfigurations repository={repository} organizationId="org-a" definitionId="definition" compare onChange={onChange} />);
+  expect(await screen.findByText(/请选择基准实例/)).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: /设为基准/ }));
+  expect(onChange).toHaveBeenCalledWith({ baseline: "项目", target: null });
+  data.baseline = { ...data.items[0]!, rawValue: "<0x3e9>" };
+  data.target = { ...data.items[0]!, rawValue: "<0x3e9>", comparison: { status: "same", reason: "typed-values", revisionChanged: false, delta: 0 } };
+  view.rerender(<ProjectConfigurations repository={repository} organizationId="org-a" definitionId="definition" compare baselineId="项目" targetId="项目" onChange={onChange} />);
+  expect(await screen.findByText("基准实例")).toBeVisible();
+  expect(screen.getByText("类型化值相同")).toBeVisible();
+});

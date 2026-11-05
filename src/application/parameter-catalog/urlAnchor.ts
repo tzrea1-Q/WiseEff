@@ -21,6 +21,8 @@ export type CatalogUrlAnchor = {
   tab?: string | null;
   instance?: string | null;
   instanceCursor?: string | null;
+  baseline?: string | null;
+  target?: string | null;
   includeRetiredSubjects?: boolean;
   moduleNodeId: string | null;
   pageSize: number | null;
@@ -58,6 +60,8 @@ const ANCHOR_KEYS = [
   "tab",
   "instance",
   "instanceCursor",
+  "baseline",
+  "target",
   "moduleNodeId",
   "cursor",
   "cursorTrail"
@@ -96,6 +100,8 @@ export function parseCatalogUrlAnchor(search: string): CatalogUrlAnchor {
     tab: readOpaque(params, "tab"),
     instance: readOpaque(params, "instance"),
     instanceCursor: readOpaque(params, "instanceCursor"),
+    baseline: readOpaque(params, "baseline"),
+    target: readOpaque(params, "target"),
     includeRetiredSubjects: params.get("includeRetiredSubjects") === "true",
     moduleNodeId: readOpaque(params, "moduleNodeId"),
     pageSize: parseCatalogPageSize(params.get("pageSize")),

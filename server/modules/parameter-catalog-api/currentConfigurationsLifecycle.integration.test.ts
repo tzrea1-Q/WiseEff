@@ -64,11 +64,12 @@ it("keeps rows, counts and selected source on one snapshot across a concurrent c
   try {
     const initial = await read(f);
     const bindingId = initial.items.find((item) => item.valuePreview === "<36>")!.bindingId;
+    const otherBindingId = initial.items.find((item) => item.valuePreview === "<43>")!.bindingId;
     const firstPage = await read(f, "?limit=1");
     expect(firstPage.nextCursor).toBeTruthy();
     const staged = await f.stage(source.replace("<36>", "<42>"), "parlib-snapshot-change");
     pool.on("acquire", intercept);
-    const pending = read(f, `?selectedBindingId=${bindingId}`);
+    const pending = read(f, `?selectedBindingId=${bindingId}&baselineBindingId=${bindingId}&targetBindingId=${otherBindingId}`);
     await paused;
     await staged.apply();
     resume();
@@ -76,9 +77,14 @@ it("keeps rows, counts and selected source on one snapshot across a concurrent c
     expect(before.summary).toEqual({ configuredProjectCount: 1, configuredInstanceCount: 2 });
     expect(before.items.find((item) => item.bindingId === bindingId)?.valuePreview).toBe("<36>");
     expect(before.selected?.rawValue).toBe("<36>");
-    const after = await read(f, `?selectedBindingId=${bindingId}`);
+    expect(before.baseline?.rawValue).toBe("<36>");
+    expect(before.target?.rawValue).toBe("<43>");
+    expect(before.target?.comparison).toMatchObject({ status: "different", delta: 7 });
+    const after = await read(f, `?selectedBindingId=${bindingId}&baselineBindingId=${bindingId}&targetBindingId=${otherBindingId}`);
     expect(after.items.find((item) => item.bindingId === bindingId)?.valuePreview).toBe("<42>");
     expect(after.selected?.rawValue).toBe("<42>");
+    expect(after.baseline?.rawValue).toBe("<42>");
+    expect(after.target?.comparison).toMatchObject({ status: "different", delta: 1 });
     const stale = await request(f, `?cursor=${firstPage.nextCursor}`);
     expect(stale.status).toBe(400);
   } finally {

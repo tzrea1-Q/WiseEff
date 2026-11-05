@@ -659,3 +659,5 @@ Testing priorities:
 - Runtime mode parsing and API error mapping.
 - Domain pure functions and DTO conversions.
 The read-only Parameter library at `/parameters/definitions` is a peer of Project parameters. It uses the canonical Catalog reads, defaults to active subjects and definitions without an implicit Organization registration filter, and preserves collection and revision-history state in the URL. Organization registration and module filters are explicit. The full-page reader renders documentation with the shared safe Markdown subset, labels examples, and keeps schema and identities secondary; it does not present legacy usage totals as configured-project counts.
+
+The Compare tab requires an explicitly chosen Binding as baseline and preserves baseline and target identities in the URL. Both values are read in one current snapshot, including when either is outside the current page. The server compares complete value-pinned revision semantics; different or unsupported semantics show source values without a numeric delta. Historical definition reading does not change the current configuration comparison. A missing baseline requires a new explicit selection.

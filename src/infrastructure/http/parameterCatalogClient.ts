@@ -382,10 +382,12 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogDefinitionResponseSchema,
         "CatalogDefinitionResponse"
       ),
-    getProjectConfigurations: (definitionId: string, query?: { cursor?: string; selectedBindingId?: string }) => {
+    getProjectConfigurations: (definitionId: string, query?: { cursor?: string; selectedBindingId?: string; baselineBindingId?: string; targetBindingId?: string }) => {
       const params = new URLSearchParams();
       if (query?.cursor) params.set("cursor", query.cursor);
       if (query?.selectedBindingId) params.set("selectedBindingId", query.selectedBindingId);
+      if (query?.baselineBindingId) params.set("baselineBindingId", query.baselineBindingId);
+      if (query?.targetBindingId) params.set("targetBindingId", query.targetBindingId);
       return request("GET", `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}/project-configurations?${params}`,
         catalogProjectConfigurationsResponseSchema, "CatalogProjectConfigurationsResponse");
     },

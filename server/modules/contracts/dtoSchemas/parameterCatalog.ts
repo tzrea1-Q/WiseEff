@@ -388,6 +388,12 @@ export const catalogDefinitionDtoSchema = catalogObject({
   })
 });
 
+const catalogInstanceComparisonSchema = catalogObject({
+  status: z.enum(["same", "different", "different-semantics", "unsupported", "unavailable"]),
+  reason: z.enum(["typed-values", "revision-semantics", "revision-unavailable", "unset", "complex-dts"]),
+  revisionChanged: z.boolean(), delta: z.number().optional(),
+});
+
 export const catalogProjectConfigurationInstanceSchema = catalogObject({
   kind: z.literal("instance"), bindingId: z.string(), projectId: z.string(), projectName: z.string(),
   configSetId: z.string(), configSetName: z.string(), sourceOccurrenceId: z.string(), sourceFormat: z.enum(["dts", "json"]),
@@ -395,7 +401,7 @@ export const catalogProjectConfigurationInstanceSchema = catalogObject({
   currentValueId: z.string(), definitionRevisionId: z.string(), definitionRevisionNumber: z.string(), effectiveRevisionId: z.string(),
   unit: z.string().nullable(), definitionLifecycle: z.enum(["active", "deprecated", "retired"]),
   valueState: z.enum(["present", "unset"]), valueKind: z.enum(["string", "number", "boolean", "string-array", "number-array", "json"]),
-  valuePreview: z.string(), valuePreviewTruncated: z.boolean(), rawValue: z.string().optional(),
+  valuePreview: z.string(), valuePreviewTruncated: z.boolean(), rawValue: z.string().optional(), comparison: catalogInstanceComparisonSchema.optional(),
 });
 
 export const catalogProjectConfigurationsResponseSchema = catalogObject({
@@ -403,6 +409,7 @@ export const catalogProjectConfigurationsResponseSchema = catalogObject({
   summary: catalogObject({ configuredProjectCount: z.number().int().nonnegative(), configuredInstanceCount: z.number().int().nonnegative() }),
   totalCount: z.number().int().nonnegative(), readAt: z.string(),
   nextCursor: z.string().nullable(), continuedProjectId: z.string().nullable(), selected: catalogProjectConfigurationInstanceSchema.nullable(),
+  baseline: catalogProjectConfigurationInstanceSchema.nullable().optional(), target: catalogProjectConfigurationInstanceSchema.nullable().optional(),
 });
 
 export const catalogTimelineFactDtoSchema = catalogObject({
@@ -2607,7 +2614,7 @@ export const parameterCatalogSchemaRegistry = {
     additionalResponses: catalogReadErrors,
     requestParameters: [
       { name: "cursor", in: "query" }, { name: "limit", in: "query" },
-      { name: "selectedBindingId", in: "query" }
+      { name: "selectedBindingId", in: "query" }, { name: "baselineBindingId", in: "query" }, { name: "targetBindingId", in: "query" }
     ]
   },
   "catalog.listDefinitionRevisions": {

@@ -30,6 +30,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 test("reads grouped DTS and software instances with exact counts and full values", async ({ page, request }, testInfo) => {
   // @acceptance PARLIB-INSTANCES-001
   // @operation PARLIB-INSTANCES-001
+  // @operation PARLIB-COMPARE-001
   test.setTimeout(180_000);
   const environment = captureProcessEnvForDisposableRuntime();
   if (!environment.databaseUrl) throw new Error("A dedicated PostgreSQL lane is required");
@@ -126,7 +127,13 @@ test("reads grouped DTS and software instances with exact counts and full values
     for (const [suffix, raw] of [["empty", '""\n'], ["null", "null\n"], ["false", "false\n"]]) {
       const typed = await request.get(apiRoute(`/api/v2/catalog/definitions/pdef_parlib_${suffix}/project-configurations`), { headers });
       expect(typed.status()).toBe(200);
-      expect((await typed.json()).items[0].valuePreview).toBe(raw);
+      const binding = (await typed.json()).items[0];
+      expect(binding.valuePreview).toBe(raw);
+      const compared = await request.get(apiRoute(`/api/v2/catalog/definitions/pdef_parlib_${suffix}/project-configurations?baselineBindingId=${binding.bindingId}&targetBindingId=${binding.bindingId}`), { headers });
+      expect(compared.status()).toBe(200);
+      expect((await compared.json()).target.comparison).toMatchObject({ status: "same" });
+      const wrongDefinition = await request.get(apiRoute(`/api/v2/catalog/definitions/${definitionId}/project-configurations?baselineBindingId=${binding.bindingId}`), { headers });
+      expect(wrongDefinition.status()).toBe(404);
     }
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}&tab=configurations`);
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("已配置项目 2 · 已配置实例 3");
@@ -152,6 +159,72 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.unroute("**/project-configurations*");
     await page.getByRole("tab", { name: "当前项目配置" }).click();
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("已配置实例 3");
+    // Keep the real API and fixture while forcing a one-row page to exercise
+    // a baseline that is no longer in the target page.
+    await page.route("**/project-configurations*", (route) => {
+      const url = new URL(route.request().url());
+      url.searchParams.set("limit", "1");
+      return route.continue({ url: url.toString() });
+    });
+    await page.getByRole("tab", { name: "对比", exact: true }).click();
+    await expect(page.getByText(/请选择基准实例/)).toBeVisible();
+    await page.getByRole("button", { name: "设为基准" }).click();
+    const baselineUrl = page.url();
+    await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
+    await page.getByRole("button", { name: "下一页" }).click();
+    await page.getByRole("button", { name: "查看对比" }).click();
+    await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "实例对比" }).getByRole("status")).toContainText("类型化值不同");
+    await expect(page.getByRole("region", { name: "实例对比" }).getByRole("status")).toContainText(/目标 − 基准：-?1/);
+    await page.screenshot({ path: testInfo.outputPath("compare-1440.png"), fullPage: true });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: testInfo.outputPath("compare-1280.png"), fullPage: true });
+    const targetBindingId = new URL(page.url()).searchParams.get("target");
+    expect(targetBindingId).toBeTruthy();
+    await pool.query(`insert into parameter_catalog.catalog_releases
+      (id, release_sequence, release_version, release_digest, predecessor_release_id, compiled_model_digest, toolchain_digest, published_at)
+      select 'parlib-browser-compare-release', release_sequence+1, 'browser-compare', 'browser-compare-digest', id, compiled_model_digest, toolchain_digest, now()
+      from parameter_catalog.catalog_releases where id=$1`, [pin.id]);
+    await pool.query(`insert into parameter_catalog.definition_revisions(id, definition_id, revision_number, catalog_release_id, content_digest, content)
+      select 'parlib-browser-compare-revision', definition_id, 2, 'parlib-browser-compare-release', 'browser-compare-content', content || '{"unit":"A"}'::jsonb
+      from parameter_catalog.definition_revisions where id='drev_acme_power_iin_max_1'`);
+    await pool.query("alter table parameter_catalog.project_parameter_values disable trigger all");
+    try {
+      await pool.query(`update parameter_catalog.project_parameter_values set definition_revision_id='parlib-browser-compare-revision'
+        where id=(select current_value_id from parameter_catalog.project_parameter_bindings where id=$1)`, [targetBindingId]);
+      await page.reload();
+      await expect(page.getByRole("region", { name: "实例对比" }).getByRole("status")).toContainText("定义语义不同，不计算差值");
+      await expect(page.getByRole("region", { name: "实例对比" })).toContainText("固定修订不同");
+      await page.screenshot({ path: testInfo.outputPath("compare-incompatible-1280.png"), fullPage: true });
+    } finally {
+      await pool.query(`update parameter_catalog.project_parameter_values set definition_revision_id='drev_acme_power_iin_max_1'
+        where id=(select current_value_id from parameter_catalog.project_parameter_bindings where id=$1)`, [targetBindingId]);
+      await pool.query("alter table parameter_catalog.project_parameter_values enable trigger all");
+    }
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
+    expect(baselineUrl).toContain("baseline=");
+    await page.goto(baselineUrl);
+    try {
+      await pool.query("update parameter_catalog.organization_subject_registrations set status='retired' where id=$1", [driver.value.registrationId]);
+      await page.reload();
+      await expect(page.getByRole("alert")).toContainText("基准实例已不可用");
+      await page.getByRole("button", { name: "重新选择" }).click();
+      await expect(page.getByText(/请选择基准实例/)).toBeVisible();
+    } finally {
+      await pool.query("update parameter_catalog.organization_subject_registrations set status='active' where id=$1", [driver.value.registrationId]);
+    }
+    await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${jsonDefinition}&tab=compare`);
+    await page.getByRole("button", { name: "设为基准" }).click();
+    await page.getByRole("button", { name: "查看对比" }).click();
+    await expect(page.getByRole("region", { name: "实例对比" })).toContainText(fullSourceToken);
+    await page.screenshot({ path: testInfo.outputPath("compare-long-1280.png"), fullPage: true });
+    await recordOperationEvidence({ operationId: "PARLIB-COMPARE-001", title: "Explicit instance comparison", status: "passed", page, testInfo,
+      assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: 200, responseSummary: "Explicit baseline and target on separate pages, current values read from one API response." }] });
+    await page.unroute("**/project-configurations*");
     await recordOperationEvidence({ operationId: "PARLIB-INSTANCES-001", title: testInfo.title, status: "passed", page, testInfo,
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: response.status(), responseSummary: "Two projects, three exact DTS instances." }] });
   } finally {
