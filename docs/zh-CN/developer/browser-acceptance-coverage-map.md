@@ -1,10 +1,10 @@
 # 浏览器验收覆盖图
 
-参数库 #1513 新增以下需求／操作，当前实施及原生浏览器证据待完成，测试归属 `e2e/acceptance/parameter-library.acceptance.spec.ts`：
+参数库 #1513 新增以下需求／操作。除范围操作外，其余实施及原生浏览器证据待完成，测试归属 `e2e/acceptance/parameter-library.acceptance.spec.ts`：
 
 - `PARLIB-READ-001`：浏览全局定义、搜索三类主体并阅读确切修订历史。
 
-- `PARLIB-SCOPE-001`：读取组织配置并验证项目写入权限没有扩大。
+- `PARLIB-SCOPE-001`：读取组织配置并验证项目写入权限没有扩大；测试归属 `e2e/acceptance/parameter-library-scope.acceptance.spec.ts`。
 
 - `PARLIB-INSTANCES-001`：查看全部当前实例及准确的已配置项目／值数量。
 

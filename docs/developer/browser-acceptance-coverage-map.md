@@ -9,7 +9,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | ID | Workflow | Blocking | Expected User Behavior | Spec Owner |
 | --- | --- | --- | --- | --- |
 | `PARLIB-READ-001` | C | No (implementation pending #1513) | Read global definitions, search all subject kinds and inspect exact revision history. | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
-| `PARLIB-SCOPE-001` | C | No (implementation pending #1513) | Read Organization configurations without gaining project write permissions. | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
+| `PARLIB-SCOPE-001` | C | Yes | Read Organization configurations without gaining project write permissions. | `e2e/acceptance/parameter-library-scope.acceptance.spec.ts` |
 | `PARLIB-INSTANCES-001` | C | No (implementation pending #1513) | Inspect all current instances and exact configured-project/value counts. | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
 | `PARLIB-FILTER-001` | C | No (implementation pending #1513) | Filter project usage and include projects without current configuration. | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
 | `PARLIB-COMPARE-001` | C | No (implementation pending #1513) | Select an explicit instance baseline and inspect conservative typed comparisons. | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
