@@ -53,7 +53,8 @@ it("explains a stale page and lets the reader restart from the first page", asyn
 
 it("labels a DTS boolean as present even when its source value has no text", async () => {
   const data = response("项目", "");
-  data.items[0]!.valueKind = "boolean";
+  if (data.items[0]?.kind !== "instance") throw new Error("Expected an instance");
+  data.items[0].valueKind = "boolean";
   const repository = { ...createMockParameterCatalogRepository(), getProjectConfigurations: vi.fn().mockResolvedValue(data) };
   render(<ProjectConfigurations repository={repository} organizationId="org-a" definitionId="definition" onChange={() => {}} />);
   expect(await screen.findByText("存在")).toBeVisible();

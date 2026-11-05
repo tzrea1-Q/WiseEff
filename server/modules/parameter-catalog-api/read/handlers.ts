@@ -524,6 +524,15 @@ async function handleListDefinitions(
     catalogDefinitions: parsed.query.registration ? catalogDefinitionIndex(snapshot) : undefined,
   });
   let selection = mergeIdSelection(scope.definitions, registrationSelection);
+  if (parsed.query.configured || parsed.query.usageProjectId) {
+    if (scope.projectScope.kind !== "all" || !ports.selectConfiguredDefinitions) return catalogNotReady(request.requestId);
+    const ids = await ports.selectConfiguredDefinitions(scope.organizationId, catalogDefinitionIndex(snapshot)
+      .filter((item) => !hiddenId(selection, item.id) && !hiddenId(scope.subjects, item.subjectId)).map((item) => item.id), parsed.query.usageProjectId);
+    const matches = ids.map((id) => ParameterDefinitionId(id));
+    const filtered = mergeIdSelection(selection, { kind: "only", ids: matches, fingerprint: fingerprintIdSelection(matches) });
+    selection = { kind: "only", ids: filtered.kind === "only" ? filtered.ids : matches,
+      fingerprint: fingerprintIdSelection([`configured=${parsed.query.configured}`, `project=${parsed.query.usageProjectId}`, filtered.kind === "only" ? filtered.fingerprint : "all"]) };
+  }
   if (parsed.query.subjectLifecycle || parsed.query.type) {
     const allowedSubjects = new Set(catalogSubjectUniverse(snapshot,
       parsed.query.subjectLifecycle ? [parsed.query.subjectLifecycle] : undefined, subjectKinds(parsed.query.type)));
@@ -601,6 +610,7 @@ async function handleListDefinitions(
       parsed.query.type ||
       parsed.query.subjectLifecycle ||
       parsed.query.registration ||
+      parsed.query.configured || parsed.query.usageProjectId ||
       parsed.query.search ||
       parsed.query.propertyKey ||
       parsed.query.subjectId ||

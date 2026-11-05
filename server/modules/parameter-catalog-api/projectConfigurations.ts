@@ -44,10 +44,12 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
     if (identity.scope.projectScope.kind !== "all") throw new ApiError("FORBIDDEN", "Organization configuration read is not authorized.");
     const definitionId = request.params.definitionId;
     if (identity.scope.definitions.kind === "only" && !identity.scope.definitions.ids.some((id) => id === definitionId)) throw new ApiError("NOT_FOUND", "Definition not found.");
-    const { cursor, selectedBindingId, limit: rawLimit } = request.query;
+    const { cursor, selectedBindingId, limit: rawLimit, projectId, configSetId, search, includeUnconfigured } = request.query;
     const limit = rawLimit === undefined ? 50 : Number(rawLimit);
     if (!token(definitionId) || (cursor !== undefined && (typeof cursor !== "string" || cursor.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(cursor))) ||
       (selectedBindingId !== undefined && !token(selectedBindingId)) ||
+      (projectId !== undefined && !token(projectId)) || (configSetId !== undefined && !token(configSetId)) ||
+      (search !== undefined && !token(search)) || (includeUnconfigured !== undefined && includeUnconfigured !== "true" && includeUnconfigured !== "false") ||
       !Number.isInteger(limit) || limit < 1 || limit > 100 || (rawLimit !== undefined && !/^\d+$/.test(String(rawLimit)))) {
       throw new ApiError("VALIDATION_FAILED", "Invalid configuration read identity or pagination.");
     }
@@ -61,52 +63,70 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
           where head.definition_id = definition.id)`, [definitionId]);
       if (!definition.rows.length) throw new ApiError("NOT_FOUND", "Definition not found.");
       if (identity.scope.subjects.kind === "only" && !identity.scope.subjects.ids.some((id) => id === definition.rows[0]!.subject_id)) throw new ApiError("NOT_FOUND", "Definition not found.");
+      if (projectId && !(await tx.query("select 1 from public.projects where organization_id=$1 and id=$2", [organizationId, projectId])).rows.length) throw new ApiError("NOT_FOUND", "Project not found.");
+      if (configSetId && !(await tx.query("select 1 from public.dts_config_set where organization_id=$1 and id=$2 and ($3::text is null or project_id=$3)", [organizationId, configSetId, projectId ?? null])).rows.length) throw new ApiError("NOT_FOUND", "Configuration set not found.");
       await assertCurrentInstancesValid(tx, organizationId, [definitionId]);
-      const params = [organizationId, [definitionId]];
+      const params = [organizationId, [definitionId], projectId ?? null, configSetId ?? null, search ?? null, includeUnconfigured === "true"];
       const configured = `value_state = 'present' and source_ref <> 'canonical-binding-identity'`;
       const visible = `value_state = 'present' and (source_ref <> 'canonical-binding-identity' or exists (
         select 1 from candidates configured where configured.project_id = candidates.project_id
           and configured.value_state = 'present' and configured.source_ref <> 'canonical-binding-identity'))`;
-      const summary = await tx.query<{ projects: string; instances: string; total_rows: string; read_at: string; fingerprint: string }>(`${currentInstancesCte}
+      const rowsCte = `, result_rows as (
+        select 'instance:' || binding_id as row_key, project_id, project_name, to_jsonb(candidates) as row_data
+          from candidates where value_state = 'present' and ($6::boolean or ${visible})
+            and ($3::text is null or project_id = $3) and ($4::text is null or config_set_id = $4)
+            and ($5::text is null or position(lower($5) in lower(concat_ws(' ', project_name, config_set_name, file_name, source_location, binding_id))) > 0)
+        union all
+        select 'project:' || project.id, project.id, project.name, null::jsonb from public.projects project
+          where project.organization_id = $1 and $6::boolean and $4::text is null and $5::text is null
+            and ($3::text is null or project.id = $3)
+            and not exists (select 1 from candidates where candidates.project_id = project.id and value_state = 'present')
+      )`;
+      const summary = await tx.query<{ projects: string; instances: string; total_rows: string; read_at: string; fingerprint: string }>(`${currentInstancesCte}${rowsCte}
         select count(distinct project_id) filter (where value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as projects,
           count(distinct binding_id) filter (where value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as instances,
-          (select count(*)::text from candidates where ${visible}) as total_rows, transaction_timestamp()::text as read_at,
-          md5(coalesce(string_agg(binding_id || ':' || current_value_id || ':' || project_id || ':' || project_name, E'\\n' order by binding_id), '')) as fingerprint
+          (select count(*)::text from result_rows) as total_rows, transaction_timestamp()::text as read_at,
+          md5(coalesce(string_agg(binding_id || ':' || current_value_id || ':' || project_id || ':' || project_name, E'\\n' order by binding_id), '') ||
+            coalesce((select string_agg(row_key || ':' || project_name, E'\\n' order by row_key) from result_rows), '') || json_build_array($3::text, $4::text, $5::text, $6::boolean)::text) as fingerprint
         from candidates`, params);
       const fingerprint = summary.rows[0]!.fingerprint;
       let previousProjectId: string | null = null;
-      let afterBindingId: string | null = null;
+      let afterRowKey: string | null = null;
       if (cursor) {
         try {
           const decoded: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-          if (!decoded || typeof decoded !== "object" || !("bindingId" in decoded) || !token(decoded.bindingId) ||
+          if (!decoded || typeof decoded !== "object" || !("rowKey" in decoded) || !token(decoded.rowKey) ||
             !("organizationId" in decoded) || decoded.organizationId !== organizationId || !("definitionId" in decoded) || decoded.definitionId !== definitionId ||
             !("fingerprint" in decoded) || decoded.fingerprint !== fingerprint) throw new Error("stale cursor");
-          afterBindingId = decoded.bindingId;
+          afterRowKey = decoded.rowKey;
         } catch {
           throw new ApiError("VALIDATION_FAILED", "Configuration cursor is no longer valid.", { reason: "invalid-cursor" });
         }
-        const found = await tx.query<{ project_id: string }>(`${currentInstancesCte} select project_id from candidates where binding_id = $3 and ${visible}`, [...params, afterBindingId]);
+        const found = await tx.query<{ project_id: string }>(`${currentInstancesCte}${rowsCte} select project_id from result_rows where row_key = $7`, [...params, afterRowKey]);
         if (!found.rows.length) throw new ApiError("VALIDATION_FAILED", "Configuration cursor is no longer valid.", { reason: "invalid-cursor" });
         previousProjectId = found.rows[0]!.project_id;
       }
-      const page = await tx.query<Instance>(`${currentInstancesCte}, ordered as (
-        select *, row_number() over (order by project_name, project_id, binding_id) as position from candidates where ${visible}
-      ) select * from ordered where position > coalesce((select position from ordered where binding_id = $3), 0)
-        order by position limit $4`, [...params, afterBindingId, limit + 1]);
+      const page = await tx.query<{ row_key: string; project_id: string; project_name: string; row_data: Instance | null }>(`${currentInstancesCte}${rowsCte}, ordered as (
+        select *, row_number() over (order by project_name, project_id, row_key) as position from result_rows
+      ) select * from ordered where position > coalesce((select position from ordered where row_key = $7), 0)
+        order by position limit $8`, [...params, afterRowKey, limit + 1]);
       let selected: (ReturnType<typeof present> & { rawValue: string }) | null = null;
       if (selectedBindingId) {
-        const value = await tx.query<Instance>(`${currentInstancesCte} select * from candidates where binding_id = $3 and ${configured}`, [...params, selectedBindingId]);
+        const value = await tx.query<Instance>(`${currentInstancesCte} select * from candidates where binding_id = $3 and ${configured}`, [organizationId, [definitionId], selectedBindingId]);
         if (!value.rows[0]) throw new ApiError("NOT_FOUND", "Current configuration instance not found.");
         const row = value.rows[0];
         const rawValue = await readCurrentInstanceSourceValue(tx, objectStore, { organizationId, projectId: row.project_id,
           bindingId: row.binding_id, projectValueId: row.current_value_id, payload: { kind: row.value_kind, value: row.value } as ProjectValuePayload });
         selected = { ...present(row), rawValue };
       }
-      const items = page.rows.slice(0, limit).map(present);
+      const items = page.rows.slice(0, limit).map((row) => row.row_data ? present(row.row_data) :
+        { kind: "project-status" as const, projectId: row.project_id, projectName: row.project_name, status: "unconfigured" as const });
+      const projects = await tx.query<{ id: string; name: string }>("select id,name from public.projects where organization_id=$1 order by name,id", [organizationId]);
+      const sets = await tx.query<{ id: string; name: string; project_id: string }>("select id,name,project_id from public.dts_config_set where organization_id=$1 and (project_id=$2 or id=$3) order by name,id", [organizationId, projectId ?? null, configSetId ?? null]);
       return { items, summary: { configuredProjectCount: Number(summary.rows[0]?.projects), configuredInstanceCount: Number(summary.rows[0]?.instances) },
+        projects: projects.rows, configSets: sets.rows.map((set) => ({ id: set.id, name: set.name, projectId: set.project_id })),
         totalCount: Number(summary.rows[0]!.total_rows), readAt: new Date(summary.rows[0]!.read_at).toISOString(),
-        nextCursor: page.rows.length > limit && items.length ? Buffer.from(JSON.stringify({ organizationId, definitionId, fingerprint, bindingId: items.at(-1)!.bindingId })).toString("base64url") : null,
+        nextCursor: page.rows.length > limit && items.length ? Buffer.from(JSON.stringify({ organizationId, definitionId, fingerprint, rowKey: page.rows[limit - 1]!.row_key })).toString("base64url") : null,
         continuedProjectId: items[0]?.projectId === previousProjectId ? previousProjectId : null, selected };
     });
     return { status: 200, body };
