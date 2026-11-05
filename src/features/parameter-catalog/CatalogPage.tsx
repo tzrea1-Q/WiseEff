@@ -33,6 +33,7 @@ import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
+import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import { toggleFilterValue } from "@/components/tableFilterUtils";
 import type {
   CatalogDefinitionListResponse,
@@ -95,6 +96,8 @@ type RevisionItem = CatalogDefinitionRevisionResponse["item"];
 type TimelineItem = CatalogDefinitionTimelineResponse["items"][number];
 
 export type CatalogPageProps = {
+  libraryMode?: boolean;
+  onOpenGovernance?: (anchor: CatalogUrlAnchor) => void;
   pageKey?: string;
   refreshEpoch?: number;
   notice?: ReactNode;
@@ -172,6 +175,7 @@ export type CatalogPageProps = {
 
 type CatalogSnapshot = {
   document: Exclude<CatalogDocumentResponse, { item: null }>;
+  currentReleaseId: string | null;
   subjects: CatalogSubjectListResponse;
   modules: ParameterModule[];
   definitions: CatalogDefinitionListResponse;
@@ -234,6 +238,8 @@ function pickCollection(
  * of occupying the workspace by default.
  */
 export function CatalogPage({
+  libraryMode = false,
+  onOpenGovernance,
   pageKey = "catalog-definitions",
   refreshEpoch = 0,
   notice,
@@ -288,11 +294,18 @@ export function CatalogPage({
   const searchPending = useRef(false);
   const [searchComposing, setSearchComposing] = useState(false);
   const [snapshot, setSnapshot] = useState<CatalogSnapshot | null>(null);
+  const readingHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (libraryMode && snapshot?.definition?.id === anchor.definitionId) readingHeading.current?.focus();
+  }, [libraryMode, anchor.definitionId, snapshot?.definition?.id]);
   const [inFlight, setInFlight] = useState(true);
   const [error, setError] = useState<unknown>();
   const [unpublished, setUnpublished] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  useEffect(() => {
+    if (libraryMode) setHistoryOpen(anchor.history === "true");
+  }, [libraryMode, anchor.history]);
   const [historyPending, setHistoryPending] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [editorState, setEditorState] = useState({ dirty: false, pending: false });
@@ -338,6 +351,12 @@ export function CatalogPage({
   }, [editorState.dirty, editorState.pending]);
   /** Cursors already traversed, so Previous is exact rather than guessed. */
   const [cursorTrail, setCursorTrail] = useState<readonly string[]>([]);
+  useEffect(() => {
+    try {
+      const value: unknown = anchor.cursorTrail ? JSON.parse(anchor.cursorTrail) : [];
+      setCursorTrail(Array.isArray(value) && value.every((item) => typeof item === "string") ? value : []);
+    } catch { setCursorTrail([]); }
+  }, [anchor.cursorTrail]);
   const listReviewItemsRef = useRef(listReviewItems);
   listReviewItemsRef.current = listReviewItems;
   const reviewItemsAvailable = Boolean(listReviewItems);
@@ -388,7 +407,7 @@ export function CatalogPage({
       if (!searchPending.current) return;
       searchPending.current = false;
       setCursorTrail([]);
-      commitAnchor({ ...anchor, q, cursor: null }, "replace");
+      commitAnchor({ ...anchor, q, cursor: null, cursorTrail: null }, "replace");
     }, 300);
     return () => window.clearTimeout(timer);
   }, [searchInput, searchComposing, anchor, commitAnchor]);
@@ -431,10 +450,14 @@ export function CatalogPage({
         setUnpublished(true);
         return;
       }
+      const currentReleaseId = libraryMode && currentAnchor.catalogReleaseId
+        ? (await catalog.getCatalog().catch(() => null))?.item?.catalogReleaseId ?? null
+        : document.item.catalogReleaseId;
+      if (generation !== loadGeneration.current) return;
       const pin = { catalogReleaseId: document.item.catalogReleaseId };
       const listQuery: CatalogListQuery = {
         ...pin,
-        ...(!currentAnchor.includeRetiredSubjects ? { subjectLifecycle: "active" as const, registration: "not-retired" } : {}),
+        ...(!currentAnchor.includeRetiredSubjects ? { subjectLifecycle: "active" as const, ...(!libraryMode ? { registration: "not-retired" } : {}) } : {}),
         limit: currentAnchor.pageSize ?? CATALOG_DEFAULT_PAGE_SIZE
       };
       if (currentAnchor.q) {
@@ -443,6 +466,10 @@ export function CatalogPage({
       if (currentAnchor.lifecycle) {
         listQuery.lifecycle = currentAnchor.lifecycle;
       }
+      if (libraryMode && ["driver", "node-type", "configuration-schema"].includes(currentAnchor.type ?? "")) {
+        listQuery.type = currentAnchor.type as CatalogListQuery["type"];
+      }
+      if (libraryMode && currentAnchor.registration) listQuery.registration = currentAnchor.registration;
       if (currentAnchor.cursor) {
         listQuery.cursor = currentAnchor.cursor;
       }
@@ -464,10 +491,10 @@ export function CatalogPage({
       if (generation !== loadGeneration.current) return;
       // Historical subject bookmarks opt into history without losing their scope.
       if (!currentAnchor.includeRetiredSubjects && subjectItems.some((item) =>
-        item.id === currentAnchor.subjectId && (item.membership.status === "retired" || item.registration.status === "retired"))) {
+        item.id === currentAnchor.subjectId && (item.membership.status === "retired" || (!libraryMode && item.registration.status === "retired")))) {
         delete listQuery.registration;
         delete listQuery.subjectLifecycle;
-        commitAnchor({ ...currentAnchor, includeRetiredSubjects: true, cursor: null }, "replace");
+        commitAnchor({ ...currentAnchor, includeRetiredSubjects: true, cursor: null, cursorTrail: null }, "replace");
       }
       const subjects: CatalogSubjectListResponse = {
         ...firstSubjectPage!, items: subjectItems, totalCount: subjectItems.length, hasMore: false, nextCursor: null
@@ -483,17 +510,16 @@ export function CatalogPage({
         const definitionResponse = await catalog.getDefinition(currentAnchor.definitionId, pin);
         definition = definitionResponse.item;
         if (historyOpen) {
-          const revisionList = await catalog.listDefinitionRevisions(currentAnchor.definitionId, {
-            ...pin,
-            limit: 50
-          });
-          revisions = revisionList.items;
-          revisionCursor = revisionList.hasMore ? revisionList.nextCursor : null;
-          timeline = await catalog.listDefinitionTimeline(currentAnchor.definitionId, {
-            ...pin,
-            limit: 50
-          });
-          timelineCursor = timeline.hasMore ? timeline.nextCursor : null;
+          try {
+            const revisionList = await catalog.listDefinitionRevisions(currentAnchor.definitionId, { ...pin, limit: 50 });
+            revisions = revisionList.items;
+            revisionCursor = revisionList.hasMore ? revisionList.nextCursor : null;
+            timeline = await catalog.listDefinitionTimeline(currentAnchor.definitionId, { ...pin, limit: 50 });
+            timelineCursor = timeline.hasMore ? timeline.nextCursor : null;
+          } catch (historyLoadError) {
+            if (!libraryMode) throw historyLoadError;
+            if (generation === loadGeneration.current) setHistoryError("修订历史读取失败，请重试。");
+          }
         }
       }
 
@@ -539,6 +565,7 @@ export function CatalogPage({
       if (generation !== loadGeneration.current) return;
       setSnapshot({
         document,
+        currentReleaseId,
         subjects,
         modules: registry?.modules ?? [],
         definitions,
@@ -556,7 +583,7 @@ export function CatalogPage({
     } finally {
       if (generation === loadGeneration.current) setInFlight(false);
     }
-  }, [commitAnchor, historyOpen, organizationId, catalogReadSearch, moduleRegistry]);
+  }, [commitAnchor, historyOpen, organizationId, catalogReadSearch, moduleRegistry, libraryMode]);
 
   useEffect(() => {
     void load();
@@ -633,9 +660,9 @@ export function CatalogPage({
   const subjects = snapshot?.subjects.items ?? [];
   const modules = snapshot?.modules ?? [];
   const includesRetiredSubjects = Boolean(anchor.includeRetiredSubjects || subjects.some((item) =>
-    item.id === anchor.subjectId && (item.membership.status === "retired" || item.registration.status === "retired")));
+    item.id === anchor.subjectId && (item.membership.status === "retired" || (!libraryMode && item.registration.status === "retired"))));
   const navigationSubjects = useMemo(() => includesRetiredSubjects ? subjects
-    : subjects.filter((item) => item.membership.status === "active" && item.registration.status !== "retired"), [subjects, includesRetiredSubjects]);
+    : subjects.filter((item) => item.membership.status === "active" && (libraryMode || item.registration.status !== "retired")), [subjects, includesRetiredSubjects, libraryMode]);
   const subjectsById = useMemo(() => new Map([
     ...subjects.map((item) => [item.id, item] as const),
     ...(snapshot?.subject ? [[snapshot.subject.id, snapshot.subject] as const] : [])
@@ -673,7 +700,7 @@ export function CatalogPage({
       ? "no-filter-match"
       : listEmptyReason;
   const compactList = layoutMode === "mobile";
-  const noOrgRegistrations =
+  const noOrgRegistrations = !libraryMode &&
     !anchor.subjectId &&
     subjects.length > 0 &&
     subjects.every((item) => item.registration.status === "unregistered");
@@ -693,6 +720,7 @@ export function CatalogPage({
         ...anchor,
         moduleNodeId: moduleId,
         cursor: null,
+        cursorTrail: null,
         subjectId: null,
         definitionId: null
       },
@@ -710,7 +738,7 @@ export function CatalogPage({
 
   const selectSubject = (subjectId: string | null) => {
     // A driver leaf replaces the module selection, including one in another branch.
-    commitAnchor({ ...anchor, subjectId, moduleNodeId: null, definitionId: null, cursor: null }, "push");
+    commitAnchor({ ...anchor, subjectId, moduleNodeId: null, definitionId: null, cursor: null, cursorTrail: null }, "push");
     setInspectorOpen(false);
   };
 
@@ -718,7 +746,8 @@ export function CatalogPage({
     commitAnchor(
       {
         ...anchor,
-        definitionId: item.id
+        definitionId: item.id,
+        history: null
       },
       "push"
     );
@@ -732,40 +761,40 @@ export function CatalogPage({
     const q = searchInput.trim() || null;
     if (q === anchor.q) return;
     setCursorTrail([]);
-    commitAnchor({ ...anchor, q, cursor: null }, "replace");
+    commitAnchor({ ...anchor, q, cursor: null, cursorTrail: null }, "replace");
   };
 
   const toggleLifecycleFilter = (value: string) => {
     const next = toggleFilterValue(activeLifecycles, value);
     setCursorTrail([]);
     commitAnchor(
-      { ...anchor, lifecycle: next.length > 0 ? [...next].sort().join(",") : null, cursor: null },
+      { ...anchor, lifecycle: next.length > 0 ? [...next].sort().join(",") : null, cursor: null, cursorTrail: null },
       "push"
     );
   };
 
   const clearLifecycleFilter = () => {
     setCursorTrail([]);
-    commitAnchor({ ...anchor, lifecycle: null, cursor: null }, "push");
+    commitAnchor({ ...anchor, lifecycle: null, cursor: null, cursorTrail: null }, "push");
   };
 
   const toggleRetiredSubjects = (include: boolean) => {
     setCursorTrail([]);
-    const retiredSelection = subjects.some((item) => item.id === anchor.subjectId && (item.membership.status === "retired" || item.registration.status === "retired"));
-    commitAnchor({ ...anchor, includeRetiredSubjects: include, cursor: null,
+    const retiredSelection = subjects.some((item) => item.id === anchor.subjectId && (item.membership.status === "retired" || (!libraryMode && item.registration.status === "retired")));
+    commitAnchor({ ...anchor, includeRetiredSubjects: include, cursor: null, cursorTrail: null,
       subjectId: !include && retiredSelection ? null : anchor.subjectId, definitionId: null }, "push");
   };
 
   const changePageSize = (size: CatalogPageSize) => {
     setCursorTrail([]);
-    commitAnchor({ ...anchor, pageSize: size, cursor: null }, "push");
+    commitAnchor({ ...anchor, pageSize: size, cursor: null, cursorTrail: null }, "push");
   };
 
   const goToNextPage = () => {
     const next = snapshot?.definitions.nextCursor ?? null;
     if (!next) return;
     setCursorTrail((trail) => [...trail, anchor.cursor ?? ""]);
-    commitAnchor({ ...anchor, cursor: next }, "push");
+    commitAnchor({ ...anchor, cursor: next, cursorTrail: JSON.stringify([...cursorTrail, anchor.cursor ?? ""]) }, "push");
   };
 
   const goToPreviousPage = () => {
@@ -773,7 +802,7 @@ export function CatalogPage({
     const trail = [...cursorTrail];
     const previous = trail.pop() ?? "";
     setCursorTrail(trail);
-    commitAnchor({ ...anchor, cursor: previous || null }, "push");
+    commitAnchor({ ...anchor, cursor: previous || null, cursorTrail: trail.length ? JSON.stringify(trail) : null }, "push");
   };
 
   const columns: Column<DefinitionItem>[] = [
@@ -922,6 +951,56 @@ export function CatalogPage({
     />
   );
 
+  if (libraryMode && anchor.definitionId) {
+    const reading = definition?.id === anchor.definitionId ? definition : null;
+    const revision = reading?.currentRevision;
+    const constraintLabels: Record<string, string> = { minimum: "最小值", maximum: "最大值", exclusiveMinimum: "大于", exclusiveMaximum: "小于", multipleOf: "倍数", enum: "可选值", minLength: "最短长度", maxLength: "最长长度", pattern: "格式", minItems: "最少项目", maxItems: "最多项目" };
+    const constraints = Object.entries(revision?.valueShape.schema ?? {}).filter(([key]) => key in constraintLabels);
+    return <div className="parameter-catalog parameter-library-detail" role="region" aria-label="参数定义目录"
+      data-catalog-page="true" data-catalog-state={domainState.kind} data-catalog-release={snapshot?.document.item.catalogReleaseId ?? ""}
+      data-runtime-state={error && !reading ? "error" : inFlight && !reading ? "loading" : "ready"} aria-busy={inFlight && !reading}>
+      <button type="button" className="button subtle" onClick={() => {
+        setHistoryOpen(false);
+        commitAnchor({ ...anchor, definitionId: null, history: null }, "push");
+      }}>返回参数库</button>
+      {inFlight && !reading ? <SectionSkeleton label={catalogLoadingLabel} />
+        : error ? <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />
+          : reading && revision ? <article role="region" aria-label="定义详情" className="parameter-library-detail__body">
+            <header>
+              <p className="parameter-catalog__muted">{catalogSubjectTypeLabel(reading.subject.type)} · {reading.subject.canonicalName}</p>
+              <h1 ref={readingHeading} tabIndex={-1}>{revision.displayName || reading.propertyKey}</h1>
+              <p><code>{reading.propertyKey}</code> · {catalogLifecycleLabel(reading.lifecycle)} · {catalogRegistrationLabel(reading.registration.status)}</p>
+              <p className="parameter-catalog__muted">{snapshot?.currentReleaseId
+                ? snapshot.currentReleaseId === snapshot.document.item.catalogReleaseId ? "当前发布" : "历史发布"
+                : "所选发布"} · 修订 #{revision.revisionNumber} · {snapshot?.document.item.catalogReleaseId}</p>
+              {onOpenGovernance ? <button type="button" className="button subtle sm" onClick={() => onOpenGovernance(anchor)}>打开定义治理</button> : null}
+            </header>
+            <section><h2>定义说明</h2>
+              {revision.documentation ? <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(revision.documentation) }} /> : <p>未说明</p>}
+            </section>
+            <section><h2>类型与约束</h2>
+              <dl className="parameter-catalog__dl"><dt>类型</dt><dd>{catalogValueShapeLabel(revision.valueShape.schema as { type?: unknown })}</dd>
+                <dt>单位</dt><dd>{revision.unit?.symbol ?? "未说明"}</dd>
+                <dt>约束</dt><dd>{constraints.length ? <ul>{constraints.map(([key, value]) => <li key={key}>{constraintLabels[key]}：{JSON.stringify(value)}</li>)}</ul> : "未说明"}</dd></dl>
+            </section>
+            <section><h2>示例</h2><p>以下内容仅为定义示例，并非默认配置或推荐值。</p>
+              {revision.examples?.length ? <pre>{JSON.stringify(revision.examples, null, 2)}</pre> : <p>未说明</p>}</section>
+            <details><summary>技术身份与完整 schema</summary><dl className="parameter-catalog__dl">
+              <dt>定义编号</dt><dd>{reading.id}</dd><dt>主体编号</dt><dd>{reading.subject.id}</dd>
+              <dt>当前修订</dt><dd>#{revision.revisionNumber} · {revision.id}</dd><dt>发布</dt><dd>{revision.publishedInCatalogReleaseId}</dd>
+              <dt>Schema</dt><dd><pre>{JSON.stringify(revision.valueShape, null, 2)}</pre></dd></dl></details>
+            <button type="button" className="button subtle" aria-expanded={historyOpen} onClick={() => commitAnchor({ ...anchor, history: historyOpen ? null : "true" }, "push")}>
+              {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
+            </button>
+            {historyOpen ? <section aria-label={catalogTimelineLabel}>
+              {inFlight ? <SectionSkeleton label="正在加载修订历史" /> : historyError ? <SectionError message={historyError} onRetry={() => void load()} /> : <CatalogHistoryBody timeline={snapshot?.timeline ?? null}
+                revisions={snapshot?.revisions ?? []} currentRevision={revision} hasMore={Boolean(snapshot?.revisionCursor || snapshot?.timelineCursor)}
+                pending={historyPending} error={historyError} onLoadMore={() => void loadMoreHistory()} />}
+            </section> : null}
+          </article> : <SectionError message="定义不可用。" onRetry={() => void load()} />}
+    </div>;
+  }
+
   return (
     <div
       className="parameter-catalog"
@@ -957,6 +1036,19 @@ export function CatalogPage({
               placeholder={catalogSearchLabel}
             />
           </form>
+          {libraryMode ? <>
+            <SelectControl ariaLabel="主体类型" size="filter" value={anchor.type ?? ""} onValueChange={(value) => {
+              setCursorTrail([]); commitAnchor({ ...anchor, type: value || null, subjectId: null, cursor: null, cursorTrail: null }, "push");
+            }} options={[{ value: "", label: "全部类型" }, { value: "driver", label: "驱动" }, { value: "node-type", label: "节点类型" }, { value: "configuration-schema", label: "配置模型" }]} />
+            <SelectControl ariaLabel="组织登记" size="filter" value={anchor.registration ?? ""} onValueChange={(value) => {
+              setCursorTrail([]); commitAnchor({ ...anchor, registration: value || null, cursor: null, cursorTrail: null }, "push");
+            }} options={[{ value: "", label: "全部登记状态" }, { value: "unregistered", label: "未登记" }, { value: "active", label: "已登记" }, { value: "retired", label: "登记已停用" }]} />
+            <button type="button" className="button subtle sm" onClick={() => {
+              setSearchInput(""); setCursorTrail([]);
+              commitAnchor({ ...anchor, q: null, type: null, registration: null, lifecycle: null,
+                subjectId: null, moduleNodeId: null, includeRetiredSubjects: false, cursor: null, cursorTrail: null }, "push");
+            }}>重置筛选</button>
+          </> : null}
           <label className="parameter-catalog__historical-filter">
             <input type="checkbox" checked={includesRetiredSubjects}
               onChange={(event) => toggleRetiredSubjects(event.target.checked)} />
@@ -1022,7 +1114,14 @@ export function CatalogPage({
         </> : undefined}
         navigator={!unpublished && snapshot ? <>
           <CatalogModuleNavigator
-            nodes={navigatorNodes}
+            nodes={libraryMode ? (["driver", "node-type", "configuration-schema"] as const).map((type) => ({
+              id: `group:${type}`, kind: "unregistered-group" as const, displayName: catalogSubjectTypeLabel(type),
+              subjectCount: navigationSubjects.filter((item) => item.type === type).length,
+              children: navigationSubjects.filter((item) => item.type === type).map((item) => ({
+                id: `subject:${item.id}`, kind: "subject" as const, displayName: item.canonicalName,
+                meta: describeSubject(item), subjectType: item.type, subjectCount: 0, subjectId: item.id, children: []
+              }))
+            })) : navigatorNodes}
             selectedId={anchor.subjectId ? `subject:${anchor.subjectId}` : anchor.moduleNodeId}
             onSelectNode={selectNavigatorNode}
           />
@@ -1082,7 +1181,13 @@ export function CatalogPage({
                 <SectionEmpty message={catalogEmptyMessage(pageEmptyReason)} />
               </div>
             ) : (
-              <DefinitionTable rows={definitions} columns={columns} compact={compactList}
+              <DefinitionTable rows={definitions} columns={libraryMode ? [
+                { key: "name", header: "名称 / 属性键", render: (row) => <><strong>{row.currentRevision.displayName || row.propertyKey}</strong><br /><code>{row.propertyKey}</code></> },
+                { key: "subject", header: "主体 / 类型", render: (row) => <>{row.subject.canonicalName}<br /><span className="parameter-catalog__muted">{catalogSubjectTypeLabel(row.subject.type)} · {catalogRegistrationLabel(row.registration.status)}</span></> },
+                { key: "documentation", header: "说明", render: (row) => <span className="parameter-library-preview">{row.currentRevision.documentation || "未说明"}</span> },
+                { key: "shape", header: "类型 / 单位", render: (row) => <>{catalogValueShapeLabel(row.currentRevision.valueShape.schema as { type?: unknown })} · {row.currentRevision.unit?.symbol ?? "未说明"}</> },
+                columns[3]!, columns[4]!
+              ] : columns} compact={compactList}
                 selectedDefinitionId={definition?.id} onOpen={selectDefinition} canEdit={canEditDefinition}
                 ownerStatusLabel={ownerStatusLabel} selectedIds={selectedDefinitions.map((item) => item.id)}
                 onSelectionChange={definitionPublishingAllowed && onBatchDefinitionCommand ? (item, checked) => {
@@ -1150,7 +1255,7 @@ export function CatalogPage({
         ))}
       </NavigatorWorkbench>
 
-      {definition && editorOpen ? (
+      {!libraryMode && definition && editorOpen ? (
         <ModalDialog
           open={editorOpen}
           onDismiss={editorState.pending ? undefined : requestCloseEditor}
@@ -1238,7 +1343,7 @@ export function CatalogPage({
           setCursorTrail([]);
           closingEditor.current = true;
           try {
-            commitAnchor({ ...anchor, definitionId: null, catalogReleaseId: null, cursor: null }, "replace");
+            commitAnchor({ ...anchor, definitionId: null, catalogReleaseId: null, cursor: null, cursorTrail: null }, "replace");
           } finally { closingEditor.current = false; }
           onEditorClosed?.();
         }} /> : null}
@@ -1372,7 +1477,7 @@ export function CatalogHistoryBody({
                     </tr>;
                   })}</tbody>
                 </table>
-                <p className="parameter-catalog__muted">发布记录 <code>{item.publishedInCatalogReleaseId}</code></p>
+                <p className="parameter-catalog__muted">历史修订 <code>{item.id}</code> · 发布记录 <code>{item.publishedInCatalogReleaseId}</code></p>
               </details>
             </li>
           ))}
@@ -1397,7 +1502,8 @@ function revisionFields(revision: RevisionItem): [string, string][] {
     ["显示名", revision.displayName || "未设置"],
     ["说明", revision.documentation || "无"],
     ["单位", revision.unit?.symbol ?? "未设置"],
-    ["取值约束", JSON.stringify(revision.valueShape.schema, null, 2)]
+    ["取值约束", JSON.stringify(revision.valueShape.schema, null, 2)],
+    ["示例", revision.examples?.length ? JSON.stringify(revision.examples, null, 2) : "未说明"]
   ];
 }
 

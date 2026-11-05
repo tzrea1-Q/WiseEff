@@ -214,7 +214,7 @@ export type CatalogNodeEnablementDraftResponse = z.infer<typeof nodeEnablementDr
 export type CatalogListQuery = {
   cursor?: string;
   limit?: number;
-  type?: "driver" | "node-type";
+  type?: "driver" | "node-type" | "configuration-schema";
   lifecycle?: string;
   /** Owner membership lifecycle; omitted includes both active and retired owners. */
   subjectLifecycle?: "active" | "retired";

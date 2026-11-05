@@ -40,7 +40,7 @@ const present = <T>(value: T): { readonly kind: "present"; readonly value: T } =
 });
 const absent = { kind: "absent" as const };
 
-const SUBJECT_KINDS = new Set<CatalogSubjectKind>(["driver", "node-type"]);
+const SUBJECT_KINDS = new Set<CatalogSubjectKind>(["driver", "node-type", "configuration-schema"]);
 const SUBJECT_LIFECYCLES = new Set<SubjectLifecycle>(["active", "retired"]);
 const DEFINITION_LIFECYCLES = new Set<DefinitionLifecycle>(["active", "deprecated", "retired"]);
 const REGISTRATION_FILTERS = new Set(["unregistered", "active", "retired", "not-retired"]);
@@ -245,20 +245,22 @@ export function defaultSubjectLifecycles(lifecycle: string | undefined): readonl
   if (!lifecycle) {
     return ["active"];
   }
-  if (!SUBJECT_LIFECYCLES.has(lifecycle as SubjectLifecycle)) {
+  const values = lifecycle.split(",");
+  if (values.some((value) => !SUBJECT_LIFECYCLES.has(value as SubjectLifecycle))) {
     throw new TypeError("lifecycle");
   }
-  return [lifecycle as SubjectLifecycle];
+  return [...new Set(values)] as SubjectLifecycle[];
 }
 
 export function defaultDefinitionLifecycles(lifecycle: string | undefined): readonly DefinitionLifecycle[] {
   if (!lifecycle) {
     return ["active"];
   }
-  if (!DEFINITION_LIFECYCLES.has(lifecycle as DefinitionLifecycle)) {
+  const values = lifecycle.split(",");
+  if (values.some((value) => !DEFINITION_LIFECYCLES.has(value as DefinitionLifecycle))) {
     throw new TypeError("lifecycle");
   }
-  return [lifecycle as DefinitionLifecycle];
+  return [...new Set(values)] as DefinitionLifecycle[];
 }
 
 export function subjectKinds(type: CatalogListQuery["type"]): readonly CatalogSubjectKind[] {

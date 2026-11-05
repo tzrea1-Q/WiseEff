@@ -180,10 +180,11 @@ function listEnvelope(
 function catalogSubjectUniverse(
   snapshot: CatalogSnapshot,
   lifecycles: readonly SubjectLifecycle[] = ["active", "retired"],
+  kinds: ReturnType<typeof subjectKinds> = [],
 ): CatalogSubjectId[] {
   const result = snapshot.listSubjects({
     selection: { kind: "all" },
-    kinds: [],
+    kinds,
     lifecycles,
     search: absent,
     page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent },
@@ -523,8 +524,9 @@ async function handleListDefinitions(
     catalogDefinitions: parsed.query.registration ? catalogDefinitionIndex(snapshot) : undefined,
   });
   let selection = mergeIdSelection(scope.definitions, registrationSelection);
-  if (parsed.query.subjectLifecycle) {
-    const allowedSubjects = new Set(catalogSubjectUniverse(snapshot, [parsed.query.subjectLifecycle]));
+  if (parsed.query.subjectLifecycle || parsed.query.type) {
+    const allowedSubjects = new Set(catalogSubjectUniverse(snapshot,
+      parsed.query.subjectLifecycle ? [parsed.query.subjectLifecycle] : undefined, subjectKinds(parsed.query.type)));
     const explicitSubjects = parsed.query.subjectIds ? new Set(parsed.query.subjectIds) : null;
     const definitionIds = catalogDefinitionIndex(snapshot)
       .filter(({ subjectId }) =>
@@ -546,6 +548,7 @@ async function handleListDefinitions(
       ids: filtered.kind === "only" ? filtered.ids : definitionIds,
       fingerprint: fingerprintIdSelection([
         `subjectLifecycle=${parsed.query.subjectLifecycle}`,
+        `type=${parsed.query.type}`,
         filtered.kind === "only" ? filtered.fingerprint : "all",
       ]),
     };
@@ -594,6 +597,7 @@ async function handleListDefinitions(
   }
   const filtered = Boolean(
     parsed.query.lifecycle ||
+      parsed.query.type ||
       parsed.query.subjectLifecycle ||
       parsed.query.registration ||
       parsed.query.search ||

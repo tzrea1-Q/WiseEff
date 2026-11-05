@@ -17,10 +17,9 @@ export type AcceptanceOperation = {
 };
 
 export const acceptanceOperations: AcceptanceOperation[] = [
-  { id: "PARLIB-READ-001", priority: "P1", area: "parameters", coverage: "future",
+  { id: "PARLIB-READ-001", priority: "P1", area: "parameters", coverage: "automated",
     route: "/parameters/definitions", roles: ["Hardware User", "Software User", "Org Admin"], action: "Read global definitions, search all subject kinds and inspect exact revision history.",
-    acceptanceIds: ["PARLIB-READ-001"], specFiles: ["e2e/acceptance/parameter-library.acceptance.spec.ts"], assertions: ["ui", "api", "screenshot"],
-    deferralReason: "Implementation authorized under #1513; native browser automation and evidence pending." },
+    acceptanceIds: ["PARLIB-READ-001"], specFiles: ["e2e/acceptance/parameter-library.acceptance.spec.ts"], assertions: ["ui", "api", "screenshot"] },
   { id: "PARLIB-SCOPE-001", priority: "P1", area: "parameters", coverage: "future",
     route: "/parameters/definitions", roles: ["Hardware User", "Software User", "Org Admin"], action: "Read Organization configurations without gaining project write permissions.",
     acceptanceIds: ["PARLIB-SCOPE-001"], specFiles: ["e2e/acceptance/parameter-library.acceptance.spec.ts"], assertions: ["ui", "api", "screenshot"],

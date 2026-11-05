@@ -15,10 +15,14 @@ export type CatalogUrlAnchor = {
    */
   q: string | null;
   lifecycle: string | null;
+  type?: string | null;
+  registration?: string | null;
+  history?: string | null;
   includeRetiredSubjects?: boolean;
   moduleNodeId: string | null;
   pageSize: number | null;
   cursor: string | null;
+  cursorTrail?: string | null;
 };
 
 export const CATALOG_PAGE_SIZES = [20, 50, 100] as const;
@@ -45,8 +49,12 @@ const ANCHOR_KEYS = [
   "reviewItemId",
   "q",
   "lifecycle",
+  "type",
+  "registration",
+  "history",
   "moduleNodeId",
-  "cursor"
+  "cursor",
+  "cursorTrail"
 ] as const;
 const validSourceReturn=(value:string|null|undefined):value is string=>Boolean(value && /^\/parameter-admin\/(?:sources\?|projects\/[^/?#]+\/configuration\?)/u.test(value) && !/[\u0000-\u001f\u007f]/u.test(value));
 
@@ -76,10 +84,14 @@ export function parseCatalogUrlAnchor(search: string): CatalogUrlAnchor {
     reviewItemId: readOpaque(params, "reviewItemId"),
     q: readOpaque(params, "q"),
     lifecycle: readOpaque(params, "lifecycle"),
+    type: readOpaque(params, "type"),
+    registration: readOpaque(params, "registration"),
+    history: readOpaque(params, "history"),
     includeRetiredSubjects: params.get("includeRetiredSubjects") === "true",
     moduleNodeId: readOpaque(params, "moduleNodeId"),
     pageSize: parseCatalogPageSize(params.get("pageSize")),
-    cursor: readOpaque(params, "cursor")
+    cursor: readOpaque(params, "cursor"),
+    cursorTrail: readOpaque(params, "cursorTrail")
   };
 }
 
@@ -104,7 +116,7 @@ export function serializeCatalogUrlAnchor(anchor: CatalogUrlAnchor): string {
 /** True when the anchor carries any non-identity collection state. */
 export function hasCatalogCollectionState(anchor: CatalogUrlAnchor): boolean {
   return Boolean(
-    anchor.q || anchor.lifecycle || anchor.includeRetiredSubjects || anchor.moduleNodeId || anchor.cursor || anchor.pageSize
+    anchor.q || anchor.lifecycle || anchor.type || anchor.registration || anchor.includeRetiredSubjects || anchor.moduleNodeId || anchor.cursor || anchor.pageSize
   );
 }
 
