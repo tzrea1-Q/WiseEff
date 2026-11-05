@@ -33,6 +33,7 @@ export type UsageSummary = {
   readonly policyCount: number | null;
   readonly projectCount: number;
   readonly currentValueCount: number;
+  readonly configurationSummary?: { readonly configuredProjectCount: number; readonly configuredInstanceCount: number } | null;
 };
 
 export type UsageSummaryPage = {
@@ -49,6 +50,7 @@ export type UsageSummarizeQuery = {
   readonly definitionIds: readonly ParameterDefinitionId[];
   readonly projectScope: UsageProjectScope;
   readonly authScope: UsageQueryAuthScope;
+  readonly configurationProjectId?: string | null;
 };
 
 export type UsageQueryFailure =
