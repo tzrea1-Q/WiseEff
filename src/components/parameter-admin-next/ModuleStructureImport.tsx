@@ -138,12 +138,14 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
             {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy} onChange={async event => {
               const file = event.target.files?.[0]; if (!file) return;
               setFileName(file.name); setDocument(null); setPreview(null); setReceipt(null); setResolutions({}); setMappings({}); setError(""); write.current = null;
-              if (file.size > 4 * 1024 * 1024) { setError("JSON 文件不能超过 4 MiB。"); return; }
+              if (file.size > 32 * 1024 * 1024) { setError("JSON 文件不能超过 32 MiB。"); return; }
               try {
                 const text = await new Promise<string>((resolve, reject) => {
                   const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsText(file);
                 });
-                setDocument(JSON.parse(text));
+                const parsed = JSON.parse(text);
+                if (new TextEncoder().encode(JSON.stringify(parsed)).byteLength > 4 * 1024 * 1024) { setError("JSON 内容不能超过 4 MiB。"); return; }
+                setDocument(parsed);
               } catch { setError("JSON 格式无效，请检查文件后重新上传。"); }
             }} /></label> : null}
             {fileName ? <p>文件：{fileName}；来源组织：{typeof source === "string" ? source : "未提供"}；目标组织：{organizationId}</p> : null}

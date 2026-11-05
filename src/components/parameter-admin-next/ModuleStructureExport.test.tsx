@@ -8,13 +8,18 @@ afterEach(() => vi.restoreAllMocks());
 
 it("exports the authorized organization and reports complete counts", async () => {
   const post = vi.fn().mockResolvedValue({ counts: { modules: 12, subjects: 7 } });
-  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:structure");
+  const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:structure");
   vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
   render(<ModuleStructureExport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canExport />);
   await userEvent.click(screen.getByRole("button", { name: "导出完整结构" }));
   await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v2/organizations/org-a/module-structure/exports", {}));
   expect(await screen.findByRole("status")).toHaveTextContent("12 个模块，7 个主体");
+  const contents = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error);
+    reader.readAsText(createObjectURL.mock.calls[0]![0] as Blob);
+  });
+  expect(contents).toBe(JSON.stringify({ counts: { modules: 12, subjects: 7 } }, null, 2));
 });
 
 it("keeps the guide available while export is disabled for a reader", () => {
