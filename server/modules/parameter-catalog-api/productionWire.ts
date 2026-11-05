@@ -97,6 +97,8 @@ import { registerCatalogLegacyRoutes } from "./legacy/routes";
 import { CATALOG_SUNSET_HTTP_DATE } from "./legacy/headers";
 import type { LegacyCatalogOptions } from "./legacy/types";
 import { registerCatalogReadRoutes } from "./read/routes";
+import { registerProjectConfigurations } from "./projectConfigurations";
+import { summarizeCurrentInstances } from "../parameter-bindings/queries/currentInstances";
 import { handleCatalogRead } from "./read/handlers";
 import {
   createRegistrationProjectionFromQueries,
@@ -705,6 +707,7 @@ const createReadPorts = (
     readiness: createKernelReadiness(runtime, pool, db, catalogPublication),
     registration: createRegistrationProjectionFromQueries(queries),
     usage: createUsageProjectionFromQueries(usage),
+    configurationSummaries: (organizationId, definitionIds) => summarizeCurrentInstances(pool, organizationId, definitionIds),
     timeline: kernelOnlyTimelineComposer,
     authenticate: authenticateCatalog(resolveAuth, db),
     loadRevisionExportSnapshot: async (pin) => {
@@ -1004,6 +1007,7 @@ export const registerParameterCatalogApi = (
   const readPorts = createReadPorts(pool, options.resolveAuth, options.db, options.catalogPublication ?? {});
   const governancePorts = createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore);
   registerCatalogReadRoutes(router, readPorts);
+  registerProjectConfigurations(router, options.db, readPorts);
   registerCatalogGovernanceRoutes(
     router,
     governancePorts,

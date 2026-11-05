@@ -4,6 +4,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
 import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog";
@@ -18,10 +19,12 @@ import { createRouter } from "../../shared/http/router";
 import { registerParameterCatalogApi } from "./productionWire";
 import { createUsageQueries } from "../parameter-bindings/usage";
 import { createUsageProjectionFromQueries } from "./read/ports";
-import { catalogDefinitionListResponseSchema, catalogDefinitionResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
+import { bindingCompareListResponseSchema, catalogDefinitionListResponseSchema, catalogDefinitionResponseSchema, catalogProjectConfigurationsResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
+import { parameterListResponseSchema } from "../contracts/dtoSchemas/parameters";
 
 const definitionId = ParameterDefinitionId("pdef_acme_power_iin_max");
 const revisionId = DefinitionRevisionId("drev_acme_power_iin_max_1");
+const failureReasonSchema = z.object({ error: z.object({ details: z.object({ reason: z.string() }) }) });
 const actors: { id: string; organizationId: string; roles: RoleBinding[]; projects: number; current: number }[] = [
   { id: "only-a", organizationId: "scope-org-a", roles: [{ roleId: "software-user", projectId: "scope-project-a" }], projects: 2, current: 3 },
   { id: "guest-b", organizationId: "scope-org-a", roles: [{ roleId: "guest", projectId: "scope-project-b" }], projects: 2, current: 3 },
@@ -44,6 +47,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
   let measuring = false;
   let businessSql: string[] = [];
   let usageParameters: { definitions: unknown; projects: unknown }[] = [];
+  let pauseSummary: { reached: () => void; resume: Promise<void> } | undefined;
   const records: unknown[] = [];
   const actualRoleBindings = new Map<string, unknown>();
   const bindingIds = new Map<string, string>();
@@ -64,6 +68,12 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
             const values = args[1] as unknown;
             usageParameters.push({ definitions: Array.isArray(values) ? values[1] : undefined, projects: Array.isArray(values) ? values[3] : undefined });
           }
+        }
+        if (pauseSummary && /md5\(coalesce\(string_agg/.test(sql)) {
+          const pause = pauseSummary;
+          pauseSummary = undefined;
+          pause.reached();
+          return pause.resume.then(() => Reflect.apply(query, this, args));
         }
         return Reflect.apply(query, this, args);
       } as typeof query;
@@ -139,7 +149,8 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     records.push({ actor: actor.id, actualDatabaseRoleBindings: actualRoleBindings.get(actor.id), organizationId: actor.organizationId, expected: { projectCount: actor.projects, currentValueCount: actor.current }, actual: item?.usageSummary, status: listed.status, businessQueryCount: businessSql.length, usageParameters });
     expect(listed.status).toBe(200);
     expect(item?.usageSummary).toMatchObject({ policyCount: null, projectCount: actor.projects, currentValueCount: actor.current });
-    expect(businessSql).toHaveLength(5);
+    expect(item?.configurationSummary).toEqual({ configuredProjectCount: actor.projects, configuredInstanceCount: actor.current });
+    expect(businessSql).toHaveLength(6);
     expect(usageParameters).toHaveLength(1);
     const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers });
     expect(detail.status).toBe(200);
@@ -196,7 +207,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     const headers = { authorization: "Bearer scope-only-a", "content-type": "application/json" };
     const local = await fetch(`${baseUrl}/api/v1/parameters?projectId=scope-project-b`, { headers });
     expect(local.status).toBe(200);
-    expect((await local.json()).items).toEqual(expect.arrayContaining([expect.objectContaining({ id: bindingIds.get("scope-project-b"), projectId: "scope-project-b" })]));
+    expect(parameterListResponseSchema.parse(await local.json()).items).toEqual(expect.arrayContaining([expect.objectContaining({ id: bindingIds.get("scope-project-b"), projectId: "scope-project-b" })]));
     const foreign = await fetch(`${baseUrl}/api/v1/parameters?projectId=scope-project-c`, { headers });
     expect(foreign.status).toBe(404);
     const foreignBinding = await fetch(`${baseUrl}/api/v1/parameters/${bindingIds.get("scope-project-c")}`, { headers });
@@ -207,6 +218,94 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
         : { projectId: "scope-project-b", items: [{ parameterId: bindingIds.get("scope-project-b"), targetValue: "9", reason: "scope test" }] };
       const denied = await fetch(`${baseUrl}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
       expect(denied.status).toBe(403);
+    }
+  });
+
+  it("reads every current instance of a definition across the authorized organization", async () => {
+    const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations`, {
+      headers: { authorization: "Bearer scope-only-a" },
+    });
+    expect(response.status).toBe(200);
+    const body = catalogProjectConfigurationsResponseSchema.parse(await response.json());
+    expect(body.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+    expect(body.items).toHaveLength(3);
+    expect(body.items.filter((item: { projectId: string }) => item.projectId === "scope-project-b")).toHaveLength(2);
+    expect(body.items.every((item: { valuePreview: string }) => item.valuePreview === "<1001>")).toBe(true);
+    const bindingId = body.items[0].bindingId;
+    const selected = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?selectedBindingId=${bindingId}&limit=1`, {
+      headers: { authorization: "Bearer scope-only-a" },
+    });
+    const first = catalogProjectConfigurationsResponseSchema.parse(await selected.json());
+    expect(first.selected?.rawValue).toBe("<1001>");
+    expect(first.items).toHaveLength(1);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    const second = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?cursor=${first.nextCursor}&limit=1`, {
+      headers: { authorization: "Bearer scope-only-a" },
+    });
+    expect(catalogProjectConfigurationsResponseSchema.parse(await second.json()).items[0]?.bindingId).not.toBe(first.items[0]?.bindingId);
+    const pool = getRootPostgresPool(root)!;
+    await pool.query("update public.projects set name='Changed' where id='scope-project-b'");
+    try {
+      const stale = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?cursor=${first.nextCursor}`, { headers: { authorization: "Bearer scope-only-a" } });
+      expect(stale.status).toBe(400);
+      expect(failureReasonSchema.parse(await stale.json()).error.details.reason).toBe("invalid-cursor");
+    } finally {
+      await pool.query("update public.projects set name='B' where id='scope-project-b'");
+    }
+    const invalid = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?cursor=missing`, {
+      headers: { authorization: "Bearer scope-only-a" },
+    });
+    expect(invalid.status).toBe(400);
+    const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?selectedBindingId=${bindingIds.get("scope-project-c")}`, {
+      headers: { authorization: "Bearer scope-only-a" },
+    });
+    expect(foreign.status).toBe(404);
+    const compare = await fetch(`${baseUrl}/api/v2/projects/${body.items[0].projectId}/bindings/${bindingId}/compare`, {
+      headers: { authorization: "Bearer scope-only-a" },
+    });
+    expect(compare.status).toBe(200);
+    expect(bindingCompareListResponseSchema.parse(await compare.json()).items.map((item) => item.bindingId).sort())
+      .toEqual(body.items.slice(1).map((item: { bindingId: string }) => item.bindingId).sort());
+  });
+
+  it("fails explicitly when a current instance loses its owned source pin", async () => {
+    const pool = getRootPostgresPool(root)!;
+    const bindingId = bindingIds.get("scope-project-b")!;
+    await pool.query("alter table parameter_catalog.project_value_source_pins disable trigger all");
+    try {
+      await pool.query("update parameter_catalog.project_value_source_pins set definition_id='forged-definition' where binding_id=$1", [bindingId]);
+      const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations`, { headers: { authorization: "Bearer scope-only-a" } });
+      expect(response.status).toBe(409);
+      expect(failureReasonSchema.parse(await response.json()).error.details.reason).toBe("invalid-source-pin");
+      const compare = await fetch(`${baseUrl}/api/v2/projects/scope-project-a/bindings/${bindingIds.get("scope-project-a")}/compare`, { headers: { authorization: "Bearer scope-only-a" } });
+      expect(compare.status).toBe(409);
+      const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-only-a" } });
+      expect(catalogDefinitionResponseSchema.parse(await detail.json()).item.configurationSummary).toBeNull();
+    } finally {
+      await pool.query("update parameter_catalog.project_value_source_pins set definition_id=$2 where binding_id=$1", [bindingId, definitionId]);
+      await pool.query("alter table parameter_catalog.project_value_source_pins enable trigger all");
+    }
+  });
+
+  it("keeps counts and rows in one snapshot during a concurrent project change", async () => {
+    let resume!: () => void;
+    let reached!: () => void;
+    const paused = new Promise<void>((resolve) => { reached = resolve; });
+    pauseSummary = { reached, resume: new Promise<void>((resolve) => { resume = resolve; }) };
+    const pending = fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations`, { headers: { authorization: "Bearer scope-only-a" } });
+    await paused;
+    const pool = getRootPostgresPool(root)!;
+    try {
+      await pool.query("update public.projects set name='Concurrent name' where id='scope-project-b'");
+      resume();
+      const response = await pending;
+      expect(response.status).toBe(200);
+      const body = catalogProjectConfigurationsResponseSchema.parse(await response.json());
+      expect(body.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+      expect(body.items.filter((item: { projectId: string }) => item.projectId === "scope-project-b").map((item: { projectName: string }) => item.projectName)).toEqual(["B", "B"]);
+    } finally {
+      resume(); pauseSummary = undefined;
+      await pool.query("update public.projects set name='B' where id='scope-project-b'");
     }
   });
 

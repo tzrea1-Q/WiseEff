@@ -1540,3 +1540,15 @@ button.parameter-catalog__tree-toggle:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.parameter-library-list .parameter-catalog__table th:nth-child(1) { width: 24%; }
+.parameter-library-list .parameter-catalog__table th:nth-child(2) { width: 18%; }
+.parameter-library-list .parameter-catalog__table th:nth-child(3) { width: 23%; }
+.parameter-library-list .parameter-catalog__table th:nth-child(4) { width: 15%; }
+.parameter-library-list .parameter-catalog__table th:nth-child(5),
+.parameter-library-list .parameter-catalog__table th:nth-child(6) { width: 10%; }
+.parameter-library-list .parameter-catalog__table th:last-child { width: 5rem; }
+
+.parameter-library-configurations section { margin: var(--space-5) 0; }
+.parameter-library-configurations h3 { margin-bottom: var(--space-2); }
+.parameter-library-configurations code { overflow-wrap: anywhere; }

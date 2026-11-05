@@ -584,6 +584,7 @@ async function handleListDefinitions(
     projectScope: scope.projectScope,
     definitionIds: [...new Set(page.items.map((definition) => definition.id))],
   });
+  const configurationSummaries = await ports.configurationSummaries?.(scope.organizationId, page.items.map((definition) => definition.id));
   const items = [];
   for (const definition of page.items) {
     const projection = registrations.get(definition.subjectId);
@@ -593,7 +594,7 @@ async function handleListDefinitions(
     if (!mapped) {
       return catalogNotReady(request.requestId);
     }
-    items.push(mapped);
+    items.push(configurationSummaries ? { ...mapped, configurationSummary: configurationSummaries.get(definition.id) ?? null } : mapped);
   }
   const filtered = Boolean(
     parsed.query.lifecycle ||
@@ -663,7 +664,8 @@ async function handleGetDefinition(
   if (!mapped) {
     return notFound(request.requestId, "definition-not-found");
   }
-  return catalogReadOk({ item: mapped }, snapshot.release.id, request.requestId);
+  const configurationSummaries = await ports.configurationSummaries?.(scope.organizationId, [definition.id]);
+  return catalogReadOk({ item: configurationSummaries ? { ...mapped, configurationSummary: configurationSummaries.get(definition.id) ?? null } : mapped }, snapshot.release.id, request.requestId);
 }
 
 async function handleListRevisions(

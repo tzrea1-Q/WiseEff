@@ -17,6 +17,8 @@ The UI is Chinese-first. The English page names below translate its labels; use 
 
 Open **Parameter library** (`/parameters/definitions`) beside Project parameters; no project selection is needed. Search the published definitions or browse Driver, Node type and Configuration model subjects. The default includes active definitions of active subjects even when the current Organization has not registered them or has retired its registration. Registration and business module are optional Organization filters. Select a definition to read its documentation, type, unit, constraints and explicitly labelled examples; expand technical details or revision history when needed. Examples are not project defaults. The library is read-only and does not create a registration or change request.
 
+The list distinguishes configured projects from configured instances in the current Organization. Open **Current project configurations** on a definition to inspect each current instance, grouped by project across configuration sets. Select **View full value** to read the complete source representation. A zero count means there is no current configured instance; it does not describe past use. An unavailable count or configuration read indicates that access or current source evidence could not be established. Configuration values are current platform records, including when a historical definition is open; they are not device readback, drafts or pending changes.
+
 ## Find a parameter and compare projects
 
 1. Open "Parameter changes" (`/parameters`) and select the project. "My workbench" (`/parameter-home`) also lets you find work and pending actions by project.

@@ -13,6 +13,7 @@ export type CatalogModuleNavigatorProps = {
   defaultExpandDepth?: number;
   ariaLabel?: string;
   emptyMessage?: string;
+  searchLabel?: string;
 };
 
 function TreeNode({
@@ -131,7 +132,8 @@ export function CatalogModuleNavigator({
   onSelectNode,
   defaultExpandDepth = 0,
   ariaLabel = "参数定义模块树",
-  emptyMessage = "当前组织还没有模块放置。"
+  emptyMessage = "当前组织还没有模块放置。",
+  searchLabel
 }: CatalogModuleNavigatorProps) {
   const [search, setSearch] = useState("");
   const query = search.trim().toLocaleLowerCase();
@@ -151,7 +153,7 @@ export function CatalogModuleNavigator({
   return (
     <nav aria-label={ariaLabel}>
       <div className="parameter-catalog__navigator-search">
-        <SearchField value={search} onValueChange={setSearch} ariaLabel="搜索模块" placeholder="搜索模块或主体" />
+        <SearchField value={search} onValueChange={setSearch} ariaLabel={searchLabel ?? "搜索模块"} placeholder={searchLabel ?? "搜索模块或主体"} />
       </div>
       {nodes.length === 0 ? (
         <p className="parameter-catalog__muted">{emptyMessage}</p>

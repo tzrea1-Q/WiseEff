@@ -75,10 +75,11 @@ function makeAuth(): AuthContext {
 }
 
 function makeDb(): Database {
-  return {
+  const db: Database = {
     query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
-    transaction: vi.fn()
+    transaction: vi.fn(async (work) => work(db))
   };
+  return db;
 }
 
 describe("parameter topology service org scope", () => {

@@ -1,5 +1,6 @@
 import type { Queryable } from "../../../shared/database/client";
 import { currentManagedSourceBindingPredicate } from "./currentManagedBindings";
+import { assertCurrentInstancesValid, currentInstancesCte } from "./currentInstances";
 import type { ProjectValuePayload } from "../values";
 
 export type CanonicalValueRow = {
@@ -108,68 +109,19 @@ export async function readCanonicalCompareRows(
   const sourceRow = source.rows[0];
   if (!sourceRow) return null;
 
+  await assertCurrentInstancesValid(db, input.organizationId, [sourceRow.definition_id]);
+  const presentSource = await db.query(`${currentInstancesCte} select 1 from candidates
+    where binding_id = $3 and value_state = 'present' and source_ref <> 'canonical-binding-identity'`,
+  [input.organizationId, [sourceRow.definition_id], input.bindingId]);
+  if (!presentSource.rows.length) return null;
   const result = await db.query<CanonicalCompareQueryRow>(
-    `
-    select value.id,
-           b.project_id,
-           project.name as project_name,
-           b.id as binding_id,
-           b.definition_id,
-           b.effective_revision_id,
-           b.current_value_id,
-           b.source_occurrence_id,
-           value.source_ref,
-           value.value_kind,
-           value.value,
-           value.value_state,
-           pin.format as source_format,
-           pin.format as source_pin_format,
-           occurrence.config_set_id,
-           pin.file_id,
-           pin.file_version_id,
-           file.file_name,
-           pin.locator as source_locator,
-           value.definition_revision_id,
-           parameter_module.name as module_name,
-           coalesce(subject.display_name, parameter_module.name) as driver_module
-      from parameter_catalog.current_project_parameter_bindings b
-      join parameter_catalog.project_parameter_values value
-        on value.id = b.current_value_id
-       and value.binding_id = b.id
-       and value.definition_id = b.definition_id
-      join parameter_catalog.project_value_source_pins pin
-        on pin.project_value_id = value.id
-       and pin.binding_id = b.id
-       and pin.definition_id = b.definition_id
-       and pin.organization_id = b.organization_id
-       and pin.project_id = b.project_id
-       and pin.source_occurrence_id = b.source_occurrence_id
-       and pin.config_revision_id = value.config_revision_id
-      join parameter_catalog.project_parameter_source_occurrences occurrence
-        on occurrence.id = pin.source_occurrence_id
-       and occurrence.organization_id = b.organization_id
-       and occurrence.project_id = b.project_id
-      left join public.project_parameter_files file
-        on file.id = pin.file_id
-       and file.organization_id = b.organization_id
-       and file.project_id = b.project_id
-      join public.projects project
-        on project.id = b.project_id
-       and project.organization_id = b.organization_id
-      left join parameter_catalog.registration_effective_module placement
-        on placement.registration_id = b.registration_id and placement.organization_id = b.organization_id
-      left join public.parameter_modules parameter_module
-        on parameter_module.id = placement.module_id and parameter_module.organization_id = b.organization_id
-      left join public.attribution_subjects subject
-        on subject.id = parameter_module.attribution_subject_id
-     where b.organization_id = $2
-       and ${currentManagedSourceBindingPredicate("b")}
-       and b.id <> $1
-       and ($3::text[] is null or b.project_id = any($3::text[]))
-       and b.definition_id = $4
-     order by project.name asc, b.project_id asc, b.id asc
-    `,
-    [input.bindingId, input.organizationId, input.visibleProjectIds ?? null, sourceRow.definition_id],
+    `${currentInstancesCte}
+    select * from candidates
+     where binding_id <> $3
+       and ($4::text[] is null or project_id = any($4::text[]))
+       and value_state = 'present' and source_ref <> 'canonical-binding-identity'
+     order by project_name, project_id, binding_id`,
+    [input.organizationId, [sourceRow.definition_id], input.bindingId, input.visibleProjectIds ?? null],
   );
   return result.rows;
 }

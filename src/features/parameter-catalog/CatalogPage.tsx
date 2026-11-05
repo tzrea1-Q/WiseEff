@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { CircleX } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
+import { ViewSwitch } from "@/components/ui/view-switch";
 
 import {
   catalogWritesEnabled,
@@ -51,6 +52,7 @@ import { CatalogModuleNavigator } from "./CatalogModuleNavigator";
 import { DefinitionDeletionDialog } from "./DefinitionDeletionDialog";
 import { DefinitionTable } from "./DefinitionTable";
 import { DefinitionBatchBar } from "./DefinitionBatchBar";
+import { ProjectConfigurations } from "./ProjectConfigurations";
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 import {
   buildCatalogModuleTree,
@@ -279,6 +281,9 @@ export function CatalogPage({
     const params = new URLSearchParams(resolvedSearch);
     params.delete("review");
     params.delete("reviewItemId");
+    params.delete("tab");
+    params.delete("instance");
+    params.delete("instanceCursor");
     return params.toString();
   }, [resolvedSearch]);
   const anchor = useMemo(() => parseCatalogUrlAnchor(resolvedSearch), [resolvedSearch]);
@@ -747,7 +752,7 @@ export function CatalogPage({
       {
         ...anchor,
         definitionId: item.id,
-        history: null
+        history: null, tab: null, instance: null, instanceCursor: null
       },
       "push"
     );
@@ -961,7 +966,7 @@ export function CatalogPage({
       data-runtime-state={error && !reading ? "error" : inFlight && !reading ? "loading" : "ready"} aria-busy={inFlight && !reading}>
       <button type="button" className="button subtle" onClick={() => {
         setHistoryOpen(false);
-        commitAnchor({ ...anchor, definitionId: null, history: null }, "push");
+        commitAnchor({ ...anchor, definitionId: null, history: null, tab: null, instance: null, instanceCursor: null }, "push");
       }}>返回参数库</button>
       {inFlight && !reading ? <SectionSkeleton label={catalogLoadingLabel} />
         : error ? <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />
@@ -975,6 +980,16 @@ export function CatalogPage({
                 : "所选发布"} · 修订 #{revision.revisionNumber} · {snapshot?.document.item.catalogReleaseId}</p>
               {onOpenGovernance ? <button type="button" className="button subtle sm" onClick={() => onOpenGovernance(anchor)}>打开定义治理</button> : null}
             </header>
+            <ViewSwitch variant="tabs" ariaLabel="参数详情" value={anchor.tab === "configurations" ? "configurations" : "definition"}
+              onValueChange={(value) => commitAnchor({ ...anchor, tab: value === "configurations" ? value : null }, "push")}
+              items={[{ value: "definition", label: "定义", id: "library-tab-definition", panelId: "library-panel-definition" },
+                { value: "configurations", label: "当前项目配置", id: "library-tab-configurations", panelId: "library-panel-configurations" }]} />
+            {anchor.tab === "configurations" ? <section role="tabpanel" id="library-panel-configurations" aria-labelledby="library-tab-configurations">
+              <h2>当前项目配置</h2>
+              <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
+                cursor={anchor.instanceCursor} selectedId={anchor.instance}
+                onChange={(update) => commitAnchor({ ...anchor, ...update }, "push")} />
+            </section> : <div role="tabpanel" id="library-panel-definition" aria-labelledby="library-tab-definition">
             <section><h2>定义说明</h2>
               {revision.documentation ? <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(revision.documentation) }} /> : <p>未说明</p>}
             </section>
@@ -996,14 +1011,14 @@ export function CatalogPage({
               {inFlight ? <SectionSkeleton label="正在加载修订历史" /> : historyError ? <SectionError message={historyError} onRetry={() => void load()} /> : <CatalogHistoryBody timeline={snapshot?.timeline ?? null}
                 revisions={snapshot?.revisions ?? []} currentRevision={revision} hasMore={Boolean(snapshot?.revisionCursor || snapshot?.timelineCursor)}
                 pending={historyPending} error={historyError} onLoadMore={() => void loadMoreHistory()} />}
-            </section> : null}
+            </section> : null}</div>}
           </article> : <SectionError message="定义不可用。" onRetry={() => void load()} />}
     </div>;
   }
 
   return (
     <div
-      className="parameter-catalog"
+      className={`parameter-catalog${libraryMode ? " parameter-library-list" : ""}`}
       role="region"
       aria-label={catalogPageLabel}
       data-catalog-page="true"
@@ -1015,7 +1030,7 @@ export function CatalogPage({
     >
       <NavigatorWorkbench
         pageKey={pageKey}
-        navigatorLabel={catalogNavigatorLabel}
+        navigatorLabel={libraryMode ? "主体导航" : catalogNavigatorLabel}
         resizableNavigator
         taskLabel={catalogListLabel}
         toolbar={<>
@@ -1114,6 +1129,8 @@ export function CatalogPage({
         </> : undefined}
         navigator={!unpublished && snapshot ? <>
           <CatalogModuleNavigator
+            ariaLabel={libraryMode ? "参数定义主体树" : undefined}
+            searchLabel={libraryMode ? "搜索主体" : undefined}
             nodes={libraryMode ? (["driver", "node-type", "configuration-schema"] as const).map((type) => ({
               id: `group:${type}`, kind: "unregistered-group" as const, displayName: catalogSubjectTypeLabel(type),
               subjectCount: navigationSubjects.filter((item) => item.type === type).length,
@@ -1182,11 +1199,12 @@ export function CatalogPage({
               </div>
             ) : (
               <DefinitionTable rows={definitions} columns={libraryMode ? [
-                { key: "name", header: "名称 / 属性键", render: (row) => <><strong>{row.currentRevision.displayName || row.propertyKey}</strong><br /><code>{row.propertyKey}</code></> },
-                { key: "subject", header: "主体 / 类型", render: (row) => <>{row.subject.canonicalName}<br /><span className="parameter-catalog__muted">{catalogSubjectTypeLabel(row.subject.type)} · {catalogRegistrationLabel(row.registration.status)}</span></> },
+                { key: "name", header: "名称 / 属性键", headerFilter: columns[4]?.headerFilter, render: (row) => <><strong>{row.currentRevision.displayName || row.propertyKey}</strong><br /><code>{row.propertyKey}</code>{row.lifecycle !== "active" ? <span className="parameter-catalog__badge">{catalogLifecycleLabel(row.lifecycle)}</span> : null}</> },
+                { key: "subject", header: "主体 / 类型", headerFilter: columns[3]?.headerFilter, render: (row) => <>{row.subject.canonicalName}<br /><span className="parameter-catalog__muted">{catalogSubjectTypeLabel(row.subject.type)} · {catalogRegistrationLabel(row.registration.status)}</span></> },
                 { key: "documentation", header: "说明", render: (row) => <span className="parameter-library-preview">{row.currentRevision.documentation || "未说明"}</span> },
                 { key: "shape", header: "类型 / 单位", render: (row) => <>{catalogValueShapeLabel(row.currentRevision.valueShape.schema as { type?: unknown })} · {row.currentRevision.unit?.symbol ?? "未说明"}</> },
-                columns[3]!, columns[4]!
+                { key: "configuredProjects", header: "已配置项目", align: "right", render: (row) => row.configurationSummary?.configuredProjectCount ?? "不可用" },
+                { key: "configuredInstances", header: "已配置实例", align: "right", render: (row) => row.configurationSummary?.configuredInstanceCount ?? "不可用" }
               ] : columns} compact={compactList}
                 selectedDefinitionId={definition?.id} onOpen={selectDefinition} canEdit={canEditDefinition}
                 ownerStatusLabel={ownerStatusLabel} selectedIds={selectedDefinitions.map((item) => item.id)}
