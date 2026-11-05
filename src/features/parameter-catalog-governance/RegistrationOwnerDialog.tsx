@@ -11,8 +11,10 @@ import type { CatalogResponseWithEtag } from "@/infrastructure/http/parameterCat
 import type { CatalogRegistrationResponse, CatalogSubjectResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import { presentError } from "@/infrastructure/http/presentError";
 import { createGovernanceSubmitGate, fingerprintGovernanceDraft } from "./governanceState";
+import type { SubjectEditorOptions } from "./RegistrationDialog";
 
 type Props = {
+  editor?: SubjectEditorOptions;
   subject: CatalogSubjectResponse["item"];
   registrationId: string;
   actor: CatalogActorKind;
@@ -24,7 +26,7 @@ type Props = {
   onCompleted: () => void;
 };
 
-export function RegistrationOwnerDialog({ subject, registrationId, actor, sessionPermissions, catalog, governance,
+export function RegistrationOwnerDialog({ editor, subject, registrationId, actor, sessionPermissions, catalog, governance,
   organizationId, onClose, onCompleted }: Props) {
   const [targetId, setTargetId] = useState("");
   const [reason, setReason] = useState("");
@@ -42,6 +44,7 @@ export function RegistrationOwnerDialog({ subject, registrationId, actor, sessio
   } | null>(null);
   const generation = useRef(0);
   const gate = useRef(createGovernanceSubmitGate());
+  const leaveAction = useRef<(() => void) | null>(null);
 
   const refresh = useCallback(async () => {
     const current = ++generation.current;
@@ -127,14 +130,16 @@ export function RegistrationOwnerDialog({ subject, registrationId, actor, sessio
       setPending(false);
     }
   };
-  const requestClose = () => {
+  const requestLeave = (action: () => void) => {
     if (pending) return;
-    if (targetId || reason.trim()) setLeaveOpen(true);
-    else onClose();
+    if (targetId || reason.trim()) { leaveAction.current = action; setLeaveOpen(true); }
+    else action();
   };
+  const requestClose = () => requestLeave(onClose);
   const impact = evidence?.registration.impact;
   return <>
-    <ConfirmDialog key={`${evidence?.ifMatch}:${targetId}:${error}`} open title="调整节点归属" confirmLabel="确认调整归属"
+    <ConfirmDialog acknowledgementKey={`${evidence?.ifMatch}:${targetId}:${error}`} open title={editor?.title ?? "调整节点归属"} confirmLabel="确认调整归属"
+      className={editor ? "registration-dialog" : undefined} headerExtra={editor?.renderNavigation(requestLeave, pending)}
       pending={pending} confirmDisabled={loading || !evidence || !target || Boolean(error) || !reason.trim()} onConfirm={() => void submit()} onCancel={requestClose}
       acknowledgement="我已核对所属驱动及影响范围，确认调整本组织的节点归属" error={error}
       description={<>
@@ -147,15 +152,17 @@ export function RegistrationOwnerDialog({ subject, registrationId, actor, sessio
           {evidence.targets.length === 0 ? <p>没有其他已启用并登记的驱动。请先在本组织登记目标驱动。</p> : null}
         </> : null}
       </>}
-      extra={<>
+      extra={<section id={editor ? "subject-editor-panel" : undefined} role={editor ? "tabpanel" : undefined} aria-label={editor ? "归属" : undefined}>
         <label className="field"><span>目标驱动</span><SelectControl ariaLabel="目标驱动" value={targetId} onValueChange={setTargetId}
           options={evidence?.targets.map(item => ({ value: item.id, label: item.name })) ?? []} placeholder="请选择目标驱动"
           className="w-full" disabled={pending || loading || !evidence || Boolean(error)} /></label>
         <label className="param-admin-confirm-field">操作原因<Textarea aria-label="操作原因" rows={3} maxLength={1000} required value={reason}
           disabled={pending} onChange={event => setReason(event.target.value)} /></label>
         {!loading && (!evidence || error) ? <button type="button" className="button subtle" disabled={pending} onClick={() => void refresh()}>刷新影响数据</button> : null}
-      </>} />
+      </section>} />
     <ConfirmDialog open={leaveOpen} title="放弃未保存的归属调整？" description="目标驱动与操作原因尚未提交。" confirmLabel="放弃修改"
-      cancelLabel="继续编辑" onConfirm={onClose} onCancel={() => setLeaveOpen(false)} />
+      cancelLabel="继续编辑" onConfirm={() => {
+        const action = leaveAction.current; leaveAction.current = null; setLeaveOpen(false); (action ?? onClose)();
+      }} onCancel={() => { leaveAction.current = null; setLeaveOpen(false); }} />
   </>;
 }

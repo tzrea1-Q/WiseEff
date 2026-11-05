@@ -1,5 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import { catalogStateFromFailure, type CatalogDomainState } from "@/application/parameter-catalog/states";
@@ -49,7 +49,14 @@ export type RegistrationSubjectImpact = {
   projectCount: number | null;
 };
 
+export type SubjectEditorOptions = {
+  title: string;
+  switching?: boolean;
+  renderNavigation: (requestLeave: (action: () => void) => void, busy: boolean) => ReactNode;
+};
+
 export type RegistrationDialogProps = {
+  editor?: SubjectEditorOptions;
   open: boolean;
   intent: "register-subject" | "update-placement";
   actor: CatalogActorKind;
@@ -74,6 +81,7 @@ export type RegistrationDialogProps = {
 };
 
 export function RegistrationDialog({
+  editor,
   open,
   intent,
   actor,
@@ -119,6 +127,7 @@ export function RegistrationDialog({
   const [confirmedReplacement, setConfirmedReplacement] = useState<PlacementReplacementEvidence | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
+  const leaveAction = useRef<(() => void) | null>(null);
   const selectedModule = moduleOptions.find((option) => option.id === destinationModuleId);
   const occupant = selectedModule?.occupant?.registrationId !== registrationId ? selectedModule?.occupant : undefined;
   const replacing = intent === "update-placement" && Boolean(occupant);
@@ -164,17 +173,20 @@ export function RegistrationDialog({
   const dirty = Boolean(reason.trim() || newParentId || newModuleName) || destinationModuleId !== initialDestinationModuleId || placementMode !== "use-default";
   const busy = pending || refreshing;
   const inputDisabled = busy || !allowed;
-  const requestClose = () => {
+  const requestLeave = (action: () => void) => {
     if (busy) return;
-    if (dirty) setLeaveOpen(true);
-    else onOpenChange(false);
+    if (dirty) { leaveAction.current = action; setLeaveOpen(true); }
+    else action();
   };
+  const requestClose = () => requestLeave(() => onOpenChange(false));
   const finishLeave = (allowed: boolean) => {
     const navigation = leaveDecision.current;
     leaveDecision.current = null;
     navigation?.resolve(allowed);
     setLeaveOpen(false);
-    if (allowed && !navigation) onOpenChange(false);
+    const action = leaveAction.current;
+    leaveAction.current = null;
+    if (allowed && !navigation) (action ?? (() => onOpenChange(false)))();
   };
   useEffect(() => {
     if (!open || (!dirty && !busy)) return;
@@ -313,8 +325,9 @@ export function RegistrationDialog({
       >
         {({ titleId, descriptionId }) => (
           <>
-            <h2 id={titleId}>{title}</h2>
-            <div className="confirm-dialog__scroll">
+            {editor ? <div className="grid gap-4"><h2 id={titleId}>{editor.title}</h2>{editor.renderNavigation(requestLeave, busy)}</div>
+              : <h2 id={titleId}>{title}</h2>}
+            <div className="confirm-dialog__scroll" id={editor ? "subject-editor-panel" : undefined} role={editor ? "tabpanel" : undefined} aria-label={editor ? "归属" : undefined}>
               <div id={descriptionId} className="governance-confirm-dialog__body">
                 {actor === "org-admin" || actor === "platform-admin" ? (
                   <fieldset className="registration-dialog-fields" disabled={inputDisabled}>

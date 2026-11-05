@@ -210,10 +210,12 @@ export const insertRegistration = async (
     readonly displayAlias?: string;
   },
 ): Promise<RegistrationRow> => {
+  // Historical upgrade fixtures can register subjects before owner overrides exist.
+  const hasOwnerOverride = input.ownerSubjectId !== undefined;
   const result = await client.query<RegistrationRow>(
     `insert into parameter_catalog.organization_subject_registrations (
-       id, organization_id, subject_id, status, registration_method, proof, current_placement_id, display_alias, cascade_retired, owner_subject_id
-     ) values ($1,$2,$3,$7,$4,$5::jsonb,$6,$8,$9,$10)
+       id, organization_id, subject_id, status, registration_method, proof, current_placement_id, display_alias, cascade_retired${hasOwnerOverride ? ", owner_subject_id" : ""}
+     ) values ($1,$2,$3,$7,$4,$5::jsonb,$6,$8,$9${hasOwnerOverride ? ",$10" : ""})
      returning id, organization_id, subject_id, status, cascade_retired, registration_method, current_placement_id,
        (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [
@@ -226,7 +228,7 @@ export const insertRegistration = async (
       input.status ?? "active",
       input.displayAlias ?? null,
       input.cascadeRetired ?? false,
-      input.ownerSubjectId ?? null,
+      ...(hasOwnerOverride ? [input.ownerSubjectId] : []),
     ],
   );
   return result.rows[0]!;

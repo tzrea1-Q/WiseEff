@@ -58,4 +58,19 @@ describe("ConfirmDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps header navigation and focus mounted while new evidence clears acknowledgement", () => {
+    const props = { open: true, title: "编辑节点", description: "当前组织归属", confirmLabel: "确认调整",
+      acknowledgement: "确认影响", onConfirm: vi.fn(), onCancel: vi.fn(), headerExtra: <button type="button">归属</button> };
+    const view = render(<ConfirmDialog {...props} acknowledgementKey="before" />);
+    const navigation = screen.getByRole("button", { name: "归属" });
+    fireEvent.click(screen.getByRole("checkbox"));
+    navigation.focus();
+    view.rerender(<ConfirmDialog {...props} acknowledgementKey="after" />);
+    expect(screen.getByRole("button", { name: "归属" })).toBe(navigation);
+    expect(navigation).toHaveFocus();
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "确认调整" })).toBeDisabled();
+    expect(screen.getByRole("dialog").querySelector(".confirm-dialog__scroll")).not.toContainElement(navigation);
+  });
 });

@@ -45,11 +45,11 @@ it("explains inheritance, multiline input and preserves edits after a failed sav
   expect(await screen.findByText("当前继承目录规则")).toBeVisible();
   expect(screen.getByText(/每行填写一个 compatible/)).toBeVisible();
   await user.type(screen.getByLabelText("compatible 匹配规则"), "\nvendor,second");
-  await user.click(screen.getByRole("button", { name: "保存" }));
+  await user.click(screen.getByRole("button", { name: "保存识别规则" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("保存识别规则失败");
   expect(screen.getByLabelText("compatible 匹配规则")).toHaveValue("vendor,driver\nvendor,second");
   expect(onClose).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "保存" }));
+  await user.click(screen.getByRole("button", { name: "保存识别规则" }));
   await waitFor(() => expect(governance.updateRegistrationRecognition).toHaveBeenCalledTimes(2));
   expect(governance.updateRegistrationRecognition.mock.calls[0]?.[3]).toEqual(governance.updateRegistrationRecognition.mock.calls[1]?.[3]);
 });
@@ -58,7 +58,7 @@ it("shows recognition rules read-only without save access", async () => {
   setup(false);
   expect(await screen.findByLabelText("compatible 匹配规则")).toHaveAttribute("readonly");
   expect(screen.getByText("当前账号可查看规则，请联系组织管理员修改。")).toBeVisible();
-  expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "保存识别规则" })).not.toBeInTheDocument();
 });
 
 it("retries a failed initial read and closes unchanged rules without prompting", async () => {
@@ -88,7 +88,7 @@ it("saves node recognition through its versioned organization registration", asy
   const name = await screen.findByLabelText("节点类型名");
   expect(screen.getByText("当前使用组织覆盖规则")).toBeVisible();
   await user.clear(name); await user.type(name, " checker-new ");
-  await user.click(screen.getByRole("button", { name: "保存" }));
+  await user.click(screen.getByRole("button", { name: "保存识别规则" }));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   expect(governance.updateRegistrationRecognition).toHaveBeenCalledWith("org", "node-registration", { nodeTypeName: "checker-new" },
     expect.objectContaining({ catalogReleaseId: "release", ifMatch: '"node-rules"', idempotencyKey: expect.any(String) }));

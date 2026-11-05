@@ -30,7 +30,7 @@ export const catalogGovernanceCommandByRouteId = {
 /**
  * Definition identity correction migration (#847, `PCAT-API-13`).  A separate
  * command map and route family so the frozen PCAT-API-04/05/06 governance
- * command set stays exactly 19 entries.
+ * command set, including organization child ownership, stays exactly 20 entries.
  */
 export const catalogDefinitionReplacementCommandByRouteId = {
   "catalog.previewDefinitionReplacement": "previewDefinitionReplacement",

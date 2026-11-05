@@ -678,7 +678,7 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
       ["parameter_catalog.parameter_definitions", ["id", "subject_id", "property_key"]],
       ["parameter_catalog.definition_revisions", ["id", "definition_id", "revision_number", "catalog_release_id", "content_digest", "content"]],
       ["parameter_catalog.catalog_activation_receipts", ["id", "kind", "release_id", "release_digest", "created_at"]],
-      ["parameter_catalog.organization_subject_registrations", ["id", "organization_id", "subject_id", "status", "registration_method", "current_placement_id", "updated_at", "display_alias"]],
+      ["parameter_catalog.organization_subject_registrations", ["id", "organization_id", "subject_id", "status", "registration_method", "current_placement_id", "updated_at", "display_alias", "owner_subject_id"]],
       ["parameter_catalog.subject_placements", ["id", "organization_id", "registration_id", "module_id", "updated_at"]],
       ["parameter_catalog.registration_effective_module", ["organization_id", "registration_id", "module_id"]],
       ["parameter_catalog.current_project_parameter_bindings", ["id", "organization_id", "registration_id"]],

@@ -64,7 +64,14 @@ test("removes and restores unregistered drivers with and without definitions in 
       expect((await restoring).status()).toBe(200);
       await selectControlOption(page.getByRole("combobox", { name: "筛选登记状态" }), "all");
       await expect(row).toContainText("未分配模块");
-      await expect(row.getByRole("button", { name: /^调整归属：/ })).toBeEnabled();
+      await expect(row.getByRole("button", { name: /^编辑主体：/ })).toBeEnabled();
+      await row.getByRole("button", { name: /^编辑主体：/ }).click();
+      const editor = page.getByRole("dialog", { name: /^编辑主体：/ });
+      await editor.getByRole("tab", { name: "归属", exact: true }).click();
+      await expect(editor.getByRole("tabpanel", { name: "归属", exact: true })).toBeVisible();
+      await expect(editor.getByRole("combobox", { name: "目标模块", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(editor).toHaveCount(0);
       const reread = await catalogJson(page.request, "GET", `/api/v2/catalog/subjects/${subjectId}`, { headers: authHeadersForRole("admin") });
       expect(reread.status).toBe(200);
       expect(reread.body).toMatchObject({ item: { membership: { status: "active", catalogReleaseId: compiled.value.release.id },

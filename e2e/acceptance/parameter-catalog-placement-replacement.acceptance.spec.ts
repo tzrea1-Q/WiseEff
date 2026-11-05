@@ -118,8 +118,13 @@ test("shares an occupied business category after a stale placement retry without
     const row = page.locator(`[data-canonical-subject-id="${sourceSubjectId}"]`);
     const writes: string[] = [];
     page.on("request", (request) => { if (request.method() === "PATCH" && new URL(request.url()).pathname === path) writes.push(request.url()); });
-    await row.getByRole("button", { name: /^调整归属：/ }).click();
-    const dialog = page.getByRole("dialog", { name: "调整放置", exact: true });
+    await row.getByRole("button", { name: /^编辑主体：/ }).click();
+    const dialog = page.getByRole("dialog", { name: /^编辑主体：/ });
+    await expect(dialog.getByRole("tab", { name: "识别规则", exact: true })).toHaveAttribute("aria-selected", "true");
+    await dialog.getByRole("tab", { name: "归属", exact: true }).click();
+    await expect(dialog.getByRole("tab", { name: "归属", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(dialog.getByRole("tabpanel", { name: "归属", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("tabpanel", { name: "识别规则", exact: true })).not.toBeVisible();
     const options = await readSelectControlOptions(dialog.getByRole("combobox", { name: "目标模块" }));
     expect(options.find((option) => option.value === targetModuleId)?.label).toContain("当前 1 个主体、1 个有效定义");
     await selectControlOption(dialog.getByRole("combobox", { name: "目标模块" }), targetModuleId);
@@ -194,7 +199,7 @@ test("shares an occupied business category after a stale placement retry without
     expect(oldModule.rows).toEqual([]);
     expect(await snapshot()).toEqual(before);
     await page.reload();
-    await expect(row.getByRole("button", { name: /^调整归属：/ })).toBeVisible();
+    await expect(row.getByRole("button", { name: /^编辑主体：/ })).toBeVisible();
     const reread = await json("GET", `${registrationPath}/${target.id}/placement`);
     expect((reread.body as { item: { moduleId?: string } }).item.moduleId).toBe(targetModuleId);
     await catalogScreenshot(page, testInfo, "placement-replacement-persisted-1440x900");

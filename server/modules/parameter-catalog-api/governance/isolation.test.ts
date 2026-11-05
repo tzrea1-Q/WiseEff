@@ -9,8 +9,10 @@ import { parameterCatalogCanonicalRoutes } from "../../contracts/dtoSchemas/para
 
 import {
   catalogGovernanceCommandByRouteId,
+  catalogGovernanceIfMatchRouteIds,
   catalogGovernanceRouteIds,
   catalogGovernanceRoutes,
+  catalogGovernanceWriteRouteIds,
 } from "./mapping";
 import { registerCatalogGovernanceRoutes } from "./routes";
 import type { CatalogGovernancePorts } from "./types";
@@ -81,7 +83,16 @@ describe("S8-GOV production isolation", () => {
     expect(
       parameterCatalogCanonicalRoutes.some((route) => route.id === "catalog.getLegacyIdentifier"),
     ).toBe(true);
-    expect(catalogGovernanceRoutes).toHaveLength(19);
+    expect(catalogGovernanceRoutes).toHaveLength(20);
+    expect(catalogGovernanceRoutes.filter((route) => route.id === "catalog.changeRegistrationOwner")).toEqual([
+      expect.objectContaining({
+        method: "PATCH",
+        path: "/api/v2/organizations/:organizationId/subject-registrations/:registrationId/owner",
+      }),
+    ]);
+    expect(catalogGovernanceCommandByRouteId["catalog.changeRegistrationOwner"]).toBe("executeRegistration");
+    expect(catalogGovernanceWriteRouteIds).toContain("catalog.changeRegistrationOwner");
+    expect(catalogGovernanceIfMatchRouteIds).toContain("catalog.changeRegistrationOwner");
   });
 
   it("registers every frozen PCAT-API-04..06 path on a WiseEff router", () => {

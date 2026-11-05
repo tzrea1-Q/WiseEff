@@ -59,6 +59,7 @@ export const PARAMETER_CATALOG_GOVERNANCE_REPOSITORY_METHODS = [
   "getRegistration",
   "retireRegistration",
   "restoreRegistration",
+  "changeRegistrationOwner",
   "getPlacement",
   "updatePlacement",
   "getRegistrationRecognition",

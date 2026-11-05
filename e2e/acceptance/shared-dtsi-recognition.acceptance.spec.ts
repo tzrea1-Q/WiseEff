@@ -100,9 +100,14 @@ test("#1431 recognizes frozen source instances, submits an ambiguity proposal an
     expect(newSubject.body).toMatchObject({item:{definitionCounts:{active:0,deprecated:0,retired:0}}});
     await page.keyboard.press("Escape");await expect(page).toHaveURL(catalogAppUrl(sourcePath));
     await page.goto(catalogAppUrl("/parameter-admin/modules"));
-    const placementTrigger=page.getByRole("button",{name:"调整归属：charger",exact:true});
+    const placementTrigger=page.getByRole("button",{name:"编辑主体：charger",exact:true});
     await placementTrigger.focus();await page.keyboard.press("Enter");
-    const placement=page.getByRole("dialog",{name:/调整/}).first();
+    const placement=page.getByRole("dialog",{name:"编辑主体：charger",exact:true});
+    await expect(placement.getByRole("tab",{name:"识别规则",exact:true})).toHaveAttribute("aria-selected","true");
+    await placement.getByRole("tab",{name:"归属",exact:true}).click();
+    await expect(placement.getByRole("tab",{name:"归属",exact:true})).toHaveAttribute("aria-selected","true");
+    await expect(placement.getByRole("tabpanel",{name:"归属",exact:true})).toBeVisible();
+    await expect(placement.getByRole("tabpanel",{name:"识别规则",exact:true})).not.toBeVisible();
     await expect(placement.getByRole("combobox",{name:"目标模块",exact:true})).toBeVisible();
     await expect(placement.getByRole("status",{name:"当前主体与去向",exact:true})).toBeVisible();
     await assertNoPageOverflow(page);await catalogScreenshot(page,testInfo,"shared-related-placement-1280");

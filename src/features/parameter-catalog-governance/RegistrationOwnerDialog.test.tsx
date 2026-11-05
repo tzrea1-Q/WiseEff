@@ -139,4 +139,22 @@ describe("RegistrationOwnerDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "放弃修改" }));
     expect(ports.props.onClose).toHaveBeenCalledOnce();
   });
+
+  it("guards an editor section change without submitting or closing the editor", async () => {
+    const ports = setup();
+    const changeSection = vi.fn();
+    render(<RegistrationOwnerDialog {...ports.props} editor={{ title: "编辑节点：battery",
+      renderNavigation: (requestLeave, busy) => <button type="button" disabled={busy} onClick={() => requestLeave(changeSection)}>识别规则</button> }} />);
+    await chooseTargetAndReason();
+    await userEvent.click(screen.getByRole("button", { name: "识别规则" }));
+    await screen.findByRole("dialog", { name: "放弃未保存的归属调整？" });
+    expect(changeSection).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByRole("textbox", { name: "操作原因" })).toHaveValue("调整本组织节点归属");
+    await userEvent.click(screen.getByRole("button", { name: "识别规则" }));
+    await userEvent.click(screen.getByRole("button", { name: "放弃修改" }));
+    expect(changeSection).toHaveBeenCalledOnce();
+    expect(ports.props.onClose).not.toHaveBeenCalled();
+    expect(ports.changeRegistrationOwner).not.toHaveBeenCalled();
+  });
 });

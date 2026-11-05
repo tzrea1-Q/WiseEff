@@ -291,13 +291,19 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     const notice = "此页仅可查看；登记主体和调整归属需要组织管理员权限。";
     if (editable) {
       expect(screen.queryByText(notice)).not.toBeInTheDocument();
-      const action = await screen.findByRole("button", { name: /^调整归属：/ });
+      const action = await screen.findByRole("button", { name: /^编辑主体：/ });
       expect(action).toBeEnabled();
       await userEvent.click(action);
       expect(await screen.findByRole("dialog")).toBeVisible();
+      expect(screen.getByRole("tab", { name: "归属" })).toBeEnabled();
+      await userEvent.click(screen.getByRole("tab", { name: "归属" }));
+      expect(await screen.findByRole("tabpanel", { name: "归属" })).toBeVisible();
     } else {
       expect(screen.getByText(notice)).toBeVisible();
-      expect(screen.queryByRole("button", { name: /^调整归属：/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^编辑主体：/ })).not.toBeInTheDocument();
+      await userEvent.click(await screen.findByRole("button", { name: /^查看主体：/ }));
+      expect(await screen.findByRole("tabpanel", { name: "识别规则" })).toBeVisible();
+      expect(screen.queryByRole("tab", { name: "归属" })).not.toBeInTheDocument();
     }
   });
 
