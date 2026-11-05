@@ -53,6 +53,7 @@ import { DefinitionDeletionDialog } from "./DefinitionDeletionDialog";
 import { DefinitionTable } from "./DefinitionTable";
 import { DefinitionBatchBar } from "./DefinitionBatchBar";
 import { ProjectConfigurations } from "./ProjectConfigurations";
+import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 import {
   buildCatalogModuleTree,
@@ -99,6 +100,7 @@ type TimelineItem = CatalogDefinitionTimelineResponse["items"][number];
 
 export type CatalogPageProps = {
   libraryMode?: boolean;
+  projectRepository?: Pick<ParameterRepository, "listProjects">;
   onOpenGovernance?: (anchor: CatalogUrlAnchor) => void;
   pageKey?: string;
   refreshEpoch?: number;
@@ -240,6 +242,7 @@ function pickCollection(
  * of occupying the workspace by default.
  */
 export function CatalogPage({
+  projectRepository,
   libraryMode = false,
   onOpenGovernance,
   pageKey = "catalog-definitions",
@@ -277,6 +280,19 @@ export function CatalogPage({
     () => search ?? (typeof window === "undefined" ? "" : window.location.search)
   );
   const resolvedSearch = search ?? internalSearch;
+  const [projectOptions, setProjectOptions] = useState<{ organizationId?: string; items: { id: string; name: string }[] } | null>(null);
+  const [projectOptionsError, setProjectOptionsError] = useState(false);
+  const [projectOptionsRetry, setProjectOptionsRetry] = useState(0);
+  useEffect(() => {
+    if (!libraryMode || !projectRepository) return;
+    let active = true;
+    setProjectOptions(null);
+    setProjectOptionsError(false);
+    void projectRepository.listProjects().then((items) => {
+      if (active) setProjectOptions({ organizationId, items });
+    }).catch(() => { if (active) setProjectOptionsError(true); });
+    return () => { active = false; };
+  }, [libraryMode, organizationId, projectRepository, projectOptionsRetry]);
   const catalogReadSearch = useMemo(() => {
     const params = new URLSearchParams(resolvedSearch);
     params.delete("review");
@@ -284,6 +300,10 @@ export function CatalogPage({
     params.delete("tab");
     params.delete("instance");
     params.delete("instanceCursor");
+    params.delete("configProjectId");
+    params.delete("configSetId");
+    params.delete("configSearch");
+    params.delete("includeUnconfigured");
     return params.toString();
   }, [resolvedSearch]);
   const anchor = useMemo(() => parseCatalogUrlAnchor(resolvedSearch), [resolvedSearch]);
@@ -483,6 +503,8 @@ export function CatalogPage({
         listQuery.type = currentAnchor.type as CatalogListQuery["type"];
       }
       if (libraryMode && currentAnchor.registration) listQuery.registration = currentAnchor.registration;
+      if (libraryMode && currentAnchor.configured) listQuery.configured = true;
+      if (libraryMode && currentAnchor.usageProjectId) listQuery.usageProjectId = currentAnchor.usageProjectId;
       if (currentAnchor.cursor) {
         listQuery.cursor = currentAnchor.cursor;
       }
@@ -996,6 +1018,7 @@ export function CatalogPage({
               <h2>当前项目配置</h2>
               <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
                 cursor={anchor.instanceCursor} selectedId={anchor.instance}
+                projectId={anchor.configProjectId} configSetId={anchor.configSetId} search={anchor.configSearch} includeUnconfigured={anchor.includeUnconfigured}
                 onChange={(update) => commitAnchor({ ...anchor, ...update }, "push")} />
             </section> : <div role="tabpanel" id="library-panel-definition" aria-labelledby="library-tab-definition">
             <section><h2>定义说明</h2>
@@ -1161,7 +1184,8 @@ export function CatalogPage({
         {taskContent ?? (inFlight && !snapshot ? (
           <SectionSkeleton label={catalogLoadingLabel} />
         ) : domainState.kind === "error" && !snapshot ? (
-          <SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
+          <><SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
+            {libraryMode && anchor.usageProjectId ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置项目使用筛选</button> : null}</>
         ) : unpublished ? (
           <div
             data-catalog-unpublished-workspace="true"
@@ -1181,6 +1205,15 @@ export function CatalogPage({
                   : `共 ${totalCount} 项 · 第 ${cursorTrail.length + 1} 页`}
               </p>
             </header>
+            {libraryMode ? <div className="parameter-library-filters">
+              <label><input type="checkbox" checked={Boolean(anchor.configured)} onChange={(event) => commitAnchor({ ...anchor, configured: event.target.checked ? "true" : null, cursor: null, cursorTrail: null }, "push")} /> 有当前配置</label>
+              <label>项目使用 <select value={anchor.usageProjectId ?? ""} disabled={!projectOptions || projectOptions.organizationId !== organizationId} onChange={(event) => commitAnchor({ ...anchor, usageProjectId: event.target.value || null, cursor: null, cursorTrail: null }, "push")}>
+                <option value="">全部项目</option>{projectOptions && projectOptions.organizationId === organizationId ? projectOptions.items.map((project) => <option key={project.id} value={project.id}>{project.name}</option>) : null}
+              </select></label>
+              {projectOptionsError ? <button type="button" className="button subtle sm" onClick={() => setProjectOptionsRetry((value) => value + 1)}>项目读取失败，重试</button> : null}
+              {(anchor.configured || anchor.usageProjectId) ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, configured: null, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
+              <span className="parameter-catalog__muted">数量为当前组织已配置数量</span>
+            </div> : null}
             {definitionPublishingAllowed && onBatchDefinitionCommand ? <>
               {anchor.subjectId && release ? <button type="button" className="button subtle sm" disabled={selectingSubject}
                 onClick={() => {
@@ -1211,8 +1244,8 @@ export function CatalogPage({
                 { key: "subject", header: "主体 / 类型", headerFilter: columns[3]?.headerFilter, render: (row) => <>{row.subject.canonicalName}<br /><span className="parameter-catalog__muted">{catalogSubjectTypeLabel(row.subject.type)} · <span data-row-status>{catalogRegistrationLabel(row.registration.status)}</span></span></> },
                 { key: "documentation", header: "说明", render: (row) => <span className="parameter-library-preview">{row.currentRevision.documentation || "未说明"}</span> },
                 { key: "shape", header: "类型 / 单位", render: (row) => <>{catalogValueShapeLabel(row.currentRevision.valueShape.schema as { type?: unknown })} · {row.currentRevision.unit?.symbol ?? "未说明"}</> },
-                { key: "configuredProjects", header: "已配置项目", align: "right", render: (row) => row.configurationSummary?.configuredProjectCount ?? "不可用" },
-                { key: "configuredInstances", header: "已配置实例", align: "right", render: (row) => row.configurationSummary?.configuredInstanceCount ?? "不可用" }
+                { key: "configuredProjects", header: "项目数", align: "right", render: (row) => row.configurationSummary?.configuredProjectCount ?? "不可用" },
+                { key: "configuredInstances", header: "实例数", align: "right", render: (row) => row.configurationSummary?.configuredInstanceCount ?? "不可用" }
               ] : columns} compact={compactList}
                 selectedDefinitionId={definition?.id} onOpen={selectDefinition} canEdit={canEditDefinition}
                 ownerStatusLabel={ownerStatusLabel} selectedIds={selectedDefinitions.map((item) => item.id)}

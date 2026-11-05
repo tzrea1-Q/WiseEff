@@ -194,6 +194,7 @@ export type CatalogReadPorts = {
   readonly registration: RegistrationProjectionPort;
   readonly usage: UsageProjectionPort;
   readonly configurationSummaries?: (organizationId: string, definitionIds: readonly string[]) => Promise<ReadonlyMap<string, { configuredProjectCount: number; configuredInstanceCount: number } | null>>;
+  readonly selectConfiguredDefinitions?: (organizationId: string, definitionIds: readonly string[], projectId?: string) => Promise<readonly string[]>;
   readonly timeline: TimelineComposerPort;
   readonly authenticate: (request: CatalogReadRequest) => Promise<CatalogReadAuthResult>;
   readonly loadRevisionExportSnapshot?: (pin: CatalogReleasePin) => Promise<CatalogReleaseNode | null>;
@@ -216,4 +217,6 @@ export type CatalogListQuery = {
   /** Organization module subtree filter, resolved to subjects before pagination. */
   readonly placementModuleId?: string;
   readonly propertyKey?: PropertyKey;
+  readonly configured?: boolean;
+  readonly usageProjectId?: string;
 };

@@ -137,6 +137,10 @@ export function parseCatalogListQuery(
   const subjectIdsRaw = queryArray(request.query, "subjectIds");
   const placementModuleIdRaw = queryValue(request.query, "placementModuleId");
   const propertyKeyRaw = queryValue(request.query, "propertyKey");
+  const configuredRaw = queryValue(request.query, "configured");
+  const usageProjectId = queryValue(request.query, "usageProjectId");
+  if (configuredRaw !== undefined && configuredRaw !== "true") return { ok: false, response: validationFailed(request.requestId, "configured") };
+  if (usageProjectId !== undefined && (!usageProjectId.trim() || usageProjectId.length > 200 || /[\u0000-\u001f\u007f-\u009f]/u.test(usageProjectId) || usageProjectId.trim() !== usageProjectId)) return { ok: false, response: validationFailed(request.requestId, "usageProjectId") };
 
   let limit = CATALOG_READ_DEFAULT_PAGE_LIMIT;
   if (limitRaw !== undefined) {
@@ -226,6 +230,8 @@ export function parseCatalogListQuery(
       subjectIds,
       placementModuleId: placementModuleIdRaw,
       propertyKey,
+      configured: configuredRaw === "true",
+      usageProjectId,
     },
   };
 }

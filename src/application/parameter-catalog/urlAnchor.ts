@@ -21,6 +21,12 @@ export type CatalogUrlAnchor = {
   tab?: string | null;
   instance?: string | null;
   instanceCursor?: string | null;
+  usageProjectId?: string | null;
+  configured?: string | null;
+  configProjectId?: string | null;
+  configSetId?: string | null;
+  configSearch?: string | null;
+  includeUnconfigured?: string | null;
   includeRetiredSubjects?: boolean;
   moduleNodeId: string | null;
   pageSize: number | null;
@@ -58,6 +64,12 @@ const ANCHOR_KEYS = [
   "tab",
   "instance",
   "instanceCursor",
+  "usageProjectId",
+  "configured",
+  "configProjectId",
+  "configSetId",
+  "configSearch",
+  "includeUnconfigured",
   "moduleNodeId",
   "cursor",
   "cursorTrail"
@@ -96,6 +108,12 @@ export function parseCatalogUrlAnchor(search: string): CatalogUrlAnchor {
     tab: readOpaque(params, "tab"),
     instance: readOpaque(params, "instance"),
     instanceCursor: readOpaque(params, "instanceCursor"),
+    usageProjectId: readOpaque(params, "usageProjectId"),
+    configured: params.get("configured") === "true" ? "true" : null,
+    configProjectId: readOpaque(params, "configProjectId"),
+    configSetId: readOpaque(params, "configSetId"),
+    configSearch: readOpaque(params, "configSearch"),
+    includeUnconfigured: params.get("includeUnconfigured") === "true" ? "true" : null,
     includeRetiredSubjects: params.get("includeRetiredSubjects") === "true",
     moduleNodeId: readOpaque(params, "moduleNodeId"),
     pageSize: parseCatalogPageSize(params.get("pageSize")),

@@ -333,6 +333,7 @@ export function PageRouter({
         return <CatalogPage
           pageKey="parameter-definitions"
           libraryMode
+          projectRepository={runtime.parameterRepository}
           moduleRegistry={libraryModules}
           organizationId={runtime.operatingOrganizationId ?? organizationId}
           onOpenGovernance={canAccessPage(currentRoleId, "parameter-admin", { path: CATALOG_PAGE_PATH, runtimeMode: runtimeMode ?? "api", permissions: sessionPermissions, roles: sessionRoles, projectMemberships })

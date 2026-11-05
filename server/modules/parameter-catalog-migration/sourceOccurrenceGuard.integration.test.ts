@@ -270,8 +270,8 @@ describe("completed replacement source occurrence guard", () => {
     expect(previous.items).toEqual([]);
     const successor = await read(newDefinitionId);
     expect(successor.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
-    expect(successor.items.map((item) => item.bindingId)).toEqual(expect.arrayContaining([newBindingId, otherBindingId]));
-    expect(successor.items.map((item) => item.bindingId)).not.toContain(oldBindingId);
+    expect(successor.items.filter((item) => item.kind === "instance").map((item) => item.bindingId)).toEqual(expect.arrayContaining([newBindingId, otherBindingId]));
+    expect(successor.items.filter((item) => item.kind === "instance").map((item) => item.bindingId)).not.toContain(oldBindingId);
   });
 
   it("refuses cross-project and cross-tenant completed endpoints", async () => {
