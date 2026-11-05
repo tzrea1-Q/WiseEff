@@ -1241,7 +1241,7 @@ export function CatalogPage({
             ) : (
               <DefinitionTable rows={definitions} columns={libraryMode ? [
                 { key: "name", header: "名称 / 属性键", headerFilter: columns[4]?.headerFilter, render: (row) => <><strong>{row.currentRevision.displayName || row.propertyKey}</strong><br /><code>{row.propertyKey}</code>{row.lifecycle !== "active" ? <span className="parameter-catalog__badge">{catalogLifecycleLabel(row.lifecycle)}</span> : null}</> },
-                { key: "subject", header: "主体 / 类型", headerFilter: columns[3]?.headerFilter, render: (row) => <>{row.subject.canonicalName}<br /><span className="parameter-catalog__muted">{catalogSubjectTypeLabel(row.subject.type)} · {catalogRegistrationLabel(row.registration.status)}</span></> },
+                { key: "subject", header: "主体 / 类型", headerFilter: columns[3]?.headerFilter, render: (row) => <>{row.subject.canonicalName}<br /><span className="parameter-catalog__muted">{catalogSubjectTypeLabel(row.subject.type)} · <span data-row-status>{catalogRegistrationLabel(row.registration.status)}</span></span></> },
                 { key: "documentation", header: "说明", render: (row) => <span className="parameter-library-preview">{row.currentRevision.documentation || "未说明"}</span> },
                 { key: "shape", header: "类型 / 单位", render: (row) => <>{catalogValueShapeLabel(row.currentRevision.valueShape.schema as { type?: unknown })} · {row.currentRevision.unit?.symbol ?? "未说明"}</> },
                 { key: "configuredProjects", header: "项目数", align: "right", render: (row) => row.configurationSummary?.configuredProjectCount ?? "不可用" },

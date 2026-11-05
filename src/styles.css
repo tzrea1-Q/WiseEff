@@ -961,7 +961,7 @@ body {
   background: var(--feedback-entry-bg-hover);
 }
 
-@media (max-height: 820px) {
+@media (max-height: 900px) {
   .sidebar-expanded .nav-group {
     gap: 0;
   }

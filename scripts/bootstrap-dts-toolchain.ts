@@ -40,16 +40,8 @@ function runRequired(command: string, args: string[], cwd: string) {
 }
 
 export async function requirePinnedDtsPreprocessor() {
-  const preprocessing = await probeDtsPreprocessor();
+  const preprocessing = await probeDtsPreprocessor("bootstrap");
   if (preprocessing.available) return;
-  if (preprocessing.diagnostic === "docker-info:timeout") {
-    try {
-      const diagnostic = await probeDtsPreprocessor("bootstrap-diagnostic");
-      console.log(`docker-info diagnostic: ${diagnostic.available ? "available" : diagnostic.diagnostic}; elapsed_ms=${diagnostic.infoElapsedMs ?? "unavailable"}`);
-    } catch {
-      console.log("docker-info diagnostic: error; elapsed_ms=unavailable");
-    }
-  }
   throw new Error(`Pinned isolated DTS preprocessing is unavailable (${preprocessing.diagnostic}).`);
 }
 
