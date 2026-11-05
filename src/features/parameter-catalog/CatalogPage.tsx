@@ -15,11 +15,13 @@ import {
 import {
   CATALOG_DEFAULT_PAGE_SIZE,
   CATALOG_PAGE_SIZES,
+  CATALOG_READ_PAGE_PATH,
   buildCatalogHref,
   buildCatalogShareHref,
   parseCatalogUrlAnchor,
   parseCatalogPageSize,
   readLegacyCatalogBookmark,
+  serializeCatalogUrlAnchor,
   withCatalogReleasePin,
   type CatalogPageSize,
   type CatalogUrlAnchor
@@ -113,6 +115,7 @@ export type CatalogPageProps = {
   sessionPermissions?: readonly string[] | null;
   search?: string;
   onAnchorChange?: (href: string, mode: "push" | "replace") => void;
+  onOpenProject?: (href: string) => void;
   onDomainStateChange?: (state: CatalogDomainState) => void;
   onOpenPendingWork?: () => void;
   reviewCountOverride?: number | null;
@@ -256,6 +259,7 @@ export function CatalogPage({
   sessionPermissions,
   search,
   onAnchorChange,
+  onOpenProject,
   onDomainStateChange,
   onAction,
   onOpenPendingWork,
@@ -313,7 +317,7 @@ export function CatalogPage({
   const [shareState, setShareState] = useState<"success" | "error" | null>(null);
   useEffect(() => setShareState(null), [resolvedSearch, organizationId]);
   const shareControl = <div className="parameter-library-share">
-    <button type="button" className="button subtle sm" onClick={async () => {
+    <button type="button" className="button subtle sm" disabled={!anchor.catalogReleaseId} onClick={async () => {
       try { await navigator.clipboard.writeText(new URL(buildCatalogShareHref(anchor), window.location.origin).href); setShareState("success"); }
       catch { setShareState("error"); }
     }}>复制当前视图链接</button>
@@ -1036,6 +1040,11 @@ export function CatalogPage({
               <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
                 cursor={anchor.instanceCursor} selectedId={anchor.instance} compare={anchor.tab === "compare"} baselineId={anchor.baseline} targetId={anchor.target}
                 projectId={anchor.configProjectId} configSetId={anchor.configSetId} search={anchor.configSearch} includeUnconfigured={anchor.includeUnconfigured}
+                onOpenProject={onOpenProject ? (row) => {
+                  const returnPath = `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor({ ...anchor, sourceReturn: undefined, createDefinition: false, reviewItemId: null })}`;
+                  const params = new URLSearchParams({ project: row.projectId, bindingId: row.bindingId, definitionId: reading.id, configSetId: row.configSetId, returnTo: returnPath });
+                  onOpenProject(`/parameters?${params}`);
+                } : undefined}
                 onChange={(update) => commitAnchor({ ...anchor, ...update }, "push")} />
             </section> : <div role="tabpanel" id="library-panel-definition" aria-labelledby="library-tab-definition">
             <section><h2>定义说明</h2>

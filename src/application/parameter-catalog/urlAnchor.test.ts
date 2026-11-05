@@ -5,9 +5,18 @@ import {
   buildCatalogShareHref,
   buildCatalogHref,
   parseCatalogUrlAnchor,
+  normalizeLibraryReturnPath,
   readLegacyCatalogBookmark,
   serializeCatalogUrlAnchor
 } from "./urlAnchor";
+
+it("accepts only a normalized local library return without redirect or organization instructions", () => {
+  expect(normalizeLibraryReturnPath("/parameters/definitions?definitionId=def&tab=configurations&q=power"))
+    .toBe("/parameters/definitions?definitionId=def&q=power&tab=configurations");
+  for (const path of ["https://evil.test/parameters/definitions", "//evil.test/parameters/definitions", "/parameters/definitions?returnTo=https%3A%2F%2Fevil.test", "/parameters/definitions?organizationId=other", "/parameters/definitions?sourceReturn=%2Fparameter-admin%2Fsources%3Fx%3D1", "/parameters/definitions#anchor", "/parameters/definitions?tab=configurations&tab=definition"]) {
+    expect(normalizeLibraryReturnPath(path)).toBeNull();
+  }
+});
 
 it("retains only a local shared-version return link across Catalog anchor normalization", () => {
   const href="/parameter-admin/sources?resource=11111111-1111-4111-8111-111111111111&version=22222222-2222-4222-8222-222222222222&tab=recognition";

@@ -384,7 +384,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogDefinitionResponseSchema,
         "CatalogDefinitionResponse"
       ),
-    getProjectConfigurations: (definitionId: string, query?: { cursor?: string; selectedBindingId?: string; baselineBindingId?: string; targetBindingId?: string; projectId?: string; configSetId?: string; search?: string; includeUnconfigured?: boolean }) => {
+    getProjectConfigurations: (definitionId: string, query?: { cursor?: string; selectedBindingId?: string; baselineBindingId?: string; targetBindingId?: string; projectId?: string; configSetId?: string; search?: string; includeUnconfigured?: boolean; hintProjectId?: string; hintConfigSetId?: string }) => {
       const params = new URLSearchParams();
       if (query?.cursor) params.set("cursor", query.cursor);
       if (query?.selectedBindingId) params.set("selectedBindingId", query.selectedBindingId);
@@ -394,6 +394,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
       if (query?.configSetId) params.set("configSetId", query.configSetId);
       if (query?.search) params.set("search", query.search);
       if (query?.includeUnconfigured) params.set("includeUnconfigured", "true");
+      if (query?.hintProjectId) params.set("hintProjectId", query.hintProjectId);
+      if (query?.hintConfigSetId) params.set("hintConfigSetId", query.hintConfigSetId);
       return request("GET", `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}/project-configurations?${params}`,
         catalogProjectConfigurationsResponseSchema, "CatalogProjectConfigurationsResponse");
     },

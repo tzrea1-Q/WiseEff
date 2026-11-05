@@ -85,13 +85,15 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
     if (identity.scope.projectScope.kind !== "all") throw new ApiError("FORBIDDEN", "Organization configuration read is not authorized.");
     const definitionId = request.params.definitionId;
     if (identity.scope.definitions.kind === "only" && !identity.scope.definitions.ids.some((id) => id === definitionId)) throw new ApiError("NOT_FOUND", "Definition not found.");
-    const { cursor, selectedBindingId, baselineBindingId, targetBindingId, limit: rawLimit, projectId, configSetId, search, includeUnconfigured } = request.query;
+    const { cursor, selectedBindingId, baselineBindingId, targetBindingId, limit: rawLimit, projectId, configSetId, search, includeUnconfigured, hintProjectId, hintConfigSetId } = request.query;
     const limit = rawLimit === undefined ? 50 : Number(rawLimit);
     if (!token(definitionId) || (cursor !== undefined && (typeof cursor !== "string" || cursor.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(cursor))) ||
       (selectedBindingId !== undefined && !token(selectedBindingId)) ||
       (baselineBindingId !== undefined && !token(baselineBindingId)) || (targetBindingId !== undefined && (!token(targetBindingId) || !baselineBindingId)) ||
       (projectId !== undefined && !token(projectId)) || (configSetId !== undefined && !token(configSetId)) ||
       (search !== undefined && !token(search)) || (includeUnconfigured !== undefined && includeUnconfigured !== "true" && includeUnconfigured !== "false") ||
+      (hintProjectId !== undefined && !token(hintProjectId)) || (hintConfigSetId !== undefined && !token(hintConfigSetId)) ||
+      ((hintProjectId !== undefined || hintConfigSetId !== undefined) && selectedBindingId === undefined) ||
       !Number.isInteger(limit) || limit < 1 || limit > 100 || (rawLimit !== undefined && !/^\d+$/.test(String(rawLimit)))) {
       throw new ApiError("VALIDATION_FAILED", "Invalid configuration read identity or pagination.");
     }
@@ -157,7 +159,9 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
       async function selectedInstance(bindingId: string, reason: string) {
         const value = await tx.query<Instance>(`${currentInstancesCte} select *, value = (select value from candidates where binding_id = $4) as value_equals
           from candidates where binding_id = $3 and ${configured}`, [organizationId, [definitionId], bindingId, baselineBindingId ?? null]);
-        if (!value.rows[0]) throw new ApiError("NOT_FOUND", "Current configuration instance not found.", { reason });
+        if (!value.rows[0] || (reason === "selected-unavailable" &&
+          ((hintProjectId !== undefined && value.rows[0].project_id !== hintProjectId) ||
+           (hintConfigSetId !== undefined && value.rows[0].config_set_id !== hintConfigSetId)))) throw new ApiError("NOT_FOUND", "Current configuration instance not found.", { reason });
         const row = value.rows[0];
         const rawValue = await readCurrentInstanceSourceValue(tx, objectStore, { organizationId, projectId: row.project_id,
           bindingId: row.binding_id, projectValueId: row.current_value_id, payload: { kind: row.value_kind, value: row.value } as ProjectValuePayload });

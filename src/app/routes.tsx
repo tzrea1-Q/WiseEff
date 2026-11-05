@@ -1,6 +1,6 @@
 import { knowledgeEntryHref, parseKnowledgeEntryQuery } from "@/domain/knowledge/citations";
 import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
-import { useMemo, type Dispatch, type ReactNode } from "react";
+import { useCallback, useMemo, type Dispatch, type ReactNode } from "react";
 
 import type {
   ApplyParameterImportBatchInput,
@@ -182,6 +182,7 @@ export function PageRouter({
   TopBarProjectId,
   DebuggingAdminPage
 }: PageRouterProps) {
+  const navigateParameters = useCallback((href: string) => onNavigate(withOrganizationScope(href, runtime?.operatingOrganizationId)), [onNavigate, runtime?.operatingOrganizationId]);
   const libraryModules = useMemo(() => runtime?.parameterApiClient
     ? createHttpParameterModuleRegistryRepository(runtime.parameterApiClient)
     : resolveParameterModuleRegistryRepository(runtimeMode), [runtime?.parameterApiClient, runtimeMode]);
@@ -342,13 +343,14 @@ export function PageRouter({
           actor="user"
           search={search}
           onAnchorChange={(href, mode) => onNavigate(withOrganizationScope(href.replace(CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH), runtime.operatingOrganizationId), { replace: mode === "replace" })}
+          onOpenProject={(href) => onNavigate(withOrganizationScope(href, runtime.operatingOrganizationId))}
         />;
       }
       return (
         <UserParametersPage
           state={state}
           dispatch={dispatch}
-          onNavigate={onNavigate}
+          onNavigate={navigateParameters}
           search={search}
           parameterActions={parameterActions}
           topologyRepository={parameterTopologyRepository}
