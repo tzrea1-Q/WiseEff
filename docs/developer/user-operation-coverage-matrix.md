@@ -12,7 +12,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARLIB-FILTER-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Filter project usage and include projects without current configuration. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `PARLIB-COMPARE-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Select an explicit instance baseline and inspect conservative typed comparisons. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `PARLIB-RETURN-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Open the owning project/config set/Binding and return to library context. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
-| `PARLIB-SHARE-001` | P1 | parameters | future | `/parameters/definitions` | Hardware User, Software User, Org Admin | Share the current view and copy the complete selected raw value. | ui, api, screenshot | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
+| `PARLIB-SHARE-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Share the current view and copy the complete selected raw value. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-MIXED-001` | P1 | parameters | automated | `/parameter-admin/modules` | Org Admin | Review and apply a mixed structure update in one confirmation. | ui, api, screenshot | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-LIFECYCLE-001` | P1 | parameters | automated | `/parameter-admin/modules` | Org Admin | Review batch root registration, retirement and restoration. | ui, api, screenshot | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-DELETE-001` | P1 | parameters | automated | `/parameter-admin/modules` | Org Admin | Review and retry a module deletion after moving its child. | ui, api, db, screenshot | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
@@ -220,7 +220,6 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 ## Deferred Or Conditional Operations
 
-- `PARLIB-SHARE-001`: Implementation authorized under #1513; native browser automation and evidence pending.
 - `ORG-OPERATING-LIFECYCLE-001`: Requires actual local password sessions in an isolated local-auth API lane; HMAC/OIDC lanes skip this provider-specific workflow. The signed OIDC companion has its own conditional operation and evidence.
 - `ORG-OIDC-TRANSFER-001`: Requires an isolated OIDC API lane with a controlled loopback issuer/JWKS and its ephemeral test signing key; other provider lanes cannot establish this evidence.
 - `ORG-ACCOUNT-TRANSFER-001`: Browser workflow requires an isolated real local-auth API lane; HMAC and OIDC lanes skip this local-password interaction.

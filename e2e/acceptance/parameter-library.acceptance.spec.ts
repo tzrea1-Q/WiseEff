@@ -102,5 +102,3 @@ test("opens a global definition from the library without a project", async ({ pa
     assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: "/api/v2/catalog/definitions/:definitionId", status: response.status,
       responseSummary: "Published definition read in the fixture Catalog release." }] });
 });
-
-// @operation-planned PARLIB-SHARE-001

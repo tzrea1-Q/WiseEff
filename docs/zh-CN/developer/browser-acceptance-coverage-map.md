@@ -14,7 +14,7 @@
 
 - `PARLIB-RETURN-001`：打开确切项目／配置集／Binding 并返回参数库上下文；真实 API 浏览器验收归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
 
-- `PARLIB-SHARE-001`：分享当前视图并复制选定的完整原始值。
+- `PARLIB-SHARE-001`：分享当前视图并复制选定的完整原始值；真实 API 浏览器验收归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
 
 `MODULE-STRUCTURE-MIXED-001`：在 1440×900 下，管理员一次确认混合结构更新。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
 
