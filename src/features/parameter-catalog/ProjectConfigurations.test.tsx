@@ -12,10 +12,10 @@ function deferred<T>() {
 }
 
 function response(projectName: string, value: string): CatalogProjectConfigurationsResponse {
-  return { summary: { configuredProjectCount: 1, configuredInstanceCount: 1 }, nextCursor: null, continuedProjectId: null,
+  return { summary: { configuredProjectCount: 1, configuredInstanceCount: 1 }, totalCount: 1, readAt: "2026-11-05T00:00:00.000Z", nextCursor: null, continuedProjectId: null,
     selected: null, items: [{ kind: "instance", bindingId: projectName, projectId: projectName, projectName,
       configSetId: "set", configSetName: "配置集", sourceOccurrenceId: "source", sourceFormat: "dts",
-      fileId: "file", fileVersionId: "version", fileName: "board.dts", sourceLocator: { propertyName: "limit" },
+      fileId: "file", fileVersionId: "version", fileName: "board.dts", sourceLocator: { propertyName: "limit" }, sourceLocation: "/charger · limit",
       currentValueId: "value", definitionRevisionId: "revision", definitionRevisionNumber: "1", effectiveRevisionId: "revision",
       unit: null, definitionLifecycle: "active", valueState: "present", valueKind: "number", valuePreview: value, valuePreviewTruncated: false }] };
 }

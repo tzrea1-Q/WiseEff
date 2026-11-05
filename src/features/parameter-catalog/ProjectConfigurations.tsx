@@ -46,12 +46,13 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   for (const row of result.items) groups.set(row.projectId, [...(groups.get(row.projectId) ?? []), row]);
   return <div className="parameter-library-configurations">
     <p className="parameter-catalog__muted">当前组织 · 已配置项目 {result.summary.configuredProjectCount} · 已配置实例 {result.summary.configuredInstanceCount}</p>
+    <p className="parameter-catalog__muted">本页 {result.items.length} 条 · 共 {result.totalCount} 条</p>
     <p className="parameter-catalog__muted">显示当前平台配置，包含所有配置集；并非设备运行状态。历史定义仍显示当前配置。</p>
     {result.items.length === 0 ? <SectionEmpty message="当前没有可显示的项目配置。" /> : [...groups.entries()].map(([projectId, items]) => <section key={projectId}>
       <h3>{items[0]!.projectName}{result.continuedProjectId === projectId ? "（续）" : ""}</h3>
       <DataTable rows={items} rowKey={(row) => row.bindingId} aria-label={`${items[0]!.projectName} 的当前配置`} pageSize={items.length}
         columns={[
-          { key: "source", header: "配置集 / 来源", render: (row) => <><strong>{row.configSetName}</strong><br /><span className="parameter-catalog__muted">{row.fileName} · {row.sourceFormat.toUpperCase()}</span><br /><code>{String(row.sourceLocator.pointer ?? row.sourceLocator.propertyName ?? "")}</code></> },
+          { key: "source", header: "配置集 / 来源", render: (row) => <><strong>{row.configSetName}</strong><br /><span className="parameter-catalog__muted">{row.fileName} · {row.sourceFormat.toUpperCase()}</span><br /><code>{row.sourceLocation}</code></> },
           { key: "value", header: "当前值", render: (row) => row.valueState === "unset" ? "未设置" : <><code>{row.sourceFormat === "dts" && row.valueKind === "boolean" ? "存在" : row.valuePreview}{row.valuePreviewTruncated ? "…" : ""}</code>{row.unit ? ` ${row.unit}` : null}</> },
           { key: "revision", header: "值固定修订", render: (row) => <>#{row.definitionRevisionNumber}</> },
         ]}

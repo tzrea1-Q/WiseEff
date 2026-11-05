@@ -70,6 +70,12 @@ test("reads grouped DTS and software instances with exact counts and full values
     Object.assign(unused.content.revision, { id: "drev_parlib_unused_1", displayName: "未使用的定义",
       matching: { ...unused.content.revision.matching, sourceProperty: "unused_parameter" } });
     release.documents.push(unused);
+    const boolean = structuredClone(template);
+    Object.assign(boolean.content, { id: "pdef_parlib_boolean", propertyKey: "parlib_enabled" });
+    Object.assign(boolean.content.revision, { id: "drev_parlib_boolean_1", displayName: "设备使能", valueSchema: { type: "boolean" },
+      matching: { ...boolean.content.revision.matching, sourceProperty: "parlib_enabled" } });
+    delete boolean.content.revision.unit;
+    release.documents.push(boolean);
     refreshReleaseSource(release);
     const compiled = compileOrThrow(bundle);
     const installed = await createCatalogInstaller(pool).installPublishedRelease({ mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: compiled.aggregateDigest });
@@ -98,6 +104,11 @@ test("reads grouped DTS and software instances with exact counts and full values
         if (!binding.ok) throw new Error("DTS fixture failed");
       }
     }
+    const booleanBinding = await createSourceBackedBindingService(pool, { objectStore: storage, sourceRawValue: null,
+      initialPayload: { kind: "boolean", value: true } }).stabilize({ snapshot: loaded.value, organizationId,
+      projectId: "parlib-instances-a", logicalNodeId: "parlib-boolean-node", registrationId: driver.value.registrationId,
+      definitionId: ParameterDefinitionId("pdef_parlib_boolean"), effectiveRevisionId: DefinitionRevisionId("drev_parlib_boolean_1"), expectedEffectiveRevisionId: null });
+    if (!booleanBinding.ok) throw new Error("Boolean fixture failed");
     const auth = makeTestAuthContext({ userId: acceptanceCast.xuYun.userId, organizationId, permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"] });
     const set = await createConfigSet(db, auth, { projectId: "parlib-instances-b", name: "软件配置集" });
     const uploaded = await uploadProjectParameterFile(db, storage, auth, { projectId: "parlib-instances-b", fileName: "settings.json", bytes: Buffer.from(`{"software_value":${fullSourceToken},"software_empty":"","software_null":null,"software_false":false}`) });
@@ -127,6 +138,10 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("软件配置集");
     await page.getByRole("button", { name: "查看 settings.json 的完整值" }).click();
     await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(fullSourceToken);
+    await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=pdef_parlib_boolean&tab=configurations`);
+    await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("存在");
+    await page.getByRole("button", { name: /查看 .* 的完整值/ }).click();
+    await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText("布尔属性以存在表示");
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=pdef_parlib_unused&tab=configurations`);
     await expect(page.getByText("当前没有可显示的项目配置。")).toBeVisible();
     await page.route("**/project-configurations*", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR" } }) }));

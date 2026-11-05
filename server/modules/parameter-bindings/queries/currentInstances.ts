@@ -13,7 +13,10 @@ export const currentInstancesCte = `with candidates as (
          value.value_state, pin.format as source_format, pin.format as source_pin_format,
          occurrence.config_set_id, config_set.name as config_set_name, pin.file_id, pin.file_version_id,
          coalesce(member.source_name, file.file_name) as file_name,
-         pin.locator as source_locator, module.name as module_name,
+         pin.locator as source_locator,
+         case when pin.format = 'json' then pin.locator->>'pointer'
+              when pin.format = 'dts' then logical.node_locator || ' · ' || (pin.locator->>'propertyName') end as source_location,
+         module.name as module_name,
          coalesce(subject.display_name, module.name) as driver_module,
          (value.id is not null and value_revision.id is not null and pin.id is not null
           and ((value.source_ref <> 'canonical-binding-identity' and value.config_revision_id <> 'canonical-binding-identity')
@@ -42,6 +45,10 @@ export const currentInstancesCte = `with candidates as (
               join parameter_catalog.parameter_definitions definition on definition.id = b.definition_id
               where property.id = pin.property_occurrence_id and property.config_revision_id = pin.config_revision_id
                 and property.file_version_id = pin.file_version_id and property.property_name = definition.property_key
+                and effect.property_name = property.property_name and effect.effect_kind in ('set', 'override')
+                and not exists (select 1 from public.dts_occurrence_effects later
+                  where later.config_revision_id = effect.config_revision_id and later.logical_node_revision_id = effect.logical_node_revision_id
+                    and later.property_name = effect.property_name and later.source_order > effect.source_order)
                 and pin.locator = jsonb_build_object('kind', 'dts-property', 'propertyOccurrenceId', property.id,
                   'nodeOccurrenceId', property.node_occurrence_id, 'fileVersionId', property.file_version_id, 'propertyName', property.property_name)
                 and pin.locator_digest = 'sha256:' || encode(sha256(convert_to(
@@ -68,6 +75,8 @@ export const currentInstancesCte = `with candidates as (
      and revision.project_id = b.project_id and revision.config_set_id = occurrence.config_set_id
     left join public.dts_config_set config_set on config_set.id = occurrence.config_set_id
      and config_set.organization_id = b.organization_id and config_set.project_id = b.project_id
+    left join public.dts_logical_node_revisions logical on logical.logical_node_id = occurrence.logical_node_id
+     and logical.config_revision_id = pin.config_revision_id
     left join public.dts_config_revision_members member
       on member.config_revision_id = pin.config_revision_id and member.file_id = pin.file_id
      and member.file_version_id = pin.file_version_id

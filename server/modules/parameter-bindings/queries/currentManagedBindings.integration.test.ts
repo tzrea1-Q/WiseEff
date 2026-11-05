@@ -12,6 +12,11 @@ import { countSourceBackedBindingsByProject } from "../dashboardRead";
 import { readOwnedCurrentBinding } from "../values";
 import { readCanonicalCompareRows } from "./dts";
 import { readCurrentManagedSourceBindingIds } from "./currentManagedBindings";
+import { createRouter } from "../../../shared/http/router";
+import { createHttpServer } from "../../../shared/http/server";
+import { requestJson } from "../../../test/testClient";
+import { registerParameterCatalogApi } from "../../parameter-catalog-api/productionWire";
+import { catalogProjectConfigurationsResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 
 describe("current managed source reads (PostgreSQL API role)", () => {
   let f: Awaited<ReturnType<typeof createSourceAdminFixture>>;
@@ -91,5 +96,28 @@ describe("current managed source reads (PostgreSQL API role)", () => {
     expect((await countSourceBackedBindingsByProject(f.api, f.organizationId)).get(f.projectId)).toBe(1);
     expect(await exportCanonicalBindingSource(f.api, f.storage, f.auth, scope()))
       .toMatchObject({ currentValueId: valueId, configRevisionId: pin.config_revision_id });
+  });
+
+  it("returns current configuration and excludes a retired registration over HTTP with the PostgreSQL API role", async () => {
+    const read = async (query = "") => {
+      const router = createRouter();
+      registerParameterCatalogApi(router, { db: f.api, objectStore: f.storage, resolveAuth: () => f.auth });
+      return requestJson(createHttpServer(router), `/api/v2/catalog/definitions/${definitionId}/project-configurations${query}`);
+    };
+    const active = await read(`?selectedBindingId=${bindingId}`);
+    expect(active.status).toBe(200);
+    const body = catalogProjectConfigurationsResponseSchema.parse(active.body);
+    expect(body.summary).toEqual({ configuredProjectCount: 1, configuredInstanceCount: 1 });
+    expect(body.selected?.rawValue).toBe("<36>");
+    await setSourceRevisionRegistrationStatus(f.db, { organizationId: f.organizationId, registrationId, status: "retired" });
+    try {
+      const retired = await read();
+      expect(retired.status).toBe(200);
+      expect(catalogProjectConfigurationsResponseSchema.parse(retired.body)).toMatchObject({
+        summary: { configuredProjectCount: 0, configuredInstanceCount: 0 }, items: [],
+      });
+    } finally {
+      await setSourceRevisionRegistrationStatus(f.db, { organizationId: f.organizationId, registrationId, status: "active" });
+    }
   });
 });

@@ -17,6 +17,8 @@ import { createRegistrationService } from "../parameter-governance/registration/
 import { createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import type { AuthContext, RoleBinding } from "../auth/types";
 import { createRouter } from "../../shared/http/router";
+import { createHttpServer } from "../../shared/http/server";
+import { requestJson } from "../../test/testClient";
 import { registerParameterCatalogApi } from "./productionWire";
 import { createUsageQueries } from "../parameter-bindings/usage";
 import { createUsageProjectionFromQueries } from "./read/ports";
@@ -234,6 +236,8 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     expect(response.status).toBe(200);
     const body = catalogProjectConfigurationsResponseSchema.parse(await response.json());
     expect(body.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+    expect(body.totalCount).toBe(3);
+    expect(Number.isNaN(Date.parse(body.readAt))).toBe(false);
     expect(body.items).toHaveLength(3);
     expect(body.items.filter((item: { projectId: string }) => item.projectId === "scope-project-b")).toHaveLength(2);
     expect(body.items.every((item: { valuePreview: string }) => item.valuePreview === "<1001>")).toBe(true);
@@ -248,7 +252,13 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     const second = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?cursor=${first.nextCursor}&limit=1`, {
       headers: { authorization: "Bearer scope-only-a" },
     });
-    expect(catalogProjectConfigurationsResponseSchema.parse(await second.json()).items[0]?.bindingId).not.toBe(first.items[0]?.bindingId);
+    const secondPage = catalogProjectConfigurationsResponseSchema.parse(await second.json());
+    expect(secondPage.items[0]?.bindingId).not.toBe(first.items[0]?.bindingId);
+    const third = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?cursor=${secondPage.nextCursor}&limit=1`, {
+      headers: { authorization: "Bearer scope-only-a" },
+    });
+    const thirdPage = catalogProjectConfigurationsResponseSchema.parse(await third.json());
+    expect(thirdPage.continuedProjectId).toBe("scope-project-b");
     const pool = getRootPostgresPool(root)!;
     await pool.query("update public.projects set name='Changed' where id='scope-project-b'");
     try {
@@ -326,6 +336,42 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     }
   });
 
+  it("does not treat a forged identity marker as a legitimate unset value", async () => {
+    const pool = getRootPostgresPool(root)!;
+    const bindingId = bindingIds.get("scope-project-b")!;
+    const original = (await pool.query<{ source_ref: string }>(`select value.source_ref from parameter_catalog.project_parameter_values value
+      join parameter_catalog.project_parameter_bindings binding on binding.current_value_id=value.id where binding.id=$1`, [bindingId])).rows[0]!.source_ref;
+    await pool.query("alter table parameter_catalog.project_parameter_values disable trigger all");
+    try {
+      await pool.query(`update parameter_catalog.project_parameter_values set source_ref='canonical-binding-identity'
+        where id=(select current_value_id from parameter_catalog.project_parameter_bindings where id=$1)`, [bindingId]);
+      const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations`, { headers: { authorization: "Bearer scope-only-a" } });
+      expect(response.status).toBe(409);
+      expect(failureReasonSchema.parse(await response.json()).error.details.reason).toBe("invalid-source-pin");
+    } finally {
+      await pool.query(`update parameter_catalog.project_parameter_values set source_ref=$2
+        where id=(select current_value_id from parameter_catalog.project_parameter_bindings where id=$1)`, [bindingId, original]);
+      await pool.query("alter table parameter_catalog.project_parameter_values enable trigger all");
+    }
+  });
+
+  it("returns a missing-current-value failure instead of a zero count", async () => {
+    const pool = getRootPostgresPool(root)!;
+    const bindingId = bindingIds.get("scope-project-b")!;
+    const currentValueId = (await pool.query<{ current_value_id: string }>("select current_value_id from parameter_catalog.project_parameter_bindings where id=$1", [bindingId])).rows[0]!.current_value_id;
+    await pool.query("alter table parameter_catalog.project_parameter_bindings disable trigger all");
+    try {
+      await pool.query("update parameter_catalog.project_parameter_bindings set current_value_id='parlib-missing-value' where id=$1", [bindingId]);
+      const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations`, { headers: { authorization: "Bearer scope-only-a" } });
+      expect(response.status).toBe(409);
+      expect(failureReasonSchema.parse(await response.json()).error.details.reason).toBe("missing-current-value");
+    } finally {
+      await pool.query("update parameter_catalog.project_parameter_bindings set current_value_id=$2 where id=$1", [bindingId, currentValueId]);
+      await pool.query("alter table parameter_catalog.project_parameter_bindings enable trigger all");
+    }
+  });
+
+
   it("keeps counts and rows in one snapshot during a concurrent project change", async () => {
     let resume!: () => void;
     let reached!: () => void;
@@ -352,7 +398,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     const pool = getRootPostgresPool(root)!;
     await pool.query("update public.users set is_active=false where id='only-a'");
     try {
-      for (const path of [`/api/v2/catalog/definitions/${definitionId}`, "/api/v1/parameters?projectId=scope-project-b"]) {
+      for (const path of [`/api/v2/catalog/definitions/${definitionId}`, `/api/v2/catalog/definitions/${definitionId}/project-configurations`, "/api/v1/parameters?projectId=scope-project-b"]) {
         const response = await fetch(`${baseUrl}${path}`, { headers: { authorization: "Bearer scope-only-a" } });
         expect([401, 403]).toContain(response.status);
       }
@@ -369,6 +415,8 @@ describe("R2-SCOPE controlled composition rejection, pure boundary evidence", ()
     registerParameterCatalogApi(router, { resolveAuth: () => noView });
     const response = await router.handle({ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}`, params: {}, query: {}, headers: {}, body: undefined, requestId: "no-view" });
     expect(response.status).toBe(403);
+    const configurations = await requestJson(createHttpServer(router), `/api/v2/catalog/definitions/${definitionId}/project-configurations`);
+    expect(configurations.status).toBe(403);
   });
 
   it.each([undefined, "", " padded", "bad\u0000id", "bad\u009fid"])("malformed role projectId %j cannot become a global grant", async (projectId) => {

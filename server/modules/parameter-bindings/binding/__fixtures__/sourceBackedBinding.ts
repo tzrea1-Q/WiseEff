@@ -45,7 +45,7 @@ export const ensureSourceBackedBindingFixture = async (
   client: FixtureClient,
   command: StabilizeBindingCommand,
   objectStore?: ObjectStore,
-  sourceRawValue = "<5>",
+  sourceRawValue: string | null = "<5>",
 ): Promise<SourceBackedBindingFixture> => {
   const owner = await query<{ organization_id: string }>(
     client,
@@ -68,7 +68,7 @@ export const ensureSourceBackedBindingFixture = async (
   if (property.status !== "found") throw new Error("fixture definition unavailable");
   const propertyKey = property.definition.propertyKey;
   const sourceName = `s6-${token}.dts`;
-  const sourceText = `/dts-v1/;\n/ {\n\t${command.logicalNodeId} {\n\t\t${propertyKey} = ${sourceRawValue};\n\t};\n};\n`;
+  const sourceText = `/dts-v1/;\n/ {\n\t${command.logicalNodeId} {\n\t\t${propertyKey}${sourceRawValue === null ? "" : ` = ${sourceRawValue}`};\n\t};\n};\n`;
   const parsed = parseDts(sourceText);
   const root = parsed.topLevel.find((node) => node.isOverlayRoot);
   const parsedNode = root?.children.find(
@@ -485,7 +485,7 @@ export const createSourceBackedBindingService = (
   options: {
     readonly sourceRef?: string;
     readonly initialPayload?: ProjectValuePayload;
-    readonly sourceRawValue?: string;
+    readonly sourceRawValue?: string | null;
     readonly objectStore?: ObjectStore;
     readonly keepPlaceholder?: boolean;
   } = {},

@@ -13,7 +13,7 @@ type Instance = {
   effective_revision_id: string; current_value_id: string; definition_revision_id: string;
   source_occurrence_id: string; source_format: "dts" | "json"; config_set_id: string; config_set_name: string; value_revision_number: string;
   value_unit: string | null; value_lifecycle: "active" | "deprecated" | "retired";
-  file_id: string; file_version_id: string; file_name: string; source_locator: Record<string, unknown>;
+  file_id: string; file_version_id: string; file_name: string; source_locator: Record<string, unknown>; source_location: string;
   value_kind: ProjectValuePayload["kind"]; value: unknown; value_state: "present" | "deleted"; source_ref: string;
 };
 
@@ -27,7 +27,7 @@ function present(row: Instance) {
   return {
     kind: "instance" as const, bindingId: row.binding_id, projectId: row.project_id, projectName: row.project_name,
     configSetId: row.config_set_id, configSetName: row.config_set_name, sourceOccurrenceId: row.source_occurrence_id, sourceFormat: row.source_format,
-    fileId: row.file_id, fileVersionId: row.file_version_id, fileName: row.file_name, sourceLocator: row.source_locator,
+    fileId: row.file_id, fileVersionId: row.file_version_id, fileName: row.file_name, sourceLocator: row.source_locator, sourceLocation: row.source_location,
     currentValueId: row.current_value_id, definitionRevisionId: row.definition_revision_id, definitionRevisionNumber: row.value_revision_number,
     unit: row.value_unit, definitionLifecycle: row.value_lifecycle,
     effectiveRevisionId: row.effective_revision_id, valueState: unset ? "unset" as const : "present" as const, valueKind: row.value_kind,
@@ -63,16 +63,17 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
       if (identity.scope.subjects.kind === "only" && !identity.scope.subjects.ids.some((id) => id === definition.rows[0]!.subject_id)) throw new ApiError("NOT_FOUND", "Definition not found.");
       await assertCurrentInstancesValid(tx, organizationId, [definitionId]);
       const params = [organizationId, [definitionId]];
-      const summary = await tx.query<{ projects: string; instances: string; fingerprint: string }>(`${currentInstancesCte}
-        select count(distinct project_id) filter (where value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as projects,
-          count(distinct binding_id) filter (where value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as instances,
-          md5(coalesce(string_agg(binding_id || ':' || current_value_id || ':' || project_id || ':' || project_name, E'\\n' order by binding_id), '')) as fingerprint
-        from candidates`, params);
-      const fingerprint = summary.rows[0]!.fingerprint;
       const configured = `value_state = 'present' and source_ref <> 'canonical-binding-identity'`;
       const visible = `value_state = 'present' and (source_ref <> 'canonical-binding-identity' or exists (
         select 1 from candidates configured where configured.project_id = candidates.project_id
           and configured.value_state = 'present' and configured.source_ref <> 'canonical-binding-identity'))`;
+      const summary = await tx.query<{ projects: string; instances: string; total_rows: string; read_at: string; fingerprint: string }>(`${currentInstancesCte}
+        select count(distinct project_id) filter (where value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as projects,
+          count(distinct binding_id) filter (where value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as instances,
+          (select count(*)::text from candidates where ${visible}) as total_rows, transaction_timestamp()::text as read_at,
+          md5(coalesce(string_agg(binding_id || ':' || current_value_id || ':' || project_id || ':' || project_name, E'\\n' order by binding_id), '')) as fingerprint
+        from candidates`, params);
+      const fingerprint = summary.rows[0]!.fingerprint;
       let previousProjectId: string | null = null;
       let afterBindingId: string | null = null;
       if (cursor) {
@@ -104,6 +105,7 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
       }
       const items = page.rows.slice(0, limit).map(present);
       return { items, summary: { configuredProjectCount: Number(summary.rows[0]?.projects), configuredInstanceCount: Number(summary.rows[0]?.instances) },
+        totalCount: Number(summary.rows[0]!.total_rows), readAt: new Date(summary.rows[0]!.read_at).toISOString(),
         nextCursor: page.rows.length > limit && items.length ? Buffer.from(JSON.stringify({ organizationId, definitionId, fingerprint, bindingId: items.at(-1)!.bindingId })).toString("base64url") : null,
         continuedProjectId: items[0]?.projectId === previousProjectId ? previousProjectId : null, selected };
     });

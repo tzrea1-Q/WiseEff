@@ -16,6 +16,12 @@ import {
 } from "../parameter-bindings/values/repositories";
 import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
 import { SubjectRegistrationId, ParameterDefinitionId, DefinitionRevisionId } from "../parameter-catalog-contract";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { createRouter } from "../../shared/http/router";
+import { createHttpServer } from "../../shared/http/server";
+import { requestJson } from "../../test/testClient";
+import { registerParameterCatalogApi } from "../parameter-catalog-api/productionWire";
+import { catalogProjectConfigurationsResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 
 const organizationId = "org-replacement-root", projectId = "project-replacement-root";
 
@@ -69,7 +75,7 @@ async function seedReplacement(harness: MigrationHarness) {
       foreignTargets.push({ bindingId: target.value.binding.id,valueId: target.value.binding.currentValueId });
     }
 
-  return { replacementId,oldBindingId,newBindingId,newValueId,otherBindingId,otherValueId,foreignTargets };
+  return { replacementId,oldBindingId,newBindingId,newValueId,otherBindingId,otherValueId,foreignTargets, newDefinitionId: created.value.newIdentity.definitionId };
 }
 
 /**
@@ -240,14 +246,33 @@ describe("completed replacement source occurrence guard", () => {
   let harness: MigrationHarness;
   let replacementId: string, oldBindingId: string, newBindingId: string, newValueId: string;
   let otherBindingId: string, otherValueId: string;
+  let newDefinitionId: string;
   let foreignTargets: Array<{ bindingId: string; valueId: string }>;
 
   beforeAll(async () => {
     harness = await createMigrationHarness();
-    ({ replacementId,oldBindingId,newBindingId,newValueId,otherBindingId,otherValueId,foreignTargets } = await seedReplacement(harness));
+    ({ replacementId,oldBindingId,newBindingId,newValueId,otherBindingId,otherValueId,foreignTargets,newDefinitionId } = await seedReplacement(harness));
   },120_000);
 
   afterAll(async () => { await harness?.close(); });
+
+  it("definition-first HTTP reads exclude completed predecessor bindings and retain successor instances", async () => {
+    const auth = makeTestAuthContext({ organizationId, userId: MIGRATION_PRINCIPAL, roles: [{ roleId: "admin", projectId: null }] });
+    const read = async (definitionId: string) => {
+      const router = createRouter();
+      registerParameterCatalogApi(router, { db: harness.db, objectStore: harness.objectStore, resolveAuth: () => auth });
+      const response = await requestJson(createHttpServer(router), `/api/v2/catalog/definitions/${definitionId}/project-configurations`);
+      expect(response.status).toBe(200);
+      return catalogProjectConfigurationsResponseSchema.parse(response.body);
+    };
+    const previous = await read(PREDECESSOR_DEFINITION_ID);
+    expect(previous.summary).toEqual({ configuredProjectCount: 0, configuredInstanceCount: 0 });
+    expect(previous.items).toEqual([]);
+    const successor = await read(newDefinitionId);
+    expect(successor.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+    expect(successor.items.map((item) => item.bindingId)).toEqual(expect.arrayContaining([newBindingId, otherBindingId]));
+    expect(successor.items.map((item) => item.bindingId)).not.toContain(oldBindingId);
+  });
 
   it("refuses cross-project and cross-tenant completed endpoints", async () => {
     for (const target of foreignTargets) {

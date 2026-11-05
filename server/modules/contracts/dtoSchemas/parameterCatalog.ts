@@ -391,7 +391,7 @@ export const catalogDefinitionDtoSchema = catalogObject({
 export const catalogProjectConfigurationInstanceSchema = catalogObject({
   kind: z.literal("instance"), bindingId: z.string(), projectId: z.string(), projectName: z.string(),
   configSetId: z.string(), configSetName: z.string(), sourceOccurrenceId: z.string(), sourceFormat: z.enum(["dts", "json"]),
-  fileId: z.string(), fileVersionId: z.string(), fileName: z.string(), sourceLocator: z.record(z.string(), z.unknown()),
+  fileId: z.string(), fileVersionId: z.string(), fileName: z.string(), sourceLocator: z.record(z.string(), z.unknown()), sourceLocation: z.string(),
   currentValueId: z.string(), definitionRevisionId: z.string(), definitionRevisionNumber: z.string(), effectiveRevisionId: z.string(),
   unit: z.string().nullable(), definitionLifecycle: z.enum(["active", "deprecated", "retired"]),
   valueState: z.enum(["present", "unset"]), valueKind: z.enum(["string", "number", "boolean", "string-array", "number-array", "json"]),
@@ -401,6 +401,7 @@ export const catalogProjectConfigurationInstanceSchema = catalogObject({
 export const catalogProjectConfigurationsResponseSchema = catalogObject({
   items: z.array(catalogProjectConfigurationInstanceSchema),
   summary: catalogObject({ configuredProjectCount: z.number().int().nonnegative(), configuredInstanceCount: z.number().int().nonnegative() }),
+  totalCount: z.number().int().nonnegative(), readAt: z.string(),
   nextCursor: z.string().nullable(), continuedProjectId: z.string().nullable(), selected: catalogProjectConfigurationInstanceSchema.nullable(),
 });
 
