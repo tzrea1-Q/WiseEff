@@ -69,7 +69,9 @@ test("removes and restores unregistered drivers with and without definitions in 
       const editor = page.getByRole("dialog", { name: /^编辑主体：/ });
       await editor.getByRole("tab", { name: "归属", exact: true }).click();
       await expect(editor.getByRole("tabpanel", { name: "归属", exact: true })).toBeVisible();
-      await expect(editor.getByRole("combobox", { name: "目标模块", exact: true })).toBeVisible();
+      // This fixture has no business categories; restoring a driver preserves its unassigned placement.
+      await expect(editor.getByRole("radio", { name: "使用默认根放置", exact: true })).toBeChecked();
+      await expect(editor.getByRole("status", { name: "当前主体与去向", exact: true })).toContainText("未设置模块 (unset)");
       await page.keyboard.press("Escape");
       await expect(editor).toHaveCount(0);
       const reread = await catalogJson(page.request, "GET", `/api/v2/catalog/subjects/${subjectId}`, { headers: authHeadersForRole("admin") });
