@@ -1653,8 +1653,8 @@ describe("ParametersPage API topology workspace", () => {
       </TopBarActionsHarness>
     );
 
-    expect(await screen.findByText("关联参数在当前项目中不可用。")).toBeInTheDocument();
     expect(await screen.findByRole("row", { name: new RegExp(API_SENTINEL_PROPERTY) })).toBeInTheDocument();
+    expect(screen.getByText("关联参数在当前项目中不可用。")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("该参数旧链接已归档")).not.toBeInTheDocument();
     expect(parameterActions).not.toHaveProperty("getParameter");
