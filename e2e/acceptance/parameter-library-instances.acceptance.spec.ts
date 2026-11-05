@@ -143,6 +143,8 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.reload();
     await expect(page.getByRole("combobox", { name: "配置集", exact: true })).toHaveValue(set.id);
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("筛选结果 1 条");
+    await page.getByRole("table", { name: "软件项目 的当前配置" }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("instances-1440.png") });
     await page.getByRole("button", { name: "查看 settings.json 的完整值" }).click();
     await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(fullSourceToken);
     await page.getByLabel("实例 / 来源").fill("nothing-matches");

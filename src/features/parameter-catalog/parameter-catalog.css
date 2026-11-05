@@ -1560,3 +1560,7 @@ button.parameter-catalog__tree-toggle:hover {
 }
 .parameter-library-configurations .parameter-library-project-status { display: flex; align-items: baseline; gap: var(--space-4); margin: var(--space-2) 0; }
 .parameter-library-project-status h3, .parameter-library-project-status p { margin: 0; }
+.parameter-library-instances-table { table-layout: fixed; }
+.parameter-library-instances-table th:first-child { width: 30%; }
+.parameter-library-instances-table th:nth-child(2) { width: 42%; }
+.parameter-library-instances-table th:nth-child(3) { width: 15%; }

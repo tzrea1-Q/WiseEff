@@ -1207,7 +1207,7 @@ export function CatalogPage({
             {libraryMode ? <div className="parameter-library-filters">
               <label><input type="checkbox" checked={Boolean(anchor.configured)} onChange={(event) => commitAnchor({ ...anchor, configured: event.target.checked ? "true" : null, cursor: null, cursorTrail: null }, "push")} /> 有当前配置</label>
               <label>项目使用 <select value={anchor.usageProjectId ?? ""} disabled={!projectOptions || projectOptions.organizationId !== organizationId} onChange={(event) => commitAnchor({ ...anchor, usageProjectId: event.target.value || null, cursor: null, cursorTrail: null }, "push")}>
-                <option value="">全部项目</option>{projectOptions?.organizationId === organizationId ? projectOptions.items.map((project) => <option key={project.id} value={project.id}>{project.name}</option>) : null}
+                <option value="">全部项目</option>{projectOptions && projectOptions.organizationId === organizationId ? projectOptions.items.map((project) => <option key={project.id} value={project.id}>{project.name}</option>) : null}
               </select></label>
               {projectOptionsError ? <button type="button" className="button subtle sm" onClick={() => setProjectOptionsRetry((value) => value + 1)}>项目读取失败，重试</button> : null}
               {(anchor.configured || anchor.usageProjectId) ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, configured: null, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
