@@ -16,7 +16,7 @@ export async function captureModuleStructure(client: pg.PoolClient, organization
       `select id,parent_id,name,description,scope,sort_order,importance,importance_override,origin,kind,archived_at
        from public.parameter_modules where organization_id=$1 order by path,id limit $2`, [organizationId, MAX_ENTRIES + 1]);
     const registrations = await client.query<{ id: string; subject_id: string; status: string; cascade_retired: boolean; display_alias: string | null; owner_subject_id: string | null; kind: string; module_id: string | null; compatibles: string[] | null; driver_nature: string | null; instance_cardinality: string | null; node_type_name: string | null }>(
-      `select r.id,r.subject_id,r.status,r.cascade_retired,r.display_alias,s.owner_subject_id,s.kind,p.module_id,
+      `select r.id,r.subject_id,r.status,r.cascade_retired,r.display_alias,coalesce(r.owner_subject_id,s.owner_subject_id) as owner_subject_id,s.kind,p.module_id,
          rr.compatibles,rr.driver_nature,rr.instance_cardinality,rr.node_type_name
        from parameter_catalog.organization_subject_registrations r
        join parameter_catalog.catalog_subjects s on s.id=r.subject_id

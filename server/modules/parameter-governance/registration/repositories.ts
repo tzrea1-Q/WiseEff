@@ -22,6 +22,7 @@ export type RegistrationRow = {
   organization_id: string;
   subject_id: string;
   status: "active" | "retired";
+  cascade_retired: boolean;
   registration_method: RegistrationMethod;
   current_placement_id: string;
   version: string;
@@ -141,7 +142,7 @@ export const commitIdempotency = async (
       registrationCommandFamily,
       command.idempotencyKey,
       replacementResult ? JSON.stringify(replacementResult) : resultRef,
-      replacementResult ? "placement-replacement" : "registration",
+      replacementResult ? command.kind === "change-owner" ? "owner-change" : "placement-replacement" : "registration",
     ],
   );
 };
@@ -152,7 +153,7 @@ export const loadRegistrationByOrgSubject = async (
   subjectId: string,
 ): Promise<RegistrationRow | null> => {
   const result = await client.query<RegistrationRow>(
-    `select id, organization_id, subject_id, status, registration_method, current_placement_id,
+    `select id, organization_id, subject_id, status, cascade_retired, registration_method, current_placement_id,
        (extract(epoch from updated_at) * 1000000)::bigint::text as version
      from parameter_catalog.organization_subject_registrations
      where organization_id = $1 and subject_id = $2
@@ -168,7 +169,7 @@ export const loadRegistrationById = async (
   registrationId: string,
 ): Promise<RegistrationRow | null> => {
   const result = await client.query<RegistrationRow>(
-    `select id, organization_id, subject_id, status, registration_method, current_placement_id,
+    `select id, organization_id, subject_id, status, cascade_retired, registration_method, current_placement_id,
        (extract(epoch from updated_at) * 1000000)::bigint::text as version
      from parameter_catalog.organization_subject_registrations
      where organization_id = $1 and id = $2
@@ -205,14 +206,17 @@ export const insertRegistration = async (
     readonly placementId: string;
     readonly status?: "active" | "retired";
     readonly cascadeRetired?: boolean;
+    readonly ownerSubjectId?: string;
     readonly displayAlias?: string;
   },
 ): Promise<RegistrationRow> => {
+  // Historical upgrade fixtures can register subjects before owner overrides exist.
+  const hasOwnerOverride = input.ownerSubjectId !== undefined;
   const result = await client.query<RegistrationRow>(
     `insert into parameter_catalog.organization_subject_registrations (
-       id, organization_id, subject_id, status, registration_method, proof, current_placement_id, display_alias, cascade_retired
-     ) values ($1,$2,$3,$7,$4,$5::jsonb,$6,$8,$9)
-     returning id, organization_id, subject_id, status, registration_method, current_placement_id,
+       id, organization_id, subject_id, status, registration_method, proof, current_placement_id, display_alias, cascade_retired${hasOwnerOverride ? ", owner_subject_id" : ""}
+     ) values ($1,$2,$3,$7,$4,$5::jsonb,$6,$8,$9${hasOwnerOverride ? ",$10" : ""})
+     returning id, organization_id, subject_id, status, cascade_retired, registration_method, current_placement_id,
        (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [
       input.id,
@@ -224,6 +228,7 @@ export const insertRegistration = async (
       input.status ?? "active",
       input.displayAlias ?? null,
       input.cascadeRetired ?? false,
+      ...(hasOwnerOverride ? [input.ownerSubjectId] : []),
     ],
   );
   return result.rows[0]!;
@@ -257,9 +262,10 @@ export const updateRegistrationStatus = async (
 ): Promise<RegistrationRow> => {
   const result = await client.query<RegistrationRow>(
     `update parameter_catalog.organization_subject_registrations
-     set status = $2, updated_at = greatest(clock_timestamp(), updated_at + interval '1 microsecond')
+     set status = $2, cascade_retired = false,
+         updated_at = greatest(clock_timestamp(), updated_at + interval '1 microsecond')
      where id = $1
-     returning id, organization_id, subject_id, status, registration_method, current_placement_id,
+     returning id, organization_id, subject_id, status, cascade_retired, registration_method, current_placement_id,
        (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
     [registrationId, status],
   );

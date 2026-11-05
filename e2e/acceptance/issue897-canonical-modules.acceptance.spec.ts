@@ -473,28 +473,35 @@ test.describe("Issue 897 canonical module ownership", () => {
     await historicalEditor.getByRole("button", { name: "取消" }).click();
 
     const recognitionPath = `/api/v2/organizations/${organizationId}/subject-registrations/${canonicalOnlyRegistrationId}/recognition`;
-    await canonicalSubject.getByRole("button", { name: "识别规则：issue897,canonical-only", exact: true }).click();
-    const recognitionDialog = page.getByRole("dialog", { name: "识别规则：issue897,canonical-only", exact: true });
+    await canonicalSubject.getByRole("button", { name: "编辑主体：issue897,canonical-only", exact: true }).click();
+    const recognitionDialog = page.getByRole("dialog", { name: "编辑主体：issue897,canonical-only", exact: true });
+    await expect(recognitionDialog.getByRole("tab", { name: "识别规则", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(recognitionDialog.getByRole("tabpanel", { name: "识别规则", exact: true })).toBeVisible();
+    await expect(recognitionDialog.getByRole("tab", { name: "归属", exact: true })).toBeVisible();
     const driverNature = recognitionDialog.getByRole("combobox", { name: "驱动性质", exact: true });
     await expect(driverNature).toHaveAttribute("data-value", "physical-device");
     await selectControlOption(driverNature, "logical-service");
     const recognitionSave = page.waitForResponse(response =>
       response.request().method() === "PATCH" && new URL(response.url()).pathname === recognitionPath
     );
-    await recognitionDialog.getByRole("button", { name: "保存", exact: true }).click();
+    await recognitionDialog.getByRole("button", { name: "保存识别规则", exact: true }).click();
     const recognitionSaveResponse = await recognitionSave;
     expect(recognitionSaveResponse.status(), await recognitionSaveResponse.text()).toBe(200);
     await expect(recognitionDialog).toHaveCount(0);
     const savedRecognition = await request.get(apiRoute(recognitionPath), { headers: authHeadersForRole("admin") });
     expect(savedRecognition.status(), await savedRecognition.text()).toBe(200);
     expect((await savedRecognition.json()).item).toMatchObject({ driverNature: "logical-service" });
-    await canonicalSubject.getByRole("button", { name: "识别规则：issue897,canonical-only", exact: true }).click();
+    await canonicalSubject.getByRole("button", { name: "编辑主体：issue897,canonical-only", exact: true }).click();
     await expect(driverNature).toHaveAttribute("data-value", "logical-service");
     await recognitionDialog.getByRole("button", { name: "关闭", exact: true }).click();
     expect(await readHistoricalState()).toEqual(historicalBefore);
 
     await expect(canonicalSubject.getByText("归属：Issue 897 Modules / Canonical category source", { exact: true })).toBeVisible();
-    await canonicalSubject.getByRole("button", { name: "调整归属：issue897,canonical-only", exact: true }).click();
+    await canonicalSubject.getByRole("button", { name: "编辑主体：issue897,canonical-only", exact: true }).click();
+    await recognitionDialog.getByRole("tab", { name: "归属", exact: true }).click();
+    await expect(recognitionDialog.getByRole("tab", { name: "归属", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(recognitionDialog.getByRole("tabpanel", { name: "归属", exact: true })).toBeVisible();
+    await expect(recognitionDialog.getByRole("tabpanel", { name: "识别规则", exact: true })).not.toBeVisible();
     await selectControlOption(page.getByRole("combobox", { name: "目标模块" }), "issue897-canonical-placement-b");
     await page.getByRole("button", { name: "继续确认", exact: true }).click();
     await page.getByRole("checkbox", { name: "我已确认放置选择与当前目录发布" }).check();
@@ -646,14 +653,18 @@ test.describe("Issue 897 canonical module ownership", () => {
       await page.getByRole("button", { name: "继续确认", exact: true }).click();
       await page.getByRole("checkbox", { name: "我已确认放置选择与当前目录发布" }).check();
       await page.getByRole("button", { name: "确认登记", exact: true }).click();
-      await expect(page.getByRole("button", { name: `调整归属：${subjectName}`, exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: `编辑主体：${subjectName}`, exact: true })).toBeVisible();
     }
     const placementUrl = apiRoute(`/api/v2/organizations/${organizationId}/subject-registrations/${driverRegistrationId}/placement`);
     const priorPlacement = await request.get(placementUrl, { headers: authHeadersForRole("admin") });
     const priorEtag = priorPlacement.headers().etag;
     expect(priorEtag).toMatch(/^".+:\d+"$/);
-    await driver.getByRole("button", { name: "调整归属：acme,power", exact: true }).click();
-    const placementImpact = page.getByRole("dialog", { name: "调整放置", exact: true }).getByRole("status", { name: "当前主体与去向", exact: true });
+    await driver.getByRole("button", { name: "编辑主体：acme,power", exact: true }).click();
+    const subjectEditor = page.getByRole("dialog", { name: "编辑主体：acme,power", exact: true });
+    await subjectEditor.getByRole("tab", { name: "归属", exact: true }).click();
+    await expect(subjectEditor.getByRole("tab", { name: "归属", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(subjectEditor.getByRole("tabpanel", { name: "归属", exact: true })).toBeVisible();
+    const placementImpact = subjectEditor.getByRole("status", { name: "当前主体与去向", exact: true });
     const expectPlacementImpact = async (destination: string) => {
       await expect(placementImpact.getByRole("heading", { name: "当前主体 acme,power", exact: true })).toBeVisible();
       await expect(placementImpact.getByText("121 个有效定义、1 个参数绑定、1 个项目", { exact: true })).toBeVisible();

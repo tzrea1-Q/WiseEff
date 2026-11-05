@@ -340,7 +340,7 @@ async function handleRevisionExport(snapshot: CatalogSnapshot, ports: CatalogRea
 }
 
 async function handleListSubjects(
-  snapshot: CatalogSnapshot,
+  snapshot: LoadedCatalogSnapshot,
   ports: CatalogReadPorts,
   scope: TrustedCatalogScope,
   request: CatalogReadRequest,
@@ -396,6 +396,7 @@ async function handleListSubjects(
     if (!projection) return catalogNotReady(request.requestId);
     items.push(
       mapCatalogSubject(subject, projection.registration, {
+        organizationOwnership: snapshot.snapshotKind === "current",
         reviewCount: projection.reviewCount,
         availableActions:
           !subject.owner && projection.registration.status === "unregistered" && scope.canRegister ? ["register"] : [],
@@ -427,7 +428,7 @@ async function handleListSubjects(
 }
 
 async function handleGetSubject(
-  snapshot: CatalogSnapshot,
+  snapshot: LoadedCatalogSnapshot,
   ports: CatalogReadPorts,
   scope: TrustedCatalogScope,
   request: CatalogReadRequest,
@@ -454,6 +455,7 @@ async function handleGetSubject(
   return catalogReadOk(
     {
       item: mapCatalogSubject(subject, projection.registration, {
+        organizationOwnership: snapshot.snapshotKind === "current",
         reviewCount: projection.reviewCount,
         availableActions:
           !subject.owner && projection.registration.status === "unregistered" && scope.canRegister ? ["register"] : [],

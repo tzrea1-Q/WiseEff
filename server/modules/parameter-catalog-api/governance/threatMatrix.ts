@@ -90,4 +90,12 @@ export const THREAT_MATRIX: readonly ThreatMatrixRow[] = Object.freeze([
     expected: "unmatched; S8-GOV does not own PCAT-API-07 runtime lookup",
     leftover: "no S7-MAP/S7-ARC import and no property-key inference",
   }),
+  freezeRow({
+    id: 11,
+    name: "organization-child-owner",
+    initialState: "trusted Org Admin, owned child Registration, current release pin and Registration ETag",
+    action: "PATCH Registration owner with an explicit target driver, If-Match and Idempotency-Key",
+    expected: "one executeRegistration change-owner command; stale, unauthorized or invalid target requests fail atomically",
+    leftover: "only this Organization's owner projection changes; Catalog identity, other Organizations, Bindings and history remain intact",
+  }),
 ]);

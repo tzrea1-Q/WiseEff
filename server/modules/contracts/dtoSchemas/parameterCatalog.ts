@@ -462,6 +462,11 @@ export const catalogRestoreRegistrationRequestSchema = catalogObject({
   reason: z.string()
 });
 
+export const catalogChangeRegistrationOwnerRequestSchema = catalogObject({
+  ownerSubjectId: z.string().trim().min(1),
+  reason: z.string().trim().min(1).max(1000)
+});
+
 export const catalogRegistrationRecognitionUpdateSchema = catalogObject({
   compatibles: z.array(z.string()).max(128).optional(),
   driverNature: z.enum(["physical-device", "logical-service"]).optional(),
@@ -1751,6 +1756,7 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogRegistrationResponse: catalogRegistrationResponseSchema,
   CatalogRetireRegistrationRequest: catalogRetireRegistrationRequestSchema,
   CatalogRestoreRegistrationRequest: catalogRestoreRegistrationRequestSchema,
+  CatalogChangeRegistrationOwnerRequest: catalogChangeRegistrationOwnerRequestSchema,
   CatalogPlacementResponse: catalogPlacementResponseSchema,
   CatalogRegistrationRecognitionUpdate: catalogRegistrationRecognitionUpdateSchema,
   CatalogRegistrationRecognitionResponse: catalogRegistrationRecognitionResponseSchema,
@@ -1961,6 +1967,13 @@ export const parameterCatalogCanonicalRoutes = [
     id: "catalog.restoreRegistration",
     method: "POST",
     path: "/api/v2/organizations/:organizationId/subject-registrations/:registrationId/restore",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.changeRegistrationOwner",
+    method: "PATCH",
+    path: "/api/v2/organizations/:organizationId/subject-registrations/:registrationId/owner",
     module: "catalog",
     stability: "mvp"
   },
@@ -2200,6 +2213,7 @@ export const parameterCatalogRouteGates: Record<
   "catalog.getRegistration": ["PCAT-API-04"],
   "catalog.retireRegistration": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.restoreRegistration": ["PCAT-API-04", "PCAT-API-10"],
+  "catalog.changeRegistrationOwner": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.getPlacement": ["PCAT-API-04"],
   "catalog.updatePlacement": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.getRegistrationRecognition": ["PCAT-API-04"],
@@ -2265,6 +2279,7 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.getRegistration": "getRegistration",
   "catalog.retireRegistration": "retireRegistration",
   "catalog.restoreRegistration": "restoreRegistration",
+  "catalog.changeRegistrationOwner": "changeRegistrationOwner",
   "catalog.getPlacement": "getPlacement",
   "catalog.updatePlacement": "updatePlacement",
   "catalog.getRegistrationRecognition": "getRegistrationRecognition",
@@ -2624,6 +2639,13 @@ export const parameterCatalogSchemaRegistry = {
     tags: ["catalog"],
     requestBody: "CatalogRestoreRegistrationRequest",
     responseBody: "CatalogRegistrationResponse",
+    additionalResponses: catalogWriteErrors,
+    requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader, catalogIfMatchHeader],
+    successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
+  },
+  "catalog.changeRegistrationOwner": {
+    summary: "Change an owned node type's driver in this organization while retaining identity and history",
+    tags: ["catalog"], requestBody: "CatalogChangeRegistrationOwnerRequest", responseBody: "CatalogRegistrationResponse",
     additionalResponses: catalogWriteErrors,
     requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader, catalogIfMatchHeader],
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]

@@ -317,8 +317,13 @@ test.describe("canonical parameter catalog governance interactions", () => {
     expect(await page.evaluate(() => ({ uuid: typeof crypto.randomUUID, random: typeof crypto.getRandomValues })))
       .toEqual({ uuid: "undefined", random: "function" });
     const row = page.locator(`[data-canonical-subject-id="${fixture.sensorSubjectId}"]`);
-    await row.getByRole("button", { name: /^调整归属：/ }).click();
-    const dialog = page.getByRole("dialog", { name: "调整放置", exact: true });
+    await row.getByRole("button", { name: /^编辑主体：/ }).click();
+    const dialog = page.getByRole("dialog", { name: /^编辑主体：/ });
+    await expect(dialog.getByRole("tab", { name: "识别规则", exact: true })).toHaveAttribute("aria-selected", "true");
+    await dialog.getByRole("tab", { name: "归属", exact: true }).click();
+    await expect(dialog.getByRole("tab", { name: "归属", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(dialog.getByRole("tabpanel", { name: "归属", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("tabpanel", { name: "识别规则", exact: true })).not.toBeVisible();
     await selectControlOption(dialog.getByRole("combobox", { name: "目标模块" }), targetModuleId);
     const writes: string[] = [];
     page.on("request", (request) => {

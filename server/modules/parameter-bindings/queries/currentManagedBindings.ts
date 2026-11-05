@@ -30,14 +30,14 @@ export function currentManagedSourceBindingPredicate(binding: string): string {
        and managed_registration.organization_id=${binding}.organization_id
        and managed_registration.subject_id=${binding}.subject_id
        and managed_registration.status='active'
-     where (managed_subject.owner_subject_id is null or exists (
+     where (coalesce(managed_registration.owner_subject_id,managed_subject.owner_subject_id) is null or exists (
        select 1 from parameter_catalog.catalog_release_subjects managed_owner
        join parameter_catalog.organization_subject_registrations managed_owner_registration
          on managed_owner_registration.subject_id=managed_owner.subject_id
         and managed_owner_registration.organization_id=${binding}.organization_id
         and managed_owner_registration.status='active'
        where managed_owner.release_id=managed_state.current_catalog_release_id
-         and managed_owner.subject_id=managed_subject.owner_subject_id and managed_owner.lifecycle='active'
+         and managed_owner.subject_id=coalesce(managed_registration.owner_subject_id,managed_subject.owner_subject_id) and managed_owner.lifecycle='active'
      ))
        and not parameter_catalog.current_source_binding_is_suspended(
          ${binding}.organization_id, ${binding}.project_id, ${binding}.id

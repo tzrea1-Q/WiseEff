@@ -761,6 +761,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       "parameter_catalog.catalog_state.subject_owner_epoch",
       "parameter_catalog.catalog_subjects.owner_subject_id",
       "parameter_catalog.organization_subject_registrations.display_alias",
+      "parameter_catalog.organization_subject_registrations.owner_subject_id",
       "parameter_catalog.registration_effective_module.organization_id",
       "parameter_catalog.registration_effective_module.registration_id",
       "parameter_catalog.registration_effective_module.module_id",

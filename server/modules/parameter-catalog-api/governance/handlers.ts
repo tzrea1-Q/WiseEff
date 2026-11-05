@@ -12,6 +12,7 @@ import {
   catalogReplacementPreviewRequestSchema,
   catalogResolveReviewItemRequestSchema,
   catalogRestoreRegistrationRequestSchema,
+  catalogChangeRegistrationOwnerRequestSchema,
   catalogRetireRegistrationRequestSchema,
   catalogSubmitProposalRequestSchema,
   catalogUpdatePlacementRequestSchema,
@@ -662,12 +663,12 @@ async function handleRetireOrRestore(
   ports: CatalogGovernancePorts,
   scope: TrustedGovernanceScope,
   request: CatalogGovernanceRequest,
-  kind: "retire" | "restore",
+  kind: "retire" | "restore" | "change-owner",
 ): Promise<CatalogGovernanceResponse> {
   const denied = authorizeOrganizationWrite(scope, request);
   if (denied) return denied;
   const schema =
-    kind === "retire" ? catalogRetireRegistrationRequestSchema : catalogRestoreRegistrationRequestSchema;
+    kind === "change-owner" ? catalogChangeRegistrationOwnerRequestSchema : kind === "retire" ? catalogRetireRegistrationRequestSchema : catalogRestoreRegistrationRequestSchema;
   const parsed = schema.safeParse(request.body);
   if (!parsed.success) return validationFailed(request.requestId, "body");
   const pin = await requirePin(ports, request, { requireHeader: true });
@@ -689,8 +690,7 @@ async function handleRetireOrRestore(
   if (!/^(active|retired):\d+$/.test(expectedRegistrationVersion) || offered !== `"${prefix}${expectedRegistrationVersion}"`) {
     return revisionConflict(request.requestId);
   }
-  const command: RegistrationCommand = {
-    kind,
+  const base = {
     organizationId: request.params.organizationId ?? scope.organizationId,
     registrationId,
     expectedRelease: pin.pin,
@@ -699,6 +699,9 @@ async function handleRetireOrRestore(
     context,
     reason: parsed.data.reason,
   };
+  const command: RegistrationCommand = kind === "change-owner"
+    ? { ...base, kind, ownerSubjectId: CatalogSubjectId(catalogChangeRegistrationOwnerRequestSchema.parse(request.body).ownerSubjectId) }
+    : { ...base, kind };
   const result = await ports.executeRegistration(command);
   if (!result.ok) return mapRegistrationFailure(result.error, request.requestId);
   const placementDto = placementFromResult(result.value);
@@ -1707,6 +1710,8 @@ export async function handleCatalogGovernance(
       return handleRetireOrRestore(ports, auth.scope, scopedRequest, "retire");
     case "catalog.restoreRegistration":
       return handleRetireOrRestore(ports, auth.scope, scopedRequest, "restore");
+    case "catalog.changeRegistrationOwner":
+      return handleRetireOrRestore(ports, auth.scope, scopedRequest, "change-owner");
     case "catalog.getPlacement":
       return handleGetPlacement(ports, auth.scope, scopedRequest);
     case "catalog.updatePlacement":

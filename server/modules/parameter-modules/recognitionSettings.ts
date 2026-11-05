@@ -7,7 +7,8 @@ import {
   CatalogPageLimit, parseCanonicalCompatibleSelector, parseCanonicalNodeName,
 } from "../parameter-catalog-contract";
 import {
-  createCatalogKernel, DriverCompatible, NormalizedNodeTypeName, resolveCatalogSubject,
+  createCatalogKernel, CatalogSubjectId, DriverCompatible, NormalizedNodeTypeName, resolveCatalogSubject,
+  listOrganizationSubjectOwnerOverrides,
   type CatalogSnapshot, type CatalogSubjectDetailSnapshot,
 } from "../catalog-kernel/interface";
 import type { DriverNature, InstanceCardinality } from "./attributionSubjects";
@@ -190,12 +191,15 @@ export async function loadOrganizationCatalogSnapshot(
 ): Promise<CatalogSnapshot> {
   const snapshot = baseSnapshots.get(supplied) ?? supplied;
   const rules = await loadOrganizationRecognitionRules(db, organizationId);
+  const owners = await listOrganizationSubjectOwnerOverrides(db as Parameters<typeof listOrganizationSubjectOwnerOverrides>[0], organizationId);
   const overrides = new Map(rules.filter(row => row.canonical_subject_id !== null).map(row => [row.canonical_subject_id!, row]));
-  if (overrides.size === 0) return snapshot;
+  if (overrides.size === 0 && owners.size === 0) return snapshot;
   const listed = snapshot.listSubjects({ selection: { kind: "all" }, kinds: [], lifecycles: [], search: { kind: "absent" },
     page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: { kind: "absent" } } });
   if (listed.status !== "found") throw new Error(`Organization subject snapshot unavailable: ${listed.status}`);
   const effectiveSubject = (subject: CatalogSubjectDetailSnapshot): CatalogSubjectDetailSnapshot => {
+    const owner = owners.get(subject.id);
+    if (owner) subject = { ...subject, owner: CatalogSubjectId(owner) };
     const override = overrides.get(subject.id);
     if (!override) return subject;
     const selector = subject.kind === "driver"
@@ -326,7 +330,13 @@ export async function updateRegistrationRecognitionSettings(
   db: Database, input: { organizationId: string; registrationId: string; body: UpdateModuleRecognition;
     invocation: TrustedInvocationContext; requestId: string; ifMatch: string; idempotencyKey: string; catalogReleaseId: string },
 ): Promise<(ModuleRecognitionSettings & { kind: "driver" | "node-type" }) | null> {
-  return db.transaction(tx => updateRegistrationRecognitionSettingsInTransaction(tx, input));
+  try {
+    return await db.transaction(tx => updateRegistrationRecognitionSettingsInTransaction(tx, input));
+  } catch (error) {
+    if ((error as { constraint?: string } | null)?.constraint === "organization_subject_owner_selector_unique")
+      throw new ApiError("CONFLICT", "该驱动下已存在相同的子节点名称或别名，请调整识别规则。");
+    throw error;
+  }
 }
 
 /** Governance callers must own the surrounding transaction. */

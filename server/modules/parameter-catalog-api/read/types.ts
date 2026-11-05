@@ -84,6 +84,8 @@ export type CatalogRegistrationProjection =
         readonly id: string;
         readonly displayName: string;
         readonly parentPlacementId: string | null;
+        readonly ownerSubjectId?: string;
+        readonly structural?: true;
       };
     };
 

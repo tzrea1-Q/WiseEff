@@ -4,7 +4,7 @@ import type { z } from "zod";
 import { ApiError } from "../../../shared/http/errors";
 import type { Queryable } from "../../../shared/database/client";
 import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
-import { listOwnedCatalogSubjects } from "../../catalog-kernel/ownerSchema";
+import { listOrganizationOwnedSubjects, readCatalogSubjectOwner } from "../../catalog-kernel/ownerSchema";
 import { CatalogReleaseId, CatalogSubjectId } from "../../parameter-catalog-contract";
 import { insertPlacement, insertRegistration } from "../registration/repositories";
 import { readInheritedRegistrationRecognitionSettings, readRegistrationRecognitionSettings, registrationRecognitionEtag, validateRecognitionCapacity, validateRegistrationRecognitionSettings } from "../../parameter-modules/recognitionSettings";
@@ -26,10 +26,17 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
   const creates: Subject[] = [];
   const placements: SubjectChange[] = [];
   const lifecycle: LifecycleChange[] = [];
+  const ownerChanges: LifecycleChange[] = [];
   const recognitionChanges: Awaited<ReturnType<typeof planRecognition>>["changes"] = [];
   const changes: { moduleId: string; field: string; before: unknown; after: unknown }[] = [];
   const conflicts: { key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }[] = [];
-  const evidence: unknown[] = [];
+  const versions = (await client.query<{ id: string; subject_id: string; version: string; owner_subject_id: string | null }>(
+    `select r.id,r.subject_id,r.status || ':' || (extract(epoch from r.updated_at) * 1000000)::bigint::text as version,
+      coalesce(r.owner_subject_id,s.owner_subject_id) as owner_subject_id
+     from parameter_catalog.organization_subject_registrations r
+     join parameter_catalog.catalog_subjects s on s.id=r.subject_id where r.organization_id=$1 order by r.subject_id`, [organizationId])).rows;
+  const evidence: unknown[] = [{ versions }];
+  const versionsBySubject = new Map(versions.map(row => [row.subject_id, row]));
   const recognitionProjects = new Map<string, Set<string>>();
   const db = client as unknown as Queryable;
   for (const [index, subject] of subjects.entries()) {
@@ -38,8 +45,12 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
     const catalog = (await client.query<{ kind: Subject["kind"]; owner_subject_id: string | null; lifecycle: string }>(
       `select s.kind,s.owner_subject_id,rs.lifecycle from parameter_catalog.catalog_subjects s
        join parameter_catalog.catalog_release_subjects rs on rs.subject_id=s.id and rs.release_id=$2 where s.id=$1`, [subject.subjectId, releaseId])).rows[0];
-    if (!catalog || catalog.lifecycle !== "active" || catalog.kind !== subject.kind || catalog.owner_subject_id !== subject.ownerSubjectId)
+    if (!catalog || catalog.lifecycle !== "active" || catalog.kind !== subject.kind || Boolean(catalog.owner_subject_id) !== Boolean(subject.ownerSubjectId))
       throw new ApiError("CONFLICT", "Catalog Subject is unavailable or ownership is incompatible.", { path: `subjects.${index}.subjectId` });
+    if (subject.ownerSubjectId && !(await client.query(`select 1 from parameter_catalog.catalog_subjects s
+      join parameter_catalog.catalog_release_subjects rs on rs.subject_id=s.id and rs.release_id=$2
+      where s.id=$1 and s.kind='driver' and rs.lifecycle='active'`, [subject.ownerSubjectId, releaseId])).rowCount)
+      throw new ApiError("CONFLICT", "The selected owner driver is unavailable.", { path: `subjects.${index}.ownerSubjectId` });
     if (subject.cascadeRetired && (subject.state !== "retired" || !subject.ownerSubjectId))
       throw new ApiError("CONFLICT", "Invalid cascade-retirement snapshot.", { path: `subjects.${index}.cascadeRetired` });
     if (subject.ownerSubjectId ? subject.placement !== null || subject.displayAlias !== null : !subject.placement || subject.placement.kind === "reference")
@@ -58,6 +69,17 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
       throw new ApiError("CONFLICT", "Unclassified destination is unavailable.");
     const target = existing.get(subject.subjectId);
     if (target) {
+      if (target.ownerSubjectId !== subject.ownerSubjectId) {
+        const key = `subject:${subject.subjectId}:ownerSubjectId`;
+        const choice = input.resolutions[key];
+        if (!choice) conflicts.push({ key, moduleId: `subject:${subject.subjectId}`, field: "ownerSubjectId", baseline: null, file: subject.ownerSubjectId, current: target.ownerSubjectId });
+        else if (choice === "file") {
+          const version = versionsBySubject.get(subject.subjectId)!;
+          ownerChanges.push({ subjectId: subject.subjectId, operation: "change-owner", registrationId: version.id, kind: subject.kind,
+            ownerSubjectId: subject.ownerSubjectId!, expectedRegistrationVersion: version.version });
+          changes.push({ moduleId: `subject:${subject.subjectId}`, field: "ownerSubjectId", before: target.ownerSubjectId, after: subject.ownerSubjectId });
+        }
+      }
       for (const field of ["state", "cascadeRetired", "placement", "displayAlias", "recognition"] as const) {
         const file = field === "placement" && subject.placement?.kind === "module"
           ? { kind: "module", moduleRef: moduleIds.get(subject.placement.moduleRef)! } : subject[field];
@@ -130,32 +152,50 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
     }
     if (previewRecognition) changes.push({ moduleId: `subject:${subject.subjectId}`, field: "recognition", before: null, after: previewRecognition });
   }
-  const byId = new Map(subjects.map(subject => [subject.subjectId, subject]));
-  for (const subject of subjects) {
+  const selectedSubjects = subjects.map(subject => {
+    const target = existing.get(subject.subjectId);
+    return target && input.resolutions[`subject:${subject.subjectId}:ownerSubjectId`] !== "file"
+      ? { ...subject, ownerSubjectId: target.ownerSubjectId } : subject;
+  });
+  const byId = new Map(selectedSubjects.map(subject => [subject.subjectId, subject]));
+  const conflictKeys = new Set(conflicts.map(conflict => conflict.key));
+  const changedOwners = new Set(ownerChanges.map(change => change.subjectId));
+  for (const subject of selectedSubjects) {
     if (subject.ownerSubjectId) {
-      const owner = byId.get(subject.ownerSubjectId);
+      const owner = byId.get(subject.ownerSubjectId) ?? existing.get(subject.ownerSubjectId);
       const ownerTarget = existing.get(subject.ownerSubjectId);
       const ownerState = ownerTarget && input.resolutions[`subject:${subject.ownerSubjectId}:state`] === "current" ? ownerTarget.state : owner?.state;
       const target = existing.get(subject.subjectId);
+      if (!owner) throw new ApiError("CONFLICT", "Owned Subject lifecycle is incompatible with its root.");
+      if (conflictKeys.has(`subject:${subject.ownerSubjectId}:state`) || conflictKeys.has(`subject:${subject.subjectId}:state`) ||
+        conflictKeys.has(`subject:${subject.subjectId}:cascadeRetired`)) continue;
       const cascade = target && input.resolutions[`subject:${subject.subjectId}:cascadeRetired`] !== "file" ? target.cascadeRetired : subject.cascadeRetired;
-      if (!owner || (ownerState === "active" && cascade))
+      const state = target && input.resolutions[`subject:${subject.subjectId}:state`] !== "file" ? target.state : subject.state;
+      if ((ownerState === "active" && cascade) || (state !== "retired" && cascade))
         throw new ApiError("CONFLICT", "Owned Subject lifecycle is incompatible with its root.");
       const action = lifecycle.find(change => change.subjectId === subject.ownerSubjectId)?.operation;
       if (!target && ((action === "retire" && subject.state === "active") || (action === "restore" && subject.cascadeRetired)))
         throw new ApiError("CONFLICT", "The selected root lifecycle cannot preserve the new owned-Subject snapshot.");
       if (target) {
+        const moved = changedOwners.has(subject.subjectId);
+        if (moved && (ownerState !== "active" || (ownerTarget && ownerTarget.state !== "active")))
+          throw new ApiError("CONFLICT", "Activate the destination driver before changing an existing child's owner.");
         const predicted = action === "retire" && target.state === "active" ? { state: "retired", cascadeRetired: true }
           : action === "restore" && target.state === "retired" && target.cascadeRetired ? { state: "active", cascadeRetired: false }
-            : { state: target.state, cascadeRetired: target.cascadeRetired };
-        for (const field of ["state", "cascadeRetired"] as const) {
-          const choice = input.resolutions[`subject:${subject.subjectId}:${field}`];
-          const expected = choice === "file" ? subject[field] : target[field];
-          if (predicted[field] !== expected && (choice || stable(subject[field]) === stable(target[field])))
+            : { state: target.state, cascadeRetired: moved ? false : target.cascadeRetired };
+        if (predicted.state !== state || predicted.cascadeRetired !== cascade) {
+          if (cascade || (state === "active" && ownerState !== "active"))
             throw new ApiError("CONFLICT", "The selected root lifecycle does not produce the confirmed owned-Subject snapshot.");
+          const row = versionsBySubject.get(subject.subjectId)!;
+          // Apply explicit child decisions after all root transitions, preserving independent removals.
+          lifecycle.push({ subjectId: subject.subjectId, operation: state === "active" ? "restore" : "retire", registrationId: row.id, kind: subject.kind });
+          for (const [field, after] of [["state", state], ["cascadeRetired", cascade]] as const) {
+            if (target[field] !== after) changes.push({ moduleId: `subject:${subject.subjectId}`, field, before: target[field], after });
+          }
         }
       }
     } else if (subject.kind === "driver") {
-      const children = await listOwnedCatalogSubjects(client, CatalogSubjectId(subject.subjectId), CatalogReleaseId(releaseId));
+      const children = await listOrganizationOwnedSubjects(client, organizationId, CatalogSubjectId(subject.subjectId), CatalogReleaseId(releaseId));
       if (children.some(id => !byId.has(id))) throw new ApiError("CONFLICT", "The retained owned-Subject snapshot is incomplete.");
     }
   }
@@ -164,7 +204,9 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
     array_agg(distinct b.definition_id order by b.definition_id) as definitions,
     array_agg(b.id || ':' || b.effective_revision_id || ':' || b.updated_at::text order by b.id) as "bindingVersions"
     from parameter_catalog.organization_subject_registrations owner
-    join parameter_catalog.catalog_subjects s on s.id=owner.subject_id or s.owner_subject_id=owner.subject_id
+    join parameter_catalog.organization_subject_registrations child on child.organization_id=owner.organization_id
+    join parameter_catalog.catalog_subjects s on s.id=child.subject_id and
+      (s.id=owner.subject_id or coalesce(child.owner_subject_id,s.owner_subject_id)=owner.subject_id)
     join parameter_catalog.project_parameter_bindings b on b.organization_id=owner.organization_id and b.subject_id=s.id
     where owner.organization_id=$1 and owner.subject_id=any($2::text[]) group by 1,2 order by 1,2`, [organizationId, impactedIds])).rows : [];
   evidence.push({ impact });
@@ -173,7 +215,7 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
     if (!publicImpact.some(item => item.subjectId === subjectId && item.projectId === projectId))
       publicImpact.push({ subjectId, projectId, bindingCount: 0, definitions: [] });
   }
-  return { creates, changes, conflicts, evidence, placements, lifecycle, recognitionChanges,
+  return { creates, changes, conflicts, evidence, placements, lifecycle: [...ownerChanges, ...lifecycle], recognitionChanges,
     impact: publicImpact };
 }
 
@@ -186,8 +228,11 @@ export async function applyCopySubjects(client: pg.PoolClient, organizationId: s
       `select id from parameter_modules where organization_id=$1 and kind='unclassified' and parent_id is null and archived_at is null`, [organizationId])).rows[0]?.id ?? null;
     if (subject.placement && subject.placement.kind !== "unset" && !moduleId) throw new ApiError("CONFLICT", "Placement destination is unavailable.");
     const id = `sreg_${randomUUID()}`, placementId = `spla_${randomUUID()}`;
+    const defaultOwner = subject.ownerSubjectId ? await readCatalogSubjectOwner(client, subject.subjectId) : null;
     await insertRegistration(client, { id, organizationId, subjectId: subject.subjectId, method: "explicit", proof: { reason }, placementId,
-      status: subject.state, cascadeRetired: subject.cascadeRetired, ...(subject.displayAlias ? { displayAlias: subject.displayAlias } : {}) });
+      status: subject.state, cascadeRetired: subject.cascadeRetired,
+      ...(subject.ownerSubjectId && subject.ownerSubjectId !== defaultOwner ? { ownerSubjectId: subject.ownerSubjectId } : {}),
+      ...(subject.displayAlias ? { displayAlias: subject.displayAlias } : {}) });
     await insertPlacement(client, { id: placementId, registrationId: id, organizationId, moduleId, origin: "curated" });
     if (subject.recognition?.mode === "override" && subject.recognition.override && subject.kind !== "configuration-schema") {
       const current = await readRegistrationRecognitionSettings(client as unknown as Queryable, organizationId, id);

@@ -63,6 +63,7 @@ import {
   catalogRejectProposalRequestSchema,
   catalogResolveReviewItemRequestSchema,
   catalogRestoreRegistrationRequestSchema,
+  catalogChangeRegistrationOwnerRequestSchema,
   catalogRetireRegistrationRequestSchema,
   catalogReviewItemListResponseSchema,
   catalogReviewItemResponseSchema,
@@ -481,6 +482,11 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
           context
         }
       ),
+    changeRegistrationOwner: (organizationId: string, registrationId: string,
+      body: z.infer<typeof catalogChangeRegistrationOwnerRequestSchema>, context: CatalogWriteContext) =>
+      request("PATCH", canonical("catalog.changeRegistrationOwner", { organizationId, registrationId }),
+        catalogRegistrationResponseSchema, "CatalogRegistrationResponse",
+        { body: catalogChangeRegistrationOwnerRequestSchema.parse(body), context, preserveEtag: true }),
     getPlacement: (organizationId: string, registrationId: string) =>
       request(
         "GET",
@@ -1061,6 +1067,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.getRegistration": "getRegistration",
     "catalog.retireRegistration": "retireRegistration",
     "catalog.restoreRegistration": "restoreRegistration",
+    "catalog.changeRegistrationOwner": "changeRegistrationOwner",
     "catalog.getPlacement": "getPlacement",
     "catalog.updatePlacement": "updatePlacement",
     "catalog.getRegistrationRecognition": "getRegistrationRecognition",

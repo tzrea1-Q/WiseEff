@@ -31,6 +31,9 @@ export const SYNCHRONIZER_EXECUTE_FUNCTION_NAMES = [
 ] as const;
 
 export const TRIGGER_SECURITY_DEFINER_FUNCTION_IDENTITIES = [
+  "parameter_catalog.assert_organization_subject_owner()",
+  "parameter_catalog.assert_registration_recognition_owner()",
+  "parameter_catalog.assert_catalog_organization_subject_owners()",
   "parameter_catalog.assert_catalog_alias_owner()",
   "parameter_catalog.assert_subject_placement_kind()",
   "parameter_catalog.assert_observation_match_binding_revision()",

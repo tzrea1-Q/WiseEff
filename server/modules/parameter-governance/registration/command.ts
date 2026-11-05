@@ -109,12 +109,19 @@ export type MovePlacementCommand = {
   readonly context: TrustedInvocationContext;
 };
 
+export type ChangeRegistrationOwnerCommand = Omit<RestoreRegistrationCommand, "kind" | "expectedRegistrationVersion"> & {
+  readonly kind: "change-owner";
+  readonly ownerSubjectId: CatalogSubjectId;
+  readonly expectedRegistrationVersion: string;
+};
+
 export type RegistrationCommand =
   | RegisterSubjectCommand
   | RetireRegistrationCommand
   | RetireUnregisteredSubjectCommand
   | RestoreRegistrationCommand
-  | MovePlacementCommand;
+  | MovePlacementCommand
+  | ChangeRegistrationOwnerCommand;
 
 const controlFree = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.trim() === value && !/[\u0000-\u001F\u007F-\u009F]/u.test(value);
@@ -190,6 +197,13 @@ export const validateRegistrationCommand = (
 
   if (command.context.actorKind === "trusted-system") {
     return permissionDenied(command.context.actorKind, command.kind);
+  }
+  if (command.kind === "change-owner") {
+    if (command.context.actorKind !== "org-admin" && command.context.actorKind !== "platform-admin") return permissionDenied(command.context.actorKind, command.kind);
+    if (!controlFree(command.ownerSubjectId) || !controlFree(command.registrationId) ||
+        !controlFree(command.reason) || command.reason.length > 1000 ||
+        !/^(active|retired):\d+$/.test(command.expectedRegistrationVersion)) return invalid("owner-change");
+    return { ok: true, value: command };
   }
   if (command.kind === "move-placement") {
     if (!controlFree(command.destinationModuleId)) {
@@ -278,6 +292,10 @@ const commandFingerprintModel = (command: RegistrationCommand): ContractJsonValu
         ...(command.replacement ? { replacement: { ...command.replacement } } : {}),
         context: actor,
       };
+    case "change-owner":
+      return { kind: command.kind, organizationId: command.organizationId, registrationId: command.registrationId,
+        ownerSubjectId: command.ownerSubjectId, expectedRegistrationVersion: command.expectedRegistrationVersion,
+        expectedRelease: release, reason: command.reason, context: actor };
     case "retire":
     case "restore":
       return {

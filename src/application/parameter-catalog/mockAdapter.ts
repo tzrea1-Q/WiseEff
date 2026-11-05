@@ -810,6 +810,12 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         return { item: clone(store.registration) };
       });
     },
+    async changeRegistrationOwner(organizationId, _registrationId, _body, context) {
+      requireConditionalWriteContext(context);
+      assertReadyForWrite(store);
+      assertOrganizationScope(organizationId);
+      throw new Error("当前演示数据不包含可更换所属驱动的子节点，请使用 API 环境。");
+    },
     async getPlacement(organizationId, registrationId) {
       assertReadyForRead(store);
       assertOrganizationScope(organizationId);

@@ -642,7 +642,7 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       .toEqual([{ module_id: destination, via_owner_registration_id: driver.registrationId }]);
   });
 
-  it("retires and restores owned registrations with their driver and refuses direct child operations", async () => {
+  it("retires and restores owned registrations with their driver and refuses direct child registration or placement", async () => {
     const driver = await registerTarget(targetSubject, moduleId);
     const child = (await api.query<{ id: string; current_placement_id: string }>(`select id,current_placement_id
       from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows[0]!;
@@ -651,10 +651,6 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: moduleId, method: "explicit",
       proof: {}, idempotencyKey: randomUUID(), context });
     expect(direct).toMatchObject({ ok: false, error: { kind: "invalid-command", reason: "请登记其所属驱动" } });
-    for (const kind of ["retire", "restore"] as const) {
-      expect(await service.execute({ ...lifecycle(kind, driver), registrationId: child.id as typeof driver.registrationId,
-        expectedRegistrationVersion: undefined })).toMatchObject({ ok: false, error: { kind: "invalid-command" } });
-    }
     expect(await service.execute({ kind: "move-placement", organizationId, registrationId: child.id as typeof driver.registrationId,
       destinationModuleId: moduleId, expectedRelease: pin, idempotencyKey: randomUUID(), context }))
       .toMatchObject({ ok: false, error: { kind: "invalid-command" } });
@@ -668,17 +664,217 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       .toEqual({ status: "active", current_placement_id: child.current_placement_id });
   });
 
-  it("does not restore a child that was already retired before its driver", async () => {
+  it("retires an owned child independently with conditional writes, audit, replay and retained identities", async () => {
     const driver = await registerTarget(targetSubject, moduleId);
-    await admin.query(`update parameter_catalog.organization_subject_registrations set status='retired'
-      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject]);
+    await seedBindingValueHistory(driver, `pdef_${targetSubject}_iin_max`, `drev_${targetSubject}_iin_max_1`);
+    const preserved = await retainedData();
+    const before = await placements();
+    const child = (await api.query<{ id: typeof driver.registrationId; version: string }>(`select id,
+      (extract(epoch from updated_at) * 1000000)::bigint::text as version
+      from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows[0]!;
     const service = createRegistrationService(api);
+    const actor = await auditedContext("owned-child-retire");
+    const command = { ...lifecycle("retire", driver), registrationId: child.id,
+      expectedRegistrationVersion: `active:${child.version}`, context: actor, reason: "This node is no longer used" };
+    const removed = await service.execute(command);
+    if (!removed.ok) throw new Error(JSON.stringify(removed.error));
+    expect(removed.value).toMatchObject({ registrationId: child.id, subjectId: ownedNodeSubject,
+      registrationStatus: "retired", previousRegistrationStatus: "active", ownerSubjectId: targetSubject, structural: true });
+    expect(await service.execute(command)).toMatchObject({ ok: true, value: { outcome: "replayed", registrationId: child.id } });
+    expect(await service.execute({ ...command, idempotencyKey: randomUUID() }))
+      .toMatchObject({ ok: false, error: { kind: "registration-conflict" } });
+    expect((await api.query("select status,cascade_retired from parameter_catalog.organization_subject_registrations where id=$1", [child.id])).rows)
+      .toEqual([{ status: "retired", cascade_retired: false }]);
+    expect((await api.query("select status from parameter_catalog.organization_subject_registrations where id=$1", [driver.registrationId])).rows)
+      .toEqual([{ status: "active" }]);
+    expect(await placements()).toEqual(before);
+    expect(await retainedData()).toEqual(preserved);
+    expect((await api.query("select action,metadata from public.audit_events where trace_id='owned-child-retire'")).rows)
+      .toEqual([{ action: "registration-retire", metadata: expect.objectContaining({ reason: command.reason, beforeStatus: "active", afterStatus: "retired" }) }]);
+    const restored = await service.execute(lifecycle("restore", removed.value));
+    expect(restored).toMatchObject({ ok: true, value: { registrationId: child.id, placementId: removed.value.placementId,
+      registrationStatus: "active", ownerSubjectId: targetSubject, structural: true } });
+    expect(await placements()).toEqual(before);
+    expect(await retainedData()).toEqual(preserved);
+  });
+
+  it("does not restore an independently removed child when its driver is restored", async () => {
+    const driver = await registerTarget(targetSubject, moduleId);
+    const service = createRegistrationService(api);
+    const child = (await api.query<{ id: typeof driver.registrationId }>(`select id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows[0]!;
+    const removed = await service.execute({ ...lifecycle("retire", driver), registrationId: child.id, expectedRegistrationVersion: undefined });
+    if (!removed.ok) throw new Error(JSON.stringify(removed.error));
     const retired = await service.execute(lifecycle("retire", driver));
     if (!retired.ok) throw new Error(JSON.stringify(retired.error));
+    expect(await service.execute(lifecycle("restore", removed.value)))
+      .toMatchObject({ ok: false, error: { kind: "restore-required", registrationId: driver.registrationId } });
     const restored = await service.execute(lifecycle("restore", retired.value));
     expect(restored.ok).toBe(true);
     expect((await api.query(`select status,cascade_retired from parameter_catalog.organization_subject_registrations
       where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows).toEqual([{ status: "retired", cascade_retired: false }]);
+  });
+
+  it("keeps an explicitly removed cascade child retired after its driver returns", async () => {
+    const driver = await registerTarget(targetSubject, moduleId);
+    const service = createRegistrationService(api);
+    const retired = await service.execute(lifecycle("retire", driver));
+    if (!retired.ok) throw new Error(JSON.stringify(retired.error));
+    const child = (await api.query<{ id: typeof driver.registrationId }>(`select id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows[0]!;
+    expect(await service.execute({ ...lifecycle("retire", driver), registrationId: child.id, expectedRegistrationVersion: undefined }))
+      .toMatchObject({ ok: true, value: { registrationStatus: "retired" } });
+    expect((await service.execute(lifecycle("restore", retired.value))).ok).toBe(true);
+    expect((await api.query("select status,cascade_retired from parameter_catalog.organization_subject_registrations where id=$1", [child.id])).rows)
+      .toEqual([{ status: "retired", cascade_retired: false }]);
+  });
+
+  it("records an unregistered child's removal without registering its owner or restoring it automatically", async () => {
+    const service = createRegistrationService(api);
+    const removed = await service.execute({ kind: "retire-unregistered", organizationId, subjectId: ownedNodeSubject,
+      expectedRelease: pin, context, idempotencyKey: randomUUID(), reason: "Not used here" });
+    if (!removed.ok) throw new Error(JSON.stringify(removed.error));
+    expect(removed.value).toMatchObject({ registrationStatus: "retired", ownerSubjectId: targetSubject, structural: true, moduleId: null });
+    expect((await api.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, targetSubject])).rows)
+      .toEqual([]);
+    expect(await service.execute(lifecycle("restore", removed.value))).toMatchObject({ ok: false, error: { kind: "invalid-command" } });
+    await registerTarget(targetSubject, moduleId);
+    expect((await api.query("select status from parameter_catalog.organization_subject_registrations where id=$1", [removed.value.registrationId])).rows)
+      .toEqual([{ status: "retired" }]);
+    expect(await service.execute(lifecycle("restore", removed.value))).toMatchObject({ ok: true, value: { registrationStatus: "active" } });
+  });
+
+  it("uses the existing authenticated HTTP lifecycle flow for an owned child", async () => {
+    const driver = await registerTarget(targetSubject, moduleId);
+    const child = (await api.query<{ id: string }>(`select id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows[0]!;
+    const userId = `child-lifecycle-admin-${randomUUID()}`;
+    await admin.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [userId, organizationId]);
+    await admin.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [randomUUID(), userId, organizationId]);
+    const app = createWiseEffServer({ db: apiDatabase, auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ userId, organizationId }) } } });
+    const path = `/api/v2/organizations/${organizationId}/subject-registrations/${child.id}`;
+    const read = await requestJson(app, path);
+    expect(read.status, read.bodyText).toBe(200);
+    const headers = { "X-WiseEff-Catalog-Release": pin.id, "If-Match": read.headers.get("etag")!, "Idempotency-Key": randomUUID() };
+    const input = { method: "POST", headers, body: JSON.stringify({ reason: "This organization no longer uses the child" }) };
+    const removed = await requestJson(app, `${path}/retire`, input);
+    expect(removed.status, removed.bodyText).toBe(200);
+    expect(removed.body).toMatchObject({ item: { id: child.id, subjectId: ownedNodeSubject, ownerSubjectId: targetSubject, structural: true, status: "retired" } });
+    expect((await requestJson(app, `${path}/retire`, input)).status).toBe(200);
+    expect((await requestJson(app, `${path}/retire`, { ...input, headers: { ...headers, "Idempotency-Key": randomUUID() } })).status).toBe(409);
+    const restored = await requestJson(app, `${path}/restore`, { ...input,
+      headers: { ...headers, "If-Match": removed.headers.get("etag")!, "Idempotency-Key": randomUUID() } });
+    expect(restored.status, restored.bodyText).toBe(200);
+    expect(restored.body).toMatchObject({ item: { id: child.id, status: "active", ownerSubjectId: targetSubject } });
+    const foreignOrg = `foreign-child-lifecycle-${randomUUID()}`;
+    await admin.query("insert into organizations(id,name) values ($1,'Foreign')", [foreignOrg]);
+    expect((await requestJson(app, path.replace(organizationId, foreignOrg) + "/retire", input)).status).toBe(403);
+    await admin.query("delete from user_role_bindings where user_id=$1", [userId]);
+    const viewerApp = createWiseEffServer({ db: apiDatabase, auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ userId, organizationId, roles: [], permissions: [] }) } } });
+    expect((await requestJson(viewerApp, `${path}/retire`, input)).status).toBe(403);
+    expect((await api.query("select status from parameter_catalog.organization_subject_registrations where id=any($1::text[]) order by id", [[child.id, driver.registrationId]])).rows)
+      .toEqual([{ status: "active" }, { status: "active" }]);
+  });
+
+  it("serializes a child restore with its owner's retirement without leaving an active orphan", async () => {
+    const driver = await registerTarget(targetSubject, moduleId);
+    const child = (await api.query<{ id: typeof driver.registrationId }>(`select id from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows[0]!;
+    const service = createRegistrationService(api);
+    const removed = await service.execute({ ...lifecycle("retire", driver), registrationId: child.id, expectedRegistrationVersion: undefined });
+    if (!removed.ok) throw new Error(JSON.stringify(removed.error));
+    const [retired, restored] = await Promise.all([service.execute(lifecycle("retire", driver)), service.execute(lifecycle("restore", removed.value))]);
+    expect(retired.ok).toBe(true);
+    if (!restored.ok) expect(restored.error).toMatchObject({ kind: "restore-required", registrationId: driver.registrationId });
+    expect((await api.query("select status from parameter_catalog.organization_subject_registrations where id=any($1::text[]) order by id", [[child.id, driver.registrationId]])).rows)
+      .toEqual([{ status: "retired" }, { status: "retired" }]);
+  });
+
+  it("changes an owned child's driver only in its organization and replays the exact audited result", async () => {
+    const oldOwner = await registerTarget(targetSubject, moduleId);
+    const newOwner = await registerTarget(thirdSubject);
+    const service = createRegistrationService(api);
+    const child = (await api.query<{ id: typeof oldOwner.registrationId; version: string }>(`select id,
+      (extract(epoch from updated_at)*1000000)::bigint::text as version from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows[0]!;
+    const otherOrg = `owner-other-${randomUUID()}`;
+    await admin.query("insert into organizations(id,name) values ($1,'Other')", [otherOrg]);
+    const otherModule = await createModule("Other owner", otherOrg);
+    expect((await service.execute({ kind: "register", organizationId: otherOrg, subjectId: targetSubject, subjectKind: "driver",
+      expectedRelease: pin, placement: { mode: "use-default" }, destinationModuleId: otherModule, method: "explicit", proof: {},
+      idempotencyKey: randomUUID(), context })).ok).toBe(true);
+    const actor = await auditedContext("change-child-owner");
+    const command = { kind: "change-owner" as const, organizationId, registrationId: child.id, ownerSubjectId: thirdSubject,
+      expectedRelease: pin, expectedRegistrationVersion: `active:${child.version}`, idempotencyKey: randomUUID(), context: actor, reason: "Move this organization's child" };
+    const before = await retainedData();
+    const changed = await service.execute(command);
+    expect(changed).toMatchObject({ ok: true, value: { registrationId: child.id, ownerSubjectId: thirdSubject, previousOwnerSubjectId: targetSubject } });
+    if (!changed.ok) throw new Error(JSON.stringify(changed.error));
+    expect(await service.execute(command)).toEqual({ ok: true, value: { ...changed.value, outcome: "replayed" } });
+    expect(await service.execute({ ...command, idempotencyKey: randomUUID() })).toMatchObject({ ok: false, error: { kind: "registration-conflict" } });
+    expect(await service.execute({ ...command, ownerSubjectId: targetSubject })).toMatchObject({ ok: false, error: { kind: "revision-conflict" } });
+    expect(await retainedData()).toEqual(before);
+    expect((await api.query("select owner_subject_id from parameter_catalog.catalog_subjects where id=$1", [ownedNodeSubject])).rows).toEqual([{ owner_subject_id: targetSubject }]);
+    expect((await api.query(`select organization_id,module_id,via_owner_registration_id from parameter_catalog.registration_effective_module
+      where subject_id=$1 and organization_id=any($2::text[])`, [ownedNodeSubject, [organizationId, otherOrg]])).rows).toEqual(expect.arrayContaining([
+      { organization_id: organizationId, module_id: newOwner.moduleId, via_owner_registration_id: newOwner.registrationId },
+      expect.objectContaining({ organization_id: otherOrg, module_id: otherModule }),
+    ]));
+    expect((await api.query("select metadata from audit_events where trace_id='change-child-owner'")).rows).toEqual([
+      expect.objectContaining({ metadata: expect.objectContaining({ beforeOwnerSubjectId: targetSubject, afterOwnerSubjectId: thirdSubject, reason: command.reason }) }),
+    ]);
+    expect((await service.execute(lifecycle("retire", oldOwner))).ok).toBe(true);
+    expect((await api.query("select status from parameter_catalog.organization_subject_registrations where id=$1", [child.id])).rows).toEqual([{ status: "active" }]);
+    const retiredNew = await service.execute(lifecycle("retire", newOwner));
+    expect(retiredNew.ok).toBe(true);
+    expect((await api.query("select status,cascade_retired from parameter_catalog.organization_subject_registrations where id=$1", [child.id])).rows).toEqual([{ status: "retired", cascade_retired: true }]);
+    if (retiredNew.ok) expect((await service.execute(lifecycle("restore", retiredNew.value))).ok).toBe(true);
+    expect((await api.query("select status from parameter_catalog.organization_subject_registrations where id=$1", [child.id])).rows).toEqual([{ status: "active" }]);
+    expect(await service.execute(command)).toEqual({ ok: true, value: { ...changed.value, outcome: "replayed" } });
+  });
+
+  it("serializes an owner change with target retirement without leaving an active child under an inactive owner", async () => {
+    await registerTarget(targetSubject, moduleId);
+    const destination = await registerTarget(thirdSubject);
+    const child = (await api.query<{ id: typeof destination.registrationId; version: string }>(`select id,
+      (extract(epoch from updated_at)*1000000)::bigint::text as version from parameter_catalog.organization_subject_registrations
+      where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows[0]!;
+    const service = createRegistrationService(api);
+    const [changed, retired] = await Promise.all([
+      service.execute({ kind: "change-owner", organizationId, registrationId: child.id, ownerSubjectId: thirdSubject,
+        expectedRegistrationVersion: `active:${child.version}`, expectedRelease: pin, reason: "Concurrent correction", idempotencyKey: randomUUID(), context }),
+      service.execute(lifecycle("retire", destination)),
+    ]);
+    expect(retired.ok).toBe(true);
+    const row = (await api.query("select status,owner_subject_id from parameter_catalog.organization_subject_registrations where id=$1", [child.id])).rows[0];
+    expect(row).toEqual(changed.ok ? { status: "retired", owner_subject_id: thirdSubject } : { status: "active", owner_subject_id: null });
+    if (!changed.ok) expect(changed.error.kind).toBe("invalid-command");
+  });
+
+  it("guards driver changes with current tenant authorization, registration ETags and active target evidence", async () => {
+    await registerTarget(targetSubject, moduleId);
+    const destination = await registerTarget(thirdSubject);
+    const child = (await api.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, ownedNodeSubject])).rows[0]!;
+    const actor = await auditedContext("http-child-owner");
+    await admin.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [randomUUID(), actor.principalId, organizationId]);
+    const app = createWiseEffServer({ db: apiDatabase, auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ userId: actor.principalId, organizationId }) } } });
+    const path = `/api/v2/organizations/${organizationId}/subject-registrations/${child.id}`;
+    const read = await requestJson(app, path);
+    const headers = { "X-WiseEff-Catalog-Release": pin.id, "If-Match": read.headers.get("etag")!, "Idempotency-Key": randomUUID() };
+    const request = { method: "PATCH", headers, body: JSON.stringify({ ownerSubjectId: thirdSubject, reason: "Reviewed driver correction" }) };
+    expect((await requestJson(app, `${path}/owner`, { ...request, headers: { ...headers, "If-Match": "" } })).status).toBe(409);
+    expect((await requestJson(app, `${path}/owner`, { ...request, body: JSON.stringify({ ownerSubjectId: nodeSubject, reason: "Invalid driver" }) })).status).toBe(400);
+    expect((await requestJson(app, `${path}/owner`, { ...request, body: JSON.stringify({ ownerSubjectId: emptySubject, reason: "Unregistered driver" }) })).status).toBe(400);
+    const result = await requestJson(app, `${path}/owner`, request);
+    expect(result.status, result.bodyText).toBe(200);
+    expect(result.body).toMatchObject({ item: { id: child.id, ownerSubjectId: thirdSubject, status: "active" } });
+    expect((await requestJson(app, `${path}/owner`, request)).body).toEqual(result.body);
+    expect((await requestJson(app, `${path}/owner`, { ...request, headers: { ...headers, "Idempotency-Key": randomUUID() } })).status).toBe(409);
+    expect((await requestJson(app, path.replace(organizationId, `foreign-${randomUUID()}`) + "/owner", request)).status).toBe(403);
+    await admin.query("delete from user_role_bindings where user_id=$1", [actor.principalId]);
+    const viewer = createWiseEffServer({ db: apiDatabase, auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ userId: actor.principalId, organizationId, roles: [], permissions: [] }) } } });
+    expect((await requestJson(viewer, `${path}/owner`, request)).status).toBe(403);
+    expect((await api.query("select status from parameter_catalog.organization_subject_registrations where id=$1", [destination.registrationId])).rows).toEqual([{ status: "active" }]);
   });
 
   it("groups bindings for two registered subjects in the same business module", async () => {

@@ -137,6 +137,12 @@ export const mapWriterDatabaseError = (
   const guard = mapGuardDatabaseError(error, expected, subjectId);
   if (guard) return guard;
   if (!(error instanceof pg.DatabaseError)) return null;
+  if (error.constraint === "organization_subject_owner_ck") {
+    return { kind: "invalid-command", reason: "目标驱动与当前组织的子节点状态不兼容，请刷新后重试" };
+  }
+  if (error.constraint === "organization_subject_owner_selector_unique") {
+    return { kind: "invalid-command", reason: "目标驱动下已有相同识别名称或别名的节点，请先调整识别规则" };
+  }
   if (error.code === "23505") {
     return {
       kind: error.constraint === "subject_placements_organization_id_module_id_key" ? "placement-occupied" : "placement-conflict",

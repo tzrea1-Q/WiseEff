@@ -5,6 +5,7 @@ export type ConfirmDialogProps = {
   open: boolean;
   className?: string;
   title: string;
+  headerExtra?: ReactNode;
   /** State the blast radius here, not just the action name. */
   description: ReactNode;
   confirmLabel: string;
@@ -18,6 +19,8 @@ export type ConfirmDialogProps = {
    * reports `requiresConfirmation`. Confirming stays disabled until it is acknowledged.
    */
   acknowledgement?: ReactNode;
+  /** Reset acknowledgement when preview evidence changes without remounting the dialog. */
+  acknowledgementKey?: string;
   /** Additional fields the confirmation collects, such as an audit reason. */
   extra?: ReactNode;
   error?: ReactNode;
@@ -33,6 +36,7 @@ export function ConfirmDialog({
   open,
   className,
   title,
+  headerExtra,
   description,
   confirmLabel,
   cancelLabel = "取消",
@@ -41,6 +45,7 @@ export function ConfirmDialog({
   confirmDisabled = false,
   pendingLabel,
   acknowledgement,
+  acknowledgementKey,
   extra,
   error = "",
   onConfirm,
@@ -52,7 +57,7 @@ export function ConfirmDialog({
     if (open) {
       setAcknowledged(false);
     }
-  }, [open, title]);
+  }, [open, title, acknowledgementKey]);
 
   const blocked = Boolean(acknowledgement) && !acknowledged;
 
@@ -66,7 +71,7 @@ export function ConfirmDialog({
     >
       {({ titleId, descriptionId }) => (
         <>
-          <h2 id={titleId}>{title}</h2>
+          {headerExtra ? <div className="grid gap-4"><h2 id={titleId}>{title}</h2>{headerExtra}</div> : <h2 id={titleId}>{title}</h2>}
           <div className="confirm-dialog__scroll">
             <div id={descriptionId} className="governance-confirm-dialog__body">
               {description}

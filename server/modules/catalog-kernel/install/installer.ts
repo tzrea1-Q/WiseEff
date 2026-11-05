@@ -273,6 +273,10 @@ const mapWriteError = (
   if (error instanceof PublicationActivationFailure) {
     return error.activationError;
   }
+  if (error instanceof pg.DatabaseError && error.constraint === "catalog_organization_subject_owner_selector_unique") {
+    return { kind: "invalid-release", phase: "install-preflight", violations: [{ code: "schema-invalid",
+      location: { kind: "present", value: "organization-subject-owners" }, subjectId: { kind: "absent" }, detail: error.message }] };
+  }
   const materialized = unwrapMaterializationKernelError(error);
   if (materialized) {
     return materialized;

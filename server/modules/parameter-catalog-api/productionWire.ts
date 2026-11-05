@@ -488,7 +488,7 @@ const authenticateGovernance =
     if (matched && (organizationDetail || [
       "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
       "catalog.createRegistration", "catalog.createBatchRegistration", "catalog.listUnregisteredSubjects", "catalog.exportModuleStructure", "catalog.previewModuleStructure", "catalog.applyModuleStructure",
-      "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.updatePlacement", "catalog.updateRegistrationRecognition"
+      "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.changeRegistrationOwner", "catalog.updatePlacement", "catalog.updateRegistrationRecognition"
     ].includes(matched.id))) {
       const targetId = matched.params.organizationId;
       if (!targetId || (request.query.organizationId !== undefined && request.query.organizationId !== targetId) ||

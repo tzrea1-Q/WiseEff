@@ -1,4 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
+import { ViewSwitch } from "@/components/ui/view-switch";
 import { listAllCanonicalPages } from "@/application/parameter-catalog/listAllCanonicalPages";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
@@ -19,9 +20,11 @@ import { openBatchRegistration } from "@/features/parameter-catalog-governance/b
 import {
   RegistrationDialog,
   type RegistrationModuleOption,
-  type RegistrationSubjectImpact
+  type RegistrationSubjectImpact,
+  type SubjectEditorOptions
 } from "@/features/parameter-catalog-governance/RegistrationDialog";
 import { RegistrationLifecycleDialog } from "@/features/parameter-catalog-governance/RegistrationLifecycleDialog";
+import { RegistrationOwnerDialog } from "@/features/parameter-catalog-governance/RegistrationOwnerDialog";
 import { SharedDtsiSubjectCreation } from "@/features/shared-dtsi/SharedDtsiSubjectCreation";
 import type { ApiClient } from "@/infrastructure/http/apiClient";
 import { publicationSurfaceAdvisory, type PublicationSurfaceItem } from "@/features/parameter-catalog-governance/publicationSurface";
@@ -137,7 +140,7 @@ export function CanonicalSubjectPlacementPanel({
   const params = useMemo(() => new URLSearchParams(searchProp ?? localSearch), [searchProp, localSearch]);
   const [createSubjectOpen, setCreateSubjectOpen] = useState(false);
   const [createOwnerSubjectId, setCreateOwnerSubjectId] = useState<string | undefined>();
-  const [recognitionSubject, setRecognitionSubject] = useState<{ registrationId: string; name: string } | null>(null);
+  const [recognitionSubject, setRecognitionSubject] = useState<{ registrationId: string; subject: SubjectRow } | null>(null);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationError, setPublicationError] = useState("");
   const canAuthorSubject = canAdmin && catalogActionsForSession({ actor, permissions: sessionPermissions }).includes("preview-publication");
@@ -184,8 +187,11 @@ export function CanonicalSubjectPlacementPanel({
   };
   const readGeneration = useRef(0);
   const placementGeneration = useRef(0);
+  const requestedEditorFocus = useRef<"recognition" | "placement" | null>(null);
+  const editorTrigger = useRef<HTMLButtonElement | null>(null);
   const [openingSubjectId, setOpeningSubjectId] = useState<string | null>(null);
   const [lifecycleDialog, setLifecycleDialog] = useState<{ intent: "retire-registration" | "restore-registration"; subject: SubjectRow; registrationId?: string } | null>(null);
+  const [ownerDialog, setOwnerDialog] = useState<{ subject: SubjectRow; registrationId: string } | null>(null);
   const [lifecycleNotice, setLifecycleNotice] = useState("");
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [definitionRefresh, setDefinitionRefresh] = useState(0);
@@ -201,6 +207,19 @@ export function CanonicalSubjectPlacementPanel({
     currentModuleName?: string;
     currentModuleId?: string;
   } | null>(null);
+
+  useEffect(() => {
+    const section = requestedEditorFocus.current;
+    if (!section || (section === "recognition" ? !recognitionSubject : !ownerDialog && !placementDialog)) return;
+    document.getElementById(`subject-editor-tab-${section}`)?.focus();
+    requestedEditorFocus.current = null;
+  }, [recognitionSubject, ownerDialog, placementDialog]);
+  useEffect(() => {
+    if (recognitionSubject || ownerDialog || placementDialog || openingSubjectId || !editorTrigger.current) return;
+    const trigger = editorTrigger.current;
+    editorTrigger.current = null;
+    (trigger.isConnected ? trigger : document.getElementById("canonical-subject-placement"))?.focus();
+  }, [recognitionSubject, ownerDialog, placementDialog, openingSubjectId]);
 
   const loadCanonical = useCallback(async () => {
     const generation = ++readGeneration.current;
@@ -481,6 +500,8 @@ export function CanonicalSubjectPlacementPanel({
         setRowErrors((current) => ({ ...current, [subject.id]: "当前主体缺少影响数据，无法安全调整归属；请刷新后重试。" }));
         return;
       }
+      setRecognitionSubject(null);
+      setOwnerDialog(null);
       setPlacementDialog({
         intent: "update-placement",
         subject,
@@ -559,6 +580,49 @@ export function CanonicalSubjectPlacementPanel({
     await loadCanonical();
     await onChanged?.();
   };
+
+  const closeEditor = () => {
+    requestedEditorFocus.current = null;
+    placementGeneration.current += 1;
+    setOpeningSubjectId(null);
+    setRecognitionSubject(null);
+    setOwnerDialog(null);
+    setPlacementDialog(null);
+  };
+  const editorTitle = (subject: SubjectRow) => `${canAdmin ? "编辑" : "查看"}${subject.ownerSubjectId ? "节点" : "主体"}：${subject.canonicalName}`;
+  const editorOptions = (subject: SubjectRow, registrationId: string, section: "recognition" | "placement"): SubjectEditorOptions => ({
+    title: editorTitle(subject),
+    switching: openingSubjectId === subject.id,
+    renderNavigation: (requestLeave, busy) => {
+      const canEditPlacement = canAdmin && subject.membership.status === "active" &&
+        registrationBySubjectId.get(subject.id)?.status === "active" &&
+        isCatalogActionEnabled(actor, "update-placement", domainState, sessionPermissions);
+      const switching = openingSubjectId === subject.id;
+      return <>
+        <ViewSwitch variant="tabs" ariaLabel="主体编辑分区" value={section} items={[
+          ...(subject.type !== "configuration-schema" ? [{ value: "recognition", label: "识别规则", id: "subject-editor-tab-recognition",
+            panelId: "subject-editor-panel", disabled: busy || switching }] : []),
+          ...(canEditPlacement ? [{ value: "placement", label: "归属", id: "subject-editor-tab-placement",
+            panelId: "subject-editor-panel", disabled: busy || switching || !inventoryComplete }] : [])
+        ]} onValueChange={next => requestLeave(() => {
+          if (next === "recognition") {
+            closeEditor();
+            requestedEditorFocus.current = "recognition";
+            setRecognitionSubject({ subject, registrationId });
+          } else if (subject.ownerSubjectId) {
+            closeEditor();
+            requestedEditorFocus.current = "placement";
+            setOwnerDialog({ subject, registrationId });
+          } else {
+            requestedEditorFocus.current = "placement";
+            void openPlacement(subject, registrationId);
+          }
+        })} />
+        {switching ? <p role="status">正在读取归属与引用影响…</p> : null}
+        {rowErrors[subject.id] ? <p role="alert">{rowErrors[subject.id]}</p> : null}
+      </>;
+    }
+  });
 
   return (
     <section
@@ -687,16 +751,21 @@ export function CanonicalSubjectPlacementPanel({
                     (modulesForSubject.length > 0 || newDestinationParents.length > 0);
                   const placementAllowed =
                     canAdmin &&
-                    !subject.ownerSubjectId &&
                     subject.membership.status === "active" &&
                     registration?.status === "active" &&
                     Boolean(registrationId) &&
                     isCatalogActionEnabled(actor, "update-placement", domainState, sessionPermissions);
                   const registrationStatus = registration?.status ?? subject.registration.status;
                   const lifecycleIntent = registrationStatus === "retired" ? "restore-registration" : "retire-registration";
-                  const lifecycleAllowed = canAdmin && !subject.ownerSubjectId && (registrationStatus === "unregistered" ? subject.membership.status === "active" : Boolean(registrationId)) &&
+                  const lifecycleAllowed = canAdmin && (registrationStatus === "unregistered" ? !subject.ownerSubjectId && subject.membership.status === "active" : Boolean(registrationId)) &&
                     isCatalogActionEnabled(actor, lifecycleIntent, domainState, sessionPermissions);
-                  const subjectLabel = subjectTypeLabel(subject.type);
+                  const subjectLabel = subject.ownerSubjectId ? "节点" : subjectTypeLabel(subject.type);
+                  const owner = subject.ownerSubjectId ? subjects[subjectIndexes.get(subject.ownerSubjectId) ?? -1] : undefined;
+                  const restoreBlockedReason = registrationStatus !== "retired" ? undefined
+                    : subject.membership.status !== "active" ? "平台主体已退役，当前无法恢复登记"
+                    : subject.ownerSubjectId && (!owner || owner.membership.status !== "active" ||
+                      (registrationBySubjectId.get(owner.id)?.status ?? owner.registration.status) !== "active")
+                      ? "所属驱动未启用，请先恢复所属驱动。" : undefined;
                   const childCount = childCounts.get(subject.id) ?? 0;
                   return (
                     <li
@@ -730,9 +799,14 @@ export function CanonicalSubjectPlacementPanel({
                         {subject.type === "driver" && subject.membership.status === "active" && canCreateSubject ? <button
                           type="button" className="button subtle" aria-label={`新增子节点类型：${subject.canonicalName}`}
                           onClick={() => { setCreateOwnerSubjectId(subject.id); setCreateSubjectOpen(true); }}>新增子节点类型</button> : null}
-                        {registrationId && subject.type !== "configuration-schema" ? <button type="button" className="button subtle"
-                          aria-label={`识别规则：${subject.canonicalName}`}
-                          onClick={() => setRecognitionSubject({ registrationId, name: subject.canonicalName })}>识别规则</button> : null}
+                        {registrationId && (subject.type !== "configuration-schema" || placementAllowed) ? <button type="button" className="button subtle"
+                          aria-label={editorTitle(subject)} disabled={subject.type === "configuration-schema" && !inventoryComplete}
+                          onClick={event => {
+                            editorTrigger.current = event.currentTarget;
+                            closeEditor();
+                            if (subject.type === "configuration-schema") void openPlacement(subject, registrationId);
+                            else setRecognitionSubject({ registrationId, subject });
+                          }}>{canAdmin ? "编辑" : "查看"}{subject.ownerSubjectId ? "节点" : "主体"}</button> : null}
                         {subject.definitionCounts.active > 0 ? <button
                           type="button"
                           className="button subtle"
@@ -765,36 +839,22 @@ export function CanonicalSubjectPlacementPanel({
                             {onCreateBusinessModule ? <button type="button" className="button subtle sm" onClick={onCreateBusinessModule}>新建业务分类</button> : null}
                           </span>
                         ) : null}
-                        {placementAllowed ? (
-                          <button
-                            type="button"
-                            className="button subtle"
-                            aria-label={`调整归属：${subject.canonicalName}`}
-                            disabled={!inventoryComplete}
-                            aria-disabled={openingSubjectId === subject.id}
-                            aria-busy={openingSubjectId === subject.id}
-                            onClick={() =>
-                              void openPlacement(subject, registrationId ?? "")
-                            }
-                          >
-                            {openingSubjectId === subject.id ? "读取归属…" : "调整归属"}
-                          </button>
-                        ) : null}
                         {lifecycleAllowed ? <button type="button" className="button subtle"
                           aria-label={`${registrationStatus === "retired" ? "恢复" : "移除"}${subjectLabel}：${subject.canonicalName}`}
-                          disabled={!inventoryComplete || (registrationStatus === "retired" && subject.membership.status !== "active")}
-                          title={registrationStatus === "retired" && subject.membership.status !== "active" ? "平台主体已退役，当前无法恢复登记" : undefined}
+                          disabled={!inventoryComplete || Boolean(restoreBlockedReason)}
+                          title={restoreBlockedReason}
                           onClick={() => setLifecycleDialog({ intent: lifecycleIntent, subject, registrationId })}>
                           {registrationStatus === "retired" ? `恢复${subjectLabel}` : `移除${subjectLabel}`}
                         </button> : null}
                       </div>
                       {subject.ownerSubjectId ? <div className="canonical-subject-owner-guidance">
-                        <span>业务归属与启停随所属驱动统一管理。</span>
-                        {onNavigate ? <button type="button" className="button subtle sm"
-                          aria-label={`管理 ${subject.canonicalName} 的所属驱动`}
-                          onClick={() => onNavigate(`/parameter-admin/modules?selectedSubject=${encodeURIComponent(subject.ownerSubjectId!)}`)}>管理所属驱动</button> : null}
+                        <span>所属驱动：<a href={`/parameter-admin/modules?selectedSubject=${encodeURIComponent(subject.ownerSubjectId)}`}
+                          onClick={event => { if (onNavigate && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0) {
+                            event.preventDefault(); onNavigate(`/parameter-admin/modules?selectedSubject=${encodeURIComponent(subject.ownerSubjectId!)}`);
+                          } }}>{owner?.canonicalName ?? subject.ownerSubjectId}</a>。业务归属随驱动，可单独移除和恢复此节点。</span>
+                        {restoreBlockedReason ? <span>{restoreBlockedReason}</span> : null}
                       </div> : null}
-                      {rowErrors[subject.id] ? <div className="canonical-subject-row-error" role="alert">
+                      {rowErrors[subject.id] && recognitionSubject?.subject.id !== subject.id ? <div className="canonical-subject-row-error" role="alert">
                         {rowErrors[subject.id]}<button type="button" className="button subtle sm" onClick={() => void openPlacement(subject, registrationId ?? "")}>重试读取归属</button>
                       </div> : null}
                       {expandedSubjectId === subject.id ? (
@@ -873,10 +933,21 @@ export function CanonicalSubjectPlacementPanel({
           onNavigate(`${buildCatalogHref({ ...EMPTY_CATALOG_URL_ANCHOR, subjectId })}&createDefinition=1`);
         } : undefined }} /> : null}
       {recognitionSubject ? <SubjectRecognitionDialog governance={governance} organizationId={organizationId}
-        registrationId={recognitionSubject.registrationId} catalogReleaseId={catalogReleaseId} name={recognitionSubject.name} canAdmin={canAdmin}
-        onClose={() => setRecognitionSubject(null)} onChanged={onChanged} /> : null}
+        editor={editorOptions(recognitionSubject.subject, recognitionSubject.registrationId, "recognition")}
+        registrationId={recognitionSubject.registrationId} catalogReleaseId={catalogReleaseId} name={recognitionSubject.subject.canonicalName} canAdmin={canAdmin}
+        onClose={closeEditor} onChanged={onChanged} /> : null}
+      {ownerDialog ? <RegistrationOwnerDialog key={`${organizationId}:${ownerDialog.subject.id}`} {...ownerDialog}
+        editor={editorOptions(ownerDialog.subject, ownerDialog.registrationId, "placement")}
+        actor={actor} sessionPermissions={sessionPermissions} catalog={catalog} governance={governance} organizationId={organizationId}
+        onClose={closeEditor} onCompleted={() => {
+          setLifecycleNotice(`已调整 ${ownerDialog.subject.canonicalName} 在本组织的所属驱动。`);
+          closeEditor();
+          void handleCompleted();
+        }} /> : null}
       {placementDialog && catalogReleaseId ? (
         <RegistrationDialog
+          editor={placementDialog.intent === "update-placement" && placementDialog.registrationId
+            ? editorOptions(placementDialog.subject, placementDialog.registrationId, "placement") : undefined}
           open
           intent={placementDialog.intent}
           actor={actor}
@@ -895,7 +966,7 @@ export function CanonicalSubjectPlacementPanel({
           currentModuleName={placementDialog.currentModuleName}
           createIdempotencyKey={createGovernanceIdempotencyKey}
           onOpenChange={(open) => {
-            if (!open) { placementGeneration.current += 1; setPlacementDialog(null); }
+            if (!open) closeEditor();
           }}
           onCompleted={() => void handleCompleted()}
           onRefreshEvidence={refreshPlacementEvidence}

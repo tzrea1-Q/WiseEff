@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { listOwnedCatalogSubjects, readCatalogSubjectOwner } from "../../catalog-kernel/ownerSchema";
+import { listOrganizationOwnedSubjects, readOrganizationSubjectOwner, readCatalogSubjectOwner } from "../../catalog-kernel/ownerSchema";
 
 import {
   CatalogSubjectId,
@@ -11,6 +11,7 @@ import {
   fingerprintRegistrationCommand,
   validateRegistrationCommand,
   type MovePlacementCommand,
+  type ChangeRegistrationOwnerCommand,
   type RegisterSubjectCommand,
   type RegistrationCommand,
   type RestoreRegistrationCommand,
@@ -102,7 +103,7 @@ const requireDestination = async (
 };
 
 const registerOwnedChildren = async (client: RegistrationWriterClient, command: Pick<RegisterSubjectCommand, "subjectId" | "expectedRelease" | "organizationId" | "method" | "proof">) => {
-  const children = await listOwnedCatalogSubjects(client, command.subjectId, command.expectedRelease.id);
+  const children = await listOrganizationOwnedSubjects(client, command.organizationId, command.subjectId, command.expectedRelease.id);
   const cascadedRegistrations: { registrationId: string; subjectId: string }[] = [];
   for (const child of children) {
     const existingChild = await loadRegistrationByOrgSubject(client, command.organizationId, child);
@@ -219,7 +220,7 @@ const writeRegister = async (
 };
 
 const retireOwnedRegistrations = async (client: RegistrationWriterClient, organizationId: string, subjectId: string) => {
-  const childIds = await listOwnedCatalogSubjects(client, subjectId);
+  const childIds = await listOrganizationOwnedSubjects(client, organizationId, subjectId);
   const children = await client.query<{ id: string; subject_id: string }>(
     `update parameter_catalog.organization_subject_registrations registration
      set status = 'retired', cascade_retired = true,
@@ -262,7 +263,7 @@ const writeRetire = async (
   }
   const previousStatus = pair.registration.status;
   let cascadedRegistrations: { registrationId: string; subjectId: string }[] = [];
-  if (pair.registration.status !== "retired") {
+  if (pair.registration.status !== "retired" || pair.registration.cascade_retired) {
     pair.registration = await updateRegistrationStatus(client, pair.registration.id, "retired");
     cascadedRegistrations = await retireOwnedRegistrations(client, command.organizationId, pair.registration.subject_id);
   }
@@ -290,7 +291,7 @@ const writeRestore = async (
   let cascadedRegistrations: { registrationId: string; subjectId: string }[] = [];
   if (pair.registration.status !== "active") {
     pair.registration = await updateRegistrationStatus(client, pair.registration.id, "active");
-    const childIds = await listOwnedCatalogSubjects(client, pair.registration.subject_id, command.expectedRelease.id);
+    const childIds = await listOrganizationOwnedSubjects(client, command.organizationId, pair.registration.subject_id, command.expectedRelease.id);
     const children = await client.query<{ id: string; subject_id: string }>(
       `update parameter_catalog.organization_subject_registrations registration
        set status = 'active', cascade_retired = false,
@@ -308,6 +309,36 @@ const writeRestore = async (
     value: { ...toResult(pair.registration, pair.placement, command, fingerprint, "committed", previousStatus),
       ...(cascadedRegistrations.length ? { cascadedRegistrations } : {}) },
   };
+};
+
+const writeChangeOwner = async (
+  client: RegistrationWriterClient,
+  command: ChangeRegistrationOwnerCommand,
+  fingerprint: string,
+): Promise<Result<RegistrationResult, RegistrationFailure>> => {
+  const pair = await loadStoredPair(client, command.organizationId, command.registrationId);
+  if (!pair) return fail({ kind: "registration-not-found", registrationId: command.registrationId });
+  if (command.expectedRegistrationVersion !== `${pair.registration.status}:${pair.registration.version}`) {
+    return fail({ kind: "registration-conflict", registrationId: pair.registration.id });
+  }
+  const previousOwner = await readOrganizationSubjectOwner(client, command.organizationId, pair.registration.subject_id);
+  if (!previousOwner) return fail({ kind: "invalid-command", reason: "只有所属驱动的子节点可以更换驱动" });
+  if (previousOwner === command.ownerSubjectId) return fail({ kind: "invalid-command", reason: "请选择其他所属驱动" });
+  const active = await assertCatalogSubjectActive(client, command.expectedRelease, command.ownerSubjectId);
+  if (!active.ok) return active;
+  const target = await loadRegistrationByOrgSubject(client, command.organizationId, command.ownerSubjectId);
+  if (!target || target.status !== "active") return fail({ kind: "invalid-command", reason: "目标驱动须在当前组织登记并启用" });
+  const defaultOwner = await readCatalogSubjectOwner(client, pair.registration.subject_id);
+  await client.query(`update parameter_catalog.organization_subject_registrations registration
+    set owner_subject_id=$3, cascade_retired=false,
+        updated_at=greatest(clock_timestamp(), registration.updated_at + interval '1 microsecond')
+    where registration.id=$1 and registration.organization_id=$2`,
+  [pair.registration.id, command.organizationId, command.ownerSubjectId === defaultOwner ? null : command.ownerSubjectId]);
+  const changed = (await loadRegistrationById(client, command.organizationId, pair.registration.id))!;
+  const result: RegistrationResult = { ...toResult(changed, pair.placement, command, fingerprint, "committed"),
+    ownerSubjectId: command.ownerSubjectId, previousOwnerSubjectId: CatalogSubjectId(previousOwner), structural: true };
+  await commitIdempotency(client, command, changed.id, result);
+  return { ok: true, value: result };
 };
 
 const writeMove = async (
@@ -350,7 +381,7 @@ const writeMove = async (
     const expected = command.replacement;
     const displaced = await loadStoredPair(client, command.organizationId, expected.registrationId);
     if (displaced) {
-      if (await readCatalogSubjectOwner(client, displaced.registration.subject_id)) return fail({ kind: "invalid-command", reason: "请调整其所属驱动的归属" });
+      if (await readOrganizationSubjectOwner(client, command.organizationId, displaced.registration.subject_id)) return fail({ kind: "invalid-command", reason: "请调整其所属驱动的归属" });
     }
     if (!displaced || displaced.placement.id !== expected.placementId ||
         displaced.placement.registration_id !== displaced.registration.id ||
@@ -415,10 +446,9 @@ export const writeGuardedRegistration = async (
     await lockOrganizationRegistrations(client, command.organizationId);
     const subjectId = await subjectIdForGuard(client, command);
     if (!subjectId.ok) return subjectId;
-    const ownerId = await readCatalogSubjectOwner(client, subjectId.value);
-    if (ownerId && (command.kind !== "register" || command.method !== "automatic")) {
-      return fail({ kind: "invalid-command", reason: command.kind === "register" ? "请登记其所属驱动"
-        : command.kind === "move-placement" ? "请调整其所属驱动的归属" : "请操作其所属驱动" });
+    const ownerId = await readOrganizationSubjectOwner(client, command.organizationId, subjectId.value);
+    if (ownerId && ((command.kind === "register" && command.method !== "automatic") || command.kind === "move-placement")) {
+      return fail({ kind: "invalid-command", reason: command.kind === "register" ? "请登记其所属驱动" : "请调整其所属驱动的归属" });
     }
     if (ownerId && command.kind === "register" && command.proof.ownerSubjectId !== ownerId) {
       return fail({ kind: "invalid-command", reason: "请登记其所属驱动" });
@@ -433,6 +463,16 @@ export const writeGuardedRegistration = async (
       });
     }
     if (reserved.state === "committed" && reserved.result_ref) {
+      if (reserved.result_kind === "owner-change") {
+        const snapshot = JSON.parse(reserved.result_ref) as RegistrationResult;
+        if (command.kind !== "change-owner" || snapshot.registrationId !== command.registrationId ||
+            snapshot.organizationId !== command.organizationId || snapshot.ownerSubjectId !== command.ownerSubjectId ||
+            snapshot.idempotencyKey !== command.idempotencyKey || snapshot.fingerprint !== fingerprint ||
+            snapshot.release?.id !== command.expectedRelease.id || snapshot.release.digest !== command.expectedRelease.digest) {
+          throw new Error("Stored owner change result does not match its command");
+        }
+        return { ok: true, value: { ...snapshot, outcome: "replayed" } };
+      }
       if (reserved.result_kind === "placement-replacement") {
         const snapshot = readPlacementReplacementResult(reserved.result_ref);
         if (command.kind !== "move-placement" || !command.replacement ||
@@ -476,7 +516,15 @@ export const writeGuardedRegistration = async (
       );
       if (!guarded.ok) return guarded;
     }
+    if (ownerId && command.kind === "restore") {
+      const guardedOwner = await assertCatalogSubjectActive(client, command.expectedRelease, ownerId);
+      if (!guardedOwner.ok) return guardedOwner;
+      const owner = await loadRegistrationByOrgSubject(client, command.organizationId, ownerId);
+      if (!owner) return fail({ kind: "invalid-command", reason: "请登记其所属驱动" });
+      if (owner.status !== "active") return fail({ kind: "restore-required", registrationId: SubjectRegistrationId(owner.id) });
+    }
 
+    let result: Result<RegistrationResult, RegistrationFailure>;
     switch (command.kind) {
       case "register": {
         if (ownerId) {
@@ -506,14 +554,22 @@ export const writeGuardedRegistration = async (
         return writeRegister(client, command, fingerprint);
       }
       case "retire":
-        return writeRetire(client, command, fingerprint);
+        result = await writeRetire(client, command, fingerprint);
+        break;
       case "retire-unregistered":
-        return writeRetireUnregistered(client, command, fingerprint);
+        result = await writeRetireUnregistered(client, command, fingerprint);
+        break;
       case "restore":
-        return writeRestore(client, command, fingerprint);
+        result = await writeRestore(client, command, fingerprint);
+        break;
       case "move-placement":
         return writeMove(client, command, fingerprint);
+      case "change-owner":
+        return writeChangeOwner(client, command, fingerprint);
     }
+    return result.ok && ownerId
+      ? { ok: true, value: { ...result.value, ownerSubjectId: CatalogSubjectId(ownerId), structural: true } }
+      : result;
   } catch (error) {
     const subjectId = command.kind === "register" || command.kind === "retire-unregistered" ? command.subjectId : command.registrationId;
     const mapped = mapWriterDatabaseError(error, command.expectedRelease, subjectId);

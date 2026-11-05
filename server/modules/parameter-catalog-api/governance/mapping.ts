@@ -10,6 +10,7 @@ export const catalogGovernanceCommandByRouteId = {
   "catalog.getRegistration": "getRegistration",
   "catalog.retireRegistration": "executeRegistration",
   "catalog.restoreRegistration": "executeRegistration",
+  "catalog.changeRegistrationOwner": "executeRegistration",
   "catalog.getPlacement": "getPlacement",
   "catalog.updatePlacement": "executeRegistration",
   "catalog.listObservations": "listObservations",
@@ -29,7 +30,7 @@ export const catalogGovernanceCommandByRouteId = {
 /**
  * Definition identity correction migration (#847, `PCAT-API-13`).  A separate
  * command map and route family so the frozen PCAT-API-04/05/06 governance
- * command set stays exactly 19 entries.
+ * command set, including organization child ownership, stays exactly 20 entries.
  */
 export const catalogDefinitionReplacementCommandByRouteId = {
   "catalog.previewDefinitionReplacement": "previewDefinitionReplacement",
@@ -104,6 +105,7 @@ export const catalogGovernanceWriteRouteIds = catalogGovernanceRoutes
 export const catalogGovernanceIfMatchRouteIds = [
   "catalog.retireRegistration",
   "catalog.restoreRegistration",
+  "catalog.changeRegistrationOwner",
   "catalog.updatePlacement",
   "catalog.resolveReviewItem",
   "catalog.submitProposal",

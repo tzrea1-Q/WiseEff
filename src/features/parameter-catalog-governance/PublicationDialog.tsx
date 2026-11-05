@@ -669,7 +669,7 @@ export function PublicationDialog({
                 {candidate && !previewStale && draft.mode === "revise-definition" && draft.reviseClass === "semantic" ? (
                   <p>{publicationCopy.catalogNotAdopted}</p>
                 ) : null}
-                {catalogSucceeded && addedSubjectId && requiresOwner ? <p>子节点随所属驱动登记和启停，可在模块管理中查看所属驱动。</p> : null}
+                {catalogSucceeded && addedSubjectId && requiresOwner ? <p>子节点随所属驱动一同登记，可在模块管理中调整本组织的所属驱动或单独移除、恢复。</p> : null}
                 {catalogSucceeded && addedSubjectId && !requiresOwner && !onBatchRegistration ? (
                   <p>{publicationCopy.registerFollowupHint}</p>
                 ) : null}

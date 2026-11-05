@@ -67,7 +67,7 @@ describe("historical registry isolation", () => {
     for (const subject of subjects) {
       expect(within(subjectsList).getByText(subject.canonicalName, { exact: true })).toBeVisible();
     }
-    expect(screen.getByRole("button", { name: "调整归属：acme,power" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "编辑主体：acme,power" })).toBeVisible();
     expect(screen.queryByRole("region", { name: "来源识别结果" })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "模块" })).toHaveAttribute("aria-selected", "true");
   });

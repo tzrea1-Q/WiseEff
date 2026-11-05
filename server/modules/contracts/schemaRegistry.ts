@@ -2381,7 +2381,7 @@ for (const routeId of [
   "parameterModules.getRegistry", "parameterModules.discoveryHints", "parameterModules.listDriverRegistry",
   "catalog.listSubjects", "catalog.getSubject", "catalog.listSubjectDefinitions", "catalog.listDefinitions",
   "catalog.getDefinition", "catalog.listDefinitionRevisions", "catalog.getDefinitionRevision", "catalog.listDefinitionTimeline",
-  "catalog.listRegistrations", "catalog.createRegistration", "catalog.getRegistration", "catalog.retireRegistration", "catalog.restoreRegistration",
+  "catalog.listRegistrations", "catalog.createRegistration", "catalog.getRegistration", "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.changeRegistrationOwner",
   "catalog.getPlacement", "catalog.updatePlacement", "catalog.listDriverCompatibleDiscovery",
   "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
   ...Object.keys(schemaRegistry).filter((routeId) => schemaRegistry[routeId].successStatus !== 410 && (

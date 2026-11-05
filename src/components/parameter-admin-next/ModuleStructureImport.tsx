@@ -21,7 +21,7 @@ type Preview = {
 type Receipt = { id: string; organizationId: string; changedModules: number; changedFields: number };
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
 const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块", delete: "删除模块", legacyImpact: "将解除的遗留引用数", placement: "归属", displayAlias: "展示别名",
-  state: "登记状态", recognition: "识别规则", "recognition.mode": "识别模式", "recognition.compatibles": "兼容标识", "recognition.driverNature": "驱动性质",
+  state: "登记状态", ownerSubjectId: "所属驱动", recognition: "识别规则", "recognition.mode": "识别模式", "recognition.compatibles": "兼容标识", "recognition.driverNature": "驱动性质",
   "recognition.instanceCardinality": "实例基数", "recognition.nodeTypeName": "节点名称" };
 
 export function ModuleStructureImport({ apiClient, organizationId, canImport, onChanged }: {

@@ -4,7 +4,7 @@ import { catalogGovernanceRouteIds } from "./mapping";
 import { THREAT_MATRIX } from "./threatMatrix";
 
 describe("S8-GOV threat matrix", () => {
-  it("covers tx handle, multiwriter, spoof, partial write, missing ETag, and private S4-REG import", () => {
+  it("covers tx handle, multiwriter, spoof, partial write, missing ETag, private S4-REG import, and organization child ownership", () => {
     expect(THREAT_MATRIX.map((row) => row.name)).toEqual([
       "tx-handle",
       "multiwriter",
@@ -16,6 +16,7 @@ describe("S8-GOV threat matrix", () => {
       "pcat-api-05-review-observation",
       "pcat-api-06-proposal",
       "pcat-api-07-not-legacy-lookup",
+      "organization-child-owner",
     ]);
     expect(Object.isFrozen(THREAT_MATRIX)).toBe(true);
     for (const row of THREAT_MATRIX) {
@@ -24,6 +25,7 @@ describe("S8-GOV threat matrix", () => {
       expect(row.expected.length).toBeGreaterThan(0);
       expect(row.leftover.length).toBeGreaterThan(0);
     }
-    expect(catalogGovernanceRouteIds).toHaveLength(19);
+    expect(catalogGovernanceRouteIds).toHaveLength(20);
+    expect(catalogGovernanceRouteIds).toContain("catalog.changeRegistrationOwner");
   });
 });

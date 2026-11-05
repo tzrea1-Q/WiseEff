@@ -50,6 +50,8 @@ export async function auditRegistration(client: pg.PoolClient, command: Registra
       ...(command.kind === "register" && command.displayAlias ? {
         requestedDisplayAlias: command.displayAlias, aliasSubjectId: result.ownerSubjectId ?? result.subjectId,
       } : {}),
+      ...(command.kind === "change-owner" ? { reason: command.reason,
+        beforeOwnerSubjectId: result.previousOwnerSubjectId, afterOwnerSubjectId: result.ownerSubjectId } : {}),
       ...(command.kind === "move-placement" && command.replacement && result.replacement ? {
         reason: command.replacement.reason,
         source: { registrationId: result.registrationId, placementId: result.placementId,

@@ -25,6 +25,7 @@ import type {
   CatalogRejectProposalRequest,
   CatalogResolveReviewItemRequest,
   CatalogRestoreRegistrationRequest,
+  CatalogChangeRegistrationOwnerRequest,
   CatalogRetireRegistrationRequest,
   CatalogReviewItemListResponse,
   CatalogReviewItemResponse,
@@ -104,6 +105,8 @@ export interface ParameterCatalogGovernanceRepository {
     context: CatalogConditionalWriteContext
   ): Promise<CatalogRegistrationResponse>;
   getPlacement(organizationId: string, registrationId: string): Promise<CatalogPlacementResponse>;
+  changeRegistrationOwner(organizationId: string, registrationId: string, body: CatalogChangeRegistrationOwnerRequest,
+    context: CatalogConditionalWriteContext): Promise<CatalogRegistrationResponse>;
   getRegistrationRecognition(organizationId: string, registrationId: string): Promise<CatalogRegistrationRecognitionResponse & { etag?: string }>;
   updateRegistrationRecognition(organizationId: string, registrationId: string, body: CatalogRegistrationRecognitionUpdate,
     context: CatalogConditionalWriteContext): Promise<CatalogRegistrationRecognitionResponse & { etag?: string }>;

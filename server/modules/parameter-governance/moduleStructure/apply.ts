@@ -120,6 +120,12 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     await client.query(`update parameter_catalog.governance_command_idempotency set state='committed',result_kind='module-structure-receipt',result_ref=$3,committed_at=now()
       where organization_id=$1 and command_family='module-structure-update' and idempotency_key=$2`, [organizationId, input.idempotencyKey, JSON.stringify(receipt)]);
     await client.query("commit"); return receipt;
-  } catch (error) { await client.query("rollback").catch(() => undefined); throw error; }
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    const constraint = (error as { constraint?: string } | null)?.constraint;
+    if (constraint === "organization_subject_owner_ck" || constraint === "organization_subject_owner_selector_unique")
+      throw new ApiError("CONFLICT", "The selected child owner or node name conflicts with the target organization.");
+    throw error;
+  }
   finally { client.release(); }
 }

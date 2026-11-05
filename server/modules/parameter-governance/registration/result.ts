@@ -19,6 +19,7 @@ export type RegistrationResult = {
   readonly organizationId: string;
   readonly subjectId: CatalogSubjectId;
   readonly ownerSubjectId?: CatalogSubjectId;
+  readonly previousOwnerSubjectId?: CatalogSubjectId;
   readonly structural?: true;
   readonly registrationStatus: RegistrationStatus;
   readonly registrationMethod: RegistrationMethod;
