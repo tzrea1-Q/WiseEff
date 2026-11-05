@@ -23,6 +23,8 @@ Filter the library by current configuration or project usage to find definitions
 
 In **Compare**, explicitly choose a baseline instance, then a target. Multiple instances in one project remain separate. The baseline stays selected when target filters or pages change. The focused view shows both original values and their pinned revisions; documentation-only revision changes can still be comparable. Different semantics, units or unsupported source references are explained without an inferred numeric difference or unit conversion. If a selected instance becomes unavailable, choose another explicitly; the page does not substitute a similarly named instance.
 
+Use **Copy current view link** to share the current filters, definition, revision or selected comparison. The recipient signs in and reads the current data under their own Organization permissions; a link does not grant access or preserve a snapshot. The full-value and comparison copy actions copy the complete source value shown for that read, including multiline text and empty values. If clipboard access fails, the page keeps the value available for retry.
+
 ## Find a parameter and compare projects
 
 1. Open "Parameter changes" (`/parameters`) and select the project. "My workbench" (`/parameter-home`) also lets you find work and pending actions by project.
