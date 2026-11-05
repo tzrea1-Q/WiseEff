@@ -59,35 +59,40 @@ export function pinnedDtsPreprocessor() {
 }
 
 /** A missing sandbox is unavailable; request handling never pulls images or uses host CPP. */
-export async function probeDtsPreprocessor() {
+export async function probeDtsPreprocessor(mode: "runtime" | "bootstrap-diagnostic" = "runtime") {
   const pin = pinnedDtsPreprocessor();
-  if (!pin) return { available: false, version: null, reason: "Pinned preprocessing capability is unavailable." };
+  if (!pin) return { available: false, version: null, reason: "Pinned preprocessing capability is unavailable.", diagnostic: "pin:missing", infoElapsedMs: null };
   const probe = await boundedDocker(["image", "inspect", pin.image, "--format", "{{.Os}}/{{.Architecture}}"], 5000, 8192);
-  const limits = probe.status === 0 ? await boundedDocker(["info", "--format", "{{.MemoryLimit}} {{.SwapLimit}} {{.PidsLimit}}"], 5000, 8192) : null;
+  const started = performance.now();
+  const limits = probe.status === 0 ? await boundedDocker(["info", "--format", "{{.MemoryLimit}} {{.SwapLimit}} {{.PidsLimit}}"], mode === "runtime" ? 5000 : 30000, 8192) : null;
+  const infoElapsedMs = limits ? Math.round(performance.now() - started) : null;
   const available = probe.status === 0 && probe.stdout.trim() === pin.platform && limits?.status === 0 && limits.stdout.trim() === "true true true";
+  const failure = (result: NonNullable<typeof limits>) => result.limitReason ?? (result.error ? "launch-error" : result.status !== 0 ? "exit-nonzero" : "unexpected-result");
+  const diagnostic = available ? null : probe.status !== 0 || probe.stdout.trim() !== pin.platform
+    ? `image-inspect:${failure(probe)}` : `docker-info:${failure(limits!)}`;
   return { available, version: pin.version,
-    reason: available ? null : "受控预处理工具或内存隔离不可用；请联系管理员配置固定工具链，或继续编辑原始源码。" };
+    reason: available ? null : "受控预处理工具或内存隔离不可用；请联系管理员配置固定工具链，或继续编辑原始源码。", diagnostic, infoElapsedMs };
 }
 function dockerEnvironment(): NodeJS.ProcessEnv {
   return { PATH: process.env.PATH, HOME: process.env.HOME, LC_ALL: "C", LANG: "C" };
 }
 
 function boundedDocker(args: string[], timeoutMs: number, maxBytes: number): Promise<{
-  stdout: string; stderr: string; status: number | null; error?: Error; limited: boolean;
+  stdout: string; stderr: string; status: number | null; error?: Error; limited: boolean; limitReason: "timeout" | "output-limit" | null;
 }> {
   return new Promise(resolve => {
     const child = spawn("docker", args, { env: dockerEnvironment(), stdio: ["ignore", "pipe", "pipe"] });
     const stdout: Buffer[] = [], stderr: Buffer[] = [];
-    let size = 0, limited = false, settled = false;
-    const timer = setTimeout(() => { limited = true; child.kill("SIGKILL"); }, timeoutMs);
+    let size = 0, limited = false, settled = false, limitReason: "timeout" | "output-limit" | null = null;
+    const timer = setTimeout(() => { limited = true; limitReason = "timeout"; child.kill("SIGKILL"); }, timeoutMs);
     const finish = (status: number | null, error?: Error) => {
       if (settled) return; settled = true; clearTimeout(timer);
-      resolve({ stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8"), status, error, limited });
+      resolve({ stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8"), status, error, limited, limitReason });
     };
     const consume = (target: Buffer[], chunk: Buffer) => {
       if (settled || limited) return;
       size += chunk.length;
-      if (size > maxBytes) { limited = true; child.kill("SIGKILL"); return; }
+      if (size > maxBytes) { limited = true; limitReason = "output-limit"; child.kill("SIGKILL"); return; }
       target.push(chunk);
     };
     child.stdout.on("data", (chunk: Buffer) => consume(stdout, chunk));
