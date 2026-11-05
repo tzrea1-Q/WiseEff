@@ -353,6 +353,8 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
     await page.goBack();
+    await expect(page).toHaveURL(/\/parameters\?/);
+    await page.goBack();
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
     expect(baselineUrl).toContain("baseline=");
     await page.goto(baselineUrl);
