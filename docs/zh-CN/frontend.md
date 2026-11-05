@@ -102,6 +102,14 @@ Catalog 定义行在等宽属性键旁保留已发布的显示名；中文名称
 
 本地账号注册没有组织下拉；新账号加入评估组织（有种子时是 ChargeLab）。自助注册角色下拉使用：`guest`、`hardware-user`、`software-user`、`hardware-committer`、`software-committer`。`admin` 与 `platform-admin` 只能通过组织管理分配，且后者仅已持有 `platform-admin` 的调用方可以授予或撤销；不能在注册页自助选择。
 
+## 参数库
+
+只读参数库 `/parameters/definitions` 与项目参数并列，复用规范 Catalog 读取；默认筛选有效主体和有效定义，不隐式筛选组织登记状态。组织登记和模块筛选需要明确选择，列表与修订历史状态保存在 URL。完整定义页复用安全 Markdown 子集，明确标记示例，将 schema 和身份放在次级区域。
+
+当前配置计数和实例来自规范当前实例查询，与旧使用量字段保持区分。项目／配置集范围先于文本筛选和分页生效。对比页签要求明确选择 Binding 基准；即使实例在当前页之外，双方也来自同一次当前读取快照。值固定修订的完整语义决定可比性；语义不同或不支持时展示来源原值，不计算数值差。阅读历史定义不改变当前配置的比较口径；基准不可用时需要明确重新选择。
+
+项目跳转先通过受保护读取确认确切 Binding，再加载其配置集并打开 DTS 或 JSON 详情。规范化的参数库返回路径保留阅读上下文，并复用未保存输入保护。分享仅使用允许的 Catalog 锚点，发布版本固定后才允许复制；值复制保留完整来源表示。链接不授予权限，项目写入沿用服务端检查。
+
 ## 端口和实现
 
 API 模式的 shell 参数行通过 `ParameterCatalogRepository.listProtectedProjectBindings` 读取（`GET /api/v2/projects/:projectId/parameter-bindings`，不带候选修订过滤），因此仅有规范 Binding 的项目也能填充参数库与模块投影。`ParameterRepository` 继续加载项目与项目范围草稿；旧语义 v1 参数列表不再是 shell 数据源。可选历史归档只在对应页面读取，失败不会清空 shell 的项目、草稿、参数库或模块。
@@ -475,6 +483,3 @@ npm run test:e2e
 ```bash
 VITE_WISEEFF_RUNTIME_MODE=mock npm test
 ```
-只读参数库 `/parameters/definitions` 与项目参数并列，复用规范 Catalog 读取；默认筛选有效主体和有效定义，不隐式筛选组织登记状态。组织登记和模块筛选需要明确选择，列表与修订历史状态保存在 URL。完整定义页复用安全 Markdown 子集，明确标记示例，将 schema 和身份放在次级区域，也不会把旧使用量字段冒充已配置项目计数。
-
-对比页签要求用户明确选择 Binding 基准，并将基准与目标身份保存在 URL。即使实例不在当前页，两者也从同一次当前读取快照取得。服务端比较值固定修订的完整语义；语义不同或不受支持时展示来源原值，不计算数值差。阅读历史定义不会改变当前配置的比较口径；基准不可用时必须明确重新选择。
