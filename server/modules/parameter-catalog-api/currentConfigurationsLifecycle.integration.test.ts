@@ -96,6 +96,28 @@ it("keeps rows, counts and selected source on one snapshot across a concurrent c
   }
 }, 120_000);
 
+it("preserves array order and distinguishes numeric and text values without inventing scalar deltas", async () => {
+  const source = sourceAdminText.replace("<36>", "<1 2>").replace(/};$/, ' auxiliary { compatible = "acme,power"; iin_max = <2 1>; }; numeric { compatible = "acme,power"; iin_max = <1>; }; textual { compatible = "acme,power"; iin_max = "1"; }; };');
+  const f = await createSourceAdminFixture("parlib-array", createUserInvocation, { sourceText: source });
+  try {
+    const initial = await read(f);
+    const first = initial.items.find((item) => item.kind === "instance" && item.valuePreview === "<1 2>");
+    const second = initial.items.find((item) => item.kind === "instance" && item.valuePreview === "<2 1>");
+    if (!first || first.kind !== "instance" || !second || second.kind !== "instance") throw new Error("Expected both arrays");
+    const compared = await read(f, `?baselineBindingId=${first.bindingId}&targetBindingId=${second.bindingId}`);
+    expect(compared.target?.comparison).toMatchObject({ status: "different", reason: "typed-values" });
+    expect(compared.target?.comparison?.delta).toBeUndefined();
+    expect(compared.baseline?.rawValue).toBe("<1 2>");
+    expect(compared.target?.rawValue).toBe("<2 1>");
+    const number = initial.items.find((item) => item.kind === "instance" && item.valuePreview === "<1>");
+    const text = initial.items.find((item) => item.kind === "instance" && item.valuePreview === '"1"');
+    if (!number || number.kind !== "instance" || !text || text.kind !== "instance") throw new Error("Expected numeric and text values");
+    const mixed = await read(f, `?baselineBindingId=${number.bindingId}&targetBindingId=${text.bindingId}`);
+    expect(mixed.target?.comparison).toMatchObject({ status: "different", reason: "typed-values" });
+    expect(mixed.target?.comparison?.delta).toBeUndefined();
+  } finally { await f.close(); }
+}, 120_000);
+
 it("excludes persisted draft, pending review and device debug values", async () => {
   const f = await createSourceAdminFixture("parlib-pending", createUserInvocation);
   try {
