@@ -44,7 +44,10 @@ function compare(base: Instance, target: Instance) {
   // inferred from their stored text or syntax tree across projects.
   const complexDts = (row: Instance) => row.source_format === "dts" && (row.value_kind === "json" ||
     ((row.value_kind === "number" || row.value_kind === "number-array") &&
-      !/^\s*(?:\/bits\/\s*32\s*)?<\s*(?:(?:-?(?:0[xX][\da-fA-F]+|\d+)(?:[uUlL]{0,3})|\(-(?:0[xX][\da-fA-F]+|\d+)\))\s*)+>\s*$/u.test(row.source_raw_text ?? "")));
+      !/^\s*(?:\/bits\/\s*32\s*)?<\s*(?:(?:-?(?:0[xX][\da-fA-F]+|\d+)(?:[uUlL]{0,3})|\(-(?:0[xX][\da-fA-F]+|\d+)\))\s*)+>\s*$/u.test(row.source_raw_text ?? "")) ||
+    ((row.value_kind === "string" || row.value_kind === "string-array") &&
+      !/^\s*"(?:[^"\\]|\\.)*"(?:\s*,\s*"(?:[^"\\]|\\.)*")*\s*$/u.test(row.source_raw_text ?? "")) ||
+    (row.value_kind === "boolean" && row.source_raw_text !== ""));
   if (complexDts(base) || complexDts(target))
     return { status: "unsupported" as const, reason: "complex-dts" as const, revisionChanged };
   // PostgreSQL jsonb equality preserves numeric precision, type and array order.
@@ -102,8 +105,8 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
           where head.definition_id = definition.id)`, [definitionId]);
       if (!definition.rows.length) throw new ApiError("NOT_FOUND", "Definition not found.");
       if (identity.scope.subjects.kind === "only" && !identity.scope.subjects.ids.some((id) => id === definition.rows[0]!.subject_id)) throw new ApiError("NOT_FOUND", "Definition not found.");
-      if (projectId && !(await tx.query("select 1 from public.projects where organization_id=$1 and id=$2", [organizationId, projectId])).rows.length) throw new ApiError("NOT_FOUND", "Project not found.");
-      if (configSetId && !(await tx.query("select 1 from public.dts_config_set where organization_id=$1 and id=$2 and ($3::text is null or project_id=$3)", [organizationId, configSetId, projectId ?? null])).rows.length) throw new ApiError("NOT_FOUND", "Configuration set not found.");
+      if (projectId && !(await tx.query("select 1 from public.projects where organization_id=$1 and id=$2", [organizationId, projectId])).rows.length) throw new ApiError("NOT_FOUND", "Project not found.", { reason: "invalid-filter" });
+      if (configSetId && !(await tx.query("select 1 from public.dts_config_set where organization_id=$1 and id=$2 and ($3::text is null or project_id=$3)", [organizationId, configSetId, projectId ?? null])).rows.length) throw new ApiError("NOT_FOUND", "Configuration set not found.", { reason: "invalid-filter" });
       await assertCurrentInstancesValid(tx, organizationId, [definitionId]);
       const params = [organizationId, [definitionId], projectId ?? null, configSetId ?? null, search ?? null, includeUnconfigured === "true"];
       const configured = `value_state = 'present' and source_ref <> 'canonical-binding-identity'`;

@@ -1187,7 +1187,8 @@ export function CatalogPage({
         {taskContent ?? (inFlight && !snapshot ? (
           <SectionSkeleton label={catalogLoadingLabel} />
         ) : domainState.kind === "error" && !snapshot ? (
-          <SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
+          <><SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
+            {libraryMode && anchor.usageProjectId ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置项目使用筛选</button> : null}</>
         ) : unpublished ? (
           <div
             data-catalog-unpublished-workspace="true"

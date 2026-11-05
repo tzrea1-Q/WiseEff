@@ -13,7 +13,7 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   onChange: (update: { instance?: string | null; instanceCursor?: string | null; baseline?: string | null; target?: string | null; configProjectId?: string | null; configSetId?: string | null; configSearch?: string | null; includeUnconfigured?: string | null }) => void;
 }) {
   const [loaded, setLoaded] = useState<{ organizationId?: string; definitionId: string; data: CatalogProjectConfigurationsResponse } | null>(null);
-  const [state, setState] = useState<"loading" | "error" | "forbidden" | "stale" | "missing" | "baseline-missing" | "target-missing" | "ready">("loading");
+  const [state, setState] = useState<"loading" | "error" | "forbidden" | "stale" | "missing" | "baseline-missing" | "target-missing" | "invalid-filter" | "ready">("loading");
   const [retry, setRetry] = useState(0);
   const [searchInput, setSearchInput] = useState(search ?? "");
   useEffect(() => setSearchInput(search ?? ""), [search]);
@@ -32,6 +32,7 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
           : error instanceof WiseEffApiError && error.details.reason === "invalid-cursor" ? "stale"
           : error instanceof WiseEffApiError && error.details.reason === "baseline-unavailable" ? "baseline-missing"
           : error instanceof WiseEffApiError && error.details.reason === "target-unavailable" ? "target-missing"
+          : error instanceof WiseEffApiError && error.details.reason === "invalid-filter" ? "invalid-filter"
           : error instanceof WiseEffApiError && error.code === "NOT_FOUND" && selectedId ? "missing" : "error");
       });
     return () => { active = false; };
@@ -44,6 +45,8 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
     <p>{state === "baseline-missing" ? "基准实例已不可用，请明确重新选择。" : "目标实例已不可用，请重新选择目标。"}</p>
     <button type="button" className="button subtle sm" onClick={() => onChange(state === "baseline-missing" ? { baseline: null, target: null } : { target: null })}>重新选择</button>
   </div>;
+  if (state === "invalid-filter") return <div role="alert"><p>所选项目或配置集在当前组织中不可用。</p>
+    <button type="button" className="button subtle sm" onClick={() => onChange({ configProjectId: null, configSetId: null, instanceCursor: null })}>重置项目和配置集</button></div>;
   if (state === "stale" || state === "missing") return <div role="alert">
     <p>{state === "stale" ? "项目配置已变化，请返回第一页重新读取。" : "选中的实例已不可用，请重新选择。"}</p>
     <button type="button" className="button subtle sm" onClick={() => onChange({ instance: null, ...(state === "stale" ? { instanceCursor: null } : {}) })}>
@@ -62,9 +65,9 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   })[comparison.status];
   const detail = (item: NonNullable<typeof result.baseline>, label: string) => <article className="parameter-library-compare__detail">
     <h3>{label}</h3><strong>{item.projectName} / {item.configSetName}</strong>
-    <p>{item.fileName} · {item.sourceLocation}</p><p>值固定修订 #{item.definitionRevisionNumber} · {item.effectiveRevisionId === item.definitionRevisionId ? "生效修订相同" : `生效修订 ${item.effectiveRevisionId}`} · 单位 {item.unit ?? "未说明"}</p>
+    <p className="parameter-library-compare__source" title={`${item.fileName} · ${item.sourceLocation}`}>{item.fileName} · {item.sourceLocation}</p><p>值固定修订 #{item.definitionRevisionNumber} · {item.effectiveRevisionId === item.definitionRevisionId ? "生效修订相同" : `生效修订 ${item.effectiveRevisionId}`} · 单位 {item.unit ?? "未说明"}</p>
     <div role="textbox" aria-readonly="true" aria-multiline="true" tabIndex={0} aria-label={`${label}原值`}><pre>{item.rawValue || (item.sourceFormat === "dts" && item.valueKind === "boolean" ? "（布尔属性存在，无值文本）" : "（空值）")}</pre></div>
-    <details><summary>实例与值身份</summary><p>Binding {item.bindingId}<br />ProjectValue {item.currentValueId}<br />值固定修订 {item.definitionRevisionId}</p></details>
+    <details><summary>实例与值身份</summary><p>{item.fileName} · {item.sourceLocation}<br />Binding {item.bindingId}<br />ProjectValue {item.currentValueId}<br />值固定修订 {item.definitionRevisionId}</p></details>
   </article>;
   return <div className="parameter-library-configurations">
     <p className="parameter-catalog__muted">当前组织 · 已配置项目 {result.summary.configuredProjectCount} · 已配置实例 {result.summary.configuredInstanceCount} · 筛选结果 {result.totalCount} 条（本页 {result.items.length} 条）</p>
@@ -92,7 +95,7 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
     </form>
     {result.items.length === 0 ? <SectionEmpty message={projectId || configSetId || search || includeUnconfigured ? "没有匹配的项目配置，请调整或重置筛选。" : "当前没有可显示的项目配置。"} /> : [...groups.entries()].map(([projectId, items]) => <section key={projectId} className={items[0]?.kind === "project-status" ? "parameter-library-project-status" : undefined}>
       <h3>{items[0]!.projectName}{result.continuedProjectId === projectId ? "（续）" : ""}</h3>
-      {items[0]?.kind === "project-status" ? <p>无当前配置</p> : <DataTable rows={items.filter((row) => row.kind === "instance")} rowKey={(row) => row.bindingId} aria-label={`${items[0]!.projectName} 的当前配置`} pageSize={items.length}
+      {items[0]?.kind === "project-status" ? <p>无当前配置</p> : <DataTable rows={items.filter((row) => row.kind === "instance")} rowKey={(row) => row.bindingId} aria-label={`${items[0]!.projectName} 的当前配置`} pageSize={items.length} tableClassName={compare ? "parameter-library-comparison-table" : "parameter-library-instances-table"}
         columns={[
           { key: "source", header: "配置集 / 来源", render: (row) => <><strong>{row.configSetName}</strong><br /><span className="parameter-catalog__muted">{row.fileName} · {row.sourceFormat.toUpperCase()}</span><br /><code>{row.sourceLocation}</code></> },
           { key: "value", header: "当前值", render: (row) => row.valueState === "unset" ? "未设置" : <><code>{row.sourceFormat === "dts" && row.valueKind === "boolean" ? "存在" : row.valuePreview}{row.valuePreviewTruncated ? "…" : ""}</code>{row.unit ? ` ${row.unit}` : null}</> },

@@ -149,7 +149,13 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.getByRole("combobox", { name: "配置集", exact: true }).selectOption(set.id);
     await page.reload();
     await expect(page.getByRole("combobox", { name: "配置集", exact: true })).toHaveValue(set.id);
+    await page.goBack();
+    await expect(page.getByRole("combobox", { name: "配置集", exact: true })).toHaveValue("");
+    await page.goForward();
+    await expect(page.getByRole("combobox", { name: "配置集", exact: true })).toHaveValue(set.id);
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("筛选结果 1 条");
+    await page.getByRole("table", { name: "软件项目 的当前配置" }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("instances-1440.png") });
     await page.getByRole("button", { name: "查看 settings.json 的完整值" }).click();
     await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(fullSourceToken);
     await page.getByLabel("实例 / 来源").fill("nothing-matches");
@@ -260,6 +266,10 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.getByRole("combobox", { name: "项目使用" }).selectOption("parlib-instances-b");
     await expect(page).toHaveURL(/usageProjectId=parlib-instances-b/);
     await page.reload();
+    await expect(page.getByRole("combobox", { name: "项目使用" })).toHaveValue("parlib-instances-b");
+    await page.goBack();
+    await expect(page.getByRole("combobox", { name: "项目使用" })).toHaveValue("");
+    await page.goForward();
     await expect(page.getByRole("combobox", { name: "项目使用" })).toHaveValue("parlib-instances-b");
     await recordOperationEvidence({ operationId: "PARLIB-FILTER-001", title: testInfo.title, status: "passed", page, testInfo,
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: response.status(), responseSummary: "Filtered project and configuration set, with optional unconfigured projects." }] });
