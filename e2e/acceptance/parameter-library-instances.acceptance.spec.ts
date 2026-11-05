@@ -31,8 +31,10 @@ test.use({ viewport: { width: 1440, height: 900 } });
 test("reads grouped DTS and software instances with exact counts and full values", async ({ page, request }, testInfo) => {
   // @acceptance PARLIB-INSTANCES-001
   // @acceptance PARLIB-COMPARE-001
+  // @acceptance PARLIB-FILTER-001
   // @operation PARLIB-INSTANCES-001
   // @operation PARLIB-COMPARE-001
+  // @operation PARLIB-FILTER-001
   test.setTimeout(180_000);
   const environment = captureProcessEnvForDisposableRuntime();
   if (!environment.databaseUrl) throw new Error("A dedicated PostgreSQL lane is required");
