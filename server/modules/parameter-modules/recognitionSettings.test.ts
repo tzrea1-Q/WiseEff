@@ -1,8 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Queryable } from "../../shared/database/client";
-import { loadModuleRecognitionSettings, loadOrganizationRecognitionRules } from "./recognitionSettings";
+import { loadModuleRecognitionSettings, loadOrganizationRecognitionRules, updateRegistrationRecognitionSettings } from "./recognitionSettings";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { createUserInvocation } from "../auth/trustedInvocation";
 
 describe("recognition rules on historical schemas", () => {
+  it("reports a deferred organization owner name collision as a conflict", async () => {
+    const transaction = vi.fn().mockRejectedValue(Object.assign(new Error("collision"), {
+      code: "23505", constraint: "organization_subject_owner_selector_unique",
+    }));
+    await expect(updateRegistrationRecognitionSettings({ query: vi.fn(), transaction }, {
+      organizationId: "org", registrationId: "child", body: { nodeTypeName: "same_child" },
+      invocation: createUserInvocation(makeTestAuthContext({ organizationId: "org", userId: "admin" })),
+      requestId: "recognition", ifMatch: '"version"', idempotencyKey: "recognition", catalogReleaseId: "release",
+    })).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("子节点名称或别名") });
+  });
   it("returns no overrides on schemas before registration recognition rules", async () => {
     const query = vi.fn().mockResolvedValue({ rows: [{ available: false }] });
     await expect(loadOrganizationRecognitionRules({ query } satisfies Queryable, "org-historical")).resolves.toEqual([]);

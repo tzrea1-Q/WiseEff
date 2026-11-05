@@ -50,6 +50,19 @@ describe("V05 subject placement verification", () => {
     expect((await runV05(queryOf(db))).status).toBe("failed");
   });
 
+  it.each([
+    { child: "active", owner: "active", expected: "passed" },
+    { child: "active", owner: "retired", expected: "failed" },
+    { child: "retired", owner: "retired", expected: "passed" },
+  ])("checks the organization owner when the Catalog owner is retired: child=$child owner=$owner", async ({ child, owner, expected }) => {
+    await db.query("select pg_catalog.set_config('session_replication_role', 'replica', true)");
+    await db.query("update parameter_catalog.organization_subject_registrations set status='retired' where id='gate-driver-reg'");
+    await db.query("update parameter_catalog.organization_subject_registrations set owner_subject_id='gate-legacy',status=$1 where id='gate-child-reg'", [child]);
+    await db.query("update parameter_catalog.organization_subject_registrations set status=$1 where id='gate-legacy-reg'", [owner]);
+    await db.query("select pg_catalog.set_config('session_replication_role', 'origin', true)");
+    expect((await runV05(queryOf(db))).status).toBe(expected);
+  });
+
   it("rejects typed placement after its migration evidence exists", async () => {
     await db.query(`insert into parameter_catalog.module_structure_migration_map
       (run_id,organization_id,module_id,registration_id,action,from_module_id,to_module_id)

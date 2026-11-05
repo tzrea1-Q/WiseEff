@@ -71,11 +71,12 @@ export function mapCatalogDocument(
 export function mapCatalogSubject(
   subject: CatalogSubjectSnapshot | CatalogSubjectDetailSnapshot,
   registration: CatalogRegistrationProjection,
-  options: { readonly reviewCount?: number; readonly availableActions?: ReadonlyArray<"register"> } = {},
+  options: { readonly reviewCount?: number; readonly availableActions?: ReadonlyArray<"register">; readonly organizationOwnership?: boolean } = {},
 ): ReturnType<typeof catalogSubjectDtoSchema.parse> {
+  const ownerSubjectId = (options.organizationOwnership && registration.status !== "unregistered" ? registration.placement?.ownerSubjectId : undefined) ?? subject.owner;
   return catalogSubjectDtoSchema.parse({
     id: subject.id,
-    ...(subject.owner ? { ownerSubjectId: subject.owner } : {}),
+    ...(ownerSubjectId ? { ownerSubjectId } : {}),
     type: subject.kind,
     canonicalName: subject.canonicalKey,
     aliases: subjectAliases(subject),

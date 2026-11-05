@@ -551,6 +551,28 @@ describe("module structure export", () => {
     const secondApply = await requestJson(secondApp, `${secondPath}/applies`, { method: "POST", body: JSON.stringify({ ...secondInput,
       token: (secondPreview.body as { token: string }).token, idempotencyKey: "copy-historical", reason: "Copy historical child" }) });
     expect(secondApply.status, secondApply.bodyText).toBe(200);
+    const targetModule = (await db.query<{ module_id: string }>("select module_id from parameter_catalog.subject_placements where id=$1", [identity.current_placement_id])).rows[0]!.module_id;
+    const retainChild = { mode: "copy", document: historical.body, mappings: { "copy-subject-module": targetModule },
+      resolutions: { "subject:csub_acme_charger:state": "file" } };
+    const retainedPreview = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify(retainChild) });
+    expect(retainedPreview.status, retainedPreview.bodyText).toBe(200);
+    expect(retainedPreview.body).toMatchObject({ conflicts: [], changes: expect.arrayContaining([
+      expect.objectContaining({ moduleId: "subject:csub_acme_charger", field: "state", before: "active", after: "retired" })]) });
+    const retainedApply = await requestJson(destination, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...retainChild,
+      token: (retainedPreview.body as { token: string }).token, idempotencyKey: "copy-independent-retirement", reason: "Preserve the independent removal" }) });
+    expect(retainedApply.status, retainedApply.bodyText).toBe(200);
+    expect((await db.query("select subject_id,status,cascade_retired from parameter_catalog.organization_subject_registrations where organization_id=$1 order by subject_id", [target])).rows)
+      .toEqual([{ subject_id: "csub_acme_charger", status: "retired", cascade_retired: false }, { subject_id: "csub_acme_power", status: "active", cascade_retired: false }]);
+    const activeChildSnapshot = structuredClone(historical.body) as z.infer<typeof moduleStructureExportSchema>;
+    activeChildSnapshot.subjects.find(subject => subject.subjectId === "csub_acme_charger")!.state = "active";
+    const restoreChild = { ...retainChild, document: activeChildSnapshot };
+    const childRestorePreview = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify(restoreChild) });
+    expect(childRestorePreview.status, childRestorePreview.bodyText).toBe(200);
+    const childRestored = await requestJson(destination, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...restoreChild,
+      token: (childRestorePreview.body as { token: string }).token, idempotencyKey: "copy-independent-restore", reason: "Restore the selected child" }) });
+    expect(childRestored.status, childRestored.bodyText).toBe(200);
+    expect((await db.query("select status,cascade_retired from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_charger'", [target])).rows)
+      .toEqual([{ status: "active", cascade_retired: false }]);
     const historicalCopy = await requestJson(secondApp, `${secondPath}/exports`, { method: "POST", body: "{}" });
     expect(historicalCopy.body).toMatchObject({ subjects: expect.arrayContaining([
       expect.objectContaining({ subjectId: "csub_acme_power", state: "active" }),
@@ -617,6 +639,72 @@ describe("module structure export", () => {
         expect.objectContaining({ subjectId: "csub_acme_charger", state: childState, cascadeRetired: false }),
       ]) });
     }
+  });
+
+  it("exports organization owners and copies them only after explicit target conflict choices", async () => {
+    const suffix = randomUUID();
+    const sourceOrg = `owner-source-${suffix}`, targetOrg = `owner-target-${suffix}`, freshOrg = `owner-fresh-${suffix}`;
+    const sourceModule = `owner-module-${sourceOrg}`, targetModule = `owner-module-${targetOrg}`;
+    await db.query("select parameter_catalog.claim_catalog_subject_owner('csub_acme_charger','csub_acme_power')");
+    for (const organization of [sourceOrg, targetOrg, freshOrg]) {
+      await db.query("insert into organizations(id,name) values ($1,'Owner transfer')", [organization]);
+      await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [`admin-${organization}`, organization]);
+      await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [`role-${organization}`, `admin-${organization}`, organization]);
+      if (organization === freshOrg) continue;
+      await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ($1,$2,'Root',$1,'business','curated')", [`owner-module-${organization}`, organization]);
+      await db.transaction(async client => {
+        await client.query("set constraints all deferred");
+        for (const subject of ["csub_acme_power", "csub_acme_sensor", "csub_acme_charger"]) {
+          const id = `${organization}-${subject}`, child = subject === "csub_acme_charger";
+          await client.query(`insert into parameter_catalog.organization_subject_registrations
+            (id,organization_id,subject_id,status,registration_method,proof,current_placement_id,owner_subject_id)
+            values ($1,$2,$3,'active','explicit','{}',$4,$5)`, [id, organization, subject, `place-${id}`, child && organization === sourceOrg ? "csub_acme_sensor" : null]);
+          await client.query(`insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin)
+            values ($1,$2,$3,$4,'curated')`, [`place-${id}`, id, organization, child ? null : `owner-module-${organization}`]);
+        }
+      });
+    }
+    const server = (organizationId: string) => createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId, userId: `admin-${organizationId}` }) } } });
+    const source = server(sourceOrg), target = server(targetOrg), fresh = server(freshOrg);
+    const exported = await requestJson(source, `/api/v2/organizations/${sourceOrg}/module-structure/exports`, { method: "POST", body: "{}" });
+    expect(exported.status, exported.bodyText).toBe(200);
+    expect(exported.body).toMatchObject({ subjects: expect.arrayContaining([
+      expect.objectContaining({ subjectId: "csub_acme_charger", ownerSubjectId: "csub_acme_sensor" })]) });
+    const path = `/api/v2/organizations/${targetOrg}/module-structure`;
+    const input = { mode: "copy", document: exported.body, mappings: { [sourceModule]: targetModule }, resolutions: {} };
+    const conflict = await requestJson(target, `${path}/previews`, { method: "POST", body: JSON.stringify(input) });
+    expect(conflict.status, conflict.bodyText).toBe(200);
+    expect(conflict.body).toMatchObject({ conflicts: [expect.objectContaining({ key: "subject:csub_acme_charger:ownerSubjectId", file: "csub_acme_sensor", current: "csub_acme_power" })] });
+    const childIdentity = (await db.query<{ id: string; current_placement_id: string }>("select id,current_placement_id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_charger'", [targetOrg])).rows[0]!;
+    for (const choice of ["current", "file"] as const) {
+      const selected = { ...input, resolutions: { "subject:csub_acme_charger:ownerSubjectId": choice } };
+      const preview = await requestJson(target, `${path}/previews`, { method: "POST", body: JSON.stringify(selected) });
+      expect(preview.status, preview.bodyText).toBe(200);
+      expect(preview.body).toMatchObject({ conflicts: [] });
+      const applied = await requestJson(target, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...selected,
+        token: (preview.body as { token: string }).token, idempotencyKey: `copy-owner-${choice}`, reason: "Review child owner" }) });
+      expect(applied.status, applied.bodyText).toBe(200);
+      expect((await db.query("select id,current_placement_id,owner_subject_id from parameter_catalog.organization_subject_registrations where id=$1", [childIdentity.id])).rows[0])
+        .toEqual({ ...childIdentity, owner_subject_id: choice === "file" ? "csub_acme_sensor" : null });
+    }
+    const stale = await requestJson(target, `${path}/previews`, { method: "POST", body: JSON.stringify(input) });
+    expect(stale.status, stale.bodyText).toBe(200);
+    await db.query("update parameter_catalog.organization_subject_registrations set updated_at=updated_at+interval '1 second' where id=$1", [childIdentity.id]);
+    const refused = await requestJson(target, `${path}/applies`, { method: "POST", body: JSON.stringify({ ...input,
+      token: (stale.body as { token: string }).token, idempotencyKey: "copy-owner-stale", reason: "Review unchanged snapshot" }) });
+    expect(refused.status).toBe(409);
+    const freshInput = { ...input, mappings: { [sourceModule]: "create" } };
+    const freshPath = `/api/v2/organizations/${freshOrg}/module-structure`;
+    const freshPreview = await requestJson(fresh, `${freshPath}/previews`, { method: "POST", body: JSON.stringify(freshInput) });
+    expect(freshPreview.status, freshPreview.bodyText).toBe(200);
+    const freshApply = await requestJson(fresh, `${freshPath}/applies`, { method: "POST", body: JSON.stringify({ ...freshInput,
+      token: (freshPreview.body as { token: string }).token, idempotencyKey: "copy-owner-fresh", reason: "Copy organization owners" }) });
+    expect(freshApply.status, freshApply.bodyText).toBe(200);
+    expect((await db.query("select owner_subject_id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id='csub_acme_charger'", [freshOrg])).rows)
+      .toEqual([{ owner_subject_id: "csub_acme_sensor" }]);
+    expect((await db.query("select owner_subject_id from parameter_catalog.catalog_subjects where id='csub_acme_charger'")).rows)
+      .toEqual([{ owner_subject_id: "csub_acme_power" }]);
   });
 
   it("copies modules into the authorized target only after explicit mapping choices", async () => {

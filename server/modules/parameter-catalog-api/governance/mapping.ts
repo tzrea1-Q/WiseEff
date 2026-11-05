@@ -10,6 +10,7 @@ export const catalogGovernanceCommandByRouteId = {
   "catalog.getRegistration": "getRegistration",
   "catalog.retireRegistration": "executeRegistration",
   "catalog.restoreRegistration": "executeRegistration",
+  "catalog.changeRegistrationOwner": "executeRegistration",
   "catalog.getPlacement": "getPlacement",
   "catalog.updatePlacement": "executeRegistration",
   "catalog.listObservations": "listObservations",
@@ -104,6 +105,7 @@ export const catalogGovernanceWriteRouteIds = catalogGovernanceRoutes
 export const catalogGovernanceIfMatchRouteIds = [
   "catalog.retireRegistration",
   "catalog.restoreRegistration",
+  "catalog.changeRegistrationOwner",
   "catalog.updatePlacement",
   "catalog.resolveReviewItem",
   "catalog.submitProposal",

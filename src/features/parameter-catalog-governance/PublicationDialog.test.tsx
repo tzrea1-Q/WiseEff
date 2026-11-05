@@ -635,7 +635,7 @@ describe("PublicationDialog", () => {
     await confirm("确认预览");
     await userEvent.click(await screen.findByRole("button", { name: "发布到目录" }));
     await confirm("确认发布");
-    expect(await screen.findByText(/子节点随所属驱动登记和启停/)).toBeVisible();
+    expect(await screen.findByText(/子节点随所属驱动一同登记.*单独移除、恢复/)).toBeVisible();
     expect(screen.queryByRole("button", { name: "前往批量登记" })).not.toBeInTheDocument();
     if (status === "unregistered") {
       await userEvent.click(screen.getByRole("button", { name: "前往登记所属驱动" }));

@@ -184,7 +184,7 @@ const registrationSelect = `
     registration.organization_id,
     registration.subject_id,
     registration.display_alias,
-    subject.owner_subject_id,
+    coalesce(registration.owner_subject_id, subject.owner_subject_id) as owner_subject_id,
     registration.status,
     registration.registration_method,
     registration.current_placement_id,

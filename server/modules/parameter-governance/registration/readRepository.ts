@@ -31,7 +31,10 @@ export async function listUnregisteredSubjects(pool: pg.Pool, organizationId: st
       `select subject.id, subject.canonical_key as "canonicalName", subject.kind,
          (select count(*)::int from parameter_catalog.catalog_subjects child
           join parameter_catalog.catalog_release_subjects child_membership on child_membership.subject_id=child.id
-          where child.owner_subject_id=subject.id and child_membership.release_id=$1 and child_membership.lifecycle='active') as "childCount"
+          left join parameter_catalog.organization_subject_registrations child_registration
+            on child_registration.subject_id=child.id and child_registration.organization_id=$2
+          where coalesce(child_registration.owner_subject_id,child.owner_subject_id)=subject.id
+            and child_membership.release_id=$1 and child_membership.lifecycle='active') as "childCount"
        from parameter_catalog.catalog_release_subjects membership
        join parameter_catalog.catalog_subjects subject on subject.id = membership.subject_id
        where membership.release_id = $1 and membership.lifecycle = 'active'

@@ -22,6 +22,7 @@ import {
   type RegistrationSubjectImpact
 } from "@/features/parameter-catalog-governance/RegistrationDialog";
 import { RegistrationLifecycleDialog } from "@/features/parameter-catalog-governance/RegistrationLifecycleDialog";
+import { RegistrationOwnerDialog } from "@/features/parameter-catalog-governance/RegistrationOwnerDialog";
 import { SharedDtsiSubjectCreation } from "@/features/shared-dtsi/SharedDtsiSubjectCreation";
 import type { ApiClient } from "@/infrastructure/http/apiClient";
 import { publicationSurfaceAdvisory, type PublicationSurfaceItem } from "@/features/parameter-catalog-governance/publicationSurface";
@@ -186,6 +187,7 @@ export function CanonicalSubjectPlacementPanel({
   const placementGeneration = useRef(0);
   const [openingSubjectId, setOpeningSubjectId] = useState<string | null>(null);
   const [lifecycleDialog, setLifecycleDialog] = useState<{ intent: "retire-registration" | "restore-registration"; subject: SubjectRow; registrationId?: string } | null>(null);
+  const [ownerDialog, setOwnerDialog] = useState<{ subject: SubjectRow; registrationId: string } | null>(null);
   const [lifecycleNotice, setLifecycleNotice] = useState("");
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [definitionRefresh, setDefinitionRefresh] = useState(0);
@@ -687,16 +689,21 @@ export function CanonicalSubjectPlacementPanel({
                     (modulesForSubject.length > 0 || newDestinationParents.length > 0);
                   const placementAllowed =
                     canAdmin &&
-                    !subject.ownerSubjectId &&
                     subject.membership.status === "active" &&
                     registration?.status === "active" &&
                     Boolean(registrationId) &&
                     isCatalogActionEnabled(actor, "update-placement", domainState, sessionPermissions);
                   const registrationStatus = registration?.status ?? subject.registration.status;
                   const lifecycleIntent = registrationStatus === "retired" ? "restore-registration" : "retire-registration";
-                  const lifecycleAllowed = canAdmin && !subject.ownerSubjectId && (registrationStatus === "unregistered" ? subject.membership.status === "active" : Boolean(registrationId)) &&
+                  const lifecycleAllowed = canAdmin && (registrationStatus === "unregistered" ? !subject.ownerSubjectId && subject.membership.status === "active" : Boolean(registrationId)) &&
                     isCatalogActionEnabled(actor, lifecycleIntent, domainState, sessionPermissions);
-                  const subjectLabel = subjectTypeLabel(subject.type);
+                  const subjectLabel = subject.ownerSubjectId ? "节点" : subjectTypeLabel(subject.type);
+                  const owner = subject.ownerSubjectId ? subjects[subjectIndexes.get(subject.ownerSubjectId) ?? -1] : undefined;
+                  const restoreBlockedReason = registrationStatus !== "retired" ? undefined
+                    : subject.membership.status !== "active" ? "平台主体已退役，当前无法恢复登记"
+                    : subject.ownerSubjectId && (!owner || owner.membership.status !== "active" ||
+                      (registrationBySubjectId.get(owner.id)?.status ?? owner.registration.status) !== "active")
+                      ? "所属驱动未启用，请先恢复所属驱动。" : undefined;
                   const childCount = childCounts.get(subject.id) ?? 0;
                   return (
                     <li
@@ -773,23 +780,24 @@ export function CanonicalSubjectPlacementPanel({
                             disabled={!inventoryComplete}
                             aria-disabled={openingSubjectId === subject.id}
                             aria-busy={openingSubjectId === subject.id}
-                            onClick={() =>
-                              void openPlacement(subject, registrationId ?? "")
-                            }
+                            onClick={() => subject.ownerSubjectId
+                              ? setOwnerDialog({ subject, registrationId: registrationId! })
+                              : void openPlacement(subject, registrationId ?? "")}
                           >
                             {openingSubjectId === subject.id ? "读取归属…" : "调整归属"}
                           </button>
                         ) : null}
                         {lifecycleAllowed ? <button type="button" className="button subtle"
                           aria-label={`${registrationStatus === "retired" ? "恢复" : "移除"}${subjectLabel}：${subject.canonicalName}`}
-                          disabled={!inventoryComplete || (registrationStatus === "retired" && subject.membership.status !== "active")}
-                          title={registrationStatus === "retired" && subject.membership.status !== "active" ? "平台主体已退役，当前无法恢复登记" : undefined}
+                          disabled={!inventoryComplete || Boolean(restoreBlockedReason)}
+                          title={restoreBlockedReason}
                           onClick={() => setLifecycleDialog({ intent: lifecycleIntent, subject, registrationId })}>
                           {registrationStatus === "retired" ? `恢复${subjectLabel}` : `移除${subjectLabel}`}
                         </button> : null}
                       </div>
                       {subject.ownerSubjectId ? <div className="canonical-subject-owner-guidance">
-                        <span>业务归属与启停随所属驱动统一管理。</span>
+                        <span>业务归属继承所属驱动；可单独移除和恢复此节点。</span>
+                        {restoreBlockedReason ? <span>{restoreBlockedReason}</span> : null}
                         {onNavigate ? <button type="button" className="button subtle sm"
                           aria-label={`管理 ${subject.canonicalName} 的所属驱动`}
                           onClick={() => onNavigate(`/parameter-admin/modules?selectedSubject=${encodeURIComponent(subject.ownerSubjectId!)}`)}>管理所属驱动</button> : null}
@@ -875,6 +883,13 @@ export function CanonicalSubjectPlacementPanel({
       {recognitionSubject ? <SubjectRecognitionDialog governance={governance} organizationId={organizationId}
         registrationId={recognitionSubject.registrationId} catalogReleaseId={catalogReleaseId} name={recognitionSubject.name} canAdmin={canAdmin}
         onClose={() => setRecognitionSubject(null)} onChanged={onChanged} /> : null}
+      {ownerDialog ? <RegistrationOwnerDialog key={`${organizationId}:${ownerDialog.subject.id}`} {...ownerDialog}
+        actor={actor} sessionPermissions={sessionPermissions} catalog={catalog} governance={governance} organizationId={organizationId}
+        onClose={() => setOwnerDialog(null)} onCompleted={() => {
+          setLifecycleNotice(`已调整 ${ownerDialog.subject.canonicalName} 在本组织的所属驱动。`);
+          setOwnerDialog(null);
+          void handleCompleted();
+        }} /> : null}
       {placementDialog && catalogReleaseId ? (
         <RegistrationDialog
           open

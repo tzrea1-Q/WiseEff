@@ -12,7 +12,7 @@ function setup(restoring = false) {
     status: restoring ? "retired" as const : "active" as const,
     impact: { bindingCount: 3, projectCount: 1, projects: [{ id: "project-a", name: "引用项目", bindingCount: 3 }] }
   }, etag: '"registration-v1"' }));
-  const getSubject = vi.fn(async () => ({ item: registeredSubject }));
+  const getSubject = vi.fn<ParameterCatalogRepository["getSubject"]>(async () => ({ item: registeredSubject }));
   const retireRegistration = vi.fn<ParameterCatalogGovernanceRepository["retireRegistration"]>(async () => ({ item: { ...catalogRegistration, status: "retired" as const } }));
   const restoreRegistration = vi.fn<ParameterCatalogGovernanceRepository["restoreRegistration"]>(async () => ({ item: catalogRegistration }));
   const createRegistration = vi.fn<ParameterCatalogGovernanceRepository["createRegistration"]>(async () => ({ item: { ...catalogRegistration,
@@ -126,6 +126,49 @@ describe("RegistrationLifecycleDialog", () => {
     await user.click(screen.getByRole("button", { name: "确认恢复" }));
     await waitFor(() => expect(ports.restoreRegistration).toHaveBeenCalledOnce());
     expect(ports.restoreRegistration.mock.calls[0]?.[1]).toBe(catalogRegistration.id);
+  });
+
+  it.each(["active", "retired", "unregistered"] as const)("rechecks the parent before restoring a child (parent=%s)", async (status) => {
+    const ports = setup(true);
+    const child = { ...registeredSubject, type: "node-type" as const, ownerSubjectId: "parent-driver" };
+    ports.getRegistration.mockResolvedValue({ ...(await ports.getRegistration()),
+      item: { ...(await ports.getRegistration()).item, ownerSubjectId: "parent-driver" } });
+    ports.getSubject.mockImplementation(async (id?: string) => ({ item: id === "parent-driver" ? {
+      ...registeredSubject, id: "parent-driver", registration: status === "unregistered" ? { status } : { ...registeredSubject.registration, id: "parent-registration", status }
+    } : child }));
+    render(<RegistrationLifecycleDialog {...ports.props} subject={child} />);
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "恢复节点" })).toBeVisible());
+    await waitFor(() => expect(ports.getSubject).toHaveBeenCalledWith("parent-driver", { catalogReleaseId: CATALOG_RELEASE_ID }));
+    if (status !== "active") {
+      expect(await screen.findByText("所属驱动未启用，请先恢复所属驱动。")).toBeVisible();
+      expect(screen.getByRole("button", { name: "确认恢复" })).toBeDisabled();
+      expect(ports.restoreRegistration).not.toHaveBeenCalled();
+    } else {
+      await screen.findByText(/3 个参数绑定，涉及 1 个项目/);
+      const user = userEvent.setup();
+      await user.type(screen.getByRole("textbox", { name: "操作原因" }), "重新使用此节点");
+      await user.click(screen.getByRole("checkbox"));
+      await user.click(screen.getByRole("button", { name: "确认恢复" }));
+      await waitFor(() => expect(ports.restoreRegistration).toHaveBeenCalledOnce());
+    }
+  });
+
+  it("restores a moved child under its active organization owner while the shared default driver is retired", async () => {
+    const ports = setup(true);
+    const child = { ...registeredSubject, type: "node-type" as const, ownerSubjectId: "default-driver" };
+    ports.getRegistration.mockResolvedValue({ ...(await ports.getRegistration()),
+      item: { ...(await ports.getRegistration()).item, ownerSubjectId: "organization-driver" } });
+    ports.getSubject.mockImplementation(async id => ({ item: id === child.id ? child : {
+      ...registeredSubject, id, registration: { id: `${id}-registration`, status: id === "organization-driver" ? "active" : "retired" }
+    } }));
+    render(<RegistrationLifecycleDialog {...ports.props} subject={child} />);
+    await screen.findByText(/3 个参数绑定，涉及 1 个项目/);
+    expect(ports.getSubject).toHaveBeenCalledWith("organization-driver", { catalogReleaseId: CATALOG_RELEASE_ID });
+    expect(ports.getSubject).not.toHaveBeenCalledWith("default-driver", expect.anything());
+    await userEvent.type(screen.getByRole("textbox", { name: "操作原因" }), "恢复已调整归属的节点");
+    await userEvent.click(screen.getByRole("checkbox"));
+    await userEvent.click(screen.getByRole("button", { name: "确认恢复" }));
+    await waitFor(() => expect(ports.restoreRegistration).toHaveBeenCalledOnce());
   });
 
   it.each(["missing-version", "missing-impact", "retired-subject", "user"])("fails closed for %s", async (failure) => {

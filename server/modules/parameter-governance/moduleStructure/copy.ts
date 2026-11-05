@@ -53,7 +53,7 @@ export async function planModuleCopy(client: pg.PoolClient, organizationId: stri
   const activeRefs = new Set(active.map(module => module.ref));
   for (const key of Object.keys(choices)) if (!activeRefs.has(key)) throw new ApiError("VALIDATION_FAILED", "Unknown module mapping.", { path: `mappings.${key}` });
   const allowed = new Set([...active.flatMap(module => fields.map(field => `${module.ref}:${field}`)),
-    ...document.subjects.flatMap(subject => ["state", "cascadeRetired", "placement", "displayAlias", "recognition"].map(field => `subject:${subject.subjectId}:${field}`))]);
+    ...document.subjects.flatMap(subject => ["ownerSubjectId", "state", "cascadeRetired", "placement", "displayAlias", "recognition"].map(field => `subject:${subject.subjectId}:${field}`))]);
   for (const key of Object.keys(resolutions)) if (!allowed.has(key)) throw new ApiError("VALIDATION_FAILED", "Unknown conflict choice.", { path: `resolutions.${key}` });
   const byId = new Map(rows.map(row => [row.id, row]));
   const technicalAncestors = new Set<string>();

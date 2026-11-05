@@ -529,7 +529,9 @@ describe("S8-GOV one-command HTTP mapping", () => {
     expect(
       matchCatalogGovernanceRoute("GET", "/api/v2/catalog/legacy-identifiers/parameter-spec/spec-1"),
     ).toBeNull();
-    expect(Object.keys(catalogGovernanceCommandByRouteId)).toHaveLength(19);
+    expect(Object.keys(catalogGovernanceCommandByRouteId)).toHaveLength(20);
+    expect(matchCatalogGovernanceRoute("PATCH", "/api/v2/organizations/org/subject-registrations/child/owner"))
+      .toMatchObject({ id: "catalog.changeRegistrationOwner" });
   });
 
   it("invokes exactly one executeRegistration command for create", async () => {

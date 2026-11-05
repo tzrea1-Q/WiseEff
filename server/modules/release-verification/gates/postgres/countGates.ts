@@ -279,19 +279,19 @@ export const runV05 = async (query: GateQuery): Promise<GateResult> => {
         on subject.id = registration.subject_id
       left join ${catalogRelation("organization_subject_registrations")} owner_registration
         on owner_registration.organization_id = registration.organization_id
-       and owner_registration.subject_id = subject.owner_subject_id
-       and owner_registration.status = 'active'
+       and owner_registration.subject_id = coalesce(registration.owner_subject_id, subject.owner_subject_id)
+       and (owner_registration.status = 'active' or (registration.status = 'retired' and owner_registration.status = 'retired'))
       left join ${catalogRelation("catalog_subjects")} owner_subject
-        on owner_subject.id = subject.owner_subject_id
+        on owner_subject.id = coalesce(registration.owner_subject_id, subject.owner_subject_id)
       where placement.id is null
          or coalesce(counts.retained, 0) <> 1
          or placement.organization_id is distinct from registration.organization_id
          or subject.id is null
-         or (subject.owner_subject_id is not null and (subject.kind <> 'node-type'
+         or (coalesce(registration.owner_subject_id, subject.owner_subject_id) is not null and (subject.kind <> 'node-type'
            or owner_subject.kind is distinct from 'driver' or owner_registration.id is null))
          or not coalesce(
-           (subject.owner_subject_id is not null and placement.module_id is null)
-           or (subject.owner_subject_id is null and module.archived_at is null
+           (coalesce(registration.owner_subject_id, subject.owner_subject_id) is not null and placement.module_id is null)
+           or (coalesce(registration.owner_subject_id, subject.owner_subject_id) is null and module.archived_at is null
              and (module.kind = 'business' or (module.kind = 'unclassified' and module.parent_id is null)))
            or (module.archived_at is null
              and ((subject.kind = 'driver' and module.kind = 'driver-group')

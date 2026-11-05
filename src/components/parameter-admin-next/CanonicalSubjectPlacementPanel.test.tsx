@@ -62,9 +62,12 @@ function createPorts() {
     canonicalName: "vendor,driver",
     registration: {
       ...registeredSubject.registration,
+      status: "active" as const,
       id: "registration-driver",
       placement: {
-        ...(registeredSubject.registration.status === "unregistered" ? undefined : registeredSubject.registration.placement),
+        id: "placement-driver",
+        displayName: "Driver A",
+        parentPlacementId: null,
         moduleId: "issue897-driver-a"
       }
     }
@@ -91,7 +94,7 @@ function createPorts() {
   };
   const subjectQueries: CatalogListQuery[] = [];
   const definitionQueries: CatalogListQuery[] = [];
-  const listSubjects = vi.fn(async (query?: CatalogListQuery) => {
+  const listSubjects = vi.fn<ParameterCatalogRepository["listSubjects"]>(async (query?: CatalogListQuery) => {
     subjectQueries.push(query ?? {});
     if (query?.lifecycle === "retired") return { items: [], totalCount: 0, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID };
     if (query?.cursor === "subjects-2") {
@@ -270,7 +273,7 @@ describe("CanonicalSubjectPlacementPanel", () => {
       expect.objectContaining({ id: "subject-driver", name: "vendor,driver", displayAlias: "旧驱动名称" }),
     ]));
   });
-  it("nests registered owned nodes under their driver without independent lifecycle actions", async () => {
+  it("nests registered owned nodes under their driver with independent removal", async () => {
     const ports = createPorts();
     const driver = (await ports.catalog.listSubjects()).items[0]!;
     const child = { ...driver, id: "owned-node", canonicalName: "battery1", type: "node-type" as const,
@@ -279,15 +282,49 @@ describe("CanonicalSubjectPlacementPanel", () => {
     const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
     ports.listRegistrations.mockResolvedValue({ ...registrations, totalCount: 2, items: [...registrations.items,
       { ...registrations.items[0]!, id: "owned-registration", subjectId: child.id, ownerSubjectId: driver.id, structural: true }] });
+    ports.catalog.getSubject = vi.fn(async (id: string) => ({ item: id === child.id ? child : driver }));
+    ports.getRegistration.mockImplementation(async () => ({ item: { ...registrations.items[0]!, id: "owned-registration",
+      subjectId: child.id, ownerSubjectId: driver.id, impact: { bindingCount: 1, projectCount: 1 } }, etag: "child-v1" }));
     const onNavigate = vi.fn();
     render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin onNavigate={onNavigate} />);
     const childRow = await screen.findByRole("listitem", { name: "battery1（节点类型）" });
     expect(childRow).toHaveAttribute("data-owner-subject-id", driver.id);
-    expect(within(childRow).queryByRole("button", { name: /登记主体|调整归属|移除节点类型|恢复节点类型/ })).not.toBeInTheDocument();
+    expect(within(childRow).queryByRole("button", { name: /登记主体/ })).not.toBeInTheDocument();
+    expect(within(childRow).getByRole("button", { name: "调整归属：battery1" })).toBeEnabled();
+    expect(within(childRow).getByRole("button", { name: "移除节点：battery1" })).toBeEnabled();
     expect(screen.getByText("含 1 个子节点")).toBeInTheDocument();
-    expect(within(childRow).getByText("业务归属与启停随所属驱动统一管理。")).toBeInTheDocument();
+    expect(within(childRow).getByText("业务归属继承所属驱动；可单独移除和恢复此节点。")).toBeInTheDocument();
+    await userEvent.click(within(childRow).getByRole("button", { name: "调整归属：battery1" }));
+    await screen.findByRole("dialog", { name: "调整节点归属" });
+    await screen.findByText("没有其他已启用并登记的驱动。请先在本组织登记目标驱动。");
+    expect(ports.updatePlacement).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
     await userEvent.click(within(childRow).getByRole("button", { name: "管理 battery1 的所属驱动" }));
     expect(onNavigate).toHaveBeenCalledWith(`/parameter-admin/modules?selectedSubject=${driver.id}`);
+  });
+
+  it.each(["active", "retired", "unregistered"] as const)("restores an owned child only when its driver is active (driver=%s)", async (ownerStatus) => {
+    const ports = createPorts();
+    const driver = (await ports.catalog.listSubjects()).items[0]!;
+    const child = { ...driver, id: "owned-node", canonicalName: "battery1", type: "node-type" as const,
+      ownerSubjectId: driver.id, registration: { ...driver.registration, id: "owned-registration", status: "retired" as const } };
+    ports.listSubjects.mockResolvedValue({ items: [child, { ...driver,
+      registration: ownerStatus === "unregistered" ? { status: "unregistered" } : { ...driver.registration, id: "registration-driver", status: ownerStatus } }],
+      totalCount: 2, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);
+    ports.listRegistrations.mockResolvedValue({ ...registrations, items: [
+      ...(ownerStatus === "unregistered" ? [] : [{ ...registrations.items[0]!, status: ownerStatus }]),
+      { ...registrations.items[0]!, id: "owned-registration", subjectId: child.id, ownerSubjectId: driver.id,
+        status: "retired", structural: true }] });
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+    await selectControlOption(await screen.findByRole("combobox", { name: "筛选登记状态" }), "retired");
+    const childRow = await screen.findByRole("listitem", { name: "battery1（节点类型）" });
+    const restore = within(childRow).getByRole("button", { name: "恢复节点：battery1" });
+    if (ownerStatus === "active") expect(restore).toBeEnabled();
+    else {
+      expect(restore).toBeDisabled();
+      expect(within(childRow).getByText("所属驱动未启用，请先恢复所属驱动。")).toBeVisible();
+    }
   });
   it("edits recognition rules on a registered subject", async () => {
     const ports = createPorts();

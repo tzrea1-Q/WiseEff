@@ -28,7 +28,7 @@ export function RegistrationLifecycleDialog({ intent, subject, registrationId, a
   organizationId, modules, onClose, onCompleted }: Props) {
   const removing = intent === "retire-registration";
   const action = removing ? "移除" : "恢复";
-  const target = subject.type === "driver" ? "驱动" : subject.type === "node-type" ? "节点类型" : "配置规范";
+  const target = subject.ownerSubjectId ? "节点" : subject.type === "driver" ? "驱动" : subject.type === "node-type" ? "节点类型" : "配置规范";
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -72,6 +72,15 @@ export function RegistrationLifecycleDialog({ intent, subject, registrationId, a
       if (registration.item.subjectId !== subject.id || registration.item.organizationId !== organizationId) throw new Error("登记与当前主体不匹配，请关闭后重新选择。");
       if (registration.item.status !== (removing ? "active" : "retired")) throw new Error("登记状态已变化，请关闭弹窗并刷新列表。");
       if (!removing && owner.item.membership.status !== "active") throw new Error("平台主体已退役，当前无法恢复登记。");
+      const ownerSubjectId = registration.item.ownerSubjectId;
+      if (!removing && owner.item.ownerSubjectId && !ownerSubjectId) throw new Error("缺少本组织的所属驱动信息，请刷新后重试。");
+      if (!removing && ownerSubjectId) {
+        const parent = await catalog.getSubject(ownerSubjectId, { catalogReleaseId });
+        if (current !== generation.current) return;
+        if (parent.item.id !== ownerSubjectId || parent.item.membership.status !== "active" || parent.item.registration.status !== "active") {
+          throw new Error("所属驱动未启用，请先恢复所属驱动。");
+        }
+      }
       setEvidence({ registration: registration.item, subject: owner.item, ifMatch, catalogReleaseId });
     } catch (failure) {
       if (current === generation.current) setError(presentError(failure, "无法读取登记与引用影响，请刷新后重试。"));
@@ -133,7 +142,7 @@ export function RegistrationLifecycleDialog({ intent, subject, registrationId, a
       {evidence && impact ? <>
         <p>当前归属：{currentModule?.name ?? "unset（未分配模块）"}。{evidence.subject.definitionCounts.active} 个有效定义，{impact.bindingCount} 个参数绑定，涉及 {impact.projectCount} 个项目。</p>
         {removing ? <p>移除后，本组织登记将停用并从默认有效列表隐藏。新绑定及相关项目参数的部分编辑、提交将被阻止。定义、项目参数值和历史记录保留，可在“已停用”中恢复。</p>
-          : <p>恢复后沿用原登记和归属。{currentModule ? "相关参数可继续使用。" : "原模块已删除或归属未设置，恢复后请调整归属。"}</p>}
+          : <p>恢复后沿用原登记和归属。{currentModule ? "相关参数可继续使用。" : evidence.subject.ownerSubjectId ? "业务归属继承所属驱动，请在所属驱动中设置模块归属。" : "原模块已删除或归属未设置，恢复后请调整归属。"}</p>}
         {impact.projects?.length ? <details><summary>查看受影响项目</summary><ul>{impact.projects.map(project => <li key={project.id}>
           <a href={`/parameters?project=${encodeURIComponent(project.id)}`} target="_blank" rel="noreferrer">{project.name}</a> · {project.bindingCount} 个参数绑定
         </li>)}</ul></details> : null}

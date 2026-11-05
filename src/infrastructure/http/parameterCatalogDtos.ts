@@ -80,6 +80,7 @@ import type {
   catalogRejectProposalRequestSchema,
   catalogResolveReviewItemRequestSchema,
   catalogRestoreRegistrationRequestSchema,
+  catalogChangeRegistrationOwnerRequestSchema,
   catalogRetireRegistrationRequestSchema,
   catalogReviewItemListResponseSchema,
   catalogReviewItemResponseSchema,
@@ -139,6 +140,7 @@ export type CatalogBatchRegistrationResponse = z.infer<typeof catalogBatchRegist
 export type CatalogUnregisteredSubjectsResponse = z.infer<typeof catalogUnregisteredSubjectsResponseSchema>;
 export type CatalogRetireRegistrationRequest = z.infer<typeof catalogRetireRegistrationRequestSchema>;
 export type CatalogRestoreRegistrationRequest = z.infer<typeof catalogRestoreRegistrationRequestSchema>;
+export type CatalogChangeRegistrationOwnerRequest = z.infer<typeof catalogChangeRegistrationOwnerRequestSchema>;
 export type CatalogPlacementResponse = z.infer<typeof catalogPlacementResponseSchema>;
 export type CatalogRegistrationRecognitionUpdate = z.infer<typeof catalogRegistrationRecognitionUpdateSchema>;
 export type CatalogRegistrationRecognitionResponse = z.infer<typeof catalogRegistrationRecognitionResponseSchema>;
