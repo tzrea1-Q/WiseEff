@@ -7,6 +7,7 @@ import { createCatalogKernel, jsonCatalogReleaseSource } from "../../server/modu
 import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId } from "../../server/modules/parameter-catalog-contract";
 import { createRegistrationService } from "../../server/modules/parameter-governance/registration";
 import { createSourceBackedBindingService } from "../../server/modules/parameter-bindings/binding/__fixtures__/sourceBackedBinding";
+import { createLocalObjectStore } from "../../server/modules/logs/objectStore";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { apiRoute } from "./helpers/runtime";
@@ -26,6 +27,7 @@ test("project-role reader sees Organization usage without project write access",
   const catalogRuntime = await startDisposablePostCutoverRuntime(environment.databaseUrl, { label: "parlib_scope", catalog: "fixture-owned" });
   applyDisposableRuntimeEnv(catalogRuntime);
   const pool = new pg.Pool({ connectionString: catalogRuntime.databaseUrl });
+  const objectStore = createLocalObjectStore(catalogRuntime.objectStoreRoot);
   const organizationId = "org-chargelab";
   const definitionId = ParameterDefinitionId("pdef_acme_power_iin_max");
   const revisionId = DefinitionRevisionId("drev_acme_power_iin_max_1");
@@ -47,7 +49,7 @@ test("project-role reader sees Organization usage without project write access",
     await pool.query("delete from public.user_role_bindings where user_id=$1", [acceptanceCast.liuMin.userId]);
     for (const projectId of ["parlib-scope-a", "parlib-scope-b"]) {
       await pool.query("insert into public.projects(id,organization_id,name,code,status) values ($1,$2,$1,$1,'initialized')", [projectId, organizationId]);
-      const binding = await createSourceBackedBindingService(pool, { initialPayload: { kind: "number", value: 1001 } }).stabilize({ snapshot: loaded.value, organizationId, projectId, logicalNodeId: `${projectId}-node`, registrationId: registration.value.registrationId, definitionId, effectiveRevisionId: revisionId, expectedEffectiveRevisionId: null });
+      const binding = await createSourceBackedBindingService(pool, { objectStore, sourceRawValue: "<0x3e9>", initialPayload: { kind: "number", value: 1001 } }).stabilize({ snapshot: loaded.value, organizationId, projectId, logicalNodeId: `${projectId}-node`, registrationId: registration.value.registrationId, definitionId, effectiveRevisionId: revisionId, expectedEffectiveRevisionId: null });
       if (!binding.ok) throw new Error(JSON.stringify(binding.error));
       if (projectId === "parlib-scope-a") firstBinding = binding.value.binding.id;
       if (projectId === "parlib-scope-b") secondBinding = binding.value.binding.id;
@@ -67,6 +69,11 @@ test("project-role reader sees Organization usage without project write access",
     await detail.getByRole("tab", { name: "跨项目对比", exact: true }).click();
     const selector = detail.getByRole("tabpanel", { name: "跨项目对比" }).getByRole("combobox");
     await expect.poll(async () => (await readSelectControlOptions(selector)).map(option => option.value)).toContain(secondBinding);
+    await page.goto(`${catalogRuntime.frontendUrl}/parameters/definitions?definitionId=${definitionId}&tab=configurations`);
+    await page.getByRole("table", { name: "parlib-scope-b 的当前配置" }).getByRole("button", { name: /在项目中打开/ }).click();
+    const otherProjectDetail = page.getByRole("dialog", { name: /参数详情/ });
+    await expect(otherProjectDetail.getByRole("textbox", { name: "目标值" })).toBeDisabled();
+    await expect(otherProjectDetail.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     await recordOperationEvidence({ operationId: "PARLIB-SCOPE-001", title: testInfo.title, status: "passed", role: "Software User", route: "/parameters", page, testInfo, assertions: ["ui", "api", "screenshot"], api: [
       { method: "GET", path: `/api/v2/catalog/definitions/${definitionId}`, status: definition.status(), responseSummary: "Organization usage: two projects and two retained bindings" },
       { method: "POST", path: "/api/v1/parameter-drafts", status: denied.status(), responseSummary: "Nonparticipant project write denied" }
