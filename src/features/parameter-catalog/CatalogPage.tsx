@@ -16,6 +16,7 @@ import {
   CATALOG_DEFAULT_PAGE_SIZE,
   CATALOG_PAGE_SIZES,
   buildCatalogHref,
+  buildCatalogShareHref,
   parseCatalogUrlAnchor,
   parseCatalogPageSize,
   readLegacyCatalogBookmark,
@@ -309,6 +310,16 @@ export function CatalogPage({
     return params.toString();
   }, [resolvedSearch]);
   const anchor = useMemo(() => parseCatalogUrlAnchor(resolvedSearch), [resolvedSearch]);
+  const [shareState, setShareState] = useState<"success" | "error" | null>(null);
+  useEffect(() => setShareState(null), [resolvedSearch, organizationId]);
+  const shareControl = <div className="parameter-library-share">
+    <button type="button" className="button subtle sm" onClick={async () => {
+      try { await navigator.clipboard.writeText(new URL(buildCatalogShareHref(anchor), window.location.origin).href); setShareState("success"); }
+      catch { setShareState("error"); }
+    }}>复制当前视图链接</button>
+    {shareState === "success" ? <span role="status">链接已复制。接收者将以当前组织权限读取，数据可能变化。</span> : null}
+    {shareState === "error" ? <span role="alert">复制链接失败，请检查剪贴板权限后重试。</span> : null}
+  </div>;
   const pageSize: CatalogPageSize =
     parseCatalogPageSize(anchor.pageSize === null ? null : String(anchor.pageSize)) ??
     CATALOG_DEFAULT_PAGE_SIZE;
@@ -996,20 +1007,22 @@ export function CatalogPage({
     return <div className="parameter-catalog parameter-library-detail" role="region" aria-label="参数定义目录"
       data-catalog-page="true" data-catalog-state={domainState.kind} data-catalog-release={snapshot?.document.item.catalogReleaseId ?? ""}
       data-runtime-state={error && !reading ? "error" : inFlight && !reading ? "loading" : "ready"} aria-busy={inFlight && !reading}>
-      <button type="button" className="button subtle" onClick={() => {
+      <div className="parameter-library-detail__top"><button type="button" className="button subtle sm" onClick={() => {
         setHistoryOpen(false);
         commitAnchor({ ...anchor, definitionId: null, history: null, tab: null, instance: null, instanceCursor: null, baseline: null, target: null }, "push");
-      }}>返回参数库</button>
+      }}>返回参数库</button>{shareControl}</div>
       {inFlight && !reading ? <SectionSkeleton label={catalogLoadingLabel} />
         : error ? <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />
           : reading && revision ? <article role="region" aria-label="定义详情" className="parameter-library-detail__body">
-            <header>
+            <header className="parameter-library-detail__header">
+              <div>
               <p className="parameter-catalog__muted">{catalogSubjectTypeLabel(reading.subject.type)} · {reading.subject.canonicalName}</p>
               <h1 ref={readingHeading} tabIndex={-1}>{revision.displayName || reading.propertyKey}</h1>
               <p><code>{reading.propertyKey}</code> · {catalogLifecycleLabel(reading.lifecycle)} · {catalogRegistrationLabel(reading.registration.status)}</p>
               <p className="parameter-catalog__muted">{snapshot?.currentReleaseId
                 ? snapshot.currentReleaseId === snapshot.document.item.catalogReleaseId ? "当前发布" : "历史发布"
-                : "所选发布"} · 修订 #{revision.revisionNumber} · {snapshot?.document.item.catalogReleaseId}</p>
+                : "所选发布"} · 修订 #{revision.revisionNumber}</p>
+              </div>
               {onOpenGovernance ? <button type="button" className="button subtle sm" onClick={() => onOpenGovernance(anchor)}>打开定义治理</button> : null}
             </header>
             <ViewSwitch variant="tabs" ariaLabel="参数详情" value={anchor.tab === "configurations" || anchor.tab === "compare" ? anchor.tab : "definition"}
@@ -1017,6 +1030,7 @@ export function CatalogPage({
               items={[{ value: "definition", label: "定义", id: "library-tab-definition", panelId: "library-panel-definition" },
                 { value: "configurations", label: "当前项目配置", id: "library-tab-configurations", panelId: "library-panel-configurations" },
                 { value: "compare", label: "对比", id: "library-tab-compare", panelId: "library-panel-compare" }]} />
+            <p className="parameter-library-detail__hint">视图按当前组织权限读取，数据可能已变化。</p>
             {anchor.tab === "configurations" || anchor.tab === "compare" ? <section role="tabpanel" id={`library-panel-${anchor.tab}`} aria-labelledby={`library-tab-${anchor.tab}`}>
               <h2>{anchor.tab === "compare" ? "实例对比" : "当前项目配置"}</h2>
               <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
@@ -1068,6 +1082,7 @@ export function CatalogPage({
         resizableNavigator
         taskLabel={catalogListLabel}
         toolbar={<>
+          {libraryMode ? shareControl : null}
           {anchor.sourceReturn ? <a href={anchor.sourceReturn}>{anchor.sourceReturn.startsWith("/parameter-admin/projects/")?"返回项目来源":"返回来源识别"}</a> : null}
           <form
             className="parameter-catalog__search"
@@ -1210,12 +1225,11 @@ export function CatalogPage({
             </header>
             {libraryMode ? <div className="parameter-library-filters">
               <label><input type="checkbox" checked={Boolean(anchor.configured)} onChange={(event) => commitAnchor({ ...anchor, configured: event.target.checked ? "true" : null, cursor: null, cursorTrail: null }, "push")} /> 有当前配置</label>
-              <label>项目使用 <select value={anchor.usageProjectId ?? ""} disabled={!projectOptions || projectOptions.organizationId !== organizationId} onChange={(event) => commitAnchor({ ...anchor, usageProjectId: event.target.value || null, cursor: null, cursorTrail: null }, "push")}>
-                <option value="">全部项目</option>{projectOptions && projectOptions.organizationId === organizationId ? projectOptions.items.map((project) => <option key={project.id} value={project.id}>{project.name}</option>) : null}
-              </select></label>
+              <div className="parameter-library-filter"><span>项目使用</span><SelectControl ariaLabel="项目使用" size="filter" value={anchor.usageProjectId ?? ""} disabled={!projectOptions || projectOptions.organizationId !== organizationId} onValueChange={(value) => commitAnchor({ ...anchor, usageProjectId: value || null, cursor: null, cursorTrail: null }, "push")}
+                options={[{ value: "", label: "全部项目" }, ...(projectOptions && projectOptions.organizationId === organizationId ? projectOptions.items.map((project) => ({ value: project.id, label: project.name })) : [])]} /></div>
               {projectOptionsError ? <button type="button" className="button subtle sm" onClick={() => setProjectOptionsRetry((value) => value + 1)}>项目读取失败，重试</button> : null}
               {(anchor.configured || anchor.usageProjectId) ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, configured: null, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
-              <span className="parameter-catalog__muted">数量为当前组织已配置数量</span>
+              <span className="parameter-catalog__muted">数量为{anchor.usageProjectId ? "所选项目" : "当前组织"}已配置数量</span>
             </div> : null}
             {definitionPublishingAllowed && onBatchDefinitionCommand ? <>
               {anchor.subjectId && release ? <button type="button" className="button subtle sm" disabled={selectingSubject}

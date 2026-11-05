@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DataTable } from "@/components/admin";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CatalogProjectConfigurationsResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { formatAbsolute } from "@/domain/format/formatDateTime";
+import { SelectControl } from "@/components/common/SelectControl";
+import { SearchField } from "@/components/common/SearchField";
 
 export function ProjectConfigurations({ repository, organizationId, definitionId, cursor, selectedId, compare = false, baselineId, targetId, projectId, configSetId, search, includeUnconfigured, onChange }: {
   repository: ParameterCatalogRepository; organizationId?: string; definitionId: string;
@@ -12,20 +15,31 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   projectId?: string | null; configSetId?: string | null; search?: string | null; includeUnconfigured?: string | null;
   onChange: (update: { instance?: string | null; instanceCursor?: string | null; baseline?: string | null; target?: string | null; configProjectId?: string | null; configSetId?: string | null; configSearch?: string | null; includeUnconfigured?: string | null }) => void;
 }) {
-  const [loaded, setLoaded] = useState<{ organizationId?: string; definitionId: string; data: CatalogProjectConfigurationsResponse } | null>(null);
+  const readContext = JSON.stringify([organizationId, definitionId, cursor, selectedId, compare, baselineId, targetId, projectId, configSetId, search, includeUnconfigured]);
+  const [loaded, setLoaded] = useState<{ repository: ParameterCatalogRepository; context: string; data: CatalogProjectConfigurationsResponse } | null>(null);
   const [state, setState] = useState<"loading" | "error" | "forbidden" | "stale" | "missing" | "baseline-missing" | "target-missing" | "invalid-filter" | "ready">("loading");
   const [retry, setRetry] = useState(0);
   const [searchInput, setSearchInput] = useState(search ?? "");
+  const [copyState, setCopyState] = useState<"success" | "error" | null>(null);
+  const projectControl = useRef<HTMLButtonElement>(null);
+  const configSetControl = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef<"project" | "configSet" | null>(null);
+  useEffect(() => {
+    if (state !== "ready" || !restoreFocus.current) return;
+    (restoreFocus.current === "project" ? projectControl : configSetControl).current?.focus();
+    restoreFocus.current = null;
+  }, [state]);
   useEffect(() => setSearchInput(search ?? ""), [search]);
   useEffect(() => {
     let active = true;
     setState("loading");
     setLoaded(null);
+    setCopyState(null);
     if (!repository.getProjectConfigurations) { setState("error"); return () => { active = false; }; }
     repository.getProjectConfigurations(definitionId, { ...(cursor ? { cursor } : {}), ...(selectedId && !compare ? { selectedBindingId: selectedId } : {}),
       ...(compare && baselineId ? { baselineBindingId: baselineId } : {}), ...(compare && baselineId && targetId ? { targetBindingId: targetId } : {}),
       ...(projectId ? { projectId } : {}), ...(configSetId ? { configSetId } : {}), ...(search ? { search } : {}), ...(includeUnconfigured ? { includeUnconfigured: true } : {}) })
-      .then((response) => { if (active) { setLoaded({ organizationId, definitionId, data: response }); setState("ready"); } })
+      .then((response) => { if (active) { setLoaded({ repository, context: readContext, data: response }); setState("ready"); } })
       .catch((error: unknown) => {
         if (!active) return;
         setState(error instanceof WiseEffApiError && error.code === "FORBIDDEN" ? "forbidden"
@@ -36,9 +50,9 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
           : error instanceof WiseEffApiError && error.code === "NOT_FOUND" && selectedId ? "missing" : "error");
       });
     return () => { active = false; };
-  }, [repository, organizationId, definitionId, cursor, selectedId, compare, baselineId, targetId, projectId, configSetId, search, includeUnconfigured, retry]);
+  }, [repository, organizationId, definitionId, cursor, selectedId, compare, baselineId, targetId, projectId, configSetId, search, includeUnconfigured, retry, readContext]);
 
-  if (state === "loading" || (loaded && (loaded.organizationId !== organizationId || loaded.definitionId !== definitionId))) return <SectionSkeleton label="正在读取当前项目配置" />;
+  if (state === "loading" || (loaded && (loaded.repository !== repository || loaded.context !== readContext))) return <SectionSkeleton label="正在读取当前项目配置" />;
   const result = loaded?.data;
   if (state === "forbidden") return <SectionError message="没有权限读取当前项目配置。" onRetry={() => setRetry((value) => value + 1)} />;
   if (state === "baseline-missing" || state === "target-missing") return <div role="alert">
@@ -58,6 +72,10 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
     {selectedId ? <button type="button" className="button subtle sm" onClick={() => onChange({ instance: null })}>返回实例列表</button> : null}
   </>;
   const groups = new Map<string, typeof result.items>();
+  const copyValue = async (raw: string) => {
+    try { await navigator.clipboard.writeText(raw); setCopyState("success"); }
+    catch { setCopyState("error"); }
+  };
   for (const row of result.items) groups.set(row.projectId, [...(groups.get(row.projectId) ?? []), row]);
   const status = (comparison: NonNullable<Extract<(typeof result.items)[number], { kind: "instance" }>["comparison"]>) => ({
     same: "类型化值相同", different: "类型化值不同", "different-semantics": "定义语义不同，不计算差值",
@@ -66,12 +84,15 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   const detail = (item: NonNullable<typeof result.baseline>, label: string) => <article className="parameter-library-compare__detail">
     <h3>{label}</h3><strong>{item.projectName} / {item.configSetName}</strong>
     <p className="parameter-library-compare__source" title={`${item.fileName} · ${item.sourceLocation}`}>{item.fileName} · {item.sourceLocation}</p><p>值固定修订 #{item.definitionRevisionNumber} · {item.effectiveRevisionId === item.definitionRevisionId ? "生效修订相同" : `生效修订 ${item.effectiveRevisionId}`} · 单位 {item.unit ?? "未说明"}</p>
-    <div role="textbox" aria-readonly="true" aria-multiline="true" tabIndex={0} aria-label={`${label}原值`}><pre>{item.rawValue || (item.sourceFormat === "dts" && item.valueKind === "boolean" ? "（布尔属性存在，无值文本）" : "（空值）")}</pre></div>
+    <div role="textbox" aria-readonly="true" aria-multiline="true" tabIndex={0} aria-label={`${label}原值`}><pre>{item.rawValue === undefined ? "（完整原值不可用）" : item.rawValue || (item.sourceFormat === "dts" && item.valueKind === "boolean" ? "（布尔属性存在，无值文本）" : "（空值）")}</pre></div>
+    <button type="button" className="button subtle sm" disabled={item.rawValue === undefined} onClick={() => { if (item.rawValue !== undefined) void copyValue(item.rawValue); }}>复制{label}完整原值</button>
     <details><summary>实例与值身份</summary><p>{item.fileName} · {item.sourceLocation}<br />Binding {item.bindingId}<br />ProjectValue {item.currentValueId}<br />值固定修订 {item.definitionRevisionId}</p></details>
   </article>;
   return <div className="parameter-library-configurations">
-    <p className="parameter-catalog__muted">当前组织 · 已配置项目 {result.summary.configuredProjectCount} · 已配置实例 {result.summary.configuredInstanceCount} · 筛选结果 {result.totalCount} 条（本页 {result.items.length} 条）</p>
-    <p className="parameter-catalog__muted">当前平台配置包含所有配置集，并非设备运行状态；历史定义仍显示当前配置。</p>
+    <p className="parameter-catalog__muted">{configSetId ? "所选配置集范围" : projectId ? "所选项目范围" : "当前组织范围"} · 已配置项目 {result.summary.configuredProjectCount} · 已配置实例 {result.summary.configuredInstanceCount} · 筛选结果 {result.totalCount} 条（本页 {result.items.length} 条）</p>
+    <p className="parameter-catalog__muted">读取于 {formatAbsolute(result.readAt)} · 数据可能已变化。当前平台配置包含所有配置集，并非设备运行状态；历史定义仍显示当前配置。</p>
+    {copyState === "success" ? <p role="status">已复制本次读取的完整原值；来源专属引用未必适用于其他项目。</p> : null}
+    {copyState === "error" ? <p role="alert">复制失败，请检查剪贴板权限后重试；选择仍保留。</p> : null}
     {compare ? <section className="parameter-library-compare" aria-label="实例对比">
       {!baselineId && targetId ? <p role="alert">目标需要先选择基准；请选择基准后重新选择目标。</p> : null}
       {!result.baseline ? <p>请选择基准实例，然后选择目标查看焦点对比。每个实例均按其固定的定义修订解释。</p> : <>
@@ -82,13 +103,11 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
       </>}
     </section> : null}
     <form className="parameter-library-filters" onSubmit={(event) => { event.preventDefault(); onChange({ configSearch: searchInput.trim() || null, instanceCursor: null }); }}>
-      <label>项目 <select value={projectId ?? ""} onChange={(event) => onChange({ configProjectId: event.target.value || null, configSetId: null, instanceCursor: null })}>
-        <option value="">全部项目</option>{result.projects?.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-      </select></label>
-      <label>配置集 <select value={configSetId ?? ""} disabled={!projectId && !configSetId} onChange={(event) => onChange({ configSetId: event.target.value || null, instanceCursor: null })}>
-        <option value="">{projectId ? "全部配置集" : "先选择项目"}</option>{result.configSets?.map((set) => <option key={set.id} value={set.id}>{!projectId ? `${result.projects?.find((project) => project.id === set.projectId)?.name ?? set.projectId} / ` : ""}{set.name}</option>)}
-      </select></label>
-      <label>实例 / 来源 <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} /></label>
+      <div className="parameter-library-filter"><span>项目</span><SelectControl ref={projectControl} ariaLabel="项目" size="filter" value={projectId ?? ""} onValueChange={(value) => { restoreFocus.current = "project"; onChange({ configProjectId: value || null, configSetId: null, instanceCursor: null }); }}
+        options={[{ value: "", label: "全部项目" }, ...(result.projects ?? []).map((project) => ({ value: project.id, label: project.name }))]} /></div>
+      <div className="parameter-library-filter"><span>配置集</span><SelectControl ref={configSetControl} ariaLabel="配置集" size="filter" value={configSetId ?? ""} disabled={!projectId && !configSetId} onValueChange={(value) => { restoreFocus.current = "configSet"; onChange({ configSetId: value || null, instanceCursor: null }); }}
+        options={[{ value: "", label: projectId ? "全部配置集" : "先选择项目" }, ...(result.configSets ?? []).map((set) => ({ value: set.id, label: `${!projectId ? `${result.projects?.find((project) => project.id === set.projectId)?.name ?? set.projectId} / ` : ""}${set.name}` }))]} /></div>
+      <div className="parameter-library-filter"><span>实例 / 来源</span><SearchField ariaLabel="实例 / 来源" value={searchInput} onValueChange={setSearchInput} /></div>
       <button type="submit" className="button subtle sm">筛选</button>
       <label><input type="checkbox" checked={Boolean(includeUnconfigured)} onChange={(event) => onChange({ includeUnconfigured: event.target.checked ? "true" : null, instanceCursor: null })} /> 显示无当前配置项目</label>
       <button type="button" className="button subtle sm" onClick={() => { setSearchInput(""); onChange({ configProjectId: null, configSetId: null, configSearch: null, includeUnconfigured: null, instanceCursor: null }); }}>重置筛选</button>
@@ -108,7 +127,8 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
           disabled={row.valueState === "unset"} onClick={() => onChange({ instance: row.bindingId })}>查看完整值</button>} />}
     </section>)}
     {result.selected ? <section aria-label="选中的完整值"><h3>完整值 · {result.selected.projectName} / {result.selected.fileName}</h3>
-      {result.selected.sourceFormat === "dts" && result.selected.valueKind === "boolean" ? <p>布尔属性以存在表示，无值文本。</p> : null}<pre>{result.selected.rawValue}</pre>
+      {result.selected.sourceFormat === "dts" && result.selected.valueKind === "boolean" ? <p>布尔属性以存在表示，无值文本。</p> : null}<pre>{result.selected.rawValue ?? "（完整原值不可用）"}</pre>
+      <button type="button" className="button subtle sm" disabled={result.selected.rawValue === undefined} onClick={() => { if (result.selected?.rawValue !== undefined) void copyValue(result.selected.rawValue); }}>复制完整原值</button>{" "}
       <button type="button" className="button subtle sm" onClick={() => onChange({ instance: null })}>关闭完整值</button></section> : null}
     {cursor ? <button type="button" className="button subtle sm" onClick={() => onChange({ instanceCursor: null, instance: null })}>返回第一页</button> : null}
     {result.nextCursor ? <button type="button" className="button subtle sm" onClick={() => onChange({ instanceCursor: result.nextCursor, instance: null })}>下一页</button> : null}

@@ -37,6 +37,18 @@ import type { CatalogModule } from "./catalogModuleScope";
 
 type PageProps = ComponentProps<typeof CatalogPage>;
 
+it("shares a read-only library link and reports clipboard failure", async () => {
+  const write = vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("denied")).mockResolvedValueOnce();
+  render(<CatalogPage libraryMode repository={createMockParameterCatalogRepository()} actor="user" organizationId="org" search="?q=power&configured=true&organizationId=other&rawValue=secret" />);
+  fireEvent.click(await screen.findByRole("button", { name: "复制当前视图链接" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("复制链接失败");
+  fireEvent.click(screen.getByRole("button", { name: "复制当前视图链接" }));
+  await waitFor(() => expect(write).toHaveBeenLastCalledWith(expect.stringMatching(/\/parameters\/definitions\?q=power&configured=true/)));
+  expect(write.mock.calls[1]?.[0]).not.toMatch(/organizationId|rawValue|secret/);
+  expect(await screen.findByText(/链接已复制/)).toBeVisible();
+  write.mockRestore();
+});
+
 it("does not show delayed project options from another Organization", async () => {
   const previous = deferred<Array<{ id: string; name: string; code: string }>>();
   const current = deferred<Array<{ id: string; name: string; code: string }>>();
@@ -47,7 +59,9 @@ it("does not show delayed project options from another Organization", async () =
   await act(async () => previous.resolve([{ id: "old", name: "旧组织项目", code: "old" }]));
   expect(screen.queryByRole("option", { name: "旧组织项目" })).not.toBeInTheDocument();
   await act(async () => current.resolve([{ id: "new", name: "新组织项目", code: "new" }]));
+  await userEvent.click(await screen.findByRole("combobox", { name: "项目使用" }));
   expect(await screen.findByRole("option", { name: "新组织项目" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "旧组织项目" })).not.toBeInTheDocument();
 });
 
 function moduleRegistry(modules: CatalogModule[]): NonNullable<PageProps["moduleRegistry"]> {
