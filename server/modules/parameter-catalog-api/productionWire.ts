@@ -439,7 +439,9 @@ const catalogScope = (auth: AuthContext, organizationId = auth.organization.id):
     actorKind,
     canReadCatalog: projectScope !== null && canViewParameters(auth),
     canRegister: (actorKind === "org-admin" || actorKind === "platform-admin") && auth.roles.some((role) => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")),
-    projectScope: projectScope ?? { kind: "only", ids: [] },
+    // Catalog configuration usage follows the same Organization read scope as
+    // project parameters; publication and shared-DTSI keep their own scope.
+    projectScope: projectScope && canViewParameters(auth) ? { kind: "all" } : { kind: "only", ids: [] },
     subjects: { kind: "all" },
     definitions: { kind: "all" },
   };

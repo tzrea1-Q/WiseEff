@@ -23,8 +23,8 @@ import { catalogDefinitionListResponseSchema, catalogDefinitionResponseSchema } 
 const definitionId = ParameterDefinitionId("pdef_acme_power_iin_max");
 const revisionId = DefinitionRevisionId("drev_acme_power_iin_max_1");
 const actors: { id: string; organizationId: string; roles: RoleBinding[]; projects: number; current: number }[] = [
-  { id: "only-a", organizationId: "scope-org-a", roles: [{ roleId: "software-user", projectId: "scope-project-a" }], projects: 1, current: 1 },
-  { id: "guest-b", organizationId: "scope-org-a", roles: [{ roleId: "guest", projectId: "scope-project-b" }], projects: 1, current: 2 },
+  { id: "only-a", organizationId: "scope-org-a", roles: [{ roleId: "software-user", projectId: "scope-project-a" }], projects: 2, current: 3 },
+  { id: "guest-b", organizationId: "scope-org-a", roles: [{ roleId: "guest", projectId: "scope-project-b" }], projects: 2, current: 3 },
   { id: "union", organizationId: "scope-org-a", roles: [{ roleId: "hardware-user", projectId: "scope-project-a" }, { roleId: "software-user", projectId: "scope-project-b" }, { roleId: "guest", projectId: "scope-project-a" }], projects: 2, current: 3 },
   { id: "global-guest", organizationId: "scope-org-a", roles: [{ roleId: "guest", projectId: null }], projects: 2, current: 3 },
   { id: "global-software", organizationId: "scope-org-a", roles: [{ roleId: "software-user", projectId: null }], projects: 2, current: 3 },
@@ -32,7 +32,7 @@ const actors: { id: string; organizationId: string; roles: RoleBinding[]; projec
   { id: "scoped-platform", organizationId: "scope-org-a", roles: [{ roleId: "platform-admin", projectId: "scope-project-a" }], projects: 2, current: 3 },
   { id: "mixed", organizationId: "scope-org-a", roles: [{ roleId: "guest", projectId: null }, { roleId: "software-user", projectId: "scope-project-a" }], projects: 2, current: 3 },
   { id: "other-org", organizationId: "scope-org-b", roles: [{ roleId: "software-user", projectId: "scope-project-c" }], projects: 1, current: 4 },
-  { id: "no-role", organizationId: "scope-org-a", roles: [], projects: 0, current: 0 },
+  { id: "no-role", organizationId: "scope-org-a", roles: [], projects: 2, current: 3 },
 ];
 
 describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () => {
@@ -46,6 +46,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
   let usageParameters: { definitions: unknown; projects: unknown }[] = [];
   const records: unknown[] = [];
   const actualRoleBindings = new Map<string, unknown>();
+  const bindingIds = new Map<string, string>();
 
   beforeAll(async () => {
     database = await createDisposableParameterCatalogDatabase("r2scope");
@@ -98,6 +99,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
           if (index === currentCount) continue;
           const binding = await createSourceBackedBindingService(pool, { initialPayload: { kind: "number", value: 1001 } }).stabilize({ snapshot: loaded.value, organizationId, projectId, logicalNodeId: `${projectId}-node-${index}`, registrationId: registration.value.registrationId, definitionId, effectiveRevisionId: revisionId, expectedEffectiveRevisionId: null });
           if (!binding.ok) throw new Error("fixture binding failed");
+          bindingIds.set(projectId, binding.value.binding.id);
         }
       }
     }
@@ -124,7 +126,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     }
   });
 
-  it.each(actors.filter((actor) => actor.id !== "no-role"))("R2-SCOPE-01 $id retains only authorized project counts in list and detail", async (actor) => {
+  it.each(actors)("R2-SCOPE-01 $id reads Organization counts in list and detail", async (actor) => {
     const headers = { authorization: `Bearer scope-${actor.id}` };
     businessSql = [];
     usageParameters = [];
@@ -149,16 +151,18 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     expect(getRootPostgresPool(root)?.waitingCount).toBe(0);
   });
 
-  it("R2-SCOPE-02 request fields cannot widen the actual database project binding", async () => {
+  it("R2-SCOPE-02 request fields cannot widen the authenticated Organization", async () => {
     const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-only-a", "X-Role": "admin", "X-Project-Id": "scope-project-b", "X-Project-Scope": "all", "X-Actor-Kind": "platform-admin" } });
     expect(response.status).toBe(200);
-    expect(catalogDefinitionResponseSchema.parse(await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 1, currentValueCount: 1 });
+    expect(catalogDefinitionResponseSchema.parse(await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 2, currentValueCount: 3 });
+    const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}?organizationId=scope-org-b`, { headers: { authorization: "Bearer scope-only-a" } });
+    expect(foreign.status).toBe(403);
   });
 
-  it("R2-SCOPE-03 a roleless organization member can read without gaining claimed admin usage scope", async () => {
+  it("R2-SCOPE-03 a roleless Organization reader sees the same configuration usage", async () => {
     const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-no-role" } });
     expect(response.status).toBe(200);
-    expect(catalogDefinitionResponseSchema.parse(await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 0, currentValueCount: 0 });
+    expect(catalogDefinitionResponseSchema.parse(await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 2, currentValueCount: 3 });
   });
 
   it("R2-SCOPE-04 an explicit empty project selection returns true zero through the real usage port", async () => {
@@ -175,21 +179,60 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     // separate from the authenticated root HTTP matrix above.
   });
 
-  it("R2-SCOPE-05 refreshed database bindings replace the previous request's project scope", async () => {
+  it("R2-SCOPE-05 changing a project role does not restrict Organization usage", async () => {
     const pool = getRootPostgresPool(root);
     if (!pool) throw new Error("real PostgreSQL pool required");
     await pool.query("update public.user_role_bindings set project_id='scope-project-b' where id='scope-role-only-a-0'");
     try {
       const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-only-a" } });
       expect(response.status).toBe(200);
-      expect(catalogDefinitionResponseSchema.parse(await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 1, currentValueCount: 2 });
+      expect(catalogDefinitionResponseSchema.parse(await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 2, currentValueCount: 3 });
     } finally {
       await pool.query("update public.user_role_bindings set project_id='scope-project-a' where id='scope-role-only-a-0'");
+    }
+  });
+
+  it("reads a nonparticipant project but refuses foreign projects and writes", async () => {
+    const headers = { authorization: "Bearer scope-only-a", "content-type": "application/json" };
+    const local = await fetch(`${baseUrl}/api/v1/parameters?projectId=scope-project-b`, { headers });
+    expect(local.status).toBe(200);
+    expect((await local.json()).items).toEqual(expect.arrayContaining([expect.objectContaining({ id: bindingIds.get("scope-project-b"), projectId: "scope-project-b" })]));
+    const foreign = await fetch(`${baseUrl}/api/v1/parameters?projectId=scope-project-c`, { headers });
+    expect(foreign.status).toBe(404);
+    const foreignBinding = await fetch(`${baseUrl}/api/v1/parameters/${bindingIds.get("scope-project-c")}`, { headers });
+    expect(foreignBinding.status).toBe(404);
+    for (const path of ["/api/v1/parameter-drafts", "/api/v1/parameter-submission-rounds"]) {
+      const body = path.endsWith("drafts")
+        ? { projectId: "scope-project-b", parameterId: bindingIds.get("scope-project-b"), targetValue: "9", reason: "scope test" }
+        : { projectId: "scope-project-b", items: [{ parameterId: bindingIds.get("scope-project-b"), targetValue: "9", reason: "scope test" }] };
+      const denied = await fetch(`${baseUrl}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+      expect(denied.status).toBe(403);
+    }
+  });
+
+  it("rejects an inactive account despite a previously valid token", async () => {
+    const pool = getRootPostgresPool(root)!;
+    await pool.query("update public.users set is_active=false where id='only-a'");
+    try {
+      for (const path of [`/api/v2/catalog/definitions/${definitionId}`, "/api/v1/parameters?projectId=scope-project-b"]) {
+        const response = await fetch(`${baseUrl}${path}`, { headers: { authorization: "Bearer scope-only-a" } });
+        expect([401, 403]).toContain(response.status);
+      }
+    } finally {
+      await pool.query("update public.users set is_active=true where id='only-a'");
     }
   });
 });
 
 describe("R2-SCOPE controlled composition rejection, pure boundary evidence", () => {
+  it("denies Catalog usage when the trusted resolver withholds parameter:view", async () => {
+    const router = createRouter();
+    const noView = { user: { id: "no-view", organizationId: "org-a", name: "Reader", title: "Reader", isActive: true }, organization: { id: "org-a", name: "A" }, roles: [], permissions: [] } as AuthContext;
+    registerParameterCatalogApi(router, { resolveAuth: () => noView });
+    const response = await router.handle({ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}`, params: {}, query: {}, headers: {}, body: undefined, requestId: "no-view" });
+    expect(response.status).toBe(403);
+  });
+
   it.each([undefined, "", " padded", "bad\u0000id", "bad\u009fid"])("malformed role projectId %j cannot become a global grant", async (projectId) => {
     const router = createRouter();
     // Deliberately malformed resolver input tests fail-closed validation; this
