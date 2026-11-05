@@ -179,7 +179,7 @@ test("reads grouped DTS and software instances with exact counts and full values
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(fullSourceToken);
     const configurationLink = await copyLink();
     expect(configurationLink).toContain("configSetId=");
-    expect(configurationLink).not.toContain("message");
+    expect(decodeURIComponent(configurationLink)).not.toContain("\\u0073oftware");
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(configurationLink).search}`);
     await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(fullSourceToken);
     await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameters/definitions${new URL(configurationLink).search}`);
@@ -253,6 +253,12 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.getByRole("button", { name: "下一页" }).click();
     await page.getByRole("button", { name: "查看对比" }).click();
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
+    for (const label of ["基准实例", "目标实例"]) {
+      const displayed = await page.getByRole("textbox", { name: `${label}原值` }).textContent();
+      await page.getByRole("button", { name: `复制${label}完整原值` }).click();
+      expect(displayed).toMatch(/^<0x3e[9a]>$/);
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(displayed);
+    }
     const comparisonLink = await copyLink();
     expect(comparisonLink).toMatch(/baseline=.*target=/);
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(comparisonLink).search}`);
