@@ -4,6 +4,22 @@ import { expect, it, vi } from "vitest";
 import type { ApiClient } from "@/infrastructure/http/apiClient";
 import { ModuleStructureImport } from "./ModuleStructureImport";
 
+it("accepts formatted files over 4 MiB but rejects content over 4 MiB", async () => {
+  const user = userEvent.setup();
+  render(<ModuleStructureImport apiClient={{ post: vi.fn() } as unknown as ApiClient} organizationId="org-a" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  const input = screen.getByLabelText("JSON 文件");
+  const boundary = { value: "x".repeat(4 * 1024 * 1024 - 12) };
+  expect(new TextEncoder().encode(JSON.stringify(boundary))).toHaveLength(4 * 1024 * 1024);
+  await user.upload(input, new File([JSON.stringify(boundary, null, 2)], "formatted.json", { type: "application/json" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "预览" })).toBeEnabled());
+  await user.upload(input, new File([JSON.stringify({ value: "中".repeat(1_400_000) })], "large.json", { type: "application/json" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("JSON 内容不能超过 4 MiB");
+  expect(screen.getByRole("button", { name: "预览" })).toBeDisabled();
+  await user.upload(input, new File([" ".repeat(32 * 1024 * 1024 + 1)], "oversized.json", { type: "application/json" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("JSON 文件不能超过 32 MiB");
+});
+
 it("re-previews conflict choices and preserves the request key for a failed apply retry", async () => {
   const post = vi.fn().mockResolvedValueOnce({ changes: [], conflicts: [{ key: "a:name", moduleId: "a", field: "name", baseline: "old", file: "file", current: "current" }], token: "one" })
     .mockResolvedValueOnce({ changes: [{ moduleId: "a", field: "name", before: "current", after: "file" }], conflicts: [], token: "two" })

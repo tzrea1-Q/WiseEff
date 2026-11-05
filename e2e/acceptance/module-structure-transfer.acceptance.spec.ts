@@ -527,7 +527,9 @@ test("MODULE-STRUCTURE-EXPORT-001: complete filtered download, retry and reader 
   await exportButton.focus();
   await page.keyboard.press("Enter");
   const [response, download] = await Promise.all([responsePromise, downloadPromise]);
-  const document = JSON.parse(await readFile((await download.path())!, "utf8"));
+  const contents = await readFile((await download.path())!, "utf8");
+  const document = JSON.parse(contents);
+  expect(contents).toBe(JSON.stringify(document, null, 2));
   expect(download.suggestedFilename()).toBe("module-structure.json");
   expect(document).toMatchObject({ format: "wiseeff-module-structure", version: 1, source: { organizationId: org }, counts });
   expect(document.modules).toHaveLength(counts.modules);

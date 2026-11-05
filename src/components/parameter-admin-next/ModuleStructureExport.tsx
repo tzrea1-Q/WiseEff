@@ -27,7 +27,7 @@ export function ModuleStructureExport({ apiClient, organizationId, canExport }: 
         try {
           const document = await apiClient.post<{ counts: { modules: number; subjects: number } }>(
             `/api/v2/organizations/${encodeURIComponent(organizationId)}/module-structure/exports`, {});
-          download("module-structure.json", JSON.stringify(document), "application/json;charset=utf-8");
+          download("module-structure.json", JSON.stringify(document, null, 2), "application/json;charset=utf-8");
           setMessage(`已导出 ${document.counts.modules} 个模块，${document.counts.subjects} 个主体。`);
         } catch (error) { setMessage(presentError(error, "导出失败，请稍后重试。")); }
         finally { setBusy(false); }
