@@ -59,6 +59,7 @@ import type {
   catalogCreateNodeEnablementDraftRequestSchema,
   catalogDefinitionListResponseSchema,
   catalogDefinitionResponseSchema,
+  catalogProjectConfigurationsResponseSchema,
   catalogDefinitionRevisionListResponseSchema,
   catalogDefinitionRevisionResponseSchema,
   catalogDefinitionTimelineResponseSchema,
@@ -127,6 +128,7 @@ export type CatalogSubjectListResponse = z.infer<typeof catalogSubjectListRespon
 export type CatalogSubjectResponse = z.infer<typeof catalogSubjectResponseSchema>;
 export type CatalogDefinitionListResponse = z.infer<typeof catalogDefinitionListResponseSchema>;
 export type CatalogDefinitionResponse = z.infer<typeof catalogDefinitionResponseSchema>;
+export type CatalogProjectConfigurationsResponse = z.infer<typeof catalogProjectConfigurationsResponseSchema>;
 export type CatalogDefinitionRevisionListResponse = z.infer<
   typeof catalogDefinitionRevisionListResponseSchema
 >;

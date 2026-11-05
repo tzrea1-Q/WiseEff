@@ -378,10 +378,31 @@ export const catalogDefinitionDtoSchema = catalogObject({
     projectCount: z.number().int().nonnegative(),
     currentValueCount: z.number().int().nonnegative()
   }),
+  configurationSummary: catalogObject({
+    configuredProjectCount: z.number().int().nonnegative(),
+    configuredInstanceCount: z.number().int().nonnegative()
+  }).nullable().optional(),
   links: catalogObject({
     revisions: z.string(),
     timeline: z.string()
   })
+});
+
+export const catalogProjectConfigurationInstanceSchema = catalogObject({
+  kind: z.literal("instance"), bindingId: z.string(), projectId: z.string(), projectName: z.string(),
+  configSetId: z.string(), configSetName: z.string(), sourceOccurrenceId: z.string(), sourceFormat: z.enum(["dts", "json"]),
+  fileId: z.string(), fileVersionId: z.string(), fileName: z.string(), sourceLocator: z.record(z.string(), z.unknown()), sourceLocation: z.string(),
+  currentValueId: z.string(), definitionRevisionId: z.string(), definitionRevisionNumber: z.string(), effectiveRevisionId: z.string(),
+  unit: z.string().nullable(), definitionLifecycle: z.enum(["active", "deprecated", "retired"]),
+  valueState: z.enum(["present", "unset"]), valueKind: z.enum(["string", "number", "boolean", "string-array", "number-array", "json"]),
+  valuePreview: z.string(), valuePreviewTruncated: z.boolean(), rawValue: z.string().optional(),
+});
+
+export const catalogProjectConfigurationsResponseSchema = catalogObject({
+  items: z.array(catalogProjectConfigurationInstanceSchema),
+  summary: catalogObject({ configuredProjectCount: z.number().int().nonnegative(), configuredInstanceCount: z.number().int().nonnegative() }),
+  totalCount: z.number().int().nonnegative(), readAt: z.string(),
+  nextCursor: z.string().nullable(), continuedProjectId: z.string().nullable(), selected: catalogProjectConfigurationInstanceSchema.nullable(),
 });
 
 export const catalogTimelineFactDtoSchema = catalogObject({
@@ -1744,6 +1765,7 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogSubjectResponse: catalogSubjectResponseSchema,
   CatalogDefinitionListResponse: catalogDefinitionListResponseSchema,
   CatalogDefinitionResponse: catalogDefinitionResponseSchema,
+  CatalogProjectConfigurationsResponse: catalogProjectConfigurationsResponseSchema,
   CatalogDefinitionRevisionListResponse: catalogDefinitionRevisionListResponseSchema,
   CatalogDefinitionRevisionResponse: catalogDefinitionRevisionResponseSchema,
   CatalogDefinitionTimelineResponse: catalogDefinitionTimelineResponseSchema,
@@ -1897,6 +1919,13 @@ export const parameterCatalogCanonicalRoutes = [
     id: "catalog.getDefinition",
     method: "GET",
     path: "/api/v2/catalog/definitions/:definitionId",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.getProjectConfigurations",
+    method: "GET",
+    path: "/api/v2/catalog/definitions/:definitionId/project-configurations",
     module: "catalog",
     stability: "mvp"
   },
@@ -2203,6 +2232,7 @@ export const parameterCatalogRouteGates: Record<
   "catalog.listSubjectDefinitions": ["PCAT-API-02", "PCAT-API-11"],
   "catalog.listDefinitions": ["PCAT-API-02", "PCAT-API-11"],
   "catalog.getDefinition": ["PCAT-API-02", "PCAT-API-11"],
+  "catalog.getProjectConfigurations": ["PCAT-API-02", "PCAT-API-11"],
   "catalog.listDefinitionRevisions": ["PCAT-API-03", "PCAT-API-11"],
   "catalog.getDefinitionRevision": ["PCAT-API-03", "PCAT-API-11"],
   "catalog.listDefinitionTimeline": ["PCAT-API-03", "PCAT-API-11"],
@@ -2269,6 +2299,7 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.listSubjectDefinitions": "listSubjectDefinitions",
   "catalog.listDefinitions": "listDefinitions",
   "catalog.getDefinition": "getDefinition",
+  "catalog.getProjectConfigurations": "getProjectConfigurations",
   "catalog.listDefinitionRevisions": "listDefinitionRevisions",
   "catalog.getDefinitionRevision": "getDefinitionRevision",
   "catalog.listDefinitionTimeline": "listDefinitionTimeline",
@@ -2568,6 +2599,16 @@ export const parameterCatalogSchemaRegistry = {
     responseBody: "CatalogDefinitionResponse",
     additionalResponses: catalogReadErrors,
     successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.getProjectConfigurations": {
+    summary: "Read current project configuration instances for a definition",
+    tags: ["catalog"],
+    responseBody: "CatalogProjectConfigurationsResponse",
+    additionalResponses: catalogReadErrors,
+    requestParameters: [
+      { name: "cursor", in: "query" }, { name: "limit", in: "query" },
+      { name: "selectedBindingId", in: "query" }
+    ]
   },
   "catalog.listDefinitionRevisions": {
     summary: "List immutable definition revisions in reverse chronological order",

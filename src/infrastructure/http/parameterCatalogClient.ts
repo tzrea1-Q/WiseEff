@@ -39,6 +39,7 @@ import {
   catalogPublicationSurfaceResponseSchema,
   catalogDefinitionListResponseSchema,
   catalogDefinitionResponseSchema,
+  catalogProjectConfigurationsResponseSchema,
   catalogDefinitionRevisionListResponseSchema,
   catalogDefinitionRevisionResponseSchema,
   catalogDefinitionTimelineResponseSchema,
@@ -381,6 +382,13 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogDefinitionResponseSchema,
         "CatalogDefinitionResponse"
       ),
+    getProjectConfigurations: (definitionId: string, query?: { cursor?: string; selectedBindingId?: string }) => {
+      const params = new URLSearchParams();
+      if (query?.cursor) params.set("cursor", query.cursor);
+      if (query?.selectedBindingId) params.set("selectedBindingId", query.selectedBindingId);
+      return request("GET", `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}/project-configurations?${params}`,
+        catalogProjectConfigurationsResponseSchema, "CatalogProjectConfigurationsResponse");
+    },
     previewDefinitionDeletion: (definitionId: string) => request(
       "GET", `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}/deletion-preview`,
       catalogDefinitionDeletionPreviewResponseSchema, "CatalogDefinitionDeletionPreviewResponse"
@@ -1054,6 +1062,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.listSubjectDefinitions": "listSubjectDefinitions",
     "catalog.listDefinitions": "listDefinitions",
     "catalog.getDefinition": "getDefinition",
+    "catalog.getProjectConfigurations": "getProjectConfigurations",
     "catalog.listDefinitionRevisions": "listDefinitionRevisions",
     "catalog.getDefinitionRevision": "getDefinitionRevision",
     "catalog.listDefinitionTimeline": "listDefinitionTimeline",

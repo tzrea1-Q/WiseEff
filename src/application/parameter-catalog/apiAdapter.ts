@@ -13,6 +13,7 @@ export function createApiParameterCatalogRepository(
 ): ParameterCatalogRepository {
   return {
     listProtectedProjectBindings: (projectId) => client.listProtectedProjectBindings(projectId),
+    getProjectConfigurations: (definitionId, query) => client.getProjectConfigurations(definitionId, query),
     getCatalog: (query) => client.getCatalog(query),
     listSubjects: (query) => client.listSubjects(query),
     getSubject: (subjectId, query) => client.getSubject(subjectId, query),

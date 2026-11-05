@@ -1,0 +1,162 @@
+import "./helpers/loadAcceptanceEnvironment";
+import pg from "pg";
+import { expect, test } from "playwright/test";
+import { compileOrThrow, firstReleaseBundle, refreshReleaseSource } from "../../server/modules/catalog-kernel/runtime/catalogChain.fixture";
+import type { CatalogReleaseNode } from "../../server/modules/catalog-kernel/compiler/types";
+import { createCatalogInstaller } from "../../server/modules/catalog-kernel/install/installer";
+import { createCatalogKernel, jsonCatalogReleaseSource } from "../../server/modules/catalog-kernel/interface";
+import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId } from "../../server/modules/parameter-catalog-contract";
+import { createRegistrationService } from "../../server/modules/parameter-governance/registration";
+import { createSourceBackedBindingService } from "../../server/modules/parameter-bindings/binding/__fixtures__/sourceBackedBinding";
+import { createPostgresDatabase } from "../../server/shared/database/client";
+import { makeTestAuthContext } from "../../server/testing/authContext";
+import { createLocalObjectStore } from "../../server/modules/logs/objectStore";
+import { createConfigSet, addConfigSetFile } from "../../server/modules/parameter-files/configSetService";
+import { uploadProjectParameterFile } from "../../server/modules/parameter-files/service";
+import { registerCanonicalJsonSource } from "../../server/modules/parameter-files/canonicalJsonSource";
+import { createUserInvocation } from "../../server/modules/auth/trustedInvocation";
+import { createTrustedRefusalAuditSink } from "../../server/modules/audit/trustedRefusalSink";
+import { setParameterIdentityMode } from "../../server/modules/parameter-kernel/parameterIdentityMode";
+import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { acceptanceCast } from "./helpers/cast";
+import { apiRoute } from "./helpers/runtime";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { startDisposablePostCutoverRuntime, disposableRuntimeOutcomeFromTestInfo } from "./helpers/disposablePostCutoverRuntime";
+import { captureProcessEnvForDisposableRuntime, applyDisposableRuntimeEnv, restoreProcessEnvFromDisposableRuntime } from "./helpers/semanticBindingFixture";
+
+type Mutable<T> = T extends readonly (infer U)[] ? Mutable<U>[] : T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
+
+test.use({ viewport: { width: 1440, height: 900 } });
+test("reads grouped DTS and software instances with exact counts and full values", async ({ page, request }, testInfo) => {
+  // @acceptance PARLIB-INSTANCES-001
+  // @operation PARLIB-INSTANCES-001
+  test.setTimeout(180_000);
+  const environment = captureProcessEnvForDisposableRuntime();
+  if (!environment.databaseUrl) throw new Error("A dedicated PostgreSQL lane is required");
+  const runtime = await startDisposablePostCutoverRuntime(environment.databaseUrl, { label: "parlib_instances", catalog: "fixture-owned" });
+  applyDisposableRuntimeEnv(runtime);
+  const pool = new pg.Pool({ connectionString: runtime.databaseUrl });
+  const db = createPostgresDatabase(runtime.databaseUrl);
+  const storage = createLocalObjectStore(runtime.objectStoreRoot);
+  const organizationId = "org-chargelab";
+  const definitionId = ParameterDefinitionId("pdef_acme_power_iin_max");
+  const jsonDefinition = "pdef_parlib_software_value";
+  const fullValue = "software configuration ".repeat(12);
+  const fullSourceToken = JSON.stringify(fullValue).replace("software", "\\u0073oftware");
+  setParameterIdentityMode("semantic");
+  try {
+    const bundle = firstReleaseBundle();
+    const release = bundle.releases[0] as Mutable<CatalogReleaseNode>;
+    const template = release.documents.find((item) => item.kind === "definition");
+    if (!template || template.kind !== "definition") throw new Error("Missing definition fixture");
+    release.documents.push({ source: template.source, kind: "subject", normalizedDigest: template.normalizedDigest, content: {
+      id: "csub_parlib_software", kind: "configuration-schema", canonicalKey: "parlib.software", lifecycle: "active",
+      selector: { kind: "configuration-schema-id", value: "parlib.software", provenance: { source: template.source.path } }, subtype: {}, tombstone: null,
+    } });
+    const json = structuredClone(template);
+    Object.assign(json.content, { id: jsonDefinition, subjectId: "csub_parlib_software", propertyKey: "software_value" });
+    Object.assign(json.content.revision, { id: "drev_parlib_software_1", displayName: "软件配置值", valueSchema: { type: "string" },
+      matching: { ...json.content.revision.matching, selectorKind: "configuration-schema-id", sourceProperty: "software_value" } });
+    release.documents.push(json);
+    for (const [suffix, type] of [["empty", "string"], ["null", "null"], ["false", "boolean"]] as const) {
+      const typed = structuredClone(json);
+      Object.assign(typed.content, { id: `pdef_parlib_${suffix}`, propertyKey: `software_${suffix}` });
+      Object.assign(typed.content.revision, { id: `drev_parlib_${suffix}_1`, displayName: `软件 ${suffix}`, valueSchema: { type },
+        matching: { ...typed.content.revision.matching, sourceProperty: `software_${suffix}` } });
+      release.documents.push(typed);
+    }
+    const unused = structuredClone(template);
+    Object.assign(unused.content, { id: "pdef_parlib_unused", propertyKey: "unused_parameter" });
+    Object.assign(unused.content.revision, { id: "drev_parlib_unused_1", displayName: "未使用的定义",
+      matching: { ...unused.content.revision.matching, sourceProperty: "unused_parameter" } });
+    release.documents.push(unused);
+    const boolean = structuredClone(template);
+    Object.assign(boolean.content, { id: "pdef_parlib_boolean", propertyKey: "parlib_enabled" });
+    Object.assign(boolean.content.revision, { id: "drev_parlib_boolean_1", displayName: "设备使能", valueSchema: { type: "boolean" },
+      matching: { ...boolean.content.revision.matching, sourceProperty: "parlib_enabled" } });
+    delete boolean.content.revision.unit;
+    release.documents.push(boolean);
+    refreshReleaseSource(release);
+    const compiled = compileOrThrow(bundle);
+    const installed = await createCatalogInstaller(pool).installPublishedRelease({ mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: compiled.aggregateDigest });
+    expect(installed.ok).toBe(true);
+    const pin = { id: compiled.release.id, digest: compiled.release.digest };
+    await pool.query("insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,source_key) values ('parlib-instances-attr',$1,'driver-registration','Driver','compatible:acme,power')", [organizationId]);
+    await pool.query("insert into public.driver_registrations(attribution_subject_id,driver_nature,instance_cardinality) values ('parlib-instances-attr','physical-device','multiple')");
+    await pool.query("insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin) values ('parlib-instances-module',$1,'参数模块','parlib-instances-module',1,'business','curated')", [organizationId]);
+    const register = (subjectId: string, subjectKind: "driver" | "configuration-schema") => createRegistrationService(pool).execute({
+      kind: "register", organizationId, subjectId: CatalogSubjectId(subjectId), subjectKind, expectedRelease: pin, placement: { mode: "use-default" },
+      destinationModuleId: "parlib-instances-module", method: "explicit", proof: { reason: "browser fixture" }, idempotencyKey: `register-${subjectId}`,
+      context: { actorKind: "org-admin", principalId: acceptanceCast.xuYun.userId },
+    });
+    const driver = await register("csub_acme_power", "driver");
+    const software = await register("csub_parlib_software", "configuration-schema");
+    if (!driver.ok || !software.ok) throw new Error("Registration fixture failed");
+    const loaded = await createCatalogKernel(pool).loadCurrentCatalog(pin);
+    if (!loaded.ok) throw new Error("Catalog fixture unavailable");
+    for (const [projectId, name, count] of [["parlib-instances-a", "多实例项目", 2], ["parlib-instances-b", "软件项目", 1]] as const) {
+      await pool.query("insert into public.projects(id,organization_id,name,code,status) values ($1,$2,$3,$1,'initialized')", [projectId, organizationId, name]);
+      for (let index = 0; index < count; index += 1) {
+        const binding = await createSourceBackedBindingService(pool, { objectStore: storage, sourceRawValue: `<0x${(1001 + index).toString(16)}>`, initialPayload: { kind: "number", value: 1001 + index } }).stabilize({
+          snapshot: loaded.value, organizationId, projectId, logicalNodeId: `${projectId}-node-${index}`, registrationId: driver.value.registrationId,
+          definitionId, effectiveRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_1"), expectedEffectiveRevisionId: null,
+        });
+        if (!binding.ok) throw new Error("DTS fixture failed");
+      }
+    }
+    const booleanBinding = await createSourceBackedBindingService(pool, { objectStore: storage, sourceRawValue: null,
+      initialPayload: { kind: "boolean", value: true } }).stabilize({ snapshot: loaded.value, organizationId,
+      projectId: "parlib-instances-a", logicalNodeId: "parlib-boolean-node", registrationId: driver.value.registrationId,
+      definitionId: ParameterDefinitionId("pdef_parlib_boolean"), effectiveRevisionId: DefinitionRevisionId("drev_parlib_boolean_1"), expectedEffectiveRevisionId: null });
+    if (!booleanBinding.ok) throw new Error("Boolean fixture failed");
+    const auth = makeTestAuthContext({ userId: acceptanceCast.xuYun.userId, organizationId, permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"] });
+    const set = await createConfigSet(db, auth, { projectId: "parlib-instances-b", name: "软件配置集" });
+    const uploaded = await uploadProjectParameterFile(db, storage, auth, { projectId: "parlib-instances-b", fileName: "settings.json", bytes: Buffer.from(`{"software_value":${fullSourceToken},"software_empty":"","software_null":null,"software_false":false}`) });
+    await addConfigSetFile(db, auth, { configSetId: set.id, fileId: uploaded.file.id, role: "base", sortOrder: 0 });
+    await db.transaction((tx) => registerCanonicalJsonSource(tx, storage, auth, loaded.value, {
+      projectId: "parlib-instances-b", configSetId: set.id, fileId: uploaded.file.id, fileVersionId: uploaded.version.id,
+      configurationSchemaId: "parlib.software", rootPointer: "", mappings: [{ definitionId: jsonDefinition, pointer: "/software_value" },
+        ...["empty", "null", "false"].map((suffix) => ({ definitionId: `pdef_parlib_${suffix}`, pointer: `/software_${suffix}` }))],
+      invocation: createUserInvocation(auth), requestId: "parlib-json", refusalSink: createTrustedRefusalAuditSink(db),
+    }));
+    const headers = authHeadersForRole("admin");
+    const response = await request.get(apiRoute(`/api/v2/catalog/definitions/${definitionId}/project-configurations`), { headers });
+    expect(response.status()).toBe(200);
+    expect((await response.json()).summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+    for (const [suffix, raw] of [["empty", '""\n'], ["null", "null\n"], ["false", "false\n"]]) {
+      const typed = await request.get(apiRoute(`/api/v2/catalog/definitions/pdef_parlib_${suffix}/project-configurations`), { headers });
+      expect(typed.status()).toBe(200);
+      expect((await typed.json()).items[0].valuePreview).toBe(raw);
+    }
+    await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}&tab=configurations`);
+    await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("已配置项目 2 · 已配置实例 3");
+    const group = page.getByRole("table", { name: "多实例项目 的当前配置" });
+    await expect(group.locator("tbody tr")).toHaveCount(2);
+    await group.getByRole("button", { name: /查看 .* 的完整值/ }).first().click();
+    await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(/<0x3e[9a]>/);
+    await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${jsonDefinition}&tab=configurations`);
+    await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("软件配置集");
+    await page.getByRole("button", { name: "查看 settings.json 的完整值" }).click();
+    await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(fullSourceToken);
+    await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=pdef_parlib_boolean&tab=configurations`);
+    await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("存在");
+    await page.getByRole("button", { name: /查看 .* 的完整值/ }).click();
+    await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText("布尔属性以存在表示");
+    await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=pdef_parlib_unused&tab=configurations`);
+    await expect(page.getByText("当前没有可显示的项目配置。")).toBeVisible();
+    await page.route("**/project-configurations*", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR" } }) }));
+    await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}&tab=configurations`);
+    await expect(page.getByText(/当前项目配置不可用/)).toBeVisible();
+    await page.getByRole("tab", { name: "定义", exact: true }).click();
+    await expect(page.getByRole("tabpanel", { name: "定义" })).toContainText("定义说明");
+    await page.unroute("**/project-configurations*");
+    await page.getByRole("tab", { name: "当前项目配置" }).click();
+    await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("已配置实例 3");
+    await recordOperationEvidence({ operationId: "PARLIB-INSTANCES-001", title: testInfo.title, status: "passed", page, testInfo,
+      assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: response.status(), responseSummary: "Two projects, three exact DTS instances." }] });
+  } finally {
+    setParameterIdentityMode(null);
+    await db.close(); await pool.end();
+    try { await runtime.dispose(disposableRuntimeOutcomeFromTestInfo(testInfo)); } finally { restoreProcessEnvFromDisposableRuntime(environment); }
+  }
+});
