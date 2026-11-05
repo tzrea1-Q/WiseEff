@@ -397,6 +397,7 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("combobox", { name: "项目使用" })).toHaveAttribute("data-value", "parlib-instances-b");
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}`);
+    await expect(page).toHaveURL(/catalogReleaseId=/);
     const definitionLink = await copyLink();
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(definitionLink).search}`);
     await expect(page.getByRole("tabpanel", { name: "定义" })).toBeVisible();
