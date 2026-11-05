@@ -63,8 +63,8 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
           where head.definition_id = definition.id)`, [definitionId]);
       if (!definition.rows.length) throw new ApiError("NOT_FOUND", "Definition not found.");
       if (identity.scope.subjects.kind === "only" && !identity.scope.subjects.ids.some((id) => id === definition.rows[0]!.subject_id)) throw new ApiError("NOT_FOUND", "Definition not found.");
-      if (projectId && !(await tx.query("select 1 from public.projects where organization_id=$1 and id=$2", [organizationId, projectId])).rows.length) throw new ApiError("NOT_FOUND", "Project not found.");
-      if (configSetId && !(await tx.query("select 1 from public.dts_config_set where organization_id=$1 and id=$2 and ($3::text is null or project_id=$3)", [organizationId, configSetId, projectId ?? null])).rows.length) throw new ApiError("NOT_FOUND", "Configuration set not found.");
+      if (projectId && !(await tx.query("select 1 from public.projects where organization_id=$1 and id=$2", [organizationId, projectId])).rows.length) throw new ApiError("NOT_FOUND", "Project not found.", { reason: "invalid-filter" });
+      if (configSetId && !(await tx.query("select 1 from public.dts_config_set where organization_id=$1 and id=$2 and ($3::text is null or project_id=$3)", [organizationId, configSetId, projectId ?? null])).rows.length) throw new ApiError("NOT_FOUND", "Configuration set not found.", { reason: "invalid-filter" });
       await assertCurrentInstancesValid(tx, organizationId, [definitionId]);
       const params = [organizationId, [definitionId], projectId ?? null, configSetId ?? null, search ?? null, includeUnconfigured === "true"];
       const configured = `value_state = 'present' and source_ref <> 'canonical-binding-identity'`;

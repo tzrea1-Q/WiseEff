@@ -12,7 +12,7 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   onChange: (update: { instance?: string | null; instanceCursor?: string | null; configProjectId?: string | null; configSetId?: string | null; configSearch?: string | null; includeUnconfigured?: string | null }) => void;
 }) {
   const [loaded, setLoaded] = useState<{ organizationId?: string; definitionId: string; data: CatalogProjectConfigurationsResponse } | null>(null);
-  const [state, setState] = useState<"loading" | "error" | "forbidden" | "stale" | "missing" | "ready">("loading");
+  const [state, setState] = useState<"loading" | "error" | "forbidden" | "stale" | "missing" | "invalid-filter" | "ready">("loading");
   const [retry, setRetry] = useState(0);
   const [searchInput, setSearchInput] = useState(search ?? "");
   useEffect(() => setSearchInput(search ?? ""), [search]);
@@ -28,6 +28,7 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
         if (!active) return;
         setState(error instanceof WiseEffApiError && error.code === "FORBIDDEN" ? "forbidden"
           : error instanceof WiseEffApiError && error.details.reason === "invalid-cursor" ? "stale"
+          : error instanceof WiseEffApiError && error.details.reason === "invalid-filter" ? "invalid-filter"
           : error instanceof WiseEffApiError && error.code === "NOT_FOUND" && selectedId ? "missing" : "error");
       });
     return () => { active = false; };
@@ -36,6 +37,8 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   if (state === "loading" || (loaded && (loaded.organizationId !== organizationId || loaded.definitionId !== definitionId))) return <SectionSkeleton label="正在读取当前项目配置" />;
   const result = loaded?.data;
   if (state === "forbidden") return <SectionError message="没有权限读取当前项目配置。" onRetry={() => setRetry((value) => value + 1)} />;
+  if (state === "invalid-filter") return <div role="alert"><p>所选项目或配置集在当前组织中不可用。</p>
+    <button type="button" className="button subtle sm" onClick={() => onChange({ configProjectId: null, configSetId: null, instanceCursor: null })}>重置项目和配置集</button></div>;
   if (state === "stale" || state === "missing") return <div role="alert">
     <p>{state === "stale" ? "项目配置已变化，请返回第一页重新读取。" : "选中的实例已不可用，请重新选择。"}</p>
     <button type="button" className="button subtle sm" onClick={() => onChange({ instance: null, ...(state === "stale" ? { instanceCursor: null } : {}) })}>

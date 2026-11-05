@@ -51,6 +51,16 @@ it("explains a stale page and lets the reader restart from the first page", asyn
   expect(onChange).toHaveBeenCalledWith({ instance: null, instanceCursor: null });
 });
 
+it("allows resetting a project filter that is unavailable in the current Organization", async () => {
+  const onChange = vi.fn();
+  const repository = { ...createMockParameterCatalogRepository(), getProjectConfigurations: vi.fn()
+    .mockRejectedValue(new WiseEffApiError("NOT_FOUND", "missing", { reason: "invalid-filter" }, "request")) };
+  render(<ProjectConfigurations repository={repository} organizationId="org-b" definitionId="definition" projectId="old-project" onChange={onChange} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("所选项目或配置集在当前组织中不可用");
+  fireEvent.click(screen.getByRole("button", { name: "重置项目和配置集" }));
+  expect(onChange).toHaveBeenCalledWith({ configProjectId: null, configSetId: null, instanceCursor: null });
+});
+
 it("labels a DTS boolean as present even when its source value has no text", async () => {
   const data = response("项目", "");
   if (data.items[0]?.kind !== "instance") throw new Error("Expected an instance");
