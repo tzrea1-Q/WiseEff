@@ -59,17 +59,19 @@ export function pinnedDtsPreprocessor() {
 }
 
 /** A missing sandbox is unavailable; request handling never pulls images or uses host CPP. */
-export async function probeDtsPreprocessor() {
+export async function probeDtsPreprocessor(mode: "runtime" | "bootstrap-diagnostic" = "runtime") {
   const pin = pinnedDtsPreprocessor();
-  if (!pin) return { available: false, version: null, reason: "Pinned preprocessing capability is unavailable.", diagnostic: "pin:missing" };
+  if (!pin) return { available: false, version: null, reason: "Pinned preprocessing capability is unavailable.", diagnostic: "pin:missing", infoElapsedMs: null };
   const probe = await boundedDocker(["image", "inspect", pin.image, "--format", "{{.Os}}/{{.Architecture}}"], 5000, 8192);
-  const limits = probe.status === 0 ? await boundedDocker(["info", "--format", "{{.MemoryLimit}} {{.SwapLimit}} {{.PidsLimit}}"], 5000, 8192) : null;
+  const started = performance.now();
+  const limits = probe.status === 0 ? await boundedDocker(["info", "--format", "{{.MemoryLimit}} {{.SwapLimit}} {{.PidsLimit}}"], mode === "runtime" ? 5000 : 30000, 8192) : null;
+  const infoElapsedMs = limits ? Math.round(performance.now() - started) : null;
   const available = probe.status === 0 && probe.stdout.trim() === pin.platform && limits?.status === 0 && limits.stdout.trim() === "true true true";
   const failure = (result: NonNullable<typeof limits>) => result.limitReason ?? (result.error ? "launch-error" : result.status !== 0 ? "exit-nonzero" : "unexpected-result");
   const diagnostic = available ? null : probe.status !== 0 || probe.stdout.trim() !== pin.platform
     ? `image-inspect:${failure(probe)}` : `docker-info:${failure(limits!)}`;
   return { available, version: pin.version,
-    reason: available ? null : "受控预处理工具或内存隔离不可用；请联系管理员配置固定工具链，或继续编辑原始源码。", diagnostic };
+    reason: available ? null : "受控预处理工具或内存隔离不可用；请联系管理员配置固定工具链，或继续编辑原始源码。", diagnostic, infoElapsedMs };
 }
 function dockerEnvironment(): NodeJS.ProcessEnv {
   return { PATH: process.env.PATH, HOME: process.env.HOME, LC_ALL: "C", LANG: "C" };
