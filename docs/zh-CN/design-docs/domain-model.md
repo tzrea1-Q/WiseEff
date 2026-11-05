@@ -45,6 +45,7 @@
 - 组织管理运营调用者的 home organization：成员、入职、显示名。一人只属于一个 Organization。
 - 停用用户不能执行任何写操作，但历史审计仍保留用户信息。
 - 组织管理未提供 `ProjectMember` 管理产品，但不能据此推断目录使用查询无项目限制。在源码基线 `67d4a77325b6009b77c2373bd788298a6d022bcf`，`parameter-catalog-api/productionWire.ts` 消费数据库实际角色绑定中的明确项目 ID 或组织级授权，`rootUsageScope.integration.test.ts` 验证该限制。项目列表可见性和目录使用投影授权是不同决策。
+- 后续设计已接受，实施待完成：[ADR-0055](adr-0055-parameter-configuration-reads-share-organization-scope.md) 明确将参数配置数量、实例读取与对比统一为具有 `parameter:view` 的启用用户可读取的组织范围，保留项目及操作写权限。实施时替换前述当前配置统计限制；能够读取定义本身仍不授予配置查看权，其他治理和引用权限不扩大。
 
 ### 2.2 项目
 

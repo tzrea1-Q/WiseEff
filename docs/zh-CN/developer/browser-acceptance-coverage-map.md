@@ -1,5 +1,21 @@
 # 浏览器验收覆盖图
 
+参数库 #1513 新增以下需求／操作，当前实施及原生浏览器证据待完成，测试归属 `e2e/acceptance/parameter-library.acceptance.spec.ts`：
+
+- `PARLIB-READ-001`：浏览全局定义、搜索三类主体并阅读确切修订历史。
+
+- `PARLIB-SCOPE-001`：读取组织配置并验证项目写入权限没有扩大。
+
+- `PARLIB-INSTANCES-001`：查看全部当前实例及准确的已配置项目／值数量。
+
+- `PARLIB-FILTER-001`：筛选项目使用情况并查看无当前配置的项目。
+
+- `PARLIB-COMPARE-001`：选择确切实例基准并查看保守的类型化对比。
+
+- `PARLIB-RETURN-001`：打开确切项目／配置集／Binding 并返回参数库上下文。
+
+- `PARLIB-SHARE-001`：分享当前视图并复制选定的完整原始值。
+
 `MODULE-STRUCTURE-MIXED-001`：在 1440×900 下，管理员一次确认混合结构更新。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
 
 `MODULE-STRUCTURE-COPY-001`：在 1440×900 下，管理员向非空目标组织复制模块时确认复用与新建。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。

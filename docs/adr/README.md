@@ -63,3 +63,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0052](0052-shared-source-versions-pin-project-dependency-closures.md) | Shared source versions pin complete project dependency closures |
 | [0053](0053-business-modules-hold-subjects-and-drivers-own-child-nodes.md) | Business modules hold subjects; drivers own their child nodes |
 | [0054](0054-module-structure-transfer-is-explicit-organization-governance.md) | Explicit organization-governed module structure transfer (implemented in PR #1505) |
+| [0055](0055-parameter-configuration-reads-share-organization-scope.md) | Parameter configuration reads share Organization scope (accepted design; implementation pending) |
