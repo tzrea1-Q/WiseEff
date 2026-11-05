@@ -246,6 +246,7 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
     await selectControlOption(page.getByRole("combobox", { name: "项目", exact: true }), "parlib-instances-b");
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
+    await expect(page.getByRole("tabpanel", { name: "对比" })).toContainText("已配置项目 1 · 已配置实例 1");
     await expect(page.getByRole("tabpanel", { name: "对比" })).toContainText("筛选结果 1 条");
     await expect(page.getByRole("table", { name: "软件项目 的当前配置" })).toBeVisible();
     await selectControlOption(page.getByRole("combobox", { name: "项目", exact: true }), "parlib-instances-a");
@@ -318,6 +319,10 @@ test("reads grouped DTS and software instances with exact counts and full values
     expect(listLink).toContain("configured=true");
     expect(listLink).toContain("usageProjectId=parlib-instances-b");
     await expect(page).toHaveURL(/usageProjectId=parlib-instances-b/);
+    await expect(page.getByText("数量为所选项目已配置数量")).toBeVisible();
+    const currentLimit = page.getByRole("row").filter({ hasText: "iin_max" });
+    await expect(currentLimit.getByRole("cell").nth(4)).toHaveText("1");
+    await expect(currentLimit.getByRole("cell").nth(5)).toHaveText("1");
     await page.reload();
     await expect(page.getByRole("combobox", { name: "项目使用" })).toHaveAttribute("data-value", "parlib-instances-b");
     await page.goBack();

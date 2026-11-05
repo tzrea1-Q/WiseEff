@@ -593,7 +593,7 @@ async function handleListDefinitions(
     projectScope: scope.projectScope,
     definitionIds: [...new Set(page.items.map((definition) => definition.id))],
   });
-  const configurationSummaries = await ports.configurationSummaries?.(scope.organizationId, page.items.map((definition) => definition.id));
+  const configurationSummaries = await ports.configurationSummaries?.(scope.organizationId, page.items.map((definition) => definition.id), parsed.query.usageProjectId);
   const items = [];
   for (const definition of page.items) {
     const projection = registrations.get(definition.subjectId);

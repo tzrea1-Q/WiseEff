@@ -707,7 +707,7 @@ const createReadPorts = (
     readiness: createKernelReadiness(runtime, pool, db, catalogPublication),
     registration: createRegistrationProjectionFromQueries(queries),
     usage: createUsageProjectionFromQueries(usage),
-    configurationSummaries: (organizationId, definitionIds) => summarizeCurrentInstances(pool, organizationId, definitionIds),
+    configurationSummaries: (organizationId, definitionIds, projectId) => summarizeCurrentInstances(pool, organizationId, definitionIds, projectId),
     selectConfiguredDefinitions: (organizationId, definitionIds, projectId) => selectConfiguredDefinitions(pool, organizationId, definitionIds, projectId),
     timeline: kernelOnlyTimelineComposer,
     authenticate: authenticateCatalog(resolveAuth, db),
