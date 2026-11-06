@@ -944,7 +944,7 @@ function AppShell({
     };
   }, []);
 
-  // Unsubmitted parameter drafts must survive accidental reloads/navigation.
+  // Local parameter edits must survive accidental reloads/navigation.
   useEffect(() => {
     const guardUnload = (event: BeforeUnloadEvent) => {
       if (unsavedParameterWorkCount() > 0) {
