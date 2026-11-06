@@ -59,7 +59,7 @@ it("keeps a one-project right side empty until chosen and copies a complete empt
   render(<Harness repository={repositoryWith([item])} />);
   expect(await screen.findByText("布尔属性存在，无值文本")).toBeVisible();
   expect(screen.getByText(/只有一个已配置项目/)).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: "复制基准实例完整原值" }));
+  fireEvent.click(screen.getByRole("button", { name: "复制配置：基准实例完整原值" }));
   await waitFor(() => expect(write).toHaveBeenCalledWith(""));
   await selectControlOption(screen.getByRole("combobox", { name: "右侧项目" }), "Only");
   expect(await screen.findByText("原文相同")).toBeVisible();
@@ -77,9 +77,9 @@ it("honors linked instances, preserves incompatible semantics and never substitu
   expect(screen.queryByText("truncated preview")).not.toBeInTheDocument();
   expect(onChange).not.toHaveBeenCalled();
   const write = vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("denied")).mockResolvedValueOnce();
-  fireEvent.click(screen.getByRole("button", { name: "复制基准实例完整原值" }));
+  fireEvent.click(screen.getByRole("button", { name: "复制配置：基准实例完整原值" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("复制失败");
-  fireEvent.click(screen.getByRole("button", { name: "复制基准实例完整原值" }));
+  fireEvent.click(screen.getByRole("button", { name: "复制配置：基准实例完整原值" }));
   await waitFor(() => expect(write).toHaveBeenLastCalledWith("<0x3e9>"));
   expect(within(screen.getByRole("textbox", { name: "基准实例原值" })).getByText("<0x3e9>")).toBeVisible();
   write.mockRestore();

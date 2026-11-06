@@ -316,7 +316,7 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
     for (const [label, expected] of [["基准实例", "<0x3e9>"], ["目标实例", "<0x3ea>"]]) {
       await expect(page.getByRole("textbox", { name: `${label}原值` })).toContainText(expected);
-      await page.getByRole("button", { name: `复制${label}完整原值` }).click();
+      await page.getByRole("button", { name: `复制配置：${label}完整原值` }).click();
       expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(expected);
     }
     const comparisonLink = page.url();
@@ -387,7 +387,7 @@ test("reads grouped DTS and software instances with exact counts and full values
     await selectControlOption(page.getByRole("combobox", { name: "右侧项目" }), "parlib-instances-b");
     const jsonSource = page.getByRole("textbox", { name: "基准实例原值" }).locator("code");
     await expect.poll(async () => (await jsonSource.allTextContents()).join("")).toBe(fullSourceToken);
-    await page.getByRole("button", { name: "复制基准实例完整原值" }).click();
+    await page.getByRole("button", { name: "复制配置：基准实例完整原值" }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(fullSourceToken);
     await page.getByRole("textbox", { name: "基准实例原值" }).focus();
     await expect(page.getByRole("textbox", { name: "基准实例原值" })).toBeFocused();
