@@ -737,8 +737,8 @@ export function CatalogPage({
     []
   );
   const navigatorNodes = useMemo(
-    () => buildCatalogModuleTree(navigationSubjects, describeSubject, modules),
-    [navigationSubjects, describeSubject, modules]
+    () => buildCatalogModuleTree(navigationSubjects, describeSubject, modules, { nestOwnedNodeTypes: libraryMode }),
+    [navigationSubjects, describeSubject, modules, libraryMode]
   );
   const totalCount = snapshot?.definitions.totalCount ?? null;
   const scopedSubjectCount = anchor.moduleNodeId
@@ -787,7 +787,7 @@ export function CatalogPage({
   };
 
   const selectSubject = (subjectId: string | null) => {
-    // A driver leaf replaces the module selection, including one in another branch.
+    // An exact subject replaces the module selection, including one in another branch.
     commitAnchor({ ...anchor, subjectId, moduleNodeId: null, definitionId: null, cursor: null, cursorTrail: null }, "push");
     setInspectorOpen(false);
   };
@@ -1109,7 +1109,7 @@ export function CatalogPage({
     >
       <NavigatorWorkbench
         pageKey={pageKey}
-        navigatorLabel={libraryMode ? "主体导航" : catalogNavigatorLabel}
+        navigatorLabel={libraryMode ? "模块导航" : catalogNavigatorLabel}
         resizableNavigator
         taskLabel={catalogListLabel}
         toolbar={<>
@@ -1208,16 +1208,9 @@ export function CatalogPage({
         </> : undefined}
         navigator={!unpublished && snapshot ? <>
           <CatalogModuleNavigator
-            ariaLabel={libraryMode ? "参数定义主体树" : undefined}
-            searchLabel={libraryMode ? "搜索主体" : undefined}
-            nodes={libraryMode ? (["driver", "node-type", "configuration-schema"] as const).map((type) => ({
-              id: `group:${type}`, kind: "unregistered-group" as const, displayName: catalogSubjectTypeLabel(type),
-              subjectCount: navigationSubjects.filter((item) => item.type === type).length,
-              children: navigationSubjects.filter((item) => item.type === type).map((item) => ({
-                id: `subject:${item.id}`, kind: "subject" as const, displayName: item.canonicalName,
-                meta: describeSubject(item), subjectType: item.type, subjectCount: 0, subjectId: item.id, children: []
-              }))
-            })) : navigatorNodes}
+            searchLabel={libraryMode ? "搜索模块或主体" : undefined}
+            defaultExpandDepth={libraryMode ? 1 : 0}
+            nodes={navigatorNodes}
             selectedId={anchor.subjectId ? `subject:${anchor.subjectId}` : anchor.moduleNodeId}
             onSelectNode={selectNavigatorNode}
           />

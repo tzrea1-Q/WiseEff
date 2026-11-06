@@ -120,8 +120,8 @@ function TreeNode({
  * Organization module navigator for the restored definition workspace.
  *
  * One tree carries the whole navigation: maintained modules are the branches and
- * every subject is a leaf (registered subjects under their module, subjects with
- * no placement yet under one `待登记主体` branch). Selecting a module scopes the
+ * subjects sit under their module (library node types may nest under a driver;
+ * subjects with no placement stay under `待登记主体`). Selecting a module scopes the
  * collection to the node and its whole subtree, selecting a subject scopes it to
  * that subject, and clearing the selection returns to the complete organization
  * collection.

@@ -37,6 +37,42 @@ import type { CatalogModule } from "./catalogModuleScope";
 
 type PageProps = ComponentProps<typeof CatalogPage>;
 
+it("browses library modules with owned node types and preserves exact subject selection through history", async () => {
+  const repository = createMockParameterCatalogRepository();
+  const driver = { ...registeredSubject, canonicalName: "vendor,battery" };
+  const child = { ...driver, id: "battery-node", type: "node-type" as const, canonicalName: "battery_cell", ownerSubjectId: driver.id };
+  repository.listSubjects = vi.fn(async (query) => ({ items: query?.lifecycle === "retired" ? [] : [driver, child],
+    catalogReleaseId: CATALOG_RELEASE_ID, totalCount: query?.lifecycle === "retired" ? 0 : 2, hasMore: false, nextCursor: null }));
+  repository.getSubject = vi.fn(async (id) => ({ item: id === child.id ? child : driver }));
+  const listDefinitions = vi.spyOn(repository, "listDefinitions");
+  const listSubjectDefinitions = vi.spyOn(repository, "listSubjectDefinitions");
+  const onHref = vi.fn();
+  render(<CatalogHarness libraryMode actor="user" repository={repository} onHref={onHref}
+    initialSearch={`?catalogReleaseId=${CATALOG_RELEASE_ID}`}
+    moduleRegistry={moduleRegistry([
+      { id: "power", name: "Power", parentId: null, sortOrder: 0 },
+      { id: CATALOG_MODULE_ID, name: "Battery", parentId: "power", sortOrder: 0 }
+    ])} />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "展开 Battery" }));
+  expect(screen.getByRole("button", { name: "选择主体 vendor,battery" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "选择主体 battery_cell" })).not.toBeInTheDocument();
+  await user.type(screen.getByRole("searchbox", { name: "搜索模块或主体" }), "battery_cell");
+  expect(screen.getByRole("button", { name: /^Power\s*2$/ })).toBeVisible();
+  expect(screen.getByRole("button", { name: "选择主体 vendor,battery" })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "选择主体 battery_cell" }));
+  await waitFor(() => expect(listSubjectDefinitions).toHaveBeenCalledWith(child.id, expect.anything()));
+  expect(listSubjectDefinitions.mock.lastCall?.[1]?.placementModuleId).toBeUndefined();
+  expect(parseCatalogUrlAnchor(onHref.mock.lastCall![0].split("?")[1])).toMatchObject({ subjectId: child.id, moduleNodeId: null, cursor: null });
+  await user.clear(screen.getByRole("searchbox", { name: "搜索模块或主体" }));
+  expect(screen.getByRole("button", { name: "选择主体 battery_cell" })).toHaveAttribute("aria-pressed", "true");
+  await user.click(screen.getByRole("button", { name: /^Power\s*2$/ }));
+  await waitFor(() => expect(listDefinitions).toHaveBeenLastCalledWith(expect.objectContaining({ placementModuleId: "power" })));
+  expect(parseCatalogUrlAnchor(onHref.mock.lastCall![0].split("?")[1])).toMatchObject({ subjectId: null, moduleNodeId: "power" });
+  await user.click(screen.getByRole("button", { name: "后退" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "选择主体 battery_cell" })).toHaveAttribute("aria-pressed", "true"));
+});
+
 it("keeps detail tab panels addressable and switches them with the keyboard", async () => {
   render(<CatalogHarness libraryMode repository={createMockParameterCatalogRepository()} actor="user"
     initialSearch={`?definitionId=${CATALOG_DEFINITION_ID}&catalogReleaseId=${CATALOG_RELEASE_ID}`} />);
