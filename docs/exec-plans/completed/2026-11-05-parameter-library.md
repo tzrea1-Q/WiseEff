@@ -1,6 +1,8 @@
 # Parameter library implementation
 
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-11-05-parameter-library.md)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-11-05-parameter-library.md)
+
+Implementation and independent review are complete. [PR #1521](https://github.com/tzrea1-Q/WiseEff/pull/1521) owns final candidate CI and human review; this archive does not assert merge readiness, main integration or deployment.
 
 Implement [specification #1513](https://github.com/tzrea1-Q/WiseEff/issues/1513) and the [accepted design](../../design-docs/2026-11-05-parameter-library-design.md). Reuse the published Catalog, canonical current Binding/value ownership and existing project editor. Keep global definitions separate from Organization-scoped configuration reads; preserve write authorization and source integrity. No second value store or deployment is planned.
 
@@ -34,6 +36,8 @@ At integration `5a67ec729`, build, changed-file static coverage, UI standards, d
 
 Independent Standards and Spec reviews of `84d7f6d5d` found one P2 each: list configuration filtering/counts need one coherent snapshot, and historical comparisons need an explicitly labelled latest published revision. A single implementation agent fixed both in `1b1b2414e`, integrated by `48892bb9c`. Real PostgreSQL checks passed 53/53, frontend 73/73, and the extended real-API browser scenario 1/1 at 1440×900; changed-file static checks passed. The browser displays historical/value revision #1, effective revision #2 and current published revision #3 distinctly. The reviewers found no other actionable issues. Final broad CI and human effect approval remain pending; no merge or deployment is authorized.
 
+CI run `42134110472` at `ba376920f` passed all L1 jobs, smoke and accessibility. Its visual lane found a product regression (an empty notice shifted the project workbench) and a test-helper race (a dialog hid the hint during dismissal). Commit `64c88cdd8` fixes both without changing baselines, thresholds or visible-hint failure handling. Component checks passed 75/75, the helper browser regression 1/1, and clean CI-seeded real-API warmup plus compact dark checks 2/2; changed-file lint passed. The 1440×900 real-API layout was inspected. Darwin visual comparisons against older platform baselines failed and remain historical failed evidence; final Linux comparison belongs to the PR's current-head CI. Initial compact runs on an adopted development database were not equivalent to CI; the clean browser seed corrected the environment without changing the 200-control gate.
+
 ## Documentation Impact Matrix
 
 | Area | Action | Paths and decision |
@@ -51,4 +55,4 @@ Independent Standards and Spec reviews of `84d7f6d5d` found one P2 each: list co
 
 ## Documentation Update Gate
 
-Before moving this plan to completed, resolve every Update/Review row with changes or an explicit unchanged finding, run documentation checks, and record actual runtime evidence and PR state. No acceptance has run at plan creation.
+All impact rows are resolved above. Bilingual documentation, generated contracts and runtime evidence are recorded; documentation checks passed on the integrated candidate. Final CI, effect approval and PR readiness remain distinct states in PR #1521 rather than being inferred from this implementation archive.

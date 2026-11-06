@@ -12,7 +12,7 @@ WiseEff 主要用于 PC。[界面质量检查清单](developer/ui-quality-checkl
 
 ## 使用方式
 
-- [参数库](exec-plans/active/2026-11-05-parameter-library.md)：#1513–#1520，完成全局定义阅读、组织配置查询及实例对比；按用户明确调用的工作流使用单一集成 PR。
+参数库实施已完成：[归档计划](exec-plans/completed/2026-11-05-parameter-library.md)，规格 #1513、任务 #1514–#1520。[PR #1521](https://github.com/tzrea1-Q/WiseEff/pull/1521) 跟踪最终候选 CI 和用户审阅；未包含主线合并或部署。
 
 已完成模块结构传输：[方案](exec-plans/completed/2026-11-03-module-structure-transfer.md)、规格 [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493)、实现与验收 [PR #1505](https://github.com/tzrea1-Q/WiseEff/pull/1505)。
 

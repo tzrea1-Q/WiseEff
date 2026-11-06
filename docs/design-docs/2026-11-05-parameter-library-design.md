@@ -4,7 +4,7 @@
 
 Date: 2026-11-05
 
-Status: finalized by the user on 2026-11-05. After specification and ticket publication, the user authorized implementation through `implement-spec`, with particular attention to frontend quality. Deployment is outside the request. See the [execution plan](../exec-plans/active/2026-11-05-parameter-library.md).
+Status: finalized by the user on 2026-11-05. After specification and ticket publication, the user authorized implementation through `implement-spec`, with particular attention to frontend quality. Deployment is outside the request. See the [implementation record](../exec-plans/completed/2026-11-05-parameter-library.md).
 
 ## Problem and intended outcome
 
