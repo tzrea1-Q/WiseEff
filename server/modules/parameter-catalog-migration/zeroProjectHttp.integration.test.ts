@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createWiseEffServer } from "../../app";
-import { createPostgresDatabase } from "../../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../testing/labRuntimeLogins";
@@ -229,6 +229,70 @@ describe("#1309 zero-project identity correction through the real API role", () 
     const retries = await Promise.all(Array.from({ length: 3 }, () => post("", command, frozen.previewFingerprint)));
     expect(retries.map(result => result.status), retries.map(result => result.bodyText).join("\n")).toEqual([202, 202, 202]);
     expect(new Set(retries.map(result => catalogReplacementResponseSchema.parse(result.body).item.id)).size).toBe(1);
+  }, 120_000);
+
+  it("does not let a concurrent replay read block finalization of the same replacement", async () => {
+    const definition = await unused("zero_replay_lock");
+    const preview = await post("/preview", { oldDefinitionId: definition.definitionId, newSubjectId: PREDECESSOR_SUBJECT_ID,
+      newPropertyKey: "zero_replay_lock_corrected", ...integerContent("Concurrent replay", 0), projectIds: [], reason: "One approved replacement" });
+    expect(preview.status, preview.bodyText).toBe(201);
+    const frozen = catalogReplacementPreviewResponseSchema.parse(preview.body).item;
+    const command = { previewId: frozen.previewId, previewFingerprint: frozen.previewFingerprint, idempotencyKey: "zero-replay-lock" };
+    expect((await post("", command, frozen.previewFingerprint)).status).toBe(503);
+    expect(await activate()).toBe("claimed");
+
+    const pool = getRootPostgresPool(api)!;
+    const originalQuery = pool.query;
+    const deferred = () => {
+      let resolve!: () => void;
+      const promise = new Promise<void>((done) => { resolve = done; });
+      return { promise, resolve };
+    };
+    const creatorRead = deferred(), resumeCreator = deferred(), replayRead = deferred(), releaseReplay = deferred();
+    let reads = 0;
+    // Hold the replay's actual SELECT transaction while the creator advances.
+    pool.query = (async (...args: unknown[]) => {
+      const sql = args[0];
+      if (typeof sql !== "string" || !sql.includes("from parameter_catalog.definition_replacements") ||
+          !sql.includes("where id = $1 and organization_id = $2") || reads >= 2) {
+        return Reflect.apply(originalQuery, pool, args);
+      }
+      if (reads++ === 0) {
+        const result = await Reflect.apply(originalQuery, pool, args);
+        creatorRead.resolve();
+        await resumeCreator.promise;
+        return result;
+      }
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const result = await client.query(sql, args[1] as unknown[]);
+        replayRead.resolve();
+        await releaseReplay.promise;
+        return result;
+      } finally {
+        await client.query("rollback").catch(() => undefined);
+        client.release();
+      }
+    }) as typeof pool.query;
+    try {
+      const creator = post("", command, frozen.previewFingerprint);
+      await creatorRead.promise;
+      const replay = post("", command, frozen.previewFingerprint);
+      await replayRead.promise;
+      resumeCreator.resolve();
+      const created = await creator;
+      releaseReplay.resolve();
+      const replayed = await replay;
+      expect([created.status, replayed.status], `${created.bodyText}\n${replayed.bodyText}`).toEqual([202, 202]);
+      const item = catalogReplacementResponseSchema.parse(created.body).item;
+      expect(item.status).toBe("completed");
+      expect(item.id).toBe(catalogReplacementResponseSchema.parse(replayed.body).item.id);
+    } finally {
+      resumeCreator.resolve();
+      releaseReplay.resolve();
+      pool.query = originalQuery;
+    }
   }, 120_000);
 
   it("refuses an unpublished zero-project preview after real Catalog drift", async () => {

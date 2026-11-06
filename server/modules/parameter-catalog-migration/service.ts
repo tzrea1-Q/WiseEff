@@ -882,7 +882,7 @@ export function createParameterCatalogMigrationService(
     invocation?: TrustedInvocationContext,
   ): Promise<Result<DefinitionReplacementView, DefinitionReplacementFailure>> => {
     const successor = await (async () => {
-      const replacement = await loadReplacement(db, organizationId, replacementId);
+      const replacement = await loadReplacement(db, organizationId, replacementId, { lock: "none" });
       if (!replacement) return null;
       if (replacement.successor_release_id && replacement.successor_release_digest) {
         return {
@@ -930,7 +930,7 @@ export function createParameterCatalogMigrationService(
           });
         });
       }
-      return ok(await replacementView(db, (await loadReplacement(db, organizationId, replacementId))!));
+      return ok(await replacementView(db, (await loadReplacement(db, organizationId, replacementId, { lock: "none" }))!));
     }
 
     let audited: DefinitionReplacementView;
@@ -1402,7 +1402,7 @@ export function createParameterCatalogMigrationService(
         });
       }
       if (preflight.kind === "replay") {
-        const stored = await loadReplacement(db, command.organizationId, preflight.replacementId);
+        const stored = await loadReplacement(db, command.organizationId, preflight.replacementId, { lock: "none" });
         if (!stored) return fail({ kind: "not-found" });
         return ok(await replacementView(db, stored));
       }
@@ -1524,7 +1524,7 @@ export function createParameterCatalogMigrationService(
       if (finalized.kind === "missing-preview") return fail({ kind: "not-found" });
       if (finalized.kind === "target-unavailable") return fail({ kind: "replacement-target-unavailable" });
       if (finalized.kind === "replay") {
-        const stored = await loadReplacement(db, command.organizationId, finalized.replacementId);
+        const stored = await loadReplacement(db, command.organizationId, finalized.replacementId, { lock: "none" });
         return stored ? ok(await replacementView(db, stored)) : fail({ kind: "not-found" });
       }
 
@@ -1548,7 +1548,7 @@ export function createParameterCatalogMigrationService(
     async (command) => {
       const scopeDenial = authorizeReplacementWrite(command.context, command.organizationId);
       if (scopeDenial) return fail(scopeDenial);
-      const replacement = await loadReplacement(db, command.organizationId, command.replacementId);
+      const replacement = await loadReplacement(db, command.organizationId, command.replacementId, { lock: "none" });
       if (!replacement) return fail({ kind: "not-found" });
       const denial = await authorizeReplacementManifest(db, command.context, command.organizationId, replacement.frozen_manifest.length === 0);
       if (denial) return fail(denial);
@@ -1575,7 +1575,7 @@ export function createParameterCatalogMigrationService(
         });
       }
       if (reserved.state === "committed" && reserved.result_ref) {
-        const stored = await loadReplacement(db, command.organizationId, reserved.result_ref);
+        const stored = await loadReplacement(db, command.organizationId, reserved.result_ref, { lock: "none" });
         if (stored) return ok(await replacementView(db, stored));
         return fail({ kind: "not-found" });
       }
@@ -1613,7 +1613,7 @@ export function createParameterCatalogMigrationService(
   const getDefinitionReplacement: CatalogDefinitionMigrationPorts["getDefinitionReplacement"] =
     async (query) => {
       if (!isControlFree(query.replacementId)) return fail({ kind: "not-found" });
-      const replacement = await loadReplacement(db, query.organizationId, query.replacementId);
+      const replacement = await loadReplacement(db, query.organizationId, query.replacementId, { lock: "none" });
       if (!replacement) return fail({ kind: "not-found" });
       return ok(await replacementView(db, replacement));
     };
