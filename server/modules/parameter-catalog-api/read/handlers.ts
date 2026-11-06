@@ -134,7 +134,9 @@ function hiddenId(selection: { kind: "all" } | { kind: "only"; ids: readonly str
 async function resolvePlacementSelection(
   ports: CatalogReadPorts,
   scope: TrustedCatalogScope,
-  query: { readonly placementModuleId?: string },
+  query: { readonly placementModuleId?: string; readonly placementScope?: "library" },
+  snapshot: CatalogSnapshot,
+  lifecycles: readonly SubjectLifecycle[],
 ): Promise<
   | { readonly ok: true; readonly selection: CatalogIdSelection<CatalogSubjectId>; readonly moduleName: string | null }
   | { readonly ok: false; readonly response: CatalogReadResponse }
@@ -146,11 +148,25 @@ async function resolvePlacementSelection(
     organizationId: scope.organizationId,
     principalId: scope.principalId,
     moduleId: query.placementModuleId,
+    includeRetired: query.placementScope === "library",
   });
   const allowed = scope.subjects.kind === "all" ? null : new Set<string>(scope.subjects.ids);
   const subjectIds = allowed
     ? subtree.subjectIds.filter((id) => allowed.has(id))
-    : subtree.subjectIds;
+    : [...subtree.subjectIds];
+  if (query.placementScope === "library") {
+    const page = snapshot.listSubjects({ selection: scope.subjects, kinds: [], lifecycles,
+      search: absent, page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent } });
+    if (page.status === "found") {
+      const eligible = page.page.items;
+      const eligibleIds = new Set(eligible.map((subject) => subject.id));
+      const owners = new Set(subjectIds.filter((id) => eligibleIds.has(id)));
+      const children = eligible.filter((subject) => subject.kind === "node-type" && subject.owner && owners.has(subject.owner));
+      const unregistered = await ports.registration.selectSubjectIds({ organizationId: scope.organizationId,
+        principalId: scope.principalId, registration: "unregistered", catalogSubjectIds: children.map((subject) => subject.id) });
+      subjectIds.push(...(unregistered.kind === "only" ? unregistered.ids : children.map((subject) => subject.id)));
+    }
+  }
   return {
     ok: true,
     selection: { kind: "only", ids: subjectIds, fingerprint: fingerprintIdSelection(subjectIds) },
@@ -366,7 +382,7 @@ async function handleListSubjects(
   });
   // A module subtree resolves to trusted subject ids before pagination, so the
   // module selection filters the complete result set rather than a loaded page.
-  const placementSelection = await resolvePlacementSelection(ports, scope, parsed.query);
+  const placementSelection = await resolvePlacementSelection(ports, scope, parsed.query, snapshot, lifecycles);
   if (!placementSelection.ok) {
     return placementSelection.response;
   }
@@ -484,7 +500,8 @@ async function handleListDefinitions(
   } catch {
     return validationFailed(request.requestId, "lifecycle");
   }
-  const placementSelection = await resolvePlacementSelection(ports, scope, parsed.query);
+  const placementSelection = await resolvePlacementSelection(ports, scope, parsed.query, snapshot,
+    parsed.query.subjectLifecycle ? [parsed.query.subjectLifecycle] : ["active", "retired"]);
   if (!placementSelection.ok) {
     return placementSelection.response;
   }
@@ -525,14 +542,15 @@ async function handleListDefinitions(
   });
   let selection = mergeIdSelection(scope.definitions, registrationSelection);
   let configuredSummaries: Awaited<ReturnType<NonNullable<CatalogReadPorts["selectConfiguredDefinitions"]>>> | undefined;
-  if (parsed.query.configured || parsed.query.usageProjectId) {
+  if (parsed.query.usageProjectId) {
     if (scope.projectScope.kind !== "all" || !ports.selectConfiguredDefinitions) return catalogNotReady(request.requestId);
     configuredSummaries = await ports.selectConfiguredDefinitions(scope.organizationId, catalogDefinitionIndex(snapshot)
       .filter((item) => !hiddenId(selection, item.id) && !hiddenId(scope.subjects, item.subjectId)).map((item) => item.id), parsed.query.usageProjectId);
     const matches = [...configuredSummaries.keys()].map((id) => ParameterDefinitionId(id));
     const filtered = mergeIdSelection(selection, { kind: "only", ids: matches, fingerprint: fingerprintIdSelection(matches) });
+    // Keep the fixed legacy slot so existing project-usage cursors remain valid.
     selection = { kind: "only", ids: filtered.kind === "only" ? filtered.ids : matches,
-      fingerprint: fingerprintIdSelection([`configured=${parsed.query.configured}`, `project=${parsed.query.usageProjectId}`, filtered.kind === "only" ? filtered.fingerprint : "all"]) };
+      fingerprint: fingerprintIdSelection(["configured=false", `project=${parsed.query.usageProjectId}`, filtered.kind === "only" ? filtered.fingerprint : "all"]) };
   }
   if (parsed.query.subjectLifecycle || parsed.query.type) {
     const allowedSubjects = new Set(catalogSubjectUniverse(snapshot,
@@ -611,7 +629,7 @@ async function handleListDefinitions(
       parsed.query.type ||
       parsed.query.subjectLifecycle ||
       parsed.query.registration ||
-      parsed.query.configured || parsed.query.usageProjectId ||
+      parsed.query.usageProjectId ||
       parsed.query.search ||
       parsed.query.propertyKey ||
       parsed.query.subjectId ||

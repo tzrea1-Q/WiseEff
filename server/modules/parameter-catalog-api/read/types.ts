@@ -130,6 +130,7 @@ export type RegistrationProjectionPort = {
   selectPlacementSubtreeSubjectIds(input: {
     readonly organizationId: string;
     readonly moduleId: string;
+    readonly includeRetired?: boolean;
     readonly principalId?: string;
   }): Promise<{ readonly subjectIds: readonly CatalogSubjectId[]; readonly moduleName: string | null }>;
   selectDefinitionIds(input: {
@@ -217,7 +218,7 @@ export type CatalogListQuery = {
   readonly subjectIds?: readonly CatalogSubjectId[];
   /** Organization module subtree filter, resolved to subjects before pagination. */
   readonly placementModuleId?: string;
+  readonly placementScope?: "library";
   readonly propertyKey?: PropertyKey;
-  readonly configured?: boolean;
   readonly usageProjectId?: string;
 };

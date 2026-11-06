@@ -1,9 +1,11 @@
 import { SelectControl } from "@/components/common/SelectControl";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CircleX } from "lucide-react";
+import { ArrowLeft, CircleX } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { ViewSwitch } from "@/components/ui/view-switch";
+import { TabPanel } from "@/components/ui/tab-panel";
+import { Badge } from "@/components/ui/badge";
 
 import {
   catalogWritesEnabled,
@@ -17,7 +19,6 @@ import {
   CATALOG_PAGE_SIZES,
   CATALOG_READ_PAGE_PATH,
   buildCatalogHref,
-  buildCatalogShareHref,
   parseCatalogUrlAnchor,
   parseCatalogPageSize,
   readLegacyCatalogBookmark,
@@ -56,6 +57,7 @@ import { DefinitionDeletionDialog } from "./DefinitionDeletionDialog";
 import { DefinitionTable } from "./DefinitionTable";
 import { DefinitionBatchBar } from "./DefinitionBatchBar";
 import { ProjectConfigurations } from "./ProjectConfigurations";
+import { ProjectComparison } from "./ProjectComparison";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 import {
@@ -104,7 +106,6 @@ type TimelineItem = CatalogDefinitionTimelineResponse["items"][number];
 export type CatalogPageProps = {
   libraryMode?: boolean;
   projectRepository?: Pick<ParameterRepository, "listProjects">;
-  onOpenGovernance?: (anchor: CatalogUrlAnchor) => void;
   pageKey?: string;
   refreshEpoch?: number;
   notice?: ReactNode;
@@ -249,7 +250,6 @@ function pickCollection(
 export function CatalogPage({
   projectRepository,
   libraryMode = false,
-  onOpenGovernance,
   pageKey = "catalog-definitions",
   refreshEpoch = 0,
   notice,
@@ -315,16 +315,6 @@ export function CatalogPage({
     return params.toString();
   }, [resolvedSearch]);
   const anchor = useMemo(() => parseCatalogUrlAnchor(resolvedSearch), [resolvedSearch]);
-  const [shareState, setShareState] = useState<"success" | "error" | null>(null);
-  useEffect(() => setShareState(null), [resolvedSearch, organizationId]);
-  const shareControl = <div className="parameter-library-share">
-    <button type="button" className="button subtle sm" disabled={!anchor.catalogReleaseId} onClick={async () => {
-      try { await navigator.clipboard.writeText(new URL(buildCatalogShareHref(anchor), window.location.origin).href); setShareState("success"); }
-      catch { setShareState("error"); }
-    }}>复制当前视图链接</button>
-    {shareState === "success" ? <span role="status">链接已复制。接收者将以当前组织权限读取，数据可能变化。</span> : null}
-    {shareState === "error" ? <span role="alert">复制链接失败，请检查剪贴板权限后重试。</span> : null}
-  </div>;
   const pageSize: CatalogPageSize =
     parseCatalogPageSize(anchor.pageSize === null ? null : String(anchor.pageSize)) ??
     CATALOG_DEFAULT_PAGE_SIZE;
@@ -521,13 +511,13 @@ export function CatalogPage({
         listQuery.type = currentAnchor.type as CatalogListQuery["type"];
       }
       if (libraryMode && currentAnchor.registration) listQuery.registration = currentAnchor.registration;
-      if (libraryMode && currentAnchor.configured) listQuery.configured = true;
       if (libraryMode && currentAnchor.usageProjectId) listQuery.usageProjectId = currentAnchor.usageProjectId;
       if (currentAnchor.cursor) {
         listQuery.cursor = currentAnchor.cursor;
       }
       if (currentAnchor.moduleNodeId) {
         listQuery.placementModuleId = currentAnchor.moduleNodeId;
+        if (libraryMode) listQuery.placementScope = "library";
       }
       // Load the maintained taxonomy and every subject before publishing the navigator.
       let firstSubjectPage: CatalogSubjectListResponse | undefined;
@@ -708,8 +698,12 @@ export function CatalogPage({
   }, [workspaceState]);
 
   const statusMessage = catalogStateMessage(domainState);
-  const workspaceMessage = workspaceState.kind === "retired" && workspaceState.target === "subject"
-    ? "当前主体已退役，参数定义仅供查看。" : catalogStateMessage(workspaceState);
+  const workspaceMessage = libraryMode && workspaceState.kind === "loading" ? "正在加载参数库"
+    : libraryMode && workspaceState.kind === "unpublished" ? "参数库暂无可阅读的定义。"
+      : libraryMode && workspaceState.kind === "unregistered" ? "该主体尚未登记。"
+        : libraryMode && workspaceState.kind === "retired" ? "该内容已停用，仍可查看历史定义。"
+          : workspaceState.kind === "retired" && workspaceState.target === "subject"
+            ? "当前主体已退役，参数定义仅供查看。" : catalogStateMessage(workspaceState);
   const readOnlyLabel = domainState.kind !== "retired" ? null
     : domainState.target === "subject" ? "主体已退役 · 只读"
       : domainState.target === "registration" ? "登记已停用 · 只读"
@@ -732,10 +726,11 @@ export function CatalogPage({
     return owner?.membership.status === "active" && owner.registration.status !== "retired" &&
       item.registration.status !== "retired";
   };
-  const canEditDefinition = (item: DefinitionItem) => definitionAuthoringAllowed &&
+  const canPublishDefinitions = !libraryMode && definitionPublishingAllowed;
+  const canEditDefinition = (item: DefinitionItem) => !libraryMode && definitionAuthoringAllowed &&
     Boolean(renderDefinitionEditor) && !inFlight && error === undefined && item.lifecycle === "active" && ownerWritable(item);
   const definitionEditable = snapshot?.definition ? canEditDefinition(snapshot.definition) : false;
-  const canDeleteDefinition = definitionDeletionAllowed && Boolean(repository.previewDefinitionDeletion && repository.deleteDefinition);
+  const canDeleteDefinition = !libraryMode && definitionDeletionAllowed && Boolean(repository.previewDefinitionDeletion && repository.deleteDefinition);
   const definitionActionLabel = definitionEditable ? "编辑" : "查看";
   const ownerStatusLabel = (item: DefinitionItem) => subjectsById.get(item.subject.id)?.membership.status === "retired"
     ? "主体已退役"
@@ -747,12 +742,20 @@ export function CatalogPage({
     []
   );
   const navigatorNodes = useMemo(
-    () => buildCatalogModuleTree(navigationSubjects, describeSubject, modules),
-    [navigationSubjects, describeSubject, modules]
+    () => buildCatalogModuleTree(navigationSubjects, describeSubject, modules, { nestOwnedNodeTypes: libraryMode }),
+    [navigationSubjects, describeSubject, modules, libraryMode]
   );
   const totalCount = snapshot?.definitions.totalCount ?? null;
+  const findModuleCount = (nodes: CatalogNavigatorNode[], id: string): number | undefined => {
+    for (const node of nodes) {
+      if (node.kind === "module" && node.id === id) return node.subjectCount;
+      const count = findModuleCount(node.children, id);
+      if (count !== undefined) return count;
+    }
+    return undefined;
+  };
   const scopedSubjectCount = anchor.moduleNodeId
-    ? subjectIdsForModule(navigationSubjects, anchor.moduleNodeId, modules).size
+    ? libraryMode ? findModuleCount(navigatorNodes, anchor.moduleNodeId) ?? 0 : subjectIdsForModule(navigationSubjects, anchor.moduleNodeId, modules).size
     : navigationSubjects.length;
   const filterEmptyReason: CatalogEmptyReason | null =
     definitions.length === 0 &&
@@ -797,7 +800,7 @@ export function CatalogPage({
   };
 
   const selectSubject = (subjectId: string | null) => {
-    // A driver leaf replaces the module selection, including one in another branch.
+    // An exact subject replaces the module selection, including one in another branch.
     commitAnchor({ ...anchor, subjectId, moduleNodeId: null, definitionId: null, cursor: null, cursorTrail: null }, "push");
     setInspectorOpen(false);
   };
@@ -1016,68 +1019,97 @@ export function CatalogPage({
     const revision = reading?.currentRevision;
     const constraintLabels: Record<string, string> = { minimum: "最小值", maximum: "最大值", exclusiveMinimum: "大于", exclusiveMaximum: "小于", multipleOf: "倍数", enum: "可选值", minLength: "最短长度", maxLength: "最长长度", pattern: "格式", minItems: "最少项目", maxItems: "最多项目" };
     const constraints = Object.entries(revision?.valueShape.schema ?? {}).filter(([key]) => key in constraintLabels);
+    const activeTab = anchor.tab === "configurations" || anchor.tab === "compare" ? anchor.tab : "definition";
     return <div className="parameter-catalog parameter-library-detail" role="region" aria-label="参数定义目录"
       data-catalog-page="true" data-catalog-state={domainState.kind} data-catalog-release={snapshot?.document.item.catalogReleaseId ?? ""}
       data-runtime-state={error && !reading ? "error" : inFlight && !reading ? "loading" : "ready"} aria-busy={inFlight && !reading}>
       <div className="parameter-library-detail__top"><button type="button" className="button subtle sm" onClick={() => {
         setHistoryOpen(false);
         commitAnchor({ ...anchor, definitionId: null, history: null, tab: null, instance: null, instanceCursor: null, baseline: null, target: null }, "push");
-      }}>返回参数库</button>{shareControl}</div>
+      }}><ArrowLeft size={14} aria-hidden="true" />返回参数库</button>
+      </div>
       {inFlight && !reading ? <SectionSkeleton label={catalogLoadingLabel} />
         : error ? <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />
           : reading && revision ? <article role="region" aria-label="定义详情" className="parameter-library-detail__body">
             <header className="parameter-library-detail__header">
-              <div>
-              <p className="parameter-catalog__muted">{catalogSubjectTypeLabel(reading.subject.type)} · {reading.subject.canonicalName}</p>
-              <h1 ref={readingHeading} tabIndex={-1}>{revision.displayName || reading.propertyKey}</h1>
-              <p><code>{reading.propertyKey}</code> · {catalogLifecycleLabel(reading.lifecycle)} · {catalogRegistrationLabel(reading.registration.status)}</p>
-              <p className="parameter-catalog__muted">{snapshot?.currentReleaseId
+              <div className="parameter-library-detail__identity">
+                <div className="parameter-library-detail__title">
+                  <h1 ref={readingHeading} tabIndex={-1}>{revision.displayName || reading.propertyKey}</h1>
+                  <Badge variant="secondary">{catalogLifecycleLabel(reading.lifecycle)}</Badge>
+                  <Badge variant="outline">{catalogRegistrationLabel(reading.registration.status)}</Badge>
+                </div>
+                <code className="parameter-library-detail__key">{reading.propertyKey}</code>
+                <p className="parameter-library-detail__subject"><span>{catalogSubjectTypeLabel(reading.subject.type)}</span><span>{reading.subject.canonicalName}</span></p>
+              </div>
+              <p className="parameter-library-detail__release">{snapshot?.currentReleaseId
                 ? snapshot.currentReleaseId === snapshot.document.item.catalogReleaseId ? "当前发布" : "历史发布"
                 : "所选发布"} · 修订 #{revision.revisionNumber}</p>
-              </div>
-              {onOpenGovernance ? <button type="button" className="button subtle sm" onClick={() => onOpenGovernance(anchor)}>打开定义治理</button> : null}
             </header>
-            <ViewSwitch variant="tabs" ariaLabel="参数详情" value={anchor.tab === "configurations" || anchor.tab === "compare" ? anchor.tab : "definition"}
+            <div className="parameter-library-detail__tabs">
+            <ViewSwitch variant="tabs" ariaLabel="参数详情" value={activeTab}
               onValueChange={(value) => commitAnchor({ ...anchor, tab: value === "definition" ? null : value }, "push")}
               items={[{ value: "definition", label: "定义", id: "library-tab-definition", panelId: "library-panel-definition" },
                 { value: "configurations", label: "当前项目配置", id: "library-tab-configurations", panelId: "library-panel-configurations" },
                 { value: "compare", label: "对比", id: "library-tab-compare", panelId: "library-panel-compare" }]} />
-            <p className="parameter-library-detail__hint">视图按当前组织权限读取，数据可能已变化。</p>
-            {anchor.tab === "configurations" || anchor.tab === "compare" ? <section role="tabpanel" id={`library-panel-${anchor.tab}`} aria-labelledby={`library-tab-${anchor.tab}`}>
-              <h2>{anchor.tab === "compare" ? "实例对比" : "当前项目配置"}</h2>
-              <p className="parameter-catalog__muted">{snapshot?.latestRevision ? `最新定义修订 #${snapshot.latestRevision.revisionNumber}` : "最新定义修订暂不可用"}</p>
-              <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
-                cursor={anchor.instanceCursor} selectedId={anchor.instance} compare={anchor.tab === "compare"} baselineId={anchor.baseline} targetId={anchor.target}
+            <span className="parameter-library-detail__hint">视图按当前组织权限读取，数据可能已变化。</span>
+            </div>
+            {(["configurations", "compare"] as const).map((tab) => <TabPanel key={tab} className="parameter-library-detail__panel" hidden={activeTab !== tab}
+              id={`library-panel-${tab}`} aria-labelledby={`library-tab-${tab}`}>
+            {activeTab === tab ? <>
+              <div className="parameter-library-detail__section-heading">
+                <h2>{tab === "compare" ? "跨项目对比" : "当前项目配置"}</h2>
+                <span className="parameter-catalog__muted">{snapshot?.latestRevision ? `最新定义修订 #${snapshot.latestRevision.revisionNumber}` : "最新定义修订暂不可用"}</span>
+              </div>
+              {tab === "compare" ? <ProjectComparison key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
+                baselineId={anchor.baseline} targetId={anchor.target}
+                onChange={(update, mode = "push") => commitAnchor({ ...anchor, ...update }, mode)}
+                onOpenProject={onOpenProject ? (row) => {
+                  const returnPath = `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor({ ...anchor, sourceReturn: undefined, createDefinition: false, reviewItemId: null })}`;
+                  const params = new URLSearchParams({ project: row.projectId, bindingId: row.bindingId, definitionId: reading.id, configSetId: row.configSetId, returnTo: returnPath });
+                  onOpenProject(`/parameters?${params}`);
+                } : undefined} /> : <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
+                cursor={anchor.instanceCursor} selectedId={anchor.instance}
                 projectId={anchor.configProjectId} configSetId={anchor.configSetId} search={anchor.configSearch} includeUnconfigured={anchor.includeUnconfigured}
                 onOpenProject={onOpenProject ? (row) => {
                   const returnPath = `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor({ ...anchor, sourceReturn: undefined, createDefinition: false, reviewItemId: null })}`;
                   const params = new URLSearchParams({ project: row.projectId, bindingId: row.bindingId, definitionId: reading.id, configSetId: row.configSetId, returnTo: returnPath });
                   onOpenProject(`/parameters?${params}`);
                 } : undefined}
-                onChange={(update) => commitAnchor({ ...anchor, ...update }, "push")} />
-            </section> : <div role="tabpanel" id="library-panel-definition" aria-labelledby="library-tab-definition">
-            <section><h2>定义说明</h2>
-              {revision.documentation ? <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(revision.documentation) }} /> : <p>未说明</p>}
-            </section>
-            <section><h2>类型与约束</h2>
+                onChange={(update) => commitAnchor({ ...anchor, ...update }, "push")} />}
+            </> : null}</TabPanel>)}
+            <TabPanel className="parameter-library-detail__panel" hidden={activeTab !== "definition"} id="library-panel-definition" aria-labelledby="library-tab-definition">
+            {activeTab === "definition" ? <>
+            <div className="parameter-library-detail__definition">
+              <div className="parameter-library-detail__reading">
+                <section className="parameter-library-detail__section"><h2>定义说明</h2>
+                  {revision.documentation ? <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(revision.documentation) }} /> : <p className="parameter-catalog__muted">该定义暂未提供说明。</p>}
+                </section>
+                <section className="parameter-library-detail__section"><h2>示例</h2>
+                  <p className="parameter-catalog__muted">仅用于理解定义，并非默认配置或推荐值。</p>
+                  {revision.examples?.length ? <pre className="parameter-library-code">{JSON.stringify(revision.examples, null, 2)}</pre> : <p className="parameter-library-detail__empty">该定义暂未提供示例。</p>}
+                </section>
+              </div>
+            <section className="parameter-library-detail__facts"><h2>类型与约束</h2>
               <dl className="parameter-catalog__dl"><dt>类型</dt><dd>{catalogValueShapeLabel(revision.valueShape.schema as { type?: unknown })}</dd>
                 <dt>单位</dt><dd>{revision.unit?.symbol ?? "未说明"}</dd>
                 <dt>约束</dt><dd>{constraints.length ? <ul>{constraints.map(([key, value]) => <li key={key}>{constraintLabels[key]}：{JSON.stringify(value)}</li>)}</ul> : "未说明"}</dd></dl>
             </section>
-            <section><h2>示例</h2><p>以下内容仅为定义示例，并非默认配置或推荐值。</p>
-              {revision.examples?.length ? <pre>{JSON.stringify(revision.examples, null, 2)}</pre> : <p>未说明</p>}</section>
-            <details><summary>技术身份与完整 schema</summary><dl className="parameter-catalog__dl">
+            </div>
+            <details className="parameter-library-detail__technical"><summary>技术身份与完整 schema</summary><dl className="parameter-catalog__dl">
               <dt>定义编号</dt><dd>{reading.id}</dd><dt>主体编号</dt><dd>{reading.subject.id}</dd>
               <dt>当前修订</dt><dd>#{revision.revisionNumber} · {revision.id}</dd><dt>发布</dt><dd>{revision.publishedInCatalogReleaseId}</dd>
-              <dt>Schema</dt><dd><pre>{JSON.stringify(revision.valueShape, null, 2)}</pre></dd></dl></details>
+              <dt>Schema</dt><dd><pre className="parameter-library-code">{JSON.stringify(revision.valueShape, null, 2)}</pre></dd></dl></details>
+            <section className="parameter-library-detail__history">
+            <div className="parameter-library-detail__section-heading"><div><h2>修订历史</h2><p className="parameter-catalog__muted">查看定义变更与发布记录</p></div>
             <button type="button" className="button subtle" aria-expanded={historyOpen} onClick={() => commitAnchor({ ...anchor, history: historyOpen ? null : "true" }, "push")}>
               {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
             </button>
-            {historyOpen ? <section aria-label={catalogTimelineLabel}>
+            </div>
+            {historyOpen ? <div role="region" aria-label={catalogTimelineLabel}>
               {inFlight ? <SectionSkeleton label="正在加载修订历史" /> : historyError ? <SectionError message={historyError} onRetry={() => void load()} /> : <CatalogHistoryBody timeline={snapshot?.timeline ?? null}
                 revisions={snapshot?.revisions ?? []} currentRevision={revision} hasMore={Boolean(snapshot?.revisionCursor || snapshot?.timelineCursor)}
                 pending={historyPending} error={historyError} onLoadMore={() => void loadMoreHistory()} />}
-            </section> : null}</div>}
+            </div> : null}</section></> : null}</TabPanel>
           </article> : <SectionError message="定义不可用。" onRetry={() => void load()} />}
     </div>;
   }
@@ -1096,12 +1128,11 @@ export function CatalogPage({
     >
       <NavigatorWorkbench
         pageKey={pageKey}
-        navigatorLabel={libraryMode ? "主体导航" : catalogNavigatorLabel}
+        navigatorLabel={libraryMode ? "模块导航" : catalogNavigatorLabel}
         resizableNavigator
         taskLabel={catalogListLabel}
         toolbar={<>
-          {libraryMode ? shareControl : null}
-          {anchor.sourceReturn ? <a href={anchor.sourceReturn}>{anchor.sourceReturn.startsWith("/parameter-admin/projects/")?"返回项目来源":"返回来源识别"}</a> : null}
+          {!libraryMode && anchor.sourceReturn ? <a href={anchor.sourceReturn}>{anchor.sourceReturn.startsWith("/parameter-admin/projects/")?"返回项目来源":"返回来源识别"}</a> : null}
           <form
             className="parameter-catalog__search"
             onCompositionStart={() => setSearchComposing(true)}
@@ -1136,7 +1167,7 @@ export function CatalogPage({
               onChange={(event) => toggleRetiredSubjects(event.target.checked)} />
             包含已停用和退役主体
           </label>
-          {actions.length > 0 || onOpenPendingWork || onImportDefinitions || onPublishClaimedOwners || onOpenUnregisteredSubjects ? (
+          {!libraryMode && (actions.length > 0 || onOpenPendingWork || onImportDefinitions || onPublishClaimedOwners || onOpenUnregisteredSubjects) ? (
             <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
               {onOpenUnregisteredSubjects ? <button type="button" className="button subtle sm" onClick={onOpenUnregisteredSubjects}>待登记主体</button> : null}
               {onImportDefinitions ? <button type="button" className="button subtle sm" onClick={onImportDefinitions}>批量导入定义</button> : null}
@@ -1196,16 +1227,9 @@ export function CatalogPage({
         </> : undefined}
         navigator={!unpublished && snapshot ? <>
           <CatalogModuleNavigator
-            ariaLabel={libraryMode ? "参数定义主体树" : undefined}
-            searchLabel={libraryMode ? "搜索主体" : undefined}
-            nodes={libraryMode ? (["driver", "node-type", "configuration-schema"] as const).map((type) => ({
-              id: `group:${type}`, kind: "unregistered-group" as const, displayName: catalogSubjectTypeLabel(type),
-              subjectCount: navigationSubjects.filter((item) => item.type === type).length,
-              children: navigationSubjects.filter((item) => item.type === type).map((item) => ({
-                id: `subject:${item.id}`, kind: "subject" as const, displayName: item.canonicalName,
-                meta: describeSubject(item), subjectType: item.type, subjectCount: 0, subjectId: item.id, children: []
-              }))
-            })) : navigatorNodes}
+            searchLabel={libraryMode ? "搜索模块或主体" : undefined}
+            defaultExpandDepth={libraryMode ? 1 : 0}
+            nodes={navigatorNodes}
             selectedId={anchor.subjectId ? `subject:${anchor.subjectId}` : anchor.moduleNodeId}
             onSelectNode={selectNavigatorNode}
           />
@@ -1217,7 +1241,7 @@ export function CatalogPage({
         </> : null}
       >
 
-        {taskContent ?? (inFlight && !snapshot ? (
+        {(libraryMode ? null : taskContent) ?? (inFlight && !snapshot ? (
           <SectionSkeleton label={catalogLoadingLabel} />
         ) : domainState.kind === "error" && !snapshot ? (
           <><SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
@@ -1242,14 +1266,13 @@ export function CatalogPage({
               </p>
             </header>
             {libraryMode ? <div className="parameter-library-filters">
-              <label><input type="checkbox" checked={Boolean(anchor.configured)} onChange={(event) => commitAnchor({ ...anchor, configured: event.target.checked ? "true" : null, cursor: null, cursorTrail: null }, "push")} /> 有当前配置</label>
               <div className="parameter-library-filter"><span>项目使用</span><SelectControl ariaLabel="项目使用" size="filter" value={anchor.usageProjectId ?? ""} disabled={!projectOptions || projectOptions.organizationId !== organizationId} onValueChange={(value) => commitAnchor({ ...anchor, usageProjectId: value || null, cursor: null, cursorTrail: null }, "push")}
                 options={[{ value: "", label: "全部项目" }, ...(projectOptions && projectOptions.organizationId === organizationId ? projectOptions.items.map((project) => ({ value: project.id, label: project.name })) : [])]} /></div>
               {projectOptionsError ? <button type="button" className="button subtle sm" onClick={() => setProjectOptionsRetry((value) => value + 1)}>项目读取失败，重试</button> : null}
-              {(anchor.configured || anchor.usageProjectId) ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, configured: null, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
+              {anchor.usageProjectId ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
               <span className="parameter-catalog__muted">数量为{anchor.usageProjectId ? "所选项目" : "当前组织"}已配置数量</span>
             </div> : null}
-            {definitionPublishingAllowed && onBatchDefinitionCommand ? <>
+            {canPublishDefinitions && onBatchDefinitionCommand ? <>
               {anchor.subjectId && release ? <button type="button" className="button subtle sm" disabled={selectingSubject}
                 onClick={() => {
                   const generation = selectionGeneration.current;
@@ -1284,7 +1307,7 @@ export function CatalogPage({
               ] : columns} compact={compactList}
                 selectedDefinitionId={definition?.id} onOpen={selectDefinition} canEdit={canEditDefinition}
                 ownerStatusLabel={ownerStatusLabel} selectedIds={selectedDefinitions.map((item) => item.id)}
-                onSelectionChange={definitionPublishingAllowed && onBatchDefinitionCommand ? (item, checked) => {
+                onSelectionChange={canPublishDefinitions && onBatchDefinitionCommand ? (item, checked) => {
                   setSelectedDefinitions((current) => checked ? [...current.filter((row) => row.id !== item.id), item] : current.filter((row) => row.id !== item.id));
                 } : undefined}
                 renderActions={(row) => <span className="parameter-catalog__row-actions">
@@ -1295,7 +1318,7 @@ export function CatalogPage({
                   {canDeleteDefinition ? <button type="button" className="button subtle sm"
                     aria-label={`彻底删除 ${row.propertyKey}`} disabled={inFlight || error !== undefined}
                     onClick={() => setDeletingDefinition(row)}>彻底删除</button> : null}
-                  {!compactList && definitionPublishingAllowed && onDefinitionCommand && !inFlight && error === undefined && ownerWritable(row) ? (
+                  {!compactList && canPublishDefinitions && onDefinitionCommand && !inFlight && error === undefined && ownerWritable(row) ? (
                     <button type="button" className="button subtle sm"
                       aria-label={`${row.lifecycle === "retired" ? "恢复" : "退役"} ${row.propertyKey}`}
                       data-catalog-row-action={row.lifecycle === "retired" ? "restore-definition" : "retire-definition"}

@@ -136,7 +136,8 @@ test("reads grouped DTS and software instances with exact counts and full values
     const headers = authHeadersForRole("admin");
     const response = await request.get(apiRoute(`/api/v2/catalog/definitions/${definitionId}/project-configurations`), { headers });
     expect(response.status()).toBe(200);
-    expect((await response.json()).summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+    const configurations = await response.json();
+    expect(configurations.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
     for (const [suffix, raw] of [["empty", '""\n'], ["null", "null\n"], ["false", "false\n"]]) {
       const typed = await request.get(apiRoute(`/api/v2/catalog/definitions/pdef_parlib_${suffix}/project-configurations`), { headers });
       expect(typed.status()).toBe(200);
@@ -150,11 +151,6 @@ test("reads grouped DTS and software instances with exact counts and full values
     }
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}&tab=configurations`);
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: runtime.frontendUrl });
-    const copyLink = async () => {
-      await page.getByRole("button", { name: "复制当前视图链接" }).click();
-      await expect(page.getByText(/链接已复制/)).toBeVisible();
-      return page.evaluate(() => navigator.clipboard.readText());
-    };
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("已配置项目 2 · 已配置实例 3");
     const group = page.getByRole("table", { name: "多实例项目 的当前配置" });
     await expect(group.locator("tbody tr")).toHaveCount(2);
@@ -227,7 +223,7 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.evaluate(() => { delete (navigator as unknown as { clipboard?: Clipboard }).clipboard; });
     await page.getByRole("button", { name: "复制完整原值" }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(fullSourceToken);
-    const configurationLink = await copyLink();
+    const configurationLink = page.url();
     expect(configurationLink).toContain("configSetId=");
     expect(decodeURIComponent(configurationLink)).not.toContain("\\u0073oftware");
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(configurationLink).search}`);
@@ -290,34 +286,48 @@ test("reads grouped DTS and software instances with exact counts and full values
       return route.continue({ url: url.toString() });
     });
     await page.getByRole("tab", { name: "对比", exact: true }).click();
-    await expect(page.getByText(/请选择基准实例/)).toBeVisible();
-    await page.getByRole("button", { name: "设为基准" }).click();
-    const baselineUrl = page.url();
+    const comparison = page.getByRole("region", { name: "实例对比" });
+    const leftProject = comparison.getByRole("combobox", { name: "左侧项目" });
+    const rightProject = comparison.getByRole("combobox", { name: "右侧项目" });
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
-    await selectControlOption(page.getByRole("combobox", { name: "项目", exact: true }), "parlib-instances-b");
-    await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
-    await expect(page.getByRole("tabpanel", { name: "对比" })).toContainText("已配置项目 1 · 已配置实例 1");
-    await expect(page.getByRole("tabpanel", { name: "对比" })).toContainText("筛选结果 1 条");
-    await expect(page.getByRole("table", { name: "软件项目 的当前配置" })).toBeVisible();
-    await selectControlOption(page.getByRole("combobox", { name: "项目", exact: true }), "parlib-instances-a");
-    await page.getByRole("button", { name: "下一页" }).click();
-    await page.getByRole("button", { name: "查看对比" }).click();
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
+    await expect.poll(async () => new Set([await leftProject.getAttribute("data-value"), await rightProject.getAttribute("data-value")])).toEqual(new Set(["parlib-instances-a", "parlib-instances-b"]));
+    await expect(comparison.getByRole("region", { name: "配置代码差异" })).toBeVisible();
+    await expect(page.getByRole("tabpanel", { name: "对比" }).getByRole("table")).toHaveCount(0);
+    const baselineBinding = configurations.items.find((item: { projectId: string; bindingId: string }) => item.projectId === "parlib-instances-a" && item.bindingId !== directBinding)?.bindingId;
+    expect(baselineBinding).toBeTruthy();
+    // The one-row inventory page needs two explicit loads to expose all three instances.
+    const loadMore = comparison.getByRole("button", { name: "加载更多项目或实例" });
+    for (let index = 0; index < 2; index += 1) {
+      const nextPage = page.waitForResponse(response => response.url().includes("/project-configurations") && new URL(response.url()).searchParams.has("cursor"));
+      await loadMore.click();
+      expect((await nextPage).ok()).toBe(true);
+    }
+    await expect(loadMore).toHaveCount(0);
+    await selectControlOption(leftProject, "parlib-instances-a");
+    await selectControlOption(comparison.getByRole("combobox", { name: "左侧配置实例" }), baselineBinding);
+    await selectControlOption(rightProject, "parlib-instances-b");
+    await expect(leftProject).toHaveAttribute("data-value", "parlib-instances-a");
+    const baselineOnly = new URL(page.url());
+    baselineOnly.searchParams.delete("target");
+    const baselineUrl = baselineOnly.toString();
+    await selectControlOption(rightProject, "parlib-instances-a");
+    await selectControlOption(comparison.getByRole("combobox", { name: "右侧配置实例" }), directBinding!);
+    await expect(leftProject).toHaveAttribute("data-value", "parlib-instances-a");
     const compareReturn = page.url();
-    await page.getByRole("table", { name: "多实例项目 的当前配置" }).getByRole("button", { name: /在项目中打开/ }).click();
+    await comparison.getByRole("button", { name: "在项目中打开 目标实例" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.getByRole("button", { name: "关闭参数详情" }).click();
     await page.getByRole("button", { name: "返回参数库" }).click();
     await expect(page).toHaveURL(compareReturn);
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
-    for (const label of ["基准实例", "目标实例"]) {
-      const displayed = await page.getByRole("textbox", { name: `${label}原值` }).textContent();
-      await page.getByRole("button", { name: `复制${label}完整原值` }).click();
-      expect(displayed).toMatch(/^<0x3e[9a]>$/);
-      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(displayed);
+    for (const [label, expected] of [["基准实例", "<0x3e9>"], ["目标实例", "<0x3ea>"]]) {
+      await expect(page.getByRole("textbox", { name: `${label}原值` })).toContainText(expected);
+      await page.getByRole("button", { name: `复制配置：${label}完整原值` }).click();
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(expected);
     }
-    const comparisonLink = await copyLink();
+    const comparisonLink = page.url();
     expect(comparisonLink).toMatch(/baseline=.*target=/);
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(comparisonLink).search}`);
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
@@ -374,28 +384,34 @@ test("reads grouped DTS and software instances with exact counts and full values
       await page.reload();
       await expect(page.getByRole("alert")).toContainText("基准实例已不可用");
       await page.getByRole("button", { name: "重新选择" }).click();
-      await expect(page.getByText(/请选择基准实例/)).toBeVisible();
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      await expect(page.getByText("当前没有可用于对比的项目配置。")).toBeVisible();
     } finally {
       await pool.query("update parameter_catalog.organization_subject_registrations set status='active' where id=$1", [driver.value.registrationId]);
     }
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${jsonDefinition}&tab=compare`);
-    await page.getByRole("button", { name: "设为基准" }).click();
-    await page.getByRole("button", { name: "查看对比" }).click();
-    await expect(page.getByRole("region", { name: "实例对比" })).toContainText(fullSourceToken);
+    await expect(page.getByRole("combobox", { name: "左侧项目" })).toHaveAttribute("data-value", "parlib-instances-b");
+    await expect(page.getByText("只有一个已配置项目，可选择同一项目中的其他实例。")).toBeVisible();
+    await selectControlOption(page.getByRole("combobox", { name: "右侧项目" }), "parlib-instances-b");
+    const jsonSource = page.getByRole("textbox", { name: "基准实例原值" }).locator("code");
+    await expect.poll(async () => (await jsonSource.allTextContents()).join("")).toBe(fullSourceToken);
+    await page.getByRole("button", { name: "复制配置：基准实例完整原值" }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(fullSourceToken);
     await page.getByRole("textbox", { name: "基准实例原值" }).focus();
     await expect(page.getByRole("textbox", { name: "基准实例原值" })).toBeFocused();
     await page.screenshot({ path: testInfo.outputPath("compare-long-1280.png"), fullPage: true });
-    await recordOperationEvidence({ operationId: "PARLIB-COMPARE-001", title: "Explicit instance comparison", status: "passed", page, testInfo,
-      assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: 200, responseSummary: "Explicit baseline and target on separate pages, current values read from one API response." }] });
+    await recordOperationEvidence({ operationId: "PARLIB-COMPARE-001", title: "Instance comparison", status: "passed", page, testInfo,
+      assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: 200, responseSummary: "Exact baseline and target discovered on separate pages, current values read from one API response." }] });
     await page.unroute("**/project-configurations*");
     await page.goto(`${runtime.frontendUrl}/parameters/definitions`);
-    await page.getByLabel("有当前配置").check();
-    await expect(page.getByText("未使用的定义", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("checkbox", { name: "有当前配置", exact: true })).toHaveCount(0);
     await selectControlOption(page.getByRole("combobox", { name: "项目使用" }), "parlib-instances-b");
-    const listLink = await copyLink();
-    expect(listLink).toContain("configured=true");
-    expect(listLink).toContain("usageProjectId=parlib-instances-b");
     await expect(page).toHaveURL(/usageProjectId=parlib-instances-b/);
+    await expect(page.getByText("未使用的定义", { exact: true })).toHaveCount(0);
+    const listLink = page.url();
+    expect(new URL(listLink).searchParams.has("configured")).toBe(false);
+    expect(listLink).toContain("usageProjectId=parlib-instances-b");
+    await expect(page.getByRole("button", { name: "复制当前视图链接" })).toHaveCount(0);
     await expect(page.getByText("数量为所选项目已配置数量")).toBeVisible();
     const currentLimit = page.getByRole("row").filter({ hasText: "iin_max" });
     await expect(currentLimit.getByRole("cell").nth(4)).toHaveText("1");
@@ -409,12 +425,13 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}`);
     await expect(page).toHaveURL(/catalogReleaseId=/);
-    const definitionLink = await copyLink();
+    const definitionLink = page.url();
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(definitionLink).search}`);
     await expect(page.getByRole("tabpanel", { name: "定义" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "复制当前视图链接" })).toHaveCount(0);
     expect((await new AxeBuilder({ page }).include(".parameter-library-detail").analyze()).violations).toEqual([]);
-    await page.screenshot({ path: testInfo.outputPath("share-definition-1440.png") });
-    await recordOperationEvidence({ operationId: "PARLIB-SHARE-001", title: "Share a current view and copy selected source", status: "passed", page, testInfo,
+    await page.screenshot({ path: testInfo.outputPath("definition-1440.png") });
+    await recordOperationEvidence({ operationId: "PARLIB-SHARE-001", title: "Copy the complete selected source value", status: "passed", page, testInfo,
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${jsonDefinition}/project-configurations`, status: 200, responseSummary: "Selected exact multiline source read through the authenticated current configuration API." }] });
     await recordOperationEvidence({ operationId: "PARLIB-FILTER-001", title: testInfo.title, status: "passed", page, testInfo,
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: response.status(), responseSummary: "Filtered project and configuration set, with optional unconfigured projects." }] });
@@ -442,10 +459,15 @@ test("reads grouped DTS and software instances with exact counts and full values
       await pool.query("update parameter_catalog.project_parameter_bindings set effective_revision_id='drev_parlib_head_2' where id=$1", [directBinding]);
     } finally { await pool.query("alter table parameter_catalog.project_parameter_bindings enable trigger all"); }
     await page.setViewportSize({ width: 1440, height: 900 });
+    const historicalPairRead = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname.endsWith(`/definitions/${definitionId}/project-configurations`) && url.searchParams.get("baselineBindingId") === directBinding;
+    });
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}&catalogReleaseId=${pin.id}&tab=compare&baseline=${directBinding}`);
     await expect(page.getByText("历史发布 · 修订 #1")).toBeVisible();
     await expect(page.getByText("最新定义修订 #3")).toBeVisible();
-    await expect(page.getByRole("region", { name: "实例对比" })).toContainText("值固定修订 #1 · 生效修订 drev_parlib_head_2");
+    expect((await (await historicalPairRead).json()).baseline).toMatchObject({ definitionRevisionNumber: "1", effectiveRevisionId: "drev_parlib_head_2" });
+    await expect(page.getByRole("region", { name: "实例对比" })).not.toContainText("值固定修订");
     await page.screenshot({ path: testInfo.outputPath("compare-historical-revisions-1440.png"), fullPage: true });
   } finally {
     setParameterIdentityMode(null);

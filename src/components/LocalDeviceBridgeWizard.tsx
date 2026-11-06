@@ -1,5 +1,5 @@
 import { Check, Copy, Download, Link2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   formatBridgeConnectFallbackCommand,
@@ -239,12 +239,13 @@ export function LocalDeviceBridgeWizard({
     resolveBridgeWebOrigin()
   );
 
-  useEffect(() => {
-    if (guideOpen && viewStep === 1) return;
-    if (naturalStep > previousNaturalStep.current) {
+  // Settle automatic progress before a click can select a different step.
+  useLayoutEffect(() => {
+    const advanced = naturalStep > previousNaturalStep.current;
+    previousNaturalStep.current = naturalStep;
+    if (advanced && !(guideOpen && viewStep === 1)) {
       setViewStep(naturalStep);
     }
-    previousNaturalStep.current = naturalStep;
   }, [naturalStep, viewStep, guideOpen]);
 
   useEffect(() => {

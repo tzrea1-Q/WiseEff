@@ -13,14 +13,16 @@ type SubjectItem = CatalogSubjectResponse["item"];
 const subject = (input: {
   id: string;
   canonicalName: string;
+  ownerSubjectId?: string;
   type?: "driver" | "node-type";
-  placement?: { id: string; moduleId?: string; displayName: string; parentPlacementId: string | null };
+  placement?: { id: string; moduleId?: string; ownerSubjectId?: string; displayName: string; parentPlacementId: string | null };
   registration?: "active" | "unregistered";
 }): SubjectItem =>
   ({
     id: input.id,
     type: input.type ?? "driver",
     canonicalName: input.canonicalName,
+    ...(input.ownerSubjectId ? { ownerSubjectId: input.ownerSubjectId } : {}),
     aliases: [],
     membership: { status: "active", catalogReleaseId: "crel_1" },
     registration:
@@ -39,6 +41,51 @@ const subject = (input: {
 const describeSubject = (item: SubjectItem) => `${item.type} · ${item.registration.status}`;
 
 describe("catalog module navigator tree", () => {
+  it("nests node types under their exact driver within the maintained business hierarchy", () => {
+    const placement = { id: "placement", moduleId: "battery", displayName: "Battery", parentPlacementId: null };
+    const subjects = [
+      subject({ id: "driver-a", canonicalName: "vendor,battery", placement }),
+      subject({ id: "driver-b", canonicalName: "vendor,battery", placement }),
+      subject({ id: "node-a", canonicalName: "battery", type: "node-type", ownerSubjectId: "driver-a", placement }),
+      subject({ id: "node-b", canonicalName: "battery", type: "node-type", ownerSubjectId: "driver-b", placement })
+    ];
+    const modules = [{ id: "power", name: "Power", parentId: null, sortOrder: 0 },
+      { id: "battery", name: "Battery", parentId: "power", sortOrder: 0 }];
+    const tree = buildCatalogModuleTree(subjects, describeSubject, modules, { nestOwnedNodeTypes: true });
+    expect(tree).toMatchObject([{ id: "power", subjectCount: 4, children: [{ id: "battery", subjectCount: 4, children: [
+      { subjectId: "driver-a", subjectCount: 1, children: [{ subjectId: "node-a", children: [] }] },
+      { subjectId: "driver-b", subjectCount: 1, children: [{ subjectId: "node-b", children: [] }] }
+    ] }] }]);
+    expect(tree[0].children[0].children).toHaveLength(2);
+    expect(buildCatalogModuleTree(subjects, describeSubject, modules)[0].children[0].children).toHaveLength(4);
+  });
+
+  it("uses organization ownership over a pinned catalog owner for registered nodes", () => {
+    const modules = [{ id: "a", name: "A", parentId: null, sortOrder: 0 }, { id: "b", name: "B", parentId: null, sortOrder: 1 }];
+    const placement = (moduleId: string) => ({ id: moduleId, moduleId, displayName: moduleId, parentPlacementId: null });
+    const oldOwner = subject({ id: "old", canonicalName: "old", placement: placement("a") });
+    const currentOwner = subject({ id: "current", canonicalName: "current", placement: placement("b") });
+    const child = subject({ id: "child", canonicalName: "child", type: "node-type", ownerSubjectId: oldOwner.id,
+      placement: { ...placement("b"), ownerSubjectId: currentOwner.id } });
+    const tree = buildCatalogModuleTree([oldOwner, currentOwner, child], describeSubject, modules, { nestOwnedNodeTypes: true });
+    expect(tree).toMatchObject([{ subjectCount: 1, children: [{ subjectId: "old", children: [] }] },
+      { subjectCount: 2, children: [{ subjectId: "current", children: [{ subjectId: "child" }] }] }]);
+  });
+
+  it("keeps unregistered families and missing owners reachable without guessing parent names", () => {
+    const driver = subject({ id: "driver", canonicalName: "vendor,driver", registration: "unregistered" });
+    const child = subject({ id: "child", canonicalName: "node", type: "node-type", ownerSubjectId: driver.id, registration: "unregistered" });
+    const orphan = subject({ id: "orphan", canonicalName: "node", type: "node-type", ownerSubjectId: "missing-driver", registration: "unregistered" });
+    const retiredDriver = { ...driver, membership: { ...driver.membership, status: "retired" as const } };
+    const tree = buildCatalogModuleTree([retiredDriver, child, orphan], describeSubject, [], { nestOwnedNodeTypes: true });
+    expect(tree[0].subjectCount).toBe(3);
+    expect(tree[0].children).toHaveLength(2);
+    expect(tree[0].children.find(node => node.subjectId === driver.id)).toMatchObject({ retired: true, children: [{ subjectId: child.id }] });
+    expect(tree[0].children.find(node => node.subjectId === orphan.id)).toMatchObject({ children: [] });
+    const withoutOwner = buildCatalogModuleTree([child], describeSubject, [], { nestOwnedNodeTypes: true });
+    expect(withoutOwner[0]).toMatchObject({ subjectCount: 1, children: [{ subjectId: child.id }] });
+  });
+
   it("uses the maintained taxonomy, including empty categories and modules without registrations", () => {
     const modules = [
       { id: "power", name: "Power", parentId: null, sortOrder: 1 },

@@ -22,8 +22,8 @@ describe("WiseEff prototype configuration", () => {
     expect(navigationItems.map((item) => item.path)).toEqual([
       "/",
       "/parameter-home",
-      "/parameters",
       "/parameters/definitions",
+      "/parameters",
       "/parameter-submissions",
       "/parameter-review",
       "/parameter-admin",

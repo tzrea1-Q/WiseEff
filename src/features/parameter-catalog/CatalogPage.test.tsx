@@ -37,12 +37,97 @@ import type { CatalogModule } from "./catalogModuleScope";
 
 type PageProps = ComponentProps<typeof CatalogPage>;
 
-it("waits for the published release pin before enabling a share link", () => {
+it.each(["list", "definition", "configurations", "compare"])("keeps the library %s surface free of governance controls even for an administrator", async tab => {
   const repository = createMockParameterCatalogRepository();
-  const view = render(<CatalogPage libraryMode repository={repository} actor="user" search="?q=power" />);
-  expect(screen.getByRole("button", { name: "复制当前视图链接" })).toBeDisabled();
-  view.rerender(<CatalogPage libraryMode repository={repository} actor="user" search="?q=power&catalogReleaseId=release-1" />);
-  expect(screen.getByRole("button", { name: "复制当前视图链接" })).toBeEnabled();
+  repository.getProjectConfigurations = vi.fn().mockResolvedValue({ summary: { configuredProjectCount: 0, configuredInstanceCount: 0 }, totalCount: 0,
+    readAt: "2026-11-06T00:00:00Z", nextCursor: null, continuedProjectId: null, selected: null, items: [] });
+  repository.previewDefinitionDeletion = vi.fn();
+  repository.deleteDefinition = vi.fn();
+  render(<CatalogHarness libraryMode repository={repository} actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
+    initialSearch={`?sourceReturn=${encodeURIComponent("/parameter-admin/sources?sourceId=source-1")}&catalogReleaseId=${CATALOG_RELEASE_ID}${tab === "list" ? "" : `&definitionId=${CATALOG_DEFINITION_ID}&tab=${tab}`}`}
+    definitionAuthoringAllowed definitionPublishingAllowed definitionDeletionAllowed
+    onAction={vi.fn()} onOpenPendingWork={vi.fn()} onImportDefinitions={vi.fn()} onPublishClaimedOwners={vi.fn()} onOpenUnregisteredSubjects={vi.fn()}
+    onDefinitionCommand={vi.fn()} onBatchDefinitionCommand={vi.fn()}
+    renderDefinitionEditor={() => <p>后台编辑器</p>} taskContent={<p>后台治理任务</p>} />);
+  if (tab === "list") expect(await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` })).toBeVisible();
+  else expect(await screen.findByRole("region", { name: "定义详情" })).toBeVisible();
+  expect(screen.queryByRole("group", { name: "目录动作" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /返回来源识别|返回项目来源/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /打开定义治理|编辑|彻底删除|退役|恢复|发布|导入|审核|登记|选中该主体下全部定义/ })).not.toBeInTheDocument();
+  expect(screen.queryByText("后台编辑器")).not.toBeInTheDocument();
+  expect(screen.queryByText("后台治理任务")).not.toBeInTheDocument();
+  expect(repository.previewDefinitionDeletion).not.toHaveBeenCalled();
+  expect(repository.deleteDefinition).not.toHaveBeenCalled();
+});
+
+it("keeps library refresh and unpublished messages about reading", async () => {
+  const gate = deferred<void>();
+  const repository = createMockParameterCatalogRepository();
+  const { rerender } = render(<CatalogHarness libraryMode repository={repository} actor="user" />);
+  await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+  repository.getCatalog = async () => { await gate.promise; return { item: null, publicationState: "unpublished" }; };
+  rerender(<CatalogHarness libraryMode repository={repository} actor="user" refreshEpoch={1} />);
+  expect(await screen.findByText("正在加载参数库")).toBeVisible();
+  expect(screen.queryByText(/写入已暂停/)).not.toBeInTheDocument();
+  await act(async () => { gate.resolve(); });
+  expect(await screen.findByText("参数库暂无可阅读的定义。")).toBeVisible();
+  expect(screen.queryByText(/请先发布/)).not.toBeInTheDocument();
+});
+
+it("browses library modules with owned node types and preserves exact subject selection through history", async () => {
+  const repository = createMockParameterCatalogRepository();
+  const driver = { ...registeredSubject, canonicalName: "vendor,battery" };
+  const child = { ...driver, id: "battery-node", type: "node-type" as const, canonicalName: "battery_cell", ownerSubjectId: driver.id };
+  repository.listSubjects = vi.fn(async (query) => ({ items: query?.lifecycle === "retired" ? [] : [driver, child],
+    catalogReleaseId: CATALOG_RELEASE_ID, totalCount: query?.lifecycle === "retired" ? 0 : 2, hasMore: false, nextCursor: null }));
+  repository.getSubject = vi.fn(async (id) => ({ item: id === child.id ? child : driver }));
+  const listDefinitions = vi.spyOn(repository, "listDefinitions");
+  const listSubjectDefinitions = vi.spyOn(repository, "listSubjectDefinitions");
+  const onHref = vi.fn();
+  render(<CatalogHarness libraryMode actor="user" repository={repository} onHref={onHref}
+    initialSearch={`?catalogReleaseId=${CATALOG_RELEASE_ID}`}
+    moduleRegistry={moduleRegistry([
+      { id: "power", name: "Power", parentId: null, sortOrder: 0 },
+      { id: CATALOG_MODULE_ID, name: "Battery", parentId: "power", sortOrder: 0 }
+    ])} />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "展开 Battery" }));
+  expect(screen.getByRole("button", { name: "选择主体 vendor,battery" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "选择主体 battery_cell" })).not.toBeInTheDocument();
+  await user.type(screen.getByRole("searchbox", { name: "搜索模块或主体" }), "battery_cell");
+  expect(screen.getByRole("button", { name: /^Power\s*2$/ })).toBeVisible();
+  expect(screen.getByRole("button", { name: "选择主体 vendor,battery" })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "选择主体 battery_cell" }));
+  await waitFor(() => expect(listSubjectDefinitions).toHaveBeenCalledWith(child.id, expect.anything()));
+  expect(listSubjectDefinitions.mock.lastCall?.[1]?.placementModuleId).toBeUndefined();
+  expect(parseCatalogUrlAnchor(onHref.mock.lastCall![0].split("?")[1])).toMatchObject({ subjectId: child.id, moduleNodeId: null, cursor: null });
+  await user.clear(screen.getByRole("searchbox", { name: "搜索模块或主体" }));
+  expect(screen.getByRole("button", { name: "选择主体 battery_cell" })).toHaveAttribute("aria-pressed", "true");
+  await user.click(screen.getByRole("button", { name: /^Power\s*2$/ }));
+  await waitFor(() => expect(listDefinitions).toHaveBeenLastCalledWith(expect.objectContaining({ placementModuleId: "power", placementScope: "library" })));
+  expect(parseCatalogUrlAnchor(onHref.mock.lastCall![0].split("?")[1])).toMatchObject({ subjectId: null, moduleNodeId: "power" });
+  await user.click(screen.getByRole("button", { name: "后退" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "选择主体 battery_cell" })).toHaveAttribute("aria-pressed", "true"));
+});
+
+it("keeps detail tab panels addressable and switches them with the keyboard", async () => {
+  render(<CatalogHarness libraryMode repository={createMockParameterCatalogRepository()} actor="user"
+    initialSearch={`?definitionId=${CATALOG_DEFINITION_ID}&catalogReleaseId=${CATALOG_RELEASE_ID}`} />);
+  const tabs = await screen.findByRole("tablist", { name: "参数详情" });
+  for (const tab of within(tabs).getAllByRole("tab")) {
+    const panel = document.getElementById(tab.getAttribute("aria-controls")!);
+    expect(panel).toHaveAttribute("role", "tabpanel");
+    expect(panel).toHaveAttribute("aria-labelledby", tab.id);
+  }
+  expect(screen.getByRole("tabpanel", { name: "定义" })).toBeVisible();
+  const definitionTab = within(tabs).getByRole("tab", { name: "定义" });
+  await userEvent.click(definitionTab);
+  await userEvent.keyboard("{ArrowRight}");
+  await waitFor(() => expect(within(tabs).getByRole("tab", { name: "当前项目配置" })).toHaveFocus());
+  await userEvent.keyboard("{Enter}");
+  expect(await screen.findByRole("tabpanel", { name: "当前项目配置" })).toBeVisible();
+  expect(document.getElementById("library-panel-definition")).not.toBeVisible();
+  expect(within(tabs).getByRole("tab", { name: "当前项目配置" })).toHaveFocus();
 });
 
 it("shows the current published head separately when comparing values while reading a historical release", async () => {
@@ -63,21 +148,10 @@ it("shows the current published head separately when comparing values while read
   render(<CatalogPage libraryMode repository={repository} actor="user" organizationId="org" search={`?definitionId=${CATALOG_DEFINITION_ID}&catalogReleaseId=${CATALOG_RELEASE_ID}&tab=compare&baseline=binding`} />);
   expect(await screen.findByText(/历史发布 · 修订 #1/)).toBeVisible();
   expect(await screen.findByText(/最新定义修订 #3/)).toBeVisible();
-  expect(screen.getByText(/值固定修订 #1.*生效修订 effective-revision/)).toBeVisible();
+  expect(await screen.findByRole("textbox", { name: "基准实例原值" })).toHaveTextContent("42");
+  expect(repository.getProjectConfigurations).toHaveBeenCalledWith(CATALOG_DEFINITION_ID, { baselineBindingId: "binding" });
   expect(getCatalog).toHaveBeenCalledWith();
   expect(getDefinition).toHaveBeenCalledWith(CATALOG_DEFINITION_ID);
-});
-
-it("shares a read-only library link and reports clipboard failure", async () => {
-  const write = vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("denied")).mockResolvedValueOnce();
-  render(<CatalogPage libraryMode repository={createMockParameterCatalogRepository()} actor="user" organizationId="org" search="?q=power&configured=true&catalogReleaseId=release-1&organizationId=other&rawValue=secret" />);
-  fireEvent.click(await screen.findByRole("button", { name: "复制当前视图链接" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("复制链接失败");
-  fireEvent.click(screen.getByRole("button", { name: "复制当前视图链接" }));
-  await waitFor(() => expect(write).toHaveBeenLastCalledWith(expect.stringMatching(/\/parameters\/definitions\?.*q=power&configured=true/)));
-  expect(write.mock.calls[1]?.[0]).not.toMatch(/organizationId|rawValue|secret/);
-  expect(await screen.findByText(/链接已复制/)).toBeVisible();
-  write.mockRestore();
 });
 
 it("does not show delayed project options from another Organization", async () => {

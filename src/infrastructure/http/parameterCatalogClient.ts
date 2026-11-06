@@ -202,8 +202,8 @@ function appendQuery(path: string, query?: CatalogListQuery) {
     params.append("subjectIds", subjectId);
   }
   if (query.placementModuleId) params.set("placementModuleId", query.placementModuleId);
+  if (query.placementScope) params.set("placementScope", query.placementScope);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
-  if (query.configured) params.set("configured", "true");
   if (query.usageProjectId) params.set("usageProjectId", query.usageProjectId);
   if (query.catalogReleaseId) params.set("catalogReleaseId", query.catalogReleaseId);
   const encoded = params.toString();
@@ -384,13 +384,16 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogDefinitionResponseSchema,
         "CatalogDefinitionResponse"
       ),
-    getProjectConfigurations: (definitionId: string, query?: { cursor?: string; selectedBindingId?: string; baselineBindingId?: string; targetBindingId?: string; projectId?: string; configSetId?: string; search?: string; includeUnconfigured?: boolean; hintProjectId?: string; hintConfigSetId?: string }) => {
+    getProjectConfigurations: (definitionId: string, query?: { cursor?: string; limit?: number; selectedBindingId?: string; baselineBindingId?: string; targetBindingId?: string; projectId?: string; excludeProjectId?: string; valueState?: "present"; configSetId?: string; search?: string; includeUnconfigured?: boolean; hintProjectId?: string; hintConfigSetId?: string }) => {
       const params = new URLSearchParams();
       if (query?.cursor) params.set("cursor", query.cursor);
+      if (query?.limit !== undefined) params.set("limit", String(query.limit));
       if (query?.selectedBindingId) params.set("selectedBindingId", query.selectedBindingId);
       if (query?.baselineBindingId) params.set("baselineBindingId", query.baselineBindingId);
       if (query?.targetBindingId) params.set("targetBindingId", query.targetBindingId);
       if (query?.projectId) params.set("projectId", query.projectId);
+      if (query?.excludeProjectId) params.set("excludeProjectId", query.excludeProjectId);
+      if (query?.valueState) params.set("valueState", query.valueState);
       if (query?.configSetId) params.set("configSetId", query.configSetId);
       if (query?.search) params.set("search", query.search);
       if (query?.includeUnconfigured) params.set("includeUnconfigured", "true");

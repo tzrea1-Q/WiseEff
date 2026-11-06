@@ -11885,6 +11885,18 @@
             }
           },
           {
+            "name": "placementScope",
+            "in": "query",
+            "required": false,
+            "description": "Include retired registrations and unregistered owned node types in the module subtree.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "library"
+              ]
+            }
+          },
+          {
             "name": "search",
             "in": "query",
             "required": false,
@@ -12199,18 +12211,21 @@
             }
           },
           {
-            "name": "propertyKey",
+            "name": "placementScope",
             "in": "query",
             "required": false,
+            "description": "Include retired registrations and unregistered owned node types in the module subtree.",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "library"
+              ]
             }
           },
           {
-            "name": "configured",
+            "name": "propertyKey",
             "in": "query",
             "required": false,
-            "description": "Select definitions with a current configured instance before pagination.",
             "schema": {
               "type": "string"
             }
@@ -12471,7 +12486,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
             }
           },
           {
@@ -12504,6 +12521,25 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "excludeProjectId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "valueState",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "present"
+              ]
             }
           },
           {

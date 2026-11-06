@@ -6,6 +6,8 @@ Date: 2026-11-05
 
 Status: finalized by the user on 2026-11-05. After specification and ticket publication, the user authorized implementation through `implement-spec`, with particular attention to frontend quality. Deployment is outside the request. See the [implementation record](../exec-plans/completed/2026-11-05-parameter-library.md).
 
+The subsequent Compare-tab redesign supersedes the initial manual-baseline interaction described below: it initially selects two configured projects and exposes independent project and exact-instance selectors. See the current [frontend contract](../FRONTEND.md#parameter-library). The original decisions remain here as design history.
+
 ## Problem and intended outcome
 
 The project parameter workbench starts with a project and supports inspecting and changing its configured values. A reader instead needs to find a parameter definition, understand its meaning, discover where it is configured, and compare the configurations without first choosing a project that uses it.

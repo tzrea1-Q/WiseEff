@@ -156,6 +156,24 @@ describe("organization child ownership on the application SQL login", () => {
     await expect(changeOwner(sibling)).rejects.toMatchObject({ code: "23503", constraint: "organization_subject_registrations_owner_subject_id_fkey" });
   });
 
+  it("selects the current organization owner module, including retired children only when requested", async () => {
+    await changeOwner(target);
+    const queries = createGovernanceCatalogQueries(api);
+    const select = (owner: string, includeRetired = false) => queries.selectPlacementSubtreeSubjectIds({
+      organizationId, moduleId: `${organizationId}-${owner}`, includeRetired,
+      authScope: { organizationId, principalId: context.principalId },
+    });
+    const oldModule = await select(source, true);
+    const currentModule = await select(target);
+    expect(oldModule.ok && oldModule.value.subjectIds).not.toContain(child);
+    expect(currentModule.ok && currentModule.value.subjectIds).toContain(child);
+    await api.query("update parameter_catalog.organization_subject_registrations set status='retired' where id=$1", [childRegistrationId]);
+    const activeOnly = await select(target);
+    const library = await select(target, true);
+    expect(activeOnly.ok && activeOnly.value.subjectIds).not.toContain(child);
+    expect(library.ok && library.value.subjectIds).toContain(child);
+  });
+
   it("rejects effective node-name collisions including organization recognition overrides", async () => {
     const siblingRegistration = (await api.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, sibling])).rows[0]!.id;
     await admin.query(`insert into public.registration_recognition_rules(organization_id,registration_id,canonical_subject_id,compatibles,node_type_name)

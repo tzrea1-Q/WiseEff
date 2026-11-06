@@ -85,13 +85,14 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
     if (identity.scope.projectScope.kind !== "all") throw new ApiError("FORBIDDEN", "Organization configuration read is not authorized.");
     const definitionId = request.params.definitionId;
     if (identity.scope.definitions.kind === "only" && !identity.scope.definitions.ids.some((id) => id === definitionId)) throw new ApiError("NOT_FOUND", "Definition not found.");
-    const { cursor, selectedBindingId, baselineBindingId, targetBindingId, limit: rawLimit, projectId, configSetId, search, includeUnconfigured, hintProjectId, hintConfigSetId } = request.query;
+    const { cursor, selectedBindingId, baselineBindingId, targetBindingId, limit: rawLimit, projectId, excludeProjectId, configSetId, search, includeUnconfigured, valueState, hintProjectId, hintConfigSetId } = request.query;
     const limit = rawLimit === undefined ? 50 : Number(rawLimit);
     if (!token(definitionId) || (cursor !== undefined && (typeof cursor !== "string" || cursor.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(cursor))) ||
       (selectedBindingId !== undefined && !token(selectedBindingId)) ||
       (baselineBindingId !== undefined && !token(baselineBindingId)) || (targetBindingId !== undefined && (!token(targetBindingId) || !baselineBindingId)) ||
-      (projectId !== undefined && !token(projectId)) || (configSetId !== undefined && !token(configSetId)) ||
+      (projectId !== undefined && !token(projectId)) || (excludeProjectId !== undefined && !token(excludeProjectId)) || (configSetId !== undefined && !token(configSetId)) ||
       (search !== undefined && !token(search)) || (includeUnconfigured !== undefined && includeUnconfigured !== "true" && includeUnconfigured !== "false") ||
+      (valueState !== undefined && valueState !== "present") ||
       (hintProjectId !== undefined && !token(hintProjectId)) || (hintConfigSetId !== undefined && !token(hintConfigSetId)) ||
       ((hintProjectId !== undefined || hintConfigSetId !== undefined) && selectedBindingId === undefined) ||
       !Number.isInteger(limit) || limit < 1 || limit > 100 || (rawLimit !== undefined && !/^\d+$/.test(String(rawLimit)))) {
@@ -110,20 +111,22 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
       if (projectId && !(await tx.query("select 1 from public.projects where organization_id=$1 and id=$2", [organizationId, projectId])).rows.length) throw new ApiError("NOT_FOUND", "Project not found.", { reason: "invalid-filter" });
       if (configSetId && !(await tx.query("select 1 from public.dts_config_set where organization_id=$1 and id=$2 and ($3::text is null or project_id=$3)", [organizationId, configSetId, projectId ?? null])).rows.length) throw new ApiError("NOT_FOUND", "Configuration set not found.", { reason: "invalid-filter" });
       await assertCurrentInstancesValid(tx, organizationId, [definitionId]);
-      const params = [organizationId, [definitionId], projectId ?? null, configSetId ?? null, search ?? null, includeUnconfigured === "true"];
+      const params = [organizationId, [definitionId], projectId ?? null, configSetId ?? null, search ?? null, includeUnconfigured === "true", excludeProjectId ?? null, valueState === "present"];
       const configured = `value_state = 'present' and source_ref <> 'canonical-binding-identity'`;
-      const scope = `($3::text is null or project_id = $3) and ($4::text is null or config_set_id = $4)`;
+      const scope = `($3::text is null or project_id = $3) and ($4::text is null or config_set_id = $4) and ($7::text is null or project_id <> $7)`;
       const visible = `value_state = 'present' and (source_ref <> 'canonical-binding-identity' or exists (
         select 1 from scoped configured where configured.project_id = candidates.project_id
           and configured.value_state = 'present' and configured.source_ref <> 'canonical-binding-identity'))`;
       const rowsCte = `, scoped as (select * from candidates where ${scope}), result_rows as (
         select 'instance:' || binding_id as row_key, project_id, project_name, to_jsonb(candidates) as row_data
           from scoped candidates where value_state = 'present' and ($6::boolean or ${visible})
+            and (not $8::boolean or source_ref <> 'canonical-binding-identity')
             and ($5::text is null or position(lower($5) in lower(concat_ws(' ', project_name, config_set_name, file_name, source_location, binding_id))) > 0)
         union all
         select 'project:' || project.id, project.id, project.name, null::jsonb from public.projects project
-          where project.organization_id = $1 and $6::boolean and $5::text is null
+          where project.organization_id = $1 and $6::boolean and not $8::boolean and $5::text is null
             and ($3::text is null or project.id = $3)
+            and ($7::text is null or project.id <> $7)
             and ($4::text is null or exists (select 1 from public.dts_config_set selected_set where selected_set.id=$4 and selected_set.organization_id=$1 and selected_set.project_id=project.id))
             and not exists (select 1 from scoped where scoped.project_id = project.id and value_state = 'present')
       )`;
@@ -132,7 +135,7 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
           count(distinct binding_id) filter (where ${scope} and value_state = 'present' and source_ref <> 'canonical-binding-identity')::text as instances,
           (select count(*)::text from result_rows) as total_rows, transaction_timestamp()::text as read_at,
           md5(coalesce(string_agg(binding_id || ':' || current_value_id || ':' || project_id || ':' || project_name, E'\\n' order by binding_id), '') ||
-            coalesce((select string_agg(row_key || ':' || project_name, E'\\n' order by row_key) from result_rows), '') || json_build_array($3::text, $4::text, $5::text, $6::boolean)::text) as fingerprint
+            coalesce((select string_agg(row_key || ':' || project_name, E'\\n' order by row_key) from result_rows), '') || json_build_array($3::text, $4::text, $5::text, $6::boolean, $7::text, $8::boolean)::text) as fingerprint
         from candidates`, params);
       const fingerprint = summary.rows[0]!.fingerprint;
       let previousProjectId: string | null = null;
@@ -147,15 +150,15 @@ export function registerProjectConfigurations(router: WiseEffRouter, db: Databas
         } catch {
           throw new ApiError("VALIDATION_FAILED", "Configuration cursor is no longer valid.", { reason: "invalid-cursor" });
         }
-        const found = await tx.query<{ project_id: string }>(`${currentInstancesCte}${rowsCte} select project_id from result_rows where row_key = $7`, [...params, afterRowKey]);
+        const found = await tx.query<{ project_id: string }>(`${currentInstancesCte}${rowsCte} select project_id from result_rows where row_key = $9`, [...params, afterRowKey]);
         if (!found.rows.length) throw new ApiError("VALIDATION_FAILED", "Configuration cursor is no longer valid.", { reason: "invalid-cursor" });
         previousProjectId = found.rows[0]!.project_id;
       }
       const page = await tx.query<{ row_key: string; project_id: string; project_name: string; row_data: Instance | null; value_equals: boolean | null }>(`${currentInstancesCte}${rowsCte}, ordered as (
         select *, row_number() over (order by project_name, project_id, row_key) as position from result_rows
       ) select *, (select value from candidates where binding_id = substring(ordered.row_key from 10)) =
-        (select value from candidates where binding_id = $9) as value_equals from ordered where position > coalesce((select position from ordered where row_key = $7), 0)
-        order by position limit $8`, [...params, afterRowKey, limit + 1, baselineBindingId ?? null]);
+        (select value from candidates where binding_id = $11) as value_equals from ordered where position > coalesce((select position from ordered where row_key = $9), 0)
+        order by position limit $10`, [...params, afterRowKey, limit + 1, baselineBindingId ?? null]);
       async function selectedInstance(bindingId: string, reason: string) {
         const value = await tx.query<Instance>(`${currentInstancesCte} select *, value = (select value from candidates where binding_id = $4) as value_equals
           from candidates where binding_id = $3 and ${configured}`, [organizationId, [definitionId], bindingId, baselineBindingId ?? null]);
