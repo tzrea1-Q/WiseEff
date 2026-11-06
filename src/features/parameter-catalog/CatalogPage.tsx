@@ -57,6 +57,7 @@ import { DefinitionDeletionDialog } from "./DefinitionDeletionDialog";
 import { DefinitionTable } from "./DefinitionTable";
 import { DefinitionBatchBar } from "./DefinitionBatchBar";
 import { ProjectConfigurations } from "./ProjectConfigurations";
+import { ProjectComparison } from "./ProjectComparison";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 import {
@@ -1045,18 +1046,25 @@ export function CatalogPage({
               id={`library-panel-${tab}`} aria-labelledby={`library-tab-${tab}`}>
             {activeTab === tab ? <>
               <div className="parameter-library-detail__section-heading">
-                <h2>{tab === "compare" ? "实例对比" : "当前项目配置"}</h2>
+                <h2>{tab === "compare" ? "跨项目对比" : "当前项目配置"}</h2>
                 <span className="parameter-catalog__muted">{snapshot?.latestRevision ? `最新定义修订 #${snapshot.latestRevision.revisionNumber}` : "最新定义修订暂不可用"}</span>
               </div>
-              <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
-                cursor={anchor.instanceCursor} selectedId={anchor.instance} compare={tab === "compare"} baselineId={anchor.baseline} targetId={anchor.target}
+              {tab === "compare" ? <ProjectComparison key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
+                baselineId={anchor.baseline} targetId={anchor.target}
+                onChange={(update, mode = "push") => commitAnchor({ ...anchor, ...update }, mode)}
+                onOpenProject={onOpenProject ? (row) => {
+                  const returnPath = `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor({ ...anchor, sourceReturn: undefined, createDefinition: false, reviewItemId: null })}`;
+                  const params = new URLSearchParams({ project: row.projectId, bindingId: row.bindingId, definitionId: reading.id, configSetId: row.configSetId, returnTo: returnPath });
+                  onOpenProject(`/parameters?${params}`);
+                } : undefined} /> : <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
+                cursor={anchor.instanceCursor} selectedId={anchor.instance}
                 projectId={anchor.configProjectId} configSetId={anchor.configSetId} search={anchor.configSearch} includeUnconfigured={anchor.includeUnconfigured}
                 onOpenProject={onOpenProject ? (row) => {
                   const returnPath = `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor({ ...anchor, sourceReturn: undefined, createDefinition: false, reviewItemId: null })}`;
                   const params = new URLSearchParams({ project: row.projectId, bindingId: row.bindingId, definitionId: reading.id, configSetId: row.configSetId, returnTo: returnPath });
                   onOpenProject(`/parameters?${params}`);
                 } : undefined}
-                onChange={(update) => commitAnchor({ ...anchor, ...update }, "push")} />
+                onChange={(update) => commitAnchor({ ...anchor, ...update }, "push")} />}
             </> : null}</TabPanel>)}
             <TabPanel className="parameter-library-detail__panel" hidden={activeTab !== "definition"} id="library-panel-definition" aria-labelledby="library-tab-definition">
             {activeTab === "definition" ? <>

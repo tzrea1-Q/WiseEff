@@ -111,7 +111,7 @@ it("shows the current published head separately when comparing values while read
   render(<CatalogPage libraryMode repository={repository} actor="user" organizationId="org" search={`?definitionId=${CATALOG_DEFINITION_ID}&catalogReleaseId=${CATALOG_RELEASE_ID}&tab=compare&baseline=binding`} />);
   expect(await screen.findByText(/历史发布 · 修订 #1/)).toBeVisible();
   expect(await screen.findByText(/最新定义修订 #3/)).toBeVisible();
-  expect(screen.getByText(/值固定修订 #1.*生效修订 effective-revision/)).toBeVisible();
+  expect(await screen.findByText(/值固定修订 #1.*生效修订 effective-revision/)).toBeVisible();
   expect(getCatalog).toHaveBeenCalledWith();
   expect(getDefinition).toHaveBeenCalledWith(CATALOG_DEFINITION_ID);
 });

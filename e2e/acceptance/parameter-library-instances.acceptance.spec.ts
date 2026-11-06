@@ -136,7 +136,8 @@ test("reads grouped DTS and software instances with exact counts and full values
     const headers = authHeadersForRole("admin");
     const response = await request.get(apiRoute(`/api/v2/catalog/definitions/${definitionId}/project-configurations`), { headers });
     expect(response.status()).toBe(200);
-    expect((await response.json()).summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+    const configurations = await response.json();
+    expect(configurations.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
     for (const [suffix, raw] of [["empty", '""\n'], ["null", "null\n"], ["false", "false\n"]]) {
       const typed = await request.get(apiRoute(`/api/v2/catalog/definitions/pdef_parlib_${suffix}/project-configurations`), { headers });
       expect(typed.status()).toBe(200);
@@ -285,32 +286,38 @@ test("reads grouped DTS and software instances with exact counts and full values
       return route.continue({ url: url.toString() });
     });
     await page.getByRole("tab", { name: "对比", exact: true }).click();
-    await expect(page.getByText(/请选择基准实例/)).toBeVisible();
-    await page.getByRole("button", { name: "设为基准" }).click();
-    const baselineUrl = page.url();
+    const comparison = page.getByRole("region", { name: "实例对比" });
+    const leftProject = comparison.getByRole("combobox", { name: "左侧项目" });
+    const rightProject = comparison.getByRole("combobox", { name: "右侧项目" });
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
-    await selectControlOption(page.getByRole("combobox", { name: "项目", exact: true }), "parlib-instances-b");
-    await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
-    await expect(page.getByRole("tabpanel", { name: "对比" })).toContainText("已配置项目 1 · 已配置实例 1");
-    await expect(page.getByRole("tabpanel", { name: "对比" })).toContainText("筛选结果 1 条");
-    await expect(page.getByRole("table", { name: "软件项目 的当前配置" })).toBeVisible();
-    await selectControlOption(page.getByRole("combobox", { name: "项目", exact: true }), "parlib-instances-a");
-    await page.getByRole("button", { name: "下一页" }).click();
-    await page.getByRole("button", { name: "查看对比" }).click();
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
+    await expect.poll(async () => new Set([await leftProject.getAttribute("data-value"), await rightProject.getAttribute("data-value")])).toEqual(new Set(["parlib-instances-a", "parlib-instances-b"]));
+    await expect(comparison.getByRole("region", { name: "配置代码差异" })).toBeVisible();
+    await expect(page.getByRole("tabpanel", { name: "对比" }).getByRole("table")).toHaveCount(0);
+    const baselineBinding = configurations.items.find((item: { projectId: string; bindingId: string }) => item.projectId === "parlib-instances-a" && item.bindingId !== directBinding)?.bindingId;
+    expect(baselineBinding).toBeTruthy();
+    await selectControlOption(leftProject, "parlib-instances-a");
+    await selectControlOption(comparison.getByRole("combobox", { name: "左侧配置实例" }), baselineBinding);
+    await selectControlOption(rightProject, "parlib-instances-b");
+    await expect(leftProject).toHaveAttribute("data-value", "parlib-instances-a");
+    const baselineOnly = new URL(page.url());
+    baselineOnly.searchParams.delete("target");
+    const baselineUrl = baselineOnly.toString();
+    await selectControlOption(rightProject, "parlib-instances-a");
+    await selectControlOption(comparison.getByRole("combobox", { name: "右侧配置实例" }), directBinding!);
+    await expect(leftProject).toHaveAttribute("data-value", "parlib-instances-a");
     const compareReturn = page.url();
-    await page.getByRole("table", { name: "多实例项目 的当前配置" }).getByRole("button", { name: /在项目中打开/ }).click();
+    await comparison.getByRole("button", { name: "在项目中打开 目标实例" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.getByRole("button", { name: "关闭参数详情" }).click();
     await page.getByRole("button", { name: "返回参数库" }).click();
     await expect(page).toHaveURL(compareReturn);
     await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
-    for (const label of ["基准实例", "目标实例"]) {
-      const displayed = await page.getByRole("textbox", { name: `${label}原值` }).textContent();
+    for (const [label, expected] of [["基准实例", "<0x3e9>"], ["目标实例", "<0x3ea>"]]) {
+      await expect(page.getByRole("textbox", { name: `${label}原值` })).toContainText(expected);
       await page.getByRole("button", { name: `复制${label}完整原值` }).click();
-      expect(displayed).toMatch(/^<0x3e[9a]>$/);
-      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(displayed);
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(expected);
     }
     const comparisonLink = page.url();
     expect(comparisonLink).toMatch(/baseline=.*target=/);
@@ -369,19 +376,24 @@ test("reads grouped DTS and software instances with exact counts and full values
       await page.reload();
       await expect(page.getByRole("alert")).toContainText("基准实例已不可用");
       await page.getByRole("button", { name: "重新选择" }).click();
-      await expect(page.getByText(/请选择基准实例/)).toBeVisible();
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      await expect(page.getByText("当前没有可用于对比的项目配置。")).toBeVisible();
     } finally {
       await pool.query("update parameter_catalog.organization_subject_registrations set status='active' where id=$1", [driver.value.registrationId]);
     }
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${jsonDefinition}&tab=compare`);
-    await page.getByRole("button", { name: "设为基准" }).click();
-    await page.getByRole("button", { name: "查看对比" }).click();
-    await expect(page.getByRole("region", { name: "实例对比" })).toContainText(fullSourceToken);
+    await expect(page.getByRole("combobox", { name: "左侧项目" })).toHaveAttribute("data-value", "parlib-instances-b");
+    await expect(page.getByText("只有一个已配置项目，可选择同一项目中的其他实例。")).toBeVisible();
+    await selectControlOption(page.getByRole("combobox", { name: "右侧项目" }), "parlib-instances-b");
+    const jsonSource = page.getByRole("textbox", { name: "基准实例原值" }).locator("code");
+    await expect.poll(async () => (await jsonSource.allTextContents()).join("")).toBe(fullSourceToken);
+    await page.getByRole("button", { name: "复制基准实例完整原值" }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(fullSourceToken);
     await page.getByRole("textbox", { name: "基准实例原值" }).focus();
     await expect(page.getByRole("textbox", { name: "基准实例原值" })).toBeFocused();
     await page.screenshot({ path: testInfo.outputPath("compare-long-1280.png"), fullPage: true });
-    await recordOperationEvidence({ operationId: "PARLIB-COMPARE-001", title: "Explicit instance comparison", status: "passed", page, testInfo,
-      assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: 200, responseSummary: "Explicit baseline and target on separate pages, current values read from one API response." }] });
+    await recordOperationEvidence({ operationId: "PARLIB-COMPARE-001", title: "Instance comparison", status: "passed", page, testInfo,
+      assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: 200, responseSummary: "Exact baseline and target discovered on separate pages, current values read from one API response." }] });
     await page.unroute("**/project-configurations*");
     await page.goto(`${runtime.frontendUrl}/parameters/definitions`);
     await expect(page.getByRole("checkbox", { name: "有当前配置", exact: true })).toHaveCount(0);
