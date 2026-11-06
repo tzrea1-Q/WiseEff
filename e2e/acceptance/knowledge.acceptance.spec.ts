@@ -1001,7 +1001,7 @@ test.describe("Knowledge base browser acceptance", () => {
 
     // Browser part: the API-mode ask entry opens Xiaoze on /knowledge.
     await openKnowledgePage(page);
-    const askButton = page.getByRole("button", { name: /问小泽/ });
+    const askButton = page.getByRole("button", { name: "问小泽", exact: true });
     await expect(askButton).toBeVisible();
     await askButton.click();
     await expect(page.getByTestId("xiaoze-popup-layer")).toBeVisible();
