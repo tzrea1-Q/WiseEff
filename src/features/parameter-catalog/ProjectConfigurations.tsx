@@ -85,21 +85,25 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   const detail = (item: NonNullable<typeof result.baseline>, label: string) => <article className="parameter-library-compare__detail">
     <h3>{label}</h3><strong>{item.projectName} / {item.configSetName}</strong>
     <p className="parameter-library-compare__source" title={`${item.fileName} · ${item.sourceLocation}`}>{item.fileName} · {item.sourceLocation}</p><p>值固定修订 #{item.definitionRevisionNumber} · {item.effectiveRevisionId === item.definitionRevisionId ? "生效修订相同" : `生效修订 ${item.effectiveRevisionId}`} · 单位 {item.unit ?? "未说明"}</p>
-    <div role="textbox" aria-readonly="true" aria-multiline="true" tabIndex={0} aria-label={`${label}原值`}><pre>{item.rawValue === undefined ? "（完整原值不可用）" : item.rawValue || (item.sourceFormat === "dts" && item.valueKind === "boolean" ? "（布尔属性存在，无值文本）" : "（空值）")}</pre></div>
+    <div className="parameter-library-code" role="textbox" aria-readonly="true" aria-multiline="true" tabIndex={0} aria-label={`${label}原值`}><pre>{item.rawValue === undefined ? "（完整原值不可用）" : item.rawValue || (item.sourceFormat === "dts" && item.valueKind === "boolean" ? "（布尔属性存在，无值文本）" : "（空值）")}</pre></div>
     <button type="button" className="button subtle sm" disabled={item.rawValue === undefined} onClick={() => { if (item.rawValue !== undefined) void copyValue(item.rawValue); }}>复制{label}完整原值</button>
     <details><summary>实例与值身份</summary><p>{item.fileName} · {item.sourceLocation}<br />Binding {item.bindingId}<br />ProjectValue {item.currentValueId}<br />值固定修订 {item.definitionRevisionId}</p></details>
   </article>;
   return <div className="parameter-library-configurations">
-    <p className="parameter-catalog__muted">{configSetId ? "所选配置集范围" : projectId ? "所选项目范围" : "当前组织范围"} · 已配置项目 {result.summary.configuredProjectCount} · 已配置实例 {result.summary.configuredInstanceCount} · 筛选结果 {result.totalCount} 条（本页 {result.items.length} 条）</p>
-    <p className="parameter-catalog__muted">读取于 {formatAbsolute(result.readAt)} · 数据可能已变化。当前平台配置包含所有配置集，并非设备运行状态；历史定义仍显示当前配置。</p>
+    <div className="parameter-library-configurations__summary">
+      <span>{configSetId ? "所选配置集范围" : projectId ? "所选项目范围" : "当前组织范围"}</span>
+      <span>已配置项目 {result.summary.configuredProjectCount} · 已配置实例 {result.summary.configuredInstanceCount}</span>
+      <span className="parameter-catalog__muted">筛选结果 {result.totalCount} 条（本页 {result.items.length} 条）</span>
+    </div>
+    <p className="parameter-library-configurations__note">读取于 {formatAbsolute(result.readAt)} · 数据可能已变化。当前平台配置包含所有配置集，并非设备运行状态；历史定义仍显示当前配置。</p>
     {copyState === "success" ? <p role="status">已复制本次读取的完整原值；来源专属引用未必适用于其他项目。</p> : null}
     {copyState === "error" ? <p role="alert">复制失败，请检查剪贴板权限后重试；选择仍保留。</p> : null}
     {compare ? <section className="parameter-library-compare" aria-label="实例对比">
       {!baselineId && targetId ? <p role="alert">目标需要先选择基准；请选择基准后重新选择目标。</p> : null}
-      {!result.baseline ? <p>请选择基准实例，然后选择目标查看焦点对比。每个实例均按其固定的定义修订解释。</p> : <>
+      {!result.baseline ? <div className="parameter-library-compare__empty"><h3>选择两个实例，查看配置差异</h3><p>请选择基准实例，然后选择目标查看焦点对比。每个实例均按其固定的定义修订解释。</p></div> : <>
         {result.target?.comparison ? <p role="status"><strong>{status(result.target.comparison)}</strong>{result.target.comparison.revisionChanged ? " · 固定修订不同" : ""}
           {result.target.comparison.delta !== undefined ? ` · 目标 − 基准：${result.target.comparison.delta} ${result.target.unit ?? ""}` : ""}</p> : null}
-        <div className="parameter-library-compare__pair">{detail(result.baseline, "基准实例")}{result.target ? detail(result.target, "目标实例") : <p>选择一行作为目标，以查看焦点对比。</p>}</div>
+        <div className="parameter-library-compare__pair">{detail(result.baseline, "基准实例")}{result.target ? detail(result.target, "目标实例") : <div className="parameter-library-compare__empty"><h3>目标实例</h3><p>选择一行作为目标，以查看焦点对比。</p></div>}</div>
         <button type="button" className="button subtle sm" onClick={() => onChange({ baseline: null, target: null })}>更换基准</button>
       </>}
     </section> : null}
@@ -113,26 +117,33 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
       <label><input type="checkbox" checked={Boolean(includeUnconfigured)} onChange={(event) => onChange({ includeUnconfigured: event.target.checked ? "true" : null, instanceCursor: null })} /> 显示无当前配置项目</label>
       <button type="button" className="button subtle sm" onClick={() => { setSearchInput(""); onChange({ configProjectId: null, configSetId: null, configSearch: null, includeUnconfigured: null, instanceCursor: null }); }}>重置筛选</button>
     </form>
-    {result.items.length === 0 ? <SectionEmpty message={projectId || configSetId || search || includeUnconfigured ? "没有匹配的项目配置，请调整或重置筛选。" : "当前没有可显示的项目配置。"} /> : [...groups.entries()].map(([projectId, items]) => <section key={projectId} className={items[0]?.kind === "project-status" ? "parameter-library-project-status" : undefined}>
-      <h3>{items[0]!.projectName}{result.continuedProjectId === projectId ? "（续）" : ""}</h3>
+    {result.selected ? <section className="parameter-library-configurations__value" aria-label="选中的完整值">
+      <div className="parameter-library-detail__section-heading"><h3>完整值 · {result.selected.projectName} / {result.selected.fileName}</h3>
+        <div className="parameter-catalog__actions"><button type="button" className="button subtle sm" disabled={result.selected.rawValue === undefined} onClick={() => { if (result.selected?.rawValue !== undefined) void copyValue(result.selected.rawValue); }}>复制完整原值</button>
+        <button type="button" className="button subtle sm" onClick={() => onChange({ instance: null })}>关闭完整值</button></div>
+      </div>
+      {result.selected.sourceFormat === "dts" && result.selected.valueKind === "boolean" ? <p>布尔属性以存在表示，无值文本。</p> : null}
+      <div className="parameter-library-code" role="textbox" aria-label="选中实例完整原值" aria-readonly="true" aria-multiline="true" tabIndex={0}>
+        <pre>{result.selected.rawValue ?? "（完整原值不可用）"}</pre>
+      </div>
+    </section> : null}
+    {result.items.length === 0 ? <SectionEmpty message={projectId || configSetId || search || includeUnconfigured ? "没有匹配的项目配置，请调整或重置筛选。" : "当前没有可显示的项目配置。"} /> : [...groups.entries()].map(([projectId, items]) => <section key={projectId} className={items[0]?.kind === "project-status" ? "parameter-library-project-status" : "parameter-library-configurations__project"}>
+      <div className="parameter-library-configurations__project-heading"><h3>{items[0]!.projectName}{result.continuedProjectId === projectId ? "（续）" : ""}</h3>
+        {items[0]?.kind !== "project-status" ? <span className="parameter-catalog__muted">本页 {items.length} 个实例</span> : null}</div>
       {items[0]?.kind === "project-status" ? <p>无当前配置</p> : <DataTable rows={items.filter((row) => row.kind === "instance")} rowKey={(row) => row.bindingId} aria-label={`${items[0]!.projectName} 的当前配置`} pageSize={items.length} tableClassName={compare ? "parameter-library-comparison-table" : "parameter-library-instances-table"}
         columns={[
-          { key: "source", header: "配置集 / 来源", render: (row) => <><strong>{row.configSetName}</strong><br /><span className="parameter-catalog__muted">{row.fileName} · {row.sourceFormat.toUpperCase()}</span><br /><code>{row.sourceLocation}</code></> },
-          { key: "value", header: "当前值", render: (row) => row.valueState === "unset" ? "未设置" : <><code>{row.sourceFormat === "dts" && row.valueKind === "boolean" ? "存在" : row.valuePreview}{row.valuePreviewTruncated ? "…" : ""}</code>{row.unit ? ` ${row.unit}` : null}</> },
+          { key: "source", header: "配置集 / 来源", render: (row) => <div className="parameter-library-instance-source"><strong>{row.configSetName}</strong><span className="parameter-catalog__muted">{row.fileName} · {row.sourceFormat.toUpperCase()}</span><code>{row.sourceLocation}</code></div> },
+          { key: "value", header: "当前值", render: (row) => row.valueState === "unset" ? "未设置" : <div className="parameter-library-instance-value"><code>{row.sourceFormat === "dts" && row.valueKind === "boolean" ? "存在" : row.valuePreview}{row.valuePreviewTruncated ? "…" : ""}</code>{row.unit ? ` ${row.unit}` : null}</div> },
           { key: "revision", header: "值固定修订", render: (row) => <>#{row.definitionRevisionNumber}</> },
           ...(compare ? [{ key: "comparison", header: "相对基准", render: (row: Extract<(typeof result.items)[number], { kind: "instance" }>) => row.comparison ? status(row.comparison) : "尚未选择基准" }] : []),
         ]}
-        renderRowActions={(row) => <div>{compare ? <><button type="button" className="button subtle sm" disabled={row.valueState === "unset"}
+        renderRowActions={(row) => <div className="parameter-library-instance-actions">{compare ? <><button type="button" className="button subtle sm" disabled={row.valueState === "unset"}
           onClick={() => onChange({ baseline: row.bindingId, target: null })}>设为基准</button>{baselineId ? <button type="button" className="button subtle sm" disabled={row.valueState === "unset"}
           onClick={() => onChange({ target: row.bindingId })}>查看对比</button> : null}</> : <button type="button" className="button subtle sm" aria-label={`查看 ${row.fileName} 的完整值`}
           disabled={row.valueState === "unset"} onClick={() => onChange({ instance: row.bindingId })}>查看完整值</button>}
           {onOpenProject ? <button type="button" className="button subtle sm" disabled={row.valueState === "unset"} aria-label={`在项目中打开 ${row.fileName} ${row.sourceLocation}`}
             onClick={() => onOpenProject(row)}>在项目中打开</button> : null}</div>} />}
     </section>)}
-    {result.selected ? <section aria-label="选中的完整值"><h3>完整值 · {result.selected.projectName} / {result.selected.fileName}</h3>
-      {result.selected.sourceFormat === "dts" && result.selected.valueKind === "boolean" ? <p>布尔属性以存在表示，无值文本。</p> : null}<pre>{result.selected.rawValue ?? "（完整原值不可用）"}</pre>
-      <button type="button" className="button subtle sm" disabled={result.selected.rawValue === undefined} onClick={() => { if (result.selected?.rawValue !== undefined) void copyValue(result.selected.rawValue); }}>复制完整原值</button>{" "}
-      <button type="button" className="button subtle sm" onClick={() => onChange({ instance: null })}>关闭完整值</button></section> : null}
     {cursor ? <button type="button" className="button subtle sm" onClick={() => onChange({ instanceCursor: null, instance: null })}>返回第一页</button> : null}
     {result.nextCursor ? <button type="button" className="button subtle sm" onClick={() => onChange({ instanceCursor: result.nextCursor, instance: null })}>下一页</button> : null}
   </div>;

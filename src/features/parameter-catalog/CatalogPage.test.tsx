@@ -37,6 +37,26 @@ import type { CatalogModule } from "./catalogModuleScope";
 
 type PageProps = ComponentProps<typeof CatalogPage>;
 
+it("keeps detail tab panels addressable and switches them with the keyboard", async () => {
+  render(<CatalogHarness libraryMode repository={createMockParameterCatalogRepository()} actor="user"
+    initialSearch={`?definitionId=${CATALOG_DEFINITION_ID}&catalogReleaseId=${CATALOG_RELEASE_ID}`} />);
+  const tabs = await screen.findByRole("tablist", { name: "参数详情" });
+  for (const tab of within(tabs).getAllByRole("tab")) {
+    const panel = document.getElementById(tab.getAttribute("aria-controls")!);
+    expect(panel).toHaveAttribute("role", "tabpanel");
+    expect(panel).toHaveAttribute("aria-labelledby", tab.id);
+  }
+  expect(screen.getByRole("tabpanel", { name: "定义" })).toBeVisible();
+  const definitionTab = within(tabs).getByRole("tab", { name: "定义" });
+  await userEvent.click(definitionTab);
+  await userEvent.keyboard("{ArrowRight}");
+  await waitFor(() => expect(within(tabs).getByRole("tab", { name: "当前项目配置" })).toHaveFocus());
+  await userEvent.keyboard("{Enter}");
+  expect(await screen.findByRole("tabpanel", { name: "当前项目配置" })).toBeVisible();
+  expect(document.getElementById("library-panel-definition")).not.toBeVisible();
+  expect(within(tabs).getByRole("tab", { name: "当前项目配置" })).toHaveFocus();
+});
+
 it("waits for the published release pin before enabling a share link", () => {
   const repository = createMockParameterCatalogRepository();
   const view = render(<CatalogPage libraryMode repository={repository} actor="user" search="?q=power" />);

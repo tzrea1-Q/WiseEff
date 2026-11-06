@@ -1,9 +1,11 @@
 import { SelectControl } from "@/components/common/SelectControl";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CircleX } from "lucide-react";
+import { ArrowLeft, CircleX } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
 import { ViewSwitch } from "@/components/ui/view-switch";
+import { TabPanel } from "@/components/ui/tab-panel";
+import { Badge } from "@/components/ui/badge";
 
 import {
   catalogWritesEnabled,
@@ -1016,38 +1018,52 @@ export function CatalogPage({
     const revision = reading?.currentRevision;
     const constraintLabels: Record<string, string> = { minimum: "最小值", maximum: "最大值", exclusiveMinimum: "大于", exclusiveMaximum: "小于", multipleOf: "倍数", enum: "可选值", minLength: "最短长度", maxLength: "最长长度", pattern: "格式", minItems: "最少项目", maxItems: "最多项目" };
     const constraints = Object.entries(revision?.valueShape.schema ?? {}).filter(([key]) => key in constraintLabels);
+    const activeTab = anchor.tab === "configurations" || anchor.tab === "compare" ? anchor.tab : "definition";
     return <div className="parameter-catalog parameter-library-detail" role="region" aria-label="参数定义目录"
       data-catalog-page="true" data-catalog-state={domainState.kind} data-catalog-release={snapshot?.document.item.catalogReleaseId ?? ""}
       data-runtime-state={error && !reading ? "error" : inFlight && !reading ? "loading" : "ready"} aria-busy={inFlight && !reading}>
       <div className="parameter-library-detail__top"><button type="button" className="button subtle sm" onClick={() => {
         setHistoryOpen(false);
         commitAnchor({ ...anchor, definitionId: null, history: null, tab: null, instance: null, instanceCursor: null, baseline: null, target: null }, "push");
-      }}>返回参数库</button>{shareControl}</div>
+      }}><ArrowLeft size={14} aria-hidden="true" />返回参数库</button>
+        <div className="parameter-catalog__actions">{shareControl}
+          {reading && onOpenGovernance ? <button type="button" className="button subtle sm" onClick={() => onOpenGovernance(anchor)}>打开定义治理</button> : null}
+        </div>
+      </div>
       {inFlight && !reading ? <SectionSkeleton label={catalogLoadingLabel} />
         : error ? <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />
           : reading && revision ? <article role="region" aria-label="定义详情" className="parameter-library-detail__body">
             <header className="parameter-library-detail__header">
-              <div>
-              <p className="parameter-catalog__muted">{catalogSubjectTypeLabel(reading.subject.type)} · {reading.subject.canonicalName}</p>
-              <h1 ref={readingHeading} tabIndex={-1}>{revision.displayName || reading.propertyKey}</h1>
-              <p><code>{reading.propertyKey}</code> · {catalogLifecycleLabel(reading.lifecycle)} · {catalogRegistrationLabel(reading.registration.status)}</p>
-              <p className="parameter-catalog__muted">{snapshot?.currentReleaseId
+              <div className="parameter-library-detail__identity">
+                <div className="parameter-library-detail__title">
+                  <h1 ref={readingHeading} tabIndex={-1}>{revision.displayName || reading.propertyKey}</h1>
+                  <Badge variant="secondary">{catalogLifecycleLabel(reading.lifecycle)}</Badge>
+                  <Badge variant="outline">{catalogRegistrationLabel(reading.registration.status)}</Badge>
+                </div>
+                <code className="parameter-library-detail__key">{reading.propertyKey}</code>
+                <p className="parameter-library-detail__subject"><span>{catalogSubjectTypeLabel(reading.subject.type)}</span><span>{reading.subject.canonicalName}</span></p>
+              </div>
+              <p className="parameter-library-detail__release">{snapshot?.currentReleaseId
                 ? snapshot.currentReleaseId === snapshot.document.item.catalogReleaseId ? "当前发布" : "历史发布"
                 : "所选发布"} · 修订 #{revision.revisionNumber}</p>
-              </div>
-              {onOpenGovernance ? <button type="button" className="button subtle sm" onClick={() => onOpenGovernance(anchor)}>打开定义治理</button> : null}
             </header>
-            <ViewSwitch variant="tabs" ariaLabel="参数详情" value={anchor.tab === "configurations" || anchor.tab === "compare" ? anchor.tab : "definition"}
+            <div className="parameter-library-detail__tabs">
+            <ViewSwitch variant="tabs" ariaLabel="参数详情" value={activeTab}
               onValueChange={(value) => commitAnchor({ ...anchor, tab: value === "definition" ? null : value }, "push")}
               items={[{ value: "definition", label: "定义", id: "library-tab-definition", panelId: "library-panel-definition" },
                 { value: "configurations", label: "当前项目配置", id: "library-tab-configurations", panelId: "library-panel-configurations" },
                 { value: "compare", label: "对比", id: "library-tab-compare", panelId: "library-panel-compare" }]} />
-            <p className="parameter-library-detail__hint">视图按当前组织权限读取，数据可能已变化。</p>
-            {anchor.tab === "configurations" || anchor.tab === "compare" ? <section role="tabpanel" id={`library-panel-${anchor.tab}`} aria-labelledby={`library-tab-${anchor.tab}`}>
-              <h2>{anchor.tab === "compare" ? "实例对比" : "当前项目配置"}</h2>
-              <p className="parameter-catalog__muted">{snapshot?.latestRevision ? `最新定义修订 #${snapshot.latestRevision.revisionNumber}` : "最新定义修订暂不可用"}</p>
+            <span className="parameter-library-detail__hint">视图按当前组织权限读取，数据可能已变化。</span>
+            </div>
+            {(["configurations", "compare"] as const).map((tab) => <TabPanel key={tab} className="parameter-library-detail__panel" hidden={activeTab !== tab}
+              id={`library-panel-${tab}`} aria-labelledby={`library-tab-${tab}`}>
+            {activeTab === tab ? <>
+              <div className="parameter-library-detail__section-heading">
+                <h2>{tab === "compare" ? "实例对比" : "当前项目配置"}</h2>
+                <span className="parameter-catalog__muted">{snapshot?.latestRevision ? `最新定义修订 #${snapshot.latestRevision.revisionNumber}` : "最新定义修订暂不可用"}</span>
+              </div>
               <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
-                cursor={anchor.instanceCursor} selectedId={anchor.instance} compare={anchor.tab === "compare"} baselineId={anchor.baseline} targetId={anchor.target}
+                cursor={anchor.instanceCursor} selectedId={anchor.instance} compare={tab === "compare"} baselineId={anchor.baseline} targetId={anchor.target}
                 projectId={anchor.configProjectId} configSetId={anchor.configSetId} search={anchor.configSearch} includeUnconfigured={anchor.includeUnconfigured}
                 onOpenProject={onOpenProject ? (row) => {
                   const returnPath = `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor({ ...anchor, sourceReturn: undefined, createDefinition: false, reviewItemId: null })}`;
@@ -1055,29 +1071,40 @@ export function CatalogPage({
                   onOpenProject(`/parameters?${params}`);
                 } : undefined}
                 onChange={(update) => commitAnchor({ ...anchor, ...update }, "push")} />
-            </section> : <div role="tabpanel" id="library-panel-definition" aria-labelledby="library-tab-definition">
-            <section><h2>定义说明</h2>
-              {revision.documentation ? <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(revision.documentation) }} /> : <p>未说明</p>}
-            </section>
-            <section><h2>类型与约束</h2>
+            </> : null}</TabPanel>)}
+            <TabPanel className="parameter-library-detail__panel" hidden={activeTab !== "definition"} id="library-panel-definition" aria-labelledby="library-tab-definition">
+            {activeTab === "definition" ? <>
+            <div className="parameter-library-detail__definition">
+              <div className="parameter-library-detail__reading">
+                <section className="parameter-library-detail__section"><h2>定义说明</h2>
+                  {revision.documentation ? <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(revision.documentation) }} /> : <p className="parameter-catalog__muted">该定义暂未提供说明。</p>}
+                </section>
+                <section className="parameter-library-detail__section"><h2>示例</h2>
+                  <p className="parameter-catalog__muted">仅用于理解定义，并非默认配置或推荐值。</p>
+                  {revision.examples?.length ? <pre className="parameter-library-code">{JSON.stringify(revision.examples, null, 2)}</pre> : <p className="parameter-library-detail__empty">该定义暂未提供示例。</p>}
+                </section>
+              </div>
+            <section className="parameter-library-detail__facts"><h2>类型与约束</h2>
               <dl className="parameter-catalog__dl"><dt>类型</dt><dd>{catalogValueShapeLabel(revision.valueShape.schema as { type?: unknown })}</dd>
                 <dt>单位</dt><dd>{revision.unit?.symbol ?? "未说明"}</dd>
                 <dt>约束</dt><dd>{constraints.length ? <ul>{constraints.map(([key, value]) => <li key={key}>{constraintLabels[key]}：{JSON.stringify(value)}</li>)}</ul> : "未说明"}</dd></dl>
             </section>
-            <section><h2>示例</h2><p>以下内容仅为定义示例，并非默认配置或推荐值。</p>
-              {revision.examples?.length ? <pre>{JSON.stringify(revision.examples, null, 2)}</pre> : <p>未说明</p>}</section>
-            <details><summary>技术身份与完整 schema</summary><dl className="parameter-catalog__dl">
+            </div>
+            <details className="parameter-library-detail__technical"><summary>技术身份与完整 schema</summary><dl className="parameter-catalog__dl">
               <dt>定义编号</dt><dd>{reading.id}</dd><dt>主体编号</dt><dd>{reading.subject.id}</dd>
               <dt>当前修订</dt><dd>#{revision.revisionNumber} · {revision.id}</dd><dt>发布</dt><dd>{revision.publishedInCatalogReleaseId}</dd>
-              <dt>Schema</dt><dd><pre>{JSON.stringify(revision.valueShape, null, 2)}</pre></dd></dl></details>
+              <dt>Schema</dt><dd><pre className="parameter-library-code">{JSON.stringify(revision.valueShape, null, 2)}</pre></dd></dl></details>
+            <section className="parameter-library-detail__history">
+            <div className="parameter-library-detail__section-heading"><div><h2>修订历史</h2><p className="parameter-catalog__muted">查看定义变更与发布记录</p></div>
             <button type="button" className="button subtle" aria-expanded={historyOpen} onClick={() => commitAnchor({ ...anchor, history: historyOpen ? null : "true" }, "push")}>
               {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
             </button>
-            {historyOpen ? <section aria-label={catalogTimelineLabel}>
+            </div>
+            {historyOpen ? <div role="region" aria-label={catalogTimelineLabel}>
               {inFlight ? <SectionSkeleton label="正在加载修订历史" /> : historyError ? <SectionError message={historyError} onRetry={() => void load()} /> : <CatalogHistoryBody timeline={snapshot?.timeline ?? null}
                 revisions={snapshot?.revisions ?? []} currentRevision={revision} hasMore={Boolean(snapshot?.revisionCursor || snapshot?.timelineCursor)}
                 pending={historyPending} error={historyError} onLoadMore={() => void loadMoreHistory()} />}
-            </section> : null}</div>}
+            </div> : null}</section></> : null}</TabPanel>
           </article> : <SectionError message="定义不可用。" onRetry={() => void load()} />}
     </div>;
   }
