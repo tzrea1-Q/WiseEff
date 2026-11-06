@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useLayoutEffect } from "react";
 
 import { selectControlOption } from "../test/selectControlOption";
 
 import { LocalDeviceBridgePanel } from "./LocalDeviceBridgePanel";
+import { LocalDeviceBridgeWizard } from "./LocalDeviceBridgeWizard";
 import { listReleases, type DeviceBridgeRecord } from "../infrastructure/http/deviceBridgeClient";
 import * as bridgeLauncher from "../infrastructure/http/bridgeConnectLauncher";
 import { resolveWiseEffApiBaseUrl } from "../infrastructure/http/runtimeMode";
@@ -501,6 +503,35 @@ const olderBridgeProps = {
   detecting: false, protocol: "hdc" as const, onDetect: () => undefined,
   listBridges: async () => [olderBridge]
 };
+
+it("keeps an upgrade click made as the Bridge becomes connected on the install step", () => {
+  function Wizard({ connected }: { connected: boolean }) {
+    useLayoutEffect(() => {
+      if (connected) screen.getByRole("button", { name: "下载安装包" }).click();
+    }, [connected]);
+    return <LocalDeviceBridgeWizard panelStatus={connected ? "online_no_device" : "not_connected"}
+      protocol="hdc" health={olderHealth} bridges={[olderBridge]} recommendedVersion="0.1.1"
+      hostRelease={olderManifest.items[0] as never} installerAlternates={[]} portableReleases={[]}
+      pairingCode={null} pairingCodeLoading={false} checking={false} detecting={false} connectError=""
+      onConnectError={vi.fn()} onRefresh={async () => ({ connected: true })} onDetect={vi.fn()} />;
+  }
+  const view = render(<Wizard connected={false} />);
+  view.rerender(<Wizard connected />);
+  expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
+});
+
+it("allows selecting the connection step after health advances while the install guide is open", async () => {
+  const health = deferred<{ health: typeof olderHealth; reachability: "ok" }>();
+  vi.mocked(listReleases).mockResolvedValue(olderManifest as never);
+  render(<LocalDeviceBridgePanel {...olderBridgeProps} probeHealth={() => health.promise}
+    createPairingCode={async () => ({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" })} />);
+  fireEvent.click(screen.getByRole("button", { name: "安装指南" }));
+  await act(async () => health.resolve({ health: olderHealth, reachability: "ok" }));
+  const dialog = screen.getByRole("dialog", { name: "安装与连接本地 Bridge" });
+  expect(within(dialog).getByText("图形安装包（推荐）")).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "查看连接本机步骤" }));
+  expect(within(dialog).getByText("连接本机", { selector: "li[aria-current=step] span" })).toBeInTheDocument();
+});
 
 it("prompts to install the latest Bridge when local health is an older client", async () => {
   const pairingFetch = stubPairingPost(async () => pairingResponse());
