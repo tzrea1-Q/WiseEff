@@ -13,8 +13,8 @@ Implement [specification #1513](https://github.com/tzrea1-Q/WiseEff/issues/1513)
 | #1516 | Current instances and exact usage | #1514, #1515 | Integrated; scoped HTTP/PG 62/62, focused frontend 22/22, browser 1/1 passed |
 | #1517 | Usage filters and unconfigured coverage | #1516 | Integrated; frontend 73/73 and real API browser 1/1 with axe passed; combined HTTP covered by #1518 |
 | #1518 | Explicit instance comparison | #1516 | Integrated; HTTP/PG 37/37 plus array/type case, frontend 74/74, combined browser 1/1 with comparison axe passed |
-| #1519 | Exact project edit and return | #1516 | In progress |
-| #1520 | Share current view and copy full values | #1517, #1518 | In progress |
+| #1519 | Exact project edit and return | #1516 | Integrated; combined frontend 233/233, final real-API browser 1/1, read-only handoff browser 1/1 passed |
+| #1520 | Share current view and copy full values | #1517, #1518 | Integrated; frontend 78/78 and real-API browser 1/1 passed; release-pinning copy race fixed and covered by #1519 combined checks |
 
 The coordinator owns integration, runtime setup, expensive verification and the PR. Each issue is implemented with TDD in a managed worktree by a GPT-6.1 Terra agent at xhigh reasoning. Merger agents integrate completed slices. Independent Standards and Spec reviews run after all slices; one implementation agent fixes findings.
 
@@ -29,6 +29,10 @@ Approved behavior seams are public HTTP plus real PostgreSQL, and browser journe
 Browser ownership: `e2e/acceptance/parameter-library.acceptance.spec.ts`, requirement and operation IDs `PARLIB-READ-001`, `PARLIB-SCOPE-001`, `PARLIB-INSTANCES-001`, `PARLIB-FILTER-001`, `PARLIB-COMPARE-001`, `PARLIB-RETURN-001`, `PARLIB-SHARE-001`. Record real operation evidence through the native acceptance runner. Inspect 1440×900 and a compact 1280×800 state for dense table/comparison layout; cover DTS and software configuration, keyboard focus, long values, errors and stale responses. Use isolated runtime/database lane names. Existing Catalog and project-workbench regression owners remain intact.
 
 Draft [PR #1521](https://github.com/tzrea1-Q/WiseEff/pull/1521) is open. Initial selection has both Vitest and browser full-fallback flags; the coordinator retains the full selected gates for the integrated candidate. Focused worker results above do not complete those gates. Scope browser coverage lives in `e2e/acceptance/parameter-library-scope.acceptance.spec.ts`. Independent review, final visual approval and final regression remain pending.
+
+At integration `5a67ec729`, build, changed-file static coverage, UI standards, documentation/database-schema checks, OpenAPI, operation matrix and browser coverage checks passed. The corrected native library consistency run passed 3/3 (warmup and light/dark); its first attempt returned 401 because the manual test environment lacked the native smoke authentication setup, and its trace is retained separately. The current-instance aggregate retains the existing five-query budget: the failing regression was 3 failed/16 passed before correction; six focused suites then passed 127/127.
+
+Independent Standards and Spec reviews of `84d7f6d5d` found one P2 each: list configuration filtering/counts need one coherent snapshot, and historical comparisons need an explicitly labelled latest published revision. A single implementation agent owns both corrections. The reviewers found no other actionable issues. Final broad CI and human effect approval remain pending; no merge or deployment is authorized.
 
 ## Documentation Impact Matrix
 
