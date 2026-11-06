@@ -55,6 +55,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
   let businessSql: string[] = [];
   let usageParameters: { definitions: unknown; projects: unknown }[] = [];
   let pauseSummary: { reached: () => void; resume: Promise<void> } | undefined;
+  let pauseListUsage: { reached: () => void; resume: Promise<void> } | undefined;
   const records: unknown[] = [];
   const actualRoleBindings = new Map<string, unknown>();
   const bindingIds = new Map<string, string>();
@@ -81,6 +82,12 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
         if (pauseSummary && /md5\(coalesce\(string_agg/.test(sql)) {
           const pause = pauseSummary;
           pauseSummary = undefined;
+          pause.reached();
+          return pause.resume.then(() => Reflect.apply(query, this, args));
+        }
+        if (pauseListUsage && /from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)) {
+          const pause = pauseListUsage;
+          pauseListUsage = undefined;
           pause.reached();
           return pause.resume.then(() => Reflect.apply(query, this, args));
         }
@@ -372,6 +379,28 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     }
     const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions?usageProjectId=scope-project-c`, { headers });
     expect(foreign.status).toBe(404);
+  });
+
+  it("keeps filtered definitions and their configuration counts consistent during a concurrent removal", async () => {
+    let resume!: () => void;
+    let reached!: () => void;
+    const paused = new Promise<void>((resolve) => { reached = resolve; });
+    pauseListUsage = { reached, resume: new Promise<void>((resolve) => { resume = resolve; }) };
+    const pending = fetch(`${baseUrl}/api/v2/catalog/definitions?configured=true&limit=1`, { headers: { authorization: "Bearer scope-only-a" } });
+    await paused;
+    const pool = getRootPostgresPool(root)!;
+    try {
+      await pool.query("update parameter_catalog.organization_subject_registrations set status='retired' where organization_id='scope-org-a'");
+      resume();
+      const response = await pending;
+      expect(response.status).toBe(200);
+      const body = catalogDefinitionListResponseSchema.parse(await response.json());
+      expect(body.items.map((item) => item.id)).toEqual([definitionId]);
+      expect(body.items[0]?.configurationSummary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+    } finally {
+      resume(); pauseListUsage = undefined;
+      await pool.query("update parameter_catalog.organization_subject_registrations set status='active' where organization_id='scope-org-a'");
+    }
   });
 
   it("compares explicitly selected current Bindings across pages without widening scope", async () => {

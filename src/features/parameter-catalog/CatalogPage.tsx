@@ -189,6 +189,7 @@ type CatalogSnapshot = {
   definitions: CatalogDefinitionListResponse;
   subject: SubjectItem | null;
   definition: DefinitionItem | null;
+  latestRevision: RevisionItem | null;
   revisions: RevisionItem[];
   timeline: CatalogDefinitionTimelineResponse | null;
   revisionCursor: string | null;
@@ -553,6 +554,7 @@ export function CatalogPage({
       };
       let subject: SubjectItem | null = null;
       let definition: DefinitionItem | null = null;
+      let latestRevision: RevisionItem | null = null;
       let revisions: RevisionItem[] = [];
       let timeline: CatalogDefinitionTimelineResponse | null = null;
       let revisionCursor: string | null = null;
@@ -561,6 +563,11 @@ export function CatalogPage({
       if (currentAnchor.definitionId) {
         const definitionResponse = await catalog.getDefinition(currentAnchor.definitionId, pin);
         definition = definitionResponse.item;
+        if (libraryMode) {
+          latestRevision = currentReleaseId === document.item.catalogReleaseId
+            ? definition.currentRevision
+            : (await catalog.getDefinition(currentAnchor.definitionId).catch(() => null))?.item.currentRevision ?? null;
+        }
         if (historyOpen) {
           try {
             const revisionList = await catalog.listDefinitionRevisions(currentAnchor.definitionId, { ...pin, limit: 50 });
@@ -623,6 +630,7 @@ export function CatalogPage({
         definitions,
         subject,
         definition,
+        latestRevision,
         revisions,
         timeline,
         revisionCursor,
@@ -1037,6 +1045,7 @@ export function CatalogPage({
             <p className="parameter-library-detail__hint">视图按当前组织权限读取，数据可能已变化。</p>
             {anchor.tab === "configurations" || anchor.tab === "compare" ? <section role="tabpanel" id={`library-panel-${anchor.tab}`} aria-labelledby={`library-tab-${anchor.tab}`}>
               <h2>{anchor.tab === "compare" ? "实例对比" : "当前项目配置"}</h2>
+              <p className="parameter-catalog__muted">{snapshot?.latestRevision ? `最新定义修订 #${snapshot.latestRevision.revisionNumber}` : "最新定义修订暂不可用"}</p>
               <ProjectConfigurations key={`${organizationId ?? ""}:${reading.id}`} repository={repository} organizationId={organizationId} definitionId={reading.id}
                 cursor={anchor.instanceCursor} selectedId={anchor.instance} compare={anchor.tab === "compare"} baselineId={anchor.baseline} targetId={anchor.target}
                 projectId={anchor.configProjectId} configSetId={anchor.configSetId} search={anchor.configSearch} includeUnconfigured={anchor.includeUnconfigured}

@@ -195,7 +195,7 @@ export type CatalogReadPorts = {
   readonly readiness: CatalogReadinessPort;
   readonly registration: RegistrationProjectionPort;
   readonly usage: UsageProjectionPort;
-  readonly selectConfiguredDefinitions?: (organizationId: string, definitionIds: readonly string[], projectId?: string) => Promise<readonly string[]>;
+  readonly selectConfiguredDefinitions?: (organizationId: string, definitionIds: readonly string[], projectId?: string) => Promise<ReadonlyMap<string, { configuredProjectCount: number; configuredInstanceCount: number }>>;
   readonly timeline: TimelineComposerPort;
   readonly authenticate: (request: CatalogReadRequest) => Promise<CatalogReadAuthResult>;
   readonly loadRevisionExportSnapshot?: (pin: CatalogReleasePin) => Promise<CatalogReleaseNode | null>;
