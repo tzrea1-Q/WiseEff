@@ -59,7 +59,7 @@ describe("OrganizationPage", () => {
     const scopeNav = screen.getByRole("navigation", { name: "组织管理范围" });
     expect(within(scopeNav).getByRole("button", { name: "组织资料" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByRole("region", { name: "组织档案" })).toBeInTheDocument();
-    expect(screen.getByLabelText("显示名称")).toHaveValue("ChargeLab");
+    expect(await screen.findByLabelText("显示名称")).toHaveValue("ChargeLab");
     expect(screen.getByText("org-chargelab")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "用户权限" })).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "平台用户" })).not.toBeInTheDocument();
