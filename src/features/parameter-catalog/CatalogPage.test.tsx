@@ -45,6 +45,29 @@ it("waits for the published release pin before enabling a share link", () => {
   expect(screen.getByRole("button", { name: "复制当前视图链接" })).toBeEnabled();
 });
 
+it("shows the current published head separately when comparing values while reading a historical release", async () => {
+  const repository = createMockParameterCatalogRepository();
+  const historical = await repository.getDefinition(CATALOG_DEFINITION_ID);
+  const catalog = await repository.getCatalog();
+  if (!catalog.item) throw new Error("Expected a published catalog");
+  const currentCatalog = { item: { ...catalog.item, catalogReleaseId: "current-release" } };
+  const getCatalog = vi.spyOn(repository, "getCatalog").mockImplementation(async (query) => query ? catalog : currentCatalog);
+  const getDefinition = vi.spyOn(repository, "getDefinition").mockImplementation(async (_id, query) => ({ item: { ...historical.item,
+    currentRevision: { ...historical.item.currentRevision, id: query ? "historical-revision" : "latest-revision", revisionNumber: query ? 1 : 3 } } }));
+  const item = { kind: "instance" as const, bindingId: "binding", projectId: "project", projectName: "项目", configSetId: "set", configSetName: "配置集",
+    sourceOccurrenceId: "source", sourceFormat: "dts" as const, fileId: "file", fileVersionId: "version", fileName: "board.dts", sourceLocator: { propertyName: "limit" }, sourceLocation: "/node · limit",
+    currentValueId: "value", definitionRevisionId: "pinned-revision", definitionRevisionNumber: "1", effectiveRevisionId: "effective-revision",
+    unit: null, definitionLifecycle: "active" as const, valueState: "present" as const, valueKind: "number" as const, valuePreview: "42", valuePreviewTruncated: false };
+  repository.getProjectConfigurations = vi.fn().mockResolvedValue({ summary: { configuredProjectCount: 1, configuredInstanceCount: 1 }, totalCount: 1,
+    readAt: "2026-11-05T00:00:00Z", nextCursor: null, continuedProjectId: null, selected: null, items: [item], baseline: { ...item, rawValue: "42" } });
+  render(<CatalogPage libraryMode repository={repository} actor="user" organizationId="org" search={`?definitionId=${CATALOG_DEFINITION_ID}&catalogReleaseId=${CATALOG_RELEASE_ID}&tab=compare&baseline=binding`} />);
+  expect(await screen.findByText(/历史发布 · 修订 #1/)).toBeVisible();
+  expect(await screen.findByText(/最新定义修订 #3/)).toBeVisible();
+  expect(screen.getByText(/值固定修订 #1.*生效修订 effective-revision/)).toBeVisible();
+  expect(getCatalog).toHaveBeenCalledWith();
+  expect(getDefinition).toHaveBeenCalledWith(CATALOG_DEFINITION_ID);
+});
+
 it("shares a read-only library link and reports clipboard failure", async () => {
   const write = vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("denied")).mockResolvedValueOnce();
   render(<CatalogPage libraryMode repository={createMockParameterCatalogRepository()} actor="user" organizationId="org" search="?q=power&configured=true&catalogReleaseId=release-1&organizationId=other&rawValue=secret" />);

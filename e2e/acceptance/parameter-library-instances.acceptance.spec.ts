@@ -329,16 +329,27 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.screenshot({ path: testInfo.outputPath("compare-1280.png"), fullPage: true });
     const targetBindingId = new URL(page.url()).searchParams.get("target");
     expect(targetBindingId).toBeTruthy();
-    await pool.query(`insert into parameter_catalog.catalog_releases
-      (id, release_sequence, release_version, release_digest, predecessor_release_id, compiled_model_digest, toolchain_digest, published_at)
-      select 'parlib-browser-compare-release', release_sequence+1, 'browser-compare', 'browser-compare-digest', id, compiled_model_digest, toolchain_digest, now()
-      from parameter_catalog.catalog_releases where id=$1`, [pin.id]);
-    await pool.query(`insert into parameter_catalog.definition_revisions(id, definition_id, revision_number, catalog_release_id, content_digest, content)
-      select 'parlib-browser-compare-revision', definition_id, 2, 'parlib-browser-compare-release', 'browser-compare-content', content || '{"unit":"A"}'::jsonb
-      from parameter_catalog.definition_revisions where id='drev_acme_power_iin_max_1'`);
+    // Publish two real successors; existing values remain pinned to revision 1.
+    let previous = compiled;
+    let chain = bundle;
+    for (const number of [2, 3]) {
+      const next = structuredClone(chain.releases[chain.releases.length - 1]!) as Mutable<CatalogReleaseNode>;
+      next.manifest.release = { ...next.manifest.release, id: `crel_parlib_revision_${number}`, version: `1.${number}.0`, sequence: number,
+        publishedAt: `2026-09-0${number}T00:00:00Z`, predecessor: { id: previous.release.id, digest: previous.release.digest } };
+      const changed = next.documents.find((entry) => entry.kind === "definition" && entry.content.id === definitionId);
+      if (!changed || changed.kind !== "definition") throw new Error("Definition fixture unavailable");
+      changed.content.revision = { ...changed.content.revision, id: `drev_parlib_head_${number}`, number, unit: "A", documentation: `Revision ${number}` };
+      refreshReleaseSource(next);
+      chain = { ...chain, targetReleaseId: next.manifest.release.id, releases: [...chain.releases, next] };
+      const successor = compileOrThrow(chain);
+      const advanced = await createCatalogInstaller(pool).installPublishedRelease({ mode: "advance", source: jsonCatalogReleaseSource(chain),
+        expectedCurrent: { id: previous.release.id, digest: previous.release.digest }, expectedTargetDigest: successor.aggregateDigest });
+      expect(advanced.ok, JSON.stringify(advanced)).toBe(true);
+      previous = successor;
+    }
     await pool.query("alter table parameter_catalog.project_parameter_values disable trigger all");
     try {
-      await pool.query(`update parameter_catalog.project_parameter_values set definition_revision_id='parlib-browser-compare-revision'
+      await pool.query(`update parameter_catalog.project_parameter_values set definition_revision_id='drev_parlib_head_2'
         where id=(select current_value_id from parameter_catalog.project_parameter_bindings where id=$1)`, [targetBindingId]);
       await page.reload();
       await expect(page.getByRole("region", { name: "实例对比" }).getByRole("status")).toContainText("定义语义不同，不计算差值");
@@ -425,6 +436,17 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("default-settings.json");
     await recordOperationEvidence({ operationId: "PARLIB-RETURN-001", title: "Exact project configuration return", status: "passed", page, testInfo,
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: handoffResponse.status(), responseSummary: "Resolved the exact Binding and verified project and configuration-set hints." }] });
+
+    await pool.query("alter table parameter_catalog.project_parameter_bindings disable trigger all");
+    try {
+      await pool.query("update parameter_catalog.project_parameter_bindings set effective_revision_id='drev_parlib_head_2' where id=$1", [directBinding]);
+    } finally { await pool.query("alter table parameter_catalog.project_parameter_bindings enable trigger all"); }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}&catalogReleaseId=${pin.id}&tab=compare&baseline=${directBinding}`);
+    await expect(page.getByText("历史发布 · 修订 #1")).toBeVisible();
+    await expect(page.getByText("最新定义修订 #3")).toBeVisible();
+    await expect(page.getByRole("region", { name: "实例对比" })).toContainText("值固定修订 #1 · 生效修订 drev_parlib_head_2");
+    await page.screenshot({ path: testInfo.outputPath("compare-historical-revisions-1440.png"), fullPage: true });
   } finally {
     setParameterIdentityMode(null);
     await db.close(); await pool.end();

@@ -524,11 +524,12 @@ async function handleListDefinitions(
     catalogDefinitions: parsed.query.registration ? catalogDefinitionIndex(snapshot) : undefined,
   });
   let selection = mergeIdSelection(scope.definitions, registrationSelection);
+  let configuredSummaries: Awaited<ReturnType<NonNullable<CatalogReadPorts["selectConfiguredDefinitions"]>>> | undefined;
   if (parsed.query.configured || parsed.query.usageProjectId) {
     if (scope.projectScope.kind !== "all" || !ports.selectConfiguredDefinitions) return catalogNotReady(request.requestId);
-    const ids = await ports.selectConfiguredDefinitions(scope.organizationId, catalogDefinitionIndex(snapshot)
+    configuredSummaries = await ports.selectConfiguredDefinitions(scope.organizationId, catalogDefinitionIndex(snapshot)
       .filter((item) => !hiddenId(selection, item.id) && !hiddenId(scope.subjects, item.subjectId)).map((item) => item.id), parsed.query.usageProjectId);
-    const matches = ids.map((id) => ParameterDefinitionId(id));
+    const matches = [...configuredSummaries.keys()].map((id) => ParameterDefinitionId(id));
     const filtered = mergeIdSelection(selection, { kind: "only", ids: matches, fingerprint: fingerprintIdSelection(matches) });
     selection = { kind: "only", ids: filtered.kind === "only" ? filtered.ids : matches,
       fingerprint: fingerprintIdSelection([`configured=${parsed.query.configured}`, `project=${parsed.query.usageProjectId}`, filtered.kind === "only" ? filtered.fingerprint : "all"]) };
@@ -603,7 +604,7 @@ async function handleListDefinitions(
     if (!mapped) {
       return catalogNotReady(request.requestId);
     }
-    items.push(usage.configurationSummary !== undefined ? { ...mapped, configurationSummary: usage.configurationSummary } : mapped);
+    items.push(usage.configurationSummary !== undefined ? { ...mapped, configurationSummary: configuredSummaries?.get(definition.id) ?? usage.configurationSummary } : mapped);
   }
   const filtered = Boolean(
     parsed.query.lifecycle ||
