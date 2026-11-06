@@ -3,8 +3,36 @@ import { collectConsistencyMeasurements } from "./consistency-collector";
 import { installConsistencyReadGuard } from "./consistency";
 import { requirePrimaryActionColors } from "./primary-color";
 import { requireViewSwitchStyles } from "./view-switch";
-import { expectUsablePage, prepareInteractionSurface, settleQualityRoute, waitForFontsAndNextPaint } from "./helpers";
+import { dismissXiaozeToggleHintIfPresent, expectUsablePage, prepareInteractionSurface, settleQualityRoute, waitForFontsAndNextPaint } from "./helpers";
 import { requireReviewInboxStructure } from "./consistency-assertions";
+
+test("settles the hint when a dialog hides it during dismissal", async ({ page }) => {
+  await page.setContent(`<style>
+    body:has([role="dialog"]) .xiaoze-toggle-hint { visibility: hidden; }
+    .xiaoze-toggle-hint { animation: moving 5s linear infinite; }
+    @keyframes moving { from { transform: translateX(0); } to { transform: translateX(100px); } }
+  </style>
+  <span data-testid="xiaoze-toggle-hint-readiness" data-state="revealed" hidden></span>
+  <div class="xiaoze-toggle-hint" data-testid="xiaoze-toggle-hint"><button aria-label="不再提示">×</button></div>`);
+  await page.evaluate(() => setTimeout(() => {
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    document.body.append(dialog);
+  }, 200));
+  await dismissXiaozeToggleHintIfPresent(page);
+  await expect(page.getByRole("dialog")).toBeAttached();
+  await expect(page.getByTestId("xiaoze-toggle-hint")).toBeHidden();
+  await page.setContent(`<span data-testid="xiaoze-toggle-hint-readiness" data-state="revealed" hidden></span>
+    <div data-testid="xiaoze-toggle-hint"><button aria-label="不再提示" onclick="this.parentElement.remove(); document.querySelector('[data-testid=xiaoze-toggle-hint-readiness]').dataset.state = 'suppressed'">×</button></div>`);
+  await dismissXiaozeToggleHintIfPresent(page);
+  await expect(page.getByTestId("xiaoze-toggle-hint-readiness")).toHaveAttribute("data-state", "suppressed");
+  await expect(page.getByTestId("xiaoze-toggle-hint")).toBeHidden();
+  await page.setContent(`<span data-testid="xiaoze-toggle-hint-readiness" data-state="revealed" hidden></span>
+    <div data-testid="xiaoze-toggle-hint"><button aria-label="不再提示">×</button></div>
+    <div style="position:fixed;inset:0"></div>`);
+  await expect(dismissXiaozeToggleHintIfPresent(page)).rejects.toThrow();
+  await expect(page.getByTestId("xiaoze-toggle-hint")).toBeVisible();
+});
 
 test("measures only the active governance task and keeps historical counts and empty states", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
