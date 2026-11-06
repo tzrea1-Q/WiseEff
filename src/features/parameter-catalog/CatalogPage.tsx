@@ -106,7 +106,6 @@ type TimelineItem = CatalogDefinitionTimelineResponse["items"][number];
 export type CatalogPageProps = {
   libraryMode?: boolean;
   projectRepository?: Pick<ParameterRepository, "listProjects">;
-  onOpenGovernance?: (anchor: CatalogUrlAnchor) => void;
   pageKey?: string;
   refreshEpoch?: number;
   notice?: ReactNode;
@@ -251,7 +250,6 @@ function pickCollection(
 export function CatalogPage({
   projectRepository,
   libraryMode = false,
-  onOpenGovernance,
   pageKey = "catalog-definitions",
   refreshEpoch = 0,
   notice,
@@ -699,8 +697,12 @@ export function CatalogPage({
   }, [workspaceState]);
 
   const statusMessage = catalogStateMessage(domainState);
-  const workspaceMessage = workspaceState.kind === "retired" && workspaceState.target === "subject"
-    ? "当前主体已退役，参数定义仅供查看。" : catalogStateMessage(workspaceState);
+  const workspaceMessage = libraryMode && workspaceState.kind === "loading" ? "正在加载参数库"
+    : libraryMode && workspaceState.kind === "unpublished" ? "参数库暂无可阅读的定义。"
+      : libraryMode && workspaceState.kind === "unregistered" ? "该主体尚未登记。"
+        : libraryMode && workspaceState.kind === "retired" ? "该内容已停用，仍可查看历史定义。"
+          : workspaceState.kind === "retired" && workspaceState.target === "subject"
+            ? "当前主体已退役，参数定义仅供查看。" : catalogStateMessage(workspaceState);
   const readOnlyLabel = domainState.kind !== "retired" ? null
     : domainState.target === "subject" ? "主体已退役 · 只读"
       : domainState.target === "registration" ? "登记已停用 · 只读"
@@ -723,10 +725,11 @@ export function CatalogPage({
     return owner?.membership.status === "active" && owner.registration.status !== "retired" &&
       item.registration.status !== "retired";
   };
-  const canEditDefinition = (item: DefinitionItem) => definitionAuthoringAllowed &&
+  const canPublishDefinitions = !libraryMode && definitionPublishingAllowed;
+  const canEditDefinition = (item: DefinitionItem) => !libraryMode && definitionAuthoringAllowed &&
     Boolean(renderDefinitionEditor) && !inFlight && error === undefined && item.lifecycle === "active" && ownerWritable(item);
   const definitionEditable = snapshot?.definition ? canEditDefinition(snapshot.definition) : false;
-  const canDeleteDefinition = definitionDeletionAllowed && Boolean(repository.previewDefinitionDeletion && repository.deleteDefinition);
+  const canDeleteDefinition = !libraryMode && definitionDeletionAllowed && Boolean(repository.previewDefinitionDeletion && repository.deleteDefinition);
   const definitionActionLabel = definitionEditable ? "编辑" : "查看";
   const ownerStatusLabel = (item: DefinitionItem) => subjectsById.get(item.subject.id)?.membership.status === "retired"
     ? "主体已退役"
@@ -1015,7 +1018,6 @@ export function CatalogPage({
         setHistoryOpen(false);
         commitAnchor({ ...anchor, definitionId: null, history: null, tab: null, instance: null, instanceCursor: null, baseline: null, target: null }, "push");
       }}><ArrowLeft size={14} aria-hidden="true" />返回参数库</button>
-        {reading && onOpenGovernance ? <button type="button" className="button subtle sm" onClick={() => onOpenGovernance(anchor)}>打开定义治理</button> : null}
       </div>
       {inFlight && !reading ? <SectionSkeleton label={catalogLoadingLabel} />
         : error ? <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />
@@ -1121,7 +1123,7 @@ export function CatalogPage({
         resizableNavigator
         taskLabel={catalogListLabel}
         toolbar={<>
-          {anchor.sourceReturn ? <a href={anchor.sourceReturn}>{anchor.sourceReturn.startsWith("/parameter-admin/projects/")?"返回项目来源":"返回来源识别"}</a> : null}
+          {!libraryMode && anchor.sourceReturn ? <a href={anchor.sourceReturn}>{anchor.sourceReturn.startsWith("/parameter-admin/projects/")?"返回项目来源":"返回来源识别"}</a> : null}
           <form
             className="parameter-catalog__search"
             onCompositionStart={() => setSearchComposing(true)}
@@ -1156,7 +1158,7 @@ export function CatalogPage({
               onChange={(event) => toggleRetiredSubjects(event.target.checked)} />
             包含已停用和退役主体
           </label>
-          {actions.length > 0 || onOpenPendingWork || onImportDefinitions || onPublishClaimedOwners || onOpenUnregisteredSubjects ? (
+          {!libraryMode && (actions.length > 0 || onOpenPendingWork || onImportDefinitions || onPublishClaimedOwners || onOpenUnregisteredSubjects) ? (
             <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
               {onOpenUnregisteredSubjects ? <button type="button" className="button subtle sm" onClick={onOpenUnregisteredSubjects}>待登记主体</button> : null}
               {onImportDefinitions ? <button type="button" className="button subtle sm" onClick={onImportDefinitions}>批量导入定义</button> : null}
@@ -1230,7 +1232,7 @@ export function CatalogPage({
         </> : null}
       >
 
-        {taskContent ?? (inFlight && !snapshot ? (
+        {(libraryMode ? null : taskContent) ?? (inFlight && !snapshot ? (
           <SectionSkeleton label={catalogLoadingLabel} />
         ) : domainState.kind === "error" && !snapshot ? (
           <><SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
@@ -1261,7 +1263,7 @@ export function CatalogPage({
               {anchor.usageProjectId ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
               <span className="parameter-catalog__muted">数量为{anchor.usageProjectId ? "所选项目" : "当前组织"}已配置数量</span>
             </div> : null}
-            {definitionPublishingAllowed && onBatchDefinitionCommand ? <>
+            {canPublishDefinitions && onBatchDefinitionCommand ? <>
               {anchor.subjectId && release ? <button type="button" className="button subtle sm" disabled={selectingSubject}
                 onClick={() => {
                   const generation = selectionGeneration.current;
@@ -1296,7 +1298,7 @@ export function CatalogPage({
               ] : columns} compact={compactList}
                 selectedDefinitionId={definition?.id} onOpen={selectDefinition} canEdit={canEditDefinition}
                 ownerStatusLabel={ownerStatusLabel} selectedIds={selectedDefinitions.map((item) => item.id)}
-                onSelectionChange={definitionPublishingAllowed && onBatchDefinitionCommand ? (item, checked) => {
+                onSelectionChange={canPublishDefinitions && onBatchDefinitionCommand ? (item, checked) => {
                   setSelectedDefinitions((current) => checked ? [...current.filter((row) => row.id !== item.id), item] : current.filter((row) => row.id !== item.id));
                 } : undefined}
                 renderActions={(row) => <span className="parameter-catalog__row-actions">
@@ -1307,7 +1309,7 @@ export function CatalogPage({
                   {canDeleteDefinition ? <button type="button" className="button subtle sm"
                     aria-label={`彻底删除 ${row.propertyKey}`} disabled={inFlight || error !== undefined}
                     onClick={() => setDeletingDefinition(row)}>彻底删除</button> : null}
-                  {!compactList && definitionPublishingAllowed && onDefinitionCommand && !inFlight && error === undefined && ownerWritable(row) ? (
+                  {!compactList && canPublishDefinitions && onDefinitionCommand && !inFlight && error === undefined && ownerWritable(row) ? (
                     <button type="button" className="button subtle sm"
                       aria-label={`${row.lifecycle === "retired" ? "恢复" : "退役"} ${row.propertyKey}`}
                       data-catalog-row-action={row.lifecycle === "retired" ? "restore-definition" : "retire-definition"}

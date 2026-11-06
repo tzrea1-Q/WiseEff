@@ -37,6 +37,43 @@ import type { CatalogModule } from "./catalogModuleScope";
 
 type PageProps = ComponentProps<typeof CatalogPage>;
 
+it.each(["list", "definition", "configurations", "compare"])("keeps the library %s surface free of governance controls even for an administrator", async tab => {
+  const repository = createMockParameterCatalogRepository();
+  repository.getProjectConfigurations = vi.fn().mockResolvedValue({ summary: { configuredProjectCount: 0, configuredInstanceCount: 0 }, totalCount: 0,
+    readAt: "2026-11-06T00:00:00Z", nextCursor: null, continuedProjectId: null, selected: null, items: [] });
+  repository.previewDefinitionDeletion = vi.fn();
+  repository.deleteDefinition = vi.fn();
+  render(<CatalogHarness libraryMode repository={repository} actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
+    initialSearch={`?sourceReturn=${encodeURIComponent("/parameter-admin/sources?sourceId=source-1")}&catalogReleaseId=${CATALOG_RELEASE_ID}${tab === "list" ? "" : `&definitionId=${CATALOG_DEFINITION_ID}&tab=${tab}`}`}
+    definitionAuthoringAllowed definitionPublishingAllowed definitionDeletionAllowed
+    onAction={vi.fn()} onOpenPendingWork={vi.fn()} onImportDefinitions={vi.fn()} onPublishClaimedOwners={vi.fn()} onOpenUnregisteredSubjects={vi.fn()}
+    onDefinitionCommand={vi.fn()} onBatchDefinitionCommand={vi.fn()}
+    renderDefinitionEditor={() => <p>后台编辑器</p>} taskContent={<p>后台治理任务</p>} />);
+  if (tab === "list") expect(await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` })).toBeVisible();
+  else expect(await screen.findByRole("region", { name: "定义详情" })).toBeVisible();
+  expect(screen.queryByRole("group", { name: "目录动作" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /返回来源识别|返回项目来源/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /打开定义治理|编辑|彻底删除|退役|恢复|发布|导入|审核|登记|选中该主体下全部定义/ })).not.toBeInTheDocument();
+  expect(screen.queryByText("后台编辑器")).not.toBeInTheDocument();
+  expect(screen.queryByText("后台治理任务")).not.toBeInTheDocument();
+  expect(repository.previewDefinitionDeletion).not.toHaveBeenCalled();
+  expect(repository.deleteDefinition).not.toHaveBeenCalled();
+});
+
+it("keeps library refresh and unpublished messages about reading", async () => {
+  const gate = deferred<void>();
+  const repository = createMockParameterCatalogRepository();
+  const { rerender } = render(<CatalogHarness libraryMode repository={repository} actor="user" />);
+  await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+  repository.getCatalog = async () => { await gate.promise; return { item: null, publicationState: "unpublished" }; };
+  rerender(<CatalogHarness libraryMode repository={repository} actor="user" refreshEpoch={1} />);
+  expect(await screen.findByText("正在加载参数库")).toBeVisible();
+  expect(screen.queryByText(/写入已暂停/)).not.toBeInTheDocument();
+  await act(async () => { gate.resolve(); });
+  expect(await screen.findByText("参数库暂无可阅读的定义。")).toBeVisible();
+  expect(screen.queryByText(/请先发布/)).not.toBeInTheDocument();
+});
+
 it("browses library modules with owned node types and preserves exact subject selection through history", async () => {
   const repository = createMockParameterCatalogRepository();
   const driver = { ...registeredSubject, canonicalName: "vendor,battery" };

@@ -337,8 +337,6 @@ export function PageRouter({
           projectRepository={runtime.parameterRepository}
           moduleRegistry={libraryModules}
           organizationId={runtime.operatingOrganizationId ?? organizationId}
-          onOpenGovernance={canAccessPage(currentRoleId, "parameter-admin", { path: CATALOG_PAGE_PATH, runtimeMode: runtimeMode ?? "api", permissions: sessionPermissions, roles: sessionRoles, projectMemberships })
-            ? (anchor) => onNavigate(withOrganizationScope(buildCatalogHref(anchor), runtime.operatingOrganizationId ?? organizationId)) : undefined}
           repository={runtime.parameterCatalogRepository}
           actor="user"
           search={search}
