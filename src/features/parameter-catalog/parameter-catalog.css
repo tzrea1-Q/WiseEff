@@ -1497,24 +1497,12 @@ button.parameter-catalog__tree-toggle:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-.main-content:has(.parameter-library-detail),
-.main-content:has(.parameter-library-detail) > .page-content,
-.workbench-page:has(.parameter-library-detail) {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
 .main-content:has(.parameter-library-detail) > .app-footer { display: none; }
 
 .parameter-library-detail {
   display: flex;
-  flex: 1;
   flex-direction: column;
   gap: var(--space-3);
-  min-height: 0;
-  overflow: hidden;
 }
 
 .parameter-library-detail__top,
@@ -1532,10 +1520,8 @@ button.parameter-catalog__tree-toggle:hover {
 .parameter-library-detail__top > .button { gap: var(--space-2); }
 .parameter-library-detail__body {
   display: flex;
-  flex: 1;
   flex-direction: column;
   min-width: 0;
-  min-height: 0;
   overflow: hidden;
   border: var(--stroke-hairline) solid var(--border);
   border-radius: var(--radius-lg);
@@ -1574,11 +1560,6 @@ button.parameter-catalog__tree-toggle:hover {
 }
 
 .parameter-library-detail__panel {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
   padding: var(--space-5) var(--space-6);
   font-size: var(--text-base);
   line-height: var(--leading-base);
