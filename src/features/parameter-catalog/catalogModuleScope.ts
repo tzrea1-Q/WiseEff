@@ -62,8 +62,9 @@ export function buildCatalogModuleTree(
   const nestedSubjectIds = new Set<string>();
   if (options.nestOwnedNodeTypes) {
     for (const subject of subjects) {
-      if (subject.type !== "node-type" || !subject.ownerSubjectId) continue;
-      const owner = subjectNodes.get(subject.ownerSubjectId);
+      const ownerId = (subject.registration.status !== "unregistered" ? subject.registration.placement?.ownerSubjectId : undefined) ?? subject.ownerSubjectId;
+      if (subject.type !== "node-type" || !ownerId) continue;
+      const owner = subjectNodes.get(ownerId);
       if (owner?.subjectType !== "driver") continue;
       owner.children.push(subjectNodes.get(subject.id)!);
       owner.subjectCount += 1;

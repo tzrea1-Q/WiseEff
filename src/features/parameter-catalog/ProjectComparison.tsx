@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, ExternalLink } from "lucide-react";
 import { SelectControl } from "@/components/common/SelectControl";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
@@ -50,35 +50,48 @@ export function ProjectComparison({ repository, organizationId, definitionId, ba
 }) {
   const context = JSON.stringify([organizationId, definitionId]);
   const [retry, setRetry] = useState(0);
-  const [inventory, setInventory] = useState<{ context: string; repository: ParameterCatalogRepository; items: Instance[] } | null>(null);
+  const [inventory, setInventory] = useState<{ context: string; repository: ParameterCatalogRepository; items: Instance[]; cursor: string | null; seen: string[]; loading: boolean; finding?: boolean; findError?: boolean; error?: unknown } | null>(null);
   const [inventoryError, setInventoryError] = useState<unknown>(null);
+  const generation = useRef({ active: false });
+  const linkedPair = useRef(false);
+  useEffect(() => { linkedPair.current = !!baselineId && !!targetId; }, [baselineId, targetId]);
   const [loaded, setLoaded] = useState<{ context: string; repository: ParameterCatalogRepository; result?: CatalogProjectConfigurationsResponse; error?: unknown } | null>(null);
   const [copyStatus, setCopyStatus] = useState<{ context: string; message: string; error: boolean } | null>(null);
   useEffect(() => {
     let active = true;
+    const token = { active: true };
+    generation.current = token;
     setInventory(null); setInventoryError(null);
     void (async () => {
       if (!repository.getProjectConfigurations) throw new Error("Configuration read unavailable");
-      const items = new Map<string, Instance>();
-      const seen = new Set<string>();
-      let cursor: string | null = null;
-      do {
-        const page: CatalogProjectConfigurationsResponse = await repository.getProjectConfigurations(definitionId, cursor ? { cursor } : {});
+      const page = await repository.getProjectConfigurations(definitionId, { valueState: "present" });
+      if (!active) return;
+      const items = page.items.filter((item): item is Instance => item.kind === "instance" && item.valueState === "present");
+      const projects = new Set(items.map(item => item.projectId));
+      const finding = !linkedPair.current && projects.size < 2 && page.summary.configuredProjectCount > projects.size;
+      setInventory({ context, repository, items, cursor: page.nextCursor, seen: page.nextCursor ? [page.nextCursor] : [], loading: false, finding });
+      if (!finding) return;
+      try {
+        const found = await repository.getProjectConfigurations(definitionId, { valueState: "present", limit: 1, ...(items[0] ? { excludeProjectId: items[0].projectId } : {}) });
         if (!active) return;
-        for (const item of page.items) if (item.kind === "instance" && item.valueState === "present") items.set(item.bindingId, item);
-        cursor = page.nextCursor;
-        if (cursor && seen.has(cursor)) throw new Error("Repeated configuration cursor");
-        if (cursor) seen.add(cursor);
-      } while (cursor);
-      if (active) setInventory({ context, repository, items: [...items.values()] });
+        const item = found.items.find((candidate): candidate is Instance => candidate.kind === "instance" && candidate.valueState === "present");
+        if (item) setInventory(current => current?.context === context && current.repository === repository ? { ...current,
+          items: [...new Map([...current.items, item].map(value => [value.bindingId, value])).values()] } : current);
+        if (active) setInventory(current => current?.context === context && current.repository === repository ? { ...current, finding: false } : current);
+      } catch {
+        if (active) setInventory(current => current?.context === context && current.repository === repository ? { ...current, finding: false, findError: true } : current);
+      }
     })().catch((error: unknown) => { if (active) setInventoryError(error); });
-    return () => { active = false; };
+    return () => { active = false; token.active = false; };
   }, [repository, definitionId, organizationId, context, retry]);
 
-  const items = inventory?.context === context && inventory.repository === repository ? inventory.items : undefined;
+  const currentInventory = inventory?.context === context && inventory.repository === repository ? inventory : null;
+  const items = currentInventory?.items;
+  const inventoryReady = !!items;
   const leftId = baselineId ?? items?.[0]?.bindingId ?? null;
-  const leftProject = items?.find(item => item.bindingId === leftId)?.projectId;
-  const rightId = targetId ?? items?.find(item => item.projectId !== leftProject)?.bindingId ?? null;
+  const leftProject = items?.find(item => item.bindingId === leftId)?.projectId
+    ?? (loaded?.repository === repository && loaded.context === JSON.stringify([context, leftId, null]) ? loaded.result?.baseline?.projectId : undefined);
+  const rightId = targetId ?? (leftProject ? items?.find(item => item.projectId !== leftProject)?.bindingId : null) ?? null;
   useEffect(() => {
     if (items?.length && (leftId !== (baselineId ?? null) || rightId !== (targetId ?? null))) onChange({ baseline: leftId, target: rightId }, "replace");
   }, [items, leftId, rightId, baselineId, targetId, onChange]);
@@ -87,12 +100,29 @@ export function ProjectComparison({ repository, organizationId, definitionId, ba
   useEffect(() => {
     let active = true;
     setLoaded(null);
-    if (!items || !leftId || !repository.getProjectConfigurations) return;
+    if (!inventoryReady || !leftId || !repository.getProjectConfigurations) return;
     repository.getProjectConfigurations(definitionId, { baselineBindingId: leftId, ...(rightId ? { targetBindingId: rightId } : {}) })
       .then(result => { if (active) setLoaded({ context: pairContext, repository, result }); })
       .catch((error: unknown) => { if (active) setLoaded({ context: pairContext, repository, error }); });
     return () => { active = false; };
-  }, [repository, definitionId, items, leftId, rightId, pairContext, retry]);
+  }, [repository, definitionId, inventoryReady, leftId, rightId, pairContext, retry]);
+
+  const loadMore = () => {
+    if (!currentInventory?.cursor || currentInventory.loading || !repository.getProjectConfigurations) return;
+    const { cursor, seen } = currentInventory;
+    const restarting = !!currentInventory.error;
+    const token = generation.current;
+    setInventory({ ...currentInventory, loading: true, error: undefined });
+    repository.getProjectConfigurations(definitionId, { valueState: "present", ...(restarting ? {} : { cursor }) }).then(page => {
+      if (!token.active) return;
+      if (!restarting && page.nextCursor && seen.includes(page.nextCursor)) throw new Error("Repeated configuration cursor");
+      setInventory(current => current?.context === context && current.repository === repository ? { ...current,
+        items: [...new Map([...current.items, ...page.items.filter((item): item is Instance => item.kind === "instance" && item.valueState === "present")].map(item => [item.bindingId, item])).values()],
+        cursor: page.nextCursor, seen: page.nextCursor ? [...(restarting ? [] : seen), page.nextCursor] : [], loading: false, findError: false } : current);
+    }).catch((error: unknown) => {
+      if (token.active) setInventory(current => current?.context === context && current.repository === repository ? { ...current, loading: false, error } : current);
+    });
+  };
 
   const current = loaded?.context === pairContext && loaded.repository === repository ? loaded : null;
   const result = current?.result;
@@ -140,14 +170,19 @@ export function ProjectComparison({ repository, organizationId, definitionId, ba
               value={item?.projectId ?? ""} options={projects} onValueChange={value => select(choices.find(candidate => candidate.projectId === value)!.bindingId)} />
             {options.length > 1 ? <SelectControl ariaLabel={`${sideLabel}配置实例`} value={id ?? ""} options={options.map(option => ({ value: option.bindingId,
               label: `${option.configSetName} · ${option.fileName} · ${option.sourceLocation}` }))} onValueChange={select} /> : null}
-            {!item ? <p className="parameter-library-compare__selection-hint">{projects.length === 1 ? "只有一个已配置项目，可选择同一项目中的其他实例。" : "选择项目后显示配置原值。"}</p> : null}
+            {!item ? <p className="parameter-library-compare__selection-hint">{projects.length === 1 ? currentInventory?.cursor ? "可继续加载更多项目，或选择当前项目中的其他实例。" : "只有一个已配置项目，可选择同一项目中的其他实例。" : "选择项目后显示配置原值。"}</p> : null}
           </div>;
         })}
       </div>
+      {currentInventory?.finding ? <p role="status">正在查找其他已配置项目…</p> : currentInventory?.findError ? <p role="alert">自动查找项目失败，可继续加载更多项目或实例。</p> : null}
+      {currentInventory?.cursor ? <div className="parameter-library-compare__message">
+        {currentInventory.error ? <p role="alert">加载更多项目或实例失败，请重试；已显示的对比保留。</p> : null}
+        <button className="button subtle sm" type="button" disabled={currentInventory.loading} onClick={loadMore}>{currentInventory.loading ? "正在加载更多项目或实例…" : currentInventory.error ? "重新加载项目列表" : "加载更多项目或实例"}</button>
+      </div> : null}
       {unavailable ? <div className="parameter-library-compare__message" role="alert"><p>{reason === "baseline-unavailable" ? "基准实例已不可用，请明确重新选择。" : "目标实例已不可用，请重新选择目标。"}</p>
         <button type="button" className="button subtle sm" onClick={() => { setInventory(null); onChange({ baseline: reason === "baseline-unavailable" ? null : leftId, target: null }); setRetry(value => value + 1); }}>重新选择</button></div>
         : current?.error ? <SectionError message={failure instanceof WiseEffApiError && failure.code === "FORBIDDEN" ? "没有权限读取当前项目配置。" : "对比读取失败，请重试。"} onRetry={() => setRetry(value => value + 1)} />
-          : !items.length && !leftId ? <SectionEmpty message="当前没有可用于对比的项目配置。" />
+          : !items.length && !leftId ? currentInventory?.loading ? <SectionSkeleton label="正在查找可对比项目" /> : <SectionEmpty message={currentInventory?.cursor ? "尚未加载到可对比项目。" : "当前没有可用于对比的项目配置。"} />
             : !result ? <SectionSkeleton label="正在读取两侧完整原值" /> : <>
       <div className="parameter-library-compare__status" role="status">
         <strong>{complete ? left.rawValue === right.rawValue ? "原文相同" : "配置值存在差异" : "请选择两侧项目进行对比"}</strong>

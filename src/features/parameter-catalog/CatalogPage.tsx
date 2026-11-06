@@ -517,6 +517,7 @@ export function CatalogPage({
       }
       if (currentAnchor.moduleNodeId) {
         listQuery.placementModuleId = currentAnchor.moduleNodeId;
+        if (libraryMode) listQuery.placementScope = "library";
       }
       // Load the maintained taxonomy and every subject before publishing the navigator.
       let firstSubjectPage: CatalogSubjectListResponse | undefined;
@@ -745,8 +746,16 @@ export function CatalogPage({
     [navigationSubjects, describeSubject, modules, libraryMode]
   );
   const totalCount = snapshot?.definitions.totalCount ?? null;
+  const findModuleCount = (nodes: CatalogNavigatorNode[], id: string): number | undefined => {
+    for (const node of nodes) {
+      if (node.kind === "module" && node.id === id) return node.subjectCount;
+      const count = findModuleCount(node.children, id);
+      if (count !== undefined) return count;
+    }
+    return undefined;
+  };
   const scopedSubjectCount = anchor.moduleNodeId
-    ? subjectIdsForModule(navigationSubjects, anchor.moduleNodeId, modules).size
+    ? libraryMode ? findModuleCount(navigatorNodes, anchor.moduleNodeId) ?? 0 : subjectIdsForModule(navigationSubjects, anchor.moduleNodeId, modules).size
     : navigationSubjects.length;
   const filterEmptyReason: CatalogEmptyReason | null =
     definitions.length === 0 &&

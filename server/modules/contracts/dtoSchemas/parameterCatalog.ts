@@ -2533,6 +2533,7 @@ export const parameterCatalogSchemaRegistry = {
         description:
           "Organization module id; selects subjects placed at or below the module subtree before pagination."
       },
+      { name: "placementScope", in: "query", schema: { type: "string", enum: ["library"] }, description: "Include retired registrations and unregistered owned node types in the module subtree." },
       { name: "search", in: "query" },
       ...pageQueryParameters
     ],
@@ -2591,6 +2592,7 @@ export const parameterCatalogSchemaRegistry = {
         description:
           "Organization module id; selects definitions of subjects placed at or below the module subtree before pagination."
       },
+      { name: "placementScope", in: "query", schema: { type: "string", enum: ["library"] }, description: "Include retired registrations and unregistered owned node types in the module subtree." },
       { name: "propertyKey", in: "query" },
       { name: "usageProjectId", in: "query", description: "Select definitions configured in this current-Organization project before pagination." },
       { name: "registration", in: "query" },
@@ -2618,9 +2620,10 @@ export const parameterCatalogSchemaRegistry = {
     responseBody: "CatalogProjectConfigurationsResponse",
     additionalResponses: catalogReadErrors,
     requestParameters: [
-      { name: "cursor", in: "query" }, { name: "limit", in: "query" },
+      { name: "cursor", in: "query" }, { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
       { name: "selectedBindingId", in: "query" }, { name: "baselineBindingId", in: "query" }, { name: "targetBindingId", in: "query" },
-      { name: "projectId", in: "query" }, { name: "configSetId", in: "query" },
+      { name: "projectId", in: "query" }, { name: "excludeProjectId", in: "query" },
+      { name: "valueState", in: "query", schema: { type: "string", enum: ["present"] } }, { name: "configSetId", in: "query" },
       { name: "search", in: "query" }, { name: "includeUnconfigured", in: "query" }
     ]
   },

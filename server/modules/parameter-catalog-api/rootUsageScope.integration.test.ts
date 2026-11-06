@@ -280,6 +280,22 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     }
     expect(first.items).toHaveLength(1);
     expect(first.nextCursor).toEqual(expect.any(String));
+    const lookup = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?valueState=present&excludeProjectId=scope-project-a&limit=1&baselineBindingId=${bindingId}`, {
+      headers: { authorization: "Bearer scope-only-a" },
+    });
+    expect(lookup.status).toBe(200);
+    const otherProject = catalogProjectConfigurationsResponseSchema.parse(await lookup.json());
+    expect(otherProject.summary).toEqual({ configuredProjectCount: 1, configuredInstanceCount: 2 });
+    expect(otherProject.items).toHaveLength(1);
+    expect(otherProject.items[0]).toMatchObject({ projectId: "scope-project-b", valueState: "present" });
+    expect(otherProject.baseline).toMatchObject({ bindingId, projectId: "scope-project-a", rawValue: "<0x3e9>" });
+    expect(otherProject.nextCursor).toEqual(expect.any(String));
+    const wrongFilter = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?valueState=present&excludeProjectId=scope-project-a&cursor=${first.nextCursor}`, { headers: { authorization: "Bearer scope-only-a" } });
+    expect(wrongFilter.status).toBe(400);
+    expect(failureReasonSchema.parse(await wrongFilter.json()).error.details.reason).toBe("invalid-cursor");
+    const wrongState = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?excludeProjectId=scope-project-a&cursor=${otherProject.nextCursor}`, { headers: { authorization: "Bearer scope-only-a" } });
+    expect(wrongState.status).toBe(400);
+    expect(failureReasonSchema.parse(await wrongState.json()).error.details.reason).toBe("invalid-cursor");
     const second = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}/project-configurations?cursor=${first.nextCursor}&limit=1`, {
       headers: { authorization: "Bearer scope-only-a" },
     });
@@ -328,6 +344,10 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       const coverage = await read("includeUnconfigured=true");
       expect(coverage.summary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
       expect(coverage.totalCount).toBe(4);
+      const present = await read("includeUnconfigured=true&valueState=present");
+      expect(present.summary).toEqual(coverage.summary);
+      expect(present.totalCount).toBe(3);
+      expect(present.items.every(item => item.kind === "instance" && item.valueState === "present")).toBe(true);
       expect(coverage.items).toContainEqual({ kind: "project-status", projectId: "scope-empty", projectName: "Empty", status: "unconfigured" });
       const filtered = await read("includeUnconfigured=true&search=no-such-source");
       expect(filtered.summary.configuredInstanceCount).toBe(3);

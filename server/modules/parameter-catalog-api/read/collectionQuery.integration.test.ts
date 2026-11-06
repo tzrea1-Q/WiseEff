@@ -198,6 +198,11 @@ describe("issue 847 collection contract", () => {
     if (other.ok) {
       expect(other.value.subjectIds).toEqual([]);
     }
+    const library = await queries.selectPlacementSubtreeSubjectIds({
+      organizationId: OTHER_ORGANIZATION_ID, moduleId: "mod-847-other-root", includeRetired: true,
+      authScope: { organizationId: OTHER_ORGANIZATION_ID, principalId: OWNER.principalId },
+    });
+    expect(library.ok && library.value.subjectIds).toEqual([SUBJECT_WITH_DEFINITION]);
 
     const unknown = await queries.selectPlacementSubtreeSubjectIds({
       organizationId: ORGANIZATION_ID,

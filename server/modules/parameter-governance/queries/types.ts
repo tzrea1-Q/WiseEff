@@ -200,6 +200,7 @@ export type DefinitionSelectionQuery = {
 export type PlacementSubtreeSelectionQuery = {
   readonly organizationId: string;
   readonly moduleId: string;
+  readonly includeRetired?: boolean;
   readonly authScope: GovernanceQueryAuthScope;
 };
 

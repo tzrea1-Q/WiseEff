@@ -221,6 +221,7 @@ export function createRegistrationProjectionFromQueries(
       const result = await queries.selectPlacementSubtreeSubjectIds({
         organizationId: input.organizationId,
         moduleId: input.moduleId,
+        includeRetired: input.includeRetired,
         authScope: { organizationId: input.organizationId, principalId },
       });
       if (!result.ok) {

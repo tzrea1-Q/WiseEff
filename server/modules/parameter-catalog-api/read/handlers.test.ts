@@ -137,7 +137,7 @@ const page = <T>(items: readonly T[], next: typeof cursor | null = cursor) => ({
 });
 
 describe("definition owner lifecycle filtering", () => {
-  function lifecycleHarness(subjectCount = 3, trustedScope = scope) {
+  function lifecycleHarness(subjectCount = 3, trustedScope = scope, ownedChild = false) {
     const subjects: CatalogSubjectDetailSnapshot[] = Array.from({ length: subjectCount }, (_, index) => ({
       ...subject,
       id: CatalogSubjectId(`csub_owner_${index}`),
@@ -148,6 +148,7 @@ describe("definition owner lifecycle filtering", () => {
       },
       aliases: [],
     }));
+    if (ownedChild) subjects[2] = { ...subjects[2]!, kind: "node-type", owner: subjects[1]!.id };
     const definitions = subjects.map((owner, index) => ({
       ...definition,
       id: ParameterDefinitionId(`pdef_owner_${index}`),
@@ -260,6 +261,26 @@ describe("definition owner lifecycle filtering", () => {
       expect(empty.status).toBe(200);
       expect(empty.body).toMatchObject({ totalCount: 0, items: [] });
     }
+  });
+
+  it("includes unregistered owned children in library module scope before pagination, respecting tenant scope", async () => {
+    const { ports } = lifecycleHarness(4, scope, true);
+    const selectModule = vi.fn(async () => ({ subjectIds: [CatalogSubjectId("csub_owner_1")], moduleName: "Power" }));
+    const selectSubjects = vi.fn(async () => ({ kind: "only" as const, ids: [CatalogSubjectId("csub_owner_2")], fingerprint: "unregistered" }));
+    const libraryPorts = { ...ports, registration: { ...ports.registration, selectPlacementSubtreeSubjectIds: selectModule, selectSubjectIds: selectSubjects } };
+    const query = { placementModuleId: "power", placementScope: "library", subjectLifecycle: "active", limit: "1" };
+    const result = await handleCatalogRead(libraryPorts, get("/api/v2/catalog/definitions", { query }));
+    expect(result.body).toMatchObject({ totalCount: 2, hasMore: true, items: [{ subject: { id: "csub_owner_1" } }] });
+    expect(selectModule).toHaveBeenCalledWith(expect.objectContaining({ includeRetired: true }));
+    expect(selectSubjects).toHaveBeenCalledWith(expect.objectContaining({ registration: "unregistered", catalogSubjectIds: ["csub_owner_2"] }));
+    const restricted = { ...scope, subjects: { kind: "only" as const, ids: [CatalogSubjectId("csub_owner_2")], fingerprint: "child-only" } };
+    const { ports: restrictedPorts } = lifecycleHarness(4, restricted, true);
+    const hiddenOwner = await handleCatalogRead({ ...restrictedPorts, registration: { ...restrictedPorts.registration,
+      selectPlacementSubtreeSubjectIds: selectModule, selectSubjectIds: async () => ({ kind: "only", ids: [], fingerprint: "empty" }) } },
+    get("/api/v2/catalog/definitions", { query }));
+    expect(hiddenOwner.body).toMatchObject({ totalCount: 0, items: [] });
+    const invalid = await handleCatalogRead(libraryPorts, get("/api/v2/catalog/definitions", { query: { placementScope: "other" } }));
+    expect(invalid.status).toBe(400);
   });
 
   it("rejects invalid owner lifecycle values at the HTTP boundary", async () => {

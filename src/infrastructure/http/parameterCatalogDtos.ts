@@ -227,6 +227,7 @@ export type CatalogListQuery = {
   subjectIds?: readonly string[];
   /** Organization module subtree filter, resolved server-side before pagination. */
   placementModuleId?: string;
+  placementScope?: "library";
   propertyKey?: string;
   usageProjectId?: string;
   catalogReleaseId?: string;

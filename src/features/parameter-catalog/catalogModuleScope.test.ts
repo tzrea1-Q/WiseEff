@@ -15,7 +15,7 @@ const subject = (input: {
   canonicalName: string;
   ownerSubjectId?: string;
   type?: "driver" | "node-type";
-  placement?: { id: string; moduleId?: string; displayName: string; parentPlacementId: string | null };
+  placement?: { id: string; moduleId?: string; ownerSubjectId?: string; displayName: string; parentPlacementId: string | null };
   registration?: "active" | "unregistered";
 }): SubjectItem =>
   ({
@@ -58,6 +58,18 @@ describe("catalog module navigator tree", () => {
     ] }] }]);
     expect(tree[0].children[0].children).toHaveLength(2);
     expect(buildCatalogModuleTree(subjects, describeSubject, modules)[0].children[0].children).toHaveLength(4);
+  });
+
+  it("uses organization ownership over a pinned catalog owner for registered nodes", () => {
+    const modules = [{ id: "a", name: "A", parentId: null, sortOrder: 0 }, { id: "b", name: "B", parentId: null, sortOrder: 1 }];
+    const placement = (moduleId: string) => ({ id: moduleId, moduleId, displayName: moduleId, parentPlacementId: null });
+    const oldOwner = subject({ id: "old", canonicalName: "old", placement: placement("a") });
+    const currentOwner = subject({ id: "current", canonicalName: "current", placement: placement("b") });
+    const child = subject({ id: "child", canonicalName: "child", type: "node-type", ownerSubjectId: oldOwner.id,
+      placement: { ...placement("b"), ownerSubjectId: currentOwner.id } });
+    const tree = buildCatalogModuleTree([oldOwner, currentOwner, child], describeSubject, modules, { nestOwnedNodeTypes: true });
+    expect(tree).toMatchObject([{ subjectCount: 1, children: [{ subjectId: "old", children: [] }] },
+      { subjectCount: 2, children: [{ subjectId: "current", children: [{ subjectId: "child" }] }] }]);
   });
 
   it("keeps unregistered families and missing owners reachable without guessing parent names", () => {

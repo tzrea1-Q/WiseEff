@@ -15,7 +15,7 @@ const instance = (id: string, projectId: string, rawValue = `<${id}>`): Instance
 const response = (items: Instance[]): CatalogProjectConfigurationsResponse => ({ items, summary: { configuredProjectCount: new Set(items.map(item => item.projectId)).size, configuredInstanceCount: items.length },
   totalCount: items.length, readAt: "2026-11-06T00:00:00.000Z", nextCursor: null, continuedProjectId: null, selected: null });
 function repositoryWith(items: Instance[]) {
-  return { ...createMockParameterCatalogRepository(), getProjectConfigurations: vi.fn(async (_id: string, query?: { cursor?: string; baselineBindingId?: string; targetBindingId?: string }): Promise<CatalogProjectConfigurationsResponse> => ({
+  return { ...createMockParameterCatalogRepository(), getProjectConfigurations: vi.fn(async (_id: string, query?: { cursor?: string; baselineBindingId?: string; targetBindingId?: string; valueState?: "present"; excludeProjectId?: string; limit?: number }): Promise<CatalogProjectConfigurationsResponse> => ({
     ...response(items), baseline: items.find(item => item.bindingId === query?.baselineBindingId) ?? null,
     target: items.find(item => item.bindingId === query?.targetBindingId) ?? null
   })) };
@@ -39,11 +39,11 @@ it("defaults to two distinct configured projects across pages and changes each e
   const repository = repositoryWith(items);
   const read = repository.getProjectConfigurations.getMockImplementation()!;
   repository.getProjectConfigurations.mockImplementation(async (id, query) => query?.baselineBindingId ? read(id, query)
-    : { ...response(items), items: query?.cursor ? [items[2]] : items.slice(0, 2), nextCursor: query?.cursor ? null : "page2" });
+    : { ...response(items), items: query?.excludeProjectId ? [items[2]] : items.slice(0, 2), nextCursor: query?.excludeProjectId ? null : "page2" });
   const onChange = vi.fn();
   render(<Harness repository={repository} onChange={onChange} />);
   expect(await screen.findByText("<b1>")).toBeVisible();
-  expect(repository.getProjectConfigurations).toHaveBeenCalledWith("definition", { cursor: "page2" });
+  expect(repository.getProjectConfigurations).toHaveBeenCalledWith("definition", { valueState: "present", excludeProjectId: "A", limit: 1 });
   expect(onChange).toHaveBeenCalledWith({ baseline: "a1", target: "b1" }, "replace");
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   await selectControlOption(screen.getByRole("combobox", { name: "左侧配置实例" }), "a2");
@@ -51,6 +51,87 @@ it("defaults to two distinct configured projects across pages and changes each e
   await selectControlOption(screen.getByRole("combobox", { name: "右侧项目" }), "A");
   await waitFor(() => expect(repository.getProjectConfigurations).toHaveBeenLastCalledWith("definition", { baselineBindingId: "a2", targetBindingId: "a1" }));
   expect(screen.getByRole("combobox", { name: "右侧项目" })).toHaveFocus();
+});
+
+it("shows the first value while looking up another project and preserves the first page cursor", async () => {
+  const items = [instance("a", "A"), instance("b", "B"), instance("c", "C")];
+  const repository = repositoryWith(items);
+  const read = repository.getProjectConfigurations.getMockImplementation()!;
+  let resolvePage!: (page: CatalogProjectConfigurationsResponse) => void;
+  repository.getProjectConfigurations.mockImplementation(async (id, query) => query?.baselineBindingId ? read(id, query)
+    : query?.excludeProjectId ? new Promise(resolve => { resolvePage = resolve; })
+      : { ...response(items), items: [items[0]], nextCursor: "page2" });
+  render(<Harness repository={repository} />);
+  expect(await screen.findByText("<a>")).toBeVisible();
+  expect(screen.getByText("正在查找其他已配置项目…")).toBeVisible();
+  expect(screen.getByText("可继续加载更多项目，或选择当前项目中的其他实例。")).toBeVisible();
+  await act(async () => resolvePage({ ...response(items), items: [items[1]], nextCursor: null }));
+  expect(await screen.findByText("<b>")).toBeVisible();
+  expect(screen.getByRole("button", { name: "加载更多项目或实例" })).toBeEnabled();
+  expect(repository.getProjectConfigurations).not.toHaveBeenCalledWith("definition", { valueState: "present", cursor: "page2" });
+});
+
+it("finds a second project without scanning later pages and keeps them available manually", async () => {
+  const items = [instance("a1", "A"), instance("a2", "A"), instance("b", "B")];
+  const repository = repositoryWith(items);
+  const read = repository.getProjectConfigurations.getMockImplementation()!;
+  repository.getProjectConfigurations.mockImplementation(async (id, query) => {
+    if (query?.baselineBindingId) return read(id, query);
+    if (query?.excludeProjectId) return { ...response(items), items: [items[2]] };
+    if (query?.cursor === "page3") return { ...response(items), items: [items[2]] };
+    if (query?.cursor === "page2") return { ...response(items), items: [items[1]], nextCursor: "page3" };
+    return { ...response(items), items: [items[0]], nextCursor: "page2" };
+  });
+  render(<Harness repository={repository} />);
+  expect(await screen.findByText("<b>")).toBeVisible();
+  expect(repository.getProjectConfigurations).toHaveBeenCalledWith("definition", { valueState: "present", excludeProjectId: "A", limit: 1 });
+  expect(repository.getProjectConfigurations).not.toHaveBeenCalledWith("definition", { valueState: "present", cursor: "page2" });
+  fireEvent.click(screen.getByRole("button", { name: "加载更多项目或实例" }));
+  await waitFor(() => expect(repository.getProjectConfigurations).toHaveBeenCalledWith("definition", { valueState: "present", cursor: "page2" }));
+  expect(repository.getProjectConfigurations).not.toHaveBeenCalledWith("definition", { valueState: "present", cursor: "page3" });
+  expect(repository.getProjectConfigurations).toHaveBeenCalledWith("definition", { baselineBindingId: "a1", targetBindingId: "b" });
+});
+
+it("keeps the first value and manual paging available if the other-project lookup fails", async () => {
+  const items = [instance("a", "A"), instance("b", "B")];
+  const repository = repositoryWith(items);
+  const read = repository.getProjectConfigurations.getMockImplementation()!;
+  repository.getProjectConfigurations.mockImplementation(async (id, query) => {
+    if (query?.baselineBindingId) return read(id, query);
+    if (query?.excludeProjectId) throw new Error("lookup failed");
+    return { ...response(items), items: query?.cursor ? [items[1]] : [items[0]], nextCursor: query?.cursor ? null : "page2" };
+  });
+  render(<Harness repository={repository} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("自动查找项目失败");
+  expect(await screen.findByText("<a>")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "加载更多项目或实例" }));
+  expect(await screen.findByText("<b>")).toBeVisible();
+});
+
+it("keeps the comparison after a later page fails and allows retrying to select remaining instances", async () => {
+  const items = [instance("a", "A"), instance("b", "B"), instance("c", "C")];
+  const repository = repositoryWith(items);
+  const read = repository.getProjectConfigurations.getMockImplementation()!;
+  let inventoryReads = 0;
+  repository.getProjectConfigurations.mockImplementation(async (id, query) => {
+    if (query?.baselineBindingId) return read(id, query);
+    if (!query?.cursor) return { ...response(items), items: items.slice(0, 2), nextCursor: ++inventoryReads === 1 ? "expired" : "fresh" };
+    if (query.cursor === "expired") throw new Error("expired cursor");
+    return { ...response(items), items: [items[2]] };
+  });
+  render(<Harness repository={repository} />);
+  expect(await screen.findByText("<b>")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "加载更多项目或实例" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("已显示的对比保留");
+  expect(screen.getByText("<a>")).toBeVisible();
+  expect(screen.getByText("<b>")).toBeVisible();
+  expect(repository.getProjectConfigurations.mock.calls.filter(([, query]) => query?.baselineBindingId)).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "重新加载项目列表" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: "加载更多项目或实例" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "加载更多项目或实例" })).not.toBeInTheDocument());
+  await selectControlOption(screen.getByRole("combobox", { name: "右侧项目" }), "C");
+  expect(await screen.findByText("<c>")).toBeVisible();
 });
 
 it("keeps a one-project right side empty until chosen and copies a complete empty DTS boolean", async () => {

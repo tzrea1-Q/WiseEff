@@ -498,9 +498,9 @@ export const selectPlacementSubtreeSubjectIds = async (
           and effective.organization_id = registration.organization_id
          join subtree on subtree.id = effective.module_id
         where registration.organization_id = $2
-          and registration.status = 'active'
+          and (registration.status = 'active' or $3::boolean)
         order by registration.subject_id`,
-      [query.moduleId, query.organizationId],
+      [query.moduleId, query.organizationId, query.includeRetired ?? false],
     );
     return {
       ok: true,

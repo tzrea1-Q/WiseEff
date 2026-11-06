@@ -104,7 +104,7 @@ it("browses library modules with owned node types and preserves exact subject se
   await user.clear(screen.getByRole("searchbox", { name: "搜索模块或主体" }));
   expect(screen.getByRole("button", { name: "选择主体 battery_cell" })).toHaveAttribute("aria-pressed", "true");
   await user.click(screen.getByRole("button", { name: /^Power\s*2$/ }));
-  await waitFor(() => expect(listDefinitions).toHaveBeenLastCalledWith(expect.objectContaining({ placementModuleId: "power" })));
+  await waitFor(() => expect(listDefinitions).toHaveBeenLastCalledWith(expect.objectContaining({ placementModuleId: "power", placementScope: "library" })));
   expect(parseCatalogUrlAnchor(onHref.mock.lastCall![0].split("?")[1])).toMatchObject({ subjectId: null, moduleNodeId: "power" });
   await user.click(screen.getByRole("button", { name: "后退" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "选择主体 battery_cell" })).toHaveAttribute("aria-pressed", "true"));
