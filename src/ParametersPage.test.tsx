@@ -1,6 +1,6 @@
 import { selectControlOption } from "@/test/selectControlOption";
 import userEvent from "@testing-library/user-event";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -1502,6 +1502,30 @@ describe("ParametersPage · 布局与 Sheet", () => {
 });
 
 describe("ParametersPage API topology workspace", () => {
+  it("allows leaving with a saved draft but protects a new local edit", async () => {
+    const repository = createApiBoundaryRepository();
+    const canonicalRepository = { ...createTestAppPorts().parameterCatalogRepository,
+      listProjectValueDrafts: vi.fn().mockResolvedValue({ items: [{ id: "saved-draft", bindingId: API_SENTINEL_BINDING.id,
+        definitionId: "definition", effectiveRevisionId: "revision", baseRevisionId: API_SENTINEL_REVISION_ID,
+        targetValue: API_SENTINEL_RAW_VALUE, reason: "已保存的草稿", updatedAt: "2026-11-05T00:00:00Z" }] }) };
+    render(<TopBarActionsHarness><ParametersPage state={createParametersPageState()} dispatch={vi.fn()} onNavigate={vi.fn()}
+      search="?project=aurora" runtimeMode="api" canEdit topologyRepository={repository} canonicalRepository={canonicalRepository}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]} /></TopBarActionsHarness>);
+    expect(await screen.findByText("已保存的草稿")).toBeVisible();
+    let decision: boolean | Promise<boolean> = false;
+    act(() => { decision = requestSettingsLeave(); });
+    expect(decision).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(`参数详情 ${API_SENTINEL_PROPERTY}`) }));
+    fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "<42>" } });
+    fireEvent.click(screen.getByRole("button", { name: "关闭参数详情" }));
+    act(() => { decision = requestSettingsLeave(); });
+    expect(screen.getByRole("dialog", { name: "放弃未保存的修改？" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(await decision).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(`参数详情 ${API_SENTINEL_PROPERTY}`) }));
+    expect(screen.getByLabelText("目标值")).toHaveValue("<42>");
+  });
+
   it("does not render an empty notice on an ordinary project visit", async () => {
     const { container } = render(<TopBarActionsHarness><ParametersPage
       state={createParametersPageState()} dispatch={vi.fn()} onNavigate={vi.fn()}
