@@ -378,10 +378,42 @@ export const catalogDefinitionDtoSchema = catalogObject({
     projectCount: z.number().int().nonnegative(),
     currentValueCount: z.number().int().nonnegative()
   }),
+  configurationSummary: catalogObject({
+    configuredProjectCount: z.number().int().nonnegative(),
+    configuredInstanceCount: z.number().int().nonnegative()
+  }).nullable().optional(),
   links: catalogObject({
     revisions: z.string(),
     timeline: z.string()
   })
+});
+
+const catalogInstanceComparisonSchema = catalogObject({
+  status: z.enum(["same", "different", "different-semantics", "unsupported", "unavailable"]),
+  reason: z.enum(["typed-values", "revision-semantics", "revision-unavailable", "unset", "complex-dts"]),
+  revisionChanged: z.boolean(), delta: z.number().optional(),
+});
+
+export const catalogProjectConfigurationInstanceSchema = catalogObject({
+  kind: z.literal("instance"), bindingId: z.string(), projectId: z.string(), projectName: z.string(),
+  configSetId: z.string(), configSetName: z.string(), sourceOccurrenceId: z.string(), sourceFormat: z.enum(["dts", "json"]),
+  fileId: z.string(), fileVersionId: z.string(), fileName: z.string(), sourceLocator: z.record(z.string(), z.unknown()), sourceLocation: z.string(),
+  currentValueId: z.string(), definitionRevisionId: z.string(), definitionRevisionNumber: z.string(), effectiveRevisionId: z.string(),
+  unit: z.string().nullable(), definitionLifecycle: z.enum(["active", "deprecated", "retired"]),
+  valueState: z.enum(["present", "unset"]), valueKind: z.enum(["string", "number", "boolean", "string-array", "number-array", "json"]),
+  valuePreview: z.string(), valuePreviewTruncated: z.boolean(), rawValue: z.string().optional(), comparison: catalogInstanceComparisonSchema.optional(),
+});
+
+export const catalogProjectConfigurationsResponseSchema = catalogObject({
+  items: z.array(z.union([catalogProjectConfigurationInstanceSchema, catalogObject({
+    kind: z.literal("project-status"), projectId: z.string(), projectName: z.string(), status: z.literal("unconfigured")
+  })])),
+  summary: catalogObject({ configuredProjectCount: z.number().int().nonnegative(), configuredInstanceCount: z.number().int().nonnegative() }),
+  projects: z.array(catalogObject({ id: z.string(), name: z.string() })).optional(),
+  configSets: z.array(catalogObject({ id: z.string(), name: z.string(), projectId: z.string() })).optional(),
+  totalCount: z.number().int().nonnegative(), readAt: z.string(),
+  nextCursor: z.string().nullable(), continuedProjectId: z.string().nullable(), selected: catalogProjectConfigurationInstanceSchema.nullable(),
+  baseline: catalogProjectConfigurationInstanceSchema.nullable().optional(), target: catalogProjectConfigurationInstanceSchema.nullable().optional(),
 });
 
 export const catalogTimelineFactDtoSchema = catalogObject({
@@ -1744,6 +1776,7 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogSubjectResponse: catalogSubjectResponseSchema,
   CatalogDefinitionListResponse: catalogDefinitionListResponseSchema,
   CatalogDefinitionResponse: catalogDefinitionResponseSchema,
+  CatalogProjectConfigurationsResponse: catalogProjectConfigurationsResponseSchema,
   CatalogDefinitionRevisionListResponse: catalogDefinitionRevisionListResponseSchema,
   CatalogDefinitionRevisionResponse: catalogDefinitionRevisionResponseSchema,
   CatalogDefinitionTimelineResponse: catalogDefinitionTimelineResponseSchema,
@@ -1897,6 +1930,13 @@ export const parameterCatalogCanonicalRoutes = [
     id: "catalog.getDefinition",
     method: "GET",
     path: "/api/v2/catalog/definitions/:definitionId",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.getProjectConfigurations",
+    method: "GET",
+    path: "/api/v2/catalog/definitions/:definitionId/project-configurations",
     module: "catalog",
     stability: "mvp"
   },
@@ -2203,6 +2243,7 @@ export const parameterCatalogRouteGates: Record<
   "catalog.listSubjectDefinitions": ["PCAT-API-02", "PCAT-API-11"],
   "catalog.listDefinitions": ["PCAT-API-02", "PCAT-API-11"],
   "catalog.getDefinition": ["PCAT-API-02", "PCAT-API-11"],
+  "catalog.getProjectConfigurations": ["PCAT-API-02", "PCAT-API-11"],
   "catalog.listDefinitionRevisions": ["PCAT-API-03", "PCAT-API-11"],
   "catalog.getDefinitionRevision": ["PCAT-API-03", "PCAT-API-11"],
   "catalog.listDefinitionTimeline": ["PCAT-API-03", "PCAT-API-11"],
@@ -2269,6 +2310,7 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.listSubjectDefinitions": "listSubjectDefinitions",
   "catalog.listDefinitions": "listDefinitions",
   "catalog.getDefinition": "getDefinition",
+  "catalog.getProjectConfigurations": "getProjectConfigurations",
   "catalog.listDefinitionRevisions": "listDefinitionRevisions",
   "catalog.getDefinitionRevision": "getDefinitionRevision",
   "catalog.listDefinitionTimeline": "listDefinitionTimeline",
@@ -2480,7 +2522,8 @@ export const parameterCatalogSchemaRegistry = {
       {
         name: "lifecycle",
         in: "query",
-        schema: { type: "string", enum: [...subjectLifecycles] }
+        schema: { type: "string" },
+        description: "Comma-separated subject lifecycles: active, retired. Omitted defaults to active."
       },
       { name: "registration", in: "query" },
       {
@@ -2526,6 +2569,8 @@ export const parameterCatalogSchemaRegistry = {
     requestParameters: [
       { name: "catalogReleaseId", in: "query" },
       { name: "subjectId", in: "query" },
+      { name: "type", in: "query", schema: { type: "string", enum: [...catalogSubjectKinds] },
+        description: "Filter definitions by subject type before pagination." },
       {
         name: "subjectLifecycle",
         in: "query",
@@ -2547,11 +2592,14 @@ export const parameterCatalogSchemaRegistry = {
           "Organization module id; selects definitions of subjects placed at or below the module subtree before pagination."
       },
       { name: "propertyKey", in: "query" },
+      { name: "configured", in: "query", description: "Select definitions with a current configured instance before pagination." },
+      { name: "usageProjectId", in: "query", description: "Select definitions configured in this current-Organization project before pagination." },
       { name: "registration", in: "query" },
       {
         name: "lifecycle",
         in: "query",
-        schema: { type: "string", enum: [...definitionLifecycles] }
+        schema: { type: "string" },
+        description: "Comma-separated definition lifecycles: active, deprecated, retired. Omitted defaults to active."
       },
       { name: "search", in: "query" },
       ...pageQueryParameters
@@ -2564,6 +2612,18 @@ export const parameterCatalogSchemaRegistry = {
     responseBody: "CatalogDefinitionResponse",
     additionalResponses: catalogReadErrors,
     successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.getProjectConfigurations": {
+    summary: "Read current project configuration instances for a definition",
+    tags: ["catalog"],
+    responseBody: "CatalogProjectConfigurationsResponse",
+    additionalResponses: catalogReadErrors,
+    requestParameters: [
+      { name: "cursor", in: "query" }, { name: "limit", in: "query" },
+      { name: "selectedBindingId", in: "query" }, { name: "baselineBindingId", in: "query" }, { name: "targetBindingId", in: "query" },
+      { name: "projectId", in: "query" }, { name: "configSetId", in: "query" },
+      { name: "search", in: "query" }, { name: "includeUnconfigured", in: "query" }
+    ]
   },
   "catalog.listDefinitionRevisions": {
     summary: "List immutable definition revisions in reverse chronological order",

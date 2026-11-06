@@ -20,6 +20,21 @@ describe("Knowledge Definition navigation", () => {
     vi.spyOn(moduleRegistryResolve, "resolveParameterModuleRegistryRepository")
       .mockReturnValue(createMockParameterModuleRegistryRepository());
   });
+  it.each([undefined, "org-selected"])("preserves only the explicit operating organization when pinning the library release (%s)", async (operatingOrganizationId) => {
+    const ports = createMockCatalogPorts();
+    const navigate = vi.fn();
+    render(<ToastProvider><PageRouter page={getPageByPath("/parameters/definitions")}
+      search={operatingOrganizationId ? `?organizationId=${operatingOrganizationId}` : ""}
+      organizationId="org-home" state={{ ...initialState, activeRoleId: "admin" }} dispatch={() => undefined}
+      runtime={{ parameterCatalogRepository: ports.catalog, operatingOrganizationId } as AppRuntime}
+      runtimeMode="api" onNavigate={navigate} onFeedback={() => undefined} sessionPermissions={[]}
+      DebuggingAdminPage={() => null} /></ToastProvider>);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    const destination = new URL(navigate.mock.calls.at(-1)![0], "http://localhost");
+    expect(destination.pathname).toBe("/parameters/definitions");
+    expect(destination.searchParams.get("catalogReleaseId")).toBe(CATALOG_RELEASE_ID);
+    expect(destination.searchParams.get("organizationId")).toBe(operatingOrganizationId ?? null);
+  });
   it.each([false, true])("gates definition-page linking by knowledge:edit (%s)", async (canEdit) => {
     const repository = createMockKnowledgeRepository({ userId: initialState.currentUserId, canManage: false });
     const entry = await repository.createMarkdown({ title: "定义页关联条目", tags: [], contentMarkdown: "说明" });
@@ -84,11 +99,11 @@ describe("Knowledge Definition navigation", () => {
     if (roleId !== "admin" && roleId !== "platform-admin") {
       expect(within(detail).getByText(activeDefinition.propertyKey)).toBeInTheDocument();
       expect(destination.pathname).toBe("/parameters/definitions");
-      expect(screen.getByRole("heading", { name: `查看 ${activeDefinition.propertyKey}` })).toBeInTheDocument();
+      expect(within(detail).getByRole("heading", { name: activeDefinition.currentRevision.displayName })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: `编辑 ${activeDefinition.propertyKey}` })).not.toBeInTheDocument();
       expect(within(detail).queryByRole("textbox")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
-      await userEvent.setup().click(screen.getByRole("button", { name: "关闭定义详情" }));
+      await userEvent.setup().click(screen.getByRole("button", { name: "返回参数库" }));
       await waitFor(() => expect(new URL(navigate.mock.calls.at(-1)![0], "http://localhost").pathname)
         .toBe("/parameters/definitions"));
       const closedDestination = new URL(navigate.mock.calls.at(-1)![0], "http://localhost");

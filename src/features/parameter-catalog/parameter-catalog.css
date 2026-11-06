@@ -1497,3 +1497,94 @@ button.parameter-catalog__tree-toggle:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.parameter-library-detail {
+  overflow: auto;
+  padding: var(--space-4) var(--space-8);
+}
+
+.parameter-library-detail__top,
+.parameter-library-detail__body {
+  max-width: 960px;
+  margin: 0 auto;
+  overflow-wrap: anywhere;
+}
+
+.parameter-library-detail__top,
+.parameter-library-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.parameter-library-detail__header { margin: var(--space-4) 0; }
+.parameter-library-detail__header p { margin: var(--space-1) 0; }
+.parameter-library-detail__hint { color: var(--text-muted); font-size: var(--text-sm); margin: var(--space-3) 0; }
+.parameter-library-share { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); font-size: var(--text-sm); }
+
+.parameter-library-detail__body h1 {
+  width: fit-content;
+  margin: var(--space-2) 0;
+  font-size: var(--text-2xl);
+  font-weight: 700;
+}
+
+.parameter-library-detail__body h2 {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.parameter-library-detail__body section,
+.parameter-library-detail__body details {
+  margin: var(--space-5) 0;
+}
+
+.parameter-library-detail__body pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.parameter-library-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.parameter-library-list .parameter-catalog__table th:nth-child(1) { width: 24%; }
+.parameter-library-list .parameter-catalog__table th:nth-child(2) { width: 18%; }
+.parameter-library-list .parameter-catalog__table th:nth-child(3) { width: 23%; }
+.parameter-library-list .parameter-catalog__table th:nth-child(4) { width: 15%; }
+.parameter-library-list .parameter-catalog__table th:nth-child(5),
+.parameter-library-list .parameter-catalog__table th:nth-child(6) { width: 10%; }
+.parameter-library-list .parameter-catalog__table th:last-child { width: 5rem; }
+
+.parameter-library-configurations section { margin: var(--space-5) 0; }
+.parameter-library-configurations h3 { margin-bottom: var(--space-2); }
+.parameter-library-configurations code { overflow-wrap: anywhere; }
+.parameter-library-compare { margin: var(--space-4) 0; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.parameter-library-compare__pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.parameter-library-compare__detail { min-width: 0; padding: var(--space-3); background: var(--surface-muted); border-radius: var(--radius-md); overflow-wrap: anywhere; }
+.parameter-library-compare__detail h3 { margin-top: 0; }
+.parameter-library-compare__detail p { margin: var(--space-1) 0; }
+.parameter-library-compare__source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parameter-library-compare__detail [role="textbox"] { max-height: 8rem; overflow: auto; }
+.parameter-library-compare__detail pre { margin: var(--space-1) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.parameter-library-filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); margin: var(--space-3) 0; }
+.parameter-library-filters label, .parameter-library-filter { display: flex; align-items: center; gap: var(--space-2); }
+.parameter-library-filter .search-field { width: 12rem; }
+.parameter-library-configurations .parameter-library-project-status { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); margin: var(--space-2) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.parameter-library-project-status h3, .parameter-library-project-status p { margin: 0; }
+.parameter-library-instances-table { table-layout: fixed; }
+.parameter-library-instances-table th:first-child { width: 30%; }
+.parameter-library-instances-table th:nth-child(2) { width: 42%; }
+.parameter-library-instances-table th:nth-child(3) { width: 15%; }
+.parameter-library-comparison-table { table-layout: fixed; }
+.parameter-library-comparison-table th:first-child { width: 25%; }
+.parameter-library-comparison-table th:nth-child(2) { width: 20%; }
+.parameter-library-comparison-table th:nth-child(3) { width: 12%; }
+.parameter-library-comparison-table th:nth-child(4) { width: 20%; }

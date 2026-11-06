@@ -102,6 +102,15 @@ export const navigationItems: PageConfig[] = [
     subtitle: "查看、筛选、对比并提交充电与电池参数修改请求"
   },
   {
+    key: "parameters",
+    path: CATALOG_READ_PAGE_PATH,
+    label: "参数库",
+    group: "参数管理",
+    icon: LibraryBig,
+    title: "参数库",
+    subtitle: "浏览参数定义、当前项目配置与实例对比"
+  },
+  {
     key: "parameter-submissions",
     path: "/parameter-submissions",
     label: "我的提交",
@@ -215,11 +224,11 @@ export function getPageByPath(path: string): PageConfig {
     return {
       key: "parameters",
       path,
-      label: "参数定义",
+      label: "参数库",
       group: "参数管理",
       icon: LibraryBig,
-      title: "参数定义",
-      subtitle: "只读浏览已发布的规范参数定义与修订历史"
+      title: "参数库",
+      subtitle: "浏览参数定义、当前项目配置与实例对比"
     };
   }
   if (isOrganizationAdminPath(path)) {

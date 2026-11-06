@@ -28,6 +28,7 @@ import type {
   CatalogCreatePublicationCandidateRequest,
   CatalogDefinitionListResponse,
   CatalogDefinitionResponse,
+  CatalogProjectConfigurationsResponse,
   CatalogDefinitionRevisionListResponse,
   CatalogDefinitionRevisionResponse,
   CatalogDefinitionTimelineResponse,
@@ -100,6 +101,7 @@ export interface ParameterCatalogRepository {
   ): Promise<CatalogDefinitionListResponse>;
   listDefinitions(query?: CatalogListQuery): Promise<CatalogDefinitionListResponse>;
   getDefinition(definitionId: string, query?: CatalogListQuery): Promise<CatalogDefinitionResponse>;
+  getProjectConfigurations?(definitionId: string, query?: { cursor?: string; selectedBindingId?: string; baselineBindingId?: string; targetBindingId?: string; projectId?: string; configSetId?: string; search?: string; includeUnconfigured?: boolean; hintProjectId?: string; hintConfigSetId?: string }): Promise<CatalogProjectConfigurationsResponse>;
   previewDefinitionDeletion?(definitionId: string): Promise<CatalogDefinitionDeletionPreviewResponse>;
   listDefinitionErasures?(): Promise<CatalogDefinitionErasureListResponse>;
   retryDefinitionCleanup?(definitionId: string): Promise<CatalogDefinitionDeletedResponse>;

@@ -39,6 +39,12 @@ function runRequired(command: string, args: string[], cwd: string) {
   }
 }
 
+export async function requirePinnedDtsPreprocessor() {
+  const preprocessing = await probeDtsPreprocessor("bootstrap");
+  if (preprocessing.available) return;
+  throw new Error(`Pinned isolated DTS preprocessing is unavailable (${preprocessing.diagnostic}).`);
+}
+
 async function main() {
   const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
   const paths = resolveDtsToolchainVenvPaths(rootDir);
@@ -54,7 +60,7 @@ async function main() {
   console.log(`Pinned dtc/fdtoverlay: ${dtcEnsure}`);
   const cpp = pinnedDtsPreprocessor();
   runRequired("docker", ["pull", "--platform", cpp.platform, cpp.image], rootDir);
-  if (!(await probeDtsPreprocessor()).available) throw new Error("Pinned isolated DTS preprocessing is unavailable.");
+  await requirePinnedDtsPreprocessor();
 
   runRequired(
     paths.python,

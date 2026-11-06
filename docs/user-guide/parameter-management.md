@@ -13,13 +13,31 @@ When operating in another Organization, check the **Current operating Organizati
 
 The UI is Chinese-first. The English page names below translate its labels; use the routes to find each page. For role requests, see [Account and access](account-and-access.md).
 
+## Browse the parameter library
+
+Open **Parameter library** (`/parameters/definitions`) beside Project parameters; no project selection is needed. Search the published definitions or browse Driver, Node type and Configuration model subjects. The default includes active definitions of active subjects even when the current Organization has not registered them or has retired its registration. Registration and business module are optional Organization filters. Select a definition to read its documentation, type, unit, constraints and explicitly labelled examples; expand technical details or revision history when needed. Examples are not project defaults. The library is read-only and does not create a registration or change request.
+
+![Parameter library with subject navigation and current Organization configuration counts](images/parameter-library.png)
+
+*The seeded library groups published definitions by subject and distinguishes configured projects from instances.*
+
+The list distinguishes configured projects from configured instances in the current Organization. Open **Current project configurations** on a definition to inspect each current instance, grouped by project across configuration sets. Select **View full value** to read the complete source representation. A zero count means there is no current configured instance; it does not describe past use. An unavailable count or configuration read indicates that access or current source evidence could not be established. Configuration values are current platform records, including when a historical definition is open; they are not device readback, drafts or pending changes.
+
+Filter the library by current configuration or project usage to find definitions across the entire result set. Inside a definition, narrow the rows by project, configuration set or instance/source text. **Show projects without current configuration** adds neutral project status rows; it does not mean a required parameter is missing. Scope counts describe the selected projects and configuration sets, while the result count describes matching rows. Reset clears the filters, and browser Back/Forward and reload restore the current view.
+
+In **Compare**, explicitly choose a baseline instance, then a target. Multiple instances in one project remain separate. The baseline stays selected when target filters or pages change. The focused view shows both original values and their pinned revisions; documentation-only revision changes can still be comparable. Different semantics, units or unsupported source references are explained without an inferred numeric difference or unit conversion. If a selected instance becomes unavailable, choose another explicitly; the page does not substitute a similarly named instance.
+
+Use **Copy current view link** to share the current filters, definition, revision or selected comparison. The recipient signs in and reads the current data under their own Organization permissions; a link does not grant access or preserve a snapshot. The full-value and comparison copy actions copy the complete source value shown for that read, including multiline text and empty values. If clipboard access fails, the page keeps the value available for retry.
+
+Choose **Open in project** on an instance to open its exact project, configuration set and parameter occurrence. Editing continues through the existing project workflow and its permissions. **Return to parameter library** restores the original definition, filters and comparison. If the workbench asks about unsaved input, canceling the departure keeps that input available; opening a library link alone does not save or apply a change.
+
 ## Find a parameter and compare projects
 
 1. Open "Parameter changes" (`/parameters`) and select the project. "My workbench" (`/parameter-home`) also lets you find work and pending actions by project.
 2. Search the parameter table and filter by module or importance. Open a row's details to check its property key, node or configuration instance, current value, definition revision, source location, and history. Parameters with the same name can have different meanings; use these details to tell them apart.
 3. Open "Cross-project comparison" from the row details, still within `/parameters`. Select the peer configuration instance and compare values and revision information. If editing is permitted, "Use this project configuration in a draft" prepares a change; it does not apply the peer value immediately.
 
-The former "Comparison analysis" page (`/parameter-comparison`) is unavailable. Use row-level comparison instead.
+The former "Comparison analysis" page (`/parameter-comparison`) is unavailable. Use the Parameter library's Compare tab or project row-level comparison.
 
 ![Aurora parameter workbench and module navigation](images/parameter-management-workbench.png)
 

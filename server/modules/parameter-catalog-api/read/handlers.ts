@@ -180,10 +180,11 @@ function listEnvelope(
 function catalogSubjectUniverse(
   snapshot: CatalogSnapshot,
   lifecycles: readonly SubjectLifecycle[] = ["active", "retired"],
+  kinds: ReturnType<typeof subjectKinds> = [],
 ): CatalogSubjectId[] {
   const result = snapshot.listSubjects({
     selection: { kind: "all" },
-    kinds: [],
+    kinds,
     lifecycles,
     search: absent,
     page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent },
@@ -523,8 +524,19 @@ async function handleListDefinitions(
     catalogDefinitions: parsed.query.registration ? catalogDefinitionIndex(snapshot) : undefined,
   });
   let selection = mergeIdSelection(scope.definitions, registrationSelection);
-  if (parsed.query.subjectLifecycle) {
-    const allowedSubjects = new Set(catalogSubjectUniverse(snapshot, [parsed.query.subjectLifecycle]));
+  let configuredSummaries: Awaited<ReturnType<NonNullable<CatalogReadPorts["selectConfiguredDefinitions"]>>> | undefined;
+  if (parsed.query.configured || parsed.query.usageProjectId) {
+    if (scope.projectScope.kind !== "all" || !ports.selectConfiguredDefinitions) return catalogNotReady(request.requestId);
+    configuredSummaries = await ports.selectConfiguredDefinitions(scope.organizationId, catalogDefinitionIndex(snapshot)
+      .filter((item) => !hiddenId(selection, item.id) && !hiddenId(scope.subjects, item.subjectId)).map((item) => item.id), parsed.query.usageProjectId);
+    const matches = [...configuredSummaries.keys()].map((id) => ParameterDefinitionId(id));
+    const filtered = mergeIdSelection(selection, { kind: "only", ids: matches, fingerprint: fingerprintIdSelection(matches) });
+    selection = { kind: "only", ids: filtered.kind === "only" ? filtered.ids : matches,
+      fingerprint: fingerprintIdSelection([`configured=${parsed.query.configured}`, `project=${parsed.query.usageProjectId}`, filtered.kind === "only" ? filtered.fingerprint : "all"]) };
+  }
+  if (parsed.query.subjectLifecycle || parsed.query.type) {
+    const allowedSubjects = new Set(catalogSubjectUniverse(snapshot,
+      parsed.query.subjectLifecycle ? [parsed.query.subjectLifecycle] : undefined, subjectKinds(parsed.query.type)));
     const explicitSubjects = parsed.query.subjectIds ? new Set(parsed.query.subjectIds) : null;
     const definitionIds = catalogDefinitionIndex(snapshot)
       .filter(({ subjectId }) =>
@@ -546,6 +558,7 @@ async function handleListDefinitions(
       ids: filtered.kind === "only" ? filtered.ids : definitionIds,
       fingerprint: fingerprintIdSelection([
         `subjectLifecycle=${parsed.query.subjectLifecycle}`,
+        `type=${parsed.query.type}`,
         filtered.kind === "only" ? filtered.fingerprint : "all",
       ]),
     };
@@ -580,6 +593,7 @@ async function handleListDefinitions(
     principalId: scope.principalId,
     projectScope: scope.projectScope,
     definitionIds: [...new Set(page.items.map((definition) => definition.id))],
+    configurationProjectId: parsed.query.usageProjectId,
   });
   const items = [];
   for (const definition of page.items) {
@@ -590,12 +604,14 @@ async function handleListDefinitions(
     if (!mapped) {
       return catalogNotReady(request.requestId);
     }
-    items.push(mapped);
+    items.push(usage.configurationSummary !== undefined ? { ...mapped, configurationSummary: configuredSummaries?.get(definition.id) ?? usage.configurationSummary } : mapped);
   }
   const filtered = Boolean(
     parsed.query.lifecycle ||
+      parsed.query.type ||
       parsed.query.subjectLifecycle ||
       parsed.query.registration ||
+      parsed.query.configured || parsed.query.usageProjectId ||
       parsed.query.search ||
       parsed.query.propertyKey ||
       parsed.query.subjectId ||
@@ -659,7 +675,7 @@ async function handleGetDefinition(
   if (!mapped) {
     return notFound(request.requestId, "definition-not-found");
   }
-  return catalogReadOk({ item: mapped }, snapshot.release.id, request.requestId);
+  return catalogReadOk({ item: usage.configurationSummary !== undefined ? { ...mapped, configurationSummary: usage.configurationSummary } : mapped }, snapshot.release.id, request.requestId);
 }
 
 async function handleListRevisions(

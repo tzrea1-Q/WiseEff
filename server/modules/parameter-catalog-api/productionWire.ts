@@ -97,6 +97,8 @@ import { registerCatalogLegacyRoutes } from "./legacy/routes";
 import { CATALOG_SUNSET_HTTP_DATE } from "./legacy/headers";
 import type { LegacyCatalogOptions } from "./legacy/types";
 import { registerCatalogReadRoutes } from "./read/routes";
+import { registerProjectConfigurations } from "./projectConfigurations";
+import { selectConfiguredDefinitions } from "../parameter-bindings/queries/currentInstances";
 import { handleCatalogRead } from "./read/handlers";
 import {
   createRegistrationProjectionFromQueries,
@@ -439,7 +441,9 @@ const catalogScope = (auth: AuthContext, organizationId = auth.organization.id):
     actorKind,
     canReadCatalog: projectScope !== null && canViewParameters(auth),
     canRegister: (actorKind === "org-admin" || actorKind === "platform-admin") && auth.roles.some((role) => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")),
-    projectScope: projectScope ?? { kind: "only", ids: [] },
+    // Catalog configuration usage follows the same Organization read scope as
+    // project parameters; publication and shared-DTSI keep their own scope.
+    projectScope: projectScope && canViewParameters(auth) ? { kind: "all" } : { kind: "only", ids: [] },
     subjects: { kind: "all" },
     definitions: { kind: "all" },
   };
@@ -702,7 +706,8 @@ const createReadPorts = (
     runtime,
     readiness: createKernelReadiness(runtime, pool, db, catalogPublication),
     registration: createRegistrationProjectionFromQueries(queries),
-    usage: createUsageProjectionFromQueries(usage),
+    usage: createUsageProjectionFromQueries(usage, true),
+    selectConfiguredDefinitions: (organizationId, definitionIds, projectId) => selectConfiguredDefinitions(pool, organizationId, definitionIds, projectId),
     timeline: kernelOnlyTimelineComposer,
     authenticate: authenticateCatalog(resolveAuth, db),
     loadRevisionExportSnapshot: async (pin) => {
@@ -1002,6 +1007,7 @@ export const registerParameterCatalogApi = (
   const readPorts = createReadPorts(pool, options.resolveAuth, options.db, options.catalogPublication ?? {});
   const governancePorts = createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore);
   registerCatalogReadRoutes(router, readPorts);
+  registerProjectConfigurations(router, options.db, readPorts, options.objectStore);
   registerCatalogGovernanceRoutes(
     router,
     governancePorts,

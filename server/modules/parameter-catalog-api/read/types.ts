@@ -147,6 +147,7 @@ export type CatalogUsageSummary = {
   readonly policyCount: number | null;
   readonly projectCount: number;
   readonly currentValueCount: number;
+  readonly configurationSummary?: { readonly configuredProjectCount: number; readonly configuredInstanceCount: number } | null;
 };
 
 export type UsageProjectionPort = {
@@ -155,6 +156,7 @@ export type UsageProjectionPort = {
     readonly definitionIds: readonly ParameterDefinitionId[];
     readonly principalId?: string;
     readonly projectScope: UsageProjectScope;
+    readonly configurationProjectId?: string;
   }): Promise<ReadonlyMap<ParameterDefinitionId, CatalogUsageSummary>>;
   summarize(input: {
     readonly organizationId: string;
@@ -193,6 +195,7 @@ export type CatalogReadPorts = {
   readonly readiness: CatalogReadinessPort;
   readonly registration: RegistrationProjectionPort;
   readonly usage: UsageProjectionPort;
+  readonly selectConfiguredDefinitions?: (organizationId: string, definitionIds: readonly string[], projectId?: string) => Promise<ReadonlyMap<string, { configuredProjectCount: number; configuredInstanceCount: number }>>;
   readonly timeline: TimelineComposerPort;
   readonly authenticate: (request: CatalogReadRequest) => Promise<CatalogReadAuthResult>;
   readonly loadRevisionExportSnapshot?: (pin: CatalogReleasePin) => Promise<CatalogReleaseNode | null>;
@@ -215,4 +218,6 @@ export type CatalogListQuery = {
   /** Organization module subtree filter, resolved to subjects before pagination. */
   readonly placementModuleId?: string;
   readonly propertyKey?: PropertyKey;
+  readonly configured?: boolean;
+  readonly usageProjectId?: string;
 };

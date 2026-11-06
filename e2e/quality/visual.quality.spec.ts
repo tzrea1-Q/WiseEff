@@ -163,9 +163,18 @@ test.describe("M5.11 visual quality gate", () => {
   test("keeps stable visual baseline for the Xiaoze popup", async ({ page }, testInfo) => {
     annotateFailureRoute(testInfo, VISUAL_XIAOZE_FAILURE_ROUTE);
     const popup = await openXiaozePopup(page);
+    // The modeless popup captures its background too. Wait for the business
+    // registry and select one seeded Binding so random IDs cannot reorder it.
+    await expect(page.getByRole("tree", { name: "业务模块树" }).getByRole("treeitem", { name: /Battery Gauge/ })).toBeVisible();
+    await page.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("battery_board_type");
+    const rows = page.locator('.dts-parameter-workbench-table__body [role="row"]');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first().getByText("battery_board_type", { exact: true })).toBeVisible();
+    await expect(rows.first().locator('[data-label="所属模块"]').getByText("Battery Gauge", { exact: true })).toBeVisible();
+    await page.getByRole("searchbox", { name: "搜索 DTS 参数" }).blur();
     await test.step("quality:readiness", () => settleAppToasts(page));
 
-    await test.step("quality:capture", () => { return expect(popup).toHaveScreenshot("xiaoze-popup-open.png"); });
+    await test.step("quality:capture", () => { return expect.soft(popup).toHaveScreenshot("xiaoze-popup-open.png"); });
 
     const dragHandle = page.getByRole("button", { name: "拖动小泽窗口" });
     const handleBox = await dragHandle.boundingBox();
@@ -177,7 +186,7 @@ test.describe("M5.11 visual quality gate", () => {
     await page.mouse.move(handleBox.x - 180, handleBox.y + 100, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByRole("button", { name: "恢复小泽默认位置和大小" })).toBeVisible();
-    await test.step("quality:capture", () => expect(popup).toHaveScreenshot("xiaoze-popup-moved.png", { maxDiffPixelRatio: 0.05 }));
+    await test.step("quality:capture", () => expect.soft(popup).toHaveScreenshot("xiaoze-popup-moved.png", { maxDiffPixelRatio: 0.05 }));
   });
 });
 

@@ -1,6 +1,6 @@
 import { knowledgeEntryHref, parseKnowledgeEntryQuery } from "@/domain/knowledge/citations";
 import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
-import { useMemo, type Dispatch, type ReactNode } from "react";
+import { useCallback, useMemo, type Dispatch, type ReactNode } from "react";
 
 import type {
   ApplyParameterImportBatchInput,
@@ -63,6 +63,8 @@ import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology
 import type { KnowledgeDefinitionPickerPage } from "@/features/knowledge/KnowledgeEntryEditorDialog";
 import { buildCatalogHref, CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH, EMPTY_CATALOG_URL_ANCHOR } from "@/application/parameter-catalog/urlAnchor";
 import { CatalogPage } from "@/features/parameter-catalog/CatalogPage";
+import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
+import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
 import { WorkflowPublicationPage } from "@/features/workflow-publication/WorkflowPublicationPage";
 import { PlatformOrganizationsPage } from "@/features/organization/PlatformOrganizationsPage";
 import { WorkflowPublicationNotice } from "@/components/layout/WorkflowPublicationNotice";
@@ -180,6 +182,10 @@ export function PageRouter({
   TopBarProjectId,
   DebuggingAdminPage
 }: PageRouterProps) {
+  const navigateParameters = useCallback((href: string) => onNavigate(withOrganizationScope(href, runtime?.operatingOrganizationId)), [onNavigate, runtime?.operatingOrganizationId]);
+  const libraryModules = useMemo(() => runtime?.parameterApiClient
+    ? createHttpParameterModuleRegistryRepository(runtime.parameterApiClient)
+    : resolveParameterModuleRegistryRepository(runtimeMode), [runtime?.parameterApiClient, runtimeMode]);
   const debuggingGateway = runtime?.debuggingGateway;
   const parameterTopologyRepository = runtime?.parameterTopologyRepository;
   const listParameterConfigSets = runtime?.listParameterConfigSets;
@@ -327,17 +333,24 @@ export function PageRouter({
       if (page.path === CATALOG_READ_PAGE_PATH && runtime?.parameterCatalogRepository) {
         return <CatalogPage
           pageKey="parameter-definitions"
+          libraryMode
+          projectRepository={runtime.parameterRepository}
+          moduleRegistry={libraryModules}
+          organizationId={runtime.operatingOrganizationId ?? organizationId}
+          onOpenGovernance={canAccessPage(currentRoleId, "parameter-admin", { path: CATALOG_PAGE_PATH, runtimeMode: runtimeMode ?? "api", permissions: sessionPermissions, roles: sessionRoles, projectMemberships })
+            ? (anchor) => onNavigate(withOrganizationScope(buildCatalogHref(anchor), runtime.operatingOrganizationId ?? organizationId)) : undefined}
           repository={runtime.parameterCatalogRepository}
           actor="user"
           search={search}
-          onAnchorChange={(href) => onNavigate(href.replace(CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH))}
+          onAnchorChange={(href, mode) => onNavigate(withOrganizationScope(href.replace(CATALOG_PAGE_PATH, CATALOG_READ_PAGE_PATH), runtime.operatingOrganizationId), { replace: mode === "replace" })}
+          onOpenProject={(href) => onNavigate(withOrganizationScope(href, runtime.operatingOrganizationId))}
         />;
       }
       return (
         <UserParametersPage
           state={state}
           dispatch={dispatch}
-          onNavigate={onNavigate}
+          onNavigate={navigateParameters}
           search={search}
           parameterActions={parameterActions}
           topologyRepository={parameterTopologyRepository}

@@ -15,10 +15,25 @@ export type CatalogUrlAnchor = {
    */
   q: string | null;
   lifecycle: string | null;
+  type?: string | null;
+  registration?: string | null;
+  history?: string | null;
+  tab?: string | null;
+  instance?: string | null;
+  instanceCursor?: string | null;
+  baseline?: string | null;
+  target?: string | null;
+  usageProjectId?: string | null;
+  configured?: string | null;
+  configProjectId?: string | null;
+  configSetId?: string | null;
+  configSearch?: string | null;
+  includeUnconfigured?: string | null;
   includeRetiredSubjects?: boolean;
   moduleNodeId: string | null;
   pageSize: number | null;
   cursor: string | null;
+  cursorTrail?: string | null;
 };
 
 export const CATALOG_PAGE_SIZES = [20, 50, 100] as const;
@@ -45,8 +60,23 @@ const ANCHOR_KEYS = [
   "reviewItemId",
   "q",
   "lifecycle",
+  "type",
+  "registration",
+  "history",
+  "tab",
+  "instance",
+  "instanceCursor",
+  "baseline",
+  "target",
+  "usageProjectId",
+  "configured",
+  "configProjectId",
+  "configSetId",
+  "configSearch",
+  "includeUnconfigured",
   "moduleNodeId",
-  "cursor"
+  "cursor",
+  "cursorTrail"
 ] as const;
 const validSourceReturn=(value:string|null|undefined):value is string=>Boolean(value && /^\/parameter-admin\/(?:sources\?|projects\/[^/?#]+\/configuration\?)/u.test(value) && !/[\u0000-\u001f\u007f]/u.test(value));
 
@@ -76,10 +106,25 @@ export function parseCatalogUrlAnchor(search: string): CatalogUrlAnchor {
     reviewItemId: readOpaque(params, "reviewItemId"),
     q: readOpaque(params, "q"),
     lifecycle: readOpaque(params, "lifecycle"),
+    type: readOpaque(params, "type"),
+    registration: readOpaque(params, "registration"),
+    history: readOpaque(params, "history"),
+    tab: readOpaque(params, "tab"),
+    instance: readOpaque(params, "instance"),
+    instanceCursor: readOpaque(params, "instanceCursor"),
+    baseline: readOpaque(params, "baseline"),
+    target: readOpaque(params, "target"),
+    usageProjectId: readOpaque(params, "usageProjectId"),
+    configured: params.get("configured") === "true" ? "true" : null,
+    configProjectId: readOpaque(params, "configProjectId"),
+    configSetId: readOpaque(params, "configSetId"),
+    configSearch: readOpaque(params, "configSearch"),
+    includeUnconfigured: params.get("includeUnconfigured") === "true" ? "true" : null,
     includeRetiredSubjects: params.get("includeRetiredSubjects") === "true",
     moduleNodeId: readOpaque(params, "moduleNodeId"),
     pageSize: parseCatalogPageSize(params.get("pageSize")),
-    cursor: readOpaque(params, "cursor")
+    cursor: readOpaque(params, "cursor"),
+    cursorTrail: readOpaque(params, "cursorTrail")
   };
 }
 
@@ -104,12 +149,32 @@ export function serializeCatalogUrlAnchor(anchor: CatalogUrlAnchor): string {
 /** True when the anchor carries any non-identity collection state. */
 export function hasCatalogCollectionState(anchor: CatalogUrlAnchor): boolean {
   return Boolean(
-    anchor.q || anchor.lifecycle || anchor.includeRetiredSubjects || anchor.moduleNodeId || anchor.cursor || anchor.pageSize
+    anchor.q || anchor.lifecycle || anchor.type || anchor.registration || anchor.includeRetiredSubjects || anchor.moduleNodeId || anchor.cursor || anchor.pageSize
   );
 }
 
 export function buildCatalogHref(anchor: CatalogUrlAnchor): string {
   return `${CATALOG_PAGE_PATH}${serializeCatalogUrlAnchor(anchor)}`;
+}
+
+/** A return destination carries library state, never a navigation or organization instruction. */
+export function normalizeLibraryReturnPath(value: string | null): string | null {
+  if (!value || !value.startsWith(`${CATALOG_READ_PAGE_PATH}?`) || /[\u0000-\u001f\u007f#\\]/u.test(value)) return null;
+  const params = new URLSearchParams(value.slice(CATALOG_READ_PAGE_PATH.length + 1));
+  const allowed = new Set<string>([...ANCHOR_KEYS.filter((key) => key !== "reviewItemId"), "pageSize", "includeRetiredSubjects"]);
+  const seen = new Set<string>();
+  for (const key of params.keys()) {
+    if (!allowed.has(key) || seen.has(key)) return null;
+    seen.add(key);
+  }
+  return `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor(parseCatalogUrlAnchor(params.toString()))}`;
+}
+
+/** Share only the read-only library context; never carry a return or governance command. */
+export function buildCatalogShareHref(anchor: CatalogUrlAnchor): string {
+  const { sourceReturn: _sourceReturn, createDefinition: _createDefinition, reviewItemId: _reviewItemId, ...library } = anchor;
+  return `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor({ ...library, reviewItemId: null,
+    tab: library.tab === "configurations" || library.tab === "compare" ? library.tab : null })}`;
 }
 
 export type CatalogLegacyBookmark = {

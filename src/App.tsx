@@ -118,7 +118,7 @@ import {
 import { clearSessionDraftsForLogout, clearSharedSwitchTasksForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { invalidateSharedOperationSession } from "@/application/project-configuration/sharedOperationSession";
 import { AppToastLayer } from "@/components/common/AppToastLayer";
-import { unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
+import { bypassNextParameterLeave, unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -341,8 +341,8 @@ function AppShell({
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const showsApplicationFooter = !isProjectConfigurationWorkbenchPath(path)
     && page.key !== "parameter-review" && page.key !== "parameter-submissions";
-  const usesProjectScope = pageUsesProjectScope(page.key);
-  const pageProjectId = (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
+  const usesProjectScope = page.path !== "/parameters/definitions" && pageUsesProjectScope(page.key);
+  const pageProjectId = (page.path !== "/parameters/definitions" && (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions")
     ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") : null) || state.activeProjectId;
   const xiaozePageContext = useMemo(
     () => ({
@@ -944,7 +944,7 @@ function AppShell({
     };
   }, []);
 
-  // Unsubmitted parameter drafts must survive accidental reloads/navigation.
+  // Local parameter edits must survive accidental reloads/navigation.
   useEffect(() => {
     const guardUnload = (event: BeforeUnloadEvent) => {
       if (unsavedParameterWorkCount() > 0) {
@@ -1166,7 +1166,7 @@ function AppShell({
     logs: "日志",
     debugging: "调试"
   };
-  const pageRuntimeDomain: ApiRuntimeDataDomain | null = !canAccessCurrentPage ? null : page.group === "参数管理" || page.key === "dts-reload"
+  const pageRuntimeDomain: ApiRuntimeDataDomain | null = !canAccessCurrentPage || page.path === "/parameters/definitions" ? null : page.group === "参数管理" || page.key === "dts-reload"
     ? "parameters"
     : page.group === "日志分析" ? "logs" : page.group === "调试平台" && page.key !== "debugging-admin" ? "debugging" : null;
   const pageRuntimeState = runtimeMode !== "api" || !pageRuntimeDomain
@@ -1514,7 +1514,7 @@ function Sidebar({
               <div className="nav-group-label">{group}</div>
               {items.map((item) => {
                 const Icon = item.icon;
-                const isActive = item.key === activePageKey;
+                const isActive = item.key === activePageKey && (item.key !== "parameters" || item.path === activePath);
                 const href = withBusinessOrganizationScope(projectId && projectRoutes.includes(item.path) ? `${item.path}?project=${encodeURIComponent(projectId)}` : item.path, operatingOrganizationId);
                 return (
                   <Tooltip key={item.path}>
@@ -1618,8 +1618,8 @@ function TopBar({
   } | null>(null);
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canCreateProject = canCreateProjectOverride ?? canPerform(currentRoleId, "parameter.edit");
-  const showProjectInitAction = page.key === "parameters" && canCreateProject;
-  const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";
+  const showProjectInitAction = page.path === "/parameters" && canCreateProject;
+  const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home" && page.path !== "/parameters/definitions";
   const workspaceOwnsHeader = /^\/log-admin\/skills\/[^/]+\/?$/.test(page.path);
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const visibleUserName = currentUser?.name ?? "账户信息暂不可用";
@@ -1772,6 +1772,7 @@ function TopBar({
         tone="danger"
         onConfirm={() => {
           if (pendingProjectSwitch) {
+            bypassNextParameterLeave();
             commitProjectChange(pendingProjectSwitch.projectId);
           }
           setPendingProjectSwitch(null);

@@ -8,8 +8,17 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 
 | ID | Workflow | Blocking | Expected User Behavior | Spec Owner |
 | --- | --- | --- | --- | --- |
+| `PARLIB-READ-001` | C | Yes | Read global definitions, search all subject kinds and inspect exact revision history. | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
+| `PARLIB-SCOPE-001` | C | Yes | Read Organization configurations without gaining project write permissions. | `e2e/acceptance/parameter-library-scope.acceptance.spec.ts` |
+| `PARLIB-INSTANCES-001` | C | Yes | Inspect all current instances and exact configured-project/value counts. | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
+| `PARLIB-FILTER-001` | C | Yes | Filter project usage and include projects without current configuration. | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
+| `PARLIB-COMPARE-001` | C | Yes | Select an explicit instance baseline and inspect conservative typed comparisons. | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
+| `PARLIB-RETURN-001` | C | Yes | Open the owning project/config set/Binding and return to library context. | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
+| `PARLIB-SHARE-001` | C | Yes | Share the current view and copy the complete selected raw value. | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-RECOGNITION-001` | C | Yes | At 1440×900, an administrator validates, reviews and resets a recognition override using the real API. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-MIXED-001` | C | Yes | At 1440×900, an administrator reviews and applies a mixed structure update in one confirmation. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
+| `MODULE-STRUCTURE-LIFECYCLE-001` | C | Yes | At 1440×900, an administrator reviews batch root registration, retirement and restoration, including affected project bindings. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
+| `MODULE-STRUCTURE-DELETE-001` | C | Yes | At 1440×900, an administrator reviews a module deletion with a moved child and retries after an apply failure. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-COPY-001` | C | Yes | At 1440×900, an administrator confirms reuse and creation when copying modules into a nonempty organization. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-EXPORT-001` | C | Yes | At 1440×900, an administrator downloads the complete structure and guide by keyboard despite an active filter; counts match PostgreSQL, a failed export can be retried, and a reader cannot export. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-IMPORT-001` | C | Yes | At 1440×900, an administrator resolves metadata conflicts, refreshes a stale preview, creates and moves modules, swaps names and repeats a package against the real API. | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |

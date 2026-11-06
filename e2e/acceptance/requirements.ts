@@ -8,6 +8,13 @@ export type AcceptanceRequirement = {
 };
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
+  { id: "PARLIB-READ-001", workflow: "C", required: true, title: "Read global parameter definitions and exact revision history without choosing a project." },
+  { id: "PARLIB-SCOPE-001", workflow: "C", required: true, title: "Read Organization configurations while preserving tenant and write boundaries." },
+  { id: "PARLIB-INSTANCES-001", workflow: "C", required: true, title: "Inspect current instances and exact configured-project and value counts." },
+  { id: "PARLIB-FILTER-001", workflow: "C", required: false, title: "Filter project usage and include projects without current configuration." },
+  { id: "PARLIB-COMPARE-001", workflow: "C", required: false, title: "Choose an explicit instance baseline for conservative typed comparisons." },
+  { id: "PARLIB-RETURN-001", workflow: "C", required: false, title: "Open the owning project, config set and Binding and return to the library context." },
+  { id: "PARLIB-SHARE-001", workflow: "C", required: false, title: "Share the current view and copy the complete selected raw value." },
   { id: "MODULE-STRUCTURE-MIXED-001", workflow: "C", required: true,
     title: "An administrator reviews and applies one mixed structure update including registration, retired placement, recognition, lifecycle and deletion." },
   { id: "MODULE-STRUCTURE-LIFECYCLE-001", workflow: "C", required: true,

@@ -31,6 +31,8 @@ This list is only plans that still have remaining work. Finished implementation 
 
 Completed module structure transfer: [plan](exec-plans/completed/2026-11-03-module-structure-transfer.md), specification [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493), implementation and acceptance [PR #1505](https://github.com/tzrea1-Q/WiseEff/pull/1505).
 
+Completed parameter-library implementation: [plan](exec-plans/completed/2026-11-05-parameter-library.md), specification #1513 and tickets #1514–#1520. [PR #1521](https://github.com/tzrea1-Q/WiseEff/pull/1521) tracks final candidate CI and human review; no main merge or deployment is included.
+
 ### Roadmap
 
 - `exec-plans/active/development-roadmap.md`: long-lived delivery roadmap. It is exempt from feature-plan archival metadata and is not part of the bounded TD-005 inventory.

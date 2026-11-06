@@ -101,6 +101,32 @@ describe("S8-READ HTTP against a real catalog snapshot", () => {
     await database?.close();
   });
 
+  it("filters configuration schema subjects and multiple definition lifecycles over HTTP", async () => {
+    const server = createCatalogReadHttpServer(ports);
+    const schemas = await requestJson(server, "/api/v2/catalog/subjects?type=configuration-schema");
+    expect(schemas.status).toBe(200);
+    expect(catalogSubjectListResponseSchema.parse(schemas.body).items.every((item) => item.type === "configuration-schema")).toBe(true);
+    const combined = await requestJson(server, "/api/v2/catalog/definitions?lifecycle=active,retired");
+    const active = await requestJson(server, "/api/v2/catalog/definitions?lifecycle=active");
+    const retired = await requestJson(server, "/api/v2/catalog/definitions?lifecycle=retired");
+    expect(combined.status).toBe(200);
+    expect(catalogDefinitionListResponseSchema.parse(combined.body).totalCount).toBe(
+      catalogDefinitionListResponseSchema.parse(active.body).totalCount! + catalogDefinitionListResponseSchema.parse(retired.body).totalCount!
+    );
+    expect((await requestJson(server, "/api/v2/catalog/definitions?lifecycle=active,invalid")).status).toBe(400);
+  });
+
+  it("applies the subject type to the full definition collection", async () => {
+    const server = createCatalogReadHttpServer(ports);
+    const schemas = await requestJson(server, "/api/v2/catalog/definitions?type=configuration-schema");
+    expect(schemas.status).toBe(200);
+    expect(catalogDefinitionListResponseSchema.parse(schemas.body).items.every((item) => item.subject.type === "configuration-schema")).toBe(true);
+    const drivers = await requestJson(server, "/api/v2/catalog/definitions?type=driver");
+    const driverItems = catalogDefinitionListResponseSchema.parse(drivers.body).items;
+    expect(driverItems.length).toBeGreaterThan(0);
+    expect(driverItems.every((item) => item.subject.type === "driver")).toBe(true);
+  });
+
   it("exports only visible active definitions for the current release and refuses a historical pin", async () => {
     const active = "pdef_acme_power_iin_max";
     const hidden = "pdef_acme_power_iin_min";

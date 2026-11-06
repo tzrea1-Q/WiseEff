@@ -12,6 +12,10 @@ import type { ParameterRecord, PrototypeState } from "@/domain/prototype/types";
 import { roleCanBeAssignedToWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { normalizeLibraryReturnPath } from "@/application/parameter-catalog/urlAnchor";
+import { unsavedParameterWorkCount, consumeParameterLeaveBypass } from "@/application/parameters/unsavedParameterWork";
+import type { SettingsLeaveRequest } from "@/application/settingsFormNavigation";
 import { ParameterValueDiff } from "./components/ParameterValueDiff";
 import { ParameterDraftDialog } from "./components/ParameterDraftDialog";
 import { shouldSummarizeComplexParameter } from "./parameterValueKind";
@@ -142,6 +146,59 @@ export function ParametersPage({
   const [stashingRound, setStashingRound] = useState(false);
   const previousUserIdRef = useRef(state.currentUserId);
   const resolvedProjectId = effectiveProjectId || state.activeProjectId;
+  const handoffParams = useMemo(() => new URLSearchParams(search), [search]);
+  const handoffDefinition = handoffParams.get("definitionId") ?? "";
+  const handoffSet = handoffParams.get("configSetId") ?? "";
+  const handoffBinding = handoffParams.get("bindingId") ?? handoffParams.get("binding") ?? "";
+  const returnPath = normalizeLibraryReturnPath(handoffParams.get("returnTo"));
+  const handoffKey = JSON.stringify([resolvedProjectId, handoffBinding, handoffDefinition, handoffSet]);
+  const [resolvedHandoff, setResolvedHandoff] = useState<{ key: string; setId?: string; error?: boolean } | null>(null);
+  const [handoffRetry, setHandoffRetry] = useState(0);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const leaveDecision = useRef<{ promise: Promise<boolean>; resolve: (allowed: boolean) => void } | null>(null);
+  useEffect(() => {
+    if (!isApiMode || !handoffBinding || !resolvedProjectId) return;
+    if (!canonicalRepository?.getProjectConfigurations) { setResolvedHandoff({ key: handoffKey, error: true }); return; }
+    let active = true;
+    setResolvedHandoff(null);
+    const resolve = async () => {
+      let definition = handoffDefinition;
+      if (!definition) {
+        const read = canonicalRepository.listProtectedProjectBindings;
+        if (!read) throw new Error("Project binding lookup is unavailable");
+        const bindings = await read(resolvedProjectId);
+        definition = bindings.items.find((item) => item.id === handoffBinding)?.definitionId ?? "";
+      }
+      if (!definition) throw new Error("Binding is unavailable");
+      const response = await canonicalRepository.getProjectConfigurations!(definition, { selectedBindingId: handoffBinding,
+        hintProjectId: resolvedProjectId, ...(handoffSet ? { hintConfigSetId: handoffSet } : {}) });
+      if (!response.selected || response.selected.bindingId !== handoffBinding || response.selected.projectId !== resolvedProjectId ||
+        (handoffSet && response.selected.configSetId !== handoffSet)) throw new Error("Binding scope mismatch");
+      if (active) setResolvedHandoff({ key: handoffKey, setId: response.selected.configSetId });
+    };
+    void resolve().catch(() => { if (active) setResolvedHandoff({ key: handoffKey, error: true }); });
+    return () => { active = false; };
+  }, [canonicalRepository, isApiMode, handoffBinding, handoffDefinition, handoffSet, handoffKey, resolvedProjectId, handoffRetry]);
+  useEffect(() => {
+    if (!isApiMode) return;
+    const guard = (event: Event) => {
+      const bypass = consumeParameterLeaveBypass();
+      if (event.defaultPrevented || bypass || unsavedParameterWorkCount() === 0) return;
+      event.preventDefault();
+      if (!leaveDecision.current) {
+        let resolve!: (allowed: boolean) => void;
+        const promise = new Promise<boolean>((complete) => { resolve = complete; });
+        leaveDecision.current = { promise, resolve };
+      }
+      (event as CustomEvent<SettingsLeaveRequest>).detail.decision = leaveDecision.current.promise;
+      setLeaveOpen(true);
+    };
+    window.addEventListener("wiseeff:settings-before-leave", guard);
+    return () => { window.removeEventListener("wiseeff:settings-before-leave", guard); leaveDecision.current?.resolve(false); leaveDecision.current = null; };
+  }, [isApiMode]);
+  const finishLeave = (allowed: boolean) => { leaveDecision.current?.resolve(allowed); leaveDecision.current = null; setLeaveOpen(false); };
+  const needsHandoffResolution = Boolean(isApiMode && handoffBinding && resolvedProjectId);
+  const currentHandoff = resolvedHandoff?.key === handoffKey ? resolvedHandoff : null;
   const deleteDraft = useMemo(
     () =>
       canonicalDraftTray
@@ -972,13 +1029,17 @@ export function ParametersPage({
 
   return (
     <WorkbenchLayout title="项目参数">
+      <ConfirmDialog open={leaveOpen} title="放弃未保存的修改？" description="离开当前项目参数会丢弃尚未保存的修改。" confirmLabel="放弃并离开" cancelLabel="继续编辑" tone="danger" onConfirm={() => finishLeave(true)} onCancel={() => finishLeave(false)} />
       <div className="parameters-page-layout">
-        {isApiMode && !resolvedProjectId ? <SectionEmpty message="请先选择项目，或由管理员创建项目。" /> : isApiMode ? (
+        {returnPath ? <div className="permission-inline-note mb-3 items-center"><button type="button" className="button subtle sm" onClick={() => onNavigate(returnPath)}>返回参数库</button><span>返回原定义与筛选上下文</span></div> : null}
+        {needsHandoffResolution && !currentHandoff ? <p role="status">正在确认实例所属项目和配置集…</p> : needsHandoffResolution && currentHandoff?.error && handoffDefinition ? <div role="alert"><p>该实例不可用，或不属于指定的项目和配置集。请返回参数库重新选择。</p><button type="button" className="button subtle sm" onClick={() => setHandoffRetry((value) => value + 1)}>重试</button></div> : isApiMode && !resolvedProjectId ? <SectionEmpty message="请先选择项目，或由管理员创建项目。" /> : isApiMode ? (
           <ApiProjectTopologyWorkspace
+            key={`${resolvedProjectId}:${currentHandoff?.setId ?? "default"}`}
             projectId={resolvedProjectId}
             projectName={activeProject?.name}
-            notice={workbenchNotice}
-            requestedBindingId={contextQuery.projectId === resolvedProjectId ? contextQuery.bindingId : ""}
+            notice={workbenchNotice || currentHandoff?.error ? <>{workbenchNotice}{currentHandoff?.error ? <p role="status">关联参数在当前项目中不可用。</p> : null}</> : undefined}
+            requestedBindingId={!currentHandoff?.error && contextQuery.projectId === resolvedProjectId ? contextQuery.bindingId : ""}
+            requestedConfigSetId={currentHandoff?.setId}
             canEdit={effectiveCanEdit}
             layoutMode={topologyLayoutMode}
             runtimeMode="api"

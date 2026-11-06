@@ -23,6 +23,7 @@ describe("WiseEff prototype configuration", () => {
       "/",
       "/parameter-home",
       "/parameters",
+      "/parameters/definitions",
       "/parameter-submissions",
       "/parameter-review",
       "/parameter-admin",

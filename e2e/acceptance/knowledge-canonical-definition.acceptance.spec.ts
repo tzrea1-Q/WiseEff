@@ -289,14 +289,16 @@ test("manages exact Definition references, published-only reverse links and same
     await expect(readerDetail).toBeVisible();
     await expect(readerDetail.getByText(definition.propertyKey, { exact: true })).toBeVisible();
     await expect(readerDetail.getByRole("textbox")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: `查看 ${definition.propertyKey}` })).toBeVisible();
+    await expect(readerDetail.getByRole("heading", { level: 1, name: definition.currentRevision.displayName || definition.propertyKey, exact: true })).toBeVisible();
+    await expect(readerDetail.getByText(`当前发布 · 修订 #${definition.currentRevision.revisionNumber}`, { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: `编辑 ${definition.propertyKey}` })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "打开定义治理" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "无权访问该页面" })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("knowledge-software-definition-1440x900.png"), animations: "disabled" });
     expect(await snapshot()).toEqual(beforeReaderNavigation);
     await page.reload();
     await expect(page.getByRole("region", { name: "定义详情" })).toBeVisible();
-    await page.getByRole("button", { name: "关闭定义详情" }).click();
+    await page.getByRole("button", { name: "返回参数库" }).click();
     await expect(page).toHaveURL(`${frontendUrl}/parameters/definitions?catalogReleaseId=${fixture.pin.id}`);
     await page.evaluate((value) => localStorage.setItem("wiseeff.localAuthToken", value), token);
     await page.goto(`${frontendUrl}/knowledge?entryId=${entryId}`);

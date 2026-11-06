@@ -1,6 +1,26 @@
 # 浏览器验收覆盖图
 
+参数库 #1513 新增以下需求／操作。具体测试归属见各项；尚未完成的操作仍待实施及原生浏览器证据：
+
+- `PARLIB-READ-001`：浏览全局定义、搜索三类主体并阅读确切修订历史。
+
+- `PARLIB-SCOPE-001`：读取组织配置并验证项目写入权限没有扩大；测试归属 `e2e/acceptance/parameter-library-scope.acceptance.spec.ts`。
+
+- `PARLIB-INSTANCES-001`：查看全部当前实例及准确的已配置项目／值数量。
+
+- `PARLIB-FILTER-001`：筛选项目使用情况并查看无当前配置的项目；真实 API 浏览器验收归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
+
+- `PARLIB-COMPARE-001`：选择确切实例基准并查看保守的类型化对比；真实 API 浏览器验收归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
+
+- `PARLIB-RETURN-001`：打开确切项目／配置集／Binding 并返回参数库上下文；真实 API 浏览器验收归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
+
+- `PARLIB-SHARE-001`：分享当前视图并复制选定的完整原始值；真实 API 浏览器验收归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
+
 `MODULE-STRUCTURE-MIXED-001`：在 1440×900 下，管理员一次确认混合结构更新。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
+`MODULE-STRUCTURE-LIFECYCLE-001`：在 1440×900 下，管理员审阅批量根主体登记、退役和恢复及受影响的项目绑定。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
+
+`MODULE-STRUCTURE-DELETE-001`：在 1440×900 下，管理员审阅删除模块及子节点移动，并在提交失败后重试。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
 
 `MODULE-STRUCTURE-COPY-001`：在 1440×900 下，管理员向非空目标组织复制模块时确认复用与新建。测试文件为 `e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
 

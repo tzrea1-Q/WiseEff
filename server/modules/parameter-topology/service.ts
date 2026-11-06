@@ -493,11 +493,14 @@ export async function getBindingCompare(
   }
   requireCanViewProject(auth, input.projectId);
 
-  const rows = await listCanonicalBindingCompareRows(db, {
-    organizationId: parameterOrganizationId(auth),
-    projectId: input.projectId,
-    bindingId: input.bindingId,
-    visibleProjectIds: null,
+  const rows = await db.transaction(async (tx) => {
+    await tx.query("set transaction isolation level repeatable read read only");
+    return listCanonicalBindingCompareRows(tx, {
+      organizationId: parameterOrganizationId(auth),
+      projectId: input.projectId,
+      bindingId: input.bindingId,
+      visibleProjectIds: null,
+    });
   });
   if (rows === null) {
     return rejectLegacyTopologyBinding(db, { bindingId: input.bindingId });

@@ -1,6 +1,6 @@
 import { selectControlOption } from "@/test/selectControlOption";
 import userEvent from "@testing-library/user-event";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +18,8 @@ import type {
 } from "./domain/parameter-topology/types";
 import { selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
 import { createTestAppPorts } from "./test/harness";
+import { reportUnsavedParameterWork, resetUnsavedParameterWork } from "./application/parameters/unsavedParameterWork";
+import { requestSettingsLeave } from "./application/settingsFormNavigation";
 
 beforeEach(() => {
   cleanup();
@@ -1500,6 +1502,41 @@ describe("ParametersPage · 布局与 Sheet", () => {
 });
 
 describe("ParametersPage API topology workspace", () => {
+  it("allows leaving with a saved draft but protects a new local edit", async () => {
+    const repository = createApiBoundaryRepository();
+    const canonicalRepository = { ...createTestAppPorts().parameterCatalogRepository,
+      listProjectValueDrafts: vi.fn().mockResolvedValue({ items: [{ id: "saved-draft", bindingId: API_SENTINEL_BINDING.id,
+        definitionId: "definition", effectiveRevisionId: "revision", baseRevisionId: API_SENTINEL_REVISION_ID,
+        targetValue: API_SENTINEL_RAW_VALUE, reason: "已保存的草稿", updatedAt: "2026-11-05T00:00:00Z" }] }) };
+    render(<TopBarActionsHarness><ParametersPage state={createParametersPageState()} dispatch={vi.fn()} onNavigate={vi.fn()}
+      search="?project=aurora" runtimeMode="api" canEdit topologyRepository={repository} canonicalRepository={canonicalRepository}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]} /></TopBarActionsHarness>);
+    expect(await screen.findByText("已保存的草稿")).toBeVisible();
+    let decision: boolean | Promise<boolean> = false;
+    act(() => { decision = requestSettingsLeave(); });
+    expect(decision).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(`参数详情 ${API_SENTINEL_PROPERTY}`) }));
+    fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "<42>" } });
+    fireEvent.click(screen.getByRole("button", { name: "关闭参数详情" }));
+    act(() => { decision = requestSettingsLeave(); });
+    expect(screen.getByRole("dialog", { name: "放弃未保存的修改？" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(await decision).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(`参数详情 ${API_SENTINEL_PROPERTY}`) }));
+    expect(screen.getByLabelText("目标值")).toHaveValue("<42>");
+  });
+
+  it("does not render an empty notice on an ordinary project visit", async () => {
+    const { container } = render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState()} dispatch={vi.fn()} onNavigate={vi.fn()}
+      search="?project=aurora" runtimeMode="api" canEdit={false}
+      topologyRepository={createApiBoundaryRepository()} canonicalRepository={createTestAppPorts().parameterCatalogRepository}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+    expect(await screen.findByRole("row", { name: new RegExp(API_SENTINEL_PROPERTY) })).toBeInTheDocument();
+    expect(container.querySelector(".navigator-workbench__notice")).not.toBeInTheDocument();
+  });
+
   it("reports a canonical archived old link without legacy shell rows or an editable fallback", async () => {
     const onNavigate = vi.fn();
     const parameterActions = createParameterActions();
@@ -1651,14 +1688,49 @@ describe("ParametersPage API topology workspace", () => {
       </TopBarActionsHarness>
     );
 
-    expect(await screen.findByText("关联参数在当前项目中不可用。")).toBeInTheDocument();
     expect(await screen.findByRole("row", { name: new RegExp(API_SENTINEL_PROPERTY) })).toBeInTheDocument();
+    expect(screen.getByText("关联参数在当前项目中不可用。")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("该参数旧链接已归档")).not.toBeInTheDocument();
     expect(parameterActions).not.toHaveProperty("getParameter");
     expect(topologyRepository).not.toHaveProperty("getSpec");
     expect(topologyRepository.createBindingDraft).not.toHaveBeenCalled();
     expect(listProtectedProjectBindings).toHaveBeenCalledWith("aurora");
+  });
+
+  it("resolves an exact deep link before loading its nondefault set and protects a cancelled return", async () => {
+    const topologyRepository = createApiBoundaryRepository();
+    const getProjectConfigurations = vi.fn().mockResolvedValue({ selected: { bindingId: API_SENTINEL_BINDING.id, projectId: "aurora", configSetId: "other-set" } });
+    const canonicalRepository = { ...createTestAppPorts().parameterCatalogRepository,
+      listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [{ ...API_SENTINEL_BINDING, definitionId: "definition" }] }), getProjectConfigurations };
+    let decision: boolean | Promise<boolean> = false;
+    const returnPath = "/parameters/definitions?definitionId=definition&tab=configurations&configSearch=power";
+    const onNavigate = vi.fn(() => { decision = requestSettingsLeave(); });
+    render(<TopBarActionsHarness><ParametersPage state={createParametersPageState()} dispatch={vi.fn()} onNavigate={onNavigate}
+      search={`?project=aurora&binding=${API_SENTINEL_BINDING.id}&returnTo=${encodeURIComponent(returnPath)}`} runtimeMode="api" canEdit={false}
+      topologyRepository={topologyRepository} canonicalRepository={canonicalRepository}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }, { id: "other-set", name: "other" }]} /></TopBarActionsHarness>);
+    await waitFor(() => expect(topologyRepository.getTopology).toHaveBeenCalledWith("aurora", "other-set", "current", "effective"));
+    expect(getProjectConfigurations).toHaveBeenCalledWith("definition", { selectedBindingId: API_SENTINEL_BINDING.id, hintProjectId: "aurora" });
+    const detailClose = await screen.findByRole("button", { name: "关闭参数详情" });
+    fireEvent.click(detailClose);
+    reportUnsavedParameterWork("test-input", 1);
+    fireEvent.click(screen.getByRole("button", { name: "返回参数库" }));
+    expect(screen.getByRole("dialog", { name: "放弃未保存的修改？" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(await decision).toBe(false);
+    expect(onNavigate).toHaveBeenCalledWith(returnPath);
+    resetUnsavedParameterWork();
+  });
+
+  it("does not open a hinted Binding when the exact resolution service is unavailable", async () => {
+    const topologyRepository = createApiBoundaryRepository();
+    render(<TopBarActionsHarness><ParametersPage state={createParametersPageState()} dispatch={vi.fn()} onNavigate={vi.fn()}
+      search={`?project=aurora&bindingId=${API_SENTINEL_BINDING.id}&definitionId=definition&configSetId=other-set`} runtimeMode="api"
+      topologyRepository={topologyRepository} canonicalRepository={{ ...createTestAppPorts().parameterCatalogRepository, getProjectConfigurations: undefined }} /></TopBarActionsHarness>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("该实例不可用");
+    expect(topologyRepository.getTopology).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("combines the mature workbench boundary with semantic DTS rows in API mode", async () => {
