@@ -174,7 +174,7 @@ test.describe("M5.11 visual quality gate", () => {
     await page.getByRole("searchbox", { name: "搜索 DTS 参数" }).blur();
     await test.step("quality:readiness", () => settleAppToasts(page));
 
-    await test.step("quality:capture", () => expect.soft(popup).toHaveScreenshot("xiaoze-popup-open.png"));
+    await test.step("quality:capture", () => { return expect.soft(popup).toHaveScreenshot("xiaoze-popup-open.png"); });
 
     const dragHandle = page.getByRole("button", { name: "拖动小泽窗口" });
     const handleBox = await dragHandle.boundingBox();
