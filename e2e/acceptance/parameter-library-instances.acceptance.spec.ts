@@ -296,6 +296,14 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("tabpanel", { name: "对比" }).getByRole("table")).toHaveCount(0);
     const baselineBinding = configurations.items.find((item: { projectId: string; bindingId: string }) => item.projectId === "parlib-instances-a" && item.bindingId !== directBinding)?.bindingId;
     expect(baselineBinding).toBeTruthy();
+    // The one-row inventory page needs two explicit loads to expose all three instances.
+    const loadMore = comparison.getByRole("button", { name: "加载更多项目或实例" });
+    for (let index = 0; index < 2; index += 1) {
+      const nextPage = page.waitForResponse(response => response.url().includes("/project-configurations") && new URL(response.url()).searchParams.has("cursor"));
+      await loadMore.click();
+      expect((await nextPage).ok()).toBe(true);
+    }
+    await expect(loadMore).toHaveCount(0);
     await selectControlOption(leftProject, "parlib-instances-a");
     await selectControlOption(comparison.getByRole("combobox", { name: "左侧配置实例" }), baselineBinding);
     await selectControlOption(rightProject, "parlib-instances-b");
