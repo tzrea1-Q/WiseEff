@@ -155,10 +155,10 @@ async function resolvePlacementSelection(
     ? subtree.subjectIds.filter((id) => allowed.has(id))
     : [...subtree.subjectIds];
   if (query.placementScope === "library") {
-    const page = snapshot.listSubjects({ selection: { kind: "all" }, kinds: [], lifecycles,
+    const page = snapshot.listSubjects({ selection: scope.subjects, kinds: [], lifecycles,
       search: absent, page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent } });
     if (page.status === "found") {
-      const eligible = page.page.items.filter((subject) => !allowed || allowed.has(subject.id));
+      const eligible = page.page.items;
       const eligibleIds = new Set(eligible.map((subject) => subject.id));
       const owners = new Set(subjectIds.filter((id) => eligibleIds.has(id)));
       const children = eligible.filter((subject) => subject.kind === "node-type" && subject.owner && owners.has(subject.owner));

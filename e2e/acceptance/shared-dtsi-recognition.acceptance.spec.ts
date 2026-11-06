@@ -126,7 +126,8 @@ test("#1431 recognizes frozen source instances, submits an ambiguity proposal an
     await recognition.getByRole("link",{name:"查看主体与定义",exact:true}).first().click();
     await expect(page).toHaveURL(/\/parameters\/definitions\?/);
     await expect(page.getByRole("button",{name:"新增定义",exact:true})).toHaveCount(0);
-    await page.getByRole("link",{name:"返回来源识别",exact:true}).click();
+    await expect(page.getByRole("link",{name:"返回来源识别",exact:true})).toHaveCount(0);
+    await page.goBack();
     await expect(page).toHaveURL(catalogAppUrl(sourcePath));
     await expect(recognition.getByText("&{/soc}/device@2",{exact:true})).toBeVisible();
     await page.evaluate(()=>document.documentElement.classList.add("dark"));
