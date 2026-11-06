@@ -433,7 +433,7 @@ describe("Definition import planner", () => {
   it("accepts the guide's complete revision, other-subject and existing-subject examples", () => {
     const guide = DEFINITION_IMPORT_GUIDE.replace(/^> ?/gmu, "");
     const examples = [...guide.matchAll(/```markdown\n([\s\S]*?)\n```/gu)];
-    expect(examples).toHaveLength(3);
+    expect(examples).toHaveLength(4);
     for (const [, example] of examples) {
       const input = example.replaceAll("example,charger", "acme,power")
         .replaceAll("current-limit", "iin_max").replaceAll("电流限制", "Input current limit");

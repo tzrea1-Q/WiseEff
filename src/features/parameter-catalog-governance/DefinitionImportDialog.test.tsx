@@ -4,11 +4,12 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import {
   CATALOG_AUTHOR_PERSON_ID, CATALOG_ORGANIZATION_ID, CATALOG_RELEASE_ID, CATALOG_SUBJECT_ID,
-  catalogPublicationCandidate, catalogPublicationJob, readyCatalogDocument, registeredSubject, unregisteredSubject,
+  catalogPublicationCandidate, catalogPublicationJob, catalogRegistration, readyCatalogDocument, registeredSubject, unregisteredSubject,
 } from "@/application/parameter-catalog/fixtures";
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { takeBatchRegistrationHandoff } from "./batchRegistrationHandoff";
 import { PUBLICATION_JOB_STORAGE_KEY } from "./publicationJobStorage";
 import { emptyPublicationDraft } from "./publicationState";
@@ -59,6 +60,135 @@ function module(id: string, name: string, parentId: string | null, kind: Paramet
   return { id, name, parentId, kind, sortOrder: 0, description: "", scope: "", importance: "medium", origin: "curated",
     sourceKey: null, effectiveImportance: "medium", parameterCount: 0, definitionCount: 0 };
 }
+
+function restoreChildImport(owner = registeredSubject) {
+  const child = { ...unregisteredSubject, id: "new-child", type: "node-type" as const,
+    canonicalName: "battery", ownerSubjectId: owner.id };
+  window.localStorage.setItem(PUBLICATION_JOB_STORAGE_KEY, JSON.stringify({
+    jobId: catalogPublicationJob.id, candidateId: catalogPublicationJob.candidateId,
+    catalogReleaseId: CATALOG_RELEASE_ID, userId: CATALOG_AUTHOR_PERSON_ID,
+    organizationId: CATALOG_ORGANIZATION_ID, draft: emptyPublicationDraft(), markdownImport: true, idempotencyKey: "stored",
+  }));
+  const result = renderImport({ modules: [module(catalogRegistration.placement.moduleId!, "电源", null, "business")], prepare: ports => {
+    vi.spyOn(ports.catalog, "getPublication").mockResolvedValue({ item: {
+      ...catalogPublicationJob, status: "active", effective: true, isCurrent: true, currentness: "active",
+    } });
+    vi.spyOn(ports.catalog, "getPublicationCandidate").mockResolvedValue({ item: { ...catalogPublicationCandidate,
+      impactSummary: { addedDefinitionCount: 1, changedDefinitionCount: 0, addedSubjectCount: 1, addedSubjectIds: [child.id] } } });
+    vi.spyOn(ports.catalog, "getSubject").mockImplementation(async id => ({ item: id === child.id ? child : owner }));
+    vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue({ catalogReleaseId: CATALOG_RELEASE_ID, items: [child], totalCount: 1, hasMore: false, nextCursor: null });
+    vi.spyOn(ports.governance, "getRegistration").mockResolvedValue({ item: catalogRegistration });
+    vi.spyOn(ports.governance, "createRegistration").mockImplementation(async () => {
+      child.registration = { ...registeredSubject.registration };
+      return { item: catalogRegistration };
+    });
+  } });
+  return { ...result, child };
+}
+
+it("hands an imported child to its unregistered driver without copying child placement hints", async () => {
+  const { ports } = restoreChildImport(unregisteredSubject);
+  await userEvent.click(await screen.findByRole("button", { name: "前往批量登记" }));
+  expect(takeBatchRegistrationHandoff(CATALOG_ORGANIZATION_ID, CATALOG_AUTHOR_PERSON_ID)).toMatchObject({ subjectIds: [unregisteredSubject.id] });
+  expect(ports.governance.createRegistration).not.toHaveBeenCalled();
+});
+
+it("explicitly registers missing children under an already registered driver and retains its module", async () => {
+  const { ports } = restoreChildImport();
+  await userEvent.click(await screen.findByRole("button", { name: /补登记子节点/ }));
+  const dialog = await screen.findByRole("dialog", { name: "补登记子节点" });
+  expect(dialog).toHaveTextContent("battery");
+  expect(dialog).toHaveTextContent("电源");
+  expect(ports.governance.createRegistration).not.toHaveBeenCalled();
+  expect(within(dialog).getByRole("button", { name: "确认补登记" })).toBeDisabled();
+  await confirm("确认补登记");
+  await waitFor(() => expect(ports.governance.createRegistration).toHaveBeenCalledTimes(1));
+  expect(ports.governance.createRegistration).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID,
+    expect.objectContaining({ subjectId: registeredSubject.id, placement: { mode: "use-default" },
+      destinationModuleId: catalogRegistration.placement.moduleId }),
+    expect.objectContaining({ catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: expect.any(String) }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: /补登记子节点/ })).not.toBeInTheDocument());
+});
+
+it("keeps the same supplement request on a lost response", async () => {
+  const { ports } = restoreChildImport();
+  vi.mocked(ports.governance.createRegistration).mockRejectedValueOnce(new Error("response lost"));
+  await userEvent.click(await screen.findByRole("button", { name: /补登记子节点/ }));
+  await confirm("确认补登记");
+  expect(await screen.findByText(/补登记失败/)).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "确认补登记" }));
+  await waitFor(() => expect(ports.governance.createRegistration).toHaveBeenCalledTimes(2));
+  const calls = vi.mocked(ports.governance.createRegistration).mock.calls;
+  expect(calls[1]).toEqual(calls[0]);
+});
+
+it("requires refreshed evidence and a new acknowledgement after registration changes", async () => {
+  const { ports } = restoreChildImport();
+  vi.mocked(ports.governance.createRegistration).mockRejectedValueOnce(
+    new WiseEffApiError("CONFLICT", "changed", { reason: "placement-conflict" }, "request", 409));
+  await userEvent.click(await screen.findByRole("button", { name: /补登记子节点/ }));
+  await confirm("确认补登记");
+  expect(await screen.findByText(/重新读取登记信息并确认/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "确认补登记" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "重新读取登记信息" }));
+  const dialog = await screen.findByRole("dialog", { name: "补登记子节点" });
+  expect(within(dialog).getByRole("checkbox")).not.toBeChecked();
+  await confirm("确认补登记");
+  await waitFor(() => expect(ports.governance.createRegistration).toHaveBeenCalledTimes(2));
+  const calls = vi.mocked(ports.governance.createRegistration).mock.calls;
+  expect(calls[1]![2].idempotencyKey).not.toEqual(calls[0]![2].idempotencyKey);
+});
+
+it.each([
+  ["registration-required", "CONFLICT", 409],
+  ["subject-retired", "CONFLICT", 409],
+  ["forbidden", "FORBIDDEN", 403],
+] as const)("stops retrying a rejected confirmation when the server reports %s", async (reason, code, status) => {
+  const { ports } = restoreChildImport();
+  vi.mocked(ports.governance.createRegistration).mockRejectedValueOnce(new WiseEffApiError(code, "rejected", { reason }, "request", status));
+  await userEvent.click(await screen.findByRole("button", { name: /补登记子节点/ }));
+  await confirm("确认补登记");
+  expect(await screen.findByRole("button", { name: "重新读取登记信息" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "确认补登记" })).toBeDisabled();
+  expect(screen.queryByText(/可重试同一次操作/)).not.toBeInTheDocument();
+  expect(ports.governance.createRegistration).toHaveBeenCalledTimes(1);
+});
+
+it("reads all pages and shows missing children beyond the import, without including another owner or retired registrations", async () => {
+  const { ports, child } = restoreChildImport();
+  vi.mocked(ports.catalog.listSubjects)
+    .mockResolvedValueOnce({ catalogReleaseId: CATALOG_RELEASE_ID, items: [{ ...child, id: "other-owner", ownerSubjectId: "another-driver" }], totalCount: 4, hasMore: true, nextCursor: "next" })
+    .mockResolvedValueOnce({ catalogReleaseId: CATALOG_RELEASE_ID, items: [child, { ...child, id: "older-child", canonicalName: "older_battery" },
+      { ...child, id: "retired-child", canonicalName: "retired_battery", registration: { ...catalogRegistration, status: "retired" } }],
+    totalCount: 4, hasMore: false, nextCursor: null });
+  await userEvent.click(await screen.findByRole("button", { name: /补登记子节点/ }));
+  const dialog = await screen.findByRole("dialog", { name: "补登记子节点" });
+  expect(within(dialog).getAllByRole("listitem").map(row => row.textContent)).toEqual(["battery", "older_battery"]);
+  expect(ports.catalog.listSubjects).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "next", registration: "unregistered", catalogReleaseId: CATALOG_RELEASE_ID }));
+  await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+  expect(ports.governance.createRegistration).not.toHaveBeenCalled();
+});
+
+it("preserves unset placement and directs the administrator to choose it before supplementing", async () => {
+  const { ports } = restoreChildImport();
+  vi.mocked(ports.governance.getRegistration).mockResolvedValue({ item: { ...catalogRegistration,
+    placement: { ...catalogRegistration.placement, moduleId: undefined } } });
+  await userEvent.click(await screen.findByRole("button", { name: /补登记子节点/ }));
+  expect(await screen.findByText(/设置有效的业务归属/)).toBeVisible();
+  expect(screen.queryByRole("button", { name: "确认补登记" })).not.toBeInTheDocument();
+  expect(ports.governance.createRegistration).not.toHaveBeenCalled();
+});
+
+it("directs a retired driver to module management without offering registration", async () => {
+  const { ports } = restoreChildImport({ ...registeredSubject, registration: { ...catalogRegistration, status: "retired" } });
+  expect(await screen.findByText(/先恢复驱动/)).toBeVisible();
+  expect(screen.getByRole("link", { name: /模块管理/ })).toHaveAttribute("href", expect.stringContaining("/parameter-admin/modules"));
+  expect(screen.getByRole("link", { name: /模块管理/ })).toHaveAttribute("target", "_blank");
+  expect(new URL(screen.getByRole("link", { name: /模块管理/ }).getAttribute("href")!, "http://localhost").searchParams.get("organizationId"))
+    .toBe(CATALOG_ORGANIZATION_ID);
+  expect(screen.queryByRole("button", { name: /补登记子节点|前往批量登记/ })).not.toBeInTheDocument();
+  expect(ports.governance.createRegistration).not.toHaveBeenCalled();
+});
 
 it("hands unregistered new subjects to batch registration without registering them", async () => {
   const { ports } = renderImport({ prepare: (ports) => {
@@ -128,7 +258,7 @@ it("keeps publication active and reports a subject lookup failure", async () => 
 
 async function confirm(label: string) {
   const user = userEvent.setup();
-  const dialog = await screen.findByRole("dialog", { name: /确认/ });
+  const dialog = await screen.findByRole("dialog", { name: /确认|补登记子节点/ });
   expect(within(dialog).getByRole("button", { name: label })).toBeDisabled();
   await user.click(within(dialog).getByRole("checkbox"));
   await user.click(within(dialog).getByRole("button", { name: label }));
