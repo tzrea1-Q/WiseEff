@@ -1037,7 +1037,7 @@ export function ParametersPage({
             key={`${resolvedProjectId}:${currentHandoff?.setId ?? "default"}`}
             projectId={resolvedProjectId}
             projectName={activeProject?.name}
-            notice={<>{workbenchNotice}{currentHandoff?.error ? <p role="status">关联参数在当前项目中不可用。</p> : null}</>}
+            notice={workbenchNotice || currentHandoff?.error ? <>{workbenchNotice}{currentHandoff?.error ? <p role="status">关联参数在当前项目中不可用。</p> : null}</> : undefined}
             requestedBindingId={!currentHandoff?.error && contextQuery.projectId === resolvedProjectId ? contextQuery.bindingId : ""}
             requestedConfigSetId={currentHandoff?.setId}
             canEdit={effectiveCanEdit}

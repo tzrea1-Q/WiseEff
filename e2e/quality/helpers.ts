@@ -117,7 +117,14 @@ export async function dismissXiaozeToggleHintIfPresent(page: Page, timeoutMs = 1
 
   if (await hint.isVisible()) {
     await test.step("quality:readiness", () => settleAppToasts(page));
-    await hint.getByRole("button", { name: "不再提示" }).click();
+    try {
+      await hint.getByRole("button", { name: "不再提示" }).click({ timeout: 2_000 });
+    } catch (error) {
+      // A dialog can hide the hint while Playwright waits for its animation.
+      if (await hint.isVisible()) throw error;
+      await expect(hint).toBeHidden();
+      return;
+    }
     await expect(readiness).toHaveAttribute("data-state", "suppressed");
   }
   await expect(hint).toBeHidden();

@@ -1502,6 +1502,17 @@ describe("ParametersPage · 布局与 Sheet", () => {
 });
 
 describe("ParametersPage API topology workspace", () => {
+  it("does not render an empty notice on an ordinary project visit", async () => {
+    const { container } = render(<TopBarActionsHarness><ParametersPage
+      state={createParametersPageState()} dispatch={vi.fn()} onNavigate={vi.fn()}
+      search="?project=aurora" runtimeMode="api" canEdit={false}
+      topologyRepository={createApiBoundaryRepository()} canonicalRepository={createTestAppPorts().parameterCatalogRepository}
+      listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
+    /></TopBarActionsHarness>);
+    expect(await screen.findByRole("row", { name: new RegExp(API_SENTINEL_PROPERTY) })).toBeInTheDocument();
+    expect(container.querySelector(".navigator-workbench__notice")).not.toBeInTheDocument();
+  });
+
   it("reports a canonical archived old link without legacy shell rows or an editable fallback", async () => {
     const onNavigate = vi.fn();
     const parameterActions = createParameterActions();
