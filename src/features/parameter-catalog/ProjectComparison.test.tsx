@@ -133,17 +133,21 @@ it.each(["baseline", "target"] as const)("refreshes inventory before replacing a
   expect(repository.getProjectConfigurations.mock.lastCall?.[1]).toEqual({ baselineBindingId: after[0].bindingId, targetBindingId: "c" });
 });
 
-it("labels full values from the same pair snapshot and bounds DOM rendering for long source", async () => {
+it("keeps source metadata out of the selectors, preserves exact handoff and bounds long source rendering", async () => {
   const a = instance("a", "A");
   const b = instance("b", "B");
   const raw = "full source\n".repeat(2_100);
   const repository = repositoryWith([a, b]);
   repository.getProjectConfigurations.mockImplementation(async (_id, query) => ({ ...response([a, b]),
     ...(query?.baselineBindingId ? { baseline: { ...a, fileName: "new-source.dts", sourceLocation: "/new-node", rawValue: raw }, target: b } : {}) }));
-  render(<Harness repository={repository} />);
+  const onOpenProject = vi.fn();
+  render(<ProjectComparison repository={repository} definitionId="definition" baselineId="a" targetId="b" onChange={() => {}} onOpenProject={onOpenProject} />);
   expect(await screen.findByText(/内容较长/)).toBeVisible();
-  expect(screen.getByText(/new-source.dts/)).toBeVisible();
-  expect(screen.getByText("/new-node")).toBeVisible();
+  expect(screen.queryByText(/new-source.dts/)).not.toBeInTheDocument();
+  expect(screen.queryByText("/new-node")).not.toBeInTheDocument();
+  expect(screen.queryByText(/值固定修订/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "在项目中打开 基准实例" }));
+  expect(onOpenProject).toHaveBeenCalledWith(expect.objectContaining({ bindingId: "a", fileName: "new-source.dts", sourceLocation: "/new-node", rawValue: raw }));
   const source = screen.getByRole("textbox", { name: "基准实例原值" });
   expect(source.textContent).toBe(raw);
   expect(source.querySelectorAll(".parameter-library-compare__line")).toHaveLength(0);

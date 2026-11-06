@@ -451,10 +451,15 @@ test("reads grouped DTS and software instances with exact counts and full values
       await pool.query("update parameter_catalog.project_parameter_bindings set effective_revision_id='drev_parlib_head_2' where id=$1", [directBinding]);
     } finally { await pool.query("alter table parameter_catalog.project_parameter_bindings enable trigger all"); }
     await page.setViewportSize({ width: 1440, height: 900 });
+    const historicalPairRead = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname.endsWith(`/definitions/${definitionId}/project-configurations`) && url.searchParams.get("baselineBindingId") === directBinding;
+    });
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}&catalogReleaseId=${pin.id}&tab=compare&baseline=${directBinding}`);
     await expect(page.getByText("历史发布 · 修订 #1")).toBeVisible();
     await expect(page.getByText("最新定义修订 #3")).toBeVisible();
-    await expect(page.getByRole("region", { name: "实例对比" })).toContainText("值固定修订 #1 · 生效修订 drev_parlib_head_2");
+    expect((await (await historicalPairRead).json()).baseline).toMatchObject({ definitionRevisionNumber: "1", effectiveRevisionId: "drev_parlib_head_2" });
+    await expect(page.getByRole("region", { name: "实例对比" })).not.toContainText("值固定修订");
     await page.screenshot({ path: testInfo.outputPath("compare-historical-revisions-1440.png"), fullPage: true });
   } finally {
     setParameterIdentityMode(null);

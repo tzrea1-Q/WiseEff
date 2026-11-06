@@ -132,19 +132,15 @@ export function ProjectComparison({ repository, organizationId, definitionId, ba
           const options = choices.filter(candidate => candidate.projectId === item?.projectId);
           const select = (bindingId: string) => onChange({ baseline: isLeft ? bindingId : leftId, target: isLeft ? rightId : bindingId });
           return <div className="parameter-library-compare__selection" key={side}>
-            <div className="parameter-library-compare__side-heading"><h3>{label}</h3><span>{isLeft ? "− 原值" : "+ 对比值"}</span></div>
+            <div className="parameter-library-compare__side-heading"><h3>{label}</h3>
+              {detail ? <div className="parameter-library-compare__actions"><button className="button subtle sm" type="button" disabled={detail.rawValue === undefined} onClick={() => void copy(detail, label)} aria-label={`复制${label}完整原值`}><Copy size={14} aria-hidden="true" />复制</button>
+                {onOpenProject ? <button className="button subtle sm" type="button" onClick={() => onOpenProject(detail)} aria-label={`在项目中打开 ${label}`}><ExternalLink size={14} aria-hidden="true" />打开项目</button> : null}</div> : null}
+            </div>
             <SelectControl ariaLabel={`${sideLabel}项目`} placeholder={projects.length ? "选择项目" : "暂无已配置项目"} disabled={!projects.length}
               value={item?.projectId ?? ""} options={projects} onValueChange={value => select(choices.find(candidate => candidate.projectId === value)!.bindingId)} />
             {options.length > 1 ? <SelectControl ariaLabel={`${sideLabel}配置实例`} value={id ?? ""} options={options.map(option => ({ value: option.bindingId,
               label: `${option.configSetName} · ${option.fileName} · ${option.sourceLocation}` }))} onValueChange={select} /> : null}
-            <div className="parameter-library-compare__source">
-              {item ? <><span title={`${item.configSetName} · ${item.fileName}`}>{item.configSetName} · {item.fileName}</span><code title={item.sourceLocation}>{item.sourceLocation}</code></>
-                : <span>{projects.length === 1 ? "只有一个已配置项目，可选择同一项目中的其他实例。" : "选择项目后显示配置原值。"}</span>}
-            </div>
-            {detail ? <div className="parameter-library-compare__metadata"><span>值固定修订 #{detail.definitionRevisionNumber} · {detail.effectiveRevisionId === detail.definitionRevisionId ? "生效修订相同" : `生效修订 ${detail.effectiveRevisionId}`} · 单位 {detail.unit ?? "未说明"}</span>
-              <div className="parameter-library-compare__actions"><button className="button subtle sm" type="button" disabled={detail.rawValue === undefined} onClick={() => void copy(detail, label)} aria-label={`复制${label}完整原值`}><Copy size={14} aria-hidden="true" />复制</button>
-                {onOpenProject ? <button className="button subtle sm" type="button" onClick={() => onOpenProject(detail)} aria-label={`在项目中打开 ${label}`}><ExternalLink size={14} aria-hidden="true" />打开项目</button> : null}</div>
-            </div> : null}
+            {!item ? <p className="parameter-library-compare__selection-hint">{projects.length === 1 ? "只有一个已配置项目，可选择同一项目中的其他实例。" : "选择项目后显示配置原值。"}</p> : null}
           </div>;
         })}
       </div>
