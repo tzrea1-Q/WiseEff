@@ -122,21 +122,21 @@ export function KnowledgePage({
   const [deleteError, setDeleteError] = useState("");
   const listRequest = useRef(0);
   const searchRequest = useRef(0);
-  const citationResult = useRef<{ entry: KnowledgeEntry } | null>(null);
+  const latestEntryRead = useRef<{ entry: KnowledgeEntry } | null>(null);
   const loadRevisions = useCallback((entryId: string) => repository.listRevisions(entryId), [repository]);
 
   const loadEntries = useCallback(async () => {
     const request = ++listRequest.current;
-    const citationAtStart = citationResult.current;
+    const entryReadAtStart = latestEntryRead.current;
     setLoading(true);
     setListError("");
     try {
       const result = await repository.list(pendingSuggestions ? { pendingSuggestions: true } : undefined);
       if (request !== listRequest.current) return;
       // Preserve only a get completed after this list started, never an older cached lookup.
-      const citation = citationResult.current !== citationAtStart ? citationResult.current?.entry : null;
-      setRows(citation
-        ? [citation, ...result.items.filter((entry) => entry.id !== citation.id)]
+      const freshEntry = latestEntryRead.current !== entryReadAtStart ? latestEntryRead.current?.entry : null;
+      setRows(freshEntry
+        ? [freshEntry, ...result.items.filter((entry) => entry.id !== freshEntry.id)]
         : result.items);
     } catch (error) {
       if (request === listRequest.current) setListError(presentError(error, "知识条目加载失败，请稍后重试。"));
@@ -172,7 +172,7 @@ export function KnowledgePage({
   // Citation deep link (/knowledge?entryId=…) opens the entry detail directly.
   const loadCitation = useCallback(async () => {
     const request = ++citationRequest.current;
-    citationResult.current = null;
+    latestEntryRead.current = null;
     setCitationError("");
     setCitationLoading(Boolean(linkedEntryId));
     setSelectedId(null);
@@ -197,7 +197,7 @@ export function KnowledgePage({
         const { page } = parseKnowledgeEntryQuery(new URLSearchParams(linkedPage ? { page: linkedPage } : {}));
         setCitation({ revisionId: revision.id, page: revision.fileId ? page : null, historical: revision.revisionNumber !== entry.headRevisionNumber });
       }
-      citationResult.current = { entry };
+      latestEntryRead.current = { entry };
       setRows((current) => (current.some((item) => item.id === entry.id)
         ? current.map((item) => item.id === entry.id ? entry : item)
         : [entry, ...current]));
@@ -251,6 +251,7 @@ export function KnowledgePage({
   const refreshEntry = async (entryId: string) => {
     const fresh = await repository.get(entryId);
     if (fresh) {
+      latestEntryRead.current = { entry: fresh };
       setRows((current) => {
         const exists = current.some((item) => item.id === entryId);
         return exists ? current.map((item) => (item.id === entryId ? fresh : item)) : [fresh, ...current];
@@ -459,7 +460,7 @@ export function KnowledgePage({
       await repository.hardDelete(deleteEntry.id);
       setRows((current) => current.filter((entry) => entry.id !== deleteEntry.id));
       setSearchResults((current) => current.filter((entry) => entry.entryId !== deleteEntry.id));
-      citationResult.current = null;
+      latestEntryRead.current = null;
       setSelectedId((current) => current === deleteEntry.id ? null : current);
       setDeleteEntry(null);
       if (initialEntryId === deleteEntry.id) onNavigate?.("/knowledge");

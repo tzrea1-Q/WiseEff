@@ -700,6 +700,53 @@ describe("KnowledgePage", () => {
     });
   });
 
+  it("keeps a restored revision when the post-edit list returns stale rows, then accepts a later refresh", async () => {
+    const { repository } = renderPage();
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "知识条目列表" });
+    await user.click(within(table).getByText("快充温控调参经验"));
+    const detail = await screen.findByRole("dialog", { name: /快充温控调参经验/ });
+    const listEntries = repository.list.bind(repository);
+    const refresh = deferred<{ items: KnowledgeEntry[] }>();
+    vi.spyOn(repository, "list").mockImplementationOnce(() => refresh.promise);
+
+    await user.click(within(detail).getByRole("button", { name: "编辑" }));
+    const editor = await screen.findByRole("dialog", { name: "编辑知识条目" });
+    await user.clear(within(editor).getByLabelText("Markdown 内容"));
+    await user.type(within(editor).getByLabelText("Markdown 内容"), "恢复前的新修订正文");
+    await user.click(within(editor).getByRole("button", { name: "保存为新修订" }));
+    await waitFor(() => expect(editor).not.toBeInTheDocument());
+    const staleRows = await listEntries();
+    expect(screen.getByText("知识条目统计加载中…")).toBeInTheDocument();
+
+    await user.click(within(detail).getByRole("button", { name: "修订历史" }));
+    const revisions = await screen.findByRole("dialog", { name: /修订历史/ });
+    await user.click(await within(revisions).findByRole("button", { name: "查看修订 #1" }));
+    await user.click(within(revisions).getByRole("button", { name: "恢复此版本" }));
+    const confirm = await screen.findByRole("dialog", { name: "恢复修订 #1" });
+    await user.click(within(confirm).getByRole("button", { name: "恢复为新修订" }));
+    await waitFor(() => expect(revisions).not.toBeInTheDocument());
+    expect(within(detail).getByText(/修订 #4/)).toBeInTheDocument();
+    expect(within(detail).getByRole("region", { name: "条目内容" })).toHaveTextContent("初版:超温后直接降到 2A。");
+
+    await act(async () => refresh.resolve(staleRows));
+    expect(within(detail).getByText(/修订 #4/)).toBeInTheDocument();
+    expect(within(detail).getByRole("region", { name: "条目内容" })).toHaveTextContent("初版:超温后直接降到 2A。");
+    expect(screen.queryByText("知识条目统计加载中…")).not.toBeInTheDocument();
+    await user.click(within(detail).getByRole("button", { name: "关闭" }));
+    const restoredRow = within(table).getByText("快充温控调参经验").closest("tr")!;
+    expect(within(restoredRow).getByText("修订 #4")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled();
+
+    await repository.update("mock-kb-1", { expectedHeadRevisionNumber: 4, contentMarkdown: "稍后修订的新正文" });
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    await within(table).findByText("修订 #5");
+    await user.click(within(table).getByText("快充温控调参经验"));
+    const refreshedDetail = await screen.findByRole("dialog", { name: /快充温控调参经验/ });
+    expect(within(refreshedDetail).getByText(/修订 #5/)).toBeInTheDocument();
+    expect(within(refreshedDetail).getByRole("region", { name: "条目内容" })).toHaveTextContent("稍后修订的新正文");
+  });
+
   it("labels a retained revision whose author account was deleted", async () => {
     const repository = createMockKnowledgeRepository();
     const listRevisions = repository.listRevisions.bind(repository);
