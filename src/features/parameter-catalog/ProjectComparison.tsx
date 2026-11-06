@@ -150,7 +150,7 @@ export function ProjectComparison({ repository, organizationId, definitionId, ba
           : !items.length && !leftId ? <SectionEmpty message="当前没有可用于对比的项目配置。" />
             : !result ? <SectionSkeleton label="正在读取两侧完整原值" /> : <>
       <div className="parameter-library-compare__status" role="status">
-        <strong>{complete ? left.rawValue === right.rawValue ? "原文相同" : "原文存在差异" : "请选择两侧项目进行对比"}</strong>
+        <strong>{complete ? left.rawValue === right.rawValue ? "原文相同" : "配置值存在差异" : "请选择两侧项目进行对比"}</strong>
         {right?.comparison ? <span>{comparisonStatus(right.comparison.status)}{right.comparison.revisionChanged ? " · 固定修订不同" : ""}
           {right.comparison.delta !== undefined ? ` · 目标 − 基准：${right.comparison.delta} ${right.unit ?? ""}` : ""}</span> : null}
         {complete && !difference.large && left.rawValue !== right.rawValue ? <span className="parameter-library-compare__legend"><span>− {difference.rows.filter(row => row.left?.changed).length}</span><span>+ {difference.rows.filter(row => row.right?.changed).length}</span></span> : null}
