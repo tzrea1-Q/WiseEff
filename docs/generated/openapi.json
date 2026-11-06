@@ -12207,15 +12207,6 @@
             }
           },
           {
-            "name": "configured",
-            "in": "query",
-            "required": false,
-            "description": "Select definitions with a current configured instance before pagination.",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "usageProjectId",
             "in": "query",
             "required": false,

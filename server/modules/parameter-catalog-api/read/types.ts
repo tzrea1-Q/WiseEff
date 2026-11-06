@@ -218,6 +218,5 @@ export type CatalogListQuery = {
   /** Organization module subtree filter, resolved to subjects before pagination. */
   readonly placementModuleId?: string;
   readonly propertyKey?: PropertyKey;
-  readonly configured?: boolean;
   readonly usageProjectId?: string;
 };

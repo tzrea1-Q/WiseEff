@@ -24,7 +24,6 @@ export type CatalogUrlAnchor = {
   baseline?: string | null;
   target?: string | null;
   usageProjectId?: string | null;
-  configured?: string | null;
   configProjectId?: string | null;
   configSetId?: string | null;
   configSearch?: string | null;
@@ -69,7 +68,6 @@ const ANCHOR_KEYS = [
   "baseline",
   "target",
   "usageProjectId",
-  "configured",
   "configProjectId",
   "configSetId",
   "configSearch",
@@ -96,6 +94,7 @@ function readOpaque(params: URLSearchParams, key: (typeof ANCHOR_KEYS)[number]):
 
 export function parseCatalogUrlAnchor(search: string): CatalogUrlAnchor {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const removedConfigurationFilter = params.has("configured");
   return {
     ...(validSourceReturn(params.get("sourceReturn"))
       ? { sourceReturn: params.get("sourceReturn")! } : {}),
@@ -115,7 +114,6 @@ export function parseCatalogUrlAnchor(search: string): CatalogUrlAnchor {
     baseline: readOpaque(params, "baseline"),
     target: readOpaque(params, "target"),
     usageProjectId: readOpaque(params, "usageProjectId"),
-    configured: params.get("configured") === "true" ? "true" : null,
     configProjectId: readOpaque(params, "configProjectId"),
     configSetId: readOpaque(params, "configSetId"),
     configSearch: readOpaque(params, "configSearch"),
@@ -123,8 +121,8 @@ export function parseCatalogUrlAnchor(search: string): CatalogUrlAnchor {
     includeRetiredSubjects: params.get("includeRetiredSubjects") === "true",
     moduleNodeId: readOpaque(params, "moduleNodeId"),
     pageSize: parseCatalogPageSize(params.get("pageSize")),
-    cursor: readOpaque(params, "cursor"),
-    cursorTrail: readOpaque(params, "cursorTrail")
+    cursor: removedConfigurationFilter ? null : readOpaque(params, "cursor"),
+    cursorTrail: removedConfigurationFilter ? null : readOpaque(params, "cursorTrail")
   };
 }
 
@@ -161,7 +159,7 @@ export function buildCatalogHref(anchor: CatalogUrlAnchor): string {
 export function normalizeLibraryReturnPath(value: string | null): string | null {
   if (!value || !value.startsWith(`${CATALOG_READ_PAGE_PATH}?`) || /[\u0000-\u001f\u007f#\\]/u.test(value)) return null;
   const params = new URLSearchParams(value.slice(CATALOG_READ_PAGE_PATH.length + 1));
-  const allowed = new Set<string>([...ANCHOR_KEYS.filter((key) => key !== "reviewItemId"), "pageSize", "includeRetiredSubjects"]);
+  const allowed = new Set<string>([...ANCHOR_KEYS.filter((key) => key !== "reviewItemId"), "pageSize", "includeRetiredSubjects", "configured"]);
   const seen = new Set<string>();
   for (const key of params.keys()) {
     if (!allowed.has(key) || seen.has(key)) return null;

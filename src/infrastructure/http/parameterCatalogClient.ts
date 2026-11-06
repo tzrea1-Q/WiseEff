@@ -203,7 +203,6 @@ function appendQuery(path: string, query?: CatalogListQuery) {
   }
   if (query.placementModuleId) params.set("placementModuleId", query.placementModuleId);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
-  if (query.configured) params.set("configured", "true");
   if (query.usageProjectId) params.set("usageProjectId", query.usageProjectId);
   if (query.catalogReleaseId) params.set("catalogReleaseId", query.catalogReleaseId);
   const encoded = params.toString();

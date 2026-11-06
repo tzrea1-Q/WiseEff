@@ -2592,7 +2592,6 @@ export const parameterCatalogSchemaRegistry = {
           "Organization module id; selects definitions of subjects placed at or below the module subtree before pagination."
       },
       { name: "propertyKey", in: "query" },
-      { name: "configured", in: "query", description: "Select definitions with a current configured instance before pagination." },
       { name: "usageProjectId", in: "query", description: "Select definitions configured in this current-Organization project before pagination." },
       { name: "registration", in: "query" },
       {

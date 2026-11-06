@@ -12,6 +12,8 @@ import {
 it("accepts only a normalized local library return without redirect or organization instructions", () => {
   expect(normalizeLibraryReturnPath("/parameters/definitions?definitionId=def&tab=configurations&q=power"))
     .toBe("/parameters/definitions?definitionId=def&q=power&tab=configurations");
+  expect(normalizeLibraryReturnPath("/parameters/definitions?definitionId=def&configured=true&cursor=old&cursorTrail=old&pageSize=20"))
+    .toBe("/parameters/definitions?definitionId=def&pageSize=20");
   for (const path of ["https://evil.test/parameters/definitions", "//evil.test/parameters/definitions", "/parameters/definitions?returnTo=https%3A%2F%2Fevil.test", "/parameters/definitions?organizationId=other", "/parameters/definitions?sourceReturn=%2Fparameter-admin%2Fsources%3Fx%3D1", "/parameters/definitions#anchor", "/parameters/definitions?tab=configurations&tab=definition"]) {
     expect(normalizeLibraryReturnPath(path)).toBeNull();
   }
@@ -63,17 +65,20 @@ describe("catalog URL and release anchors", () => {
     expect(buildCatalogHref(parseCatalogUrlAnchor(search)).startsWith(CATALOG_PAGE_PATH)).toBe(true);
   });
 
-  it("drops Effective/Governance peer query keys and never re-emits them", () => {
+  it("drops removed configuration filters and Effective/Governance peer query keys", () => {
     const parsed = parseCatalogUrlAnchor(
-      "?catalogView=governance&view=effective&spec=spec-1&parameterSpecId=spec-1&subjectId=csub_01KSC8562&catalogReleaseId=crel_01K42"
+      "?configured=true&cursor=old&cursorTrail=old&catalogView=governance&view=effective&spec=spec-1&parameterSpecId=spec-1&subjectId=csub_01KSC8562&catalogReleaseId=crel_01K42"
     );
     expect(parsed).toMatchObject({
       subjectId: "csub_01KSC8562",
       definitionId: null,
       catalogReleaseId: "crel_01K42",
-      reviewItemId: null
+      reviewItemId: null,
+      cursor: null,
+      cursorTrail: null
     });
     expect(parsed).not.toHaveProperty("catalogView");
+    expect(parsed).not.toHaveProperty("configured");
     const href = buildCatalogHref(parsed);
     expect(href).toBe("/parameter-admin/specs?subjectId=csub_01KSC8562&catalogReleaseId=crel_01K42");
     expect(href).not.toMatch(/catalogView|view=effective|view=governance|parameterSpecId|(^|[?&])spec=/);

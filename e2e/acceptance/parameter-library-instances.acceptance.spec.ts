@@ -384,12 +384,12 @@ test("reads grouped DTS and software instances with exact counts and full values
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: 200, responseSummary: "Explicit baseline and target on separate pages, current values read from one API response." }] });
     await page.unroute("**/project-configurations*");
     await page.goto(`${runtime.frontendUrl}/parameters/definitions`);
-    await page.getByLabel("有当前配置").check();
-    await expect(page.getByText("未使用的定义", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("checkbox", { name: "有当前配置", exact: true })).toHaveCount(0);
     await selectControlOption(page.getByRole("combobox", { name: "项目使用" }), "parlib-instances-b");
     await expect(page).toHaveURL(/usageProjectId=parlib-instances-b/);
+    await expect(page.getByText("未使用的定义", { exact: true })).toHaveCount(0);
     const listLink = page.url();
-    expect(listLink).toContain("configured=true");
+    expect(new URL(listLink).searchParams.has("configured")).toBe(false);
     expect(listLink).toContain("usageProjectId=parlib-instances-b");
     await expect(page.getByRole("button", { name: "复制当前视图链接" })).toHaveCount(0);
     await expect(page.getByText("数量为所选项目已配置数量")).toBeVisible();

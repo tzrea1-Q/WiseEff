@@ -512,7 +512,6 @@ export function CatalogPage({
         listQuery.type = currentAnchor.type as CatalogListQuery["type"];
       }
       if (libraryMode && currentAnchor.registration) listQuery.registration = currentAnchor.registration;
-      if (libraryMode && currentAnchor.configured) listQuery.configured = true;
       if (libraryMode && currentAnchor.usageProjectId) listQuery.usageProjectId = currentAnchor.usageProjectId;
       if (currentAnchor.cursor) {
         listQuery.cursor = currentAnchor.cursor;
@@ -1255,11 +1254,10 @@ export function CatalogPage({
               </p>
             </header>
             {libraryMode ? <div className="parameter-library-filters">
-              <label><input type="checkbox" checked={Boolean(anchor.configured)} onChange={(event) => commitAnchor({ ...anchor, configured: event.target.checked ? "true" : null, cursor: null, cursorTrail: null }, "push")} /> 有当前配置</label>
               <div className="parameter-library-filter"><span>项目使用</span><SelectControl ariaLabel="项目使用" size="filter" value={anchor.usageProjectId ?? ""} disabled={!projectOptions || projectOptions.organizationId !== organizationId} onValueChange={(value) => commitAnchor({ ...anchor, usageProjectId: value || null, cursor: null, cursorTrail: null }, "push")}
                 options={[{ value: "", label: "全部项目" }, ...(projectOptions && projectOptions.organizationId === organizationId ? projectOptions.items.map((project) => ({ value: project.id, label: project.name })) : [])]} /></div>
               {projectOptionsError ? <button type="button" className="button subtle sm" onClick={() => setProjectOptionsRetry((value) => value + 1)}>项目读取失败，重试</button> : null}
-              {(anchor.configured || anchor.usageProjectId) ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, configured: null, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
+              {anchor.usageProjectId ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
               <span className="parameter-catalog__muted">数量为{anchor.usageProjectId ? "所选项目" : "当前组织"}已配置数量</span>
             </div> : null}
             {definitionPublishingAllowed && onBatchDefinitionCommand ? <>

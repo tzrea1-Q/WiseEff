@@ -228,7 +228,6 @@ export type CatalogListQuery = {
   /** Organization module subtree filter, resolved server-side before pagination. */
   placementModuleId?: string;
   propertyKey?: string;
-  configured?: boolean;
   usageProjectId?: string;
   catalogReleaseId?: string;
 };

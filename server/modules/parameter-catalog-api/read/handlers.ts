@@ -525,14 +525,15 @@ async function handleListDefinitions(
   });
   let selection = mergeIdSelection(scope.definitions, registrationSelection);
   let configuredSummaries: Awaited<ReturnType<NonNullable<CatalogReadPorts["selectConfiguredDefinitions"]>>> | undefined;
-  if (parsed.query.configured || parsed.query.usageProjectId) {
+  if (parsed.query.usageProjectId) {
     if (scope.projectScope.kind !== "all" || !ports.selectConfiguredDefinitions) return catalogNotReady(request.requestId);
     configuredSummaries = await ports.selectConfiguredDefinitions(scope.organizationId, catalogDefinitionIndex(snapshot)
       .filter((item) => !hiddenId(selection, item.id) && !hiddenId(scope.subjects, item.subjectId)).map((item) => item.id), parsed.query.usageProjectId);
     const matches = [...configuredSummaries.keys()].map((id) => ParameterDefinitionId(id));
     const filtered = mergeIdSelection(selection, { kind: "only", ids: matches, fingerprint: fingerprintIdSelection(matches) });
+    // Keep the fixed legacy slot so existing project-usage cursors remain valid.
     selection = { kind: "only", ids: filtered.kind === "only" ? filtered.ids : matches,
-      fingerprint: fingerprintIdSelection([`configured=${parsed.query.configured}`, `project=${parsed.query.usageProjectId}`, filtered.kind === "only" ? filtered.fingerprint : "all"]) };
+      fingerprint: fingerprintIdSelection(["configured=false", `project=${parsed.query.usageProjectId}`, filtered.kind === "only" ? filtered.fingerprint : "all"]) };
   }
   if (parsed.query.subjectLifecycle || parsed.query.type) {
     const allowedSubjects = new Set(catalogSubjectUniverse(snapshot,
@@ -611,7 +612,7 @@ async function handleListDefinitions(
       parsed.query.type ||
       parsed.query.subjectLifecycle ||
       parsed.query.registration ||
-      parsed.query.configured || parsed.query.usageProjectId ||
+      parsed.query.usageProjectId ||
       parsed.query.search ||
       parsed.query.propertyKey ||
       parsed.query.subjectId ||

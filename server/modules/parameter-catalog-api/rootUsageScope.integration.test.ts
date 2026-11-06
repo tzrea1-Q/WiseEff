@@ -362,21 +362,23 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     }
   });
 
-  it("applies configured and project usage before definition pagination", async () => {
+  it("applies project usage before definition pagination and ignores the removed configured filter", async () => {
     const headers = { authorization: "Bearer scope-only-a" };
     const unfiltered = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=1`, { headers });
-    expect(catalogDefinitionListResponseSchema.parse(await unfiltered.json()).items.map((item) => item.id)).not.toContain(definitionId);
-    for (const query of ["configured=true", "usageProjectId=scope-project-b", "configured=true&usageProjectId=scope-project-b"]) {
-      const response = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=1&${query}`, { headers });
-      expect(response.status).toBe(200);
-      const body = catalogDefinitionListResponseSchema.parse(await response.json());
-      expect(body.items.map((item) => item.id)).toEqual([definitionId]);
-      expect(body.totalCount).toBe(1);
-      expect(body.items[0]?.configurationSummary).toEqual(query.includes("usageProjectId")
-        ? { configuredProjectCount: 1, configuredInstanceCount: 2 }
-        : { configuredProjectCount: 2, configuredInstanceCount: 3 });
-      expect(body.items[0]?.usageSummary).toEqual({ policyCount: null, projectCount: 2, currentValueCount: 3 });
-    }
+    const unfilteredBody = catalogDefinitionListResponseSchema.parse(await unfiltered.json());
+    expect(unfilteredBody.items.map((item) => item.id)).not.toContain(definitionId);
+    const legacy = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=1&configured=true`, { headers });
+    expect(legacy.status).toBe(200);
+    const legacyBody = catalogDefinitionListResponseSchema.parse(await legacy.json());
+    expect(legacyBody.items).toEqual(unfilteredBody.items);
+    expect(legacyBody.totalCount).toBe(unfilteredBody.totalCount);
+    const response = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=1&usageProjectId=scope-project-b`, { headers });
+    expect(response.status).toBe(200);
+    const body = catalogDefinitionListResponseSchema.parse(await response.json());
+    expect(body.items.map((item) => item.id)).toEqual([definitionId]);
+    expect(body.totalCount).toBe(1);
+    expect(body.items[0]?.configurationSummary).toEqual({ configuredProjectCount: 1, configuredInstanceCount: 2 });
+    expect(body.items[0]?.usageSummary).toEqual({ policyCount: null, projectCount: 2, currentValueCount: 3 });
     const foreign = await fetch(`${baseUrl}/api/v2/catalog/definitions?usageProjectId=scope-project-c`, { headers });
     expect(foreign.status).toBe(404);
   });
@@ -386,7 +388,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     let reached!: () => void;
     const paused = new Promise<void>((resolve) => { reached = resolve; });
     pauseListUsage = { reached, resume: new Promise<void>((resolve) => { resume = resolve; }) };
-    const pending = fetch(`${baseUrl}/api/v2/catalog/definitions?configured=true&limit=1`, { headers: { authorization: "Bearer scope-only-a" } });
+    const pending = fetch(`${baseUrl}/api/v2/catalog/definitions?usageProjectId=scope-project-b&limit=1`, { headers: { authorization: "Bearer scope-only-a" } });
     await paused;
     const pool = getRootPostgresPool(root)!;
     try {
@@ -396,7 +398,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       expect(response.status).toBe(200);
       const body = catalogDefinitionListResponseSchema.parse(await response.json());
       expect(body.items.map((item) => item.id)).toEqual([definitionId]);
-      expect(body.items[0]?.configurationSummary).toEqual({ configuredProjectCount: 2, configuredInstanceCount: 3 });
+      expect(body.items[0]?.configurationSummary).toEqual({ configuredProjectCount: 1, configuredInstanceCount: 2 });
     } finally {
       resume(); pauseListUsage = undefined;
       await pool.query("update parameter_catalog.organization_subject_registrations set status='active' where organization_id='scope-org-a'");
@@ -503,7 +505,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       const listed = catalogDefinitionListResponseSchema.parse(await list.json()).items.find((item) => item.id === definitionId);
       expect(listed?.configurationSummary).toBeNull();
       expect(listed?.usageSummary).toEqual({ policyCount: null, projectCount: 2, currentValueCount: 3 });
-      const filtered = await fetch(`${baseUrl}/api/v2/catalog/definitions?configured=true`, { headers: { authorization: "Bearer scope-only-a" } });
+      const filtered = await fetch(`${baseUrl}/api/v2/catalog/definitions?usageProjectId=scope-project-b`, { headers: { authorization: "Bearer scope-only-a" } });
       expect(filtered.status).toBe(409);
     } finally {
       await pool.query("update parameter_catalog.project_value_source_pins set definition_id=$2 where binding_id=$1", [bindingId, definitionId]);
