@@ -94,21 +94,21 @@ export const navigationItems: PageConfig[] = [
   },
   {
     key: "parameters",
-    path: "/parameters",
-    label: "项目参数",
-    group: "参数管理",
-    icon: SlidersHorizontal,
-    title: "项目参数",
-    subtitle: "查看、筛选、对比并提交充电与电池参数修改请求"
-  },
-  {
-    key: "parameters",
     path: CATALOG_READ_PAGE_PATH,
     label: "参数库",
     group: "参数管理",
     icon: LibraryBig,
     title: "参数库",
     subtitle: "浏览参数定义、当前项目配置与实例对比"
+  },
+  {
+    key: "parameters",
+    path: "/parameters",
+    label: "项目参数",
+    group: "参数管理",
+    icon: SlidersHorizontal,
+    title: "项目参数",
+    subtitle: "查看、筛选、对比并提交充电与电池参数修改请求"
   },
   {
     key: "parameter-submissions",
