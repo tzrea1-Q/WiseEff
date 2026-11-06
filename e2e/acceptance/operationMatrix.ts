@@ -36,7 +36,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters/definitions", roles: ["Hardware User", "Software User", "Org Admin"], action: "Open the owning project/config set/Binding and return to library context.",
     acceptanceIds: ["PARLIB-RETURN-001"], specFiles: ["e2e/acceptance/parameter-library-instances.acceptance.spec.ts"], assertions: ["ui", "api", "screenshot"] },
   { id: "PARLIB-SHARE-001", priority: "P1", area: "parameters", coverage: "automated",
-    route: "/parameters/definitions", roles: ["Hardware User", "Software User", "Org Admin"], action: "Share the current view and copy the complete selected raw value.",
+    route: "/parameters/definitions", roles: ["Hardware User", "Software User", "Org Admin"], action: "Copy the complete selected raw value.",
     acceptanceIds: ["PARLIB-SHARE-001"], specFiles: ["e2e/acceptance/parameter-library-instances.acceptance.spec.ts"], assertions: ["ui", "api", "screenshot"] },
   { id: "MODULE-STRUCTURE-MIXED-001", priority: "P1", area: "parameters", coverage: "automated",
     route: "/parameter-admin/modules", roles: ["Org Admin"], action: "Review and apply a mixed structure update in one confirmation.",

@@ -132,7 +132,7 @@ The reader uses the shell's gutter and grows naturally with the active tab's con
 
 Current configuration counts and rows come from the canonical current-instance query, separately from legacy usage totals. Project/configuration-set scope applies before text filtering and pagination. The Compare tab requires an explicit Binding baseline; baseline and target are read in one current snapshot even outside the current page. Complete value-pinned revision semantics govern comparison; different or unsupported semantics show source values without a numeric delta. Historical definition reading does not change the current configuration comparison. A missing baseline requires explicit reselection.
 
-Project handoff resolves the exact protected Binding before choosing its configuration set and opening DTS or JSON details. Normalized library return paths preserve reading context and use the existing unsaved-input guard. Sharing uses the allowlisted Catalog anchor only after release pinning; copied values retain their complete source representation. Links grant no permissions, and project writes retain their existing server checks.
+Project handoff resolves the exact protected Binding before choosing its configuration set and opening DTS or JSON details. Normalized library return paths preserve reading context and use the existing unsaved-input guard. Copied values retain their complete source representation. Links grant no permissions, and project writes retain their existing server checks.
 
 ## Parameter Repository
 

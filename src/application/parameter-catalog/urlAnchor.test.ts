@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   CATALOG_PAGE_PATH,
-  buildCatalogShareHref,
   buildCatalogHref,
   parseCatalogUrlAnchor,
   normalizeLibraryReturnPath,
@@ -29,10 +28,6 @@ it("retains only a local shared-version return link across Catalog anchor normal
 import { CATALOG_DEFINITION_ID, CATALOG_RELEASE_ID, CATALOG_REVIEW_ITEM_ID, CATALOG_SUBJECT_ID } from "./fixtures";
 
 describe("catalog URL and release anchors", () => {
-  it("shares supported library state without return, governance, or unknown payloads", () => {
-    const anchor = parseCatalogUrlAnchor("?definitionId=def&tab=compare&baseline=b&target=t&configProjectId=p&configSetId=s&configSearch=clock&includeUnconfigured=true&configured=true&usageProjectId=p&sourceReturn=%2Fparameter-admin%2Fsources%3Ftoken%3Dsecret&reviewItemId=review&createDefinition=1&organizationId=other&rawValue=secret");
-    expect(buildCatalogShareHref(anchor)).toBe("/parameters/definitions?definitionId=def&tab=compare&baseline=b&target=t&usageProjectId=p&configured=true&configProjectId=p&configSetId=s&configSearch=clock&includeUnconfigured=true");
-  });
   it("retains the new-definition return intent when the current Catalog pin is added", () => {
     const returned = parseCatalogUrlAnchor("?subjectId=csub_declaration&createDefinition=1");
     const pinned = { ...returned, catalogReleaseId: "crel_after_publication" };

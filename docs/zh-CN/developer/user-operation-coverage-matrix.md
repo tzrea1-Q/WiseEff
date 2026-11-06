@@ -14,7 +14,7 @@
 
 - `PARLIB-RETURN-001`：打开确切项目／配置集／Binding 并返回参数库上下文；自动化覆盖 UI、真实 API 和截图，测试归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
 
-- `PARLIB-SHARE-001`：分享当前视图并复制选定的完整原始值；自动化覆盖 UI、真实 API 和截图，测试归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
+- `PARLIB-SHARE-001`：复制选定的完整原始值；自动化覆盖 UI、真实 API 和截图，测试归属 `e2e/acceptance/parameter-library-instances.acceptance.spec.ts`。
 
 `MODULE-STRUCTURE-MIXED-001`：组织管理员一次确认混合结构更新；覆盖 UI、真实 API 和截图。自动化文件：`e2e/acceptance/module-structure-transfer.acceptance.spec.ts`。
 

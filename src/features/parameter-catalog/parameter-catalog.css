@@ -1542,7 +1542,6 @@ button.parameter-catalog__tree-toggle:hover {
 .parameter-library-detail__release { flex-shrink: 0; margin: var(--space-1) 0 0; color: var(--text-muted); font-size: var(--text-sm); }
 .parameter-library-detail__tabs { flex-shrink: 0; flex-wrap: wrap; padding: var(--space-3) var(--space-6); border-top: var(--stroke-hairline) solid var(--border); border-bottom: var(--stroke-hairline) solid var(--border); }
 .parameter-library-detail__hint { color: var(--text-muted); font-size: var(--text-sm); }
-.parameter-library-share { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); font-size: var(--text-sm); }
 
 .parameter-library-detail__body h1 {
   min-width: 0;

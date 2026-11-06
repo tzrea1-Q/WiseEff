@@ -170,13 +170,6 @@ export function normalizeLibraryReturnPath(value: string | null): string | null 
   return `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor(parseCatalogUrlAnchor(params.toString()))}`;
 }
 
-/** Share only the read-only library context; never carry a return or governance command. */
-export function buildCatalogShareHref(anchor: CatalogUrlAnchor): string {
-  const { sourceReturn: _sourceReturn, createDefinition: _createDefinition, reviewItemId: _reviewItemId, ...library } = anchor;
-  return `${CATALOG_READ_PAGE_PATH}${serializeCatalogUrlAnchor({ ...library, reviewItemId: null,
-    tab: library.tab === "configurations" || library.tab === "compare" ? library.tab : null })}`;
-}
-
 export type CatalogLegacyBookmark = {
   legacyType: "parameter-spec";
   legacyId: string;

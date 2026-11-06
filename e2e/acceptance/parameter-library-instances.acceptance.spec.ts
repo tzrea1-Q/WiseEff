@@ -150,11 +150,6 @@ test("reads grouped DTS and software instances with exact counts and full values
     }
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}&tab=configurations`);
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: runtime.frontendUrl });
-    const copyLink = async () => {
-      await page.getByRole("button", { name: "复制当前视图链接" }).click();
-      await expect(page.getByText(/链接已复制/)).toBeVisible();
-      return page.evaluate(() => navigator.clipboard.readText());
-    };
     await expect(page.getByRole("tabpanel", { name: "当前项目配置" })).toContainText("已配置项目 2 · 已配置实例 3");
     const group = page.getByRole("table", { name: "多实例项目 的当前配置" });
     await expect(group.locator("tbody tr")).toHaveCount(2);
@@ -227,7 +222,7 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.evaluate(() => { delete (navigator as unknown as { clipboard?: Clipboard }).clipboard; });
     await page.getByRole("button", { name: "复制完整原值" }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(fullSourceToken);
-    const configurationLink = await copyLink();
+    const configurationLink = page.url();
     expect(configurationLink).toContain("configSetId=");
     expect(decodeURIComponent(configurationLink)).not.toContain("\\u0073oftware");
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(configurationLink).search}`);
@@ -317,7 +312,7 @@ test("reads grouped DTS and software instances with exact counts and full values
       expect(displayed).toMatch(/^<0x3e[9a]>$/);
       expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(displayed);
     }
-    const comparisonLink = await copyLink();
+    const comparisonLink = page.url();
     expect(comparisonLink).toMatch(/baseline=.*target=/);
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(comparisonLink).search}`);
     await expect(page.getByRole("heading", { name: "目标实例" })).toBeVisible();
@@ -392,10 +387,11 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.getByLabel("有当前配置").check();
     await expect(page.getByText("未使用的定义", { exact: true })).toHaveCount(0);
     await selectControlOption(page.getByRole("combobox", { name: "项目使用" }), "parlib-instances-b");
-    const listLink = await copyLink();
+    await expect(page).toHaveURL(/usageProjectId=parlib-instances-b/);
+    const listLink = page.url();
     expect(listLink).toContain("configured=true");
     expect(listLink).toContain("usageProjectId=parlib-instances-b");
-    await expect(page).toHaveURL(/usageProjectId=parlib-instances-b/);
+    await expect(page.getByRole("button", { name: "复制当前视图链接" })).toHaveCount(0);
     await expect(page.getByText("数量为所选项目已配置数量")).toBeVisible();
     const currentLimit = page.getByRole("row").filter({ hasText: "iin_max" });
     await expect(currentLimit.getByRole("cell").nth(4)).toHaveText("1");
@@ -409,12 +405,13 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}`);
     await expect(page).toHaveURL(/catalogReleaseId=/);
-    const definitionLink = await copyLink();
+    const definitionLink = page.url();
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(definitionLink).search}`);
     await expect(page.getByRole("tabpanel", { name: "定义" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "复制当前视图链接" })).toHaveCount(0);
     expect((await new AxeBuilder({ page }).include(".parameter-library-detail").analyze()).violations).toEqual([]);
-    await page.screenshot({ path: testInfo.outputPath("share-definition-1440.png") });
-    await recordOperationEvidence({ operationId: "PARLIB-SHARE-001", title: "Share a current view and copy selected source", status: "passed", page, testInfo,
+    await page.screenshot({ path: testInfo.outputPath("definition-1440.png") });
+    await recordOperationEvidence({ operationId: "PARLIB-SHARE-001", title: "Copy the complete selected source value", status: "passed", page, testInfo,
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${jsonDefinition}/project-configurations`, status: 200, responseSummary: "Selected exact multiline source read through the authenticated current configuration API." }] });
     await recordOperationEvidence({ operationId: "PARLIB-FILTER-001", title: testInfo.title, status: "passed", page, testInfo,
       assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: `/api/v2/catalog/definitions/${definitionId}/project-configurations`, status: response.status(), responseSummary: "Filtered project and configuration set, with optional unconfigured projects." }] });

@@ -19,7 +19,6 @@ import {
   CATALOG_PAGE_SIZES,
   CATALOG_READ_PAGE_PATH,
   buildCatalogHref,
-  buildCatalogShareHref,
   parseCatalogUrlAnchor,
   parseCatalogPageSize,
   readLegacyCatalogBookmark,
@@ -317,16 +316,6 @@ export function CatalogPage({
     return params.toString();
   }, [resolvedSearch]);
   const anchor = useMemo(() => parseCatalogUrlAnchor(resolvedSearch), [resolvedSearch]);
-  const [shareState, setShareState] = useState<"success" | "error" | null>(null);
-  useEffect(() => setShareState(null), [resolvedSearch, organizationId]);
-  const shareControl = <div className="parameter-library-share">
-    <button type="button" className="button subtle sm" disabled={!anchor.catalogReleaseId} onClick={async () => {
-      try { await navigator.clipboard.writeText(new URL(buildCatalogShareHref(anchor), window.location.origin).href); setShareState("success"); }
-      catch { setShareState("error"); }
-    }}>复制当前视图链接</button>
-    {shareState === "success" ? <span role="status">链接已复制。接收者将以当前组织权限读取，数据可能变化。</span> : null}
-    {shareState === "error" ? <span role="alert">复制链接失败，请检查剪贴板权限后重试。</span> : null}
-  </div>;
   const pageSize: CatalogPageSize =
     parseCatalogPageSize(anchor.pageSize === null ? null : String(anchor.pageSize)) ??
     CATALOG_DEFAULT_PAGE_SIZE;
@@ -1026,9 +1015,7 @@ export function CatalogPage({
         setHistoryOpen(false);
         commitAnchor({ ...anchor, definitionId: null, history: null, tab: null, instance: null, instanceCursor: null, baseline: null, target: null }, "push");
       }}><ArrowLeft size={14} aria-hidden="true" />返回参数库</button>
-        <div className="parameter-catalog__actions">{shareControl}
-          {reading && onOpenGovernance ? <button type="button" className="button subtle sm" onClick={() => onOpenGovernance(anchor)}>打开定义治理</button> : null}
-        </div>
+        {reading && onOpenGovernance ? <button type="button" className="button subtle sm" onClick={() => onOpenGovernance(anchor)}>打开定义治理</button> : null}
       </div>
       {inFlight && !reading ? <SectionSkeleton label={catalogLoadingLabel} />
         : error ? <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />
@@ -1127,7 +1114,6 @@ export function CatalogPage({
         resizableNavigator
         taskLabel={catalogListLabel}
         toolbar={<>
-          {libraryMode ? shareControl : null}
           {anchor.sourceReturn ? <a href={anchor.sourceReturn}>{anchor.sourceReturn.startsWith("/parameter-admin/projects/")?"返回项目来源":"返回来源识别"}</a> : null}
           <form
             className="parameter-catalog__search"
