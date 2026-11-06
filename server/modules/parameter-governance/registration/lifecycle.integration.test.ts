@@ -596,6 +596,110 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
       where organization_id=$1 and subject_id=$2`, [organizationId, ownedNodeSubject])).rows).toHaveLength(1);
   });
 
+  it("supplements newly published children without changing the registered driver or retained children", async () => {
+    const lane = await createEphemeralTestDatabase("reg-import-children");
+    const owner = new pg.Pool({ connectionString: lane.url });
+    const runToken = `regimport${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    let application: pg.Pool | undefined;
+    try {
+      const original = initialBundle.releases[0]!;
+      const child = original.documents.find(document => document.kind === "subject" && document.content.id === ownedNodeSubject);
+      if (child?.kind !== "subject") throw new Error("missing owned child fixture");
+      const activeChildId = "csub_import_retained_child";
+      const addedChildId = "csub_import_new_child";
+      const activeChild = { ...structuredClone(child), content: { ...structuredClone(child.content),
+        id: activeChildId, canonicalKey: "import_retained_child",
+        selector: { ...structuredClone(child.content.selector), value: "import_retained_child" } } };
+      const base = refreshSuccessorSource({ ...structuredClone(original), documents: [...original.documents, activeChild] }, original.sources[0]!.path);
+      const baseline = { ...initialBundle, targetReleaseId: base.manifest.release.id, releases: [base] };
+      const compiled = compileCatalogRelease(baseline);
+      if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+      const installed = await installPublishedRelease(owner, { mode: "bootstrap", source: jsonCatalogReleaseSource(baseline),
+        expectedTargetDigest: compiled.value.aggregateDigest });
+      if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+      const initialPin = { id: compiled.value.release.id, digest: compiled.value.release.digest };
+      const runtime = await provisionPublicationRuntimeLogins(lane.url, { mode: "lab", runToken });
+      application = new pg.Pool({ connectionString: runtime.apiUrl });
+      expect((await application.query("select rolsuper from pg_roles where rolname=current_user")).rows).toEqual([{ rolsuper: false }]);
+      const organization = `import-org-${randomUUID()}`;
+      const module = `import-module-${randomUUID()}`;
+      const wrongModule = `wrong-module-${randomUUID()}`;
+      const userId = `import-admin-${randomUUID()}`;
+      await owner.query("insert into public.organizations(id,name) values ($1,'Import registration')", [organization]);
+      await owner.query(`insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin)
+        values ($1,$3,'Current category',$1,1,'business','curated'),($2,$3,'Other category',$2,1,'business','curated')`, [module, wrongModule, organization]);
+      await owner.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Import admin','Admin',true)", [userId, organization]);
+      const actor = { actorKind: "org-admin" as const, principalId: userId, requestId: "import-children",
+        invocation: createUserInvocation(makeTestAuthContext({ userId, organizationId: organization })) };
+      const service = createRegistrationService(application);
+      const command = { kind: "register" as const, organizationId: organization, subjectId: targetSubject, subjectKind: "driver" as const,
+        expectedRelease: initialPin, placement: { mode: "use-default" as const }, destinationModuleId: module,
+        displayAlias: "Retained driver alias", method: "explicit" as const, proof: { reason: "Initial registration" },
+        idempotencyKey: randomUUID(), context: { ...actor, requestId: "import-initial-registration" } };
+      const driver = await service.execute(command);
+      if (!driver.ok) throw new Error(JSON.stringify(driver.error));
+      const existingChild = (await application.query<{ id: typeof driver.value.registrationId; version: string }>(`select id,
+        (extract(epoch from updated_at) * 1000000)::bigint::text as version from parameter_catalog.organization_subject_registrations
+        where organization_id=$1 and subject_id=$2`, [organization, ownedNodeSubject])).rows[0]!;
+      const removed = await service.execute({ kind: "retire", organizationId: organization, registrationId: existingChild.id,
+        expectedRelease: initialPin, expectedRegistrationVersion: `active:${existingChild.version}`, idempotencyKey: randomUUID(),
+        reason: "Keep this child retired", context: { ...actor, requestId: "import-retire-child" } });
+      expect(removed.ok).toBe(true);
+      const registrations = async () => (await application!.query(`select to_jsonb(registration) as registration, to_jsonb(placement) as placement
+        from parameter_catalog.organization_subject_registrations registration
+        join parameter_catalog.subject_placements placement on placement.id=registration.current_placement_id
+        where registration.organization_id=$1 order by registration.subject_id`, [organization])).rows;
+      const retained = await registrations();
+      expect(retained).toEqual(expect.arrayContaining([
+        expect.objectContaining({ registration: expect.objectContaining({ subject_id: targetSubject, display_alias: "Retained driver alias" }) }),
+        expect.objectContaining({ registration: expect.objectContaining({ subject_id: ownedNodeSubject, status: "retired", cascade_retired: false }) }),
+        expect.objectContaining({ registration: expect.objectContaining({ subject_id: activeChildId, status: "active" }) }),
+      ]));
+      const addedChild = { ...structuredClone(child), content: { ...structuredClone(child.content),
+        id: addedChildId, canonicalKey: "import_new_child",
+        selector: { ...structuredClone(child.content.selector), value: "import_new_child" } } };
+      const nextId = "crel_import_new_child";
+      const next = refreshSuccessorSource({ ...structuredClone(base), manifest: { ...structuredClone(base.manifest),
+        release: { ...base.manifest.release, id: nextId, version: "1.2.0", sequence: 2,
+          publishedAt: "2026-09-02T00:00:00Z", predecessor: initialPin } },
+      documents: [...base.documents, addedChild] }, base.sources[0]!.path);
+      const successor = { ...baseline, targetReleaseId: nextId, releases: [base, next] };
+      const compiledNext = compileCatalogRelease(successor);
+      if (!compiledNext.ok) throw new Error(JSON.stringify(compiledNext.error));
+      const advanced = await installPublishedRelease(owner, { mode: "advance", source: jsonCatalogReleaseSource(successor),
+        expectedCurrent: initialPin, expectedTargetDigest: compiledNext.value.aggregateDigest });
+      if (!advanced.ok) throw new Error(JSON.stringify(advanced.error));
+      expect(await registrations()).toEqual(retained);
+      const supplement = { ...command, expectedRelease: { id: compiledNext.value.release.id, digest: compiledNext.value.release.digest },
+        idempotencyKey: randomUUID(), proof: { reason: "Supplement missing children" }, context: actor };
+      expect(await service.execute({ ...supplement, destinationModuleId: wrongModule }))
+        .toMatchObject({ ok: false, error: { kind: "placement-conflict" } });
+      expect(await registrations()).toEqual(retained);
+      const completed = await service.execute(supplement);
+      if (!completed.ok) throw new Error(JSON.stringify(completed.error));
+      expect(completed.value).toMatchObject({ outcome: "committed", registrationId: driver.value.registrationId,
+        placementId: driver.value.placementId, moduleId: module, registrationVersion: driver.value.registrationVersion,
+        placementVersion: driver.value.placementVersion });
+      const after = await registrations();
+      expect(after.filter(row => row.registration.subject_id !== addedChildId)).toEqual(retained);
+      expect(after.filter(row => row.registration.subject_id === addedChildId)).toEqual([
+        { registration: expect.objectContaining({ status: "active", registration_method: "explicit" }),
+          placement: expect.objectContaining({ module_id: null }) },
+      ]);
+      expect(await service.execute(supplement)).toEqual({ ok: true, value: { ...completed.value, outcome: "replayed" } });
+      expect(await registrations()).toEqual(after);
+      expect((await application.query("select action,metadata from public.audit_events where trace_id='import-children'")).rows)
+        .toEqual([{ action: "registration-register", metadata: expect.objectContaining({ cascadedRegistrations: [
+          expect.objectContaining({ subjectId: addedChildId }),
+        ] }) }]);
+    } finally {
+      await application?.end();
+      expect((await dropLabRuntimeLogins(lane.url, runToken)).failed).toEqual([]);
+      await owner.end();
+      await lane.drop();
+    }
+  }, 120_000);
+
   it("does not hold the recognition lock while waiting for publication", async () => {
     const publisher = await admin.connect();
     let pending: ReturnType<ReturnType<typeof createRegistrationService>["execute"]> | undefined;

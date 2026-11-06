@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 
 import { mayRegisterInOrganization, type CatalogActorKind } from "@/application/parameter-catalog/authority";
-import type { CatalogDomainState } from "@/application/parameter-catalog/states";
+import { catalogStateFromFailure, deriveCatalogDomainState, type CatalogDomainState } from "@/application/parameter-catalog/states";
+import { listAllCanonicalPages } from "@/application/parameter-catalog/listAllCanonicalPages";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Textarea } from "@/components/ui/textarea";
+import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
+import { presentError } from "@/infrastructure/http/presentError";
 import type { CatalogMarkdownImportResponse, CatalogSubjectResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import "@/features/parameter-catalog/parameter-catalog.css";
@@ -23,6 +28,7 @@ import { usePublicationFlow } from "./usePublicationFlow";
 import { openBatchRegistration } from "./batchRegistrationHandoff";
 import { DEFINITION_IMPORT_TEMPLATE } from "@/domain/parameter-catalog/definitionImportTemplate";
 import { formatUsageSummary } from "./formatUsageSummary";
+import { createGovernanceIdempotencyKey, createGovernanceSubmitGate, fingerprintGovernanceDraft } from "./governanceState";
 
 const formatDiffValue = (value: unknown) => value == null ? "—" : typeof value === "string" ? value : JSON.stringify(value);
 const outcomeLabels = { create: "新建", revise: "修订", error: "错误", skip: "跳过", conflict: "冲突" } as const;
@@ -60,6 +66,17 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [leaveConfirm, setLeaveConfirm] = useState(false);
   const [newSubjects, setNewSubjects] = useState<CatalogSubjectResponse["item"][]>([]);
+  const [registrationRoots, setRegistrationRoots] = useState<CatalogSubjectResponse["item"][]>([]);
+  const [childRegistration, setChildRegistration] = useState<{
+    owner: CatalogSubjectResponse["item"]; children: CatalogSubjectResponse["item"][];
+    moduleId: string; moduleName: string; catalogReleaseId: string; idempotencyKey: string;
+  } | null>(null);
+  const [registrationPending, setRegistrationPending] = useState(false);
+  const [registrationError, setRegistrationError] = useState("");
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [registrationStale, setRegistrationStale] = useState(false);
+  const registrationGate = useRef(createGovernanceSubmitGate());
+  const registrationEpoch = useRef(0);
   const [subjectError, setSubjectError] = useState(false);
   const [subjectEpoch, setSubjectEpoch] = useState(0);
   const [placementHints, setPlacementHints] = useState<CatalogMarkdownImportResponse["item"]["placementHints"]>([]);
@@ -92,7 +109,15 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setNoChange(false);
     setErrorsOnly(false);
     setPlacementHints([]);
-    return flow.stopPolling;
+    setNewSubjects([]);
+    setRegistrationRoots([]);
+    setChildRegistration(null);
+    setRegistrationPending(false);
+    setRegistrationError("");
+    setRegistrationSuccess(false);
+    setRegistrationStale(false);
+    registrationGate.current.reset();
+    return () => { registrationEpoch.current += 1; flow.stopPolling(); };
   }, [open, catalog, props.currentPersonId, props.organizationId]);
 
   useEffect(() => {
@@ -106,12 +131,18 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     if (!open || !succeeded || !candidate) return undefined;
     let cancelled = false;
     setSubjectError(false);
+    setNewSubjects([]);
+    setRegistrationRoots([]);
     void (async () => {
       try {
         const resolved = flow.candidateVerified ? candidate : (await catalog.getPublicationCandidate(candidate.id)).item;
         const subjects = await Promise.all((resolved.impactSummary.addedSubjectIds ?? [])
           .map(async (id) => (await catalog.getSubject(id)).item));
-        if (!cancelled) setNewSubjects(subjects.filter((subject) => subject.registration.status === "unregistered"));
+        const unregistered = subjects.filter((subject) => subject.registration.status === "unregistered");
+        const owners = await Promise.all([...new Set(unregistered.flatMap(subject => subject.ownerSubjectId ? [subject.ownerSubjectId] : []))]
+          .map(async id => (await catalog.getSubject(id)).item));
+        const roots = [...new Map([...unregistered.filter(subject => !subject.ownerSubjectId), ...owners].map(subject => [subject.id, subject])).values()];
+        if (!cancelled) { setNewSubjects(unregistered); setRegistrationRoots(roots); }
       } catch {
         if (!cancelled) setSubjectError(true);
       }
@@ -120,6 +151,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   }, [open, succeeded, candidate, flow.candidateVerified, catalog, subjectEpoch]);
 
   const close = () => {
+    if (registrationPending) return;
     if (dirty && !leaveConfirm) { setLeaveConfirm(true); return; }
     setLeaveConfirm(false);
     props.onOpenChange(false);
@@ -156,6 +188,80 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     catch (error) { flow.setFailure(publicationFailureCopy(error)); }
     finally { flow.setPending(false); }
   };
+  const prepareChildRegistration = async (ownerId: string) => {
+    if (registrationPending || !mayRegisterInOrganization(actor, sessionPermissions, domainState)) return;
+    const epoch = ++registrationEpoch.current;
+    setRegistrationPending(true);
+    setRegistrationError("");
+    setChildRegistration(null);
+    setRegistrationStale(false);
+    registrationGate.current.reset();
+    try {
+      const document = await catalog.getCatalog();
+      if (!document.item || !mayRegisterInOrganization(actor, sessionPermissions, deriveCatalogDomainState({ document }))) {
+        throw new Error("当前身份或目录状态不允许登记。");
+      }
+      const release = document.item.catalogReleaseId;
+      const owner = (await catalog.getSubject(ownerId, { catalogReleaseId: release })).item;
+      if (owner.id !== ownerId || owner.type !== "driver" || owner.ownerSubjectId || owner.membership.status !== "active"
+        || owner.registration.status !== "active") throw new Error("驱动状态已变化，请刷新后重试。");
+      const [registration, subjects, registry] = await Promise.all([
+        props.governance.getRegistration(props.organizationId, owner.registration.id),
+        listAllCanonicalPages(query => catalog.listSubjects(query), { type: "node-type", lifecycle: "active", registration: "unregistered", catalogReleaseId: release }),
+        props.moduleRegistry?.getRegistry(),
+      ]);
+      const item = registration.item;
+      const moduleId = item.placement.moduleId;
+      const module = registry?.modules.find(module => module.id === moduleId);
+      if (item.organizationId !== props.organizationId || item.subjectId !== ownerId || item.id !== owner.registration.id
+        || item.status !== "active" || item.catalogReleaseId !== release) throw new Error("驱动登记已变化，请刷新后重试。");
+      if (!moduleId || (registry && (!module || !(module.kind === "business" || module.kind === "unclassified")))) {
+        throw new Error("请先在模块管理中为驱动设置有效的业务归属，再补登记子节点。");
+      }
+      const children = subjects.filter(subject => subject.ownerSubjectId === ownerId && subject.registration.status === "unregistered"
+        && subject.membership.status === "active");
+      if (!children.length) throw new Error("当前已没有待补登记的子节点，请刷新登记状态。");
+      if (epoch === registrationEpoch.current) setChildRegistration({ owner, children, moduleId,
+        moduleName: module && registry ? modulePathSegments(module, registry.modules).join(" / ") : item.placement.displayName,
+        catalogReleaseId: release, idempotencyKey: createGovernanceIdempotencyKey() });
+    } catch (error) {
+      if (epoch === registrationEpoch.current) setRegistrationError(presentError(error, "无法读取登记信息，请重试。"));
+    } finally { if (epoch === registrationEpoch.current) setRegistrationPending(false); }
+  };
+  const registerChildren = async () => {
+    if (!childRegistration || registrationPending || registrationStale || !mayRegisterInOrganization(actor, sessionPermissions, domainState)) return;
+    const body = { subjectId: childRegistration.owner.id, placement: { mode: "use-default" as const },
+      destinationModuleId: childRegistration.moduleId, reason: "定义导入后补登记驱动子节点" };
+    const prepared = registrationGate.current.begin({ actor, action: "register-subject",
+      state: { kind: "ready", catalogReleaseId: childRegistration.catalogReleaseId, writesEnabled: true },
+      catalogReleaseId: childRegistration.catalogReleaseId, draftFingerprint: fingerprintGovernanceDraft({ organizationId: props.organizationId, body }),
+      createIdempotencyKey: () => childRegistration.idempotencyKey });
+    if (prepared.status !== "ready") return;
+    const epoch = registrationEpoch.current;
+    setRegistrationPending(true);
+    setRegistrationError("");
+    try {
+      await props.governance.createRegistration(props.organizationId, body, prepared.context);
+      if (epoch !== registrationEpoch.current) return;
+      registrationGate.current.succeed();
+      setChildRegistration(null);
+      setRegistrationSuccess(true);
+      setSubjectEpoch(value => value + 1);
+      props.onCompleted?.();
+    } catch (error) {
+      if (epoch !== registrationEpoch.current) return;
+      registrationGate.current.fail();
+      const state = catalogStateFromFailure(error);
+      const stale = state.kind === "conflict" || state.kind === "retired" || state.kind === "unregistered"
+        || (error instanceof WiseEffApiError && error.status !== undefined && error.status >= 400 && error.status < 500
+          && error.status !== 408 && error.status !== 429);
+      setRegistrationStale(stale);
+      setRegistrationError(stale ? state.kind === "unregistered" || state.kind === "retired"
+        ? "驱动已停用或登记状态已变化，请先在模块管理恢复驱动，再重新读取登记信息。"
+        : `${presentError(error, "登记或目录已变化。")}请重新读取登记信息并确认。`
+        : "补登记失败，可重试同一次操作。");
+    } finally { if (epoch === registrationEpoch.current) setRegistrationPending(false); }
+  };
   const inputDisabled = pending || Boolean(job && publicationJobIsPending(job.status));
   const visibleEntries = entries?.filter((entry) =>
     !errorsOnly || entry.outcome === "error" || entry.outcome === "conflict");
@@ -168,7 +274,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   }))) ?? [];
 
   return <>
-    <ModalDialog open={open} onDismiss={pending ? undefined : close}
+    <ModalDialog open={open} onDismiss={pending || registrationPending ? undefined : close}
       className={["confirm-dialog", "governance-confirm-dialog", "modal-card--lg", "parameter-catalog-publication-dialog",
         "parameter-catalog-import-dialog"].join(" ")}
       backdropClassName="param-admin-modal-backdrop" describedBy>
@@ -182,20 +288,37 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
             data-tone={status.tone}>{succeeded === "active" && entries && status.tone === "success"
               ? `已发布 ${counts.create + counts.revise} 条定义，目录已生效。` : status.message}</p> : null}
           {failure ? <p role="alert" className="governance-confirm-dialog__error">{failure}</p> : null}
+          {registrationSuccess ? <p role="status">子节点登记已更新。</p> : null}
           {succeeded && subjectError ? <p role="alert">新主体的登记状态加载失败，发布仍已生效。<button type="button"
             className="button subtle sm" onClick={() => setSubjectEpoch((value) => value + 1)}>重试加载</button></p> : null}
           {succeeded && newSubjects.length > 0 ? <section aria-label="待登记的新主体">
             <p>以下新主体尚未在本组织登记。登记是独立操作，不影响已生效的发布。</p>
             <ul className="list-disc space-y-1 pl-4 text-sm">{newSubjects.map((subject) => <li key={subject.id}>{subject.canonicalName}</li>)}</ul>
-            {mayRegisterInOrganization(actor, sessionPermissions, domainState)
-              ? <button type="button" className="button subtle sm" onClick={() => {
+            {registrationRoots.some(subject => subject.ownerSubjectId === undefined && subject.registration.status === "unregistered")
+              && mayRegisterInOrganization(actor, sessionPermissions, domainState)
+              ? <button type="button" className="button subtle sm" disabled={registrationPending} onClick={() => {
+                const roots = registrationRoots.filter(subject => subject.registration.status === "unregistered");
                 openBatchRegistration({ organizationId: props.organizationId, userId: props.currentPersonId,
-                  subjectIds: newSubjects.map((subject) => subject.id), hints: Object.fromEntries(newSubjects.flatMap((subject) => {
+                  subjectIds: roots.map((subject) => subject.id), hints: Object.fromEntries(roots.flatMap((subject) => {
                     const hint = placementHints?.find((item) => item.selector === subject.canonicalName && item.kind === subject.type);
                     return hint ? [[subject.id, { categoryPath: hint.categoryPath, displayAlias: hint.displayAlias }]] : [];
                   })) });
                 props.onOpenChange(false);
               }}>前往批量登记</button> : null}
+            {newSubjects.some(subject => subject.ownerSubjectId) ? <p>子节点随所属驱动登记，并继承驱动的业务归属。</p> : null}
+            {registrationRoots.filter(subject => subject.registration.status !== "unregistered").map(owner => <div key={owner.id}>
+              {owner.registration.status === "active" && owner.membership.status === "active"
+                ? mayRegisterInOrganization(actor, sessionPermissions, domainState) ? <button type="button" className="button subtle sm"
+                  disabled={registrationPending} onClick={() => void prepareChildRegistration(owner.id)}>补登记子节点：{owner.canonicalName}</button> : null
+                : <p>{owner.canonicalName}：请先恢复驱动，再处理子节点登记。</p>}
+              <a className="link-button" target="_blank" rel="noopener noreferrer"
+                href={withOrganizationScope(`/parameter-admin/modules?selectedSubject=${encodeURIComponent(owner.id)}`, props.organizationId)}>前往模块管理（新标签页）</a>
+            </div>)}
+            {registrationRoots.some(subject => subject.registration.status !== "unregistered")
+              ? <p>在新标签页处理驱动后，返回此窗口刷新登记状态。</p> : null}
+            {registrationError && !childRegistration ? <p role="alert">{registrationError}</p> : null}
+            <button type="button" className="button subtle sm" disabled={registrationPending}
+              onClick={() => setSubjectEpoch(value => value + 1)}>刷新登记状态</button>
           </section> : null}
           {canPreview && !succeeded ? <div className="parameter-catalog-publication-dialog__form">
             <div className="parameter-catalog-import-dialog__file-actions">
@@ -279,10 +402,22 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
             onClick={() => void flow.pollJob(job.id)}>{publicationCopy.refreshJob}</button> : null}
           {canRefresh ? <button type="button" className="button ghost sm" disabled={pending}
             onClick={() => void refresh()}>更新发布状态</button> : null}
-          <button type="button" className="button ghost sm" disabled={pending} onClick={close}>关闭</button>
+          <button type="button" className="button ghost sm" disabled={pending || registrationPending} onClick={close}>关闭</button>
         </div>
       </>}
     </ModalDialog>
+    <ConfirmDialog open={Boolean(childRegistration)} title="补登记子节点" confirmLabel="确认补登记" pending={registrationPending}
+      confirmDisabled={registrationStale || !mayRegisterInOrganization(actor, sessionPermissions, domainState)}
+      acknowledgement="我已核对全部待登记子节点及驱动的业务归属" error={registrationError}
+      acknowledgementKey={childRegistration?.idempotencyKey}
+      description={childRegistration ? <>
+        <p>{childRegistration.owner.canonicalName} · 业务归属：{childRegistration.moduleName}</p>
+        <p>补齐该驱动当前全部尚未登记的有效子节点，沿用驱动的业务归属。已停用子节点保持停用。</p>
+        <ul>{childRegistration.children.map(child => <li key={child.id}>{child.canonicalName}</li>)}</ul>
+      </> : null}
+      extra={registrationStale && childRegistration ? <button type="button" className="button subtle sm"
+        onClick={() => void prepareChildRegistration(childRegistration.owner.id)}>重新读取登记信息</button> : null}
+      onConfirm={() => void registerChildren()} onCancel={() => { setChildRegistration(null); setRegistrationError(""); }} />
     <PublicationConfirmation confirm={confirm} allowed={confirm === "publish" ? canPublish : canPreview}
       risk={candidate?.riskClass ?? "high"} actor={actor} pending={pending}
       onPreview={() => void runPreview()} onPublish={() => void runPublish()} onCancel={() => setConfirm(null)} />
