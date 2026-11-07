@@ -153,7 +153,7 @@
 - `XIAOZE-PLAN-MULTISTEP-001`：多步计划在批准后 checkpoint resume，并报告观察到的执行结果（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。
 - `XIAOZE-PROACTIVE-001`：opt-in 主动建议为只读、受 authz 限制；关闭时不展示（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。
 - `PERM-GOV-001` / `PERM-USER-MGMT-001`：`/organization/members` 的 Admin 成员治理与非 Admin 拒绝（`e2e/acceptance/permissions.acceptance.spec.ts`）。
-- `PERM-USER-IMPORT-001`：本地账号批量导入预检、原子创建、恢复及无密码报告的完整浏览器覆盖待实现；工作簿和预检 API 的定向测试分别位于 `src/application/userImportWorkbook.test.ts` 和 `server/modules/users/userImport.integration.test.ts`。
+- `PERM-USER-IMPORT-001`：本地账号批量导入预检、原子创建、恢复及无密码报告的完整浏览器证据待补；定向测试位于 `src/application/userImportWorkbook.test.ts`、`server/modules/users/userImport.integration.test.ts` 和 `e2e/acceptance/user-bulk-import.acceptance.spec.ts`。
 - `ORG-ADMIN-RENAME-001`：Admin 在 `/organization` 改名 + 审计 + 非 Admin `PATCH` 403（`e2e/acceptance/permissions.acceptance.spec.ts`）。
 - `MOD-TREE-PARAM-001`：Admin 创建嵌套参数模块、将参数挂到子模块，并按父模块筛选时包含子树（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-PARAM-002`：Admin 移动参数模块到新父节点，循环移动被拒绝（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。

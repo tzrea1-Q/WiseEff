@@ -96,6 +96,8 @@ export const routeManifest = [
   },
   { id: "users.list", method: "GET", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
   { id: "users.importPreview", method: "POST", path: "/api/v1/users/imports/preview", module: "users", stability: "commercial-readiness" },
+  { id: "users.importCreate", method: "POST", path: "/api/v1/users/imports", module: "users", stability: "commercial-readiness" },
+  { id: "users.importRead", method: "GET", path: "/api/v1/users/imports/:importId", module: "users", stability: "commercial-readiness" },
   { id: "users.create", method: "POST", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
   { id: "users.setOidcIdentity", method: "PUT", path: "/api/v1/users/:userId/oidc-identity", module: "users", stability: "commercial-readiness" },
   {

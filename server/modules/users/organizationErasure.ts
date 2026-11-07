@@ -121,6 +121,7 @@ export async function retryOrganizationErasure(db: Database, caller: UserInvocat
         await tx.query("delete from organization_team_members where organization_id=$1", [org]);
         await tx.query("delete from organization_teams where organization_id=$1", [org]);
         await tx.query("delete from local_registration_role_requests where organization_id=$1", [org]);
+        await tx.query("delete from user_import_receipts where organization_id=$1", [org]);
         await tx.query("delete from user_role_bindings where organization_id=$1", [org]);
         await tx.query("delete from audit_events where organization_id=$1", [org]);
         const members = (await tx.query<{ id: string }>("select id from users where organization_id=$1 order by id for update", [org])).rows;

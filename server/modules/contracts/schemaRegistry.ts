@@ -188,6 +188,16 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestParameters: [{ name: "organizationId", in: "query", schema: { type: "string" } }],
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "413": "ErrorResponse" }
   },
+  "users.importCreate": {
+    summary: "Atomically create a local-user import or recover its committed receipt", tags: ["users"], requestBody: "UserImportCreateRequest", responseBody: "UserImportReceiptResponse",
+    requestParameters: [{ name: "organizationId", in: "query", schema: { type: "string" } }],
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "409": "ErrorResponse", "413": "ErrorResponse" }
+  },
+  "users.importRead": {
+    summary: "Recover a committed user import receipt", tags: ["users"], responseBody: "UserImportReceiptResponse",
+    requestParameters: [{ name: "importId", in: "path", required: true, schema: { type: "string" } }, { name: "organizationId", in: "query", schema: { type: "string" } }],
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "users.setOidcIdentity": {
     summary: "Bind a member to the configured OIDC issuer and subject with optimistic concurrency",
     tags: ["users"],

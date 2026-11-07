@@ -88,7 +88,7 @@
 .user-import-dialog__table th:nth-child(4) { width: 17%; }
 .user-import-dialog__table tbody tr:last-child td { border-bottom: 0; }
 .user-import-dialog__roles { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.user-import-dialog__footer { display: flex; justify-content: flex-end; padding: var(--space-4) var(--space-6); border-top: var(--stroke-hairline) solid var(--border); }
+.user-import-dialog__footer { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-4) var(--space-6); border-top: var(--stroke-hairline) solid var(--border); }
 @media (max-width: 700px) {
   .user-import-dialog__header, .user-import-dialog__preview-heading { align-items: flex-start; flex-direction: column; }
   .user-import-dialog__steps { grid-template-columns: minmax(0, 1fr); }

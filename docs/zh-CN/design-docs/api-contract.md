@@ -19,6 +19,10 @@ DTO 包含 `id`、`organizationId`、`name`、可空的 `skillId`、`skillName`�
 
 日期：2026-05-25
 
+## 本地用户批量导入
+
+`POST /api/v1/users/imports/preview` 只预检，不写入。`POST /api/v1/users/imports` 接收 `{ importId, previewToken, rows }` 并原子创建整批账号。`GET /api/v1/users/imports/:importId` 允许原操作者在仍有权限时按操作组织读取已提交回执。已提交重放先返回回执，再考虑预检时效或密码校验；非敏感意图不同会冲突，重放不会重置现有账号密码。未查到回执或响应不确定不能证明回滚。预检和确认请求限 4 MiB，响应及回执不含密码。
+
 ## 1. API 原则
 
 正式 API 采用 REST + JSON。前端通过 `application/ports` 和 `infrastructure/http` 中的 API client、DTO 映射访问后端。

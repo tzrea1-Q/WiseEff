@@ -10,7 +10,7 @@ import { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from ".
 import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
 import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
 import { createUserBodySchema, roleBindingSchema } from "../../users/schemas";
-import { userImportPreviewBodySchema, userImportPreviewResponseSchema } from "./userImport";
+import { userImportCreateBodySchema, userImportReceiptSchema, userImportPreviewBodySchema, userImportPreviewResponseSchema } from "./userImport";
 import { oidcIdentitySchema, setOidcIdentityBodySchema } from "./oidcMembers";
 import { enterOperatingContextBodySchema, operatingContextResponseSchema } from "./organizationScope";
 
@@ -121,6 +121,8 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   DebugModuleDeletionPreviewResponse: debugModuleDeletionPreviewResponseSchema,
   CreateLocalAccountUserRequest: createUserBodySchema,
   UserImportPreviewRequest: userImportPreviewBodySchema,
+  UserImportCreateRequest: userImportCreateBodySchema,
+  UserImportReceiptResponse: userImportReceiptSchema,
   UserImportPreviewResponse: userImportPreviewResponseSchema,
   SetUserOidcIdentityRequest: setOidcIdentityBodySchema,
   UserGovernanceResponse: z.object({ item: userGovernanceDtoSchema }),

@@ -195,7 +195,7 @@
 - `PARAM-ENABLE-TOGGLE-001`：已自动化。软件用户禁用节点时提供理由与确认，跟踪独立结构提交；实际指派的硬件／软件审阅者推进、拒绝并保留可信审计。保留 UI、API、数据库、审计和截图证据；覆盖 `/parameters`、`/parameter-submissions`、`/parameter-review`。最终源码应用不在范围内（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GUARD-001`：已自动化。非标准 status 只读与二级确认（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PERM-GOV-001` / `PERM-USER-MGMT-001`：Admin 在 `/organization/members` 创建、更新或永久注销非本人账号；注销会级联清理账号自有数据并将历史用户引用置空，随后在 `/knowledge-admin` 与 `/parameter-review` 验证“已注销用户”归属；非 Admin 拒绝；`coverage: automated`。
-- `PERM-USER-IMPORT-001`：组织管理员或平台管理员在 `/organization/members` 预检并原子导入本地用户、恢复结果和导出无密码报告；`coverage: future`。已有工作簿与真实 API/数据库预检定向测试，完整浏览器及创建证据待补。
+- `PERM-USER-IMPORT-001`：组织管理员或平台管理员在 `/organization/members` 预检并原子导入本地用户、恢复结果和导出无密码报告；`coverage: future`。已有工作簿预检及原子创建、重放的真实 API/数据库定向测试；中断恢复、报告及完整浏览器证据待补。
 - `ORG-ADMIN-RENAME-001`：Admin 在 `/organization` 改本组织显示名称，写 `organization-update` 审计；非 Admin `PATCH` 返回 403；`coverage: automated`。
 - `PLAT-ROLE-002`：普通 Admin 在 `/organization/members` 看不到平台超级管理员授予控件，API 拒绝自授。
 

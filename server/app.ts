@@ -151,6 +151,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
       && !pattern.startsWith("/api/v1/notifications/") && !pattern.startsWith("/api/v1/platform/")
       && pattern !== "/api/v1/device-bridges/pair"
       && pattern !== "/api/v1/organization/operating-scope" && !pattern.includes("/handovers/") && !pattern.includes("/project-handovers/")) {
+      if (pattern === "/api/v1/users/imports") return handle(request);
       const actor = await authResolver(request);
       const requested = request.query.organizationId;
       if (requested !== undefined && (typeof requested !== "string" || !requested.trim())) throw new ApiError("VALIDATION_FAILED", "Invalid operating Organization.");

@@ -221,7 +221,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 ## Deferred Or Conditional Operations
 
-- `PERM-USER-IMPORT-001`: Read-only workbook and API preflight have focused tests; creation, recovery, reporting and real-browser evidence remain in the full feature.
+- `PERM-USER-IMPORT-001`: Workbook preflight and atomic creation/replay have focused API/PostgreSQL tests; interrupted-result recovery, reports and complete real-browser evidence remain in the full feature.
 - `ORG-OPERATING-LIFECYCLE-001`: Requires actual local password sessions in an isolated local-auth API lane; HMAC/OIDC lanes skip this provider-specific workflow. The signed OIDC companion has its own conditional operation and evidence.
 - `ORG-OIDC-TRANSFER-001`: Requires an isolated OIDC API lane with a controlled loopback issuer/JWKS and its ephemeral test signing key; other provider lanes cannot establish this evidence.
 - `ORG-ACCOUNT-TRANSFER-001`: Browser workflow requires an isolated real local-auth API lane; HMAC and OIDC lanes skip this local-password interaction.

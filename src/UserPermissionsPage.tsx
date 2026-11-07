@@ -36,7 +36,7 @@ import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { migrateLegacyRoleId, organizationRoleIds, pickPrimaryPlatformRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
 import type { CreateGovernedUserInput, UpdateOrganizationRolesInput, OrganizationTeamsClient, OrganizationTeamDto } from "@/infrastructure/http/userGovernanceClient";
-import type { UserImportPreview } from "@/infrastructure/http/userGovernanceClient";
+import type { UserImportPreview, UserImportReceipt } from "@/infrastructure/http/userGovernanceClient";
 import type { UserImportRow } from "@/application/userImportWorkbook";
 import type { LocalAuthPublicConfigDto } from "@/infrastructure/http/authClient";
 import type { PrototypeState, User } from "@/domain/prototype/types";
@@ -68,6 +68,8 @@ export type UserPermissionsPageProps = {
 
 export type UserGovernanceActions = {
   previewUserImport?(rows: UserImportRow[]): Promise<UserImportPreview>;
+  createUserImport?(input: { importId: string; previewToken: string; rows: UserImportRow[] }): Promise<UserImportReceipt>;
+  readUserImport?(importId: string): Promise<UserImportReceipt>;
   listUsers(): Promise<User[]>;
   createUser(input: CreateGovernedUserInput): Promise<User | void>;
   getAuthenticationConfig?(): Promise<LocalAuthPublicConfigDto>;
@@ -1012,7 +1014,7 @@ export function UserPermissionsPage({
         onConfirm={() => void confirmGovernanceAction()}
       />
 
-      {userImportOpen && !readOnly && directoryScope && userGovernanceActions?.previewUserImport ? <UserImportDialog organizationId={directoryScope} actions={userGovernanceActions} roleLabels={roleLabels} canGrantPlatformAdmin={state.activeRoleId === "platform-admin"} onClose={() => setUserImportOpen(false)} /> : null}
+      {userImportOpen && !readOnly && directoryScope && userGovernanceActions?.previewUserImport ? <UserImportDialog organizationId={directoryScope} actions={userGovernanceActions} roleLabels={roleLabels} canGrantPlatformAdmin={state.activeRoleId === "platform-admin"} onClose={() => setUserImportOpen(false)} onCreated={() => setDirectoryReloadToken(value => value + 1)} /> : null}
       <ModalDialog open={addMemberChoiceOpen && !readOnly} onDismiss={() => setAddMemberChoiceOpen(false)} className="user-permissions-modal-card modal-card--sm">{({ titleId }) => <>
         <h3 id={titleId}>添加成员</h3><div className="modal-body">
           <Button onClick={() => { setAddMemberChoiceOpen(false); onInvite?.(); }}>邀请加入</Button><p className="member-details__hint">成员通过邀请链接自行设置登录账号和密码。</p>
