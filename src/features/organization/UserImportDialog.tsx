@@ -3,7 +3,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Download, Upload } from "lucide-react";
-import type { UserImportRow } from "@/application/userImportWorkbook";
+import type { UserImportRow, buildUserImportReport } from "@/application/userImportWorkbook";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import type { UserImportPreview, UserImportReceipt } from "@/infrastructure/http/userGovernanceClient";
 import type { PlatformRoleId } from "@/domain/users/types";
@@ -29,6 +29,8 @@ export function UserImportDialog({ actorId, organizationId, actions, roleLabels,
   const [organizationName, setOrganizationName] = useState(organizationId);
   const [preview, setPreview] = useState<UserImportPreview | null>(null);
   const [error, setError] = useState("");
+  const [reportError, setReportError] = useState("");
+  const [fileError, setFileError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<UserImportRow[] | null>(null);
@@ -90,17 +92,28 @@ export function UserImportDialog({ actorId, organizationId, actions, roleLabels,
       const anchor = document.createElement("a"); anchor.href = url; anchor.download = "用户导入模板.xlsx"; anchor.click(); URL.revokeObjectURL(url);
     } catch (reason) { setError(presentError(reason, "无法下载模板，请稍后重试。")); }
   }
+  async function downloadReport(input: Parameters<typeof buildUserImportReport>[0]) {
+    setReportError("");
+    try {
+      const { buildUserImportReport } = await import("@/application/userImportWorkbook");
+      const url = URL.createObjectURL(new Blob([buildUserImportReport(input) as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = input.kind === "success" ? "用户导入结果清单.xlsx" : "用户导入错误清单.xlsx"; anchor.click(); URL.revokeObjectURL(url);
+    } catch { setReportError("清单下载失败，请重试。"); }
+  }
   async function select(file: File | undefined) {
     const current = ++generation.current;
     const retrying = Boolean(importId.current);
-    setPreview(null); setRows(null); setError(""); setFileName(file?.name ?? "");
+    setPreview(null); setRows(null); setError(""); setReportError(""); setFileError(false); setFileName(file?.name ?? "");
     if (!file) { setBusy(false); return; }
     setBusy(true);
     try {
       if (retrying && await recover() !== "missing") return;
-      if (file.size > 2 * 1024 * 1024) throw new Error("文件超过 2 MiB 上限。");
       const { parseUserImportWorkbook } = await import("@/application/userImportWorkbook");
-      const parsed = await parseUserImportWorkbook(new Uint8Array(await file.arrayBuffer()));
+      let parsed: Awaited<ReturnType<typeof parseUserImportWorkbook>>;
+      try {
+        if (file.size > 2 * 1024 * 1024) throw new Error("文件超过 2 MiB 上限。");
+        parsed = await parseUserImportWorkbook(new Uint8Array(await file.arrayBuffer()));
+      } catch (reason) { if (generation.current === current) setFileError(true); throw reason; }
       const result = await actions.previewUserImport!(parsed.rows);
       if (generation.current === current) { setRows(parsed.errors.length ? null : parsed.rows); setPreview({ ...result, errors: [...parsed.errors, ...result.errors], token: parsed.errors.length ? null : result.token }); }
     } catch (reason) {
@@ -158,17 +171,20 @@ export function UserImportDialog({ actorId, organizationId, actions, roleLabels,
       <p className="user-import-dialog__hint">可授予角色：{Object.entries(roleLabels).filter(([id]) => canGrantPlatformAdmin || id !== "platform-admin").map(([, label]) => label).join("、")}。多个角色用中文分号（；）分隔。</p>
       {busy ? <p className="user-import-dialog__notice" role="status">正在检查文件和用户名…</p> : null}
       {error ? <div className="user-import-dialog__notice user-import-dialog__notice--error" role="alert"><strong>{outcome === "unknown" ? "结果尚未确认" : outcome === "rolled-back" ? "未创建任何账号" : "文件检查失败"}</strong><p>{error}</p></div> : null}
+      {reportError ? <div className="user-import-dialog__notice user-import-dialog__notice--error" role="alert">{reportError}</div> : null}
+      {fileError && outcome !== "unknown" ? <><p>请修改含凭据的原始模板并重新上传预检；本清单不是可导入的凭据模板。</p><Button type="button" variant="outline" onClick={() => void downloadReport({ kind: "file-error", organizationName })}><Download aria-hidden="true" />下载错误清单</Button></> : null}
       {outcome === "pending" ? <p role="status">正在创建 {preview?.total} 位成员。关闭不会取消服务器上的创建。</p> : null}
       {outcome === "unknown" && importId.current ? <p>待确认批次编号：{importId.current}。关闭不会取消正在执行的创建。</p> : null}
       {recovery === "checking" && outcome === "unknown" ? <p role="status">正在查询原批次结果…</p> : null}
       {outcome === "unknown" && importId.current && recovery !== "checking" ? <Button type="button" variant="outline" onClick={() => void recover()}>查询原批次结果</Button> : null}
-      {receipt ? <section className="user-import-dialog__notice user-import-dialog__notice--success" aria-label="创建结果"><h4>创建完成</h4><p>操作组织：{organizationName} · 已创建 {receipt.count} 人</p><p>批次编号：{receipt.importId}</p><ul>{receipt.rows.map(row => <li key={row.row}>第 {row.row} 行：{row.name ?? row.userId}{row.username ? `（${row.username}）` : ""}</li>)}</ul></section> : null}
+      {receipt ? <section className="user-import-dialog__notice user-import-dialog__notice--success" aria-label="创建结果"><h4>创建完成</h4><p>操作组织：{organizationName} · 已创建 {receipt.count} 人</p><p>批次编号：{receipt.importId}</p><ul>{receipt.rows.map(row => <li key={row.row}>第 {row.row} 行：{row.name ?? `用户信息不可用（${row.userId}）`}{row.username ? `（${row.username}）` : ""}</li>)}</ul><Button type="button" variant="outline" onClick={() => void downloadReport({ kind: "success", organizationName, receipt })}><Download aria-hidden="true" />下载结果清单</Button></section> : null}
       {preview && !receipt ? <section className="user-import-dialog__preview" aria-label="导入预览">
         <div className="user-import-dialog__preview-heading"><div><h4>预检结果</h4><p>操作组织：{preview.organization.name}</p></div><div className="user-import-dialog__counts"><span>成员 <strong>{preview.total}</strong> 人</span><span>管理员权限 <strong>{preview.privilegedCount}</strong> 人</span></div></div>
         <div className={`user-import-dialog__notice${preview.errors.length ? " user-import-dialog__notice--error" : " user-import-dialog__notice--success"}`} role="status">
           <strong>{preview.errors.length ? `发现 ${preview.errors.length} 处问题` : "预检通过"}</strong>
           <p>{outcome === "unknown" ? "请只使用原始文件重试；结果确认之前不要修改批次内容。" : preview.errors.length ? "请修改源文件后重新上传。" : "请核对操作组织、成员和管理员权限后确认创建。"}</p>
           {preview.errors.length ? <ul>{preview.errors.map((item, index) => <li key={`${item.row}-${item.field}-${index}`}>第 {item.row} 行 · {({ name: "姓名", username: "用户名", password: "初始密码", title: "职务", roles: "组织角色" } as Record<string, string>)[item.field] ?? item.field}：{item.message}</li>)}</ul> : null}
+          {preview.errors.length && outcome !== "unknown" ? <><p>请按原始行号修改含凭据的原始模板并重新上传预检；本清单不是可导入的凭据模板。</p><Button type="button" variant="outline" onClick={() => void downloadReport({ kind: "preview", organizationName, preview })}><Download aria-hidden="true" />下载错误清单</Button></> : null}
         </div>
         <div className="user-import-dialog__table"><table><thead><tr><th scope="col">行号</th><th scope="col">姓名</th><th scope="col">用户名</th><th scope="col">职务</th><th scope="col">组织角色</th></tr></thead><tbody>{preview.rows.map((row) => <tr key={row.row}><td>{row.row}</td><td>{row.name}</td><td>{row.username}</td><td>{row.title}</td><td><div className="user-import-dialog__roles">{row.roles.map((role) => roleLabels[role]).join("；")} {row.roles.some((role) => role === "admin" || role === "platform-admin") ? <Badge variant="destructive">管理员权限</Badge> : null}</div></td></tr>)}</tbody></table></div>
       </section> : null}

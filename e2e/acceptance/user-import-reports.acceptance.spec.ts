@@ -1,6 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import * as XLSX from "xlsx";
 import { expect, test } from "playwright/test";
@@ -42,12 +42,14 @@ test("downloads a blocked report, corrects the original and downloads the create
   await page.getByRole("button", { name: "登录", exact: true }).click();
   registerSecret((await (await login).json() as { token: string }).token);
   await prepareInteractionSurface(page);
+  await expect(page.getByText("暂无组织成员。", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "批量导入", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "批量导入成员" });
   const workbook = XLSX.utils.book_new();
   const data = XLSX.utils.aoa_to_sheet([["姓名", "用户名", "初始密码", "职务", "组织角色"], ["有效成员", username, LOCAL_DEMO_SHARED_PASSWORD, "工程师", "访客"], ["待修正成员", "x", LOCAL_DEMO_SHARED_PASSWORD, "", "访客"]]);
   XLSX.utils.book_append_sheet(workbook, data, "用户数据");
   const upload = () => dialog.getByLabel("选择填写后的 XLSX 文件").setInputFiles({ name: "roster.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer });
+  await expect(dialog.getByLabel("选择填写后的 XLSX 文件")).toBeEnabled();
   await upload();
   await expect(dialog.getByText(/发现 .* 处问题/)).toBeVisible();
   await expect(dialog.getByRole("button", { name: /确认创建/ })).toHaveCount(0);
@@ -62,7 +64,7 @@ test("downloads a blocked report, corrects the original and downloads the create
   await dialog.getByRole("button", { name: "下载错误清单" }).click();
   const errorPath = await (await errorDownload).path();
   expect(errorPath).toBeTruthy();
-  const errorBook = XLSX.readFile(errorPath!);
+  const errorBook = XLSX.read(readFileSync(errorPath!), { type: "buffer" });
   const errorValues = XLSX.utils.sheet_to_json<string[]>(errorBook.Sheets[errorBook.SheetNames[0]], { header: 1 });
   expect(errorValues).toContainEqual(["2", username, "有效成员", "工程师", "未创建：整批校验未通过", "", ""]);
   expect(errorValues.some(row => row[0] === "3" && row[4] === "未创建：需修正")).toBe(true);
@@ -77,7 +79,7 @@ test("downloads a blocked report, corrects the original and downloads the create
   await dialog.getByRole("button", { name: "下载结果清单" }).click();
   const resultPath = await (await resultDownload).path();
   expect(resultPath).toBeTruthy();
-  const resultBook = XLSX.readFile(resultPath!);
+  const resultBook = XLSX.read(readFileSync(resultPath!), { type: "buffer" });
   const resultValues = XLSX.utils.sheet_to_json<string[]>(resultBook.Sheets[resultBook.SheetNames[0]], { header: 1 });
   expect(resultValues).toContainEqual(["2", username, "有效成员", "", "已创建", "", ""]);
   expect(resultValues).toContainEqual(["3", `fixed.${suffix}`, "待修正成员", "", "已创建", "", ""]);

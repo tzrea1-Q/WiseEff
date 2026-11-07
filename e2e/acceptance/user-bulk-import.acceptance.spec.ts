@@ -1,6 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import * as XLSX from "xlsx";
 import { expect, test } from "playwright/test";
@@ -12,6 +12,10 @@ import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
+
+// @acceptance PERM-USER-IMPORT-001
+// @operation PERM-USER-IMPORT-001
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -42,18 +46,34 @@ test("creates a reviewed roster and safely retries a lost response", async ({ pa
   await page.getByRole("button", { name: "登录", exact: true }).click();
   registerSecret((await (await login).json() as { token: string }).token);
   await prepareInteractionSurface(page);
+  await expect(page.getByText("暂无组织成员。", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "批量导入", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "批量导入成员" });
+  const templateDownload = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "下载模板" }).click();
+  const templatePath = await (await templateDownload).path();
+  const template = XLSX.read(readFileSync(templatePath!), { type: "buffer" });
+  expect(template.SheetNames).toEqual(["用户数据", "填写说明", "填写示例"]);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([["姓名", "用户名", "初始密码", "职务", "组织角色"], ["批量新成员", username, LOCAL_DEMO_SHARED_PASSWORD, "工程师", "硬件开发；软件开发"]]), "用户数据");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([["姓名", "用户名", "初始密码", "职务", "组织角色"], ["批量新成员", username, LOCAL_DEMO_SHARED_PASSWORD, "工程师", "管理员；硬件开发"]]), "用户数据");
   const bytes = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  await expect(dialog.getByLabel("选择填写后的 XLSX 文件")).toBeEnabled();
   await dialog.getByLabel("选择填写后的 XLSX 文件").setInputFiles({ name: "roster.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: bytes });
   await expect(dialog.getByText("预检通过", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("管理员权限", { exact: true })).toBeVisible();
   await expect(dialog).toContainText("批量导入目标");
   await page.screenshot({ path: testInfo.outputPath("user-import-preview-1440.png"), animations: "disabled" });
   let drop = true;
+  let createdUserId = "";
   await page.route(url => url.pathname === "/api/v1/users/imports", async route => {
-    if (drop && route.request().method() === "POST") { drop = false; await route.fetch(); await route.abort("aborted"); }
+    if (drop && route.request().method() === "POST") {
+      drop = false;
+      const beforePost = await page.evaluate(() => JSON.parse(sessionStorage.getItem("wiseeff.user-import.pending")!));
+      expect(beforePost).toEqual({ importId: expect.any(String), actorId: acceptanceCast.platformOperator.userId, organizationId: organization });
+      const response = await route.fetch(); expect(response.status()).toBe(200);
+      createdUserId = (await response.json() as { item: { rows: Array<{ userId: string }> } }).item.rows[0].userId;
+      await route.abort("aborted");
+    }
     else await route.continue();
   });
   await dialog.getByRole("button", { name: "确认创建 1 位成员" }).click();
@@ -74,9 +94,17 @@ test("creates a reviewed roster and safely retries a lost response", async ({ pa
   await page.keyboard.press("Enter");
   await expect(dialog.getByText("暂时无法查询批次结果，请检查连接后重试。")).toBeVisible();
   dropLookup = false;
+  const lookup = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/users/imports/${locator.importId}`);
   await dialog.getByRole("button", { name: "查询原批次结果" }).click();
+  expect((await lookup).status()).toBe(200);
   await expect(dialog.getByRole("heading", { name: "创建完成" })).toBeVisible();
   await expect(dialog).toContainText(username);
+  const downloading = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "下载结果清单" }).click();
+  const reportPath = await (await downloading).path();
+  const report = XLSX.read(readFileSync(reportPath!), { type: "buffer" });
+  expect(JSON.stringify(report)).not.toContain(LOCAL_DEMO_SHARED_PASSWORD);
+  expect(XLSX.utils.sheet_to_json<string[]>(report.Sheets[report.SheetNames[0]], { header: 1 })).toContainEqual(["2", username, "批量新成员", "", "已创建", "", ""]);
   await page.screenshot({ path: testInfo.outputPath("user-import-result-1440.png"), animations: "disabled" });
   await dialog.getByRole("button", { name: "完成", exact: true }).click();
   await expect(page.getByRole("button", { name: "批量导入", exact: true })).toBeFocused();
@@ -93,6 +121,17 @@ test("creates a reviewed roster and safely retries a lost response", async ({ pa
     const session = await result.json() as { token: string; auth: { organization: { id: string } } };
     registerSecret(session.token); expect(session.auth.organization.id).toBe(organization);
   } finally { await newContext.close(); }
-  expect((await withPgClient(client => client.query("select count(*)::int n from user_import_receipts where organization_id=$1", [organization]))).rows).toEqual([{ n: 1 }]);
+  const observations = await withPgClient(async client => ({
+    receipts: (await client.query("select count(*)::int n from user_import_receipts where organization_id=$1", [organization])).rows,
+    users: (await client.query("select count(*)::int n from users where organization_id=$1 and id=$2", [organization, createdUserId])).rows,
+    audit: (await client.query<{ id: string; kind: string; action: string; target_id: string; actor_user_id: string }>("select id,kind,action,target_id,actor_user_id from audit_events where organization_id=$1 and target_id=$2 and kind='user-create'", [organization, createdUserId])).rows
+  }));
+  expect(observations.receipts).toEqual([{ n: 1 }]); expect(observations.users).toEqual([{ n: 1 }]);
+  expect(observations.audit).toEqual([expect.objectContaining({ kind: "user-create", action: "create", target_id: createdUserId, actor_user_id: acceptanceCast.platformOperator.userId })]);
   expect(browserErrors).toEqual([]);
+  await recordOperationEvidence({ operationId: "PERM-USER-IMPORT-001", title: "Local user import and interrupted result recovery", status: "passed", role: "Platform Admin", route: "/organization/members", page, testInfo,
+    assertions: ["ui", "api", "db", "audit", "screenshot"],
+    api: [{ method: "POST", path: "/api/v1/users/imports", status: 200, responseSummary: "Committed response dropped; original receipt recovered after refresh and another connection failure." }, { method: "GET", path: "/api/v1/users/imports/:importId", status: 200, responseSummary: "Recovered the committed result without the workbook or passwords." }],
+    db: [{ table: "user_import_receipts", predicate: "target Organization", observed: "One committed receipt", rowCount: 1 }, { table: "users", predicate: "created user and target Organization", observed: "One created user", rowCount: 1 }],
+    audit: observations.audit.map(item => ({ id: item.id, kind: item.kind, action: item.action, targetId: item.target_id, metadataSummary: "Original platform operator created the account in the target Organization." })) });
 });
