@@ -22,13 +22,7 @@ const roleLabels = {
 export async function previewUserImport(db: Database, invocation: UserInvocationContext, body: unknown) {
   const parsed = userImportPreviewBodySchema.safeParse(body);
   if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "导入数据格式无效，请重新选择工作簿。");
-  const auth = await getAuthContext(db, invocation.principal.user.id);
-  const organizationId = invocation.operatingOrganization?.id ?? auth.organization.id;
-  const platform = auth.roles.some((role) => role.projectId === null && role.roleId === "platform-admin");
-  if (!auth.user.isActive || !auth.permissions.includes("users:manage") || !auth.roles.some((role) => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")) || !canOperateInOrganization(auth, organizationId)) {
-    throw new ApiError("FORBIDDEN", "需要组织管理员权限。");
-  }
-  if (platform && !invocation.operatingOrganization) throw new ApiError("VALIDATION_FAILED", "请选择操作组织。");
+  const { auth, organizationId } = await importAuthority(db, invocation);
   const organization = await requireActiveOrganization(db, organizationId);
   const version = (await db.query<{ lifecycle_version: number }>("select lifecycle_version from organizations where id=$1", [organizationId])).rows[0].lifecycle_version;
   const errors: Array<{ row: number; field: string; message: string }> = [];
@@ -88,7 +82,8 @@ async function receipt(db: Database, id: string, actorId: string, organizationId
   if (!found) return null;
   if (digest !== undefined && found.intent_digest !== digest) throw new ApiError("CONFLICT", "批次内容与已提交的意图不一致。", { code: "import-intent-mismatch" });
   const users = await db.query<{ id: string; name: string; username: string | null }>("select u.id,u.name,c.username from users u left join user_password_credentials c on c.user_id=u.id where u.organization_id=$1 and u.id=any($2::text[])", [organizationId, found.results.map(row => row.userId)]);
-  return { importId: found.id, organizationId, count: found.item_count, rows: found.results.map(row => ({ ...row, ...(() => { const user = users.rows.find(item => item.id === row.userId); return user ? { name: user.name, username: user.username } : {}; })() })) };
+  const usersById = new Map(users.rows.map(user => [user.id, user]));
+  return { importId: found.id, organizationId, count: found.item_count, rows: found.results.map(row => { const user = usersById.get(row.userId); return { ...row, ...(user ? { name: user.name, username: user.username } : {}) }; }) };
 }
 
 async function lockedReceipt(db: Database, invocation: UserInvocationContext, id: string, organizationId: string, digest?: string) {

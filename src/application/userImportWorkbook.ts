@@ -41,7 +41,7 @@ export function buildUserImportReport(input:
   return new Uint8Array(XLSX.write(book, { type: "array", bookType: "xlsx" }));
 }
 
-export function buildUserImportTemplate(): Uint8Array {
+export function buildUserImportTemplate(grantableRoleLabels: readonly string[] = []): Uint8Array {
   const book = XLSX.utils.book_new();
   const data = XLSX.utils.aoa_to_sheet([[...headings]]);
   data["!cols"] = [20, 24, 24, 24, 36].map((wch) => ({ wch }));
@@ -55,6 +55,8 @@ export function buildUserImportTemplate(): Uint8Array {
     ["文本格式", "请使用文本格式填写，勿使用公式或合并单元格。姓名、用户名、初始密码和组织角色必填。"],
     ["字段", "姓名最多 100 字符；用户名 3–64 字符；密码 8–1024 字符；职务可留空，最多 100 字符。"],
     ["角色", "使用已有组织角色的中文名称；多个角色用中文分号（；）分隔。"],
+    ["可授予角色", grantableRoleLabels.join("；")],
+    ["角色授权", "组织管理员可以授予管理员；只有平台超级管理员可以授予平台超级管理员。提交时仍需通过当前授权检查。"],
     ["密码", "密码按原样使用，请通过安全渠道私下交付。填写示例为虚构数据，不参与导入。"],
     ["数量", "每次 1–500 人；修改源表后重新上传。"],
   ]), "填写说明");

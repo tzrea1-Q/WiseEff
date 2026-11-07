@@ -4,6 +4,18 @@ import JSZip from "jszip";
 import { buildUserImportTemplate, parseUserImportWorkbook } from "./userImportWorkbook";
 
 describe("user import workbook", () => {
+  it("lists the caller's grantable roles and explains administrator grants", () => {
+    const ordinary = ["访客", "硬件开发", "软件开发", "硬件MDE", "软件MDE", "管理员"];
+    const instructions = (roles: string[]) => {
+      const book = XLSX.read(buildUserImportTemplate(roles), { type: "array" });
+      return XLSX.utils.sheet_to_json<string[]>(book.Sheets["填写说明"], { header: 1 });
+    };
+    const orgAdmin = instructions(ordinary), platformAdmin = instructions([...ordinary, "平台超级管理员"]);
+    expect(orgAdmin.find(row => row[0] === "可授予角色")?.[1]).toBe(ordinary.join("；"));
+    expect(platformAdmin.find(row => row[0] === "可授予角色")?.[1]).toBe([...ordinary, "平台超级管理员"].join("；"));
+    expect(orgAdmin.find(row => row[0] === "角色授权")?.[1]).toContain("只有平台超级管理员可以授予平台超级管理员");
+    expect(platformAdmin.find(row => row[0] === "角色授权")?.[1]).toContain("组织管理员可以授予管理员");
+  });
   it("accepts XLSX and rejects other spreadsheet formats regardless of filename", async () => {
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([["姓名", "用户名", "初始密码", "职务", "组织角色"], ["张三", "alice", "12345678", "", "访客"]]), "用户数据");

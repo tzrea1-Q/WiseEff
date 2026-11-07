@@ -41,6 +41,7 @@ export function UserImportDialog({ actorId, organizationId, actions, roleLabels,
   const submitting = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const generation = useRef(0);
+  const grantableRoleLabels = Object.entries(roleLabels).filter(([id]) => canGrantPlatformAdmin || id !== "platform-admin").map(([, label]) => label);
   useEffect(() => {
     const counter = generation;
     let active = true;
@@ -88,7 +89,7 @@ export function UserImportDialog({ actorId, organizationId, actions, roleLabels,
   async function download() {
     try {
       const { buildUserImportTemplate } = await import("@/application/userImportWorkbook");
-      const url = URL.createObjectURL(new Blob([buildUserImportTemplate() as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const url = URL.createObjectURL(new Blob([buildUserImportTemplate(grantableRoleLabels) as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const anchor = document.createElement("a"); anchor.href = url; anchor.download = "用户导入模板.xlsx"; anchor.click(); URL.revokeObjectURL(url);
     } catch (reason) { setError(presentError(reason, "无法下载模板，请稍后重试。")); }
   }
@@ -138,8 +139,12 @@ export function UserImportDialog({ actorId, organizationId, actions, roleLabels,
       setReceipt(result); setRows(null); setPreview(null); setRecovery(null); setOutcome("ready"); onCreated();
     } catch (reason) {
       if (generation.current !== current) return;
-      const confirmed = !wasUnknown && reason instanceof WiseEffApiError && (reason.details.code === "import-rolled-back" || (reason.status !== undefined && reason.status >= 400 && reason.status < 500 && reason.details.code !== "import-not-confirmed"));
-      if (confirmed) { sessionStorage.removeItem(locatorKey); importId.current = null; setRecovery(null); }
+      const code = reason instanceof WiseEffApiError ? reason.details.code : undefined;
+      const confirmed = !wasUnknown && typeof code === "string" && ["import-rolled-back", "import-preview-stale", "import-username-conflict"].includes(code);
+      if (confirmed) {
+        sessionStorage.removeItem(locatorKey); importId.current = null; setRecovery(null);
+        if (code === "import-preview-stale" || code === "import-username-conflict") { setRows(null); setPreview(null); }
+      }
       else setRecovery("missing");
       setOutcome(confirmed ? "rolled-back" : "unknown");
       setError(confirmed ? presentError(reason, "创建失败。") : "结果尚未确认。请使用原批次重试；不要重新上传并创建新批次。");
@@ -168,7 +173,7 @@ export function UserImportDialog({ actorId, organizationId, actions, roleLabels,
           </div>
         </section>
       </div>
-      <p className="user-import-dialog__hint">可授予角色：{Object.entries(roleLabels).filter(([id]) => canGrantPlatformAdmin || id !== "platform-admin").map(([, label]) => label).join("、")}。多个角色用中文分号（；）分隔。</p>
+      <p className="user-import-dialog__hint">可授予角色：{grantableRoleLabels.join("、")}。多个角色用中文分号（；）分隔。</p>
       {busy ? <p className="user-import-dialog__notice" role="status">正在检查文件和用户名…</p> : null}
       {error ? <div className="user-import-dialog__notice user-import-dialog__notice--error" role="alert"><strong>{outcome === "unknown" ? "结果尚未确认" : outcome === "rolled-back" ? "未创建任何账号" : "文件检查失败"}</strong><p>{error}</p></div> : null}
       {reportError ? <div className="user-import-dialog__notice user-import-dialog__notice--error" role="alert">{reportError}</div> : null}
