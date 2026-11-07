@@ -32,9 +32,17 @@ If you only need to stop access, disable the account. This immediately revokes p
 
 ## Create users from an Excel template
 
-In the local-account deployment, open **Bulk import** in Members and permissions. Check the displayed target Organization, download the `.xlsx` template, and fill **用户数据** with one user per row. Each batch belongs to that Organization and supports 1–500 users. Organization administrators manage their own Organization; platform administrators may explicitly select another active Organization.
+In the local-account deployment, open **Bulk import** in Members and permissions. Check the displayed target Organization, download the `.xlsx` template, and fill its data sheet with one user per row. Each batch belongs to that Organization and supports 1–500 users. Organization administrators manage their own Organization; platform administrators may explicitly select another active Organization.
 
-The five columns are **姓名**, **用户名**, **初始密码**, **职务**, and **组织角色**. Only title is optional. Keep every value as text, including passwords with leading zeroes or spaces. Separate multiple Chinese role names with `；`, for example `硬件开发；软件开发`. The instructions and example sheets are references and are not imported. The file limit is 2 MiB; formulas, merged input cells and nontext values are rejected. Hidden or filtered rows are still included.
+The five columns are name, username, initial password, title and Organization roles. Only title is optional. Keep every value as text, including passwords with leading zeroes or spaces. Use the exact Chinese headings and role names from the template, with a full-width semicolon between roles:
+
+```text
+Data sheet: 用户数据
+Headings: 姓名 | 用户名 | 初始密码 | 职务 | 组织角色
+Multiple roles: 硬件开发；软件开发
+```
+
+The instructions and example sheets are references and are not imported. The file limit is 2 MiB; formulas, merged input cells and nontext values are rejected. Hidden or filtered rows are still included.
 
 Upload the completed file and review the target Organization, user count, roles and any privileged accounts. The preview never shows passwords. Correct every reported issue in the original workbook, using the original Excel row numbers, then upload it again. Existing usernames are conflicts even when they belong to another Organization; import never changes an existing account. Any error prevents the entire batch from being created.
 
