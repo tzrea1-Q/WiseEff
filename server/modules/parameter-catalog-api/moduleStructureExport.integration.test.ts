@@ -142,6 +142,16 @@ describe("module structure export", () => {
       where s.owner_subject_id is null and s.kind='driver' and rs.lifecycle='active' order by s.id limit 1`);
     const subjectId = subject.rows[0]!.id;
     const edited = { ...document, modules: [...document.modules, { ref: "registration-destination", name: "Registration destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }], subjects: [...document.subjects, { subjectId, state: "active", placement: { kind: "module", moduleRef: "registration-destination" }, recognition: { mode: "override", override: { compatibles: ["acme,new"], nodeTypeName: null } } }] };
+    const invalidRegistration = structuredClone(edited);
+    invalidRegistration.subjects.at(-1)!.recognition!.override!.compatibles = ["acme,*", "acme, power"];
+    const invalidRegistrationPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: invalidRegistration, resolutions: {} }) });
+    expect(invalidRegistrationPreview.status, invalidRegistrationPreview.bodyText).toBe(400);
+    expect(invalidRegistrationPreview.body).toMatchObject({ error: { details: { issues: [
+      expect.objectContaining({ code: "wildcard-forbidden", received: "acme,*", subject: { subjectId, kind: "driver" },
+        jsonPointer: `/subjects/${document.subjects.length}/recognition/override/compatibles/0`, hint: expect.any(String) }),
+      expect.objectContaining({ code: "whitespace-forbidden", received: "acme, power" }),
+    ] } } });
+    expect((await api.query("select 1 from parameter_catalog.organization_subject_registrations where organization_id=$1", [org])).rowCount).toBe(0);
     const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
     expect(preview.status, preview.bodyText).toBe(200);
     expect(preview.body).toMatchObject({ changes: expect.arrayContaining([expect.objectContaining({ moduleId: `subject:${subjectId}`, field: "state", after: "active" })]) });
@@ -465,6 +475,20 @@ describe("module structure export", () => {
     expect(exported.status, exported.bodyText).toBe(200);
     const path = `/api/v2/organizations/${target}/module-structure`;
     const input = { mode: "copy", document: exported.body, resolutions: {}, mappings: { "copy-subject-module": "create" } };
+    const invalidCopy = structuredClone(exported.body) as z.infer<typeof moduleStructureExportSchema>;
+    const invalidCopyIndex = invalidCopy.subjects.findIndex(subject => subject.subjectId === "csub_acme_charger");
+    const invalidCopyRule = invalidCopy.subjects[invalidCopyIndex]!.recognition!;
+    invalidCopyRule.mode = "override";
+    invalidCopyRule.override = { ...invalidCopyRule.effective, nodeTypeName: "battery_checker@0" };
+    const invalidCopyPreview = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify({ ...input, document: invalidCopy }) });
+    expect(invalidCopyPreview.status, invalidCopyPreview.bodyText).toBe(400);
+    expect(invalidCopyPreview.body).toMatchObject({ error: { details: { issues: [expect.objectContaining({
+      path: `document.subjects.${invalidCopyIndex}.recognition.override.nodeTypeName`,
+      jsonPointer: `/subjects/${invalidCopyIndex}/recognition/override/nodeTypeName`,
+      code: "unit-address-present", received: "battery_checker@0", example: "battery_checker",
+      subject: { subjectId: "csub_acme_charger", kind: "node-type" }, hint: expect.stringContaining("@"),
+    })] } } });
+    expect((await api.query("select 1 from parameter_catalog.organization_subject_registrations where organization_id=$1", [target])).rowCount).toBe(0);
     const viewer = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
       makeTestAuthContext({ organizationId: target, userId: "copy-subject-guest", roles: [{ roleId: "guest", projectId: null }] }) } } });
     expect((await requestJson(viewer, `${path}/previews`, { method: "POST", body: JSON.stringify(input) })).status).toBe(403);
@@ -518,6 +542,14 @@ describe("module structure export", () => {
         recognition: expect.objectContaining({ mode: "override", override: expect.objectContaining({ compatibles: ["acme,copy"] }) }) }),
       expect.objectContaining({ subjectId: "csub_acme_charger", state: "retired", cascadeRetired: true }),
     ]) });
+    const invalidExistingCopy = await requestJson(destination, `${path}/previews`, { method: "POST", body: JSON.stringify({
+      ...input, document: invalidCopy, mappings: {}, resolutions: { "subject:csub_acme_charger:recognition": "file" },
+    }) });
+    expect(invalidExistingCopy.status, invalidExistingCopy.bodyText).toBe(400);
+    expect(invalidExistingCopy.body).toMatchObject({ error: { details: { issues: [expect.objectContaining({
+      code: "unit-address-present", jsonPointer: `/subjects/${invalidCopyIndex}/recognition/override/nodeTypeName`,
+      subject: { subjectId: "csub_acme_charger", kind: "node-type" }, received: "battery_checker@0",
+    })] } } });
     const sourceAfter = await requestJson(source, `/api/v2/organizations/${sourceOrg}/module-structure/exports`, { method: "POST", body: "{}" });
     expect((sourceAfter.body as { subjects: unknown[] }).subjects).toEqual((exported.body as { subjects: unknown[] }).subjects);
     const identity = (await db.query<{ id: string; current_placement_id: string }>(`select id,current_placement_id from parameter_catalog.organization_subject_registrations
@@ -1312,6 +1344,13 @@ describe("module structure export", () => {
       resolutions: { "csub_acme_power:recognition.compatibles": "file" } }) });
     expect(invalidPreview.status).toBe(400);
     expect(invalidPreview.body).toMatchObject({ error: { details: { path: `subjects.${invalid.subjects.findIndex(subject => subject.subjectId === "csub_acme_power")}.recognition.override` } } });
+    const invalidIndex = invalid.subjects.findIndex(subject => subject.subjectId === "csub_acme_power");
+    expect(invalidPreview.body).toMatchObject({ error: { details: { issues: [expect.objectContaining({
+      path: `document.subjects.${invalidIndex}.recognition.override.compatibles.0`,
+      jsonPointer: `/subjects/${invalidIndex}/recognition/override/compatibles/0`, code: "whitespace-forbidden", received: "invalid selector!",
+      subject: { subjectId: "csub_acme_power", kind: "driver", displayAlias: "Power alias" },
+      rule: expect.stringContaining("compatible"), hint: expect.stringContaining("空白"), example: "acme,power",
+    })] } } });
     const resolved = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: conflictDocument,
       resolutions: { "csub_acme_power:recognition.compatibles": "file" } }) });
     expect(resolved.status, resolved.bodyText).toBe(200);

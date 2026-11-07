@@ -13,12 +13,13 @@ import type { Database } from "../../../shared/database/client";
 import { applySubjectPlacement } from "./subjects";
 import { applyLifecycle } from "./lifecycle";
 import { applyCopySubjects } from "./copySubjects";
+import { enrichModuleStructureError } from "./importErrorDetails";
 
 export async function applyModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, requestId: string, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
   assertTrustedInvocationMatchesScope(invocation.principal, invocation, organizationId, "module structure apply");
   const parsed = moduleStructureApplyRequestSchema.safeParse(raw);
-  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Invalid module structure confirmation.", { issues: parsed.error.issues });
+  if (!parsed.success) throw enrichModuleStructureError(new ApiError("VALIDATION_FAILED", "Invalid module structure confirmation.", { issues: parsed.error.issues }), raw);
   const input = parsed.data;
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
     roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
