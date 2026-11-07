@@ -34,7 +34,7 @@ import { bindSharedDtsiProposalEvidence } from "../shared-dtsi/recognition";
 import { createGovernanceCatalogQueries, GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../parameter-governance/queries";
 import type { GovernanceRegistrationRecord } from "../parameter-governance/queries";
 import { executeRegistration } from "../parameter-governance/registration";
-import { readRegistrationRecognitionSettings, updateRegistrationRecognitionSettings } from "../parameter-modules/recognitionSettings";
+import { loadOrganizationCatalogSnapshot, readRegistrationRecognitionSettings, updateRegistrationRecognitionSettings } from "../parameter-modules/recognitionSettings";
 import { resolveReviewItem } from "../parameter-governance/resolveReviewItem";
 import { createReviewQueueReader } from "../parameter-governance/review";
 import { createUsageQueries } from "../parameter-bindings/usage";
@@ -704,6 +704,7 @@ const createReadPorts = (
   const usage = createUsageQueries(pool);
   return {
     runtime,
+    projectOrganizationRecognition: (organizationId, snapshot) => loadOrganizationCatalogSnapshot(pool, organizationId, snapshot),
     readiness: createKernelReadiness(runtime, pool, db, catalogPublication),
     registration: createRegistrationProjectionFromQueries(queries),
     usage: createUsageProjectionFromQueries(usage, true),

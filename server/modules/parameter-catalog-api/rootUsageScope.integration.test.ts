@@ -26,6 +26,7 @@ import { createUsageProjectionFromQueries } from "./read/ports";
 import { bindingCompareListResponseSchema, catalogDefinitionListResponseSchema, catalogDefinitionResponseSchema, catalogProjectConfigurationsResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import { parameterListResponseSchema } from "../contracts/dtoSchemas/parameters";
 import { createLocalObjectStore } from "../logs/objectStore";
+import { classifyOrganizationRecognitionQuery, type OrganizationRecognitionQuery } from "./__fixtures__/organizationRecognitionSql";
 
 const definitionId = ParameterDefinitionId("pdef_acme_power_iin_max");
 const revisionId = DefinitionRevisionId("drev_acme_power_iin_max_1");
@@ -53,6 +54,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
   let releaseId: string;
   let measuring = false;
   let businessSql: string[] = [];
+  let recognitionSql: { operation: OrganizationRecognitionQuery; sql: string; parameters: unknown }[] = [];
   let usageParameters: { definitions: unknown; projects: unknown }[] = [];
   let pauseSummary: { reached: () => void; resume: Promise<void> } | undefined;
   let pauseListUsage: { reached: () => void; resume: Promise<void> } | undefined;
@@ -72,7 +74,9 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       client.query = function (this: PoolClient, ...args: unknown[]) {
         const input = args[0];
         const sql = typeof input === "string" ? input : input && typeof input === "object" && "text" in input ? String(input.text) : "";
-        if (measuring && /parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|current_project_parameter_bindings|project_parameter_bindings|project_parameter_values)\b/.test(sql)) {
+        const recognitionOperation = classifyOrganizationRecognitionQuery(sql);
+        if (measuring && recognitionOperation) recognitionSql.push({ operation: recognitionOperation, sql, parameters: args[1] });
+        if (measuring && !recognitionOperation && /parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|current_project_parameter_bindings|project_parameter_bindings|project_parameter_values)\b/.test(sql)) {
           businessSql.push(sql);
           if (/from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)) {
             const values = args[1] as unknown;
@@ -166,6 +170,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
   it.each(actors)("R2-SCOPE-01 $id reads Organization counts in list and detail", async (actor) => {
     const headers = { authorization: `Bearer scope-${actor.id}` };
     businessSql = [];
+    recognitionSql = [];
     usageParameters = [];
     measuring = true;
     const listed = await fetch(`${baseUrl}/api/v2/catalog/definitions?registration=active&limit=25`, { headers });
@@ -173,11 +178,16 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     measuring = false;
     const item = body.items?.find((entry: { id: string }) => entry.id === definitionId);
     if (!item) throw new Error("Expected the installed definition in the Catalog response");
-    records.push({ actor: actor.id, actualDatabaseRoleBindings: actualRoleBindings.get(actor.id), organizationId: actor.organizationId, expected: { projectCount: actor.projects, currentValueCount: actor.current }, actual: item?.usageSummary, status: listed.status, businessQueryCount: businessSql.length, usageParameters });
+    records.push({ actor: actor.id, actualDatabaseRoleBindings: actualRoleBindings.get(actor.id), organizationId: actor.organizationId, expected: { projectCount: actor.projects, currentValueCount: actor.current }, actual: item?.usageSummary, status: listed.status, businessQueryCount: businessSql.length, recognitionQueryCount: recognitionSql.length, recognitionSql, usageParameters });
     expect(listed.status).toBe(200);
     expect(item?.usageSummary).toMatchObject({ policyCount: null, projectCount: actor.projects, currentValueCount: actor.current });
     expect(item?.configurationSummary).toEqual({ configuredProjectCount: actor.projects, configuredInstanceCount: actor.current });
     expect(businessSql).toHaveLength(5);
+    expect(recognitionSql.map(query => query.operation).sort()).toEqual(["owners", "owners-schema", "rules", "rules-schema"]);
+    for (const query of recognitionSql.filter(query => query.operation === "rules" || query.operation === "owners")) {
+      expect(query.parameters).toEqual([actor.organizationId]);
+      expect(query.sql).toMatch(/where (rule\.)?organization_id\s*=\s*\$1\b/);
+    }
     expect(usageParameters).toHaveLength(1);
     const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers });
     expect(detail.status).toBe(200);

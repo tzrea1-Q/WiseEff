@@ -61,6 +61,16 @@ describe("RegistrationOwnerDialog", () => {
     expect(ports.getRegistration).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID, "target-registration");
   });
 
+  it("excludes organization-only driver corrections from ownership targets", async () => {
+    const ports = setup();
+    ports.listSubjects.mockResolvedValue({ items: [ports.owner, { ...ports.target, canonicalType: "node-type" }],
+      totalCount: 2, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    render(<RegistrationOwnerDialog {...ports.props} />);
+    await screen.findByText("没有其他已启用并登记的驱动。请先在本组织登记目标驱动。");
+    expect(screen.getByRole("button", { name: "确认调整归属" })).toBeDisabled();
+    expect(ports.changeRegistrationOwner).not.toHaveBeenCalled();
+  });
+
   it("retains draft on conflict, refreshes evidence and requires acknowledgement again", async () => {
     const ports = setup();
     ports.changeRegistrationOwner.mockRejectedValueOnce(catalogApiFailure("revision-conflict"));

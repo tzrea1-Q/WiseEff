@@ -23,7 +23,7 @@ This example is a fragment, not a complete package. Do not change a module's `re
 
 The module fields `name`, `parentRef`, `description`, `scope`, `sortOrder` and `importance` are editable. Use an empty string to clear description or scope, null for a root `parentRef`, an integer for `sortOrder`, and `high`, `medium` or `low` for importance. A new module supplies all six fields, `ref` and `operation: "upsert"`. Its `sourceId` and read-only `reference` are assigned by WiseEff later.
 
-For a root Subject, use `{ "kind": "module", "moduleRef": "power" }`, `{ "kind": "unclassified" }`, or `{ "kind": "unset" }` for placement. Set `displayAlias` to null to clear it. The exported `state` is `active` or `retired`. For driver and node-type recognition, `mode` is `inherit` or `override`; `override` has `compatibles`, `nodeTypeName`, `driverNature` and `instanceCardinality`, with fields not applicable to the Subject kind left as exported. Keep `effective` unchanged. Configuration-schema recognition is null. Catalog IDs, `kind`, and child `cascadeRetired` are read-only.
+For a root Subject, use `{ "kind": "module", "moduleRef": "power" }`, `{ "kind": "unclassified" }`, or `{ "kind": "unset" }` for placement. Set `displayAlias` to null to clear it. The exported `state` is `active` or `retired`. For driver and node-type recognition, `mode` is `inherit` or `override`; `override` has `compatibles`, `nodeTypeName`, `driverNature` and `instanceCardinality`, with fields not applicable to the Subject kind left as exported. Keep `effective` unchanged. Configuration-schema recognition is null. Catalog IDs and child `cascadeRetired` are read-only. `kind` normally remains unchanged; the organization recognition correction below permits a root node type to become a driver in this organization.
 
 `ownerSubjectId` records the effective owner driver in the exporting organization: the registration's owner takes precedence, with Catalog ownership as the fallback. It can differ from the fixed `parent` in definition-import Markdown; organization ownership changes do not change Catalog identity. Keep `ownerSubjectId` unchanged in update mode. To change it, use Module management → Edit node → Placement to select an active registered driver in the organization, confirm, and export again. Copy mode handles source and target ownership differences as described below.
 
@@ -38,6 +38,18 @@ For a root Subject, use `{ "kind": "module", "moduleRef": "power" }`, `{ "kind":
 - Omitting a recognition field preserves its current value. A singleton rule is checked against current target-project instances; an incompatible capacity blocks the whole import.
 
 Use the exported field shapes and clear values as the contract for the package version. Leave read-only values unchanged. An agent editing the file should preserve identities and all unrelated entries, make only requested changes, and report its changes to the human reviewer.
+
+### Correct a node type that is actually a compatible driver
+
+For a standalone `node-type` Subject that should match a DTS `compatible`, set `recognition.mode` to `override` and provide a nonempty exact `recognition.override.compatibles` array. For example, use `["fdw,fm1230_swi"]` only when that is the actual source compatible. The import infers an organization-local driver correction; keeping the original `kind: "node-type"` is supported, and explicitly setting `kind: "driver"` with this override is also supported. A `kind` edit alone is not sufficient.
+
+The original node name may remain in `override` when it was copied from the export; preview explicitly clears it to null. A newly changed node name cannot accompany a driver correction. Omitted or null driver attributes use `physical-device` and `multiple`; provide `driverNature` or `instanceCardinality` explicitly to choose another supported value. Leave `recognition.effective` and other read-only export information unchanged.
+
+Preview lists **current organization Subject type: node type → driver**, the exact compatible, cleared node name, and affected projects. Confirmation retains Subject, registration, placement, Definition, Binding, value and history identities. It changes current organization recognition and display only; shared Catalog identity, pinned Catalog history, other organizations and DTS source bytes are unchanged. Existing bindings remain recorded; later source synchronization uses the corrected matcher. The corrected Subject does not acquire the shared Catalog capability to own newly published child Subjects.
+
+Re-export reflects `kind: "driver"` and the effective driver rule. Reimporting the same corrected package is a no-op. Copying this export carries the organization-local correction; existing target rules require an explicit conflict choice. To undo the correction, set `recognition.mode: "inherit"` and `override: null`; preview shows the return to the Catalog node type. A concurrent recognition edit or a change after preview requires conflict review or a new preview.
+
+This correction is limited to standalone roots. Owned child nodes and configuration schemas cannot be converted by importing a compatible. Their ownership and Catalog authoring need a separate explicit change.
 
 ## Review and import
 

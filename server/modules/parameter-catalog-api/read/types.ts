@@ -193,6 +193,8 @@ export type TimelineComposerPort = {
 
 export type CatalogReadPorts = {
   readonly runtime: CatalogRuntime;
+  /** Apply current organization recognition only after resolving the trusted read scope. */
+  readonly projectOrganizationRecognition?: (organizationId: string, snapshot: CurrentCatalogSnapshot) => Promise<CurrentCatalogSnapshot>;
   readonly readiness: CatalogReadinessPort;
   readonly registration: RegistrationProjectionPort;
   readonly usage: UsageProjectionPort;

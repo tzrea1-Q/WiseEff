@@ -11,7 +11,7 @@ import { prepareInteractionSurface } from "./helpers/interactionSurface";
 test.use({ viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "GET", path: "/api/v1/knowledge/handovers", status: 503 }] });
 
-test("takes over pending organization assets after departure and account deletion without transferring historical authorship", async ({ page }, testInfo) => {
+test("takes over pending organization assets after departure and account deletion without transferring historical authorship", async ({ page, browser, contextOptions, baseURL, viewport }, testInfo) => {
   await seedAcceptanceRoleMatrix();
   const suffix = randomUUID().slice(0, 8), org = `handover-${suffix}`, departing = `departed-${suffix}`, successor = `successor-${suffix}`, title = `待交接知识-${suffix}`, feedbackTitle = `待交接反馈-${suffix}`, successorName = `接任工程师-${suffix}`;
   await withPgClient(async client => {
@@ -58,19 +58,23 @@ test("takes over pending organization assets after departure and account deletio
   await compose.getByRole("button", { name: "关闭", exact: true }).last().click(); await expect(compose).toHaveCount(0);
   const importRow = knowledge.getByRole("row").filter({ hasText: "未完成导入" }); await importRow.getByRole("button", { name: "继续处理", exact: true }).click();
   const report = page.getByRole("dialog", { name: "批量导入", exact: true }); await report.getByRole("button", { name: "完成批次汇总", exact: true }).click(); await report.getByRole("button", { name: "关闭", exact: true }).click();
-  const successorPage = await page.context().newPage();
-  const successorDiagnostics = installBrowserDiagnostics(successorPage, testInfo);
-  await signInBrowserAsUser(successorPage, successor, `${successor}@example.test`, successorName, `/knowledge?entryId=${entry.id}`, org);
-  const detail = successorPage.getByRole("dialog", { name: `${title} 草稿 手动编写`, exact: true });
-  await expect(detail).toBeVisible(); await detail.getByRole("button", { name: "编辑", exact: true }).click();
-  editor = successorPage.getByRole("dialog", { name: "编辑知识条目", exact: true });
-  await editor.getByLabel("Markdown 内容", { exact: true }).fill("接任者继续完成工作"); await editor.getByRole("button", { name: "保存为新修订", exact: true }).click(); await expect(editor).toHaveCount(0);
-  await prepareInteractionSurface(successorPage); await successorPage.screenshot({ path: testInfo.outputPath("organization-assets-successor-1440.png"), animations: "disabled" });
-  await withPgClient(async client => {
-    const knowledgeRow = (await client.query("select organization_id,created_by_user_id,responsible_user_id,historical_attribution,head_revision_number from knowledge_entries where id=$1", [entry.id])).rows[0];
-    expect(knowledgeRow).toMatchObject({ organization_id: org, created_by_user_id: null, responsible_user_id: successor, head_revision_number: 3, historical_attribution: { actors: { created_by_user_id: { id: departing, name: "原始作者" } } } });
-    expect((await client.query("select description,submitted_at from product_feedback where id=$1", [feedbackId])).rows[0]).toEqual({ description: "管理员接管后仍然保持为草稿", submitted_at: null });
-    expect((await client.query("select completed_at is not null as completed from knowledge_import_batches where id=$1", [batchId])).rows[0]).toEqual({ completed: true });
-  });
-  successorDiagnostics.assertNoBrowserDiagnosticsFailures(); await successorPage.close();
+  // A successor has separate browser storage; signing in must not replace the administrator's token.
+  const successorContext = await browser.newContext({ ...contextOptions, baseURL, viewport });
+  try {
+    const successorPage = await successorContext.newPage();
+    const successorDiagnostics = installBrowserDiagnostics(successorPage, testInfo);
+    await signInBrowserAsUser(successorPage, successor, `${successor}@example.test`, successorName, `/knowledge?entryId=${entry.id}`, org);
+    const detail = successorPage.getByRole("dialog", { name: `${title} 草稿 手动编写`, exact: true });
+    await expect(detail).toBeVisible(); await detail.getByRole("button", { name: "编辑", exact: true }).click();
+    editor = successorPage.getByRole("dialog", { name: "编辑知识条目", exact: true });
+    await editor.getByLabel("Markdown 内容", { exact: true }).fill("接任者继续完成工作"); await editor.getByRole("button", { name: "保存为新修订", exact: true }).click(); await expect(editor).toHaveCount(0);
+    await prepareInteractionSurface(successorPage); await successorPage.screenshot({ path: testInfo.outputPath("organization-assets-successor-1440.png"), animations: "disabled" });
+    await withPgClient(async client => {
+      const knowledgeRow = (await client.query("select organization_id,created_by_user_id,responsible_user_id,historical_attribution,head_revision_number from knowledge_entries where id=$1", [entry.id])).rows[0];
+      expect(knowledgeRow).toMatchObject({ organization_id: org, created_by_user_id: null, responsible_user_id: successor, head_revision_number: 3, historical_attribution: { actors: { created_by_user_id: { id: departing, name: "原始作者" } } } });
+      expect((await client.query("select description,submitted_at from product_feedback where id=$1", [feedbackId])).rows[0]).toEqual({ description: "管理员接管后仍然保持为草稿", submitted_at: null });
+      expect((await client.query("select completed_at is not null as completed from knowledge_import_batches where id=$1", [batchId])).rows[0]).toEqual({ completed: true });
+    });
+    successorDiagnostics.assertNoBrowserDiagnosticsFailures();
+  } finally { await successorContext.close(); }
 });

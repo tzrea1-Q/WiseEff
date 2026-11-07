@@ -455,6 +455,57 @@ const unavailableResponse = {
   headers: { "X-Request-Id": "req-s8-read", "Retry-After": "5" },
 };
 
+describe("current organization recognition projection", () => {
+  it("uses only the authenticated organization for current subject and definition reads", async () => {
+    const { ports, current } = createHarness();
+    const canonicalCurrent: CurrentCatalogSnapshot = { ...current,
+      getSubject: () => ({ status: "found", subject: { ...subject, kind: "node-type" } }),
+      listSubjects: () => ({ status: "found", page: page([{ ...subject, kind: "node-type" as const }], null) }),
+    };
+    ports.runtime.loadCurrentCatalog = async () => ({ ok: true, value: canonicalCurrent });
+    const corrected = { ...subject, canonicalKind: "node-type" as const, aliases: [], membership: { ...subject.membership,
+      selector: { kind: "driver-compatible" as const, values: [DriverCompatible("fdw,fm1230_swi")] } } };
+    const project = vi.fn(async (_organizationId: string, snapshot: CurrentCatalogSnapshot): Promise<CurrentCatalogSnapshot> => ({
+      ...snapshot, getSubject: () => ({ status: "found", subject: corrected }),
+      listSubjects: () => ({ status: "found", page: page([corrected], null) }),
+    }));
+    for (const path of ["/api/v2/catalog/subjects", `/api/v2/catalog/subjects/${subject.id}`, `/api/v2/catalog/definitions/${definition.id}`]) {
+      const result = await handleCatalogRead({ ...ports, projectOrganizationRecognition: project }, get(path, {
+        query: { organizationId: "spoofed-org" }, headers: { "X-Organization-Id": "spoofed-org" },
+      }));
+      expect(result.status).toBe(200);
+      expect(JSON.stringify(result.body)).toContain('"type":"driver"');
+      expect(JSON.stringify(result.body)).not.toContain('"type":"node-type"');
+      if (!path.includes("definitions")) expect(JSON.stringify(result.body)).toContain('"canonicalType":"node-type"');
+    }
+    expect(project).toHaveBeenCalledTimes(3);
+    for (const args of project.mock.calls) expect(args).toEqual([scope.organizationId, canonicalCurrent]);
+    expect(canonicalCurrent.getSubject(subject.id)).toMatchObject({ subject: { kind: "node-type" } });
+  });
+
+  it("keeps pinned history and Catalog document/export routes on their original snapshots", async () => {
+    const { ports } = createHarness();
+    const project = vi.fn(async (_organizationId: string, snapshot: CurrentCatalogSnapshot) => snapshot);
+    const currentPorts = { ...ports, projectOrganizationRecognition: project };
+    for (const path of ["/api/v2/catalog", "/api/v2/catalog/revision-document", `/api/v2/catalog/definitions/${definition.id}/revisions`, `/api/v2/catalog/definitions/${definition.id}/timeline`]) {
+      await handleCatalogRead(currentPorts, get(path));
+    }
+    const pinned = await handleCatalogRead({ ...currentPorts, readiness: { ...ports.readiness,
+      named: async () => ({ status: "ready", document: { ...facts, snapshotKind: "pinned" } }),
+    } }, get(`/api/v2/catalog/subjects/${subject.id}`, { query: { catalogReleaseId: pin.id } }));
+    expect(pinned.status).toBe(200);
+    expect(JSON.stringify(pinned.body)).toContain("acme,power");
+    expect(project).not.toHaveBeenCalled();
+  });
+
+  it("does not load an organization projection before successful authorization", async () => {
+    const { ports } = createHarness({ scope: { ...scope, canReadCatalog: false } });
+    const project = vi.fn(async (_organizationId: string, snapshot: CurrentCatalogSnapshot) => snapshot);
+    expect((await handleCatalogRead({ ...ports, projectOrganizationRecognition: project }, get("/api/v2/catalog/subjects"))).status).toBe(403);
+    expect(project).not.toHaveBeenCalled();
+  });
+});
+
 describe("R2-ASYNC dispatcher rejection contract", () => {
   const definitionPaths = [
     "/api/v2/catalog/definitions",

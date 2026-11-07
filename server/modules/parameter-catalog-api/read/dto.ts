@@ -78,6 +78,7 @@ export function mapCatalogSubject(
     id: subject.id,
     ...(ownerSubjectId ? { ownerSubjectId } : {}),
     type: subject.kind,
+    ...(subject.canonicalKind && subject.canonicalKind !== subject.kind ? { canonicalType: subject.canonicalKind } : {}),
     canonicalName: subject.canonicalKey,
     aliases: subjectAliases(subject),
     membership: {

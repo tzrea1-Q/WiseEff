@@ -82,7 +82,7 @@ export function RegistrationOwnerDialog({ editor, subject, registrationId, actor
         .map(item => [item.subjectId, item]));
       const targets = drivers.flatMap(driver => {
         const targetRegistration = activeRegistrations.get(driver.id);
-        return driver.type === "driver" && driver.membership.status === "active" && !driver.ownerSubjectId && driver.id !== ownerId && targetRegistration
+        return driver.type === "driver" && (driver.canonicalType ?? driver.type) === "driver" && driver.membership.status === "active" && !driver.ownerSubjectId && driver.id !== ownerId && targetRegistration
           ? [{ id: driver.id, name: driver.canonicalName, registrationId: targetRegistration.id }] : [];
       });
       setEvidence({ registration: registration.item, subject: currentSubject.item, ownerName: owner.canonicalName, targets, ifMatch, catalogReleaseId });

@@ -4,6 +4,7 @@ export {
   listModuleRecognitionPlacements,
   readModuleRecognitionSubjectDefaults,
   readRegistrationRecognitionSubject,
+  readRecognitionSubjectIdentity,
   readRecognitionIdempotency,
   writeRecognitionIdempotency,
   hasMultipleCurrentModuleSubjectInstances,

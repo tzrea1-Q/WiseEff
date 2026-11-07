@@ -798,6 +798,8 @@ export function CanonicalSubjectPlacementPanel({
                       <div className="parameter-module-mapping-panel__actions canonical-subject-actions">
                         {subject.type === "driver" && subject.membership.status === "active" && canCreateSubject ? <button
                           type="button" className="button subtle" aria-label={`新增子节点类型：${subject.canonicalName}`}
+                          disabled={subject.canonicalType === "node-type"}
+                          title={subject.canonicalType === "node-type" ? "此主体仅在当前组织按驱动识别；新增子节点需要目录中的驱动主体。" : undefined}
                           onClick={() => { setCreateOwnerSubjectId(subject.id); setCreateSubjectOpen(true); }}>新增子节点类型</button> : null}
                         {registrationId && (subject.type !== "configuration-schema" || placementAllowed) ? <button type="button" className="button subtle"
                           aria-label={editorTitle(subject)} disabled={subject.type === "configuration-schema" && !inventoryComplete}

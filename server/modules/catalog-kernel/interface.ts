@@ -187,6 +187,8 @@ export interface SubjectAliasSnapshot {
 export interface CatalogSubjectSnapshot {
   readonly id: CatalogSubjectId;
   readonly kind: CatalogSubjectKind;
+  /** Immutable Catalog type when a current organization recognition overlay changes kind. */
+  readonly canonicalKind?: CatalogSubjectKind;
   readonly canonicalKey: CatalogCanonicalKey;
   readonly owner?: CatalogSubjectId;
   readonly membership: CatalogSubjectMembershipSnapshot;

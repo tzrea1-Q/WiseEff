@@ -85787,6 +85787,14 @@
                     "configuration-schema"
                   ]
                 },
+                "canonicalType": {
+                  "type": "string",
+                  "enum": [
+                    "driver",
+                    "node-type",
+                    "configuration-schema"
+                  ]
+                },
                 "canonicalName": {
                   "type": "string"
                 },
@@ -85994,6 +86002,14 @@
                 "type": "string"
               },
               "type": {
+                "type": "string",
+                "enum": [
+                  "driver",
+                  "node-type",
+                  "configuration-schema"
+                ]
+              },
+              "canonicalType": {
                 "type": "string",
                 "enum": [
                   "driver",

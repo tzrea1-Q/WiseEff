@@ -21,7 +21,7 @@ type Preview = {
 type Receipt = { id: string; organizationId: string; changedModules: number; changedFields: number };
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
 const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块", delete: "删除模块", legacyImpact: "将解除的遗留引用数", placement: "归属", displayAlias: "展示别名",
-  state: "登记状态", ownerSubjectId: "所属驱动", recognition: "识别规则", "recognition.mode": "识别模式", "recognition.compatibles": "兼容标识", "recognition.driverNature": "驱动性质",
+  state: "登记状态", kind: "当前组织主体类型", ownerSubjectId: "所属驱动", recognition: "识别规则", "recognition.mode": "识别模式", "recognition.compatibles": "兼容标识", "recognition.driverNature": "驱动性质",
   "recognition.instanceCardinality": "实例基数", "recognition.nodeTypeName": "节点名称" };
 
 export function ModuleStructureImport({ apiClient, organizationId, canImport, onChanged }: {
@@ -83,7 +83,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
   };
   const displayValue = (item: unknown): string => {
     if (item === null) return "无";
-    if (typeof item === "string") return ({ "": "空", active: "启用", retired: "停用", inherit: "继承目录设置", override: "自定义覆盖", low: "低", medium: "中", high: "高" } as Record<string, string>)[item] ?? item;
+    if (typeof item === "string") return ({ "": "空", active: "启用", retired: "停用", inherit: "继承目录设置", override: "自定义覆盖", driver: "驱动主体", "node-type": "节点类型主体", "configuration-schema": "配置规范主体", low: "低", medium: "中", high: "高" } as Record<string, string>)[item] ?? item;
     if (Array.isArray(item)) return item.length ? item.join("、") : "无";
     if (!item || typeof item !== "object" || !("kind" in item)) return value(item);
     const placement = item as { kind: string; moduleRef?: string; sourceId?: string };

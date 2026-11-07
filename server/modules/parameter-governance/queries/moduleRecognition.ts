@@ -25,6 +25,18 @@ export async function readRegistrationRecognitionSubject(db: Queryable, organiza
   return result.rows[0] ?? null;
 }
 
+/** Type correction is organization-local; neither a published child nor an organization-owned child may become a root driver. */
+export async function readRecognitionSubjectIdentity(db: Queryable, organizationId: string, subjectId: string) {
+  const result = await db.query<{ kind: string; owner_subject_id: string | null; organization_owner_subject_id: string | null }>(
+    `select subject.kind, subject.owner_subject_id, registration.owner_subject_id as organization_owner_subject_id
+       from parameter_catalog.catalog_subjects subject
+       left join parameter_catalog.organization_subject_registrations registration
+         on registration.subject_id=subject.id and registration.organization_id=$1
+      where subject.id=$2`, [organizationId, subjectId],
+  );
+  return result.rows[0] ?? null;
+}
+
 export async function readRecognitionIdempotency(db: Queryable, organizationId: string, key: string) {
   const result = await db.query<{ request_fingerprint: string; state: string; result_ref: string | null }>(
     `select request_fingerprint, state, result_ref from parameter_catalog.governance_command_idempotency
