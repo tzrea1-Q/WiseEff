@@ -617,7 +617,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     const job = jobs?.[workerId];
     if (!job) { errors.push(`Missing ${workerId}.`); continue; }
     check(job.needs === "detect" && job.if === "needs.detect.outputs.run_l1 == 'true'", `${id} must retain fixed L1 selection.`);
-    check(job["runs-on"] === "ubuntu-latest", `${id} must retain the runner platform.`);
+    check(job["runs-on"] === "ubuntu-24.04", `${id} must retain the runner platform.`);
     check(job["continue-on-error"] === undefined && job["timeout-minutes"] === 20, `${id} must retain timeout and strict job failure semantics.`);
     const steps = job.steps ?? [];
     check(JSON.stringify(steps.map((step) => step.id)) === JSON.stringify([...l1CommandIds[id], "receipt", ...(id === "l1-server" ? ["shard_receipt"] : [])]), `${workerId} lost, reordered, or added an unmapped command.`);
@@ -689,7 +689,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     const worker = jobs?.[workerId];
     const steps = worker?.steps ?? [];
     check(worker?.name === workerName && worker.needs === "detect" && worker.if === `needs.detect.outputs.${flag} == 'true'`
-      && worker["runs-on"] === "ubuntu-latest" && worker["continue-on-error"] === undefined
+      && worker["runs-on"] === "ubuntu-24.04" && worker["continue-on-error"] === undefined
       && worker["timeout-minutes"] === (kind === "server" ? 20 : 35), `${workerId} must retain its fixed name, selection, runner, timeout and strict failure semantics.`);
     check(worker?.strategy?.["fail-fast"] === false && worker.strategy["max-parallel"] === undefined
       && JSON.stringify(Object.keys(worker.strategy).sort()) === JSON.stringify(["fail-fast", "matrix"])
@@ -785,7 +785,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     const expectedOutputs = kind === "server"
       ? { receipt: "${{ steps.results.outputs.receipt }}", shadow_server: "${{ steps.results.outputs.shadow }}" }
       : { identity: "${{ steps.results.outputs.identity }}" };
-    check(aggregate?.name === aggregateName && aggregate.if === ciAggregateEventCondition && aggregate["runs-on"] === "ubuntu-latest"
+    check(aggregate?.name === aggregateName && aggregate.if === ciAggregateEventCondition && aggregate["runs-on"] === "ubuntu-24.04"
       && aggregate["timeout-minutes"] === 5 && aggregate["continue-on-error"] === undefined
       && JSON.stringify(aggregate.needs) === JSON.stringify(["detect", workerId])
       && aggregate.strategy === undefined && aggregate.services === undefined && aggregate.env === undefined,
@@ -824,7 +824,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   check(jobs?.["build-and-test"]?.outputs?.identity === "${{ steps.results.outputs.identity }}", "Build and test must publish its verified execution identity.");
   const shards = jobs?.["acceptance-local-non-hdc-shards"];
   check(shards?.needs === "detect" && shards.if === "needs.detect.outputs.run_l2 == 'true'"
-    && shards["continue-on-error"] === undefined && shards["runs-on"] === "ubuntu-latest", "L2 shards must retain strict detect scheduling on separate runners.");
+    && shards["continue-on-error"] === undefined && shards["runs-on"] === "ubuntu-24.04", "L2 shards must retain strict detect scheduling on separate runners.");
   check(shards?.strategy?.["fail-fast"] === false && shards.strategy["max-parallel"] === undefined
     && JSON.stringify(shards.strategy.matrix) === JSON.stringify({ shard: [1, 2, 3, 4] }), "L2 must run all four shards without fail-fast, exclusions, or throttling.");
   check(shards?.steps?.find((step) => step.id === "acceptance_gate0")?.run === "npm run acceptance:gate0 -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}"

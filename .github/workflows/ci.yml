@@ -44,11 +44,12 @@ env:
   EFF_MODE: ${{ inputs.acceptance_mode }}
   EFF_FULL_ACCEPTANCE: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-acceptance') }}
 
+# Keep the Playwright/DTS toolchain on the supported Ubuntu release.
 jobs:
   minimal-upgrade:
     name: Minimal upgrade terminal probe
     if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode == 'minimal-upgrade'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -100,7 +101,7 @@ jobs:
 
   detect:
     name: Detect changed paths
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       selected: ${{ steps.event.outputs.selected }}
@@ -201,7 +202,7 @@ jobs:
     name: L1 static and build
     needs: detect
     if: needs.detect.outputs.run_l1 == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       receipt: ${{ steps.receipt.outputs.receipt }}
@@ -295,7 +296,7 @@ jobs:
     name: L1 frontend
     needs: detect
     if: needs.detect.outputs.run_l1 == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       receipt: ${{ steps.receipt.outputs.receipt }}
@@ -333,7 +334,7 @@ jobs:
     name: L1 scripts and bridge
     needs: detect
     if: needs.detect.outputs.run_l1 == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       receipt: ${{ steps.receipt.outputs.receipt }}
@@ -422,7 +423,7 @@ jobs:
     name: L1 backend shard ${{ matrix.shard }}/3
     needs: detect
     if: needs.detect.outputs.run_l1 == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -519,7 +520,7 @@ jobs:
     name: L1 backend
     if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, l1-server-shards]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       receipt: ${{ steps.results.outputs.receipt }}
@@ -543,7 +544,7 @@ jobs:
     name: Build and test
     if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, l1-static, l1-frontend, l1-scripts, l1-server]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       identity: ${{ steps.results.outputs.identity }}
@@ -572,7 +573,7 @@ jobs:
     name: Acceptance quality lane (${{ matrix.lane }})
     needs: detect
     if: needs.detect.outputs.run_quality == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
       fail-fast: false
@@ -724,7 +725,7 @@ jobs:
     name: Acceptance quality
     if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, acceptance-quality-lanes]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       identity: ${{ steps.results.outputs.identity }}
@@ -747,7 +748,7 @@ jobs:
     name: Acceptance smoke
     needs: detect
     if: needs.detect.outputs.run_smoke == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     services:
@@ -846,7 +847,7 @@ jobs:
     name: Acceptance local non-HDC shard ${{ matrix.shard }}/4
     needs: detect
     if: needs.detect.outputs.run_l2 == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -1338,7 +1339,7 @@ jobs:
     name: Acceptance local non-HDC
     if: always() && needs.detect.outputs.selected != 'false'
     needs: [detect, acceptance-local-non-hdc-shards]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -1354,7 +1355,7 @@ jobs:
     name: Target synthetic acceptance
     needs: detect
     if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode != 'local-non-hdc' && inputs.acceptance_mode != 'minimal-upgrade'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 50
 
     env:
@@ -1484,7 +1485,7 @@ jobs:
       - acceptance-local-non-hdc
       - target-synthetic-acceptance
       - minimal-upgrade
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4

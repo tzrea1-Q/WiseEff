@@ -41,6 +41,15 @@ describe("equivalent fixed L1 scheduling", () => {
   it("maps every original L1 command and prerequisite to four jobs with stable strict aggregates", () => {
     expect(evaluateL1CiWorkflow(readFileSync(".github/workflows/ci.yml", "utf8"))).toEqual({ status: "passed", errors: [] });
   });
+  it.each(["ubuntu-latest", "ubuntu-26.04"])("rejects floating or unsupported runner %s", (runner) => {
+    const jobs = YAML.parse(compliantWorkflow).jobs as Record<string, { "runs-on": string }>;
+    expect(new Set(Object.values(jobs).map(job => job["runs-on"]))).toEqual(new Set(["ubuntu-24.04"]));
+    for (const id of ["l1-static", "l1-frontend", "l1-scripts", "l1-server-shards", "acceptance-quality-lanes", "acceptance-local-non-hdc-shards", "l1-server", "acceptance-quality"]) {
+      const workflow = YAML.parse(compliantWorkflow);
+      workflow.jobs[id]["runs-on"] = runner;
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status, id).toBe("failed");
+    }
+  });
   it.each(["build", "docs", "ui", "lint", "metadata", "catalog", "contract", "bridge_package", "logs"])("rejects removal of the original %s command", (id) => {
     const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
     const job = workflow.jobs[id === "docs" ? "l1-server-shards" : "l1-static"];
