@@ -50,6 +50,22 @@ describe("user import preflight through HTTP and PostgreSQL", () => {
     await db.query("update user_role_bindings set role_id='guest' where id='import-role'");
     expect((await requestJson(server(), `/api/v1/users/imports/${importId}`, { headers })).status).toBe(403);
   });
+  it("preserves historical IDs after a created user is deleted and never recreates them on replay", async () => {
+    const server = createWiseEffServer({ db, env: { AUTH_PROVIDER: "local" }, auth: { mode: "production" }, localAuthService: createLocalAuthService(db) });
+    const headers = { Authorization: `Bearer ${token}` };
+    const rows = [{ row: 2, name: "Deleted member", username: "deleted-member", password: "initial-password", title: "", roles: "访客" }];
+    const preview = await requestJson<{ item: { token: string } }>(server, "/api/v1/users/imports/preview", { method: "POST", headers, body: JSON.stringify({ rows }) });
+    const body = { importId: "bb274db7-0344-4c3d-a19a-9be7e3bd88c0", previewToken: preview.body.item.token, rows };
+    const created = await requestJson<{ item: { rows: Array<{ userId: string }> } }>(server, "/api/v1/users/imports", { method: "POST", headers, body: JSON.stringify(body) });
+    const userId = created.body.item.rows[0].userId;
+    expect((await requestJson(server, `/api/v1/users/${userId}`, { method: "DELETE", headers })).status).toBe(204);
+    const recovered = await requestJson<{ item: { count: number; rows: Array<{ row: number; userId: string }> } }>(server, `/api/v1/users/imports/${body.importId}`, { headers });
+    expect(recovered.body.item).toMatchObject({ count: 1, rows: [{ row: 2, userId }] });
+    expect(recovered.body.item.rows[0]).not.toHaveProperty("name");
+    const replay = await requestJson(server, "/api/v1/users/imports", { method: "POST", headers, body: JSON.stringify({ ...body, previewToken: "expired", rows: [{ ...rows[0], password: "" }] }) });
+    expect(replay.body).toEqual(recovered.body);
+    expect((await requestJson(server, `/api/v1/users/${userId}`, { headers })).status).toBe(404);
+  });
   it("rolls back every account and audit if a later credential write fails", async () => {
     const server = createWiseEffServer({ db, env: { AUTH_PROVIDER: "local" }, auth: { mode: "production" }, localAuthService: createLocalAuthService(db) });
     const headers = { Authorization: `Bearer ${token}` };

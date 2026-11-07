@@ -6,12 +6,12 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 | Operation ID | Priority | Area | Coverage | Route | Roles | Action | Assertions | Specs |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `PERM-USER-IMPORT-001` | P1 | permissions | future | `/organization/members` | Org Admin, Platform Admin | Preview and atomically import local users, recover a result and export a password-free report. | ui, api, db, audit, screenshot | `src/application/userImportWorkbook.test.ts`<br>`server/modules/users/userImport.integration.test.ts` |
+| `PERM-USER-IMPORT-001` | P1 | permissions | conditional | `/organization/members` | Org Admin, Platform Admin | Preview and atomically import local users, recover a result and export a password-free report. | ui, api, db, audit, screenshot | `e2e/acceptance/user-bulk-import.acceptance.spec.ts`<br>`e2e/acceptance/user-import-reports.acceptance.spec.ts`<br>`server/modules/users/userImport.integration.test.ts` |
 | `PARLIB-READ-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Read global definitions, search all subject kinds and inspect exact revision history. | ui, api, screenshot | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
 | `PARLIB-SCOPE-001` | P1 | parameters | automated | `/parameters` | Software User | Read Organization configurations without gaining project write permissions. | ui, api, screenshot | `e2e/acceptance/parameter-library-scope.acceptance.spec.ts` |
 | `PARLIB-INSTANCES-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Inspect all current instances and exact configured-project/value counts. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `PARLIB-FILTER-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Filter project usage and include projects without current configuration. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
-| `PARLIB-COMPARE-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Inspect the initial exact baseline, independently select projects and instances, and inspect conservative typed comparisons. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
+| `PARLIB-COMPARE-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Select an explicit instance baseline and inspect conservative typed comparisons. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `PARLIB-RETURN-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Open the owning project/config set/Binding and return to library context. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `PARLIB-SHARE-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Copy the complete selected raw value. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
 | `MODULE-STRUCTURE-MIXED-001` | P1 | parameters | automated | `/parameter-admin/modules` | Org Admin | Review and apply a mixed structure update in one confirmation. | ui, api, screenshot | `e2e/acceptance/module-structure-transfer.acceptance.spec.ts` |
@@ -221,7 +221,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 ## Deferred Or Conditional Operations
 
-- `PERM-USER-IMPORT-001`: Workbook preflight and atomic creation/replay have focused API/PostgreSQL tests; interrupted-result recovery, reports and complete real-browser evidence remain in the full feature.
+- `PERM-USER-IMPORT-001`: Requires actual local password sessions in an isolated local-auth API lane; HMAC/OIDC lanes skip this provider-specific workflow.
 - `ORG-OPERATING-LIFECYCLE-001`: Requires actual local password sessions in an isolated local-auth API lane; HMAC/OIDC lanes skip this provider-specific workflow. The signed OIDC companion has its own conditional operation and evidence.
 - `ORG-OIDC-TRANSFER-001`: Requires an isolated OIDC API lane with a controlled loopback issuer/JWKS and its ephemeral test signing key; other provider lanes cannot establish this evidence.
 - `ORG-ACCOUNT-TRANSFER-001`: Browser workflow requires an isolated real local-auth API lane; HMAC and OIDC lanes skip this local-password interaction.
