@@ -58,11 +58,28 @@ test("creates a reviewed roster and safely retries a lost response", async ({ pa
   });
   await dialog.getByRole("button", { name: "确认创建 1 位成员" }).click();
   await expect(dialog.getByText("结果尚未确认", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "使用原批次重试" }).click();
+  const stored = await page.evaluate(() => Object.values(sessionStorage).join("\n"));
+  expect(stored).not.toContain(LOCAL_DEMO_SHARED_PASSWORD);
+  expect(stored).not.toContain(username);
+  const locator = await page.evaluate(() => JSON.parse(sessionStorage.getItem("wiseeff.user-import.pending")!));
+  expect(locator).toEqual({ importId: expect.any(String), actorId: acceptanceCast.platformOperator.userId, organizationId: organization });
+  let dropLookup = true;
+  await page.route(url => /^\/api\/v1\/users\/imports\/[^/]+$/.test(url.pathname), async route => {
+    if (dropLookup) await route.abort("aborted");
+    else await route.continue();
+  });
+  await page.reload();
+  await prepareInteractionSurface(page);
+  await page.getByRole("button", { name: "批量导入", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByText("暂时无法查询批次结果，请检查连接后重试。")).toBeVisible();
+  dropLookup = false;
+  await dialog.getByRole("button", { name: "查询原批次结果" }).click();
   await expect(dialog.getByRole("heading", { name: "创建完成" })).toBeVisible();
   await expect(dialog).toContainText(username);
   await page.screenshot({ path: testInfo.outputPath("user-import-result-1440.png"), animations: "disabled" });
   await dialog.getByRole("button", { name: "完成", exact: true }).click();
+  await expect(page.getByRole("button", { name: "批量导入", exact: true })).toBeFocused();
   await expect(page.getByText(username, { exact: true }).first()).toBeVisible();
   const newContext = await browser.newContext();
   try {

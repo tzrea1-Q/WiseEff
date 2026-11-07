@@ -1014,7 +1014,7 @@ export function UserPermissionsPage({
         onConfirm={() => void confirmGovernanceAction()}
       />
 
-      {userImportOpen && !readOnly && directoryScope && userGovernanceActions?.previewUserImport ? <UserImportDialog organizationId={directoryScope} actions={userGovernanceActions} roleLabels={roleLabels} canGrantPlatformAdmin={state.activeRoleId === "platform-admin"} onClose={() => setUserImportOpen(false)} onCreated={() => setDirectoryReloadToken(value => value + 1)} /> : null}
+      {userImportOpen && !readOnly && directoryScope && userGovernanceActions?.previewUserImport ? <UserImportDialog key={`${state.currentUserId}:${directoryScope}`} actorId={state.currentUserId} organizationId={directoryScope} actions={userGovernanceActions} roleLabels={roleLabels} canGrantPlatformAdmin={state.activeRoleId === "platform-admin"} onClose={() => setUserImportOpen(false)} onCreated={() => setDirectoryReloadToken(value => value + 1)} /> : null}
       <ModalDialog open={addMemberChoiceOpen && !readOnly} onDismiss={() => setAddMemberChoiceOpen(false)} className="user-permissions-modal-card modal-card--sm">{({ titleId }) => <>
         <h3 id={titleId}>添加成员</h3><div className="modal-body">
           <Button onClick={() => { setAddMemberChoiceOpen(false); onInvite?.(); }}>邀请加入</Button><p className="member-details__hint">成员通过邀请链接自行设置登录账号和密码。</p>
