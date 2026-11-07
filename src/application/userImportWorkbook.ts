@@ -1,5 +1,7 @@
+/// <reference path="./jszip-internals.d.ts" />
 import JSZip from "jszip";
 import ZipEntries from "jszip/lib/zipEntries.js";
+import crc32 from "jszip/lib/crc32.js";
 import * as XLSX from "xlsx";
 
 const headings = ["姓名", "用户名", "初始密码", "职务", "组织角色"] as const;
@@ -50,15 +52,39 @@ async function inspectArchive(bytes: Uint8Array) {
   for (const entry of entries) {
     if (entry.dir) continue;
     await new Promise<void>((resolve, reject) => {
-      const stream = (entry as typeof entry & { internalStream(type: "uint8array"): ZipStream }).internalStream("uint8array");
-      let size = 0;
+      const raw = entry as typeof entry & { internalStream(type: "uint8array"): ZipStream; _data: { crc32: number } };
+      const stream = raw.internalStream("uint8array");
+      let size = 0, checksum = 0;
       stream.on("data", (chunk) => {
         size += chunk.byteLength; total += chunk.byteLength;
         if (size > 8 * 1024 * 1024 || total > 32 * 1024 * 1024) {
           stream.pause(); reject(new Error("工作簿解压后超过大小上限。"));
-        }
-      }).on("end", resolve).on("error", reject).resume();
+        } else checksum = crc32(chunk, checksum);
+      }).on("end", () => { if ((checksum >>> 0) !== (raw._data.crc32 >>> 0)) reject(new Error("Invalid archive checksum")); else resolve(); }).on("error", reject).resume();
     });
+  }
+  const typesFile = zip.file("[Content_Types].xml"), relationsFile = zip.file("_rels/.rels");
+  if (!typesFile || !relationsFile) throw new Error("工作簿不是受支持的 XLSX 格式。");
+  const [typesText, relationsText] = await Promise.all([typesFile.async("string"), relationsFile.async("string")]);
+  if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(typesText) || /<!\s*(?:DOCTYPE|ENTITY)\b/i.test(relationsText)) throw new Error("工作簿不是受支持的 XLSX 格式。");
+  const parser = new DOMParser();
+  const types = parser.parseFromString(typesText, "application/xml"), relations = parser.parseFromString(relationsText, "application/xml");
+  const contentNamespace = "http://schemas.openxmlformats.org/package/2006/content-types";
+  const relationNamespace = "http://schemas.openxmlformats.org/package/2006/relationships";
+  if (types.documentElement.localName !== "Types" || types.documentElement.namespaceURI !== contentNamespace ||
+      relations.documentElement.localName !== "Relationships" || relations.documentElement.namespaceURI !== relationNamespace ||
+      types.getElementsByTagName("parsererror").length || relations.getElementsByTagName("parsererror").length) {
+    throw new Error("工作簿不是受支持的 XLSX 格式。");
+  }
+  const workbookRelations = [...relations.getElementsByTagNameNS(relationNamespace, "Relationship")].filter((relation) =>
+    ["http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument"].includes(relation.getAttribute("Type") ?? ""));
+  if (workbookRelations.length !== 1 || workbookRelations[0].getAttribute("TargetMode") === "External") throw new Error("工作簿不是受支持的 XLSX 格式。");
+  const target = workbookRelations[0].getAttribute("Target") ?? "";
+  const resolved = new URL(target, "https://workbook.invalid/");
+  if (!target || resolved.origin !== "https://workbook.invalid" || resolved.search || resolved.hash) throw new Error("工作簿不是受支持的 XLSX 格式。");
+  const parts = [...types.getElementsByTagNameNS(contentNamespace, "Override")].filter((part) => part.getAttribute("PartName") === resolved.pathname);
+  if (parts.length !== 1 || parts[0].getAttribute("ContentType") !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml" || !zip.file(decodeURIComponent(resolved.pathname.slice(1)))) {
+    throw new Error("工作簿不是受支持的 XLSX 格式。");
   }
 }
 

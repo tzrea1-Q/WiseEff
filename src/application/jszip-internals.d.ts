@@ -5,3 +5,7 @@ declare module "jszip/lib/zipEntries.js" {
     load(bytes: Uint8Array): void;
   }
 }
+
+declare module "jszip/lib/crc32.js" {
+  export default function crc32(bytes: Uint8Array, previous?: number): number;
+}
