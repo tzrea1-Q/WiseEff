@@ -34,6 +34,14 @@ Secrets contain at least 256 random bits; the server stores only their hash and 
 
 **Owned acceptance subprocess and evidence boundary:** Gate0 phases and nested disposable runtimes never inherit `process.env` wholesale. Their complete child environment is rebuilt from a small OS launch allowlist plus the exact owned runtime variables; PostgreSQL passwords, Docker/Git credential helpers, CI job JWTs, provider keys, authorization values, and generic token/secret/password variables cross the boundary only when the owned runtime explicitly defines them. Root and nested credentials generated during one run are registered through a loopback-only, token-authenticated sink and are acknowledged only after encrypted exact-value context is durably published. Root, phase, and nested API/frontend process-start identities are persisted without credentials. After an owner crash, the fresh CI finalizer proves the owner exited, stops every identity-matched writer before TERM/KILL, retains DB/object forensic resources, sanitizes and scans one private staging tree, and atomically publishes one scanned read-only ZIP; CI uploads only that ZIP. The nested ownership manifest remains secret-free. Owned operation evidence points only to existing regular report/trace descendants of its run root and hashes an immutable runtime snapshot, never the descriptor whose phase and cleanup fields continue to change.
 
+### Bulk local-account import
+
+User import requires a trusted human user, local authentication, current `users:manage`, and access to the selected Organization. Preview tokens indicate consistency, never authorization. Confirmation rechecks the actor, Organization lifecycle, role grants and global username uniqueness. Ordinary Organization administrators cannot grant `platform-admin`; imports never grant Team, project or review duties.
+
+Initial passwords exist only in the selected workbook and transient browser/request memory until salted `scrypt` credential hashes are written. Previews, safe errors, audit events, receipts, reports and browser recovery storage exclude plaintext passwords and fast password-derived fingerprints. The browser does not persist the workbook or row payload. Receipt fingerprints cover only non-secret intent; replaying a committed batch cannot reset its users' passwords. Receipt reads require the original operator's current access to the target Organization. Receipts last for the Organization's lifetime and are included in its erasure inventory.
+
+Workbook validation bounds compressed size, actual expanded ZIP bytes, entries and rows before parsing. Inputs and exported report cells are literal text; formulas and nontext input cells are rejected. API payload limits and server validation apply independently of browser validation.
+
 ## Permission Model
 
 Current frontend permissions include:

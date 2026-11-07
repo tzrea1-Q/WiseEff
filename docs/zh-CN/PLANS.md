@@ -16,7 +16,7 @@ WiseEff 主要用于 PC。[界面质量检查清单](developer/ui-quality-checkl
 
 已完成模块结构传输：[方案](exec-plans/completed/2026-11-03-module-structure-transfer.md)、规格 [#1493](https://github.com/tzrea1-Q/WiseEff/issues/1493)、实现与验收 [PR #1505](https://github.com/tzrea1-Q/WiseEff/pull/1505)。
 
-- [用户模板批量创建](exec-plans/active/2026-11-07-user-bulk-import.md)：2026-11-07 经 Q17 确认完整方案；[规格 #1530](https://github.com/tzrea1-Q/WiseEff/issues/1530) 及获批准子任务 #1531–#1534 已发布并标记 `ready-for-agent`，原生依赖为 #1531 → #1532 →（#1533、#1534）。单组织 XLSX 至多创建 500 个本地账号，逐行密码、多角色、预检、整批确认及安全重试。用户明确暂不开始开发，尚未授权实施。
+- [用户模板批量创建](exec-plans/active/2026-11-07-user-bulk-import.md)：2026-11-07 经 Q17 确认完整方案；[规格 #1530](https://github.com/tzrea1-Q/WiseEff/issues/1530) 及获批准子任务 #1531–#1534 已发布并标记 `ready-for-agent`，原生依赖为 #1531 → #1532 →（#1533、#1534）。单组织 XLSX 至多创建 500 个本地账号，逐行密码、多角色、预检、整批确认及安全重试。用户随后通过 `implement-spec` 授权在 `codex/user-bulk-import` 完整实施，取代规划阶段的暂缓要求；实现与验证进行中。
 - [组织管理整改](exec-plans/active/2026-10-24-organization-management-remediation.md)：修复 40 项界面、流程与授权审查问题；实施及当前候选验证进行中。
 - [共享 UI 契约与开发验证闭环](exec-plans/active/2026-10-15-ui-contract-verification.md)：#1187/#1188 冻结剩余消费者、当前 main 失败、暂定 CI 分组及统一累计时间/计算预算；实施与效果指标仍待验收。
 - [统一 SearchField 与模糊搜索](exec-plans/active/2026-09-16-unified-fuzzy-search.md)：单一 SearchField 原语、仓库自研多字段模糊内核、明确的 Search Profile，并迁移全部搜索输入；不得替换服务端检索或原文查找引擎。

@@ -30,6 +30,18 @@ An Organization Admin cannot grant or revoke the Platform Admin role or manage a
 
 If you only need to stop access, disable the account. This immediately revokes personal sessions, credentials and device pairings; handover can follow. Delete user permanently removes the account and personal access, while unfinished business, drafts and historical authorship stay in the original Organization for handover. Organization machine credentials remain independent of their creator. Permanent Organization erasure is a separate operation that also removes that Organization's business history. For password resets, use [Reset a member's local password](account-and-access.md#reset-a-members-local-password).
 
+## Create users from an Excel template
+
+In the local-account deployment, open **Bulk import** in Members and permissions. Check the displayed target Organization, download the `.xlsx` template, and fill **用户数据** with one user per row. Each batch belongs to that Organization and supports 1–500 users. Organization administrators manage their own Organization; platform administrators may explicitly select another active Organization.
+
+The five columns are **姓名**, **用户名**, **初始密码**, **职务**, and **组织角色**. Only title is optional. Keep every value as text, including passwords with leading zeroes or spaces. Separate multiple Chinese role names with `；`, for example `硬件开发；软件开发`. The instructions and example sheets are references and are not imported. The file limit is 2 MiB; formulas, merged input cells and nontext values are rejected. Hidden or filtered rows are still included.
+
+Upload the completed file and review the target Organization, user count, roles and any privileged accounts. The preview never shows passwords. Correct every reported issue in the original workbook, using the original Excel row numbers, then upload it again. Existing usernames are conflicts even when they belong to another Organization; import never changes an existing account. Any error prevents the entire batch from being created.
+
+After a clean preview, select **Confirm creation** once. Successful accounts are enabled immediately with their supplied passwords and Organization roles. Team membership and project permissions are configured separately. Deliver initial credentials through your trusted channel; users may change their passwords from their profiles, without a forced first-login reset.
+
+Download the password-free error or result list when needed. It is a report, not a replacement import template. If the connection is lost or the page is refreshed after submission, recover the original batch result before starting another import. An unknown result does not mean the batch failed. The page retains only a batch locator for recovery and may ask you to reselect the original workbook. Closing after submission does not cancel a request already being processed. No import-history page is provided.
+
 ## Invite a collaborator
 
 In Members and permissions, open **Manage invitations**, then **Create invitation**. Choose the Organization roles, preset Teams, projects and each project's editing roles. Generate and copy the one-time link; the recipient checks the offer and sets their own local username and password. The accepted account receives the valid presets together. See [Accept an invitation](account-and-access.md#accept-an-invitation) for the recipient steps.
