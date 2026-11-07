@@ -3,10 +3,43 @@ import JSZip from "jszip";
 import ZipEntries from "jszip/lib/zipEntries.js";
 import crc32 from "jszip/lib/crc32.js";
 import * as XLSX from "xlsx";
+import type { UserImportPreview, UserImportReceipt } from "@/infrastructure/http/userGovernanceClient";
 
 const headings = ["姓名", "用户名", "初始密码", "职务", "组织角色"] as const;
 const fields = ["name", "username", "password", "title", "roles"] as const;
 export type UserImportRow = { row: number; name: string; username: string; password: string; title: string; roles: string };
+
+export function buildUserImportReport(input:
+  | { kind: "preview"; organizationName: string; preview: UserImportPreview }
+  | { kind: "file-error"; organizationName: string }
+  | { kind: "success"; organizationName: string; receipt: UserImportReceipt }
+): Uint8Array {
+  if (input.kind === "preview" && !input.preview.errors.length) throw new Error("预检没有错误，无需下载错误清单。");
+  const headings = ["原始行号", "用户名", "姓名", "职务", "状态", "错误字段", "修复建议"];
+  const fields: Record<string, string> = { name: "姓名", username: "用户名", password: "初始密码", title: "职务", roles: "组织角色" };
+  const lines: string[][] = [
+    ["用户导入清单", input.kind === "success" ? "创建完成" : input.kind === "preview" ? "预检未通过" : "文件无法读取"],
+    ["操作组织", input.organizationName],
+    ["说明", "请按原始行号修改含凭据的原始模板并重新上传预检；本清单不是可导入的凭据模板。"],
+  ];
+  if (input.kind === "success") lines.push(["批次编号", input.receipt.importId], ["创建人数", String(input.receipt.count)]);
+  lines.push(headings);
+  if (input.kind === "preview") {
+    // ponytail: at most 500 rows; index errors by row if the import limit grows substantially.
+    for (const row of input.preview.rows) {
+      const errors = input.preview.errors.filter((item) => item.row === row.row);
+      if (!errors.length) lines.push([String(row.row), row.username, row.name, row.title, "未创建：整批校验未通过", "", ""]);
+      for (const error of errors) lines.push([String(row.row), row.username, row.name, row.title, "未创建：需修正", fields[error.field] ?? error.field, error.message]);
+    }
+  } else if (input.kind === "success") {
+    for (const row of input.receipt.rows) lines.push([String(row.row), row.username ?? "", row.name ?? "用户信息不可用", "", "已创建", "", ""]);
+  } else lines.push(["", "", "", "", "文件无法读取，未检查逐行数据", "文件", "请检查原始模板后重新上传预检。"]);
+  const sheet = XLSX.utils.aoa_to_sheet(lines);
+  sheet["!cols"] = [14, 24, 20, 20, 28, 16, 48].map((wch) => ({ wch }));
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, "导入清单");
+  return new Uint8Array(XLSX.write(book, { type: "array", bookType: "xlsx" }));
+}
 
 export function buildUserImportTemplate(): Uint8Array {
   const book = XLSX.utils.book_new();
