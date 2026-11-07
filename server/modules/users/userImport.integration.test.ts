@@ -7,6 +7,10 @@ import { seedCoreGraph } from "../../testing/fixtures";
 import { seedBaselineAuthCatalog } from "../auth/baselineCatalog";
 import { createLocalAuthService } from "../auth/localAuth";
 import { hashLocalAccountPassword } from "../auth/localAccountCredentials";
+import { createAgentInvocation, createUserInvocation, type UserInvocationContext } from "../auth/trustedInvocation";
+import { getAuthContext } from "../auth/repository";
+import { resolveOperatingContext } from "../auth/operatingContext";
+import { createUserImport, previewUserImport, readUserImport } from "./userImport";
 
 describe("user import preflight through HTTP and PostgreSQL", () => {
   let db: RootDatabase, ephemeral: Awaited<ReturnType<typeof createEphemeralTestDatabase>>, token: string;
@@ -19,6 +23,49 @@ describe("user import preflight through HTTP and PostgreSQL", () => {
     token = (await createLocalAuthService(db).login({ username: "existing-user", password: "test-password" }, { requestId: "fixture" })).session.token;
   });
   afterEach(async () => { try { await db?.close(); } finally { await ephemeral?.drop(); } });
+  it("rejects Agent provenance on import preview and receipt lookup", async () => {
+    const agent = createAgentInvocation(await getAuthContext(db, "import-admin"), { sessionId: "session", toolCallId: "tool", approval: { required: false } });
+    const rows = [{ row: 2, name: "Person", username: "agent-person", password: "initial-password", title: "", roles: "访客" }];
+    await expect(previewUserImport(db, agent as unknown as UserInvocationContext, { rows })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(createUserImport(db, agent as unknown as UserInvocationContext, { importId: "ea274db7-0344-4c3d-a19a-9be7e3bd88c0", previewToken: "preview", rows }, "agent-import")).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(readUserImport(db, agent as unknown as UserInvocationContext, "ea274db7-0344-4c3d-a19a-9be7e3bd88c0")).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+  it("rejects an actor transferred after preflight even if platform authority survives", async () => {
+    await seedCoreGraph(db, { organization: { id: "import-target", name: "Target" } });
+    await seedCoreGraph(db, { organization: { id: "import-other", name: "Other" } });
+    await db.query("update user_role_bindings set role_id='platform-admin' where id='import-role'");
+    const invocation = await resolveOperatingContext(db, createUserInvocation(await getAuthContext(db, "import-admin")), "import-target");
+    const rows = [{ row: 2, name: "Late transfer", username: "late-transfer", password: "initial-password", title: "", roles: "访客" }];
+    const preview = await previewUserImport(db, invocation, { rows });
+    const moved: Database = {
+      query: (text, values) => db.query(text, values),
+      transaction: async (fn, options) => {
+        await db.transaction(async tx => {
+          await tx.query("delete from auth_sessions where user_id='import-admin'");
+          await tx.query("delete from user_role_bindings where user_id='import-admin'");
+          await tx.query("delete from user_oidc_identities where user_id='import-admin'");
+          await tx.query("update users set organization_id='import-other' where id='import-admin'");
+          await tx.query("insert into user_oidc_identities(user_id,organization_id) values('import-admin','import-other')");
+          await tx.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('moved-platform','import-admin','import-other','platform-admin')");
+        });
+        return db.transaction(fn, options);
+      }
+    };
+    await expect(createUserImport(moved, invocation, { importId: "9a274db7-0344-4c3d-a19a-9be7e3bd88c0", previewToken: preview.token, rows }, "transfer-race")).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect((await db.query("select count(*)::int n from users where name='Late transfer'")).rows).toEqual([{ n: 0 }]);
+  });
+  it("records the original user provenance for a platform-scoped import", async () => {
+    await seedCoreGraph(db, { organization: { id: "import-target", name: "Target" } });
+    await db.query("update user_role_bindings set role_id='platform-admin' where id='import-role'");
+    const server = () => createWiseEffServer({ db, env: { AUTH_PROVIDER: "local" }, auth: { mode: "production" }, localAuthService: createLocalAuthService(db) });
+    const headers = { Authorization: `Bearer ${token}` };
+    const rows = [{ row: 2, name: "Scoped user", username: "scoped-user", password: "initial-password", title: "", roles: "访客" }];
+    const preview = await requestJson<{ item: { token: string } }>(server(), "/api/v1/users/imports/preview?organizationId=import-target", { method: "POST", headers, body: JSON.stringify({ rows }) });
+    const created = await requestJson<{ item: { rows: Array<{ userId: string }> } }>(server(), "/api/v1/users/imports?organizationId=import-target", { method: "POST", headers, body: JSON.stringify({ importId: "8a274db7-0344-4c3d-a19a-9be7e3bd88c0", previewToken: preview.body.item.token, rows }) });
+    expect(created.status).toBe(200);
+    const audit = await db.query("select organization_id,actor_user_id,actor_type,metadata from audit_events where kind='user-create' and target_id=$1", [created.body.item.rows[0].userId]);
+    expect(audit.rows).toEqual([expect.objectContaining({ organization_id: "import-target", actor_user_id: "import-admin", actor_type: "user", metadata: expect.objectContaining({ initiator: "user", actorHomeOrganizationId: "import-home", operatingOrganizationId: "import-target" }) })]);
+  });
   it("creates a batch once and replays it without changing passwords", async () => {
     const server = createWiseEffServer({ db, env: { AUTH_PROVIDER: "local" }, auth: { mode: "production" }, localAuthService: createLocalAuthService(db) });
     const headers = { Authorization: `Bearer ${token}` };

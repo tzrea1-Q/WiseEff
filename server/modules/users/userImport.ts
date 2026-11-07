@@ -9,7 +9,7 @@ import { userImportPreviewBodySchema } from "../contracts/dtoSchemas/userImport"
 import { userImportCreateBodySchema } from "../contracts/dtoSchemas/userImport";
 import { z } from "zod";
 import { hashLocalAccountPassword, validateLocalAccountPassword, validateLocalAccountUsername } from "../auth/localAccountCredentials";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import { requireUserInitiatedInvocation } from "../auth/trustedInvocationPolicy";
 import { resolveOperatingContext } from "../auth/operatingContext";
 import { lockAdministratorMutation } from "./administratorContinuity";
 import { assertPlatformAdminGrantAllowed, writePreparedLocalUser } from "./service";
@@ -68,6 +68,7 @@ function intentDigest(actorId: string, organizationId: string, rows: z.infer<typ
 }
 
 async function importAuthority(db: Database, invocation: UserInvocationContext) {
+  requireUserInitiatedInvocation(invocation);
   const auth = await getAuthContext(db, invocation.principal.user.id);
   const organizationId = invocation.operatingOrganization?.id ?? auth.organization.id;
   const platform = auth.roles.some(role => role.projectId === null && role.roleId === "platform-admin");
@@ -140,7 +141,8 @@ export async function createUserImport(db: Database, invocation: UserInvocationC
       await tx.query("select id from organizations where id=$1 for share", [organizationId]);
       await tx.query("select id from users where id=$1 for update", [auth.user.id]);
       const current = await importAuthority(tx, invocation);
-      const scoped = await resolveOperatingContext(tx, createUserInvocation(current.auth), organizationId);
+      if (current.auth.user.organizationId !== invocation.principal.user.organizationId) throw new ApiError("FORBIDDEN", "操作账号的所属组织已变化，请重新开始。");
+      const scoped = await resolveOperatingContext(tx, invocation, organizationId);
       await tx.query("select pg_advisory_xact_lock(hashtextextended('user-import:'||$1,0))", [parsed.data.importId]);
       const committed = await receipt(tx, parsed.data.importId, current.auth.user.id, organizationId, digest);
       if (committed) return committed;
