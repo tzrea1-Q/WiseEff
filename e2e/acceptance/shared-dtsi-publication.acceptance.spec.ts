@@ -203,7 +203,9 @@ test("publishes a source-only shared version and retains its history after disca
   await page.getByRole("button",{name:"检查并预览",exact:true}).click();await page.getByRole("button",{name:"发布版本",exact:true}).click();await expect(page.getByText("v2 · 已发布，只读",{exact:true})).toBeVisible();
   const db=createPostgresDatabase(catalogAcceptanceRuntime.runtime.databaseUrl);try{expect((await db.query<{revision_id:string}>("select revision_id from project_shared_dtsi_references where project_id=$1",[project])).rows).toEqual([{revision_id:versionId}]);}finally{await db.close();}
   await page.getByRole("button",{name:"创建新版本",exact:true}).click();
-  await page.getByRole("button",{name:"资源更多操作",exact:true}).click();await page.getByRole("menuitem",{name:"丢弃草稿",exact:true}).click();
+  const nextDraft=page.getByRole("region",{name:"共享 DTSI 草稿",exact:true});
+  await expect(nextDraft).toBeVisible();
+  await nextDraft.getByRole("button",{name:"资源更多操作",exact:true}).click();await page.getByRole("menuitem",{name:"丢弃草稿",exact:true}).click();
   const discard=page.getByRole("dialog",{name:"丢弃共享 DTSI 草稿？",exact:true});
   await expect(discard).toContainText("已发布版本和历史会保留");
   await discard.getByRole("button",{name:"丢弃草稿",exact:true}).focus();
