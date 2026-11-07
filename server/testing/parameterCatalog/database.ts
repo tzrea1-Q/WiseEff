@@ -251,7 +251,9 @@ export const S2_SCH_0331_FINGERPRINT = "9262af10a2c614fa73c8af50a2df24acd1896f36
 export const S2_SCH_0332_FINGERPRINT = "de38c205ecaf327189aac0c97c973c0245e33ac26a3701146778f8b5d2e42ccd";
 /** 0333 adds organization child ownership and shared recognition collision guards. */
 export const S2_SCH_0333_FINGERPRINT = "cb1cd5d8a04f19dcf89a66a04d0af5c142b6bef71be1ad2844138e8912fcd265";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0333_FINGERPRINT;
+/** 0334 adds user-import receipts to the Organization deletion inventory. */
+export const S2_SCH_0334_FINGERPRINT = "1ed1e33c3658300bb2b51964e7528acfc0dd453f2c0efc2c8bc37c97650c4a62";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0334_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
