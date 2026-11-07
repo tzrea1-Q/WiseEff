@@ -212,7 +212,7 @@ test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritan
     let dialog = await upload(invalid);
     await dialog.getByRole("button", { name: "预览" }).click();
     await expect(dialog.getByRole("alert")).toBeVisible();
-    await expect(dialog.getByText(/recognition.json/)).toBeVisible();
+    await expect(dialog.getByText(`文件：recognition.json；来源组织：${org}；目标组织：${org}`, { exact: true })).toBeVisible();
     const edited = structuredClone(original);
     const rule = edited.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId).recognition;
     rule.mode = "override"; rule.override = { ...rule.effective, compatibles: ["wiseeff,recognition-1499"] };
@@ -289,7 +289,7 @@ test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", 
     await dialog.getByLabel("JSON 文件").setInputFiles({ name: "edit.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
     await dialog.getByRole("button", { name: "关闭" }).click();
     await page.getByRole("dialog", { name: "放弃导入？" }).getByRole("button", { name: "继续编辑" }).click();
-    await expect(dialog.getByText(/edit.json/)).toBeVisible();
+    await expect(dialog.getByText(`文件：edit.json；来源组织：${org}；目标组织：${org}`, { exact: true })).toBeVisible();
     await dialog.getByRole("button", { name: "预览" }).click();
     await expect(dialog.getByText('current edit', { exact: true })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "确认提交" })).toBeDisabled();
