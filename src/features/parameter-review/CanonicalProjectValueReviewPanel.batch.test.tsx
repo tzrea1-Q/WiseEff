@@ -249,7 +249,7 @@ describe("canonical batch reviewer", () => {
       currentUserId="reviewer-1" initialRequestId={batch.id} />);
     const detail = await screen.findByRole("article", { name: "批量源文件请求详情" });
     fireEvent.click(within(detail).getByText("溯源信息"));
-    expect(await within(detail).findByLabelText("完整溯源数据")).toHaveTextContent('"format": "dts"');
+    await waitFor(() => expect(within(detail).getByLabelText("完整溯源数据")).toHaveTextContent('"format": "dts"'));
     expect(within(detail).getByRole("list", { name: "批量审核目标" }).querySelectorAll("li")).toHaveLength(2);
     const approve = within(detail).getByRole("button", { name: "批准全部 2 项" });
     expect(approve).toBeEnabled();
@@ -308,7 +308,7 @@ describe("canonical batch reviewer", () => {
     expect(within(detail).getByText("两项校准")).toBeVisible();
     expect(within(detail.querySelector("header")!).getAllByText("项目成员（姓名暂不可用）")).toHaveLength(2);
     expect(within(detail).getByRole("list", { name: "批量审核目标" }).querySelectorAll("li")).toHaveLength(2);
-    expect(await within(detail).findByLabelText("目标 1 来源变更前")).toHaveTextContent("36.5");
+    await waitFor(() => expect(within(detail).getByLabelText("目标 1 来源变更前")).toHaveTextContent("36.5"));
     expect(within(detail).getByLabelText("目标 2 来源变更后")).toHaveTextContent("60");
     const approve = within(detail).getByRole("button", { name: "批准全部 2 项" });
     expect(approve).toBeEnabled();
