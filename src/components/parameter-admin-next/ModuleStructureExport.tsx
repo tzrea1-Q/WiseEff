@@ -34,7 +34,7 @@ export function ModuleStructureExport({ apiClient, organizationId, canExport }: 
       }}>导出完整结构</Button>
     <Button type="button" size="sm" variant="outline" onClick={() => download("module-structure-guide.md",
       `${chineseGuide}\n\n---\n\n${englishGuide}`, "text/markdown;charset=utf-8")}>下载填写说明</Button>
-    <p>支持最多 10,000 条模块及 10,000 条主体，JSON 最大 4 MiB。{!canExport ? "导出需要组织管理权限。" : ""}</p>
+    <p>模块和主体各最多 10,000 条；文件最大 32 MiB，紧凑 JSON 内容最大 4 MiB。{!canExport ? "导出需要组织管理权限。" : ""}</p>
     {message ? <p role="status">{message}</p> : null}
   </div>;
 }

@@ -8,6 +8,8 @@
 
 保留 `format`、`version`、来源信息、`exportId`、已有 `sourceId`、主体 ID 和 Catalog 归属事实。导出 ID 不授予读取其他组织基准的权限。每个模块有唯一的包内 `ref`，最多 512 个字符；`parentRef` 和模块归属引用此值，而非名称或数据库路径。改名或移动时保留原有 ref。新增模块时提供新的唯一 ref，省略 `sourceId`，并填写全部必填模块字段。新父模块和子模块可以在同一个包中出现。
 
+更新模式下，顶层 `source`、`counts`、`limits` 和 `references` 必须与原始导出保持一致。`counts` 记录导出时的数量；新增或删除模块、登记主体后也不要重新计算它。不要修改 `limits` 来放宽限制，或修改 `references` 来创建目标模块；这些改动会使整批导入被拒绝。
+
 例如，已有模块改名时保留身份，新子模块通过 ref 引用它：
 
 ```json
@@ -21,7 +23,9 @@
 
 模块的 `name`、`parentRef`、`description`、`scope`、`sortOrder` 和 `importance` 可编辑。使用空字符串清空描述或范围，根模块的 `parentRef` 使用 null，`sortOrder` 使用整数，重要性使用 `high`、`medium` 或 `low`。新增模块须提供这六个字段、`ref` 和 `operation: "upsert"`；`sourceId` 和只读 `reference` 之后由 WiseEff 产生。
 
-根主体的归属可填写 `{ "kind": "module", "moduleRef": "power" }`、`{ "kind": "unclassified" }` 或 `{ "kind": "unset" }`；将 `displayAlias` 设为 null 可清空别名。导出的 `state` 为 `active` 或 `retired`。驱动和节点类型的识别 `mode` 为 `inherit` 或 `override`；`override` 包含 `compatibles`、`nodeTypeName`、`driverNature` 和 `instanceCardinality`，不适用的字段保持导出值。`effective` 保持不变；配置规范的识别设置为 null。Catalog ID、`kind`、`ownerSubjectId` 和子主体的 `cascadeRetired` 为只读。
+根主体的归属可填写 `{ "kind": "module", "moduleRef": "power" }`、`{ "kind": "unclassified" }` 或 `{ "kind": "unset" }`；将 `displayAlias` 设为 null 可清空别名。导出的 `state` 为 `active` 或 `retired`。驱动和节点类型的识别 `mode` 为 `inherit` 或 `override`；`override` 包含 `compatibles`、`nodeTypeName`、`driverNature` 和 `instanceCardinality`，不适用的字段保持导出值。`effective` 保持不变；配置规范的识别设置为 null。Catalog ID、`kind` 和子主体的 `cascadeRetired` 为只读。
+
+`ownerSubjectId` 记录导出时本组织内有效的所属驱动：优先使用组织登记的归属，未单独设置时沿用 Catalog 归属。它可能与定义导入 Markdown 的固定 `parent` 不同，组织内调整不会改变 Catalog 身份。更新模式须保持 `ownerSubjectId` 原样；需要调整时，在「模块管理 → 编辑节点 → 归属」中选择本组织已登记并启用的驱动，确认后重新导出。复制模式按下文处理来源与目标组织的归属差异。
 
 ## 修改
 
@@ -41,8 +45,10 @@
 
 复制模块时，在目标组织选择复制模式并上传文件，逐一明确选择复用目标模块或新建，再解决与目标资料的差异。目标会保存每项确认的映射，包括复用映射，供同一包后续导入使用；已映射目标缺失时会报告冲突。复制只使用文件和目标状态，不读取来源基准。
 
-复制需要完整保留的主体快照，包括根主体归属和别名、识别继承或覆盖，以及每个所属子主体的状态和级联停用事实。在快照中填写期望的 `state`；主体的 `operation` 命令在更新模式可选，必须与提供的状态一致；复制模式不接受该字段。当前 Catalog 身份和归属必须兼容。目标已有登记会保留身份；状态、归属、别名或识别规则不同时须明确选择。停用登记会直接以停用状态创建，恢复复制的驱动时只恢复因级联而停用的子主体。来源删除标记不会停用目标登记。
+复制需要完整保留的主体快照，包括根主体归属和别名、识别继承或覆盖，以及每个所属子主体的状态和级联停用事实。在快照中填写期望的 `state`；主体的 `operation` 命令在更新模式可选，必须与提供的状态一致；复制模式不接受该字段。主体身份及根主体或所属子主体的分类必须与当前 Catalog 兼容。目标已有登记会保留身份；状态、归属、别名或识别规则不同时须明确选择。停用登记会直接以停用状态创建，恢复复制的驱动时只恢复因级联而停用的子主体。来源删除标记不会停用目标登记。
 
-服务端会显示支持的包大小和数量。超限包会被拒绝，不会截断或分批应用。
+复制会携带来源组织的 `ownerSubjectId`。目标组织已有同一子主体但所属驱动不同时，预览会列出「所属驱动」冲突：选择「保留当前」保留目标归属，选择「采用文件」并确认后应用来源归属。该操作只调整目标组织的登记，不改写 Catalog 的固定所属驱动；来源快照中的所属驱动和子主体仍须满足当前 Catalog 及目标组织的有效性约束。
+
+模块和主体各最多 10,000 条。上传的 JSON 文件最多 32 MiB；内容按解析后重新序列化为紧凑 JSON 的 UTF-8 字节数计算，最多 4 MiB。导出文件使用两空格缩进，排版空白不计入这 4 MiB 内容限制，字符串内的空白仍计入。超过任一限制都会拒绝整包，不会截断或分批应用。
 
 新建或移动的模块路径还须满足保守的 2,560 字节预算，包含目标组织 ID、编码路径及 32 字节索引开销。新模块 ID 的每段按 36 字节计算，已有 ID 按 UTF-8 字节长度计算。该预算不依赖压缩，并为数据库索引上限留出余量，因此预览会拒绝部分数据库实际可能存储的路径。未变化的历史路径仍可原样导入或仅更新资料。
