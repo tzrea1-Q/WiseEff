@@ -3,7 +3,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Download, Upload } from "lucide-react";
-import { buildUserImportTemplate, parseUserImportWorkbook, type UserImportRow } from "@/application/userImportWorkbook";
+import type { UserImportRow } from "@/application/userImportWorkbook";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import type { UserImportPreview, UserImportReceipt } from "@/infrastructure/http/userGovernanceClient";
 import type { PlatformRoleId } from "@/domain/users/types";
@@ -31,9 +31,12 @@ export function UserImportDialog({ organizationId, actions, roleLabels, canGrant
     void actions.getOrganization?.().then((org) => { if (active) setOrganizationName(org.name); }).catch(() => {});
     return () => { active = false; counter.current++; };
   }, [actions, organizationId]);
-  function download() {
-    const url = URL.createObjectURL(new Blob([buildUserImportTemplate() as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = "用户导入模板.xlsx"; anchor.click(); URL.revokeObjectURL(url);
+  async function download() {
+    try {
+      const { buildUserImportTemplate } = await import("@/application/userImportWorkbook");
+      const url = URL.createObjectURL(new Blob([buildUserImportTemplate() as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = "用户导入模板.xlsx"; anchor.click(); URL.revokeObjectURL(url);
+    } catch (reason) { setError(presentError(reason, "无法下载模板，请稍后重试。")); }
   }
   async function select(file: File | undefined) {
     const current = ++generation.current;
@@ -42,6 +45,7 @@ export function UserImportDialog({ organizationId, actions, roleLabels, canGrant
     setBusy(true);
     try {
       if (file.size > 2 * 1024 * 1024) throw new Error("文件超过 2 MiB 上限。");
+      const { parseUserImportWorkbook } = await import("@/application/userImportWorkbook");
       const parsed = await parseUserImportWorkbook(new Uint8Array(await file.arrayBuffer()));
       const result = await actions.previewUserImport!(parsed.rows);
       if (generation.current === current) { setRows(parsed.rows); setPreview({ ...result, errors: [...parsed.errors, ...result.errors], token: parsed.errors.length ? null : result.token }); }
@@ -75,7 +79,7 @@ export function UserImportDialog({ organizationId, actions, roleLabels, canGrant
         <section className="user-import-dialog__step" aria-labelledby="user-import-template-title">
           <div><span className="user-import-dialog__step-number">01</span><h4 id="user-import-template-title">准备模板</h4></div>
           <p>填写姓名、用户名、初始密码、职务和组织角色。密码按原样使用，请私下交付。</p>
-          <Button type="button" variant="outline" onClick={download}><Download aria-hidden="true" />下载模板</Button>
+          <Button type="button" variant="outline" onClick={() => void download()}><Download aria-hidden="true" />下载模板</Button>
         </section>
         <section className="user-import-dialog__step" aria-labelledby="user-import-upload-title">
           <div><span className="user-import-dialog__step-number">02</span><h4 id="user-import-upload-title">上传并预检</h4></div>
