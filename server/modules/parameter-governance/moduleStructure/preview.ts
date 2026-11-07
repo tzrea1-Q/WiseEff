@@ -10,6 +10,7 @@ import { planSubjectPlacement } from "./subjects";
 import { planModuleCopy } from "./copy";
 import type { LifecycleChange } from "./lifecycle";
 import { validateChangedPaths } from "./pathBudget";
+import { assertReadonlyModuleStructure } from "./diagnostics";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance", "parentRef"] as const;
 
@@ -51,9 +52,7 @@ export async function planModuleStructure(client: pg.PoolClient, organizationId:
   const changes: { moduleId: string; field: typeof fields[number] | "create" | "delete" | "legacyImpact"; before: unknown; after: unknown }[] = [];
   const deleted = new Set<string>();
   const conflicts: { key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }[] = [];
-  if (stable(document.source) !== stable(baseline.source) || stable(document.limits) !== stable(baseline.limits) ||
-    stable(document.counts) !== stable(baseline.counts) ||
-    stable(document.references) !== stable(baseline.references)) throw new ApiError("VALIDATION_FAILED", "Unsupported changes outside module metadata.");
+  assertReadonlyModuleStructure(document, baseline);
   const subjectBaselines = new Map(baseline.subjects.map(subject => [subject.subjectId, subject]));
   const subjectEdits = new Map(document.subjects.map(subject => [subject.subjectId, subject]));
   const seenSubjects = new Set<string>();

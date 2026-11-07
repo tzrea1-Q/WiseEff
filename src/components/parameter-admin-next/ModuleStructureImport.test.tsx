@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
-import type { ApiClient } from "@/infrastructure/http/apiClient";
+import { WiseEffApiError, type ApiClient } from "@/infrastructure/http/apiClient";
 import { ModuleStructureImport } from "./ModuleStructureImport";
 
 it("accepts formatted files over 4 MiB but rejects content over 4 MiB", async () => {
@@ -113,4 +113,128 @@ it("groups subject changes and explains recognition settings field by field", as
   expect(screen.getByText(/启用 → 停用/)).toBeInTheDocument();
   expect(screen.getByText(/继承目录设置 → 自定义覆盖/)).toBeInTheDocument();
   expect(screen.getByText(/old → new/)).toBeInTheDocument();
+});
+
+const readonlyFailure = () => new WiseEffApiError("VALIDATION_FAILED", "Unsupported changes outside module metadata.", {
+  reason: "readonly-module-structure-fields", issues: [
+    { path: "document.counts.modules", code: "readonly_field", message: "导出数量是只读信息。", expected: 3, received: 4, hint: "恢复原始导出的数量，不要根据编辑结果重新计算。" },
+    { path: "document.references.0.name", code: "readonly_field", message: "引用名称已变化。", expected: "原始引用", received: "新引用" },
+  ], truncated: true, issueLimit: 50,
+}, "request-import-123", 400);
+
+it("shows field differences and copies actionable diagnostics without the uploaded document", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  const post = vi.fn().mockRejectedValue(readonlyFailure());
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify({
+    source: { organizationId: "org-a", exportId: "export-1" }, modules: [{ description: "private-content-not-needed-for-diagnostics" }],
+  })], "agent-edited.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "预览" }));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("导入文件修改了只读的导出信息");
+  expect(alert).toHaveTextContent("document.counts.modules");
+  expect(alert).toHaveTextContent("期望值：3");
+  expect(alert).toHaveTextContent("文件值：4");
+  expect(alert).toHaveTextContent("恢复原始导出的数量");
+  expect(alert).toHaveTextContent("当前仅显示前 2 条");
+  await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("诊断信息已复制");
+  const copied = String(writeText.mock.calls[0][0]);
+  expect(JSON.parse(copied)).toMatchObject({ fileName: "agent-edited.json", mode: "update", phase: "preview", exportId: "export-1",
+    sourceOrganizationId: "org-a", targetOrganizationId: "org-a", requestId: "request-import-123", code: "VALIDATION_FAILED", message: "Unsupported changes outside module metadata.",
+    reason: "readonly-module-structure-fields", status: 400 });
+  expect(copied).not.toContain("private-content-not-needed-for-diagnostics");
+  expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+});
+
+it.each(["unavailable", "rejected"])("offers selected diagnostic text when clipboard is %s", async availability => {
+  const user = userEvent.setup();
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: availability === "unavailable" ? undefined : { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
+  try {
+    render(<ModuleStructureImport apiClient={{ post: vi.fn().mockRejectedValue(readonlyFailure()) } as unknown as ApiClient} organizationId="org-a" canImport />);
+    await user.click(screen.getByRole("button", { name: "导入结构" }));
+    await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "edit.json", { type: "application/json" }));
+    await user.click(screen.getByRole("button", { name: "预览" }));
+    await user.click(await screen.findByRole("button", { name: "复制诊断信息" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("自动复制不可用");
+    const text = screen.getByRole("textbox", { name: "导入诊断信息" }) as HTMLTextAreaElement;
+    expect(text).toBeVisible();
+    expect(text).toHaveFocus();
+    expect(text.selectionStart).toBe(0);
+    expect(text.selectionEnd).toBe(text.value.length);
+    expect(text.value).toContain("document.counts.modules");
+  } finally {
+    if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+    else Reflect.deleteProperty(navigator, "clipboard");
+  }
+});
+
+it("retains the precise apply conflict and clears old diagnostics when changing mode or file", async () => {
+  const post = vi.fn().mockResolvedValueOnce({ changes: [], conflicts: [], token: "preview" })
+    .mockRejectedValueOnce(new WiseEffApiError("CONFLICT", "Placement destination is unavailable.", { path: "subjects.0.placement" }, "request-conflict", 409))
+    .mockRejectedValueOnce(readonlyFailure());
+  const user = userEvent.setup();
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "edit.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "预览" }));
+  await user.type(await screen.findByLabelText("变更原因"), "reviewed");
+  await user.click(screen.getByRole("button", { name: "确认提交" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Placement destination is unavailable.");
+  expect(screen.getByRole("alert")).toHaveTextContent("subjects.0.placement");
+  expect(screen.getByRole("alert")).toHaveTextContent("request-conflict");
+  expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  await user.click(screen.getByLabelText("导入模式"));
+  await user.click(screen.getByRole("option", { name: "复制到当前组织" }));
+  expect(screen.queryByLabelText("导入错误诊断")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "预览" }));
+  await screen.findByRole("alert");
+  await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "fixed.json", { type: "application/json" }));
+  expect(screen.queryByLabelText("导入错误诊断")).not.toBeInTheDocument();
+});
+
+it("includes JSON parser details and legacy schema issues in diagnostics", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  const post = vi.fn().mockRejectedValue(new WiseEffApiError("VALIDATION_FAILED", "Invalid module structure document.", {
+    issues: [{ path: ["document", "modules", 0, "sortOrder"], message: "Expected number, received string" }],
+  }, "request-schema", 400));
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  await user.upload(screen.getByLabelText("JSON 文件"), new File(['{"modules":}'], "invalid.json", { type: "application/json" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("JSON 格式无效");
+  expect(screen.getByRole("alert")).toHaveTextContent(/JSON|Unexpected|position/i);
+  expect(screen.getByRole("button", { name: "预览" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(String(writeText.mock.calls[0][0]))).toMatchObject({ code: "INVALID_JSON", phase: "read", fileName: "invalid.json" });
+  expect(JSON.parse(String(writeText.mock.calls[0][0])).message).toMatch(/JSON|Unexpected|position/i);
+  await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "schema.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "预览" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("document.modules.0.sortOrder");
+  expect(screen.getByRole("alert")).toHaveTextContent("Expected number, received string");
+});
+
+it("bounds imported metadata and error values while preserving the truncation warning", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  const post = vi.fn().mockRejectedValue(new WiseEffApiError("VALIDATION_FAILED", "Unsupported changes outside module metadata.", {
+    reason: "r".repeat(5000), issues: [{ path: "document.references.0.name", message: "引用名称已变化。", expected: "original", received: "x".repeat(5000), receivedTruncated: true }],
+  }, "request-bounded", 400));
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify({ source: { organizationId: "org-a", exportId: "e".repeat(5000) } })], "edited.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "预览" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("仅显示部分值");
+  await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+  const report = JSON.parse(String(writeText.mock.calls[0][0]));
+  expect(report.exportId.length).toBeLessThan(3000);
+  expect(report.exportId).toContain("已截断");
+  expect(report.reason).toContain("已截断");
+  expect(report.issues[0].received).toContain("已截断");
+  expect(report.issues[0].receivedTruncated).toBe(true);
 });

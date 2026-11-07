@@ -21,6 +21,43 @@ useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "POST", path: endp
   { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, status: 409 },
   { method: "POST", path: `/api/v2/organizations/${org}/module-structure/applies`, status: 503 }] });
 
+test("diagnoses agent-edited export metadata and supports manual copying before repair", async ({ page, request }, info) => {
+  await seedAcceptanceRoleMatrix();
+  const exported = await request.post(apiRoute(endpoint), { headers: authHeadersForRole("admin"), data: {} });
+  expect(exported.status(), await exported.text()).toBe(200);
+  const original = await exported.json();
+  const edited = structuredClone(original);
+  edited.counts.modules++;
+  edited.source.catalogReleaseId = "agent-replaced-release";
+  edited.limits.maxBytes++;
+  // The deployed HTTP/IP site may not expose navigator.clipboard.
+  await page.addInitScript(() => Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true }));
+  await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
+  await page.getByRole("button", { name: "导入结构" }).click();
+  const dialog = page.getByRole("dialog", { name: "导入模块结构" });
+  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "module-structure-import.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
+  await dialog.getByRole("button", { name: "预览" }).click();
+  const diagnostic = dialog.getByRole("region", { name: "导入错误诊断" });
+  await expect(diagnostic).toContainText("document.counts.modules");
+  await expect(diagnostic).toContainText("document.source.catalogReleaseId");
+  await expect(diagnostic).toContainText("document.limits.maxBytes");
+  await expect(diagnostic).toContainText("不要重新计算");
+  await expect(dialog.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  await diagnostic.getByRole("button", { name: "复制诊断信息" }).focus();
+  await page.keyboard.press("Enter");
+  const text = diagnostic.getByLabel("导入诊断信息");
+  await expect(text).toBeVisible();
+  await expect(text).toBeFocused();
+  const report = JSON.parse(await text.inputValue());
+  expect(JSON.stringify(report)).toContain("readonly-module-structure-fields");
+  expect(JSON.stringify(report)).toContain("module-structure-import.json");
+  await page.screenshot({ path: info.outputPath("module-structure-diagnostics-1440x900.png"), animations: "disabled" });
+  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "repaired.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(original)) });
+  await expect(diagnostic).toHaveCount(0);
+  await dialog.getByRole("button", { name: "预览" }).click();
+  await expect(dialog.getByText("没有领域数据变更。")).toBeVisible();
+});
+
 test("MODULE-STRUCTURE-MIXED-001: review one mixed update", async ({ page, request }, info) => {
   // @acceptance MODULE-STRUCTURE-MIXED-001
   // @operation MODULE-STRUCTURE-MIXED-001
@@ -175,7 +212,7 @@ test("MODULE-STRUCTURE-RECOGNITION-001: validate, override and restore inheritan
     let dialog = await upload(invalid);
     await dialog.getByRole("button", { name: "预览" }).click();
     await expect(dialog.getByRole("alert")).toBeVisible();
-    await expect(dialog.getByText(/recognition.json/)).toBeVisible();
+    await expect(dialog.getByText(`文件：recognition.json；来源组织：${org}；目标组织：${org}`, { exact: true })).toBeVisible();
     const edited = structuredClone(original);
     const rule = edited.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId).recognition;
     rule.mode = "override"; rule.override = { ...rule.effective, compatibles: ["wiseeff,recognition-1499"] };
@@ -252,7 +289,7 @@ test("MODULE-STRUCTURE-IMPORT-001: review conflict, stale preview and receipt", 
     await dialog.getByLabel("JSON 文件").setInputFiles({ name: "edit.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
     await dialog.getByRole("button", { name: "关闭" }).click();
     await page.getByRole("dialog", { name: "放弃导入？" }).getByRole("button", { name: "继续编辑" }).click();
-    await expect(dialog.getByText(/edit.json/)).toBeVisible();
+    await expect(dialog.getByText(`文件：edit.json；来源组织：${org}；目标组织：${org}`, { exact: true })).toBeVisible();
     await dialog.getByRole("button", { name: "预览" }).click();
     await expect(dialog.getByText('current edit', { exact: true })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "确认提交" })).toBeDisabled();
