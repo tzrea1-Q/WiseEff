@@ -67,10 +67,13 @@ function intentDigest(actorId: string, organizationId: string, rows: z.infer<typ
   return createHash("sha256").update(JSON.stringify({ actorId, organizationId, rows: projection })).digest("hex");
 }
 
-async function importAuthority(db: Database, invocation: UserInvocationContext) {
+async function importAuthority(db: Database, invocation: UserInvocationContext, expectedOrganizationId?: string) {
   requireUserInitiatedInvocation(invocation);
   const auth = await getAuthContext(db, invocation.principal.user.id);
-  const organizationId = invocation.operatingOrganization?.id ?? auth.organization.id;
+  const organizationId = invocation.operatingOrganization?.id ?? invocation.principal.organization.id;
+  if (auth.user.organizationId !== invocation.principal.user.organizationId || (expectedOrganizationId !== undefined && organizationId !== expectedOrganizationId)) {
+    throw new ApiError("FORBIDDEN", "操作账号的所属组织或操作范围已变化，请重新开始。");
+  }
   const platform = auth.roles.some(role => role.projectId === null && role.roleId === "platform-admin");
   if (!auth.user.isActive || !auth.permissions.includes("users:manage") || !auth.roles.some(role => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")) || !canOperateInOrganization(auth, organizationId)) throw new ApiError("FORBIDDEN", "需要组织管理员权限。");
   if (platform && !invocation.operatingOrganization) throw new ApiError("VALIDATION_FAILED", "请选择操作组织。");
@@ -92,7 +95,7 @@ async function lockedReceipt(db: Database, invocation: UserInvocationContext, id
     await lockAdministratorMutation(tx);
     await tx.query("select id from organizations where id=$1 for share", [organizationId]);
     await tx.query("select id from users where id=$1 for update", [invocation.principal.user.id]);
-    const current = await importAuthority(tx, invocation);
+    const current = await importAuthority(tx, invocation, organizationId);
     return receipt(tx, id, current.auth.user.id, organizationId, digest);
   });
 }
@@ -140,8 +143,7 @@ export async function createUserImport(db: Database, invocation: UserInvocationC
       await lockAdministratorMutation(tx);
       await tx.query("select id from organizations where id=$1 for share", [organizationId]);
       await tx.query("select id from users where id=$1 for update", [auth.user.id]);
-      const current = await importAuthority(tx, invocation);
-      if (current.auth.user.organizationId !== invocation.principal.user.organizationId) throw new ApiError("FORBIDDEN", "操作账号的所属组织已变化，请重新开始。");
+      const current = await importAuthority(tx, invocation, organizationId);
       const scoped = await resolveOperatingContext(tx, invocation, organizationId);
       await tx.query("select pg_advisory_xact_lock(hashtextextended('user-import:'||$1,0))", [parsed.data.importId]);
       const committed = await receipt(tx, parsed.data.importId, current.auth.user.id, organizationId, digest);

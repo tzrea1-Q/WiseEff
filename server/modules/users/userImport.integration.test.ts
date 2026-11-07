@@ -54,6 +54,52 @@ describe("user import preflight through HTTP and PostgreSQL", () => {
     await expect(createUserImport(moved, invocation, { importId: "9a274db7-0344-4c3d-a19a-9be7e3bd88c0", previewToken: preview.token, rows }, "transfer-race")).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect((await db.query("select count(*)::int n from users where name='Late transfer'")).rows).toEqual([{ n: 0 }]);
   });
+  it.each(["lookup", "replay"])("rejects %s when an unscoped administrator transfers before the receipt lock", async operation => {
+    await seedCoreGraph(db, { organization: { id: "import-other", name: "Other" } });
+    const invocation = createUserInvocation(await getAuthContext(db, "import-admin"));
+    const rows = [{ row: 2, name: "Receipt member", username: "receipt-member", password: "initial-password", title: "", roles: "访客" }];
+    const preview = await previewUserImport(db, invocation, { rows });
+    const body = { importId: "7a274db7-0344-4c3d-a19a-9be7e3bd88c0", previewToken: preview.token, rows };
+    expect((await createUserImport(db, invocation, body, "original-import")).count).toBe(1);
+    const moved: Database = {
+      query: (text, values) => db.query(text, values),
+      transaction: async (fn, options) => {
+        await db.transaction(async tx => {
+          await tx.query("delete from auth_sessions where user_id='import-admin'");
+          await tx.query("delete from user_role_bindings where user_id='import-admin'");
+          await tx.query("delete from user_oidc_identities where user_id='import-admin'");
+          await tx.query("update users set organization_id='import-other' where id='import-admin'");
+          await tx.query("insert into user_oidc_identities(user_id,organization_id) values('import-admin','import-other')");
+          await tx.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('moved-admin','import-admin','import-other','admin')");
+        });
+        return db.transaction(fn, options);
+      }
+    };
+    const result = operation === "lookup" ? readUserImport(moved, invocation, body.importId) : createUserImport(moved, invocation, body, "replay-import");
+    await expect(result).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect((await db.query("select count(*)::int n from user_import_receipts where id=$1", [body.importId])).rows).toEqual([{ n: 1 }]);
+  });
+  it("allows an explicitly scoped platform administrator to recover after signing in from the new Home", async () => {
+    await seedCoreGraph(db, { organization: { id: "import-target", name: "Target" } });
+    await seedCoreGraph(db, { organization: { id: "import-other", name: "Other" } });
+    await db.query("update user_role_bindings set role_id='platform-admin' where id='import-role'");
+    const original = await resolveOperatingContext(db, createUserInvocation(await getAuthContext(db, "import-admin")), "import-target");
+    const rows = [{ row: 2, name: "Recoverable member", username: "recoverable-member", password: "initial-password", title: "", roles: "访客" }];
+    const preview = await previewUserImport(db, original, { rows });
+    const body = { importId: "6a274db7-0344-4c3d-a19a-9be7e3bd88c0", previewToken: preview.token, rows };
+    const receipt = await createUserImport(db, original, body, "original-import");
+    await db.transaction(async tx => {
+      await tx.query("delete from auth_sessions where user_id='import-admin'");
+      await tx.query("delete from user_role_bindings where user_id='import-admin'");
+      await tx.query("delete from user_oidc_identities where user_id='import-admin'");
+      await tx.query("update users set organization_id='import-other' where id='import-admin'");
+      await tx.query("insert into user_oidc_identities(user_id,organization_id) values('import-admin','import-other')");
+      await tx.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('moved-platform','import-admin','import-other','platform-admin')");
+    });
+    const current = await resolveOperatingContext(db, createUserInvocation(await getAuthContext(db, "import-admin")), "import-target");
+    expect(await readUserImport(db, current, body.importId)).toEqual(receipt);
+    expect(await createUserImport(db, current, body, "replay-import")).toEqual(receipt);
+  });
   it("records the original user provenance for a platform-scoped import", async () => {
     await seedCoreGraph(db, { organization: { id: "import-target", name: "Target" } });
     await db.query("update user_role_bindings set role_id='platform-admin' where id='import-role'");
