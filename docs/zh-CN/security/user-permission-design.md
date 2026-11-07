@@ -27,7 +27,9 @@
 
 ## 组织管理
 
-`/organization` 是组织档案，`/organization/members` 是人员管理。两者都是本组织租户运营。`GET /api/v1/organization` 对任意已启用已认证成员开放。`PATCH /api/v1/organization` 需要 `users:manage`，只接受 `{ name }`，同一事务写 `organization-update`。名称是标签，不做全局唯一。这与 `/parameter-admin` 的 Organization-scoped governance 不同。
+`/organization` 是组织档案，`/organization/members` 是人员管理。普通管理员管理所属组织；平台管理员可按 ADR-0051 明确选择操作组织。`GET /api/v1/organization` 对有相应范围访问权的已启用、已认证成员开放。`PATCH /api/v1/organization` 需要 `users:manage`，只接受 `{ name }`，同一事务写 `organization-update`。名称是标签，不做全局唯一。这与 `/parameter-admin` 的 Organization-scoped governance 不同。
+
+本地账号批量创建沿用同一管理员范围与角色授予规则。组织管理员可授予组织管理员角色，只有平台管理员可授予 `platform-admin`。每批只面向一个组织，确认及回执查询时重新核查当前权限。导入组织角色不同时授予团队成员关系、项目参与或审核职责。参见[批量导入安全边界](../SECURITY.md#本地账号批量导入)。
 
 ## 同类中文文档
 

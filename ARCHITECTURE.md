@@ -50,7 +50,7 @@ Rules:
 - `server/shared/http/`: minimal HTTP router, errors, server adapter.
 - `server/shared/database/`: database client and migration runner.
 - `server/modules/auth/`: current user context, roles, and permissions.
-- `server/modules/users/`: durable backend user-governance routes, home-organization `GET`/`PATCH /api/v1/organization`, role replacement, activation, and audit.
+- `server/modules/users/`: durable user governance, Organization administration, role replacement, activation and audit. Ordinary administrators use their Home organization; platform administrators explicitly select an Operating organization (ADR-0051). Bulk local-account creation and its organization-owned retry receipts remain inside this module and share account-writing rules with single-user creation.
 - `server/modules/audit/`: audit write/query boundary.
 - `server/modules/projects/`: routes-less project entity module — project / project-module reads and CRUD plus the project DTO vocabulary consumed by parameters, parameter-topology, and project admin (ADR-0029).
 - `server/modules/parameters/`: M1 parameter workflow routes and services.

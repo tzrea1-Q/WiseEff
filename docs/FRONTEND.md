@@ -94,6 +94,12 @@ Pending reviews use one bounded workbench for the list, evidence and resolution 
 
 Review evidence is checked automatically when the form opens, the window becomes active again, and before final confirmation. There is no permanent refresh action or polling. Normal checks are silent; changed evidence or targets invalidate confirmation and require another review. Failed checks retain the draft and expose a retry action. Responses from a previous organization or Catalog context cannot update the current workbench.
 
+## Member import
+
+`UserPermissionsPage` opens `features/organization/UserImportDialog.tsx` only for local-account administration in the selected Organization. `application/userImportWorkbook.ts` owns template generation and bounded workbook parsing; `userGovernanceClient` calls the authoritative preview, confirmation and result endpoints. The dialog keeps credential-bearing rows only in transient memory and renders explicit password-free projections. Recovery may retain only the latest operator/Organization/batch locator in tab session storage.
+
+Use the existing modal, button, badge, table and status styles. The selected Organization, row errors, privileged grants and confirmed/unknown result must remain visible and keyboard accessible. Inspect the real API flow at 1440×900 and the dense dialog at a compact PC size; a component test alone cannot establish layout or server authorization.
+
 ## TopBar Project Selector
 
 The TopBar project picker is visible only on everyday parameter-management routes. `pageUsesProjectScope()` in `src/appConfig.ts` returns `true` for `parameters`, `parameter-submissions`, `parameter-review`, and `parameter-home`. It is hidden on `/parameter-admin` and `/parameter-admin/projects` (organization-scoped governance and project operations own their own pickers; see ADR-0001), and on log analysis (`logs`, `log-admin`) and debugging (`node-debugging`, `debugging-admin`) routes because M2/M3 data loads from authenticated organization context without `projectId`. Parameter pages may still read `?project=` from the URL; log and debug pages ignore project query params.
