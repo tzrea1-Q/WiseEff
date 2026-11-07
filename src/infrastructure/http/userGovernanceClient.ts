@@ -5,6 +5,15 @@ import type { LocalAuthPublicConfigDto } from "./authClient";
 import type { AuthContextDto } from "./authClient";
 import { withOrganizationScope } from "./organizationScope";
 import type { InvitationInput, OrganizationInvitationDto } from "./organizationInvitationsClient";
+import type { UserImportRow } from "@/application/userImportWorkbook";
+
+export type UserImportPreview = {
+  organization: { id: string; name: string; status: string };
+  rows: Array<{ row: number; name: string; username: string; title: string; roles: PlatformRoleId[] }>;
+  errors: Array<{ row: number; field: string; message: string }>;
+  total: number; privilegedCount: number; token: string | null;
+};
+export type UserImportReceipt = { importId: string; organizationId: string; count: number; rows: Array<{ row: number; userId: string; name?: string; username?: string | null }> };
 
 type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -139,6 +148,9 @@ export function createUserGovernanceClient(
 ) {
   const scoped = (path: string) => withOrganizationScope(path, organizationId);
   return {
+    async previewUserImport(rows: UserImportRow[]) { return (await apiClient.post<ItemEnvelope<UserImportPreview>>(scoped("/api/v1/users/imports/preview"), { rows })).item; },
+    async createUserImport(input: { importId: string; previewToken: string; rows: UserImportRow[] }) { return (await apiClient.post<ItemEnvelope<UserImportReceipt>>(scoped("/api/v1/users/imports"), input)).item; },
+    async readUserImport(importId: string) { return (await apiClient.get<ItemEnvelope<UserImportReceipt>>(scoped(`/api/v1/users/imports/${encodeURIComponent(importId)}`))).item; },
     async getWorkspaceSummary() { return (await apiClient.get<ItemEnvelope<OrganizationWorkspaceSummary>>(scoped("/api/v1/organization/workspace-summary"))).item; },
     async listInvitations() { return (await apiClient.get<ItemsEnvelope<OrganizationInvitationDto>>(scoped("/api/v1/organization/invitations"))).items; },
     async issueInvitation(input: InvitationInput, id?: string) { return apiClient.post<{ item: OrganizationInvitationDto; token: string }>(scoped(id ? `/api/v1/organization/invitations/${encodeURIComponent(id)}/regenerate` : "/api/v1/organization/invitations"), input); },

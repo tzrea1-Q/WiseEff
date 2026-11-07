@@ -152,6 +152,8 @@ describe("fresh database fixture policy", () => {
       // Backend termination must own its database and physical connections.
       "server/shared/database/clientConnectionRecovery.integration.test.ts": ["client_pool_recovery:false", "client_tx_recovery:false"],
       "server/shared/database/migrationCompatibility.integration.test.ts": ["purge_bounds:false", "purge_cutover:false", "purge_existing:false", "purge_retry:false"],
+      // Compare the Catalog projection before and after replaying migration 0334.
+      "server/testing/parameterCatalog/receiptMigration.integration.test.ts": ["receipt_catalog:false"],
       "server/testing/testDatabase.test.ts": ["cleanup_race:false", "emptycompare:false", "freshcompare:true", "freshguard:true", "role_lease_a:false", "role_lease_b:false"]
     });
     expect(manual.sort()).toEqual([

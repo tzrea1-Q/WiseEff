@@ -1,5 +1,5 @@
 {
-  "browserSource": "Complete browser JSON reports, summed result durations per file including retries: GitHub Actions run 41585837479 (2026-11-03, head 8caf82bc5b0b), successful shards 2/3/4; run 41546116656 (2026-11-02/03, head 34efd15da52c), complete shard 1 report with failures. Historical scheduling measurements only; skipped results remain zero and are not acceptance.",
+  "browserSource": "Complete browser JSON reports, summed result durations per file including retries: GitHub Actions run 41585837479 (2026-11-03, head 8caf82bc5b0b), successful shards 2/3/4; run 41546116656 (2026-11-02/03, head 34efd15da52c), complete shard 1 report with failures. User import specs: 2026-11-07, head 2958fe1da, macOS lane 931, complete local API/PostgreSQL report of three scenarios (not Hosted or a speed guarantee). Historical scheduling measurements only; skipped results remain zero and are not acceptance.",
   "visualSource": "GitHub Actions run 41585837479 shard 1, full-20261103t055117804z-1111c3a83dc4-d118d1ba/artifacts/visual/test-results/results.json stats.duration (2026-11-03; visual passed, browser timed out); rounded up to milliseconds.",
   "visualDurationMs": 176561,
   "specDurationMs": {
@@ -117,6 +117,8 @@
     "skill-lifecycle.acceptance.spec.ts": 9910,
     "source-snapshot-restore.acceptance.spec.ts": 16385,
     "source-snapshot-retry.acceptance.spec.ts": 14493,
+    "user-bulk-import.acceptance.spec.ts": 7336,
+    "user-import-reports.acceptance.spec.ts": 2160,
     "xiaoze-action.acceptance.spec.ts": 11856,
     "xiaoze-canonical-action.acceptance.spec.ts": 27725,
     "xiaoze-perception.acceptance.spec.ts": 675,

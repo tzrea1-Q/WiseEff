@@ -151,6 +151,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
       && !pattern.startsWith("/api/v1/notifications/") && !pattern.startsWith("/api/v1/platform/")
       && pattern !== "/api/v1/device-bridges/pair"
       && pattern !== "/api/v1/organization/operating-scope" && !pattern.includes("/handovers/") && !pattern.includes("/project-handovers/")) {
+      if (pattern === "/api/v1/users/imports") return handle(request);
       const actor = await authResolver(request);
       const requested = request.query.organizationId;
       if (requested !== undefined && (typeof requested !== "string" || !requested.trim())) throw new ApiError("VALIDATION_FAILED", "Invalid operating Organization.");
@@ -439,6 +440,7 @@ export const LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES =
 export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
 
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  if (method === "POST" && /^\/+api\/+v1\/+users\/+imports(?:\/+preview)?\/*$/u.test(path)) return 4 * 1024 * 1024;
   if (method === "POST" && /^\/+api\/+v2\/+organizations\/+[^/]+\/+module-structure\/+(?:previews|applies)\/*$/.test(path)) {
     // A 4 MiB document plus bounded conflict choices and the confirmation envelope.
     return 8 * 1024 * 1024;

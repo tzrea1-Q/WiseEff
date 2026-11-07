@@ -1,5 +1,4 @@
-import { randomBytes, randomUUID, scrypt } from "node:crypto";
-import { promisify } from "node:util";
+import { randomUUID } from "node:crypto";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
@@ -54,6 +53,7 @@ import { setOidcIdentity } from "../auth/oidcIdentity";
 import { assertAdministratorContinuity, hasOrganizationRole, lockAdministratorMutation, type AdministratorMutationContext } from "./administratorContinuity";
 import { getAuthContext } from "../auth/repository";
 import { canOperateInOrganization } from "../auth/policy";
+import { hashLocalAccountPassword, validateLocalAccountPassword, validateLocalAccountUsername } from "../auth/localAccountCredentials";
 
 const roleIds = new Set<BackendRoleId>([
   "guest",
@@ -64,8 +64,6 @@ const roleIds = new Set<BackendRoleId>([
   "admin",
   "platform-admin"
 ]);
-const scryptAsync = promisify(scrypt);
-const passwordHashPrefix = "scrypt";
 
 type GovernanceCaller = AuthContext | UserInvocationContext;
 function governanceScope(caller: GovernanceCaller) {
@@ -117,29 +115,9 @@ function normalizeUsername(username: string) {
   return username.trim().toLowerCase();
 }
 
-function requireUsername(username: string) {
-  if (!username) {
-    throw new ApiError("VALIDATION_FAILED", "Username is required.");
-  }
-  if (username.length < 3 || username.length > 64) {
-    throw new ApiError("VALIDATION_FAILED", "Username must be 3 to 64 characters.");
-  }
-  if (!/^[a-z0-9._-]+$/.test(username)) {
-    throw new ApiError("VALIDATION_FAILED", "Username can only contain letters, numbers, dots, underscores, or hyphens.");
-  }
-}
-
-function requirePasswordPolicy(password: string) {
-  if (password.length < 8) {
-    throw new ApiError("VALIDATION_FAILED", "Password must be at least 8 characters.");
-  }
-}
-
-async function hashPassword(password: string) {
-  const salt = randomBytes(16).toString("base64url");
-  const derived = (await scryptAsync(password, salt, 64)) as Buffer;
-  return `${passwordHashPrefix}$${salt}$${derived.toString("base64url")}`;
-}
+const requireUsername = validateLocalAccountUsername;
+const requirePasswordPolicy = validateLocalAccountPassword;
+const hashPassword = hashLocalAccountPassword;
 
 function callerHasPlatformAdmin(auth: AuthContext) {
   return hasOrganizationRole(auth.roles, "platform-admin");
@@ -149,7 +127,7 @@ function rolesIncludePlatformAdmin(roles: RoleBinding[]) {
   return hasOrganizationRole(roles, "platform-admin");
 }
 
-function assertPlatformAdminGrantAllowed(auth: AuthContext, currentRoles: RoleBinding[], nextRoles: RoleBinding[]) {
+export function assertPlatformAdminGrantAllowed(auth: AuthContext, currentRoles: RoleBinding[], nextRoles: RoleBinding[]) {
   const currentHasPlatformAdmin = rolesIncludePlatformAdmin(currentRoles);
   const nextHasPlatformAdmin = rolesIncludePlatformAdmin(nextRoles);
   if (currentHasPlatformAdmin === nextHasPlatformAdmin) {
@@ -316,6 +294,18 @@ export async function updateGovernedProjectMember(db: Database, caller: Governan
   });
 }
 
+/** Internal transaction-owned account write; password hashes never cross the HTTP boundary. */
+export async function writePreparedLocalUser(tx: Database, invocation: UserInvocationContext, input: {
+  organizationId: string; name: string; username: string; title: string; roles: BackendRoleId[]; passwordHash: string;
+}, context: AuditCorrelationContext = {}) {
+  const roles = input.roles.map(roleId => ({ projectId: null, roleId }));
+  const user = await insertUser(tx, { id: `u-${randomUUID()}`, organizationId: input.organizationId, name: input.name, title: input.title });
+  await insertPasswordCredential(tx, { userId: user.id, username: input.username, passwordHash: input.passwordHash });
+  await updateOrganizationRoles(tx, { organizationId: input.organizationId, userId: user.id, roles: input.roles });
+  await auditUserMutation(asAuditTx(tx), invocation, { kind: "user-create", action: "create", userId: user.id, metadata: { username: input.username, roles } }, context);
+  return { ...user, username: input.username, roles };
+}
+
 export async function createUser(db: Database, caller: GovernanceCaller, input: CreateUserInput, context: AuditCorrelationContext = {}, configuredOidcIssuer?: string) {
   const { auth, organizationId, invocation } = governanceScope(caller);
   requireUserManager(auth);
@@ -338,6 +328,7 @@ export async function createUser(db: Database, caller: GovernanceCaller, input: 
     throw new ApiError("VALIDATION_FAILED", "User name is required.");
   }
 
+  const passwordHash = oidc ? null : await hashPassword(input.password);
   return db.transaction(async (tx) => {
     await lockAdministratorMutation(tx);
     const existingCredential = username ? await findPasswordCredentialByUsername(tx, username) : null;
@@ -345,17 +336,13 @@ export async function createUser(db: Database, caller: GovernanceCaller, input: 
       throw new ApiError("CONFLICT", "Username is already registered.", { username });
     }
 
+    if (!oidc) return writePreparedLocalUser(tx, invocation as UserInvocationContext, { organizationId, name, title: input.title?.trim() || "User", username: username!, passwordHash: passwordHash!, roles: roles.map(role => role.roleId) }, context);
     const user = await insertUser(tx, {
       id: `u-${randomUUID()}`,
       organizationId,
       name,
       title: input.title?.trim() || "User",
       ...(oidc && input.email ? { email: input.email.trim().toLowerCase() } : {})
-    });
-    if (!oidc) await insertPasswordCredential(tx, {
-      userId: user.id,
-      username: username!,
-      passwordHash: await hashPassword(input.password)
     });
     await updateOrganizationRoles(tx, {
       organizationId,
