@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Queryable } from "../../shared/database/client";
+import type { Queryable } from "../../../shared/database/client";
 import {
   CatalogCanonicalKey, CatalogEventTime, CatalogMaterializationFingerprint, CatalogPageLimit,
   CatalogReleaseDigest, CatalogReleaseId, CatalogReleaseSequence, CatalogReleaseVersion, CatalogSubjectId,
-} from "../parameter-catalog-contract";
-import { DriverCompatible, NormalizedNodeTypeName, type CatalogSubjectDetailSnapshot } from "../catalog-kernel/interface";
-import { CapturedCatalogSnapshot } from "../catalog-kernel/runtime/currentSnapshot";
+} from "../../parameter-catalog-contract";
+import { DriverCompatible, NormalizedNodeTypeName, type CatalogSubjectDetailSnapshot } from "../interface";
+import { CapturedCatalogSnapshot } from "./currentSnapshot";
 import {
   loadOrganizationCatalogSnapshot, readInheritedRegistrationRecognitionSettings, readRegistrationRecognitionSettings,
   validateRegistrationRecognitionSettings, type ModuleRecognitionSettings,
-} from "./recognitionSettings";
+} from "../../parameter-modules/recognitionSettings";
 
 const node: ModuleRecognitionSettings & { kind: "node-type" } = {
   kind: "node-type", recognitionSubjectId: "seed-node", compatibles: [], nodeTypeName: "fm1230_swi",

@@ -18,6 +18,7 @@ import { createSourceBackedBindingService } from "../parameter-bindings/binding/
 import type { AuthContext } from "../auth/types";
 import { catalogDefinitionListResponseSchema, catalogDefinitionResponseSchema,
   catalogSubjectListResponseSchema, catalogSubjectResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
+import { classifyOrganizationRecognitionQuery, type OrganizationRecognitionQuery } from "./__fixtures__/organizationRecognitionSql";
 
 type Mutable<T> = T extends readonly (infer V)[] ? Mutable<V>[] : T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
 type CapacityItem = { id: string; reviewCount: number; usageSummary: unknown; currentRevision: { id: string }; membership: { catalogReleaseId: string } };
@@ -57,9 +58,11 @@ function inventoryBundle() {
   return bundle;
 }
 
-type SqlClass = "auth" | "kernel" | "business" | "transaction" | "other";
+type SqlClass = "auth" | "kernel" | "business" | "recognition" | "transaction" | "other";
+const sqlClasses: readonly SqlClass[] = ["auth", "kernel", "business", "recognition", "transaction", "other"];
 function classify(sql: string): SqlClass {
   if (/^\s*(begin|commit|rollback|set\s|reset\s)/i.test(sql)) return "transaction";
+  if (classifyOrganizationRecognitionQuery(sql)) return "recognition";
   if (/parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|current_project_parameter_bindings|project_parameter_bindings|project_parameter_values)\b/i.test(sql)) return "business";
   if (/parameter_catalog\.(catalog_state|catalog_releases|catalog_materializations|catalog_release_subjects|catalog_subjects|catalog_release_subject_aliases|catalog_subject_aliases|catalog_release_definition_heads|parameter_definitions|definition_revisions|catalog_activation_receipts)\b/i.test(sql)) return "kernel";
   if (/catalog_publication\.(publication_policies|release_artifacts)\b/i.test(sql)) return "kernel";
@@ -77,7 +80,18 @@ describe("R2-BATCH root HTTP SQL budget", () => {
   let measuring = false;
   let projectionFailure: "usage" | "registration" | undefined;
   let injectedFailures = 0;
-  let statements: { category: SqlClass; sql: string; batchIds?: readonly string[] }[] = [];
+  let statements: { category: SqlClass; sql: string; batchIds?: readonly string[]; recognitionOperation?: OrganizationRecognitionQuery; recognitionParameters?: unknown }[] = [];
+  const expectRecognitionBudget = (requests = 1) => {
+    const queries = statements.filter(entry => entry.category === "recognition");
+    expect(queries).toHaveLength(4 * requests);
+    for (const operation of ["rules-schema", "owners-schema", "rules", "owners"]) {
+      expect(queries.filter(entry => entry.recognitionOperation === operation)).toHaveLength(requests);
+    }
+    for (const entry of queries.filter(entry => entry.recognitionOperation === "rules" || entry.recognitionOperation === "owners")) {
+      expect(entry.recognitionParameters).toEqual(["batch-org"]);
+      expect(entry.sql).toMatch(/where (rule\.)?organization_id\s*=\s*\$1\b/);
+    }
+  };
   const principal: AuthContext = {
     user: { id: "batch-admin", organizationId: "batch-org", name: "Batch admin", email: "batch@example.test", emailVerified: true, title: "Admin", isActive: true },
     organization: { id: "batch-org", name: "Batch" }, roles: [], permissions: [],
@@ -106,7 +120,9 @@ describe("R2-BATCH root HTTP SQL budget", () => {
           const values = args[1] as unknown;
           const batchIds = classify(sql) === "business" && Array.isArray(values) && Array.isArray(values[1])
             ? values[1].filter((value): value is string => typeof value === "string") : undefined;
-          statements.push({ category: classify(sql), sql: sql.replace(/\s+/g, " ").trim(), batchIds });
+          const recognitionOperation = classifyOrganizationRecognitionQuery(sql);
+          statements.push({ category: classify(sql), sql: sql.replace(/\s+/g, " ").trim(), batchIds,
+            ...(recognitionOperation ? { recognitionOperation, recognitionParameters: values } : {}) });
         }
         return Reflect.apply(query, this, args);
       } as typeof query;
@@ -225,7 +241,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     const response = await fetch(`${baseUrl}/api/v2/catalog/subjects?limit=${limit}`, { headers: { authorization: "Bearer batch-fixture-token" } });
     const body = catalogSubjectListResponseSchema.parse(await response.json());
     measuring = false;
-    const counts = Object.fromEntries(["auth", "kernel", "business", "transaction", "other"].map((category) => [category, statements.filter((entry) => entry.category === category).length]));
+    const counts = Object.fromEntries(sqlClasses.map((category) => [category, statements.filter((entry) => entry.category === category).length]));
     const evidence = { evidence: "R2-BATCH", route: "subjects", limit, status: response.status, counts, elapsedMs: performance.now() - started, ...resources(), statements };
     console.info(JSON.stringify(evidence));
     const evidenceDirectory = process.env.WISEEFF_CATALOG_SQL_EVIDENCE_DIR;
@@ -239,6 +255,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     expect(counts.auth).toBeGreaterThan(0);
     expect(counts.kernel).toBeGreaterThan(0);
     expect(counts.business, "fixed page projection + prefilter budget").toBe(4);
+    expectRecognitionBudget();
     expect(getRootPostgresPool(root)?.waitingCount).toBe(0);
   });
   it("R2-BATCH-03 empty Subject page performs only prefilter SQL", async () => {
@@ -250,6 +267,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     expect(response.status, JSON.stringify(body)).toBe(200);
     expect(body.items).toEqual([]);
     expect(statements.filter((entry) => entry.category === "business")).toHaveLength(1);
+    expectRecognitionBudget();
     expect(statements.some((entry) => /parameter_review_(evidence|items)/.test(entry.sql))).toBe(false);
   });
 
@@ -260,7 +278,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     const response = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=${limit}`, { headers: { authorization: "Bearer batch-fixture-token" } });
     const body = catalogDefinitionListResponseSchema.parse(await response.json());
     measuring = false;
-    const counts = Object.fromEntries(["auth", "kernel", "business", "transaction", "other"].map((category) => [category, statements.filter((entry) => entry.category === category).length]));
+    const counts = Object.fromEntries(sqlClasses.map((category) => [category, statements.filter((entry) => entry.category === category).length]));
     const evidence = { evidence: "R2-BATCH", route: "definitions", limit, status: response.status, counts, elapsedMs: performance.now() - started, ...resources(), statements };
     console.info(JSON.stringify(evidence));
     const evidenceDirectory = process.env.WISEEFF_CATALOG_SQL_EVIDENCE_DIR;
@@ -274,6 +292,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     expect(counts.auth).toBeGreaterThan(0);
     expect(counts.kernel).toBeGreaterThan(0);
     expect(counts.business, "prefilter + three registration/review + one usage query, irrespective of rows").toBe(5);
+    expectRecognitionBudget();
     const projectedSubjects = statements.find((entry) => entry.batchIds && /organization_subject_registrations/.test(entry.sql));
     const projectedDefinitions = statements.find((entry) => entry.batchIds && /current_project_parameter_bindings/.test(entry.sql));
     expect(projectedSubjects?.batchIds?.slice().sort()).toEqual([...new Set<string>(body.items.map((item: { subject: { id: string } }) => item.subject.id))].sort());
@@ -292,6 +311,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     expect(response.status).toBe(200);
     expect(body.items).toEqual([]);
     expect(statements.filter((entry) => entry.category === "business")).toHaveLength(1);
+    expectRecognitionBudget();
     const invalid = await fetch(`${baseUrl}/api/v2/catalog/definitions?limit=101`, { headers: { authorization: "Bearer batch-fixture-token" } });
     expect(invalid.status).toBe(400);
   });
@@ -420,7 +440,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
                 return performance.now() - start;
               }));
               measuring = false;
-              const counts = Object.fromEntries(["auth", "kernel", "business", "transaction", "other"].map((category) => [category, statements.filter((entry) => entry.category === category).length]));
+              const counts = Object.fromEntries(sqlClasses.map((category) => [category, statements.filter((entry) => entry.category === category).length]));
               const failed = attempts.filter((attempt) => attempt.status === "rejected");
               const elapsedMs = attempts.flatMap((attempt) => attempt.status === "fulfilled" ? [attempt.value] : []);
               const state = resources();
@@ -433,6 +453,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
               try {
                 if (failed.length > 0) throw new AggregateError(failed.map((attempt) => attempt.reason), "Capacity requests failed");
                 expect(counts.business).toBe(businessBudget * concurrency);
+                expectRecognitionBudget(snapshot === "current" ? concurrency : 0);
                 expect(counts.other).toBe(0);
                 expect(state.pool.waiting).toBe(0);
                 expect(state.pool.used).toBe(0);
