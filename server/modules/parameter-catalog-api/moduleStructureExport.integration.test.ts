@@ -86,6 +86,42 @@ describe("module structure export", () => {
     expect(after.rows).toEqual(before.rows);
   });
 
+  it("returns actionable protected-field diagnostics and permits a corrected preview without writes", async () => {
+    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
+      makeTestAuthContext({ organizationId: org, userId: user, roles: [{ roleId: "admin", projectId: null }] }) } } });
+    const base = `/api/v2/organizations/${org}/module-structure`;
+    const exported = await requestJson(app, `${base}/exports`, { method: "POST", body: "{}" });
+    expect(exported.status, exported.bodyText).toBe(200);
+    const original = exported.body as z.infer<typeof moduleStructureExportSchema>;
+    const edited = structuredClone(original);
+    edited.counts.modules++;
+    edited.limits.maxBytes++;
+    edited.source.catalogReleaseId = "incorrect-release";
+    const snapshot = async () => (await db.query(`select
+      (select jsonb_agg(m order by id) from parameter_modules m where organization_id=$1) as modules,
+      (select jsonb_agg(b order by export_id) from parameter_catalog.module_structure_export_baselines b where organization_id=$1) as baselines,
+      (select count(*) from audit_events where organization_id=$1) as audits`, [org])).rows;
+    const before = await snapshot();
+    const invalid = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });
+    expect(invalid.status, invalid.bodyText).toBe(400);
+    expect(invalid.body).toMatchObject({ error: { code: "VALIDATION_FAILED", requestId: expect.any(String), details: {
+      reason: "readonly-module-structure-fields", truncated: false, issueLimit: 50, issues: [
+        expect.objectContaining({ path: "document.source.catalogReleaseId", expected: original.source.catalogReleaseId, received: "incorrect-release" }),
+        expect.objectContaining({ path: "document.limits.maxBytes", expected: original.limits.maxBytes, received: edited.limits.maxBytes }),
+        expect.objectContaining({ path: "document.counts.modules", expected: original.counts.modules, received: edited.counts.modules, hint: expect.stringContaining("不要重新计算") }),
+      ],
+    } } });
+    expect(await snapshot()).toEqual(before);
+    // A forged organization must fail before any baseline values can be disclosed.
+    const denied = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document: { ...edited, source: { ...edited.source, organizationId: "another-org" } }, resolutions: {} }) });
+    expect(denied.status).toBe(403);
+    expect(denied.body).toMatchObject({ error: { details: {} } });
+    const corrected = await requestJson(app, `${base}/previews`, { method: "POST", body: JSON.stringify({ document: original, resolutions: {} }) });
+    expect(corrected.status, corrected.bodyText).toBe(200);
+    expect(corrected.body).toMatchObject({ changes: [], conflicts: [] });
+    expect(await snapshot()).toEqual(before);
+  });
+
   it("registers an explicitly requested Catalog root through the transfer", async () => {
     const org = "lifecycle-export-org";
     const user = "lifecycle-export-admin";

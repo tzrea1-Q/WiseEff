@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createGovernanceIdempotencyKey } from "@/features/parameter-catalog-governance/governanceState";
 import { WiseEffApiError, type ApiClient } from "@/infrastructure/http/apiClient";
-import { presentError } from "@/infrastructure/http/presentError";
+import { importDiagnostic, ModuleStructureImportError, type ImportDiagnostic } from "./ModuleStructureImportError";
 
 type Resolutions = Record<string, "current" | "file">;
 type Preview = {
@@ -37,32 +37,21 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
   const [reason, setReason] = useState("");
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [error, setError] = useState("");
+  const [diagnostic, setDiagnostic] = useState<ImportDiagnostic | null>(null);
   const [busy, setBusy] = useState(false);
   const [discard, setDiscard] = useState(false);
   const write = useRef<{ fingerprint: string; key: string } | null>(null);
   const dirty = Boolean(fileName && !receipt);
   const base = `/api/v2/organizations/${encodeURIComponent(organizationId ?? "")}/module-structure`;
-  const close = () => { setOpen(false); setDocument(null); setFileName(""); setResolutions({}); setMappings({}); setMode("update"); setPreview(null); setReason(""); setReceipt(null); setError(""); write.current = null; };
+  const clearError = () => { setError(""); setDiagnostic(null); };
+  const close = () => { setOpen(false); setDocument(null); setFileName(""); setResolutions({}); setMappings({}); setMode("update"); setPreview(null); setReason(""); setReceipt(null); clearError(); write.current = null; };
   const requestClose = () => { if (dirty) setDiscard(true); else close(); };
-  const showError = (cause: unknown, fallback: string) => {
-    const path = cause instanceof WiseEffApiError && typeof cause.details.path === "string" ? `（${cause.details.path}）` : "";
-    const issues = cause instanceof WiseEffApiError && Array.isArray(cause.details.issues)
-      ? cause.details.issues.map((issue: { path?: unknown; message?: unknown }) => `${Array.isArray(issue.path) ? issue.path.join(".") : String(issue.path ?? "$")}：${String(issue.message ?? "无效")}`).join("；") : "";
-    const labels: Record<string, string> = {
-      "Subject changes are not supported.": "暂不支持修改主体。",
-      "New, structural, or reference changes are not supported.": "暂不支持新增、结构或引用变更。",
-      "Unknown or duplicate Subject.": "主体未知或重复。",
-      "Duplicate module reference.": "模块引用重复。",
-      "A module was deleted after export.": "模块在导出后已被删除。",
-      "Module name is required.": "模块名称不能为空。"
-    };
-    setError(`${cause instanceof WiseEffApiError && labels[cause.message] || presentError(cause, fallback)}${path}${issues ? ` ${issues}` : ""}`);
-  };
+  const showError = (cause: unknown, fallback: string, phase: ImportDiagnostic["phase"]) => setDiagnostic(importDiagnostic(cause, fallback, phase));
   const refresh = async (next: Resolutions, nextMappings = mappings) => {
     if (!apiClient || !document) return;
-    setBusy(true); setError(""); setPreview(null);
+    setBusy(true); clearError(); setPreview(null);
     try { setPreview(await apiClient.post<Preview>(`${base}/previews`, { mode, document, resolutions: next, mappings: nextMappings })); }
-    catch (cause) { showError(cause, "预览失败，请检查文件后重试。"); }
+    catch (cause) { showError(cause, "预览失败，请检查文件后重试。", "preview"); }
     finally { setBusy(false); }
   };
   const apply = async () => {
@@ -70,17 +59,19 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
     const body = { mode, document, resolutions, mappings, token: preview.token, reason: reason.trim() };
     const fingerprint = JSON.stringify(body);
     if (write.current?.fingerprint !== fingerprint) write.current = { fingerprint, key: createGovernanceIdempotencyKey() };
-    setBusy(true); setError("");
+    setBusy(true); clearError();
     try {
       setReceipt(await apiClient.post<Receipt>(`${base}/applies`, { ...body, idempotencyKey: write.current.key }));
       onChanged?.();
     } catch (cause) {
       if (cause instanceof WiseEffApiError && cause.code === "CONFLICT") {
-        setPreview(null); setError("目标状态或预览已变化，请重新预览后确认。");
-      } else showError(cause, "提交失败，请重试。");
+        setPreview(null);
+      }
+      showError(cause, "提交失败，请重试。", "apply");
     } finally { setBusy(false); }
   };
-  const source = document && typeof document === "object" && "source" in document ? (document as { source?: { organizationId?: unknown } }).source?.organizationId : undefined;
+  const sourceInfo = document && typeof document === "object" && "source" in document ? (document as { source?: { organizationId?: unknown; exportId?: unknown } }).source : undefined;
+  const source = sourceInfo?.organizationId;
   const modules = document && typeof document === "object" && "modules" in document && Array.isArray(document.modules) ? document.modules : [];
   const subjects = document && typeof document === "object" && "subjects" in document && Array.isArray(document.subjects) ? document.subjects : [];
   const subjectId = (id: string) => id.startsWith("subject:") ? id.slice(8) : subjects.some((subject: { subjectId?: string }) => subject.subjectId === id) ? id : null;
@@ -133,11 +124,11 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
             <p id={descriptionId}>更新当前组织结构，或复制业务模块和主体到当前目标组织。删除须明确处置子模块和主体归属；复制须确认复用或新建。</p></div></div>
           <div className="param-admin-module-edit-body">
             {!receipt ? <SelectControl ariaLabel="导入模式" value={mode} disabled={busy} options={[{ value: "update", label: "更新当前组织" }, { value: "copy", label: "复制到当前组织" }]} onValueChange={next => {
-              setMode(next as "update" | "copy"); setMappings({}); setResolutions({}); setPreview(null);
+              setMode(next as "update" | "copy"); setMappings({}); setResolutions({}); setPreview(null); clearError();
             }} /> : null}
             {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy} onChange={async event => {
               const file = event.target.files?.[0]; if (!file) return;
-              setFileName(file.name); setDocument(null); setPreview(null); setReceipt(null); setResolutions({}); setMappings({}); setError(""); write.current = null;
+              setFileName(file.name); setDocument(null); setPreview(null); setReceipt(null); setResolutions({}); setMappings({}); clearError(); write.current = null;
               if (file.size > 32 * 1024 * 1024) { setError("JSON 文件不能超过 32 MiB。"); return; }
               try {
                 const text = await new Promise<string>((resolve, reject) => {
@@ -146,7 +137,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
                 const parsed = JSON.parse(text);
                 if (new TextEncoder().encode(JSON.stringify(parsed)).byteLength > 4 * 1024 * 1024) { setError("JSON 内容不能超过 4 MiB。"); return; }
                 setDocument(parsed);
-              } catch { setError("JSON 格式无效，请检查文件后重新上传。"); }
+              } catch (cause) { showError(cause, "JSON 格式无效，请检查文件后重新上传。", "read"); }
             }} /></label> : null}
             {fileName ? <p>文件：{fileName}；来源组织：{typeof source === "string" ? source : "未提供"}；目标组织：{organizationId}</p> : null}
             {preview && !receipt ? <>
@@ -185,6 +176,8 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
             </> : null}
             {receipt ? <p role="status">回执 {receipt.id}：目标组织 {receipt.organizationId}，更新 {receipt.changedModules} 个模块、{receipt.changedFields} 个字段。{receipt.changedFields === 0 ? " 本次没有领域数据变更。" : ""}</p> : null}
             {error ? <p className="form-error" role="alert">{error}</p> : null}
+            {diagnostic ? <ModuleStructureImportError diagnostic={diagnostic} context={{ fileName, mode, targetOrganizationId: organizationId,
+              sourceOrganizationId: typeof source === "string" ? source : undefined, exportId: typeof sourceInfo?.exportId === "string" ? sourceInfo.exportId : undefined }} /> : null}
           </div>
           <div className="dialog-actions"><button type="button" className="button subtle" disabled={busy} onClick={requestClose}>关闭</button>
             {!receipt ? <><button type="button" className="button subtle" disabled={!document || busy} onClick={() => void refresh(resolutions)}>预览</button>
