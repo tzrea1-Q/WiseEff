@@ -162,7 +162,7 @@ On 2026-11-07, the existing `hashLocalAccountPassword` helper performed 500 hash
 
 Run `npm run test:impact -- <changed-files>` for the actual implementation, inspect both fallback flags and complete all selected required native checks. Retain focused user/auth tests, workbook round-trip/error coverage, real PostgreSQL rollback/concurrency tests, TypeScript/build, API/OpenAPI checks and selected browser commands in an isolated `WISEEFF_RUNTIME_LANE`. Existing `PERM-USER-MGMT-001`/`ORG-OPERATING-LIFECYCLE-001` are regression references, not batch evidence. One independent review covers authorization, tenancy, credentials, migration/erasure and concurrency. Record exact commands/counts/environment in the authorized PR.
 
-Planning checks: documentation governance passed; database-schema verification skipped because PostgreSQL was unreachable. No implementation/product acceptance tests have run. Final documentation and whitespace checks are recorded at handoff.
+Implementation is tracked in [PR #1535](https://github.com/tzrea1-Q/WiseEff/pull/1535). Focused workbook, API/PostgreSQL and real local-auth browser checks now cover preflight, atomic creation, retry and result reporting. Complete-candidate regression, independent review and rendered-effect approval remain delivery gates; the PR records current commands, counts and source. The earlier planning-only database skip is superseded by schema verification against disposable pgvector PostgreSQL. A real 500-user request took 3.2–3.3 seconds locally; target deployment/proxy evidence remains unclaimed.
 
 ## Git & PR Workflow
 
@@ -172,16 +172,16 @@ Integration branch: `codex/user-bulk-import`, based on `dc1ede937`, reusing the 
 
 | Area | Disposition and exact paths |
 | --- | --- |
-| Repository maps and vocabulary | Update `CONTEXT.md`; Review `ARCHITECTURE.md` and `docs/zh-CN/root/ARCHITECTURE.md` only if the final design changes a system boundary |
-| Planning | Update this plan, `docs/zh-CN/exec-plans/active/2026-11-07-user-bulk-import.md`, `docs/PLANS.md`, `docs/zh-CN/PLANS.md` as answers settle |
-| Product and user guidance | Review `docs/product-specs/new-user-onboarding.md`, `docs/zh-CN/product-specs/new-user-onboarding.md`, `docs/user-guide/organization-and-governance.md`, `docs/zh-CN/user-guide/organization-and-governance.md`; update approved behavior during implementation |
-| Architecture and API | Review `docs/design-docs/domain-model.md`, `docs/zh-CN/design-docs/domain-model.md`, `docs/design-docs/api-contract.md`, `docs/zh-CN/design-docs/api-contract.md`; do not describe proposed endpoints as shipped |
-| Quality and operation coverage | Review `docs/developer/browser-acceptance-coverage-map.md`, `docs/developer/user-operation-coverage-matrix.md` and their `docs/zh-CN/developer/` companions; add batch IDs before implementation |
-| Reliability and runbooks | Review `docs/RELIABILITY.md`, `docs/zh-CN/RELIABILITY.md` after retry/retention choices; no runbook changes yet |
-| Security and governance | Review `docs/SECURITY.md`, `docs/zh-CN/SECURITY.md`, `docs/security/user-permission-design.md`, `docs/zh-CN/security/user-permission-design.md` after credential and authority choices |
-| Frontend and design | Review `docs/FRONTEND.md`, `docs/zh-CN/frontend.md`, `docs/developer/ui-quality-checklist.md`; use existing components and PC-first policy |
-| Generated artifacts | Review `docs/generated/openapi.json` if an API is added; no generated output changes in this planning phase |
-| Decision references | Review `docs/adr/0051-organization-provisioning-and-member-admission.md` and its Chinese companion; no new ADR justified yet |
+| Repository maps and vocabulary | Updated `CONTEXT.md`, `ARCHITECTURE.md` and `docs/zh-CN/root/ARCHITECTURE.md` for the explicit target Organization and existing user-governance boundary |
+| Planning | Updated this plan, its Chinese companion and both `docs/PLANS.md` indexes with approved decisions, tickets and implementation authorization |
+| Product and user guidance | Updated `docs/product-specs/new-user-onboarding.md`, `docs/user-guide/organization-and-governance.md` and their Chinese companions with the five-column template and complete user journey |
+| Architecture and API | Updated `docs/design-docs/api-contract.md` and its Chinese companion. Reviewed both `domain-model.md` documents: existing User/Home-Organization ownership is unchanged; no new domain entity or alternate membership model is introduced |
+| Quality and operation coverage | Registered `PERM-USER-IMPORT-001` before implementation in the requirement/operation inventories and both coverage-map companions; final browser evidence and coverage status are maintained with its canonical browser owner |
+| Reliability and runbooks | Updated `docs/RELIABILITY.md` and its Chinese companion for uncertain outcomes, bounded hashing and receipt retention. No deployment procedure changes; target proxy/timeouts remain separate acceptance |
+| Security and governance | Updated `docs/SECURITY.md`, `docs/security/user-permission-design.md` and their Chinese companions for current authorization, credential minimization and Organization-owned receipts |
+| Frontend and design | Updated `docs/FRONTEND.md` and `docs/zh-CN/frontend.md`. Reviewed `docs/developer/ui-quality-checklist.md`: existing PC-first, actual-browser and effect-approval rules remain unchanged |
+| Generated artifacts | Updated `docs/generated/openapi.json` for the three routes and `docs/generated/db-schema.md` for migration `0334_user_import_receipts.sql`; generated checks use real disposable PostgreSQL |
+| Decision references | Reviewed ADR 0051 and its Chinese companion: direct administrator admission already exists, and bulk creation preserves that decision. No new ADR is needed |
 
 ## Documentation Update Gate
 

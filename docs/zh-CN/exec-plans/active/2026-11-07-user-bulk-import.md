@@ -162,7 +162,7 @@ API 接收 JSON 而非工作簿 ZIP，独立校验行数、长度、角色和未
 
 实施时运行 `npm run test:impact -- <changed-files>`，检查两项回退标志，执行所有选定原生门禁。保留用户/认证定向测试、工作簿回读/错误测试、真实 PostgreSQL 回滚/并发测试、类型检查/构建、API/OpenAPI 检查，以及隔离 `WISEEFF_RUNTIME_LANE` 下的浏览器命令。既有 `PERM-USER-MGMT-001`/`ORG-OPERATING-LIFECYCLE-001` 仅为回归参考，不能代替批量证据。一次独立审查覆盖权限、租户、凭据、迁移/删除及并发；在获授权的 PR 中记录准确命令、数量和环境。
 
-当前规划检查：文档治理已通过；PostgreSQL 不可达，数据库 schema 文档验证跳过。未实现功能或运行产品验收。交接时记录最终文档和空白检查结果。
+实施进度记录在 [PR #1535](https://github.com/tzrea1-Q/WiseEff/pull/1535)。工作簿、真实 API/PostgreSQL 及本地认证浏览器定向验证已覆盖预检、原子创建、重试和结果报表。完整候选回归、独立审查及页面效果确认仍为交付门禁，PR 记录当前命令、数量和代码版本。规划阶段因数据库不可达而跳过的 schema 检查，现已由一次性 pgvector PostgreSQL 验证补齐。本机真实 500 人请求耗时 3.2–3.3 秒；不宣称已具备目标部署或代理验收证据。
 
 ## Git 与 PR 工作流
 
@@ -172,16 +172,16 @@ API 接收 JSON 而非工作簿 ZIP，独立校验行数、长度、角色和未
 
 | 领域 | 状态与准确路径 |
 | --- | --- |
-| 仓库地图和术语 | 更新 `CONTEXT.md`；仅当最终设计改变系统边界时审阅 `ARCHITECTURE.md`、`docs/zh-CN/root/ARCHITECTURE.md` |
-| 计划 | 随回答更新本文、`docs/exec-plans/active/2026-11-07-user-bulk-import.md`、`docs/PLANS.md`、`docs/zh-CN/PLANS.md` |
-| 产品和用户说明 | 审阅 `docs/product-specs/new-user-onboarding.md`、`docs/zh-CN/product-specs/new-user-onboarding.md`、`docs/user-guide/organization-and-governance.md`、`docs/zh-CN/user-guide/organization-and-governance.md`；实施时写入批准后的行为 |
-| 架构和 API | 审阅 `docs/design-docs/domain-model.md`、`docs/zh-CN/design-docs/domain-model.md`、`docs/design-docs/api-contract.md`、`docs/zh-CN/design-docs/api-contract.md`；不将提议端点写成已上线能力 |
-| 质量和操作覆盖 | 审阅 `docs/developer/browser-acceptance-coverage-map.md`、`docs/developer/user-operation-coverage-matrix.md` 及 `docs/zh-CN/developer/` 下的伴随文档；实施前增加批量编号 |
-| 可靠性和运行手册 | 重试、留存方案确定后审阅 `docs/RELIABILITY.md`、`docs/zh-CN/RELIABILITY.md`；本阶段不修改运行手册 |
-| 安全和治理 | 凭据及权限确定后审阅 `docs/SECURITY.md`、`docs/zh-CN/SECURITY.md`、`docs/security/user-permission-design.md`、`docs/zh-CN/security/user-permission-design.md` |
-| 前端和设计 | 审阅 `docs/FRONTEND.md`、`docs/zh-CN/frontend.md`、`docs/developer/ui-quality-checklist.md`；沿用组件及 PC 优先策略 |
-| 生成产物 | 新增 API 时审阅 `docs/generated/openapi.json`；本阶段不改变生成产物 |
-| 决策引用 | 审阅 `docs/adr/0051-organization-provisioning-and-member-admission.md` 及中文伴随文档；尚无新增 ADR 的理由 |
+| 仓库地图和术语 | 已更新 `CONTEXT.md`、`ARCHITECTURE.md` 和 `docs/zh-CN/root/ARCHITECTURE.md`，说明显式目标组织及既有用户治理边界 |
+| 计划 | 已更新本文、英文伴随文档和两个 `docs/PLANS.md` 索引，记录已确认决策、任务及实施授权 |
+| 产品和用户说明 | 已更新 `docs/product-specs/new-user-onboarding.md`、`docs/user-guide/organization-and-governance.md` 及中文伴随文档，说明五列模板和完整操作流程 |
+| 架构和 API | 已更新 `docs/design-docs/api-contract.md` 及中文伴随文档；已审阅两个 `domain-model.md`，既有用户/归属组织关系不变，不引入新领域实体或成员关系模型 |
+| 质量和操作覆盖 | 实施前已在需求/操作清单及中英文覆盖文档登记 `PERM-USER-IMPORT-001`；最终浏览器证据和覆盖状态随唯一浏览器归属文件维护 |
+| 可靠性和运行手册 | 已更新 `docs/RELIABILITY.md` 及中文伴随文档，说明结果不明、有界哈希和回执留存；部署步骤不变，目标代理/超时仍需独立验收 |
+| 安全和治理 | 已更新 `docs/SECURITY.md`、`docs/security/user-permission-design.md` 及中文伴随文档，说明当前授权、凭据最小化和组织所属回执 |
+| 前端和设计 | 已更新 `docs/FRONTEND.md`、`docs/zh-CN/frontend.md`；已审阅 `docs/developer/ui-quality-checklist.md`，沿用 PC 优先、真实浏览器及效果确认规则 |
+| 生成产物 | 已更新三个路由对应的 `docs/generated/openapi.json` 和迁移 `0334_user_import_receipts.sql` 对应的 `docs/generated/db-schema.md`，生成校验使用真实一次性 PostgreSQL |
+| 决策引用 | 已审阅 ADR 0051 及中文伴随文档：现有决策已允许管理员直接创建账号，批量操作保留此边界，无需新 ADR |
 
 ## 文档更新门禁
 
