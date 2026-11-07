@@ -58,6 +58,44 @@ test("diagnoses agent-edited export metadata and supports manual copying before 
   await expect(dialog.getByText("没有领域数据变更。")).toBeVisible();
 });
 
+test("diagnoses a recognition field with subject identity, exact value and a repair rule", async ({ page, request }, info) => {
+  await seedAcceptanceRoleMatrix();
+  const exported = await request.post(apiRoute(endpoint), { headers: authHeadersForRole("admin"), data: {} });
+  expect(exported.status(), await exported.text()).toBe(200);
+  const original = await exported.json();
+  const edited = structuredClone(original);
+  const index = edited.subjects.findIndex((subject: { kind: string; recognition: unknown }) => subject.kind === "node-type" && subject.recognition);
+  expect(index).toBeGreaterThanOrEqual(0);
+  const subject = edited.subjects[index];
+  subject.recognition.mode = "override";
+  subject.recognition.override = { ...subject.recognition.effective, nodeTypeName: "battery_checker@0" };
+  await page.addInitScript(() => Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true }));
+  await signInBrowserAsRole(page, "admin", "/parameter-admin/modules");
+  await page.getByRole("button", { name: "导入结构" }).click();
+  const dialog = page.getByRole("dialog", { name: "导入模块结构" });
+  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "recognition-diagnostic.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(edited)) });
+  await dialog.getByRole("button", { name: "预览" }).click();
+  const diagnostic = dialog.getByRole("region", { name: "导入错误诊断" });
+  await expect(diagnostic).toContainText(subject.subjectId);
+  await expect(diagnostic).toContainText(`/subjects/${index}/recognition/override/nodeTypeName`);
+  await expect(diagnostic).toContainText("battery_checker@0");
+  await expect(diagnostic).toContainText("节点类型名包含 @ 单元地址");
+  await expect(diagnostic).toContainText("格式示例（仅示意");
+  await expect(dialog.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  await page.screenshot({ path: info.outputPath("module-structure-recognition-diagnostic-1440x900.png"), animations: "disabled" });
+  await diagnostic.getByRole("button", { name: "复制诊断信息" }).focus();
+  await page.keyboard.press("Enter");
+  const report = JSON.parse(await diagnostic.getByLabel("导入诊断信息").inputValue());
+  expect(report.issues).toEqual(expect.arrayContaining([expect.objectContaining({
+    subject: expect.objectContaining({ subjectId: subject.subjectId, kind: "node-type", index }),
+    code: "unit-address-present", received: "battery_checker@0", example: "battery_checker",
+    jsonPointer: `/subjects/${index}/recognition/override/nodeTypeName`, hint: expect.stringContaining("不带 @"),
+  })]));
+  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "recognition-repaired.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(original)) });
+  await dialog.getByRole("button", { name: "预览" }).click();
+  await expect(dialog.getByText("没有领域数据变更。")).toBeVisible();
+});
+
 test("MODULE-STRUCTURE-MIXED-001: review one mixed update", async ({ page, request }, info) => {
   // @acceptance MODULE-STRUCTURE-MIXED-001
   // @operation MODULE-STRUCTURE-MIXED-001

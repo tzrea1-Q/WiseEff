@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { lockOrganizationModuleRecognition } from "./recognitionLock";
+import { assertRecognitionUpdate } from "./recognitionValidation";
 export { lockOrganizationModuleRecognition } from "./recognitionLock";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -269,13 +270,7 @@ export function registrationRecognitionEtag(settings: ModuleRecognitionSettings 
 export async function validateRegistrationRecognitionSettings(db: Queryable, organizationId: string,
   current: ModuleRecognitionSettings & { kind: "driver" | "node-type" }, body: UpdateModuleRecognition,
 ): Promise<ModuleRecognitionSettings & { kind: "driver" | "node-type" }> {
-  if (!hasModuleRecognitionUpdate(body) ||
-    (current.kind === "driver" && body.nodeTypeName !== undefined) ||
-    (current.kind === "node-type" && (body.compatibles !== undefined || body.driverNature !== undefined || body.instanceCardinality !== undefined)) ||
-    body.compatibles?.some(value => !parseCanonicalCompatibleSelector(value).ok) ||
-    (body.nodeTypeName !== undefined && !parseCanonicalNodeName(body.nodeTypeName).ok)) {
-    throw new ApiError("VALIDATION_FAILED", "识别规则与主体类型不匹配，或识别标识格式无效。");
-  }
+  assertRecognitionUpdate(current.kind, body);
   const next = { ...current, ...body, overridden: true };
   if (body.compatibles) next.compatibles = validCompatibles(body.compatibles);
   await validateRecognitionCapacity(db, organizationId, next);

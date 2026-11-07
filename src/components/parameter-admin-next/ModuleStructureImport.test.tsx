@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { WiseEffApiError, type ApiClient } from "@/infrastructure/http/apiClient";
 import { ModuleStructureImport } from "./ModuleStructureImport";
+import { importDiagnostic, ModuleStructureImportError } from "./ModuleStructureImportError";
 
 it("accepts formatted files over 4 MiB but rejects content over 4 MiB", async () => {
   const user = userEvent.setup();
@@ -147,6 +148,78 @@ it("shows field differences and copies actionable diagnostics without the upload
     reason: "readonly-module-structure-fields", status: 400 });
   expect(copied).not.toContain("private-content-not-needed-for-diagnostics");
   expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+});
+
+it("identifies the subject and exact invalid field with allowed values and a clearly illustrative repair example", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  const issue = {
+    path: "document.subjects.32.recognition.override.driverNature", jsonPointer: "/subjects/32/recognition/override/driverNature",
+    code: "invalid_enum_value", message: "driverNature 不在允许的枚举值中。",
+    subject: { subjectId: "csub_charge", kind: "driver", displayAlias: "无线充电", index: 32 },
+    received: "physical", allowedValues: ["physical-device", "logical-service"],
+    rule: "驱动类型必须使用允许的枚举字符串。", hint: "按主体实际含义选择 physical-device 或 logical-service。", example: "physical-device",
+  };
+  const post = vi.fn().mockRejectedValue(new WiseEffApiError("VALIDATION_FAILED", "识别规则校验失败。", { issues: [issue] }, "request-recognition", 400));
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  await user.upload(screen.getByLabelText("JSON 文件"), new File(["{}"], "recognition.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "预览" }));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("无线充电 · csub_charge · 驱动主体（driver） · subjects[32]（第 33 个主体）");
+  expect(alert).toHaveTextContent(issue.path);
+  expect(alert).toHaveTextContent(issue.jsonPointer);
+  expect(alert).toHaveTextContent('文件值："physical"');
+  expect(alert).toHaveTextContent('允许值：["physical-device","logical-service"]');
+  expect(alert).toHaveTextContent(`校验规则：${issue.rule}`);
+  expect(alert).toHaveTextContent(`修复建议：${issue.hint}`);
+  expect(alert).toHaveTextContent('格式示例（仅示意，请按实际业务填写）："physical-device"');
+  await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
+  expect(JSON.parse(String(writeText.mock.calls[0][0])).issues).toEqual([expect.objectContaining(issue)]);
+  expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+});
+
+it("keeps rich legacy path diagnostics and displays falsy values without inventing rules", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  const diagnostic = importDiagnostic(new WiseEffApiError("VALIDATION_FAILED", "排序值不合法。", {
+    path: "modules.0.sortOrder", jsonPointer: "/modules/0/sortOrder", module: { ref: "power", sourceId: "module-power", name: "电源", index: 0 },
+    expected: 0, received: null, example: false, allowedValues: [0, null, false],
+    unrelated: "private-detail-do-not-copy",
+  }, "request-legacy", 400), "预览失败。", "preview");
+  render(<ModuleStructureImportError diagnostic={diagnostic} context={{ fileName: "edit.json", mode: "update" }} />);
+  const alert = screen.getByRole("alert");
+  expect(alert).toHaveTextContent("模块：电源 · power · modules[0]（第 1 个模块）");
+  expect(alert).toHaveTextContent("期望值：0");
+  expect(alert).toHaveTextContent("文件值：null");
+  expect(alert).toHaveTextContent("允许值：[0,null,false]");
+  expect(alert).toHaveTextContent("格式示例（仅示意，请按实际业务填写）：false");
+  expect(alert).not.toHaveTextContent("校验规则：");
+  await user.click(screen.getByRole("button", { name: "复制诊断信息" }));
+  const report = String(writeText.mock.calls[0][0]);
+  expect(JSON.parse(report).issues[0]).toMatchObject({ expected: 0, received: null, example: false, allowedValues: [0, null, false],
+    module: { ref: "power", sourceId: "module-power", name: "电源", index: 0 } });
+  expect(report).not.toContain("private-detail-do-not-copy");
+});
+
+it("bounds rich issue identities, repair data and the issue count without forwarding unknown fields", () => {
+  const oversized = "x".repeat(5000);
+  const issue = { path: "subjects.0.recognition.override", jsonPointer: oversized, message: "无效规则。", rule: oversized,
+    subject: { subjectId: oversized, kind: oversized, displayAlias: oversized, index: 0, private: "do-not-copy" },
+    module: { ref: oversized, sourceId: oversized, name: oversized, index: -1, private: "do-not-copy" },
+    allowedValues: [oversized], example: { value: oversized }, private: "do-not-copy" };
+  const diagnostic = importDiagnostic(new WiseEffApiError("VALIDATION_FAILED", "校验失败。", { issues: Array.from({ length: 51 }, () => issue) }, "request-rich-bounded", 400), "失败。", "preview");
+  expect(diagnostic.issues).toHaveLength(50);
+  expect(diagnostic.truncated).toBe(true);
+  expect(diagnostic.issues[0]).toMatchObject({ allowedValuesTruncated: true, exampleTruncated: true, subject: { index: 0 } });
+  expect(diagnostic.issues[0].module).not.toHaveProperty("index");
+  for (const value of [diagnostic.issues[0].jsonPointer, diagnostic.issues[0].rule, diagnostic.issues[0].subject?.subjectId,
+    diagnostic.issues[0].subject?.kind, diagnostic.issues[0].subject?.displayAlias, diagnostic.issues[0].module?.ref,
+    diagnostic.issues[0].module?.sourceId, diagnostic.issues[0].module?.name, diagnostic.issues[0].allowedValues, diagnostic.issues[0].example]) {
+    expect(String(value)).toContain("已截断");
+    expect(String(value).length).toBeLessThan(2100);
+  }
+  expect(JSON.stringify(diagnostic)).not.toContain("do-not-copy");
 });
 
 it.each(["unavailable", "rejected"])("offers selected diagnostic text when clipboard is %s", async availability => {

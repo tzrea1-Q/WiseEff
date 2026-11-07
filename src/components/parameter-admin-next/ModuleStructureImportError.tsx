@@ -9,10 +9,18 @@ type ImportIssue = {
   message: string;
   code?: string;
   hint?: string;
+  jsonPointer?: string;
+  rule?: string;
+  subject?: { subjectId?: string; kind?: string; displayAlias?: string | null; index?: number };
+  module?: { ref?: string; sourceId?: string; name?: string; index?: number };
   expected?: unknown;
   received?: unknown;
+  allowedValues?: unknown;
+  example?: unknown;
   expectedTruncated?: boolean;
   receivedTruncated?: boolean;
+  allowedValuesTruncated?: boolean;
+  exampleTruncated?: boolean;
 };
 export type ImportDiagnostic = {
   summary: string;
@@ -41,27 +49,37 @@ const labels: Record<string, string> = {
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value));
 const pathText = (path: unknown) => Array.isArray(path) ? path.filter(part => typeof part === "string" || typeof part === "number").join(".") : typeof path === "string" ? path : "$";
 const displayValue = (value: unknown) => boundedText(JSON.stringify(value) ?? "（未提供）");
+const subjectKinds: Record<string, string> = { driver: "驱动主体（driver）", "node-type": "节点主体（node-type）", "configuration-schema": "配置主体（configuration-schema）" };
+const issueIdentity = (value: unknown, keys: string[]) => {
+  if (!record(value)) return undefined;
+  return Object.fromEntries([
+    ...keys.flatMap(key => typeof value[key] === "string" ? [[key, boundedText(value[key])]] : key === "displayAlias" && value[key] === null ? [[key, null]] : []),
+    ...(typeof value.index === "number" && Number.isSafeInteger(value.index) && value.index >= 0 ? [["index", value.index]] : []),
+  ]);
+};
+const normalizeIssue = (issue: Record<string, unknown>): ImportIssue => ({
+  path: boundedText(pathText(issue.path)),
+  message: boundedText(typeof issue.message === "string" ? issue.message : "字段无效"),
+  ...Object.fromEntries(["code", "hint", "jsonPointer", "rule"].flatMap(key => typeof issue[key] === "string" ? [[key, boundedText(issue[key])]] : [])),
+  ...(record(issue.subject) ? { subject: issueIdentity(issue.subject, ["subjectId", "kind", "displayAlias"]) } : {}),
+  ...(record(issue.module) ? { module: issueIdentity(issue.module, ["ref", "sourceId", "name"]) } : {}),
+  ...Object.fromEntries(["expected", "received", "allowedValues", "example"].flatMap(key => {
+    if (!Object.prototype.hasOwnProperty.call(issue, key)) return [];
+    const serialized = JSON.stringify(issue[key]) ?? "";
+    const truncated = serialized.length > MAX_TEXT || issue[`${key}Truncated`] === true;
+    return [[key, serialized.length > MAX_TEXT ? boundedText(serialized) : issue[key]], [`${key}Truncated`, truncated]];
+  })),
+});
 
 export function importDiagnostic(cause: unknown, fallback: string, phase: ImportDiagnostic["phase"]): ImportDiagnostic {
   const apiError = cause instanceof WiseEffApiError ? cause : null;
   const rawIssues = apiError && Array.isArray(apiError.details.issues) ? apiError.details.issues : [];
-  const issues: ImportIssue[] = rawIssues.filter(record).slice(0, MAX_ISSUES).map(issue => ({
-    path: boundedText(pathText(issue.path)),
-    message: boundedText(typeof issue.message === "string" ? issue.message : "字段无效"),
-    ...(typeof issue.code === "string" ? { code: boundedText(issue.code) } : {}),
-    ...(typeof issue.hint === "string" ? { hint: boundedText(issue.hint) } : {}),
-    ...Object.fromEntries(["expected", "received"].flatMap(key => {
-      if (!Object.prototype.hasOwnProperty.call(issue, key)) return [];
-      const serialized = JSON.stringify(issue[key]) ?? "";
-      const truncated = serialized.length > MAX_TEXT || issue[`${key}Truncated`] === true;
-      return [[key, serialized.length > MAX_TEXT ? boundedText(serialized) : issue[key]], [`${key}Truncated`, truncated]];
-    })),
-  }));
+  const issues = rawIssues.filter(record).slice(0, MAX_ISSUES).map(normalizeIssue);
   if (!issues.length && apiError && (typeof apiError.details.path === "string" || Array.isArray(apiError.details.path))) {
-    issues.push({ path: boundedText(pathText(apiError.details.path)), message: boundedText(apiError.message) });
+    issues.push(normalizeIssue({ ...apiError.details, message: apiError.message }));
   }
   return {
-    summary: apiError && labels[apiError.message] || presentError(cause, fallback),
+    summary: boundedText(apiError && labels[apiError.message] || presentError(cause, fallback)),
     code: apiError ? boundedText(apiError.code) : phase === "read" ? "INVALID_JSON" : "REQUEST_FAILED",
     message: boundedText(cause instanceof Error ? cause.message : fallback),
     ...(typeof apiError?.details.reason === "string" ? { reason: boundedText(apiError.details.reason) } : {}),
@@ -101,10 +119,19 @@ export function ModuleStructureImportError({ diagnostic, context }: {
       {diagnostic.issues.length ? <ol className="max-h-64 space-y-3 overflow-auto">
         {diagnostic.issues.map((issue, index) => <li key={`${index}:${issue.path}`}>
           <p><strong>字段：<code>{issue.path}</code></strong></p>
+          {issue.subject ? <p>主体：{issue.subject.displayAlias ? `${issue.subject.displayAlias} · ` : ""}<code>{issue.subject.subjectId}</code>
+            {issue.subject.kind ? ` · ${subjectKinds[issue.subject.kind] ?? issue.subject.kind}` : ""}
+            {issue.subject.index !== undefined ? ` · subjects[${issue.subject.index}]（第 ${issue.subject.index + 1} 个主体）` : ""}</p> : null}
+          {issue.module ? <p>模块：{issue.module.name ? `${issue.module.name} · ` : ""}<code>{issue.module.ref ?? issue.module.sourceId}</code>
+            {issue.module.index !== undefined ? ` · modules[${issue.module.index}]（第 ${issue.module.index + 1} 个模块）` : ""}</p> : null}
+          {issue.jsonPointer !== undefined ? <p>文件位置（JSON Pointer）：<code>{issue.jsonPointer || "（文档根节点，空指针）"}</code></p> : null}
           <p>{issue.message}</p>
           {Object.prototype.hasOwnProperty.call(issue, "expected") ? <p>期望值：<code>{displayValue(issue.expected)}</code>{issue.expectedTruncated ? "（仅显示部分值）" : ""}</p> : null}
           {Object.prototype.hasOwnProperty.call(issue, "received") ? <p>文件值：<code>{displayValue(issue.received)}</code>{issue.receivedTruncated ? "（仅显示部分值）" : ""}</p> : null}
+          {issue.rule ? <p>校验规则：{issue.rule}</p> : null}
+          {Object.prototype.hasOwnProperty.call(issue, "allowedValues") ? <p>允许值：<code>{displayValue(issue.allowedValues)}</code>{issue.allowedValuesTruncated ? "（仅显示部分值）" : ""}</p> : null}
           {issue.hint ? <p>修复建议：{issue.hint}</p> : null}
+          {Object.prototype.hasOwnProperty.call(issue, "example") ? <p>格式示例（仅示意，请按实际业务填写）：<code>{displayValue(issue.example)}</code>{issue.exampleTruncated ? "（仅显示部分值）" : ""}</p> : null}
         </li>)}
       </ol> : <p>具体原因：<code>{diagnostic.message}</code></p>}
       {diagnostic.truncated ? <p>错误较多，当前仅显示前 {diagnostic.issues.length} 条。修复后重新预览以检查剩余问题。</p> : null}

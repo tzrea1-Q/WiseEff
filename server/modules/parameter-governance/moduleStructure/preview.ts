@@ -11,6 +11,7 @@ import { planModuleCopy } from "./copy";
 import type { LifecycleChange } from "./lifecycle";
 import { validateChangedPaths } from "./pathBudget";
 import { assertReadonlyModuleStructure } from "./diagnostics";
+import { enrichModuleStructureError } from "./importErrorDetails";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance", "parentRef"] as const;
 
@@ -28,10 +29,15 @@ function unchangedSubset(value: unknown, baseline: unknown): boolean {
 }
 
 export async function planModuleStructure(client: pg.PoolClient, organizationId: string, invocation: UserInvocationContext, raw: unknown) {
+  try { return await planModuleStructureContent(client, organizationId, invocation, raw); }
+  catch (error) { throw enrichModuleStructureError(error, raw); }
+}
+
+async function planModuleStructureContent(client: pg.PoolClient, organizationId: string, invocation: UserInvocationContext, raw: unknown) {
   const documentBytes = raw && typeof raw === "object" && "document" in raw ? JSON.stringify(raw.document) : "";
   if (Buffer.byteLength(documentBytes ?? "", "utf8") > MODULE_STRUCTURE_MAX_BYTES) throw new ApiError("VALIDATION_FAILED", "Module structure exceeds the supported byte limit.");
   const parsed = moduleStructurePreviewRequestSchema.safeParse(raw);
-  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Invalid module structure document.", { issues: parsed.error.issues.map(i => ({ path: i.path.join("."), message: i.message })) });
+  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Invalid module structure document.", { issues: parsed.error.issues });
   const { mode, document, resolutions } = parsed.data;
   if (mode === "copy") return planModuleCopy(client, organizationId, invocation, parsed.data);
   if (Object.keys(parsed.data.mappings).length) throw new ApiError("VALIDATION_FAILED", "Mappings are only valid in copy mode.");

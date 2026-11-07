@@ -13,13 +13,14 @@ import { stable } from "./preview";
 import type { SubjectChange } from "./subjects";
 import type { LifecycleChange } from "./lifecycle";
 import type { planRecognition } from "./recognition";
+import { prefixSubjectSchemaIssues, recognitionShapeError, recognitionShapeIssues, withRecognitionImportContext } from "./recognitionImportDiagnostics";
 
 type Subject = z.infer<typeof moduleStructureExportSchema>["subjects"][number];
 type Input = z.infer<typeof moduleStructurePreviewRequestSchema>;
 
 export async function planCopySubjects(client: pg.PoolClient, organizationId: string, input: Input, current: Subject[], moduleIds: Map<string, string>, releaseId: string) {
   const parsed = moduleStructureExportSchema.shape.subjects.safeParse(input.document.subjects);
-  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Copy requires complete Subject snapshots.", { path: "subjects", issues: parsed.error.issues });
+  if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Copy requires complete Subject snapshots.", { path: "subjects", issues: prefixSubjectSchemaIssues(parsed.error.issues) });
   const subjects = parsed.data;
   const seen = new Set<string>();
   const existing = new Map(current.map(subject => [subject.subjectId, subject]));
@@ -62,7 +63,7 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
       (rule.mode === "inherit" ? rule.override !== null : !rule.override || (subject.kind === "driver"
         ? rule.override.nodeTypeName !== null || rule.override.driverNature === null || rule.override.instanceCardinality === null
         : rule.override.nodeTypeName === null || rule.override.compatibles.length !== 0 || rule.override.driverNature !== null || rule.override.instanceCardinality !== null)))
-      throw new ApiError("VALIDATION_FAILED", "Recognition settings do not match the Subject kind.", { path: `subjects.${index}.recognition` });
+      throw recognitionShapeError(index, subject, "Recognition settings do not match the Subject kind.", recognitionShapeIssues(subject.kind, rule, "copy"));
     if (subject.placement?.kind === "module" && !moduleIds.has(subject.placement.moduleRef)) throw new ApiError("CONFLICT", "Placement destination is unavailable.");
     if (subject.placement?.kind === "unclassified" && !(await client.query(`select 1 from parameter_modules
       where organization_id=$1 and kind='unclassified' and parent_id is null and archived_at is null`, [organizationId])).rowCount)
@@ -101,15 +102,15 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
         } else if (field === "recognition") {
           if (!subject.recognition || subject.kind === "configuration-schema") throw new ApiError("CONFLICT", "Recognition is incompatible.");
           const row = (await client.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, subject.subjectId])).rows[0]!;
-          const settings = await readRegistrationRecognitionSettings(db, organizationId, row.id);
-          if (!settings) throw new ApiError("CONFLICT", "Subject registration no longer exists.");
+          const settings = await withRecognitionImportContext(index, subject, "effective", () => readRegistrationRecognitionSettings(db, organizationId, row.id));
+          if (!settings) throw new ApiError("CONFLICT", "Subject registration no longer exists.", { path: `subjects.${index}.recognition` });
           const override = subject.recognition.override;
           const body = subject.kind === "driver" ? { compatibles: override?.compatibles, driverNature: override?.driverNature ?? undefined,
             instanceCardinality: override?.instanceCardinality ?? undefined } : { nodeTypeName: override?.nodeTypeName ?? undefined };
           if (subject.recognition.mode === "override" && !override) throw new ApiError("VALIDATION_FAILED", "Recognition override is required.");
-          const next = subject.recognition.mode === "inherit" ? await readInheritedRegistrationRecognitionSettings(db, settings, releaseId)
-            : await validateRegistrationRecognitionSettings(db, organizationId, settings, body);
-          if (subject.recognition.mode === "inherit") await validateRecognitionCapacity(db, organizationId, next);
+          const next = subject.recognition.mode === "inherit" ? await withRecognitionImportContext(index, subject, "effective", () => readInheritedRegistrationRecognitionSettings(db, settings, releaseId))
+            : await withRecognitionImportContext(index, subject, "override", () => validateRegistrationRecognitionSettings(db, organizationId, settings, body));
+          if (subject.recognition.mode === "inherit") await withRecognitionImportContext(index, subject, "effective", () => validateRecognitionCapacity(db, organizationId, next));
           const instances = await listModuleRecognitionInstances(db, organizationId, next);
           instances.sort((a, b) => a.projectId.localeCompare(b.projectId) || a.logicalNodeId.localeCompare(b.logicalNodeId));
           recognitionProjects.set(subject.subjectId, new Set(instances.map(instance => instance.projectId)));
@@ -127,13 +128,13 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
       if (!subject.recognition) throw new ApiError("VALIDATION_FAILED", "Recognition settings are required.");
       const initial = { kind: subject.kind, recognitionSubjectId: subject.subjectId, compatibles: [] as string[], nodeTypeName: null,
         driverNature: null, instanceCardinality: null, overridden: false };
-      const inherited = await readInheritedRegistrationRecognitionSettings(db, initial, releaseId);
+      const inherited = await withRecognitionImportContext(index, subject, "effective", () => readInheritedRegistrationRecognitionSettings(db, initial, releaseId));
       const rule = subject.recognition;
       const body = subject.kind === "driver" ? { compatibles: rule.override?.compatibles, driverNature: rule.override?.driverNature ?? undefined,
         instanceCardinality: rule.override?.instanceCardinality ?? undefined } : { nodeTypeName: rule.override?.nodeTypeName ?? undefined };
       if (rule.mode === "override" && !rule.override) throw new ApiError("VALIDATION_FAILED", "Recognition override is required.");
-      const next = rule.mode === "inherit" ? inherited : await validateRegistrationRecognitionSettings(db, organizationId, inherited, body);
-      if (rule.mode === "inherit") await validateRecognitionCapacity(db, organizationId, next);
+      const next = rule.mode === "inherit" ? inherited : await withRecognitionImportContext(index, subject, "override", () => validateRegistrationRecognitionSettings(db, organizationId, inherited, body));
+      if (rule.mode === "inherit") await withRecognitionImportContext(index, subject, "effective", () => validateRecognitionCapacity(db, organizationId, next));
       previewRecognition = { mode: rule.mode, override: rule.override, effective: { compatibles: next.compatibles,
         nodeTypeName: next.nodeTypeName, driverNature: next.driverNature, instanceCardinality: next.instanceCardinality } };
       const instances = await listModuleRecognitionInstances(db, organizationId, next);
