@@ -147,7 +147,7 @@ describe("module structure export", () => {
     const invalidRegistrationPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: invalidRegistration, resolutions: {} }) });
     expect(invalidRegistrationPreview.status, invalidRegistrationPreview.bodyText).toBe(400);
     expect(invalidRegistrationPreview.body).toMatchObject({ error: { details: { issues: [
-      expect.objectContaining({ code: "wildcard-forbidden", received: "acme,*", subject: { subjectId, kind: "driver" },
+      expect.objectContaining({ code: "wildcard-forbidden", received: "acme,*", subject: { index: document.subjects.length, subjectId, kind: "driver" },
         jsonPointer: `/subjects/${document.subjects.length}/recognition/override/compatibles/0`, hint: expect.any(String) }),
       expect.objectContaining({ code: "whitespace-forbidden", received: "acme, power" }),
     ] } } });
@@ -486,7 +486,7 @@ describe("module structure export", () => {
       path: `document.subjects.${invalidCopyIndex}.recognition.override.nodeTypeName`,
       jsonPointer: `/subjects/${invalidCopyIndex}/recognition/override/nodeTypeName`,
       code: "unit-address-present", received: "battery_checker@0", example: "battery_checker",
-      subject: { subjectId: "csub_acme_charger", kind: "node-type" }, hint: expect.stringContaining("@"),
+      subject: { index: invalidCopyIndex, subjectId: "csub_acme_charger", kind: "node-type", displayAlias: null }, hint: expect.stringContaining("@"),
     })] } } });
     expect((await api.query("select 1 from parameter_catalog.organization_subject_registrations where organization_id=$1", [target])).rowCount).toBe(0);
     const viewer = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () =>
@@ -548,7 +548,7 @@ describe("module structure export", () => {
     expect(invalidExistingCopy.status, invalidExistingCopy.bodyText).toBe(400);
     expect(invalidExistingCopy.body).toMatchObject({ error: { details: { issues: [expect.objectContaining({
       code: "unit-address-present", jsonPointer: `/subjects/${invalidCopyIndex}/recognition/override/nodeTypeName`,
-      subject: { subjectId: "csub_acme_charger", kind: "node-type" }, received: "battery_checker@0",
+      subject: { index: invalidCopyIndex, subjectId: "csub_acme_charger", kind: "node-type", displayAlias: null }, received: "battery_checker@0",
     })] } } });
     const sourceAfter = await requestJson(source, `/api/v2/organizations/${sourceOrg}/module-structure/exports`, { method: "POST", body: "{}" });
     expect((sourceAfter.body as { subjects: unknown[] }).subjects).toEqual((exported.body as { subjects: unknown[] }).subjects);
@@ -1348,7 +1348,7 @@ describe("module structure export", () => {
     expect(invalidPreview.body).toMatchObject({ error: { details: { issues: [expect.objectContaining({
       path: `document.subjects.${invalidIndex}.recognition.override.compatibles.0`,
       jsonPointer: `/subjects/${invalidIndex}/recognition/override/compatibles/0`, code: "whitespace-forbidden", received: "invalid selector!",
-      subject: { subjectId: "csub_acme_power", kind: "driver", displayAlias: "Power alias" },
+      subject: { index: invalidIndex, subjectId: "csub_acme_power", kind: "driver", displayAlias: "Power alias" },
       rule: expect.stringContaining("compatible"), hint: expect.stringContaining("空白"), example: "acme,power",
     })] } } });
     const resolved = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: conflictDocument,
