@@ -6,6 +6,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 | Operation ID | Priority | Area | Coverage | Route | Roles | Action | Assertions | Specs |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `PERM-USER-IMPORT-001` | P1 | permissions | future | `/organization/members` | Org Admin, Platform Admin | Preview and atomically import local users, recover a result and export a password-free report. | ui, api, db, audit, screenshot | `src/application/userImportWorkbook.test.ts`<br>`server/modules/users/userImport.integration.test.ts` |
 | `PARLIB-READ-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Read global definitions, search all subject kinds and inspect exact revision history. | ui, api, screenshot | `e2e/acceptance/parameter-library.acceptance.spec.ts` |
 | `PARLIB-SCOPE-001` | P1 | parameters | automated | `/parameters` | Software User | Read Organization configurations without gaining project write permissions. | ui, api, screenshot | `e2e/acceptance/parameter-library-scope.acceptance.spec.ts` |
 | `PARLIB-INSTANCES-001` | P1 | parameters | automated | `/parameters/definitions` | Hardware User, Software User, Org Admin | Inspect all current instances and exact configured-project/value counts. | ui, api, screenshot | `e2e/acceptance/parameter-library-instances.acceptance.spec.ts` |
@@ -220,6 +221,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 ## Deferred Or Conditional Operations
 
+- `PERM-USER-IMPORT-001`: Read-only workbook and API preflight have focused tests; creation, recovery, reporting and real-browser evidence remain in the full feature.
 - `ORG-OPERATING-LIFECYCLE-001`: Requires actual local password sessions in an isolated local-auth API lane; HMAC/OIDC lanes skip this provider-specific workflow. The signed OIDC companion has its own conditional operation and evidence.
 - `ORG-OIDC-TRANSFER-001`: Requires an isolated OIDC API lane with a controlled loopback issuer/JWKS and its ephemeral test signing key; other provider lanes cannot establish this evidence.
 - `ORG-ACCOUNT-TRANSFER-001`: Browser workflow requires an isolated real local-auth API lane; HMAC and OIDC lanes skip this local-password interaction.

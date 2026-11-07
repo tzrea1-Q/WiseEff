@@ -60,6 +60,7 @@ import { parameterInvocation, parameterRequestAccess, withParameterAccess } from
 import { previewAccountTransfer, transferAccount } from "./accountTransfer";
 import { accountTransferRequestSchema, accountTransferTargetSchema } from "../contracts/dtoSchemas/accountTransfer";
 import { getOrganizationWorkspaceSummary } from "./workspaceSummary";
+import { previewUserImport } from "./userImport";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -287,6 +288,12 @@ export function registerUserRoutes(
     const { projectId, userId } = parseWithSchema(projectUserParamsSchema, request.params);
     const body = parseWithSchema(updateProjectMemberBodySchema, request.body);
     return { status: 200, body: await updateGovernedProjectMember(db, await operatingInvocation(db, auth, request), projectId, userId, body, request.requestId) };
+  });
+
+  router.post("/api/v1/users/imports/preview", async (request) => {
+    if (options.authenticationProvider !== "local") throw new ApiError("FORBIDDEN", "当前认证方式不支持本地用户导入。");
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    return { status: 200, body: { item: await previewUserImport(db, await operatingInvocation(db, auth, request), request.body) } };
   });
 
   router.post("/api/v1/users", async (request) => {

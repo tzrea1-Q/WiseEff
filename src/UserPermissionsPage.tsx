@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MemberDetailsDialog } from "@/components/admin/MemberDetailsDialog";
 import { AccountTransferDialog } from "@/features/organization/AccountTransferDialog";
+import { UserImportDialog } from "@/features/organization/UserImportDialog";
 import type { AccountTransferClient } from "@/infrastructure/http/accountTransferClient";
 import { MemberOrganizationRolesPanel } from "@/components/admin/MemberOrganizationRolesPanel";
 import { SettingsLeaveGuard } from "@/components/layout/SettingsFormPage";
@@ -35,6 +36,8 @@ import { requestSettingsLeave } from "@/application/settingsFormNavigation";
 import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { migrateLegacyRoleId, organizationRoleIds, pickPrimaryPlatformRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
 import type { CreateGovernedUserInput, UpdateOrganizationRolesInput, OrganizationTeamsClient, OrganizationTeamDto } from "@/infrastructure/http/userGovernanceClient";
+import type { UserImportPreview } from "@/infrastructure/http/userGovernanceClient";
+import type { UserImportRow } from "@/application/userImportWorkbook";
 import type { LocalAuthPublicConfigDto } from "@/infrastructure/http/authClient";
 import type { PrototypeState, User } from "@/domain/prototype/types";
 import type { DataTableSort } from "@/components/admin/DataTable";
@@ -64,6 +67,7 @@ export type UserPermissionsPageProps = {
 };
 
 export type UserGovernanceActions = {
+  previewUserImport?(rows: UserImportRow[]): Promise<UserImportPreview>;
   listUsers(): Promise<User[]>;
   createUser(input: CreateGovernedUserInput): Promise<User | void>;
   getAuthenticationConfig?(): Promise<LocalAuthPublicConfigDto>;
@@ -311,6 +315,7 @@ export function UserPermissionsPage({
   const [sort, setSort] = useState<DataTableSort>(() => readSort(search));
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [addMemberChoiceOpen, setAddMemberChoiceOpen] = useState(false);
+  const [userImportOpen, setUserImportOpen] = useState(false);
   const [oidcSubject, setOidcSubject] = useState("");
   const [oidcEmail, setOidcEmail] = useState("");
   const [name, setName] = useState("");
@@ -761,9 +766,9 @@ export function UserPermissionsPage({
             <span className="eyebrow">用户治理</span>
             <h2>成员列表</h2>
           </div>
-        )} actions={workspace === "accounts" && !readOnly ? <button className="button primary user-permissions-primary-action" type="button" disabled={["pending","unavailable"].includes(authentication.provider)} onClick={() => { if (onInvite && authentication.provider === "local") setAddMemberChoiceOpen(true); else setAddUserOpen(true); }}>
+        )} actions={workspace === "accounts" && !readOnly ? <>{authentication.provider === "local" && userGovernanceActions?.previewUserImport && directoryScope ? <button className="button" type="button" onClick={() => setUserImportOpen(true)}>批量导入</button> : null}<button className="button primary user-permissions-primary-action" type="button" disabled={["pending","unavailable"].includes(authentication.provider)} onClick={() => { if (onInvite && authentication.provider === "local") setAddMemberChoiceOpen(true); else setAddUserOpen(true); }}>
           <UserPlus size={16} aria-hidden="true" /><span>添加成员</span>
-        </button> : null} />
+        </button></> : null} />
 
       {approvalWorkflowEnabled && workspace === "accounts" && (pendingApprovalCount ?? 0) > 0 ? (
         <p className="user-permissions-pending-hint">
@@ -1007,6 +1012,7 @@ export function UserPermissionsPage({
         onConfirm={() => void confirmGovernanceAction()}
       />
 
+      {userImportOpen && !readOnly && directoryScope && userGovernanceActions?.previewUserImport ? <UserImportDialog organizationId={directoryScope} actions={userGovernanceActions} roleLabels={roleLabels} canGrantPlatformAdmin={state.activeRoleId === "platform-admin"} onClose={() => setUserImportOpen(false)} /> : null}
       <ModalDialog open={addMemberChoiceOpen && !readOnly} onDismiss={() => setAddMemberChoiceOpen(false)} className="user-permissions-modal-card modal-card--sm">{({ titleId }) => <>
         <h3 id={titleId}>添加成员</h3><div className="modal-body">
           <Button onClick={() => { setAddMemberChoiceOpen(false); onInvite?.(); }}>邀请加入</Button><p className="member-details__hint">成员通过邀请链接自行设置登录账号和密码。</p>

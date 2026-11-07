@@ -17,6 +17,10 @@ export type AcceptanceOperation = {
 };
 
 export const acceptanceOperations: AcceptanceOperation[] = [
+  { id: "PERM-USER-IMPORT-001", priority: "P1", area: "permissions", coverage: "future", route: "/organization/members", roles: ["Org Admin", "Platform Admin"],
+    action: "Preview and atomically import local users, recover a result and export a password-free report.", acceptanceIds: ["PERM-USER-IMPORT-001"],
+    specFiles: ["src/application/userImportWorkbook.test.ts", "server/modules/users/userImport.integration.test.ts"], assertions: ["ui", "api", "db", "audit", "screenshot"],
+    deferralReason: "Read-only workbook and API preflight have focused tests; creation, recovery, reporting and real-browser evidence remain in the full feature." },
   { id: "PARLIB-READ-001", priority: "P1", area: "parameters", coverage: "automated",
     route: "/parameters/definitions", roles: ["Hardware User", "Software User", "Org Admin"], action: "Read global definitions, search all subject kinds and inspect exact revision history.",
     acceptanceIds: ["PARLIB-READ-001"], specFiles: ["e2e/acceptance/parameter-library.acceptance.spec.ts"], assertions: ["ui", "api", "screenshot"] },

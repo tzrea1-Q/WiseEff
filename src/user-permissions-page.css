@@ -45,3 +45,9 @@
 .member-approval-item-meta { color: var(--text-muted); font-size: var(--text-sm); }
 .member-approval-help { color: var(--text-secondary); font-size: var(--text-sm); margin: 0; }
 .user-permissions-modal-card fieldset.user-permissions-modal-fields { border: 0; margin: 0; min-width: 0; }
+.user-import-dialog { width: min(960px, calc(100vw - 48px)); }
+.user-import-dialog__body { max-height: min(65vh, 660px); overflow: auto; }
+.user-import-dialog__upload { display: grid; gap: 8px; margin: 20px 0; }
+.user-import-dialog__table { overflow: auto; }
+.user-import-dialog__table table { width: 100%; border-collapse: collapse; text-align: left; }
+.user-import-dialog__table th, .user-import-dialog__table td { padding: 8px 12px; border-bottom: 1px solid var(--border, #ddd); vertical-align: top; }

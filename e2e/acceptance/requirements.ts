@@ -8,6 +8,7 @@ export type AcceptanceRequirement = {
 };
 
 export const acceptanceRequirements: AcceptanceRequirement[] = [
+  { id: "PERM-USER-IMPORT-001", workflow: "H", required: false, title: "An administrator previews and atomically imports local users, then recovers and exports the outcome." },
   { id: "PARLIB-READ-001", workflow: "C", required: true, title: "Read global parameter definitions and exact revision history without choosing a project." },
   { id: "PARLIB-SCOPE-001", workflow: "C", required: true, title: "Read Organization configurations while preserving tenant and write boundaries." },
   { id: "PARLIB-INSTANCES-001", workflow: "C", required: true, title: "Inspect current instances and exact configured-project and value counts." },

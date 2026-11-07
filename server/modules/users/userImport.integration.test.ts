@@ -1,0 +1,61 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createWiseEffServer } from "../../app";
+import { requestJson } from "../../test/testClient";
+import { createEphemeralTestDatabase } from "../../testing/testDatabase";
+import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
+import { seedCoreGraph } from "../../testing/fixtures";
+import { seedBaselineAuthCatalog } from "../auth/baselineCatalog";
+import { createLocalAuthService } from "../auth/localAuth";
+import { hashLocalAccountPassword } from "../auth/localAccountCredentials";
+
+describe("user import preflight through HTTP and PostgreSQL", () => {
+  let db: RootDatabase, ephemeral: Awaited<ReturnType<typeof createEphemeralTestDatabase>>, token: string;
+  beforeEach(async () => {
+    ephemeral = await createEphemeralTestDatabase("userimport"); db = createPostgresDatabase(ephemeral.url);
+    await seedCoreGraph(db, { organization: { id: "import-home", name: "Home" }, users: [{ id: "import-admin" }] });
+    await seedBaselineAuthCatalog(db);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('import-role','import-admin','import-home','admin')");
+    await db.query("insert into user_password_credentials(user_id,username,password_hash) values('import-admin','existing-user',$1)", [await hashLocalAccountPassword("test-password")]);
+    token = (await createLocalAuthService(db).login({ username: "existing-user", password: "test-password" }, { requestId: "fixture" })).session.token;
+  });
+  afterEach(async () => { try { await db?.close(); } finally { await ephemeral?.drop(); } });
+  it("reports normalized duplicates and global conflicts without credentials or writes", async () => {
+    const server = createWiseEffServer({ db, env: { AUTH_PROVIDER: "local" }, auth: { mode: "production", verifier: { verify: async () => ({ user: { id: "import-admin", organizationId: "import-home", name: "Admin", title: "", isActive: true }, organization: { id: "import-home", name: "Home" }, roles: [{ projectId: null, roleId: "admin" }], permissions: ["users:manage"] }) } }, localAuthService: createLocalAuthService(db) });
+    const row = { row: 2, name: " Alice ", username: " Existing-User ", password: "synthetic-secret", title: "", roles: "硬件开发" };
+    const before = await db.query("select (select count(*) from users)::int users, (select count(*) from user_password_credentials)::int credentials, (select count(*) from user_role_bindings)::int roles, (select count(*) from audit_events)::int audit");
+    const response = await requestJson<{ item: { rows: Array<{ username: string }>; errors: Array<{ row: number; field: string }>; token?: string } }>(server, "/api/v1/users/imports/preview", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ rows: [row, { ...row, row: 4 }] }) });
+    expect(response.status).toBe(200);
+    expect(response.body.item.rows.map((r) => r.username)).toEqual(["existing-user", "existing-user"]);
+    expect(response.body.item.errors).toEqual(expect.arrayContaining([expect.objectContaining({ row: 2, field: "username" }), expect.objectContaining({ row: 4, field: "username" })]));
+    expect(JSON.stringify(response.body)).not.toContain("synthetic-secret");
+    expect((await db.query("select count(*)::int as count from users")).rows[0].count).toBe(1);
+    const invalid = await requestJson(server, "/api/v1/users/imports/preview", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ rows: [{ ...row, "synthetic-secret-key": "synthetic-secret-value" }] }) });
+    expect(invalid.status).toBe(400);
+    expect(JSON.stringify(invalid.body)).not.toContain("synthetic-secret");
+    const grant = await requestJson<{ item: { errors: Array<{ field: string }>; token: string | null } }>(server, "/api/v1/users/imports/preview", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ rows: [{ ...row, username: "new-user", roles: "平台超级管理员" }] }) });
+    expect(grant.body.item.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: "roles" })]));
+    expect(grant.body.item.token).toBeNull();
+    const clean = await requestJson<{ item: { rows: Array<{ username: string; roles: string[] }>; token: string; privilegedCount: number } }>(server, "/api/v1/users/imports/preview", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ rows: [{ ...row, username: " New-User ", roles: "管理员；硬件开发；管理员" }] }) });
+    expect(clean.body.item).toMatchObject({ rows: [{ username: "new-user", roles: ["admin", "hardware-user"] }], privilegedCount: 1 });
+    expect(clean.body.item.token).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(clean.body)).not.toContain("synthetic-secret");
+    expect((await db.query("select (select count(*) from users)::int users, (select count(*) from user_password_credentials)::int credentials, (select count(*) from user_role_bindings)::int roles, (select count(*) from audit_events)::int audit")).rows).toEqual(before.rows);
+    await db.query("update user_role_bindings set role_id='guest' where id='import-role'");
+    expect((await requestJson(server, "/api/v1/users/imports/preview", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ rows: [row] }) })).status).toBe(403);
+    await db.query("update user_role_bindings set role_id='admin' where id='import-role'");
+    await db.query("update organizations set status='suspended' where id='import-home'");
+    expect((await requestJson(server, "/api/v1/users/imports/preview", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ rows: [row] }) })).status).toBe(403);
+  });
+  it("requires explicit platform scope and reports foreign username conflicts without organization details", async () => {
+    await seedCoreGraph(db, { organization: { id: "import-target", name: "Target" } });
+    await db.query("update user_role_bindings set role_id='platform-admin' where id='import-role'");
+    const server = createWiseEffServer({ db, env: { AUTH_PROVIDER: "local" }, auth: { mode: "production", verifier: { verify: async () => ({ user: { id: "import-admin", organizationId: "import-home", name: "Admin", title: "", isActive: true }, organization: { id: "import-home", name: "Home" }, roles: [{ projectId: null, roleId: "platform-admin" }], permissions: ["users:manage"] }) } }, localAuthService: createLocalAuthService(db) });
+    const body = JSON.stringify({ rows: [{ row: 2, name: "A", username: "EXISTING-USER", password: "synthetic-secret", title: "", roles: "访客" }] });
+    const request = (path: string) => requestJson<{ item: { errors: Array<{ field: string }> } }>(server, path, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body });
+    expect((await request("/api/v1/users/imports/preview")).status).toBe(400);
+    const response = await request("/api/v1/users/imports/preview?organizationId=import-target");
+    expect(response.status).toBe(200);
+    expect(response.body.item.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: "username" })]));
+    expect(JSON.stringify(response.body)).not.toContain("import-home");
+  });
+});

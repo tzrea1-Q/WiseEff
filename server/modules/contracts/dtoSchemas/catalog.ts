@@ -10,6 +10,7 @@ import { extractorPreviewRequestSchema, extractorPreviewResponseSchema } from ".
 import { formatPreviewRequestSchema, formatPreviewResponseSchema } from "../../logs/formatProfile";
 import { organizationBridgeListResponseSchema, organizationBridgeResponseSchema, revokeOrganizationBridgeBodySchema } from "../../deviceBridge/schemas";
 import { createUserBodySchema, roleBindingSchema } from "../../users/schemas";
+import { userImportPreviewBodySchema, userImportPreviewResponseSchema } from "./userImport";
 import { oidcIdentitySchema, setOidcIdentityBodySchema } from "./oidcMembers";
 import { enterOperatingContextBodySchema, operatingContextResponseSchema } from "./organizationScope";
 
@@ -119,6 +120,8 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   DeleteDebugModuleRequest: debugModuleDeletionBodySchema,
   DebugModuleDeletionPreviewResponse: debugModuleDeletionPreviewResponseSchema,
   CreateLocalAccountUserRequest: createUserBodySchema,
+  UserImportPreviewRequest: userImportPreviewBodySchema,
+  UserImportPreviewResponse: userImportPreviewResponseSchema,
   SetUserOidcIdentityRequest: setOidcIdentityBodySchema,
   UserGovernanceResponse: z.object({ item: userGovernanceDtoSchema }),
   UserGovernanceListResponse: z.object({ items: z.array(userGovernanceDtoSchema) }),
@@ -286,7 +289,7 @@ export const dtoSchemaCoveredRouteIds = [
   "organization.projectCandidates",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.rejectRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest",
   "debugging.admin.previewModuleDeletion",
-  "auth.localConfig", "users.list", "users.create", "users.setOidcIdentity",
+  "auth.localConfig", "users.list", "users.create", "users.importPreview", "users.setOidcIdentity",
   "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
   "logs.restoreSourceSnapshot",
   "logs.retrySourceSnapshot",

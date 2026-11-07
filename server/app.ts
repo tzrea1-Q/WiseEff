@@ -439,6 +439,7 @@ export const LOG_FILE_PREVIEW_HTTP_BODY_LIMIT_BYTES =
 export const LOG_SKILL_PREVIEW_HTTP_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
 
 export function resolveRouteBodyLimit({ method, path, contentType }: { method: string; path: string; contentType?: string }) {
+  if (method === "POST" && /^\/+api\/+v1\/+users\/+imports(?:\/+preview)?\/*$/u.test(path)) return 4 * 1024 * 1024;
   if (method === "POST" && /^\/+api\/+v2\/+organizations\/+[^/]+\/+module-structure\/+(?:previews|applies)\/*$/.test(path)) {
     // A 4 MiB document plus bounded conflict choices and the confirmation envelope.
     return 8 * 1024 * 1024;

@@ -182,6 +182,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201,
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "users.importPreview": {
+    summary: "Validate a local-user import without creating accounts",
+    tags: ["users"], requestBody: "UserImportPreviewRequest", responseBody: "UserImportPreviewResponse",
+    requestParameters: [{ name: "organizationId", in: "query", schema: { type: "string" } }],
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "413": "ErrorResponse" }
+  },
   "users.setOidcIdentity": {
     summary: "Bind a member to the configured OIDC issuer and subject with optimistic concurrency",
     tags: ["users"],

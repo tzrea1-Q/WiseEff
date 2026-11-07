@@ -3581,6 +3581,59 @@
         }
       }
     },
+    "/api/v1/users/imports/preview": {
+      "post": {
+        "operationId": "users.importPreview",
+        "summary": "Validate a local-user import without creating accounts",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserImportPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserImportPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "413": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/users/{userId}/oidc-identity": {
       "put": {
         "operationId": "users.setOidcIdentity",
@@ -36332,6 +36385,164 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "UserGovernanceResponse"
+      },
+      "UserImportPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "row": {
+                  "type": "number"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "password": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "roles": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "row",
+                "name",
+                "username",
+                "password",
+                "title",
+                "roles"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "UserImportPreviewRequest"
+      },
+      "UserImportPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "organization": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "status"
+                ],
+                "additionalProperties": false
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "row": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "row",
+                    "name",
+                    "username",
+                    "title",
+                    "roles"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "row": {
+                      "type": "number"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "row",
+                    "field",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "total": {
+                "type": "number"
+              },
+              "privilegedCount": {
+                "type": "number"
+              },
+              "token": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "organization",
+              "rows",
+              "errors",
+              "total",
+              "privilegedCount",
+              "token"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "UserImportPreviewResponse"
       },
       "SetUserOidcIdentityRequest": {
         "type": "object",
