@@ -497,6 +497,17 @@ describe("CanonicalSubjectPlacementPanel", () => {
     expect(within(dialog).getByRole("combobox", { name: "所属驱动" })).toHaveTextContent("vendor,driver");
   });
 
+  it("explains why an organization-corrected driver cannot own a new Catalog child", async () => {
+    const ports = createPorts();
+    ports.listSubjects.mockResolvedValue({ items: [{ ...registeredSubject, id: "corrected-driver", type: "driver", canonicalType: "node-type",
+      canonicalName: "fm1230_swi" }], totalCount: 1, hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID}
+      actor="org-admin" canAdmin sessionPermissions={["catalog:author", "catalog:publish"]} />);
+    const create = await screen.findByRole("button", { name: "新增子节点类型：fm1230_swi" });
+    expect(create).toBeDisabled();
+    expect(create).toHaveAttribute("title", "此主体仅在当前组织按驱动识别；新增子节点需要目录中的驱动主体。");
+  });
+
   it.each(["active", "retired"] as const)("counts %s registrations in shared business destinations even when their subject is absent from the current list", async (status) => {
     const ports = createPorts();
     const registrations = await ports.listRegistrations(CATALOG_ORGANIZATION_ID);

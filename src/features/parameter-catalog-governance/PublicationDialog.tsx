@@ -141,7 +141,7 @@ export function PublicationDialog({
   const selectedSubject = subjects.find((item) => item.id === draft.subjectId) ?? null;
   const publishedSubjects = subjects.filter((item) => item.membership.status === "active" && item.registration.status !== "retired");
   const publishedSubjectIds = new Set(publishedSubjects.map((item) => item.id));
-  const publishedDrivers = publishedSubjects.filter((item) => item.type === "driver");
+  const publishedDrivers = publishedSubjects.filter((item) => item.type === "driver" && (item.canonicalType ?? item.type) === "driver");
   const requiresOwner = draft.mode === "create-subject" && draft.subjectKind === "node-type" &&
     Boolean(draft.ownerSubjectId || initialOwnerSubjectId);
   const ownerAllowed = !requiresOwner || publishedDrivers.some((item) => item.id === draft.ownerSubjectId);

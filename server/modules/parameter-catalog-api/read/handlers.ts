@@ -73,6 +73,10 @@ import type {
 } from "./types";
 
 const READ_ROUTE_IDS = new Set<string>(Object.keys(parameterCatalogKernelReadByRouteId));
+const ORGANIZATION_RECOGNITION_ROUTES = new Set<CatalogReadRouteId>([
+  "catalog.listSubjects", "catalog.getSubject", "catalog.listSubjectDefinitions",
+  "catalog.listDefinitions", "catalog.getDefinition",
+]);
 
 const catalogReadRoutes = parameterCatalogCanonicalRoutes
   .filter((route) => route.method === "GET" && READ_ROUTE_IDS.has(route.id))
@@ -841,10 +845,13 @@ export async function handleCatalogRead(
   if (!loaded.ok) {
     return loaded.response;
   }
-  const snapshot = loaded.snapshot;
   const scopedRequest = { ...request, params: { ...request.params, ...matched.params } };
 
   try {
+    const snapshot = loaded.snapshot.snapshotKind === "current" && ORGANIZATION_RECOGNITION_ROUTES.has(matched.id)
+      && ports.projectOrganizationRecognition
+      ? await ports.projectOrganizationRecognition(auth.scope.organizationId, loaded.snapshot)
+      : loaded.snapshot;
     // Await inside this boundary so asynchronous projection failures use the Catalog contract.
     switch (matched.id) {
       case "catalog.get":

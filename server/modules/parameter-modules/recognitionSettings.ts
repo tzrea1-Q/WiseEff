@@ -19,6 +19,7 @@ import { listModuleRecognitionInstances } from "./recognitionInstances";
 import { captureCurrentCatalogPin, createPinCapturingCatalogRuntime } from "../catalog-publication/runtime";
 import { listModuleRecognitionPlacements, readModuleRecognitionSubjectDefaults,
   hasMultipleCurrentModuleSubjectInstances, readRegistrationRecognitionSubject,
+  readRecognitionSubjectIdentity,
   readRecognitionIdempotency, writeRecognitionIdempotency, lockCurrentRecognitionRelease } from "../parameter-catalog-api/governance";
 
 export async function captureModuleRecognitionCatalog(db: Database): Promise<CatalogSnapshot | null> {
@@ -187,10 +188,10 @@ export async function loadOrganizationRecognitionRules(db: Queryable, organizati
 }
 
 /** Overlay only current organization recognition; the underlying published snapshot remains unchanged. */
-export async function loadOrganizationCatalogSnapshot(
-  db: Queryable, organizationId: string, supplied: CatalogSnapshot,
-): Promise<CatalogSnapshot> {
-  const snapshot = baseSnapshots.get(supplied) ?? supplied;
+export async function loadOrganizationCatalogSnapshot<T extends CatalogSnapshot>(
+  db: Queryable, organizationId: string, supplied: T,
+): Promise<T> {
+  const snapshot = (baseSnapshots.get(supplied) ?? supplied) as T;
   const rules = await loadOrganizationRecognitionRules(db, organizationId);
   const owners = await listOrganizationSubjectOwnerOverrides(db as Parameters<typeof listOrganizationSubjectOwnerOverrides>[0], organizationId);
   const overrides = new Map(rules.filter(row => row.canonical_subject_id !== null).map(row => [row.canonical_subject_id!, row]));
@@ -203,10 +204,16 @@ export async function loadOrganizationCatalogSnapshot(
     if (owner) subject = { ...subject, owner: CatalogSubjectId(owner) };
     const override = overrides.get(subject.id);
     if (!override) return subject;
-    const selector = subject.kind === "driver"
+    const kind = override.node_type_name === null ? "driver" : "node-type";
+    if (subject.kind === "configuration-schema" || (kind === "driver" && subject.owner)) {
+      throw new Error("Organization recognition type is incompatible with the published Subject ownership");
+    }
+    const selector = kind === "driver"
       ? { kind: "driver-compatible" as const, values: override.compatibles.map(DriverCompatible) }
       : { kind: "node-type-name" as const, value: NormalizedNodeTypeName(override.node_type_name ?? "") };
-    return { ...subject, aliases: [], membership: { ...subject.membership, selector } };
+    const canonicalKind = subject.canonicalKind ?? subject.kind;
+    return { ...subject, kind, ...(kind !== canonicalKind ? { canonicalKind } : {}),
+      aliases: [], membership: { ...subject.membership, selector } };
   };
   const subjects = listed.page.items.map(item => {
     const detail = snapshot.getSubject(item.id);
@@ -221,7 +228,15 @@ export async function loadOrganizationCatalogSnapshot(
         return result.status === "found" || result.status === "retired" ? { ...result, subject: effectiveSubject(result.subject) } : result;
       };
       if (property === "listSubjects") return (query: Parameters<CatalogSnapshot["listSubjects"]>[0]) => {
-        const result = target.listSubjects(query);
+        // Filter the complete effective set before delegating native cursor pagination.
+        // Keep the published identity ordering; include the effective type scope in the
+        // cursor fingerprint so a changed override cannot silently reuse a stale page.
+        const ids = subjects.filter(subject =>
+          (query.kinds.length === 0 || query.kinds.includes(subject.kind)) &&
+          (query.selection.kind === "all" || query.selection.ids.includes(subject.id))).map(subject => subject.id);
+        const fingerprint = createHash("sha256").update(JSON.stringify({ organizationId, selection: query.selection,
+          kinds: query.kinds, types: subjects.map(subject => [subject.id, subject.kind]) })).digest("hex");
+        const result = target.listSubjects({ ...query, kinds: [], selection: { kind: "only", ids, fingerprint } });
         return result.status === "found" ? { ...result, page: { ...result.page, items: result.page.items.map(item =>
           subjects.find(subject => subject.id === item.id) ?? item) } } : result;
       };
@@ -234,10 +249,12 @@ export async function loadOrganizationCatalogSnapshot(
 }
 
 export type UpdateModuleRecognition = {
+  /** Internal module-import request; the ordinary recognition endpoint does not expose type changes. */
+  kind?: "driver";
   compatibles?: string[]; driverNature?: DriverNature; instanceCardinality?: InstanceCardinality; nodeTypeName?: string;
 };
 
-export const hasModuleRecognitionUpdate = (body: UpdateModuleRecognition): boolean =>
+export const hasModuleRecognitionUpdate = (body: Omit<UpdateModuleRecognition, "kind">): boolean =>
   body.compatibles !== undefined || body.driverNature !== undefined || body.instanceCardinality !== undefined || body.nodeTypeName !== undefined;
 
 export async function readRegistrationRecognitionSettings(
@@ -252,12 +269,13 @@ export async function readRegistrationRecognitionSettings(
     .find(rule => rule.canonical_subject_id === registration.subject_id);
   const published = (await readModuleRecognitionSubjectDefaults(db, [registration.subject_id], null))[0];
   const selector = published?.selector_snapshot;
+  const kind = saved ? saved.node_type_name === null ? "driver" : "node-type" : registration.kind;
   return {
-    kind: registration.kind, recognitionSubjectId: registration.subject_id,
+    kind, recognitionSubjectId: registration.subject_id,
     compatibles: saved?.compatibles ?? (selector?.kind === "driver-compatible" ? validCompatibles([...(selector.values ?? []), ...(published?.aliases ?? [])]) : []),
-    nodeTypeName: saved?.node_type_name ?? (selector?.kind === "node-type-name" ? selector.value ?? null : null),
-    driverNature: registration.kind === "driver" ? saved?.driver_nature ?? published?.nature ?? "physical-device" : null,
-    instanceCardinality: registration.kind === "driver" ? saved?.instance_cardinality ?? published?.cardinality ?? "multiple" : null,
+    nodeTypeName: saved ? saved.node_type_name : selector?.kind === "node-type-name" ? selector.value ?? null : null,
+    driverNature: kind === "driver" ? saved?.driver_nature ?? published?.nature ?? "physical-device" : null,
+    instanceCardinality: kind === "driver" ? saved?.instance_cardinality ?? published?.cardinality ?? "multiple" : null,
     overridden: saved !== undefined,
   };
 }
@@ -270,8 +288,37 @@ export function registrationRecognitionEtag(settings: ModuleRecognitionSettings 
 export async function validateRegistrationRecognitionSettings(db: Queryable, organizationId: string,
   current: ModuleRecognitionSettings & { kind: "driver" | "node-type" }, body: UpdateModuleRecognition,
 ): Promise<ModuleRecognitionSettings & { kind: "driver" | "node-type" }> {
-  assertRecognitionUpdate(current.kind, body);
-  const next = { ...current, ...body, overridden: true };
+  const kind = body.kind ?? current.kind;
+  let canonicalKind: string | undefined;
+  if (body.kind !== undefined) {
+    const identity = current.recognitionSubjectId
+      ? await readRecognitionSubjectIdentity(db, organizationId, current.recognitionSubjectId) : null;
+    if (body.kind !== "driver" || !identity || !["driver", "node-type"].includes(identity.kind) ||
+        identity.owner_subject_id || identity.organization_owner_subject_id) {
+      throw new ApiError("VALIDATION_FAILED", "该主体不能转换为驱动识别。", { reason: "invalid-recognition-rule", issues: [{
+        path: "compatibles", code: "recognition-kind-conversion-not-supported", received: body.compatibles,
+        message: "只有独立的节点主体支持转换为驱动；所属子节点和配置规范不支持此转换。",
+        rule: "转换保留主体身份，只能对无目录归属和无组织归属的根主体设置驱动识别。",
+        hint: "检查该主体的 ownerSubjectId 和目录类型；所属子节点请保留节点识别，使用独立驱动主体管理 compatible。",
+      }] });
+    }
+    canonicalKind = identity.kind;
+  }
+  assertRecognitionUpdate(kind, body);
+  if (kind === "driver" && body.compatibles?.length === 0 && canonicalKind === undefined && current.recognitionSubjectId) {
+    canonicalKind = (await readRecognitionSubjectIdentity(db, organizationId, current.recognitionSubjectId))?.kind;
+  }
+  if (kind === "driver" && ((current.kind === "node-type" && !body.compatibles?.length) ||
+      (canonicalKind === "node-type" && body.compatibles?.length === 0))) {
+    throw new ApiError("VALIDATION_FAILED", "转换为驱动需要明确的 compatible。", { reason: "invalid-recognition-rule", issues: [{
+      path: "compatibles", code: "driver-conversion-requires-compatible", received: body.compatibles ?? null,
+      message: "节点主体转换为驱动时，compatibles 必须包含至少一个精确标识。",
+      rule: "提供非空的 compatible 字符串数组。", hint: "填写实际 DTS compatible，例如 [\"fdw,fm1230_swi\"]；示例仅用于说明格式。",
+    }] });
+  }
+  const next = { ...current, ...(kind !== current.kind ? {
+    kind, nodeTypeName: null, driverNature: "physical-device" as const, instanceCardinality: "multiple" as const,
+  } : {}), ...body, overridden: true };
   if (body.compatibles) next.compatibles = validCompatibles(body.compatibles);
   await validateRecognitionCapacity(db, organizationId, next);
   return next;
@@ -310,15 +357,15 @@ export async function readInheritedRegistrationRecognitionSettings(tx: Queryable
   const published = (await readModuleRecognitionSubjectDefaults(tx, [current.recognitionSubjectId!], catalogReleaseId))[0];
   if (!published) throw new ApiError("CONFLICT", "规范目录中的识别默认值不可用。");
   const selector = published.selector_snapshot;
-  if ((current.kind === "driver" && selector.kind !== "driver-compatible") ||
-      (current.kind === "node-type" && selector.kind !== "node-type-name")) {
+  if (selector.kind !== "driver-compatible" && selector.kind !== "node-type-name") {
     throw new ApiError("CONFLICT", "规范目录中的识别类型不匹配。");
   }
-  return { ...current, overridden: false,
+  const kind = selector.kind === "driver-compatible" ? "driver" as const : "node-type" as const;
+  return { ...current, kind, overridden: false,
     compatibles: selector.kind === "driver-compatible" ? validCompatibles([...(selector.values ?? []), ...published.aliases]) : [],
     nodeTypeName: selector.kind === "node-type-name" ? selector.value ?? null : null,
-    driverNature: current.kind === "driver" ? published.nature ?? "physical-device" : null,
-    instanceCardinality: current.kind === "driver" ? published.cardinality ?? "multiple" : null };
+    driverNature: kind === "driver" ? published.nature ?? "physical-device" : null,
+    instanceCardinality: kind === "driver" ? published.cardinality ?? "multiple" : null };
 }
 
 export async function updateRegistrationRecognitionSettings(
@@ -370,7 +417,7 @@ export async function updateRegistrationRecognitionSettingsInTransaction(
     await writeAuditEventInTx(asAuditTx(tx), input.invocation, { requestId: input.requestId }, {
       app: "parameters", kind: "registration-recognition-update", action: "update", severity: "Medium",
       projectId: null, targetType: "subject-registration", targetId: input.registrationId,
-      metadata: { subjectId: next.recognitionSubjectId, compatibles: next.compatibles,
+      metadata: { subjectId: next.recognitionSubjectId, previousKind: current.kind, kind: next.kind, compatibles: next.compatibles,
         driverNature: next.driverNature, instanceCardinality: next.instanceCardinality, nodeTypeName: next.nodeTypeName },
     });
     return next;

@@ -182,6 +182,19 @@ describe("PublicationDialog", () => {
     expect(createProposal).not.toHaveBeenCalled();
   });
 
+  it("does not publish a child under an organization-only driver correction", async () => {
+    const { createCandidate, createProposal } = renderDialog({ actor: "org-admin", intent: "create-subject",
+      initialOwnerSubjectId: CATALOG_SUBJECT_ID, prepare: (ports) => {
+        vi.spyOn(ports.catalog, "listSubjects").mockResolvedValue({ items: [{ ...registeredSubject, canonicalType: "node-type" }], totalCount: 1,
+          hasMore: false, nextCursor: null, catalogReleaseId: CATALOG_RELEASE_ID });
+      } });
+    await screen.findByText("所选驱动当前不可编写，请重新选择有效驱动。");
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "预览发布" })).toBeDisabled();
+    expect(createCandidate).not.toHaveBeenCalled();
+    expect(createProposal).not.toHaveBeenCalled();
+  });
+
   it("offers the driver selector in the generic new-node form", async () => {
     const { createCandidate } = renderDialog({ actor: "org-admin", intent: "create-subject" });
     const user = userEvent.setup();

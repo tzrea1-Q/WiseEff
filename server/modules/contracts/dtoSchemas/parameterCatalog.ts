@@ -320,6 +320,7 @@ export const catalogSubjectDtoSchema = catalogObject({
   id: z.string(),
   ownerSubjectId: z.string().optional(),
   type: catalogSubjectTypeSchema,
+  canonicalType: catalogSubjectTypeSchema.optional(),
   canonicalName: z.string(),
   aliases: z.array(z.string()),
   membership: catalogObject({

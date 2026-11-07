@@ -96,6 +96,65 @@ test("diagnoses a recognition field with subject identity, exact value and a rep
   await expect(dialog.getByText("没有领域数据变更。")).toBeVisible();
 });
 
+test("corrects a root node to a compatible driver within the current organization", async ({ page, request }, info) => {
+  const suffix = String(Date.now()), organization = `structure-kind-${suffix}`, user = `kind-user-${suffix}`;
+  const moduleId = `kind-module-${suffix}`, registrationId = `kind-registration-${suffix}`, email = `${user}@example.test`;
+  const subjectId = await withPgClient(async client => {
+    await client.query("insert into organizations(id,name) values ($1,'Recognition correction')", [organization]);
+    await client.query("insert into users(id,organization_id,name,title,email,is_active) values ($1,$2,'Correction admin','Admin',$3,true)", [user, organization, email]);
+    await client.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [`role-${suffix}`, user, organization]);
+    await client.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ($1,$2,'Battery drivers',$1,'business','curated')", [moduleId, organization]);
+    const subject = (await client.query<{ id: string }>(`select s.id from parameter_catalog.catalog_subjects s join parameter_catalog.catalog_state cs on cs.singleton
+      join parameter_catalog.catalog_release_subjects rs on rs.release_id=cs.current_catalog_release_id and rs.subject_id=s.id
+      where s.owner_subject_id is null and s.kind='node-type' and rs.lifecycle='active' order by s.id limit 1`)).rows[0];
+    if (!subject) throw new Error("The acceptance Catalog needs a published root node-type");
+    await client.query("begin"); await client.query("set constraints all deferred");
+    await client.query(`insert into parameter_catalog.organization_subject_registrations(id,organization_id,subject_id,status,registration_method,proof,current_placement_id,display_alias)
+      values ($1,$2,$3,'active','explicit','{}',$4,'fm1230_swi')`, [registrationId, organization, subject.id, `kind-placement-${suffix}`]);
+    await client.query("insert into parameter_catalog.subject_placements(id,registration_id,organization_id,module_id,origin) values ($1,$2,$3,$4,'curated')", [`kind-placement-${suffix}`, registrationId, organization, moduleId]);
+    await client.query("commit"); return subject.id;
+  });
+  const base = `/api/v2/organizations/${organization}/module-structure`, headers = authHeadersForUser(user, email, "Correction admin", organization);
+  const exported = await request.post(apiRoute(`${base}/exports`), { headers, data: {} });
+  expect(exported.status(), await exported.text()).toBe(200);
+  const document = await exported.json();
+  const subject = document.subjects.find((item: { subjectId: string }) => item.subjectId === subjectId);
+  expect(subject.kind).toBe("node-type");
+  subject.recognition.mode = "override";
+  subject.recognition.override = { ...subject.recognition.effective, compatibles: ["fdw,fm1230_swi"] };
+  await signInBrowserAsUser(page, user, email, "Correction admin", "/parameter-admin/modules", organization);
+  await page.getByRole("button", { name: "导入结构" }).click();
+  const dialog = page.getByRole("dialog", { name: "导入模块结构" });
+  await dialog.getByLabel("JSON 文件").setInputFiles({ name: "driver-correction.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
+  await dialog.getByRole("button", { name: "预览" }).click();
+  await expect(dialog.getByText("当前组织主体类型：节点类型主体 → 驱动主体")).toBeVisible();
+  await expect(dialog.getByText("兼容标识：无 → fdw,fm1230_swi")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  await page.screenshot({ path: info.outputPath("module-structure-driver-correction-1440x900.png"), animations: "disabled" });
+  await dialog.getByLabel("变更原因").fill("fm1230_swi uses compatible recognition");
+  const applied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === `${base}/applies`);
+  await dialog.getByRole("button", { name: "确认提交" }).click();
+  const response = await applied;
+  expect(response.status(), await response.text()).toBe(200);
+  await expect(dialog.getByRole("status")).toContainText("回执");
+  const after = await request.post(apiRoute(`${base}/exports`), { headers, data: {} });
+  expect(after.status(), await after.text()).toBe(200);
+  const corrected = (await after.json()).subjects.find((item: { subjectId: string }) => item.subjectId === subjectId);
+  expect(corrected).toMatchObject({ kind: "driver", displayAlias: "fm1230_swi", placement: { kind: "module", moduleRef: moduleId },
+    recognition: { effective: { compatibles: ["fdw,fm1230_swi"], nodeTypeName: null } } });
+  const detail = await request.get(apiRoute(`/api/v2/catalog/subjects/${subjectId}`), { headers });
+  expect(detail.status(), await detail.text()).toBe(200);
+  expect(await detail.json()).toMatchObject({ item: { id: subjectId, type: "driver", canonicalType: "node-type" } });
+  const drivers = await request.get(apiRoute("/api/v2/catalog/subjects?type=driver&registration=active"), { headers });
+  expect(drivers.status(), await drivers.text()).toBe(200);
+  expect((await drivers.json()).items).toEqual(expect.arrayContaining([expect.objectContaining({ id: subjectId, type: "driver" })]));
+  await withPgClient(async client => {
+    expect((await client.query("select kind from parameter_catalog.catalog_subjects where id=$1", [subjectId])).rows).toEqual([{ kind: "node-type" }]);
+    expect((await client.query("select id,subject_id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organization])).rows)
+      .toEqual([{ id: registrationId, subject_id: subjectId }]);
+  });
+});
+
 test("MODULE-STRUCTURE-MIXED-001: review one mixed update", async ({ page, request }, info) => {
   // @acceptance MODULE-STRUCTURE-MIXED-001
   // @operation MODULE-STRUCTURE-MIXED-001

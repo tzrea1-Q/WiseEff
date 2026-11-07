@@ -5,7 +5,7 @@ import { assertTrustedInvocationMatchesScope, type TrustedInvocationContext, typ
 import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
 import type { z } from "zod";
 import { captureModuleStructure, MODULE_STRUCTURE_MAX_BYTES } from "./export";
-import { planRecognition } from "./recognition";
+import { planRecognition, requestsDriverRecognition } from "./recognition";
 import { planSubjectPlacement } from "./subjects";
 import { planModuleCopy } from "./copy";
 import type { LifecycleChange } from "./lifecycle";
@@ -97,7 +97,9 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
         if (target.state === base.state) lifecycle.push({ subjectId: subject.subjectId, operation: subject.operation, kind: catalog.kind, registrationId: catalog.registration_id });
       }
     } else if (!base) throw new ApiError("VALIDATION_FAILED", "Unknown Subject.", { path: `subjects.${index}.subjectId` });
-    for (const [field, value] of Object.entries(subject)) if (field !== "subjectId" && field !== "operation" && field !== "placement" && field !== "displayAlias" && field !== "recognition" && field !== "state" && (!base || !unchangedSubset(value, base[field as keyof typeof base])))
+    for (const [field, value] of Object.entries(subject)) if (field !== "subjectId" && field !== "operation" && field !== "placement" && field !== "displayAlias" && field !== "recognition" && field !== "state"
+      && !(field === "kind" && value === "driver" && requestsDriverRecognition(subject, base?.kind ?? lifecycle.find(change => change.subjectId === subject.subjectId)?.kind))
+      && (!base || !unchangedSubset(value, base[field as keyof typeof base])))
       throw new ApiError("VALIDATION_FAILED", "Subject changes are not supported.", { path: `subjects.${index}.${field}` });
   }
   const currentSubjects = moduleStructureExportSchema.parse(current).subjects.map(subject => {
@@ -120,7 +122,9 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
     join parameter_catalog.subject_placements p on p.id=r.current_placement_id and p.organization_id=r.organization_id
     join parameter_catalog.catalog_subjects s on s.id=r.subject_id
     where r.organization_id=$1 order by r.subject_id`, [organizationId]);
-  const impactedIds = [...new Set([...subjectPlan.changes, ...subjectPlan.conflicts, ...lifecycle].map(change => change.subjectId))];
+  const impactedIds = [...new Set([...subjectPlan.changes, ...subjectPlan.conflicts, ...lifecycle,
+    ...normalizedSubjects.filter(subject => subject.recognition !== undefined
+      && stable(subject.recognition) !== stable(subjectBaselines.get(subject.subjectId)?.recognition))].map(change => change.subjectId))];
   const impact = impactedIds.length ? (await client.query<{ subjectId: string; projectId: string; bindingCount: number; definitions: string[]; bindingVersions: string[] }>(`select owner.subject_id as "subjectId", b.project_id as "projectId", count(*)::int as "bindingCount",
     array_agg(distinct b.definition_id order by b.definition_id) as definitions,
     array_agg(b.id || ':' || b.effective_revision_id || ':' || b.updated_at::text order by b.id) as "bindingVersions"
@@ -132,7 +136,7 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
     where owner.organization_id=$1 and owner.subject_id=any($2::text[]) group by 1,2 order by 1,2`, [organizationId, impactedIds])).rows : [];
   const allowedChoices = new Set([...document.modules.flatMap(module => fields.map(field => `${module.ref}:${field}`)),
     ...document.subjects.flatMap(subject => ["placement", "displayAlias"].map(field => `subject:${subject.subjectId}:${field}`)),
-    ...document.subjects.flatMap(subject => ["mode", "compatibles", "driverNature", "instanceCardinality", "nodeTypeName"].map(field => `${subject.subjectId}:recognition.${field}`))]);
+    ...document.subjects.flatMap(subject => ["kind", "mode", "compatibles", "driverNature", "instanceCardinality", "nodeTypeName"].map(field => `${subject.subjectId}:recognition.${field}`))]);
   for (const key of Object.keys(resolutions)) if (!allowedChoices.has(key)) throw new ApiError("VALIDATION_FAILED", "Unknown conflict choice.", { path: `resolutions.${key}` });
   for (const [index, module] of document.modules.entries()) {
     if (!module.ref || seen.has(module.ref) || (module.sourceId && seen.has(`id:${module.sourceId}`))) throw new ApiError("VALIDATION_FAILED", "Duplicate module reference.", { path: `modules.${index}.ref` });
@@ -246,13 +250,16 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
     roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
   const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, mappings, subjectVersions: subjectVersions.rows, impact, legacyImpact, recognition: recognition.evidence };
-  return { changes: [...changes, ...subjectPlan.changes.map(({ subjectId, ...change }) => ({ moduleId: `subject:${subjectId}`, ...change })), ...lifecycle.flatMap(change => [
+  const publicImpact = impact.map(({ bindingVersions: _versions, ...item }) => item);
+  for (const { subjectId, projectId } of recognition.matchedProjects) if (!publicImpact.some(item => item.subjectId === subjectId && item.projectId === projectId))
+    publicImpact.push({ subjectId, projectId, bindingCount: 0, definitions: [] });
+  return { changes: [...changes, ...recognition.kindChanges, ...subjectPlan.changes.map(({ subjectId, ...change }) => ({ moduleId: `subject:${subjectId}`, ...change })), ...lifecycle.flatMap(change => [
     { moduleId: `subject:${change.subjectId}`, field: "state", before: change.operation === "register" ? null : change.operation === "retire" ? "active" : "retired", after: change.operation === "retire" ? "retired" : "active" },
     ...(change.operation === "register" ? [{ moduleId: `subject:${change.subjectId}`, field: "placement", before: null, after: subjectEdits.get(change.subjectId)!.placement },
       ...(change.displayAlias ? [{ moduleId: `subject:${change.subjectId}`, field: "displayAlias", before: null, after: change.displayAlias }] : [])] : []),
   ])],
     conflicts: [...conflicts, ...subjectPlan.conflicts.map(({ subjectId, ...conflict }) => ({ moduleId: `subject:${subjectId}`, ...conflict })), ...recognition.conflicts],
-    subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, lifecycle, copyCreates: [], moduleIds, parents, namesById, deleted, currentCatalogReleaseId: current.source.catalogReleaseId, impact: impact.map(({ bindingVersions: _versions, ...item }) => item), token: createHash("sha256").update(stable(evidence)).digest("hex"), mappingSuggestions: [], mappingTargets: [], copyMappings: [] };
+    subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, lifecycle, copyCreates: [], moduleIds, parents, namesById, deleted, currentCatalogReleaseId: current.source.catalogReleaseId, impact: publicImpact, token: createHash("sha256").update(stable(evidence)).digest("hex"), mappingSuggestions: [], mappingTargets: [], copyMappings: [] };
 }
 
 export async function previewModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, raw: unknown) {

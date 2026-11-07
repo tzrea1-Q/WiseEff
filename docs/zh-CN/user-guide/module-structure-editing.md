@@ -23,7 +23,7 @@
 
 模块的 `name`、`parentRef`、`description`、`scope`、`sortOrder` 和 `importance` 可编辑。使用空字符串清空描述或范围，根模块的 `parentRef` 使用 null，`sortOrder` 使用整数，重要性使用 `high`、`medium` 或 `low`。新增模块须提供这六个字段、`ref` 和 `operation: "upsert"`；`sourceId` 和只读 `reference` 之后由 WiseEff 产生。
 
-根主体的归属可填写 `{ "kind": "module", "moduleRef": "power" }`、`{ "kind": "unclassified" }` 或 `{ "kind": "unset" }`；将 `displayAlias` 设为 null 可清空别名。导出的 `state` 为 `active` 或 `retired`。驱动和节点类型的识别 `mode` 为 `inherit` 或 `override`；`override` 包含 `compatibles`、`nodeTypeName`、`driverNature` 和 `instanceCardinality`，不适用的字段保持导出值。`effective` 保持不变；配置规范的识别设置为 null。Catalog ID、`kind` 和子主体的 `cascadeRetired` 为只读。
+根主体的归属可填写 `{ "kind": "module", "moduleRef": "power" }`、`{ "kind": "unclassified" }` 或 `{ "kind": "unset" }`；将 `displayAlias` 设为 null 可清空别名。导出的 `state` 为 `active` 或 `retired`。驱动和节点类型的识别 `mode` 为 `inherit` 或 `override`；`override` 包含 `compatibles`、`nodeTypeName`、`driverNature` 和 `instanceCardinality`，不适用的字段保持导出值。`effective` 保持不变；配置规范的识别设置为 null。Catalog ID 和子主体的 `cascadeRetired` 为只读。`kind` 通常保持不变；下述组织识别纠正允许将独立节点主体在当前组织中改为驱动。
 
 `ownerSubjectId` 记录导出时本组织内有效的所属驱动：优先使用组织登记的归属，未单独设置时沿用 Catalog 归属。它可能与定义导入 Markdown 的固定 `parent` 不同，组织内调整不会改变 Catalog 身份。更新模式须保持 `ownerSubjectId` 原样；需要调整时，在「模块管理 → 编辑节点 → 归属」中选择本组织已登记并启用的驱动，确认后重新导出。复制模式按下文处理来源与目标组织的归属差异。
 
@@ -38,6 +38,18 @@
 - 省略识别字段会保留当前值。单例规则会根据目标项目的当前实例校验容量；容量冲突会阻止整批导入。
 
 以对应版本导出包中的字段形状和清空值为准，保持只读值不变。智能体编辑文件时应保留身份及无关条目，只执行要求的修改，并向人工审阅者说明修改内容。
+
+### 将误判的节点类型纠正为 compatible 驱动
+
+如果独立的 `node-type` 主体实际应通过 DTS 的 `compatible` 识别，将 `recognition.mode` 设为 `override`，并填写非空的 `recognition.override.compatibles` 精确标识数组。例如，只有源码确实使用该值时才填写 `["fdw,fm1230_swi"]`。导入会识别为当前组织内的驱动类型纠正；可以保留原来的 `kind: "node-type"`，也可以配合该覆盖规则显式填写 `kind: "driver"`。单独修改 `kind` 不足以完成转换。
+
+如果 `override.nodeTypeName` 是从原导出复制来的旧节点名，可以保留，预览会明确显示将它清空为 null。不能在转换时同时指定另一个新的节点名。未填写或为 null 的驱动属性默认采用 `physical-device` 和 `multiple`；如有其他需要，显式填写支持的 `driverNature`、`instanceCardinality`。`recognition.effective` 和其他只读导出信息保持不变。
+
+预览会列出“当前组织主体类型：节点类型主体 → 驱动主体”、精确 compatible、被清空的节点名和受影响项目。确认后保留主体、登记、归属、参数定义、Binding、参数值及历史身份，仅改变当前组织的识别与展示。共享 Catalog 身份、固定版本历史、其他组织和 DTS 源码字节保持不变。已有绑定继续保留，后续源码同步使用纠正后的匹配规则。纠正后的主体不会因此获得作为共享 Catalog 驱动发布所属子节点的能力。
+
+重新导出会反映 `kind: "driver"` 和生效的驱动规则；再次导入相同纠正文件不会重复修改。复制该导出会携带组织识别纠正，目标已有不同规则时需要明确选择冲突处理。要撤销纠正，将 `recognition.mode` 设为 `inherit`、`override` 设为 null，预览会显示恢复目录中的节点类型。并发修改识别规则或预览后状态变化时，需要处理冲突或重新预览。
+
+此纠正仅适用于独立根主体。所属子节点和配置规范不能通过导入 compatible 转换；其归属和目录编制需要另行明确处理。
 
 ## 审阅和导入
 

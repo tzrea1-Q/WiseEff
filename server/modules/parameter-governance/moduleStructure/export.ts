@@ -47,17 +47,19 @@ export async function captureModuleStructure(client: pg.PoolClient, organization
         parentRef: module.parent_id, description: module.description, scope: module.scope, sortOrder: module.sort_order, importance: module.importance,
         reference: { importanceOverride: module.importance_override, origin: module.origin } })),
       subjects: registrations.rows.map(registration => {
+        const kind = registration.compatibles !== null && registration.kind !== "configuration-schema"
+          ? registration.node_type_name === null ? "driver" : "node-type" : registration.kind;
         const published = defaultBySubject.get(registration.subject_id);
         if (!published && registration.compatibles === null && (registration.kind === "driver" || registration.kind === "node-type")) {
           throw new ApiError("CONFLICT", "A retained Subject has no recognition defaults in the captured Catalog release.", { subjectId: registration.subject_id });
         }
         const selector = published?.selector_snapshot;
         const effective = { compatibles: registration.compatibles ?? (selector?.kind === "driver-compatible" ? [...new Set([...(selector.values ?? []), ...(published?.aliases ?? [])])] : []),
-          nodeTypeName: registration.node_type_name ?? (selector?.kind === "node-type-name" ? selector.value ?? null : null),
-          driverNature: registration.kind === "driver" ? registration.driver_nature ?? published?.nature ?? "physical-device" : null,
-          instanceCardinality: registration.kind === "driver" ? registration.instance_cardinality ?? published?.cardinality ?? "multiple" : null };
+          nodeTypeName: registration.compatibles !== null ? registration.node_type_name : selector?.kind === "node-type-name" ? selector.value ?? null : null,
+          driverNature: kind === "driver" ? registration.driver_nature ?? published?.nature ?? "physical-device" : null,
+          instanceCardinality: kind === "driver" ? registration.instance_cardinality ?? published?.cardinality ?? "multiple" : null };
         const placementModule = registration.module_id ? byId.get(registration.module_id) : null;
-        return { subjectId: registration.subject_id, kind: registration.kind, ownerSubjectId: registration.owner_subject_id,
+        return { subjectId: registration.subject_id, kind, ownerSubjectId: registration.owner_subject_id,
           state: registration.status, cascadeRetired: registration.cascade_retired,
           placement: registration.owner_subject_id ? null : !registration.module_id ? { kind: "unset" } : placementModule?.kind === "unclassified"
             ? { kind: "unclassified" } : placementModule?.kind === "business" && placementModule.archived_at === null

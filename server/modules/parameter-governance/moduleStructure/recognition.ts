@@ -17,12 +17,20 @@ type Subject = z.infer<typeof moduleStructureExportSchema>["subjects"][number];
 type Edit = z.infer<typeof moduleStructureUpdateDocumentSchema>["subjects"][number];
 const fields = ["compatibles", "driverNature", "instanceCardinality", "nodeTypeName"] as const;
 
+/** A compatible override is an explicit organization-local correction of a node's recognition type. */
+export function requestsDriverRecognition(edit: Edit, originalKind: Subject["kind"] | undefined): boolean {
+  return originalKind === "node-type" && edit.recognition?.mode === "override"
+    && (edit.recognition.override?.compatibles?.length ?? 0) > 0;
+}
+
 export async function planRecognition(client: pg.PoolClient, organizationId: string, releaseId: string,
   edits: Edit[], baseline: Subject[], current: Subject[], resolutions: Record<string, "current" | "file">, lifecycle: LifecycleChange[] = []) {
   const db = client as unknown as Queryable;
   const changes: Array<{ subjectId: string; registrationId: string; ifMatch: string; mode: "inherit" | "override"; body: UpdateModuleRecognition; before: unknown; after: unknown }> = [];
   const conflicts: Array<{ key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }> = [];
   const evidence: unknown[] = [];
+  const kindChanges: Array<{ moduleId: string; field: "kind"; before: string; after: string }> = [];
+  const matchedProjects: Array<{ subjectId: string; projectId: string }> = [];
   for (const [index, edit] of edits.entries()) {
     const subject = current.find(s => s.subjectId === edit.subjectId) ?? baseline.find(s => s.subjectId === edit.subjectId) ?? edit;
     const base = baseline.find(s => s.subjectId === edit.subjectId)?.recognition;
@@ -30,6 +38,8 @@ export async function planRecognition(client: pg.PoolClient, organizationId: str
     const requested = edit.recognition;
     if (requested === undefined || stable(requested) === stable(base)) continue;
     const registration = lifecycle.find(change => change.subjectId === edit.subjectId && change.operation === "register");
+    const correctDriver = requestsDriverRecognition(edit, baseline.find(s => s.subjectId === edit.subjectId)?.kind ?? registration?.kind)
+      || requestsDriverRecognition(edit, subject.kind);
     if (!base && registration && requested) {
       if (registration.kind !== "configuration-schema" && requested.effective === undefined && requested.mode === "inherit" && !requested.override) continue;
       if (registration.kind === "configuration-schema" || requested.effective !== undefined || requested.mode !== "override" || !requested.override)
@@ -38,19 +48,27 @@ export async function planRecognition(client: pg.PoolClient, organizationId: str
         driverNature: null, instanceCardinality: null, overridden: false };
       const inherited = await withRecognitionImportContext(index, { ...subject, kind: registration.kind }, "effective", () => readInheritedRegistrationRecognitionSettings(db, initial, releaseId));
       const override = requested.override;
-      if (registration.kind === "driver" ? override.compatibles === null || override.driverNature === null || override.instanceCardinality === null || override.nodeTypeName != null
+      if (correctDriver && override.nodeTypeName != null && override.nodeTypeName !== inherited.nodeTypeName)
+        throw recognitionShapeError(index, subject, "A driver correction cannot also rename the old node selector.", [{
+          path: "override.nodeTypeName", code: "ambiguous-recognition-correction", received: override.nodeTypeName,
+          expected: null, message: "改为 compatible 驱动时不能同时指定新的节点识别名称。",
+          hint: "将 nodeTypeName 设为 null 或省略；转换后只按 compatibles 识别。" }]);
+      if (!correctDriver && (registration.kind === "driver" ? override.compatibles === null || override.driverNature === null || override.instanceCardinality === null || override.nodeTypeName != null
         : override.nodeTypeName === null || override.compatibles?.length || override.driverNature != null || override.instanceCardinality != null)
+      )
         throw recognitionShapeError(index, { ...subject, kind: registration.kind }, "Recognition fields do not match this Subject kind.", recognitionShapeIssues(registration.kind, requested, "new"));
-      const body = Object.fromEntries(Object.entries(registration.kind === "driver"
-        ? { compatibles: override.compatibles, driverNature: override.driverNature, instanceCardinality: override.instanceCardinality }
+      const body = Object.fromEntries(Object.entries(registration.kind === "driver" || correctDriver
+        ? { ...(correctDriver ? { kind: "driver" } : {}), compatibles: override.compatibles, driverNature: override.driverNature ?? undefined, instanceCardinality: override.instanceCardinality ?? undefined }
         : { nodeTypeName: override.nodeTypeName }).filter(([, value]) => value !== undefined)) as UpdateModuleRecognition;
       const next = await withRecognitionImportContext(index, { ...subject, kind: registration.kind }, "override", () => validateRegistrationRecognitionSettings(db, organizationId, inherited, body));
       const instances = await listModuleRecognitionInstances(db, organizationId, next);
       instances.sort((a, b) => a.projectId.localeCompare(b.projectId) || a.logicalNodeId.localeCompare(b.logicalNodeId));
+      for (const projectId of new Set(instances.map(instance => instance.projectId))) matchedProjects.push({ subjectId: edit.subjectId, projectId });
       const bindings = (await client.query(`select distinct project_id, coalesce(logical_node_id, source_occurrence_id) as instance_id
         from parameter_catalog.current_project_parameter_bindings where organization_id=$1 and subject_id=$2 order by project_id, instance_id`, [organizationId, edit.subjectId])).rows;
       evidence.push({ subjectId: edit.subjectId, instances, bindings });
       changes.push({ subjectId: edit.subjectId, registrationId: "", ifMatch: registrationRecognitionEtag(inherited), mode: "override", body, before: null, after: next });
+      if (next.kind !== registration.kind) kindChanges.push({ moduleId: `subject:${edit.subjectId}`, field: "kind", before: registration.kind, after: next.kind });
       continue;
     }
     if (!base || !target || !requested) throw recognitionShapeError(index, subject, "Recognition settings do not apply to this Subject.", [{ path: "", code: "recognition-not-applicable", received: requested ?? null,
@@ -64,13 +82,19 @@ export async function planRecognition(client: pg.PoolClient, organizationId: str
     if (!row) throw new ApiError("CONFLICT", "Subject registration no longer exists.", { path: `subjects.${index}.recognition` });
     const settings = await withRecognitionImportContext(index, subject, "effective", () => readRegistrationRecognitionSettings(db, organizationId, row.id));
     if (!settings) throw new ApiError("CONFLICT", "Subject registration no longer exists.", { path: `subjects.${index}.recognition` });
+    const correctionConflict = correctDriver && settings.kind === "node-type" && stable(base) !== stable(target);
+    if (correctionConflict) {
+      const key = `${edit.subjectId}:recognition.kind`;
+      if (!resolutions[key]) conflicts.push({ key, moduleId: edit.subjectId, field: "recognition", baseline: base, file: requested, current: target });
+      if (resolutions[key] !== "file") continue;
+    }
     const merge = (field: string, original: unknown, file: unknown, now: unknown) => {
       if (file === undefined || stable(file) === stable(original) || stable(file) === stable(now)) return now;
       const key = `${edit.subjectId}:recognition.${field}`;
       if (stable(now) !== stable(original) && !resolutions[key]) { conflicts.push({ key, moduleId: edit.subjectId, field: `recognition.${field}`, baseline: original, file, current: now }); return now; }
       return stable(now) !== stable(original) && resolutions[key] === "current" ? now : file;
     };
-    let mode = merge("mode", base.mode, requested.mode, target.mode) as "inherit" | "override";
+    let mode = correctionConflict ? "override" : merge("mode", base.mode, requested.mode, target.mode) as "inherit" | "override";
     if (requested.mode === "inherit" && base.mode === "override" && target.mode === "override" && stable(base.override) !== stable(target.override)) {
       const key = `${edit.subjectId}:recognition.mode`;
       if (!resolutions[key]) conflicts.push({ key, moduleId: edit.subjectId, field: "recognition.mode", baseline: base.override, file: "inherit", current: target.override });
@@ -80,12 +104,24 @@ export async function planRecognition(client: pg.PoolClient, organizationId: str
     if (mode === "override") {
       const original = base.override ?? base.effective;
       const now = target.override ?? target.effective;
+      if (correctDriver && requested.override?.nodeTypeName != null && requested.override.nodeTypeName !== original.nodeTypeName)
+        throw recognitionShapeError(index, subject, "A driver correction cannot also rename the old node selector.", [{
+          path: "override.nodeTypeName", code: "ambiguous-recognition-correction", received: requested.override.nodeTypeName,
+          expected: null, message: "改为 compatible 驱动时不能同时指定新的节点识别名称。",
+          hint: "将 nodeTypeName 设为 null 或保留原导出值；转换后只按 compatibles 识别。" }]);
       for (const field of fields) {
-        const value = merge(field, original[field], requested.override?.[field], now[field]);
+        if (correctDriver && (field === "nodeTypeName" || (field !== "compatibles" && requested.override?.[field] == null))) continue;
+        const value = correctionConflict ? requested.override?.[field] ?? now[field]
+          : merge(field, original[field], requested.override?.[field], now[field]);
         if (stable(value) !== stable(now[field])) {
           if (value === null) throw recognitionShapeError(index, subject, "Recognition fields cannot be cleared for this Subject kind.", [requiredRecognitionField(field, value)]);
           Object.assign(body, { [field]: value });
         }
+      }
+      if (correctDriver && settings.kind === "node-type") {
+        body.kind = "driver";
+        // Keep the full selector in the correction even when a conflict chose an unchanged value.
+        body.compatibles ??= requested.override!.compatibles!;
       }
     } else if (requested.override && Object.keys(requested.override).length) throw recognitionShapeError(index, subject, "An inherited rule cannot have an override.", [{ path: "override", code: "inherited-rule-has-override", received: requested.override, expected: null,
       message: "inherit 模式不能同时提交覆盖字段。", rule: "继承目录规则时，override 必须为 null、空对象或省略。", hint: "将 override 改为 null；若确实需要自定义，明确设置 mode 为 override。" }]);
@@ -100,13 +136,15 @@ export async function planRecognition(client: pg.PoolClient, organizationId: str
     }
     const instances = await listModuleRecognitionInstances(db, organizationId, next);
     instances.sort((a, b) => a.projectId.localeCompare(b.projectId) || a.logicalNodeId.localeCompare(b.logicalNodeId));
+    for (const projectId of new Set(instances.map(instance => instance.projectId))) matchedProjects.push({ subjectId: edit.subjectId, projectId });
     const bindings = (await client.query(`select distinct project_id, coalesce(logical_node_id, source_occurrence_id) as instance_id
       from parameter_catalog.current_project_parameter_bindings where organization_id=$1 and subject_id=$2
       order by project_id, instance_id`, [organizationId, edit.subjectId])).rows;
     evidence.push({ subjectId: edit.subjectId, instances, bindings });
     changes.push({ subjectId: edit.subjectId, registrationId: row.id, ifMatch: registrationRecognitionEtag(settings), mode, body, before: target, after: next });
+    if (settings.kind !== next.kind) kindChanges.push({ moduleId: `subject:${edit.subjectId}`, field: "kind", before: settings.kind, after: next.kind });
   }
-  return { changes, conflicts, evidence };
+  return { changes, conflicts, evidence, kindChanges, matchedProjects };
 }
 
 export async function applyRecognition(tx: Database, organizationId: string, releaseId: string,

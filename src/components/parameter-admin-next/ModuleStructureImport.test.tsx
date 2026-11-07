@@ -116,6 +116,25 @@ it("groups subject changes and explains recognition settings field by field", as
   expect(screen.getByText(/old → new/)).toBeInTheDocument();
 });
 
+it("makes organization subject type corrections explicit before confirmation", async () => {
+  const post = vi.fn().mockResolvedValue({ token: "preview", conflicts: [], changes: [
+    { moduleId: "subject:fm1230", field: "kind", before: "node-type", after: "driver" },
+    { moduleId: "fm1230", field: "recognition", before: { mode: "inherit", effective: { compatibles: [], nodeTypeName: "fm1230_swi" } },
+      after: { overridden: true, compatibles: ["fdw,fm1230_swi"], nodeTypeName: null } },
+  ] });
+  const user = userEvent.setup();
+  render(<ModuleStructureImport apiClient={{ post } as unknown as ApiClient} organizationId="org-a" canImport />);
+  await user.click(screen.getByRole("button", { name: "导入结构" }));
+  await user.upload(screen.getByLabelText("JSON 文件"), new File([JSON.stringify({ subjects: [{ subjectId: "fm1230", displayAlias: "fm1230_swi", kind: "node-type" }] })], "correction.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "预览" }));
+  expect(await screen.findByText("当前组织主体类型：节点类型主体 → 驱动主体")).toBeInTheDocument();
+  expect(screen.getByText("兼容标识：无 → fdw,fm1230_swi")).toBeInTheDocument();
+  expect(screen.getByText("节点名称：fm1230_swi → 无")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  await user.type(screen.getByLabelText("变更原因"), "纠正主体识别类型");
+  expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
+});
+
 const readonlyFailure = () => new WiseEffApiError("VALIDATION_FAILED", "Unsupported changes outside module metadata.", {
   reason: "readonly-module-structure-fields", issues: [
     { path: "document.counts.modules", code: "readonly_field", message: "导出数量是只读信息。", expected: 3, received: 4, hint: "恢复原始导出的数量，不要根据编辑结果重新计算。" },
