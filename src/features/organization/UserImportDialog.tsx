@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Download, Upload } from "lucide-react";
 import { buildUserImportTemplate, parseUserImportWorkbook } from "@/application/userImportWorkbook";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import type { UserImportPreview } from "@/infrastructure/http/userGovernanceClient";
@@ -14,6 +16,8 @@ export function UserImportDialog({ organizationId, actions, roleLabels, canGrant
   const [preview, setPreview] = useState<UserImportPreview | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
   const generation = useRef(0);
   useEffect(() => {
     const counter = generation;
@@ -27,7 +31,7 @@ export function UserImportDialog({ organizationId, actions, roleLabels, canGrant
   }
   async function select(file: File | undefined) {
     const current = ++generation.current;
-    setPreview(null); setError("");
+    setPreview(null); setError(""); setFileName(file?.name ?? "");
     if (!file) { setBusy(false); return; }
     setBusy(true);
     try {
@@ -40,22 +44,40 @@ export function UserImportDialog({ organizationId, actions, roleLabels, canGrant
     } finally { if (generation.current === current) setBusy(false); }
   }
   return <ModalDialog open onDismiss={onClose} className="user-permissions-modal-card user-import-dialog">{({ titleId }) => <>
-    <h3 id={titleId}>批量导入成员</h3>
-    <div className="modal-body user-import-dialog__body">
-      <p>操作组织：<strong>{organizationName}</strong></p>
-      <p>下载模板并填写“用户数据”表的五列：姓名、用户名、初始密码、职务和组织角色。每次 1–500 人，文件最多 2 MiB；密码将按原样使用，请私下交付。</p>
-      <p>可授予角色：{Object.entries(roleLabels).filter(([id]) => canGrantPlatformAdmin || id !== "platform-admin").map(([, label]) => label).join("、")}。多个角色用中文分号分隔。</p>
-      <button type="button" className="button" onClick={download}>下载模板</button>
-      <label className="user-import-dialog__upload">选择填写后的 XLSX 文件<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void select(event.target.files?.[0])} /></label>
-      {busy ? <p role="status">正在检查文件和用户名…</p> : null}
-      {error ? <p role="alert">文件检查失败：{error}</p> : null}
-      {preview ? <section aria-label="导入预览">
-        <h4>预检结果</h4><p>操作组织：<strong>{preview.organization.name}</strong> · {preview.total} 人 · 管理员权限 {preview.privilegedCount} 人</p>
-        <p role="status">{preview.errors.length ? `发现 ${preview.errors.length} 处问题，请修改源文件后重新上传。` : "预检通过；当前仅提供预览，尚不能创建账号。"}</p>
-        {preview.errors.length ? <ul>{preview.errors.map((item, index) => <li key={`${item.row}-${item.field}-${index}`}>第 {item.row} 行 · {({ name: "姓名", username: "用户名", password: "初始密码", title: "职务", roles: "组织角色" } as Record<string, string>)[item.field] ?? item.field}：{item.message}</li>)}</ul> : null}
-        <div className="user-import-dialog__table"><table><thead><tr><th>行号</th><th>姓名</th><th>用户名</th><th>职务</th><th>组织角色</th></tr></thead><tbody>{preview.rows.map((row) => <tr key={row.row}><td>{row.row}</td><td>{row.name}</td><td>{row.username}</td><td>{row.title}</td><td>{row.roles.map((role) => roleLabels[role]).join("；")} {row.roles.some((role) => role === "admin" || role === "platform-admin") ? <Badge variant="destructive">管理员权限</Badge> : null}</td></tr>)}</tbody></table></div>
+    <header className="user-import-dialog__header">
+      <div><h3 id={titleId}>批量导入成员</h3><p>填写模板并预检，在创建前核对成员信息。</p></div>
+      <div className="user-import-dialog__scope"><span>操作组织</span><strong>{organizationName}</strong></div>
+    </header>
+    <div className="user-import-dialog__body">
+      <div className="user-import-dialog__steps">
+        <section className="user-import-dialog__step" aria-labelledby="user-import-template-title">
+          <div><span className="user-import-dialog__step-number">01</span><h4 id="user-import-template-title">准备模板</h4></div>
+          <p>填写姓名、用户名、初始密码、职务和组织角色。密码按原样使用，请私下交付。</p>
+          <Button type="button" variant="outline" onClick={download}><Download aria-hidden="true" />下载模板</Button>
+        </section>
+        <section className="user-import-dialog__step" aria-labelledby="user-import-upload-title">
+          <div><span className="user-import-dialog__step-number">02</span><h4 id="user-import-upload-title">上传并预检</h4></div>
+          <p>选择填写后的 XLSX 文件。每次 1–500 人，文件最多 2 MiB。</p>
+          <div className="user-import-dialog__file">
+            <Button type="button" variant="outline" onClick={() => { if (fileInput.current) { fileInput.current.value = ""; fileInput.current.click(); } }}><Upload aria-hidden="true" />选择文件</Button>
+            <input ref={fileInput} type="file" hidden aria-label="选择填写后的 XLSX 文件" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void select(event.target.files?.[0])} />
+            <span title={fileName}>{fileName || "尚未选择文件"}</span>
+          </div>
+        </section>
+      </div>
+      <p className="user-import-dialog__hint">可授予角色：{Object.entries(roleLabels).filter(([id]) => canGrantPlatformAdmin || id !== "platform-admin").map(([, label]) => label).join("、")}。多个角色用中文分号（；）分隔。</p>
+      {busy ? <p className="user-import-dialog__notice" role="status">正在检查文件和用户名…</p> : null}
+      {error ? <div className="user-import-dialog__notice user-import-dialog__notice--error" role="alert"><strong>文件检查失败</strong><p>{error} 请修改源文件后重新选择。</p></div> : null}
+      {preview ? <section className="user-import-dialog__preview" aria-label="导入预览">
+        <div className="user-import-dialog__preview-heading"><div><h4>预检结果</h4><p>操作组织：{preview.organization.name}</p></div><div className="user-import-dialog__counts"><span>成员 <strong>{preview.total}</strong> 人</span><span>管理员权限 <strong>{preview.privilegedCount}</strong> 人</span></div></div>
+        <div className={`user-import-dialog__notice${preview.errors.length ? " user-import-dialog__notice--error" : " user-import-dialog__notice--success"}`} role="status">
+          <strong>{preview.errors.length ? `发现 ${preview.errors.length} 处问题` : "预检通过"}</strong>
+          <p>{preview.errors.length ? "请修改源文件后重新上传。" : "当前仅提供预览，尚不能创建账号。"}</p>
+          {preview.errors.length ? <ul>{preview.errors.map((item, index) => <li key={`${item.row}-${item.field}-${index}`}>第 {item.row} 行 · {({ name: "姓名", username: "用户名", password: "初始密码", title: "职务", roles: "组织角色" } as Record<string, string>)[item.field] ?? item.field}：{item.message}</li>)}</ul> : null}
+        </div>
+        <div className="user-import-dialog__table"><table><thead><tr><th scope="col">行号</th><th scope="col">姓名</th><th scope="col">用户名</th><th scope="col">职务</th><th scope="col">组织角色</th></tr></thead><tbody>{preview.rows.map((row) => <tr key={row.row}><td>{row.row}</td><td>{row.name}</td><td>{row.username}</td><td>{row.title}</td><td><div className="user-import-dialog__roles">{row.roles.map((role) => roleLabels[role]).join("；")} {row.roles.some((role) => role === "admin" || role === "platform-admin") ? <Badge variant="destructive">管理员权限</Badge> : null}</div></td></tr>)}</tbody></table></div>
       </section> : null}
     </div>
-    <div className="modal-actions"><button type="button" className="button" onClick={onClose}>取消</button></div>
+    <footer className="user-import-dialog__footer"><Button type="button" variant="outline" onClick={onClose}>取消</Button></footer>
   </>}</ModalDialog>;
 }
