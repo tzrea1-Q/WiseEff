@@ -48,7 +48,7 @@ describe("user import report workbook", () => {
     ]);
     expect(values).toHaveLength(506);
     expect(values[6]).toEqual(["2", "user-0", "name-0", "", "已创建", "", ""]);
-    expect(values[505]).toEqual(["501", "", "已删除用户", "", "已创建", "", ""]);
+    expect(values[505]).toEqual(["501", "", "用户信息不可用", "", "已创建", "", ""]);
     for (const [key, cell] of Object.entries(sheet)) if (!key.startsWith("!")) {
       expect(cell.t).toBe("s"); expect(cell.f).toBeUndefined(); expect(cell.l).toBeUndefined();
     }

@@ -32,7 +32,7 @@ export function buildUserImportReport(input:
       for (const error of errors) lines.push([String(row.row), row.username, row.name, row.title, "未创建：需修正", fields[error.field] ?? error.field, error.message]);
     }
   } else if (input.kind === "success") {
-    for (const row of input.receipt.rows) lines.push([String(row.row), row.username ?? "", row.name ?? "已删除用户", "", "已创建", "", ""]);
+    for (const row of input.receipt.rows) lines.push([String(row.row), row.username ?? "", row.name ?? "用户信息不可用", "", "已创建", "", ""]);
   } else lines.push(["", "", "", "", "文件无法读取，未检查逐行数据", "文件", "请检查原始模板后重新上传预检。"]);
   const sheet = XLSX.utils.aoa_to_sheet(lines);
   sheet["!cols"] = [14, 24, 20, 20, 28, 16, 48].map((wch) => ({ wch }));
