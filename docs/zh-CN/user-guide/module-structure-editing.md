@@ -58,7 +58,7 @@
 | 字段 | 含义 |
 | --- | --- |
 | `ref` | 本导出包中新驱动的唯一、稳定引用，不是数据库 ID。 |
-| `compatible` | 单个精确 DTS compatible 字符串；不要写成 `compatibles`、使用通配符或编造身份。 |
+| `compatible` | 单个精确 DTS compatible 字符串；厂商逗号后可保留源码原有的 ASCII 空格（如 `huawei, wireless_aux_tx`）。不要写成 `compatibles`、使用通配符或编造身份。 |
 | `driverNature` | 必填：`physical-device`（物理设备）或 `logical-service`（逻辑服务）。 |
 | `instanceCardinality` | 必填：`multiple`（允许多个实例）或 `singleton-per-project`（每项目单实例）。 |
 | `displayAlias` | 可选的本组织展示别名；不需要时省略或填写 null。 |
@@ -76,6 +76,8 @@
   ]
 }
 ```
+
+系统会逐字保留 `compatible` 内容，不会 trim 或压缩字符串内部的空格。`huawei, wireless_aux_tx` 和 `huawei,wireless_aux_tx` 是两个不同的精确标识；只允许厂商逗号后出现 ASCII 空格，不允许其他位置的空格、首尾空格、换行、制表符或通配符。请以实际 DTS 字符串为准。
 
 一份文件最多声明 128 个新驱动，原有模块、主体及字节数限制继续生效。保持 `source`、`exportId`、`counts`、`limits` 和 `references` 不变；重试时保留新驱动的 `ref`。
 

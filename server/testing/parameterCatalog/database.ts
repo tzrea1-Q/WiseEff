@@ -255,7 +255,9 @@ export const S2_SCH_0333_FINGERPRINT = "cb1cd5d8a04f19dcf89a66a04d0af5c142b6bef7
 export const S2_SCH_0334_FINGERPRINT = "1ed1e33c3658300bb2b51964e7528acfc0dd453f2c0efc2c8bc37c97650c4a62";
 /** 0335 adds durable module driver publications and their Organization deletion inventory. */
 export const S2_SCH_0335_FINGERPRINT = "a84757014637c5dcfab32b7b10685d969ad10774c352523698cd84020ec52d1a";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0335_FINGERPRINT;
+/** 0336 preserves exact DTS compatible comma spaces with no other schema changes. Measured on PostgreSQL/pgvector. */
+export const S2_SCH_0336_FINGERPRINT = "df6018672d57c85b1bee5dcaa2e62e3fbd78fd7f0f20c97399057c4dbefe22ed";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0336_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

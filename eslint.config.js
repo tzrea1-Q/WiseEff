@@ -24,7 +24,7 @@ const wiseeffPlugin = {
 
 export default [
   {
-    files: ["{server,scripts,ops,e2e,packages}/**/*.{ts,tsx,js,mjs,cjs}", "*.{ts,js,mjs}"],
+    files: ["{server,schemas,scripts,ops,e2e,packages}/**/*.{ts,tsx,js,mjs,cjs}", "*.{ts,js,mjs}"],
     languageOptions: {
       parser: tsParser,
       parserOptions: { ecmaFeatures: { jsx: true } },
@@ -73,7 +73,7 @@ export default [
     }
   },
   {
-    files: ["{src,scripts}/**/*.{test,spec}.{ts,tsx}"],
+    files: ["{src,schemas,scripts}/**/*.{test,spec}.{ts,tsx}"],
     languageOptions: { parser: tsParser, sourceType: "module" },
     plugins: { wiseeff: wiseeffPlugin },
     rules: {

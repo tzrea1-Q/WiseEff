@@ -75,7 +75,8 @@ export type CanonicalIdentityParseResult<Value> = Result<
 >;
 
 const classifyCommonFailure = (
-  input: unknown
+  input: unknown,
+  allowCompatibleCommaSpaces = false
 ): CanonicalIdentityFailureReason | null => {
   if (typeof input !== "string") {
     return "not-string";
@@ -92,7 +93,9 @@ const classifyCommonFailure = (
   if (input.startsWith(" ") || input.endsWith(" ")) {
     return "surrounding-whitespace";
   }
-  if (/\s/u.test(input)) {
+  // DTS compatible values may contain literal ASCII spaces immediately after
+  // the vendor comma. Preserve those bytes; all other whitespace stays invalid.
+  if (/\s/u.test(input) && (!allowCompatibleCommaSpaces || /\s/u.test(input.replace(/, +/gu, ",")))) {
     return "whitespace-forbidden";
   }
   const first = input[0];
@@ -109,7 +112,7 @@ const classifyCommonFailure = (
 export const parseCanonicalCompatibleSelector = (
   input: unknown
 ): CanonicalIdentityParseResult<DriverCompatible> => {
-  const commonFailure = classifyCommonFailure(input);
+  const commonFailure = classifyCommonFailure(input, true);
   if (commonFailure !== null) {
     return { ok: false, error: commonFailure };
   }
@@ -119,7 +122,7 @@ export const parseCanonicalCompatibleSelector = (
     return { ok: false, error: "wildcard-forbidden" };
   }
   if (
-    !/^[A-Za-z0-9][A-Za-z0-9+._/-]*(?:,[A-Za-z0-9][A-Za-z0-9+._/-]*)?$/u.test(
+    !/^[A-Za-z0-9][A-Za-z0-9+._/-]*(?:, *[A-Za-z0-9][A-Za-z0-9+._/-]*)?$/u.test(
       compatible
     )
   ) {

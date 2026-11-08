@@ -126,6 +126,9 @@ describe("module structure creates drivers through publication before atomic org
     const id = "new-driver-success", source = await organization(id);
     const document = withDrivers(await source.exported(), "success");
     document.newDrivers![0]!.ref = "__proto__";
+    // Both are literal DTS values and distinct Catalog identities.
+    document.newDrivers![0]!.compatible = "huawei, wireless_aux_tx";
+    document.newDrivers![1]!.compatible = "huawei,wireless_aux_tx";
     const before = await snapshot(id);
     const initial = await checkedPreview(source, document);
     expect(initial.driverCreation).toMatchObject({ phase: "required", drivers: document.newDrivers });
@@ -191,6 +194,8 @@ describe("module structure creates drivers through publication before atomic org
     const before = await snapshot(id);
     const cases: Array<{ path: string; mutate: (value: Document) => void }> = [
       { path: "/newDrivers/0/compatible", mutate: value => { value.newDrivers![0]!.compatible = "acme,*"; } },
+      { path: "/newDrivers/0/compatible", mutate: value => { value.newDrivers![0]!.compatible = "huawei ,wireless_aux_tx"; } },
+      { path: "/newDrivers/0/compatible", mutate: value => { value.newDrivers![0]!.compatible = "huawei,wireless aux_tx"; } },
       { path: "/newDrivers/0/placement/moduleRef", mutate: value => { value.newDrivers![0]!.placement.moduleRef = "missing-module"; } },
       { path: "/newDrivers/1/ref", mutate: value => { value.newDrivers![1]!.ref = value.newDrivers![0]!.ref; } },
       { path: "/newDrivers/1/compatible", mutate: value => { value.newDrivers![1]!.compatible = value.newDrivers![0]!.compatible; } },

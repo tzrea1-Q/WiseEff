@@ -154,6 +154,8 @@ describe("fresh database fixture policy", () => {
       // Backend termination must own its database and physical connections.
       "server/shared/database/clientConnectionRecovery.integration.test.ts": ["client_pool_recovery:false", "client_tx_recovery:false"],
       "server/shared/database/migrationCompatibility.integration.test.ts": ["purge_bounds:false", "purge_cutover:false", "purge_existing:false", "purge_retry:false"],
+      // Replay 0335, verify compatible comma-spaces in 0336, then restore the old Catalog predicate.
+      "server/testing/parameterCatalog/compatibleCommaSpacesMigration.integration.test.ts": ["compatible_spaces:false"],
       // Compare exact Catalog changes and restore the historical projection around 0335.
       "server/testing/parameterCatalog/driverPublicationFingerprint.integration.test.ts": ["driver_catalog:false"],
       // Compare the Catalog projection before and after replaying migration 0334.

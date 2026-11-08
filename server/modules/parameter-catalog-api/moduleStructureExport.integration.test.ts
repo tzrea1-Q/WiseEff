@@ -143,13 +143,13 @@ describe("module structure export", () => {
     const subjectId = subject.rows[0]!.id;
     const edited = { ...document, modules: [...document.modules, { ref: "registration-destination", name: "Registration destination", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }], subjects: [...document.subjects, { subjectId, state: "active", placement: { kind: "module", moduleRef: "registration-destination" }, recognition: { mode: "override", override: { compatibles: ["acme,new"], nodeTypeName: null } } }] };
     const invalidRegistration = structuredClone(edited);
-    invalidRegistration.subjects.at(-1)!.recognition!.override!.compatibles = ["acme,*", "acme, power"];
+    invalidRegistration.subjects.at(-1)!.recognition!.override!.compatibles = ["acme,*", "acme,pow er"];
     const invalidRegistrationPreview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: invalidRegistration, resolutions: {} }) });
     expect(invalidRegistrationPreview.status, invalidRegistrationPreview.bodyText).toBe(400);
     expect(invalidRegistrationPreview.body).toMatchObject({ error: { details: { issues: [
       expect.objectContaining({ code: "wildcard-forbidden", received: "acme,*", subject: { index: document.subjects.length, subjectId, kind: "driver" },
         jsonPointer: `/subjects/${document.subjects.length}/recognition/override/compatibles/0`, hint: expect.any(String) }),
-      expect.objectContaining({ code: "whitespace-forbidden", received: "acme, power" }),
+      expect.objectContaining({ code: "whitespace-forbidden", received: "acme,pow er" }),
     ] } } });
     expect((await api.query("select 1 from parameter_catalog.organization_subject_registrations where organization_id=$1", [org])).rowCount).toBe(0);
     const preview = await requestJson(app, `/api/v2/organizations/${org}/module-structure/previews`, { method: "POST", body: JSON.stringify({ document: edited, resolutions: {} }) });

@@ -14,7 +14,7 @@ function details(kind: "driver" | "node-type", body: UpdateModuleRecognition) {
 describe("actionable recognition validation", () => {
   it.each([
     ["", "empty"], ["acme,power\n", "control-character"], ["华为,power", "non-ascii"],
-    [" acme,power", "surrounding-whitespace"], ["acme, power", "whitespace-forbidden"],
+    [" acme,power", "surrounding-whitespace"], ["acme,pow er", "whitespace-forbidden"],
     ['"acme,power"', "quoted-source-token"], ["acme,*", "wildcard-forbidden"], ["acme,power,extra", "invalid-syntax"],
   ])("explains compatible %j with a specific repair rule", (value, code) => {
     const issue = details("driver", { compatibles: ["acme,valid", value] }).issues[0];
@@ -39,7 +39,7 @@ describe("actionable recognition validation", () => {
   });
 
   it("retains accepted selector formats and empty driver lists", () => {
-    expect(() => assertRecognitionUpdate("driver", { compatibles: ["sc8562", "huawei,batt_info", "acme,foo/bar"] })).not.toThrow();
+    expect(() => assertRecognitionUpdate("driver", { compatibles: ["sc8562", "huawei,batt_info", "acme,foo/bar", "huawei, wireless_aux_tx"] })).not.toThrow();
     expect(() => assertRecognitionUpdate("driver", { compatibles: [] })).not.toThrow();
     expect(() => assertRecognitionUpdate("driver", { driverNature: "logical-service" })).not.toThrow();
     expect(() => assertRecognitionUpdate("node-type", { nodeTypeName: "/" })).not.toThrow();
