@@ -43,7 +43,7 @@ describe("compatible delimiter-space forward migration", () => {
       for (const value of [
         "onewire-phy,,gpio", "onewire-phy, ,gpio", "onewire-phy,pl061,",
         "onewire-phy,pl 061,gpio", "onewire-phy,pl061, gp io",
-        "onewire-phy,pl061,gpio ", "onewire-phy,pl061,\\tgpio",
+        "onewire-phy,pl061,gpio ", "onewire-phy,pl061,\tgpio",
         "onewire-phy,pl061,*", "onewire-phy,pl061,gpio,",
       ]) {
         expect(await check(value), value).toBe(false);
