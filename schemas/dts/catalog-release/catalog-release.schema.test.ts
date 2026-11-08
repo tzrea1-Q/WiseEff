@@ -3239,6 +3239,8 @@ describe("immutable Catalog Release bundle contract", () => {
       "simple",
       "vendor+tag,driver.rev/1",
       "huawei, wireless_aux_tx",
+      "onewire-phy,pl061,gpio",
+      "onewire-phy, pl061, gpio",
     ]) {
       const accepted = validBundle();
       for (const release of accepted.releases) {
@@ -3281,7 +3283,8 @@ describe("immutable Catalog Release bundle contract", () => {
       ["vendor,driver name", "whitespace-forbidden"],
       ['"vendor,driver"', "quoted-source-token"],
       ["vendor,*", "wildcard-forbidden"],
-      ["vendor,driver,extra", "invalid-syntax"],
+      ["vendor,driver,,extra", "invalid-syntax"],
+      ["vendor,driver, extra ", "surrounding-whitespace"],
       [" vendor,*", "surrounding-whitespace"],
       ['"vendor,*"', "quoted-source-token"],
     ] as const) {
