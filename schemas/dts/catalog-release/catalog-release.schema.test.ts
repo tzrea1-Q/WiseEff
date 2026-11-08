@@ -3238,6 +3238,7 @@ describe("immutable Catalog Release bundle contract", () => {
       "vendor,driver",
       "simple",
       "vendor+tag,driver.rev/1",
+      "huawei, wireless_aux_tx",
     ]) {
       const accepted = validBundle();
       for (const release of accepted.releases) {
@@ -3276,7 +3277,8 @@ describe("immutable Catalog Release bundle contract", () => {
       ["vendor,\0driver", "control-character"],
       ["v\u00e9ndor,driver", "non-ascii"],
       [" vendor,driver", "surrounding-whitespace"],
-      ["vendor, driver", "whitespace-forbidden"],
+      ["vendor ,driver", "whitespace-forbidden"],
+      ["vendor,driver name", "whitespace-forbidden"],
       ['"vendor,driver"', "quoted-source-token"],
       ["vendor,*", "wildcard-forbidden"],
       ["vendor,driver,extra", "invalid-syntax"],
