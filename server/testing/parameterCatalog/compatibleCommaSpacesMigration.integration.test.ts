@@ -28,8 +28,32 @@ describe("compatible delimiter-space forward migration", () => {
       }
       expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0336_FINGERPRINT);
 
-      // Restore the original function body inside the disposable DB to prove
-      // there were no other Catalog schema changes in this migration.
+      // A second forward-only change permits a third (or later) comma inside
+      // one literal DTS compatible; it must not change the earlier stage.
+      const commaSpaceDefinition = await definition();
+      expect(await check("onewire-phy,pl061,gpio")).toBe(false);
+      await applyMigrations(db, migrationsDir, { through: "0337_compatible_multi_comma.sql" });
+      expect(await definition()).not.toBe(commaSpaceDefinition);
+      for (const value of [
+        "onewire-phy,pl061,gpio", "onewire-phy, pl061, gpio",
+        "vendor,driver", "huawei, wireless_aux_tx",
+      ]) {
+        expect(await check(value), value).toBe(true);
+      }
+      for (const value of [
+        "onewire-phy,,gpio", "onewire-phy, ,gpio", "onewire-phy,pl061,",
+        "onewire-phy,pl 061,gpio", "onewire-phy,pl061, gp io",
+        "onewire-phy,pl061,gpio ", "onewire-phy,pl061,\\tgpio",
+        "onewire-phy,pl061,*", "onewire-phy,pl061,gpio,",
+      ]) {
+        expect(await check(value), value).toBe(false);
+      }
+      expect(await readCanonicalSchemaFingerprint(connectionString)).not.toBe(S2_SCH_0336_FINGERPRINT);
+
+      // Restore each prior stage in this disposable DB and verify its exact
+      // historical fingerprint: no unrelated relation or SQL function changed.
+      await db.query(commaSpaceDefinition);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0336_FINGERPRINT);
       await db.query(beforeDefinition);
       expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(beforeFingerprint);
     });
