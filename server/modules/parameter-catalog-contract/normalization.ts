@@ -93,8 +93,8 @@ const classifyCommonFailure = (
   if (input.startsWith(" ") || input.endsWith(" ")) {
     return "surrounding-whitespace";
   }
-  // DTS compatible values may contain literal ASCII spaces immediately after
-  // the vendor comma. Preserve those bytes; all other whitespace stays invalid.
+  // DTS compatible values may contain multiple commas and literal ASCII spaces
+  // immediately after each comma. Preserve every byte; all other whitespace is invalid.
   if (/\s/u.test(input) && (!allowCompatibleCommaSpaces || /\s/u.test(input.replace(/, +/gu, ",")))) {
     return "whitespace-forbidden";
   }
@@ -122,7 +122,7 @@ export const parseCanonicalCompatibleSelector = (
     return { ok: false, error: "wildcard-forbidden" };
   }
   if (
-    !/^[A-Za-z0-9][A-Za-z0-9+._/-]*(?:, *[A-Za-z0-9][A-Za-z0-9+._/-]*)?$/u.test(
+    !/^[A-Za-z0-9][A-Za-z0-9+._/-]*(?:, *[A-Za-z0-9][A-Za-z0-9+._/-]*)*$/u.test(
       compatible
     )
   ) {

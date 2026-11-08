@@ -257,7 +257,9 @@ export const S2_SCH_0334_FINGERPRINT = "1ed1e33c3658300bb2b51964e7528acfc0dd453f
 export const S2_SCH_0335_FINGERPRINT = "a84757014637c5dcfab32b7b10685d969ad10774c352523698cd84020ec52d1a";
 /** 0336 preserves exact DTS compatible comma spaces with no other schema changes. Measured on PostgreSQL/pgvector. */
 export const S2_SCH_0336_FINGERPRINT = "df6018672d57c85b1bee5dcaa2e62e3fbd78fd7f0f20c97399057c4dbefe22ed";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0336_FINGERPRINT;
+/** 0337 admits multiple commas in one exact compatible literal (PostgreSQL/pgvector measured). */
+export const S2_SCH_0337_FINGERPRINT = "0eb643b1c8438c3ce184060ef0239e4caf3a17759f63cbbb1ef70a3a39defe90";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0337_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
