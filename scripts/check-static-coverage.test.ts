@@ -18,12 +18,12 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "wiseeff-static-coverage-"));
   write("package.json", '{"type":"module"}');
   write("eslint.config.js", `import parser from ${JSON.stringify(createRequire(import.meta.url).resolve("@typescript-eslint/parser"))};
-export default [{ files: ["{src,server,scripts,ops,e2e,packages}/**/*.{ts,tsx}"], languageOptions: { parser }, rules: { "no-unreachable": "error" } }];`);
+export default [{ files: ["{src,server,schemas,scripts,ops,e2e,packages}/**/*.{ts,tsx}"], languageOptions: { parser }, rules: { "no-unreachable": "error" } }];`);
   const options = { strict: true, noEmit: true, skipLibCheck: true, types: [], lib: ["ES5"], target: "ES2023", module: "ESNext", moduleResolution: "Bundler" };
   for (const [name, include, exclude] of [
     ["app", ["src/**/*.ts"], ["**/*.test.ts"]],
     ["node", ["server/**/*.ts", "scripts/**/*.ts"], ["**/*.test.ts"]],
-    ["tests.node", ["server/**/*.ts", "scripts/**/*.ts", "ops/**/*.ts", "packages/**/*.ts"], []],
+    ["tests.node", ["server/**/*.ts", "schemas/**/*.ts", "scripts/**/*.ts", "ops/**/*.ts", "packages/**/*.ts"], []],
     ["tests.browser", ["src/**/*.ts", "e2e/**/*.ts"], []],
   ] as const) write(`tsconfig.${name}.json`, JSON.stringify({ compilerOptions: { ...options, ...(name.endsWith("browser") ? { lib: ["ES2023", "DOM"] } : {}) }, include, exclude }));
 });
@@ -39,6 +39,20 @@ it("semantically checks a changed server test that the ordinary build excludes",
   });
   write("server/example.test.ts", 'export const count: number = "wrong";');
   const bad = await inspectStaticCoverage(["server/example.test.ts"], root, { execute: true });
+  expect(bad.status).toBe("failed");
+  expect(bad.problems.join("\n")).toContain("TS2322");
+});
+
+it("checks schema-bundle tests as server-side TypeScript and ESLint", async () => {
+  write("schemas/dts/catalog-release/sample.test.ts", "export const example: number = 1;");
+  const ok = await inspectStaticCoverage(["schemas/dts/catalog-release/sample.test.ts"], root, { execute: true });
+  expect(ok.status, ok.problems.join("\n")).toBe("passed");
+  expect(ok.files[0]).toMatchObject({
+    path: "schemas/dts/catalog-release/sample.test.ts", lint: { status: "checked" },
+    typecheck: { status: "checked", project: "tsconfig.tests.node.json" }, testSuiteCandidate: "server",
+  });
+  write("schemas/dts/catalog-release/sample.test.ts", 'export const example: number = "invalid";');
+  const bad = await inspectStaticCoverage(["schemas/dts/catalog-release/sample.test.ts"], root, { execute: true });
   expect(bad.status).toBe("failed");
   expect(bad.problems.join("\n")).toContain("TS2322");
 });
