@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyMigrations, migrationsDir, withTempDatabase } from "../tempDatabase";
-import { readCanonicalSchemaFingerprint, S2_SCH_0335_FINGERPRINT, S2_SCH_0336_FINGERPRINT } from "./database";
+import { readCanonicalSchemaFingerprint, S2_SCH_0335_FINGERPRINT, S2_SCH_0336_FINGERPRINT, S2_SCH_0337_FINGERPRINT } from "./database";
 
 describe("compatible delimiter-space forward migration", () => {
   it("preserves historical 0335 and changes only the exact SQL predicate", async () => {
@@ -48,7 +48,7 @@ describe("compatible delimiter-space forward migration", () => {
       ]) {
         expect(await check(value), value).toBe(false);
       }
-      expect(await readCanonicalSchemaFingerprint(connectionString)).not.toBe(S2_SCH_0336_FINGERPRINT);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0337_FINGERPRINT);
 
       // Restore each prior stage in this disposable DB and verify its exact
       // historical fingerprint: no unrelated relation or SQL function changed.
