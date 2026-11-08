@@ -338,7 +338,7 @@ describe("KnowledgePage", () => {
     const user = userEvent.setup();
     const detail = await screen.findByRole("dialog", { name: /并发状态条目/ });
     expect(screen.getByText("知识条目统计加载中…")).toBeInTheDocument();
-    await user.click(within(detail).getByRole("button", { name: button, exact: true }));
+    await user.click(within(detail).getByRole("button", { name: button }));
     await waitFor(() => expect(within(detail).getByText(expected, { exact: true })).toBeInTheDocument());
     expect(mutation).toHaveBeenCalledExactlyOnceWith(entry.id);
 
