@@ -253,7 +253,9 @@ export const S2_SCH_0332_FINGERPRINT = "de38c205ecaf327189aac0c97c973c0245e33ac2
 export const S2_SCH_0333_FINGERPRINT = "cb1cd5d8a04f19dcf89a66a04d0af5c142b6bef71be1ad2844138e8912fcd265";
 /** 0334 adds user-import receipts to the Organization deletion inventory. */
 export const S2_SCH_0334_FINGERPRINT = "1ed1e33c3658300bb2b51964e7528acfc0dd453f2c0efc2c8bc37c97650c4a62";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0334_FINGERPRINT;
+/** 0335 adds durable module driver publications and their Organization deletion inventory. */
+export const S2_SCH_0335_FINGERPRINT = "a84757014637c5dcfab32b7b10685d969ad10774c352523698cd84020ec52d1a";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0335_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
