@@ -81,6 +81,9 @@ describe("canonical parameter identity parsing", () => {
 
   it("accepts compatible selectors without changing their bytes", () => {
     expect(acceptCompatible("vendor,driver")).toBe("vendor,driver");
+    expect(acceptCompatible("huawei, wireless_aux_tx")).toBe("huawei, wireless_aux_tx");
+    expect(acceptCompatible("huawei,  wireless_aux_tx")).toBe("huawei,  wireless_aux_tx");
+    expect(acceptCompatible("huawei,wireless_aux_tx")).not.toBe(acceptCompatible("huawei, wireless_aux_tx"));
     expect(acceptCompatible("simple")).toBe("simple");
     expect(acceptCompatible("vendor+tag,driver.rev/1")).toBe(
       "vendor+tag,driver.rev/1"
@@ -93,7 +96,9 @@ describe("canonical parameter identity parsing", () => {
     expect(rejectCompatible("vendor,\0driver")).toBe("control-character");
     expect(rejectCompatible("véndor,driver")).toBe("non-ascii");
     expect(rejectCompatible(" vendor,driver")).toBe("surrounding-whitespace");
-    expect(rejectCompatible("vendor, driver")).toBe("whitespace-forbidden");
+    expect(rejectCompatible("vendor ,driver")).toBe("whitespace-forbidden");
+    expect(rejectCompatible("vendor,driv er")).toBe("whitespace-forbidden");
+    expect(rejectCompatible("vendor, driver ")).toBe("surrounding-whitespace");
     expect(rejectCompatible('"vendor,driver"')).toBe("quoted-source-token");
     expect(rejectCompatible("vendor,*")).toBe("wildcard-forbidden");
     expect(rejectCompatible("vendor,driver,extra")).toBe("invalid-syntax");
