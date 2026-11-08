@@ -84,6 +84,9 @@ describe("canonical parameter identity parsing", () => {
     expect(acceptCompatible("huawei, wireless_aux_tx")).toBe("huawei, wireless_aux_tx");
     expect(acceptCompatible("huawei,  wireless_aux_tx")).toBe("huawei,  wireless_aux_tx");
     expect(acceptCompatible("huawei,wireless_aux_tx")).not.toBe(acceptCompatible("huawei, wireless_aux_tx"));
+    expect(acceptCompatible("onewire-phy,pl061,gpio")).toBe("onewire-phy,pl061,gpio");
+    expect(acceptCompatible("onewire-phy, pl061, gpio")).toBe("onewire-phy, pl061, gpio");
+    expect(acceptCompatible("onewire-phy,pl061,gpio")).not.toBe(acceptCompatible("onewire-phy, pl061, gpio"));
     expect(acceptCompatible("simple")).toBe("simple");
     expect(acceptCompatible("vendor+tag,driver.rev/1")).toBe(
       "vendor+tag,driver.rev/1"
@@ -101,7 +104,11 @@ describe("canonical parameter identity parsing", () => {
     expect(rejectCompatible("vendor, driver ")).toBe("surrounding-whitespace");
     expect(rejectCompatible('"vendor,driver"')).toBe("quoted-source-token");
     expect(rejectCompatible("vendor,*")).toBe("wildcard-forbidden");
-    expect(rejectCompatible("vendor,driver,extra")).toBe("invalid-syntax");
+    expect(rejectCompatible("vendor,")).toBe("invalid-syntax");
+    expect(rejectCompatible("vendor,,extra")).toBe("invalid-syntax");
+    expect(rejectCompatible("vendor, ,extra")).toBe("invalid-syntax");
+    expect(rejectCompatible("vendor,driver,")).toBe("invalid-syntax");
+    expect(rejectCompatible("vendor,driver,ex tra")).toBe("whitespace-forbidden");
   });
 
   it("classifies common failures before compatible-specific failures", () => {
