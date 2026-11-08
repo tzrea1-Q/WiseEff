@@ -58,7 +58,7 @@ In **Update current organization** mode, add a top-level `newDrivers` array to a
 | Field | Meaning |
 | --- | --- |
 | `ref` | Unique, stable reference for the new driver in this export package; not a database ID. |
-| `compatible` | One exact DTS compatible string. Do not use `compatibles`, wildcards or invented IDs. |
+| `compatible` | One exact DTS compatible string. Literal ASCII spaces immediately after the vendor comma are supported (for example, `huawei, wireless_aux_tx`). Do not use `compatibles`, wildcards or invented IDs. |
 | `driverNature` | Required: `physical-device` or `logical-service`. |
 | `instanceCardinality` | Required: `multiple` or `singleton-per-project`. |
 | `displayAlias` | Optional organization display alias; omit or use null when no alias is needed. |
@@ -76,6 +76,8 @@ Append these entries to the corresponding arrays in your actual export. This fra
   ]
 }
 ```
+
+The complete `compatible` value is stored byte-for-byte, without trimming or collapsing internal spaces. `huawei, wireless_aux_tx` and `huawei,wireless_aux_tx` are two distinct exact identities. Only ASCII spaces immediately after the vendor comma are allowed; whitespace elsewhere, leading/trailing whitespace, control characters and wildcards remain invalid. Follow the literal DTS source value.
 
 At most 128 new drivers can be declared in one file. Existing module/subject and byte limits still apply. Keep `source`, `exportId`, `counts`, `limits` and `references` unchanged, and preserve new-driver refs when retrying.
 
