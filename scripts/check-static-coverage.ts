@@ -81,10 +81,10 @@ export async function inspectStaticCoverage(paths: string[], root = process.cwd(
       }
       continue;
     }
-    if (!/^(?:src|server|scripts|ops|e2e|packages)\//.test(file) && file.includes("/")) {
+    if (!/^(?:src|server|scripts|ops|e2e|packages|schemas)\//.test(file) && file.includes("/")) {
       result.problems.push(`Unsupported code family: ${file}`); continue;
     }
-    entry.testSuiteCandidate = file.startsWith("src/") ? "frontend" : file.startsWith("server/") ? "server"
+    entry.testSuiteCandidate = file.startsWith("src/") ? "frontend" : /^(?:server|schemas)\//.test(file) ? "server"
       : /^(?:scripts|ops)\//.test(file) ? "scripts" : file.startsWith("packages/") ? "bridge"
       : file.startsWith("e2e/quality/") ? "quality" : file.startsWith("e2e/") ? "acceptance" : null;
     try {
