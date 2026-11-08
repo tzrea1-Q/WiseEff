@@ -151,6 +151,7 @@ export type CatalogGovernancePorts = {
   readonly exportModuleStructure?: (organizationId: string, invocation: TrustedInvocationContext, requestId: string) => Promise<unknown>;
   readonly previewModuleStructure?: (organizationId: string, invocation: TrustedInvocationContext, body: unknown) => Promise<unknown>;
   readonly applyModuleStructure?: (organizationId: string, invocation: TrustedInvocationContext, requestId: string, body: unknown) => Promise<unknown>;
+  readonly publishModuleStructureDrivers?: (organizationId: string, invocation: TrustedInvocationContext, requestId: string, body: unknown) => Promise<unknown>;
   readonly readRegistrationRecognition?: (organizationId: string, registrationId: string) => Promise<(ModuleRecognitionSettings & { kind: "driver" | "node-type" }) | null>;
   readonly updateRegistrationRecognition?: (input: { organizationId: string; registrationId: string; body: UpdateModuleRecognition;
     invocation: TrustedInvocationContext; requestId: string; ifMatch: string; idempotencyKey: string; catalogReleaseId: string

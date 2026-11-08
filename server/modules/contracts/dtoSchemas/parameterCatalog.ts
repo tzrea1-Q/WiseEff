@@ -2043,6 +2043,7 @@ export const parameterCatalogCanonicalRoutes = [
     module: "catalog", stability: "mvp"
   },
   { id: "catalog.applyModuleStructure", method: "POST", path: "/api/v2/organizations/:organizationId/module-structure/applies", module: "catalog", stability: "mvp" },
+  { id: "catalog.publishModuleStructureDrivers", method: "POST", path: "/api/v2/organizations/:organizationId/module-structure/driver-publications", module: "catalog", stability: "mvp" },
   {
     id: "catalog.getRegistrationRecognition", method: "GET",
     path: "/api/v2/organizations/:organizationId/subject-registrations/:registrationId/recognition",
@@ -2261,6 +2262,7 @@ export const parameterCatalogRouteGates: Record<
   "catalog.getRegistrationRecognition": ["PCAT-API-04"],
   "catalog.exportModuleStructure": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.previewModuleStructure": ["PCAT-API-04", "PCAT-API-10"],
+  "catalog.publishModuleStructureDrivers": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.applyModuleStructure": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.updateRegistrationRecognition": ["PCAT-API-04", "PCAT-API-10"],
   "catalog.listObservations": ["PCAT-API-05"],
@@ -2328,6 +2330,7 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.getRegistrationRecognition": "getRegistrationRecognition",
   "catalog.exportModuleStructure": "exportModuleStructure",
   "catalog.previewModuleStructure": "previewModuleStructure",
+  "catalog.publishModuleStructureDrivers": "publishModuleStructureDrivers",
   "catalog.applyModuleStructure": "applyModuleStructure",
   "catalog.updateRegistrationRecognition": "updateRegistrationRecognition",
   "catalog.listObservations": "listObservations",
@@ -2743,6 +2746,7 @@ export const parameterCatalogSchemaRegistry = {
     requestBody: "ModuleStructurePreviewRequest", responseBody: "ModuleStructurePreviewResponse", additionalResponses: catalogWriteErrors
   },
   "catalog.applyModuleStructure": { summary: "Apply a reviewed module structure update", tags: ["catalog"], requestBody: "ModuleStructureApplyRequest", responseBody: "ModuleStructureReceipt", additionalResponses: catalogWriteErrors },
+  "catalog.publishModuleStructureDrivers": { summary: "Publish reviewed new drivers before applying module structure", tags: ["catalog"], requestBody: "ModuleStructureApplyRequest", responseBody: "ModuleStructurePreviewResponse", additionalResponses: catalogWriteErrors },
   "catalog.updateRegistrationRecognition": {
     summary: "Update organization recognition rules for a subject registration", tags: ["catalog"],
     requestBody: "CatalogRegistrationRecognitionUpdate", responseBody: "CatalogRegistrationRecognitionResponse",

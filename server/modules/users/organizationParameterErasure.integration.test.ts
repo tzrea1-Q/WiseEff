@@ -93,6 +93,27 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
     await db.query(`insert into parameter_catalog.module_structure_created_refs(organization_id,source_organization_id,export_id,package_ref,module_id,initial_snapshot)
       values ('parameter-home','parameter-home','foreign-export','foreign-ref','foreign-module','{}'),
              ('parameter-target','parameter-target','target-export','target-ref','target-module','{}')`);
+    // Retained publication identities are shared history; only each organization's import mapping is erased.
+    const publicationFixture = new pg.Client({ connectionString: lane.url }); await publicationFixture.connect();
+    try {
+      for (const [org, suffix, actor] of [["parameter-home", "foreign", "parameter-platform"], ["parameter-target", "target", "parameter-member"]]) {
+        const fixtureToken = `org1395_driver_${suffix}`;
+        const candidate = await persistHandBuiltCandidate(publicationFixture, { token: fixtureToken,
+          authorPrincipalId: actor, authorOrganizationId: org, impactFacts: lowFacts(actor) });
+        await db.query(`insert into catalog_publication.publication_authorizations
+          (id,event_kind,candidate_id,artifact_digest,expected_base_release_id,expected_base_release_digest,proposal_revision_id,impact_report_digest,capability_contract_digest,policy_revision,actor_principal_id)
+          select $1,'approve',id,artifact_digest,expected_base_release_id,expected_base_release_digest,proposal_revision_id,
+            impact_report_digest,catalog_publication.digest_jsonb(capability_contract),1,$2 from catalog_publication.candidates where id=$3`,
+          [`cauth_${fixtureToken}`, actor, candidate.id]);
+        await db.query(`insert into catalog_publication.publication_jobs
+          (id,candidate_id,authorization_id,request_scope,idempotency_key,request_digest,status)
+          select $1,id,$2,$3,$3,artifact_digest,'failed-terminal' from catalog_publication.candidates where id=$4`,
+          [`cjob_${fixtureToken}`, `cauth_${fixtureToken}`, fixtureToken, candidate.id]);
+        await api.query(`insert into parameter_catalog.module_structure_driver_publications
+          (organization_id,export_id,declarations_digest,declarations,candidate_id,job_id,allocated_subjects)
+          values ($1,$2,'fixture','[]',$3,$4,'{}')`, [org, `${suffix}-export`, candidate.id, `cjob_${fixtureToken}`]);
+      }
+    } finally { await publicationFixture.end(); }
     const placement = (await db.query<{ registration_id: string; module_id: string }>(`select r.id as registration_id, p.module_id
       from parameter_catalog.organization_subject_registrations r
       join parameter_catalog.subject_placements p on p.id=r.current_placement_id and p.organization_id=r.organization_id
@@ -118,6 +139,13 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
         .rejects.toMatchObject({ code: "55000" });
       await expect(db.query("delete from parameter_catalog.module_structure_migration_map where organization_id='parameter-target'"))
         .rejects.toMatchObject({ code: "55000" });
+      await expect(api.query(`insert into parameter_catalog.module_structure_driver_publications
+        (organization_id,export_id,declarations_digest,declarations,candidate_id,job_id,allocated_subjects)
+        select organization_id,'suspended-import',declarations_digest,declarations,candidate_id,job_id,allocated_subjects
+        from parameter_catalog.module_structure_driver_publications where organization_id='parameter-target'`))
+        .rejects.toMatchObject({ code: "55000" });
+      await expect(api.query("update parameter_catalog.module_structure_driver_publications set applied_receipt='{}' where organization_id='parameter-target'"))
+        .rejects.toMatchObject({ code: "55000" });
       await expect(db.query("update parameter_catalog.organization_subject_registrations set display_alias='blocked' where id=$1", [placement.registration_id]))
         .rejects.toMatchObject({ code: "55000" });
       await expect(db.query("update public.parameter_modules set name='blocked' where id=$1", [archived.id]))
@@ -142,6 +170,7 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
       { key: "parameter_catalog.module_structure_migration_map", category: "organization-parameters", count: 1 },
       { key: "parameter_catalog.module_structure_export_baselines", category: "organization-parameters", count: 1 },
       { key: "parameter_catalog.module_structure_created_refs", category: "organization-parameters", count: 1 },
+      { key: "parameter_catalog.module_structure_driver_publications", category: "organization-parameters", count: 1 },
     ]));
     const started = await request<{ item: { id: string; status: string; domains: Record<string, { status: string; attempts: number }> } }>(`${target}/deletions`, "POST",
       { stateDigest: preview.body.item.stateDigest, confirmationOrganizationId: "parameter-target" });
@@ -155,6 +184,11 @@ describe("Organization project/parameter erasure through HTTP and native Postgre
     expect((await db.query("select export_id from parameter_catalog.module_structure_export_baselines where organization_id='parameter-home'")).rows).toEqual([{ export_id: "foreign-export" }]);
     expect((await db.query("select package_ref from parameter_catalog.module_structure_created_refs where organization_id='parameter-target'")).rows).toEqual([]);
     expect((await db.query("select package_ref from parameter_catalog.module_structure_created_refs where organization_id='parameter-home'")).rows).toEqual([{ package_ref: "foreign-ref" }]);
+    expect((await db.query("select export_id from parameter_catalog.module_structure_driver_publications where organization_id='parameter-target'")).rows).toEqual([]);
+    expect((await db.query("select export_id,candidate_id,job_id from parameter_catalog.module_structure_driver_publications where organization_id='parameter-home'")).rows)
+      .toEqual([{ export_id: "foreign-export", candidate_id: "ccand_org1395_driver_foreign", job_id: "cjob_org1395_driver_foreign" }]);
+    expect((await db.query("select id from catalog_publication.candidates where id='ccand_org1395_driver_target'")).rows).toHaveLength(1);
+    expect((await db.query("select id from catalog_publication.publication_jobs where id='cjob_org1395_driver_target'")).rows).toHaveLength(1);
     expect((await db.query("select id from public.parameter_modules where organization_id='parameter-target'")).rows).toEqual([]);
     expect((await db.query("select display_alias from parameter_catalog.organization_subject_registrations where id=$1", [foreignRegistration])).rows)
       .toEqual([{ display_alias: "Foreign alias" }]);

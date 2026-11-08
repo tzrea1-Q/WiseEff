@@ -847,6 +847,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       "log_erasures",
       "module_structure_export_baselines",
       "module_structure_created_refs",
+      "module_structure_driver_publications",
       "organization_log_erasure_objects",
       "organization_parameter_erasure_objects",
       "project_erasures",
@@ -868,6 +869,17 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       has_table_privilege($1, 'parameter_catalog.module_structure_created_refs', 'UPDATE') as update,
       has_table_privilege($1, 'parameter_catalog.module_structure_created_refs', 'DELETE') as remove`, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
     expect(mappingPrivileges.rows).toEqual([{ read: true, insert: true, update: false, remove: false }]);
+    const driverImportPrivileges = await client.query(`select
+      has_table_privilege($1, 'parameter_catalog.module_structure_driver_publications', 'SELECT') as read,
+      has_table_privilege($1, 'parameter_catalog.module_structure_driver_publications', 'INSERT') as insert,
+      has_table_privilege($1, 'parameter_catalog.module_structure_driver_publications', 'UPDATE') as update,
+      has_table_privilege($1, 'parameter_catalog.module_structure_driver_publications', 'DELETE') as remove`, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
+    expect(driverImportPrivileges.rows).toEqual([{ read: true, insert: true, update: false, remove: false }]);
+    const driverImportColumns = await client.query<{ column_name: string }>(`select column_name from information_schema.columns
+      where table_schema='parameter_catalog' and table_name='module_structure_driver_publications'
+        and has_column_privilege($1, 'parameter_catalog.module_structure_driver_publications', column_name, 'UPDATE') order by column_name`,
+      [PARAMETER_GOVERNANCE_WRITER_ROLE]);
+    expect(driverImportColumns.rows.map(row => row.column_name)).toEqual(["allocated_subjects", "applied_receipt", "candidate_id", "job_id"]);
 
     const functions = await client.query<{ function_name: string; owner: string }>(`
       select procedure.proname as function_name, pg_catalog.pg_get_userbyid(procedure.proowner) as owner

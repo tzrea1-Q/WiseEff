@@ -213,6 +213,7 @@ describe("canonical parameter Catalog schema", () => {
       "legacy_mapping_versions",
       "log_erasures",
       "module_structure_created_refs",
+      "module_structure_driver_publications",
       "module_structure_export_baselines",
       "module_structure_migration_map",
       "organization_log_erasure_objects",

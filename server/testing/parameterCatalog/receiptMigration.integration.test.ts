@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyMigrations, migrationsDir, withTempDatabase } from "../tempDatabase";
-import { readCanonicalSchemaFingerprint, S2_SCH_0333_FINGERPRINT, S2_SCH_LIVE_FINGERPRINT } from "./database";
+import { readCanonicalSchemaFingerprint, S2_SCH_0333_FINGERPRINT, S2_SCH_0334_FINGERPRINT } from "./database";
 
 describe("user import receipt Catalog inventory migration", () => {
   it("changes only the expected organization-deletion inventory entry in the Catalog fingerprint", async () => {
@@ -19,7 +19,7 @@ describe("user import receipt Catalog inventory migration", () => {
       await db.query(before);
       expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0333_FINGERPRINT);
       await db.query(after);
-      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_LIVE_FINGERPRINT);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0334_FINGERPRINT);
     });
   }, 120_000);
 });

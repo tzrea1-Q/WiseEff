@@ -12,6 +12,7 @@ import type { LifecycleChange } from "./lifecycle";
 import { validateChangedPaths } from "./pathBudget";
 import { assertReadonlyModuleStructure } from "./diagnostics";
 import { enrichModuleStructureError } from "./importErrorDetails";
+import { assertNewDriverDestinations, inspectNewDrivers, invalidNewDriver } from "./newDrivers";
 
 const fields = ["name", "description", "scope", "sortOrder", "importance", "parentRef"] as const;
 
@@ -30,7 +31,23 @@ function unchangedSubset(value: unknown, baseline: unknown): boolean {
 
 export async function planModuleStructure(client: pg.PoolClient, organizationId: string, invocation: UserInvocationContext, raw: unknown) {
   try { return await planModuleStructureContent(client, organizationId, invocation, raw); }
-  catch (error) { throw enrichModuleStructureError(error, raw); }
+  catch (error) {
+    // Synthesized registrations are implementation details, not uploaded subjects array entries.
+    if (error instanceof ApiError && typeof error.details.path === "string" && raw && typeof raw === "object" && "document" in raw) {
+      const document = raw.document;
+      if (document && typeof document === "object" && "subjects" in document && Array.isArray(document.subjects)
+        && "newDrivers" in document && Array.isArray(document.newDrivers)) {
+        const matched = /^subjects\.(\d+)(?:\.(.*))?$/.exec(error.details.path);
+        const index = matched ? Number(matched[1]) - document.subjects.length : -1;
+        if (index >= 0 && index < document.newDrivers.length) {
+          const field = matched?.[2] === "subjectId" ? "" : matched?.[2];
+          error = new ApiError(error.code, error.message, { ...error.details,
+            path: `document.newDrivers.${index}${field ? `.${field}` : ""}` });
+        }
+      }
+    }
+    throw enrichModuleStructureError(error, raw);
+  }
 }
 
 async function planModuleStructureContent(client: pg.PoolClient, organizationId: string, invocation: UserInvocationContext, raw: unknown) {
@@ -39,7 +56,12 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
   const parsed = moduleStructurePreviewRequestSchema.safeParse(raw);
   if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "Invalid module structure document.", { issues: parsed.error.issues });
   const { mode, document, resolutions } = parsed.data;
-  if (mode === "copy") return planModuleCopy(client, organizationId, invocation, parsed.data);
+  if (mode === "copy") {
+    if (document.newDrivers?.length) invalidNewDriver(0, "", "复制模式不接受新增驱动声明。", "在目标组织导出结构，选择更新当前组织后添加 newDrivers。");
+    return { ...await planModuleCopy(client, organizationId, invocation, parsed.data), driverCreation: undefined };
+  }
+  if (document.subjects.length + (document.newDrivers?.length ?? 0) > 10_000)
+    throw new ApiError("VALIDATION_FAILED", "已有主体与新增驱动合计不能超过 10000 条。", { path: "document.newDrivers" });
   if (Object.keys(parsed.data.mappings).length) throw new ApiError("VALIDATION_FAILED", "Mappings are only valid in copy mode.");
   if (document.source.organizationId !== organizationId) throw new ApiError("FORBIDDEN", "The package is not from this organization.");
   const result = await client.query<{ document: z.infer<typeof moduleStructureExportSchema> }>(
@@ -59,11 +81,17 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
   const deleted = new Set<string>();
   const conflicts: { key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }[] = [];
   assertReadonlyModuleStructure(document, baseline);
+  const driverCreation = await inspectNewDrivers(client, organizationId, document);
   const subjectBaselines = new Map(baseline.subjects.map(subject => [subject.subjectId, subject]));
-  const subjectEdits = new Map(document.subjects.map(subject => [subject.subjectId, subject]));
   const seenSubjects = new Set<string>();
   const lifecycle: LifecycleChange[] = [];
   const normalizedSubjects = document.subjects.map(subject => ({ ...subject }));
+  if (driverCreation?.phase === "ready") for (const [index, driver] of driverCreation.drivers.entries()) {
+    if (current.subjects.some(subject => subject.subjectId === driver.subjectId) || normalizedSubjects.some(subject => subject.subjectId === driver.subjectId))
+      invalidNewDriver(index, "", "新发布的驱动已被登记或同时出现在 subjects 中，需重新核对归属。", "重新导出后使用已有 subjectId 编辑登记；不要重复创建或覆盖已有登记。");
+    normalizedSubjects.push({ subjectId: driver.subjectId!, state: "active", placement: driver.placement, displayAlias: driver.displayAlias ?? null });
+  }
+  const subjectEdits = new Map(normalizedSubjects.map(subject => [subject.subjectId, subject]));
   for (const [index, subject] of normalizedSubjects.entries()) {
     const base = subjectBaselines.get(subject.subjectId);
     if (seenSubjects.has(subject.subjectId)) throw new ApiError("VALIDATION_FAILED", "Duplicate Subject.", { path: `subjects.${index}.subjectId` });
@@ -227,6 +255,7 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
     for (const node of visited) validated.add(node);
   }
   const newIds = new Set(document.modules.filter(module => !module.sourceId && !mapped.has(module.ref)).map(module => moduleIds.get(module.ref)!));
+  assertNewDriverDestinations(driverCreation, moduleIds, new Set(currentModules.keys()), newIds, deleted);
   validateChangedPaths(organizationId, parents, names.rows, changes);
   for (const change of lifecycle) if (change.operation === "register" && change.moduleId) {
     const id = moduleIds.get(change.moduleId) ?? change.moduleId;
@@ -249,7 +278,8 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
     moduleStructureExportSchema.parse(current).subjects, resolutions, lifecycle);
   const actor = { id: invocation.principal.user.id, organizationId: invocation.principal.organization.id,
     roles: invocation.principal.roles.map(role => `${role.roleId}:${role.projectId ?? ""}`).sort(), permissions: [...invocation.principal.permissions].sort() };
-  const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, mappings, subjectVersions: subjectVersions.rows, impact, legacyImpact, recognition: recognition.evidence };
+  const evidence = { organizationId, actor, mode, document, resolutions, current, names: names.rows, mappings, subjectVersions: subjectVersions.rows, impact, legacyImpact, recognition: recognition.evidence,
+    ...(driverCreation ? { driverCreation } : {}) };
   const publicImpact = impact.map(({ bindingVersions: _versions, ...item }) => item);
   for (const { subjectId, projectId } of recognition.matchedProjects) if (!publicImpact.some(item => item.subjectId === subjectId && item.projectId === projectId))
     publicImpact.push({ subjectId, projectId, bindingCount: 0, definitions: [] });
@@ -259,15 +289,21 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
       ...(change.displayAlias ? [{ moduleId: `subject:${change.subjectId}`, field: "displayAlias", before: null, after: change.displayAlias }] : [])] : []),
   ])],
     conflicts: [...conflicts, ...subjectPlan.conflicts.map(({ subjectId, ...conflict }) => ({ moduleId: `subject:${subjectId}`, ...conflict })), ...recognition.conflicts],
-    subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, lifecycle, copyCreates: [], moduleIds, parents, namesById, deleted, currentCatalogReleaseId: current.source.catalogReleaseId, impact: publicImpact, token: createHash("sha256").update(stable(evidence)).digest("hex"), mappingSuggestions: [], mappingTargets: [], copyMappings: [] };
+    driverCreation, subjectChanges: subjectPlan.changes, recognitionChanges: recognition.changes, lifecycle, copyCreates: [], moduleIds, parents, namesById, deleted, currentCatalogReleaseId: current.source.catalogReleaseId, impact: publicImpact, token: createHash("sha256").update(stable(evidence)).digest("hex"), mappingSuggestions: [], mappingTargets: [], copyMappings: [] };
+}
+
+export function publicModuleStructurePreview(plan: Awaited<ReturnType<typeof planModuleStructure>>) {
+  const { changes, conflicts, token, impact, recognitionChanges, mappingSuggestions, mappingTargets, driverCreation } = plan;
+  return { changes: [...changes, ...recognitionChanges.map(change => ({ moduleId: change.subjectId, field: "recognition", before: change.before, after: change.after }))],
+    conflicts, token, impact, mappings: mappingSuggestions, targets: mappingTargets, ...(driverCreation ? { driverCreation } : {}) };
 }
 
 export async function previewModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
   assertTrustedInvocationMatchesScope(invocation.principal, invocation, organizationId, "module structure preview");
   const client = await pool.connect();
-  try { await client.query("begin isolation level repeatable read read only"); const { changes, conflicts, token, impact, recognitionChanges, mappingSuggestions, mappingTargets } = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit");
-    return { changes: [...changes, ...recognitionChanges.map(change => ({ moduleId: change.subjectId, field: "recognition", before: change.before, after: change.after }))], conflicts, token, impact, mappings: mappingSuggestions, targets: mappingTargets }; }
+  try { await client.query("begin isolation level repeatable read read only"); const plan = await planModuleStructure(client, organizationId, invocation, raw); await client.query("commit");
+    return publicModuleStructurePreview(plan); }
   catch (error) { await client.query("rollback").catch(() => undefined); throw error; }
   finally { client.release(); }
 }

@@ -34,8 +34,21 @@ const subjectUpdate = moduleStructureExportSchema.shape.subjects.element.partial
   recognition: z.object({ mode: z.enum(["inherit", "override"]).optional(), override: recognitionValue.partial().nullable().optional(),
     effective: recognitionValue.partial().optional() }).strict().nullable().optional(),
 });
+export const moduleStructureNewDriverSchema = z.object({
+  ref: z.string().min(1).max(512), compatible: z.string().min(1).max(256),
+  driverNature: z.enum(["physical-device", "logical-service"]),
+  instanceCardinality: z.enum(["multiple", "singleton-per-project"]),
+  displayAlias: z.string().min(1).max(128).nullable().optional(),
+  placement: z.object({ kind: z.literal("module"), moduleRef: z.string().min(1).max(512) }).strict(),
+}).strict();
+export const moduleStructureDriverCreationSchema = z.object({
+  phase: z.enum(["required", "publishing", "ready", "applied", "blocked"]),
+  drivers: z.array(moduleStructureNewDriverSchema.extend({ subjectId: z.string().optional() })).max(128),
+  candidateId: z.string().optional(), jobId: z.string().optional(), message: z.string().optional(),
+}).strict();
 export const moduleStructureUpdateDocumentSchema = moduleStructureExportSchema.extend({
   modules: z.array(moduleUpdate).max(10_000), subjects: z.array(subjectUpdate).max(10_000),
+  newDrivers: z.array(moduleStructureNewDriverSchema).max(128).optional(),
 });
 const resolutions = z.record(z.string(), z.enum(["current", "file"]));
 export const moduleStructurePreviewRequestSchema = z.object({ mode: z.enum(["update", "copy"]).default("update"), document: moduleStructureUpdateDocumentSchema, resolutions,
@@ -48,6 +61,7 @@ const fieldValue = z.union([z.string(), z.number(), z.boolean(), z.null(), z.arr
   recognitionValue.extend({ kind: z.enum(["driver", "node-type"]), recognitionSubjectId: z.string().nullable(), overridden: z.boolean(),
     unmigratedRecognition: recognitionValue.optional() }).strict(), recognitionValue]);
 export const moduleStructurePreviewResponseSchema = z.object({
+  driverCreation: moduleStructureDriverCreationSchema.optional(),
   changes: z.array(z.object({ moduleId: z.string(), field: z.string(), before: fieldValue, after: fieldValue }).strict()),
   conflicts: z.array(z.object({ key: z.string(), moduleId: z.string(), field: z.string(), baseline: fieldValue, file: fieldValue, current: fieldValue }).strict()),
   impact: z.array(z.object({ subjectId: z.string(), projectId: z.string(), bindingCount: z.number().int(), definitions: z.array(z.string()) }).strict()),

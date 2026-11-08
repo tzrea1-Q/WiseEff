@@ -321,6 +321,41 @@ describe("KnowledgePage", () => {
     expect(screen.getByRole("dialog", { name: /快充温控调参经验/ })).toBeInTheDocument();
   });
 
+  it.each([
+    { action: "publish", initial: "draft", button: "发布", expected: "已发布" },
+    { action: "archive", initial: "published", button: "归档", expected: "已归档" },
+    { action: "restore", initial: "archived", button: "恢复为已发布", expected: "已发布" },
+  ] as const)("keeps a completed $action when the initial list returns its earlier snapshot, then accepts a later refresh", async ({ action, initial, button, expected }) => {
+    const repository = createMockKnowledgeRepository();
+    const entry = await repository.createMarkdown({ title: "并发状态条目", tags: [], contentMarkdown: "已审阅的知识内容" });
+    if (initial === "published") await repository.publish(entry.id);
+    if (initial === "archived") await repository.archive(entry.id);
+    const staleRows = structuredClone(await repository.list());
+    const pending = deferred<{ items: KnowledgeEntry[] }>();
+    vi.spyOn(repository, "list").mockImplementationOnce(() => pending.promise);
+    const mutation = vi.spyOn(repository, action);
+    render(<KnowledgePage repository={repository} capability={editorCapability} initialEntryId={entry.id} />);
+    const user = userEvent.setup();
+    const detail = await screen.findByRole("dialog", { name: /并发状态条目/ });
+    expect(screen.getByText("知识条目统计加载中…")).toBeInTheDocument();
+    await user.click(within(detail).getByRole("button", { name: button }));
+    await waitFor(() => expect(within(detail).getByText(expected, { exact: true })).toBeInTheDocument());
+    expect(mutation).toHaveBeenCalledExactlyOnceWith(entry.id);
+
+    await act(async () => pending.resolve(staleRows));
+    expect(within(detail).getByText(expected, { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText("知识条目统计加载中…")).not.toBeInTheDocument();
+    await user.click(within(detail).getByRole("button", { name: "关闭" }));
+    const table = screen.getByRole("table", { name: "知识条目列表" });
+    const row = within(table).getByText(entry.title).closest("tr")!;
+    expect(within(row).getByText(expected, { exact: true })).toBeInTheDocument();
+
+    if (action === "archive") await repository.restore(entry.id);
+    else await repository.archive(entry.id);
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(within(row).getByText(action === "archive" ? "已发布" : "已归档", { exact: true })).toBeInTheDocument());
+  });
+
   it("suppresses the shared table fallback after a failed empty list", async () => {
     const repository = createMockKnowledgeRepository();
     vi.spyOn(repository, "list").mockRejectedValue(new Error("Request failed."));

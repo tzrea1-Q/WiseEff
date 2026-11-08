@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SelectControl } from "@/components/common/SelectControl";
@@ -7,25 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createGovernanceIdempotencyKey } from "@/features/parameter-catalog-governance/governanceState";
 import { WiseEffApiError, type ApiClient } from "@/infrastructure/http/apiClient";
+import type { ModuleStructurePreviewResponse, ModuleStructureReceipt } from "@/infrastructure/http/parameterCatalogDtos";
+import { ModuleStructureDriverCreation } from "./ModuleStructureDriverCreation";
 import { importDiagnostic, ModuleStructureImportError, type ImportDiagnostic } from "./ModuleStructureImportError";
 
 type Resolutions = Record<string, "current" | "file">;
-type Preview = {
-  token: string;
-  changes: { moduleId: string; field: string; before: unknown; after: unknown }[];
-  conflicts: { key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }[];
-  impact?: { subjectId: string; projectId: string; bindingCount: number; definitions: string[] }[];
-  mappings?: { ref: string; selected: string | null; frozen: boolean; candidates: { id: string; name: string; suggested: boolean }[] }[];
-  targets?: { id: string; name: string }[];
-};
-type Receipt = { id: string; organizationId: string; changedModules: number; changedFields: number };
+type Preview = ModuleStructurePreviewResponse;
+type Receipt = ModuleStructureReceipt;
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
 const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块", delete: "删除模块", legacyImpact: "将解除的遗留引用数", placement: "归属", displayAlias: "展示别名",
   state: "登记状态", kind: "当前组织主体类型", ownerSubjectId: "所属驱动", recognition: "识别规则", "recognition.mode": "识别模式", "recognition.compatibles": "兼容标识", "recognition.driverNature": "驱动性质",
   "recognition.instanceCardinality": "实例基数", "recognition.nodeTypeName": "节点名称" };
 
-export function ModuleStructureImport({ apiClient, organizationId, canImport, onChanged }: {
-  apiClient?: ApiClient; organizationId?: string; canImport: boolean; onChanged?: () => void;
+export function ModuleStructureImport({ apiClient, organizationId, canImport, sessionPermissions, onChanged }: {
+  apiClient?: ApiClient; organizationId?: string; canImport: boolean; sessionPermissions?: readonly string[] | null; onChanged?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [document, setDocument] = useState<unknown>(null);
@@ -40,35 +35,84 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
   const [diagnostic, setDiagnostic] = useState<ImportDiagnostic | null>(null);
   const [busy, setBusy] = useState(false);
   const [discard, setDiscard] = useState(false);
+  const [confirmPublication, setConfirmPublication] = useState(false);
+  const [publicationAttempted, setPublicationAttempted] = useState(false);
   const write = useRef<{ fingerprint: string; key: string } | null>(null);
+  const publicationWrite = useRef<{ fingerprint: string; key: string; retryAfterFailure: boolean } | null>(null);
+  const requestPending = useRef(false);
+  const requestEpoch = useRef(0);
+  const creation = preview?.driverCreation;
+  const publishing = creation?.phase === "publishing";
+  const needsPublication = creation?.phase === "required" || creation?.phase === "blocked";
+  const canPublish = Boolean(canImport && sessionPermissions?.includes("catalog:author") && sessionPermissions.includes("catalog:publish"));
+  const publicationStarted = Boolean(publicationAttempted || creation?.jobId || creation?.candidateId);
+  const readyToApply = !creation || creation.phase === "ready" || creation.phase === "applied";
   const dirty = Boolean(fileName && !receipt);
   const base = `/api/v2/organizations/${encodeURIComponent(organizationId ?? "")}/module-structure`;
-  const clearError = () => { setError(""); setDiagnostic(null); };
-  const close = () => { setOpen(false); setDocument(null); setFileName(""); setResolutions({}); setMappings({}); setMode("update"); setPreview(null); setReason(""); setReceipt(null); clearError(); write.current = null; };
-  const requestClose = () => { if (dirty) setDiscard(true); else close(); };
-  const showError = (cause: unknown, fallback: string, phase: ImportDiagnostic["phase"]) => setDiagnostic(importDiagnostic(cause, fallback, phase));
-  const refresh = async (next: Resolutions, nextMappings = mappings) => {
-    if (!apiClient || !document) return;
-    setBusy(true); clearError(); setPreview(null);
-    try { setPreview(await apiClient.post<Preview>(`${base}/previews`, { mode, document, resolutions: next, mappings: nextMappings })); }
-    catch (cause) { showError(cause, "预览失败，请检查文件后重试。", "preview"); }
-    finally { setBusy(false); }
+  const clearError = useCallback(() => { setError(""); setDiagnostic(null); }, []);
+  const close = () => { requestEpoch.current++; setOpen(false); setDocument(null); setFileName(""); setResolutions({}); setMappings({}); setMode("update"); setPreview(null); setReason(""); setReceipt(null); setPublicationAttempted(false); clearError(); write.current = null; publicationWrite.current = null; };
+  const requestClose = () => { if (publicationStarted && !receipt) setOpen(false); else if (dirty) setDiscard(true); else close(); };
+  const showError = useCallback((cause: unknown, fallback: string, phase: ImportDiagnostic["phase"]) => setDiagnostic(importDiagnostic(cause, fallback, phase)), []);
+  const refresh = useCallback(async (next: Resolutions, nextMappings = mappings, background = false) => {
+    if (!apiClient || !document || requestPending.current) return;
+    const epoch = requestEpoch.current;
+    requestPending.current = true;
+    if (!background) { setBusy(true); clearError(); setPreview(null); }
+    try {
+      const updated = await apiClient.post<Preview>(`${base}/previews`, { mode, document, resolutions: next, mappings: nextMappings });
+      if (epoch === requestEpoch.current) {
+        if (updated.driverCreation?.phase === "blocked" && publicationWrite.current) publicationWrite.current.retryAfterFailure = true;
+        setPreview(updated); clearError();
+      }
+    } catch (cause) {
+      if (epoch === requestEpoch.current) showError(cause, "预览失败，请检查文件后重试。", "preview");
+    } finally { requestPending.current = false; if (epoch === requestEpoch.current && !background) setBusy(false); }
+  }, [apiClient, document, mappings, base, mode, clearError, showError]);
+  useEffect(() => {
+    if (!open || !publishing || diagnostic || busy || receipt) return;
+    const timer = window.setTimeout(() => { void refresh(resolutions, mappings, true); }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [open, publishing, preview, diagnostic, busy, receipt, refresh, resolutions, mappings]);
+  useEffect(() => () => { requestEpoch.current++; }, []);
+  const publishDrivers = async () => {
+    if (!apiClient || !preview || !needsPublication || !canPublish || !reason.trim() || preview.conflicts.length || requestPending.current) return;
+    const body = { mode, document, resolutions, mappings, token: preview.token, reason: reason.trim() };
+    const fingerprint = JSON.stringify({ mode, document, resolutions, mappings, reason: reason.trim() });
+    if (publicationWrite.current?.fingerprint !== fingerprint || (creation?.phase === "blocked" && publicationWrite.current.retryAfterFailure)) {
+      publicationWrite.current = { fingerprint, key: createGovernanceIdempotencyKey(), retryAfterFailure: false };
+    }
+    publicationWrite.current.retryAfterFailure = false;
+    const epoch = requestEpoch.current;
+    requestPending.current = true; setBusy(true); setPublicationAttempted(true); clearError();
+    try {
+      const updated = await apiClient.post<Preview>(`${base}/driver-publications`, { ...body, idempotencyKey: publicationWrite.current.key });
+      if (epoch === requestEpoch.current) {
+        publicationWrite.current.retryAfterFailure = updated.driverCreation?.phase === "blocked";
+        setPreview(updated);
+      }
+    } catch (cause) {
+      if (epoch === requestEpoch.current) {
+        if (cause instanceof WiseEffApiError && cause.code === "CONFLICT") setPreview(null);
+        showError(cause, "发布失败，请刷新预览核对进度后重试。", "publish");
+      }
+    } finally { requestPending.current = false; if (epoch === requestEpoch.current) { setBusy(false); setConfirmPublication(false); } }
   };
   const apply = async () => {
-    if (!apiClient || !preview) return;
+    if (!apiClient || !preview || !readyToApply || requestPending.current) return;
     const body = { mode, document, resolutions, mappings, token: preview.token, reason: reason.trim() };
     const fingerprint = JSON.stringify(body);
     if (write.current?.fingerprint !== fingerprint) write.current = { fingerprint, key: createGovernanceIdempotencyKey() };
-    setBusy(true); clearError();
+    const epoch = requestEpoch.current;
+    requestPending.current = true; setBusy(true); clearError();
     try {
-      setReceipt(await apiClient.post<Receipt>(`${base}/applies`, { ...body, idempotencyKey: write.current.key }));
-      onChanged?.();
+      const applied = await apiClient.post<Receipt>(`${base}/applies`, { ...body, idempotencyKey: write.current.key });
+      if (epoch === requestEpoch.current) { setReceipt(applied); onChanged?.(); }
     } catch (cause) {
-      if (cause instanceof WiseEffApiError && cause.code === "CONFLICT") {
-        setPreview(null);
+      if (epoch === requestEpoch.current) {
+        if (cause instanceof WiseEffApiError && cause.code === "CONFLICT") setPreview(null);
+        showError(cause, "提交失败，请重试。", "apply");
       }
-      showError(cause, "提交失败，请重试。", "apply");
-    } finally { setBusy(false); }
+    } finally { requestPending.current = false; if (epoch === requestEpoch.current) setBusy(false); }
   };
   const sourceInfo = document && typeof document === "object" && "source" in document ? (document as { source?: { organizationId?: unknown; exportId?: unknown } }).source : undefined;
   const source = sourceInfo?.organizationId;
@@ -77,6 +121,8 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
   const subjectId = (id: string) => id.startsWith("subject:") ? id.slice(8) : subjects.some((subject: { subjectId?: string }) => subject.subjectId === id) ? id : null;
   const moduleLabel = (id: string) => {
     const subject = subjects.find((entry: { subjectId?: string }) => entry.subjectId === subjectId(id));
+    const created = creation?.drivers.find(driver => driver.subjectId === subjectId(id));
+    if (created) return created.displayAlias || created.compatible;
     if (subjectId(id)) return subject?.displayAlias || subject?.recognition?.effective?.nodeTypeName || subject?.recognition?.effective?.compatibles?.[0] || `主体 ${subjectId(id)}`;
     const module = modules.find((entry: { sourceId?: string; ref?: string }) => entry.sourceId === id || entry.ref === id);
     return typeof module?.name === "string" ? module.name : id;
@@ -117,30 +163,33 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
   return <>
     <Button type="button" size="sm" variant="outline" disabled={!canImport || !apiClient || !organizationId} onClick={() => setOpen(true)}>导入结构</Button>
     {open ? <>
-      <SettingsLeaveGuard dirty={dirty} saving={busy} description="离开将放弃上传文件和未提交的冲突选择。" />
-      <ModalDialog open={!discard} onDismiss={busy ? undefined : requestClose} className="submission-dialog param-admin-module-edit-dialog module-structure-import" describedBy>
+      <SettingsLeaveGuard dirty={dirty} saving={busy} description={publicationStarted ? "已提交的发布会继续。返回后重新上传同一份 JSON 并预览，可继续登记。" : "离开将放弃上传文件和未提交的冲突选择。"} />
+      <ModalDialog open={!discard && !confirmPublication} onDismiss={busy ? undefined : requestClose} className="submission-dialog param-admin-module-edit-dialog module-structure-import" describedBy>
         {({ titleId, descriptionId }) => <>
           <div className="submission-dialog-head"><div><h2 id={titleId}>导入模块结构</h2>
-            <p id={descriptionId}>更新当前组织结构，或复制业务模块和主体到当前目标组织。删除须明确处置子模块和主体归属；复制须确认复用或新建。</p></div></div>
+            <p id={descriptionId}>更新当前组织结构，并可声明新驱动；或复制模块和主体到当前组织。删除须明确处置子模块和主体归属；复制须确认复用或新建。</p></div></div>
           <div className="param-admin-module-edit-body">
-            {!receipt ? <SelectControl ariaLabel="导入模式" value={mode} disabled={busy} options={[{ value: "update", label: "更新当前组织" }, { value: "copy", label: "复制到当前组织" }]} onValueChange={next => {
+            {!receipt ? <SelectControl ariaLabel="导入模式" value={mode} disabled={busy || publishing} options={[{ value: "update", label: "更新当前组织" }, { value: "copy", label: "复制到当前组织" }]} onValueChange={next => {
               setMode(next as "update" | "copy"); setMappings({}); setResolutions({}); setPreview(null); clearError();
             }} /> : null}
-            {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy} onChange={async event => {
+            {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy || publishing} onChange={async event => {
               const file = event.target.files?.[0]; if (!file) return;
-              setFileName(file.name); setDocument(null); setPreview(null); setReceipt(null); setResolutions({}); setMappings({}); clearError(); write.current = null;
+              const epoch = ++requestEpoch.current;
+              setFileName(file.name); setDocument(null); setPreview(null); setReceipt(null); setResolutions({}); setMappings({}); setPublicationAttempted(false); clearError(); write.current = null; publicationWrite.current = null;
               if (file.size > 32 * 1024 * 1024) { setError("JSON 文件不能超过 32 MiB。"); return; }
               try {
                 const text = await new Promise<string>((resolve, reject) => {
                   const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsText(file);
                 });
+                if (epoch !== requestEpoch.current) return;
                 const parsed = JSON.parse(text);
                 if (new TextEncoder().encode(JSON.stringify(parsed)).byteLength > 4 * 1024 * 1024) { setError("JSON 内容不能超过 4 MiB。"); return; }
-                setDocument(parsed);
-              } catch (cause) { showError(cause, "JSON 格式无效，请检查文件后重新上传。", "read"); }
+                if (epoch === requestEpoch.current) setDocument(parsed);
+              } catch (cause) { if (epoch === requestEpoch.current) showError(cause, "JSON 格式无效，请检查文件后重新上传。", "read"); }
             }} /></label> : null}
             {fileName ? <p>文件：{fileName}；来源组织：{typeof source === "string" ? source : "未提供"}；目标组织：{organizationId}</p> : null}
             {preview && !receipt ? <>
+              {creation ? <ModuleStructureDriverCreation creation={creation} displayPlacement={displayValue} canPublish={canPublish} /> : null}
               {mode === "copy" ? <><h3>模块映射</h3>{preview.mappings?.map(mapping => <div key={mapping.ref}>
                 <strong>{moduleLabel(mapping.ref)}</strong>
                 <SelectControl ariaLabel={`${mapping.ref} 的目标模块`} value={mapping.selected ?? ""} disabled={busy || mapping.frozen} options={[
@@ -172,7 +221,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
                 <SelectControl ariaLabel={`${key} 的冲突选择`} value={choice} disabled={busy} options={[{ value: "current", label: "保留当前" }, { value: "file", label: "采用文件" }]} onValueChange={nextChoice => {
                   const next = { ...resolutions, [key]: nextChoice }; setResolutions(next); void refresh(next);
                 }} /></div>)}
-              <label>变更原因<Textarea value={reason} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
+              <label>变更原因<Textarea value={reason} disabled={busy || publishing} onChange={event => setReason(event.target.value)} /></label>
             </> : null}
             {receipt ? <p role="status">回执 {receipt.id}：目标组织 {receipt.organizationId}，更新 {receipt.changedModules} 个模块、{receipt.changedFields} 个字段。{receipt.changedFields === 0 ? " 本次没有领域数据变更。" : ""}</p> : null}
             {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -180,11 +229,15 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, on
               sourceOrganizationId: typeof source === "string" ? source : undefined, exportId: typeof sourceInfo?.exportId === "string" ? sourceInfo.exportId : undefined }} /> : null}
           </div>
           <div className="dialog-actions"><button type="button" className="button subtle" disabled={busy} onClick={requestClose}>关闭</button>
-            {!receipt ? <><button type="button" className="button subtle" disabled={!document || busy} onClick={() => void refresh(resolutions)}>预览</button>
-              <button type="button" className="button primary" disabled={!preview || preview.conflicts.length > 0 || !reason.trim() || busy} onClick={() => void apply()}>确认提交</button></> : null}</div>
+            {!receipt ? <><button type="button" className="button subtle" disabled={!document || busy} onClick={() => void refresh(resolutions)}>{publishing ? "刷新发布进度" : "预览"}</button>
+              {needsPublication ? <button type="button" className="button primary" disabled={!canPublish || !preview || preview.conflicts.length > 0 || !reason.trim() || busy} onClick={() => setConfirmPublication(true)}>{creation?.phase === "blocked" ? "重新发布驱动" : "发布新驱动"}</button>
+                : <button type="button" className="button primary" disabled={!preview || !readyToApply || preview.conflicts.length > 0 || !reason.trim() || busy} onClick={() => void apply()}>确认提交</button>}</> : null}</div>
         </>}
       </ModalDialog>
       <ConfirmDialog open={discard} title="放弃导入？" description="上传文件和未提交的冲突选择将丢失。" confirmLabel="放弃修改" cancelLabel="继续编辑" onConfirm={() => { setDiscard(false); close(); }} onCancel={() => setDiscard(false)} />
+      <ConfirmDialog open={confirmPublication} title="发布新驱动？" description={<p>将发布 {creation?.drivers.length ?? 0} 个新驱动到共享目录。发布成功后仍需在本窗口核对模块与归属并确认提交；关闭窗口不会撤销已发布的驱动。</p>}
+        acknowledgement="我已核对影响并确认发布到共享目录" acknowledgementKey={preview?.token} confirmLabel="确认发布新驱动" pending={busy} confirmDisabled={!needsPublication || !canPublish}
+        onConfirm={() => void publishDrivers()} onCancel={() => setConfirmPublication(false)} />
     </> : null}
   </>;
 }

@@ -69,7 +69,7 @@ export function enrichModuleStructureError(error: unknown, raw: unknown): unknow
   outer: for (const entry of original) for (const issue of expand(entry)) {
     if (issues.length === ISSUE_LIMIT) { truncated = true; break outer; }
     let path = parts(issue.path);
-    if (["subjects", "modules", "source", "counts", "limits", "references"].includes(String(path[0]))) path = ["document", ...path];
+    if (["subjects", "modules", "newDrivers", "source", "counts", "limits", "references"].includes(String(path[0]))) path = ["document", ...path];
     const filePath = path[0] === "document" ? path.slice(1) : null;
     const schema = schemaDescription(issue);
     const described: Entry = { ...issue, ...schema, path: path.join(".") };
@@ -84,11 +84,11 @@ export function enrichModuleStructureError(error: unknown, raw: unknown): unknow
       const pointerPath = filePath.at(-1) === "length" && Array.isArray(read(raw, path.slice(0, -1))) ? filePath.slice(0, -1) : filePath;
       described.jsonPointer = pointerPath.length ? `/${pointerPath.map(part => String(part).replaceAll("~", "~0").replaceAll("/", "~1")).join("/")}` : "";
       const index = Number(filePath[1]);
-      if (Number.isInteger(index) && index >= 0 && (filePath[0] === "subjects" || filePath[0] === "modules")) {
+      if (Number.isInteger(index) && index >= 0 && ["subjects", "modules", "newDrivers"].includes(String(filePath[0]))) {
         const item = read(raw, ["document", filePath[0], index]);
         if (record(item)) {
-          const key = filePath[0] === "subjects" ? "subject" : "module";
-          const keys = key === "subject" ? ["subjectId", "kind", "displayAlias"] : ["ref", "sourceId", "name"];
+          const key = filePath[0] === "subjects" ? "subject" : filePath[0] === "newDrivers" ? "newDriver" : "module";
+          const keys = key === "subject" ? ["subjectId", "kind", "displayAlias"] : key === "newDriver" ? ["ref", "compatible", "displayAlias"] : ["ref", "sourceId", "name"];
           const supplied = record(issue[key]) ? issue[key] : {};
           described[key] = { index, ...Object.fromEntries(keys.flatMap(name => {
             const value = supplied[name] ?? item[name];
@@ -98,9 +98,9 @@ export function enrichModuleStructureError(error: unknown, raw: unknown): unknow
       }
     }
     const result: Entry = {};
-    for (const key of ["path", "jsonPointer", "code", "message", "rule", "hint", "subject", "module", "expected", "received", "allowedValues", "example"]) {
+    for (const key of ["path", "jsonPointer", "code", "message", "rule", "hint", "subject", "module", "newDriver", "expected", "received", "allowedValues", "example"]) {
       if (!Object.prototype.hasOwnProperty.call(described, key)) continue;
-      const value = key === "subject" || key === "module" ? { value: described[key], truncated: false } : bounded(described[key]);
+      const value = key === "subject" || key === "module" || key === "newDriver" ? { value: described[key], truncated: false } : bounded(described[key]);
       result[key] = value.value;
       if (value.truncated || described[`${key}Truncated`] === true) result[`${key}Truncated`] = true;
     }

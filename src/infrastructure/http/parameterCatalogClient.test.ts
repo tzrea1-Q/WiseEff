@@ -7,6 +7,7 @@ import {
   parameterCatalogClientMethodByRouteId
 } from "@wiseeff/dto-schemas";
 import { WiseEffApiError } from "./apiClient";
+import type { ModuleStructureApplyRequest } from "./parameterCatalogDtos";
 import { catalogRegistration } from "@/application/parameter-catalog/fixtures";
 import { createApiParameterCatalogGovernanceRepository, createApiParameterCatalogRepository } from "../../application/parameter-catalog/apiAdapter";
 import {
@@ -116,6 +117,26 @@ const catalogDocument = {
 };
 
 describe("parameter catalog client contract", () => {
+  it("publishes module-structure driver declarations with the reviewed request and reads publication progress", async () => {
+    const body: ModuleStructureApplyRequest = { mode: "update", resolutions: {}, mappings: {}, token: "a".repeat(64),
+      reason: "Reviewed new drivers", idempotencyKey: "import-driver-key", document: {
+        format: "wiseeff-module-structure", version: 1, source: { exportId: "export", organizationId: "org/a", catalogReleaseId: "release" },
+        counts: { modules: 0, subjects: 0 }, limits: { maxBytes: 4194304, maxEntries: 10000 }, modules: [], subjects: [], references: [],
+        newDrivers: [{ ref: "driver", compatible: "acme,new", driverNature: "physical-device", instanceCardinality: "multiple",
+          placement: { kind: "module", moduleRef: "power" } }],
+      } };
+    const progress = { token: "b".repeat(64), changes: [], conflicts: [], impact: [], driverCreation: {
+      phase: "publishing", candidateId: "candidate", jobId: "job", drivers: body.document.newDrivers,
+    } };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(progress));
+    const client = createParameterCatalogClient({ fetchImpl: fetchMock });
+    await expect(client.publishModuleStructureDrivers("org/a", body)).resolves.toEqual(progress);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v2/organizations/org%2Fa/module-structure/driver-publications", expect.objectContaining({
+      method: "POST",
+    }));
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(body);
+  });
+
   it("serializes library module scope and bounded project exclusion", async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => jsonResponse(String(url).includes("project-configurations")
       ? { summary: { configuredProjectCount: 0, configuredInstanceCount: 0 }, totalCount: 0,
