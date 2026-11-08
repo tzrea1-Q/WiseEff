@@ -14,6 +14,8 @@ describe("new driver import identity and diagnostics", () => {
       { ...second, displayAlias: "Second" }, { ...driver, placement: { kind: "module", moduleRef: "repaired" } },
     ]));
     expect(driverDeclarationsDigest([driver])).not.toBe(driverDeclarationsDigest([{ ...driver, compatible: "acme,different" }]));
+    expect(driverDeclarationsDigest([{ ...driver, compatible: "huawei, wireless_aux_tx" }]))
+      .not.toBe(driverDeclarationsDigest([{ ...driver, compatible: "huawei,wireless_aux_tx" }]));
     expect(driverDeclarationsDigest([driver])).not.toBe(driverDeclarationsDigest([{ ...driver, driverNature: "logical-service" }]));
     expect(driverDeclarationsDigest([driver])).not.toBe(driverDeclarationsDigest([{ ...driver, instanceCardinality: "singleton-per-project" }]));
   });
