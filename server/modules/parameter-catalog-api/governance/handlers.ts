@@ -1617,6 +1617,14 @@ export async function handleCatalogGovernance(
   void asCommandName(matched.id);
   try {
   switch (matched.id) {
+    case "catalog.publishModuleStructureDrivers": {
+      const denied = authorizeOrganizationWrite(auth.scope, scopedRequest);
+      if (denied) return denied;
+      if (!auth.scope.canReadGovernance || !auth.scope.canReadOrganizationSettings || auth.scope.trustedActor?.initiator !== "user") return forbidden(request.requestId);
+      if (!ports.publishModuleStructureDrivers) return catalogNotReady(request.requestId);
+      return { status: 200, body: await ports.publishModuleStructureDrivers(scopedRequest.params.organizationId!, auth.scope.trustedActor, request.requestId, request.body),
+        headers: { "X-Request-Id": request.requestId } };
+    }
     case "catalog.applyModuleStructure": {
       const denied = authorizeOrganizationWrite(auth.scope, scopedRequest);
       if (denied) return denied;

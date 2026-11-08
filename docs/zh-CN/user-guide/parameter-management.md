@@ -99,6 +99,8 @@
 
 ## 先分清定义，再管理项目
 
+需要一并批量创建业务模块和新驱动时，可使用「模块管理 → 导入结构」的 `newDrivers` 扩展。在同一个窗口先发布主体声明，再预览并确认组织登记和归属。字段与中断恢复规则见[结构填写说明](module-structure-editing.md#一并创建模块和新驱动)。
+
 打开「参数库」（`/parameters/definitions`），只读浏览已发布的属性契约和修订。定义解释属性的含义，项目绑定确定实际节点或配置实例，项目值则是该实例采用的配置。修改某个项目的值，不会重新定义共享的属性契约。
 
 Catalog 由平台持有，发布后的版本不可变。组织登记 Catalog 主体，并将其放入自己的分类树；定义结构仍由平台维护，并非组织私有副本。在「参数后台」（`/parameter-admin`）中，可通过「参数定义管理」（`/parameter-admin/specs`）参与治理。提案和上传的 DTS 需要经过独立的发布流程，详见[Catalog 编制与发布参考](../design-docs/catalog-authoring-and-publication-control-plane.md)。

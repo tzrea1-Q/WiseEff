@@ -380,7 +380,7 @@ export function ParameterModuleMappingPanel({
   const tabs = <ViewSwitch variant="tabs" ariaLabel="模块治理视图" value={activeSubView}
     onValueChange={(value) => selectTab(value as ParameterAdminModulesSubView)} items={[...moduleTabs]} />;
   const structureActions = canonicalEnabled ? <div className="module-structure-actions" role="group" aria-label="模块结构操作">
-    <ModuleStructureImport apiClient={apiClient} organizationId={canonicalOrganizationId}
+    <ModuleStructureImport key={`${canonicalOrganizationId}:${currentPersonId}`} apiClient={apiClient} organizationId={canonicalOrganizationId} sessionPermissions={canonicalSessionPermissions}
       canImport={canManageTaxonomy && canonicalActor !== "agent"} onChanged={() => {
         setRegistryRefresh(value => value + 1);
         setCanonicalDiscoveryRefresh(value => value + 1);

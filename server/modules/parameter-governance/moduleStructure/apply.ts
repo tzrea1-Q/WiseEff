@@ -14,6 +14,7 @@ import { applySubjectPlacement } from "./subjects";
 import { applyLifecycle } from "./lifecycle";
 import { applyCopySubjects } from "./copySubjects";
 import { enrichModuleStructureError } from "./importErrorDetails";
+import { driverDeclarationsDigest } from "./newDrivers";
 
 export async function applyModuleStructure(pool: pg.Pool, organizationId: string, invocation: TrustedInvocationContext, requestId: string, raw: unknown) {
   if (invocation.initiator !== "user") throw new ApiError("FORBIDDEN", "A human administrator is required.");
@@ -46,6 +47,8 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     if (input.mode === "update" && input.document.modules.some(module => module.operation === "delete")) await client.query(
       "select id from parameter_modules where organization_id=$1 order by id for update", [organizationId]);
     const plan = await planModuleStructure(client, organizationId, invocation, { mode: input.mode, document: input.document, resolutions: input.resolutions, mappings: input.mappings });
+    if (plan.driverCreation && !["ready", "applied"].includes(plan.driverCreation.phase))
+      throw new ApiError("CONFLICT", "新增驱动尚未完成发布；请先发布驱动，完成后重新预览并确认模块与登记。", { reason: "driver-publication-required" });
     if (plan.token !== input.token) throw new ApiError("CONFLICT", "Preview is stale; review the current state again.");
     if (plan.conflicts.length) throw new ApiError("CONFLICT", "Resolve all conflicts before applying.");
     for (const mapping of plan.copyMappings) await client.query(`insert into parameter_catalog.module_structure_created_refs
@@ -113,6 +116,9 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     for (const row of deletions.rows) await deleteParameterModule(client as unknown as Queryable, { organizationId, moduleId: row.id });
     const changedModules = new Set(plan.changes.filter(change => !change.moduleId.startsWith("subject:")).map(change => change.moduleId)).size;
     const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules, changedFields: plan.changes.length + plan.recognitionChanges.length };
+    if (plan.driverCreation?.phase === "ready") await client.query(`update parameter_catalog.module_structure_driver_publications
+      set applied_receipt=$4 where organization_id=$1 and export_id=$2 and declarations_digest=$3 and applied_receipt is null`,
+      [organizationId, input.document.source.exportId, driverDeclarationsDigest(input.document.newDrivers!), JSON.stringify(receipt)]);
     if (receipt.changedFields || plan.copyMappings.length) await writeAuditEventInTx(asAuditTx(client), invocation, { requestId }, { app: "parameter-governance", kind: "module-structure-update",
       action: "module-structure-update", severity: "Medium", projectId: null, targetType: "organization", targetId: organizationId,
       metadata: { receiptId: receipt.id, reason: input.reason, exportId: input.document.source.exportId,

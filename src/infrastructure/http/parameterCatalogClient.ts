@@ -339,6 +339,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
       request("POST", canonical("catalog.previewModuleStructure", { organizationId }), moduleStructurePreviewResponseSchema, "ModuleStructurePreviewResponse", { body: moduleStructurePreviewRequestSchema.parse(body) }),
     applyModuleStructure: (organizationId: string, body: z.input<typeof moduleStructureApplyRequestSchema>) =>
       request("POST", canonical("catalog.applyModuleStructure", { organizationId }), moduleStructureReceiptSchema, "ModuleStructureReceipt", { body: moduleStructureApplyRequestSchema.parse(body) }),
+    publishModuleStructureDrivers: (organizationId: string, body: z.input<typeof moduleStructureApplyRequestSchema>) =>
+      request("POST", canonical("catalog.publishModuleStructureDrivers", { organizationId }), moduleStructurePreviewResponseSchema, "ModuleStructurePreviewResponse", { body: moduleStructureApplyRequestSchema.parse(body) }),
     createBatchRegistration: (organizationId: string, body: CatalogBatchRegistrationRequest, context: CatalogWriteContext) =>
       request("POST", canonical("catalog.createBatchRegistration", { organizationId }), catalogBatchRegistrationResponseSchema,
         "CatalogBatchRegistrationResponse", { body: catalogBatchRegistrationRequestSchema.parse(body), context }),
@@ -1085,6 +1087,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.exportModuleStructure": "exportModuleStructure",
     "catalog.previewModuleStructure": "previewModuleStructure",
     "catalog.applyModuleStructure": "applyModuleStructure",
+    "catalog.publishModuleStructureDrivers": "publishModuleStructureDrivers",
     "catalog.createRegistration": "createRegistration",
     "catalog.getRegistration": "getRegistration",
     "catalog.retireRegistration": "retireRegistration",

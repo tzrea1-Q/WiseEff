@@ -99,6 +99,8 @@ For current requests, progress appears in pending or history entries and reviewe
 
 ## Understand definitions before governing a project
 
+To create multiple business modules and new drivers together, use **Module management → Import structure** and the optional `newDrivers` section. The same window publishes the declarations first, then previews and confirms organization registration and placement. See the [structure editing guide](module-structure-editing.md#create-modules-and-new-drivers-together) for fields and recovery after interruption.
+
 Create a driver, node type or configuration schema with **Add subject** in **Canonical subjects and placement**. Enter the compatible identity, node name or governed configuration-schema identity respectively; drivers also require explicit nature and instance-cardinality choices. A subject can be published without inventing a parameter. **Add definition** only adds a parameter to a published subject. If its subject is missing, close the definition dialog and use **Add subject** in **Canonical subjects and placement**, then continue adding a definition after publication. Subject publication, organization registration and project node enablement are separate operations.
 
 Open the read-only "Parameter library" (`/parameters/definitions`) to browse published contracts and revisions. A definition says what a property means; a project binding identifies its actual node or configuration occurrence, and the project value is that occurrence's configured value. Changing a project value does not redefine the shared property contract.

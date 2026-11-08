@@ -14184,6 +14184,68 @@
         }
       }
     },
+    "/api/v2/organizations/{organizationId}/module-structure/driver-publications": {
+      "post": {
+        "operationId": "catalog.publishModuleStructureDrivers",
+        "summary": "Publish reviewed new drivers before applying module structure",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleStructureApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleStructurePreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/organizations/{organizationId}/subject-registrations/{registrationId}/recognition": {
       "get": {
         "operationId": "catalog.getRegistrationRecognition",
@@ -90297,6 +90359,67 @@
                   ],
                   "additionalProperties": false
                 }
+              },
+              "newDrivers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "compatible": {
+                      "type": "string"
+                    },
+                    "driverNature": {
+                      "type": "string",
+                      "enum": [
+                        "physical-device",
+                        "logical-service"
+                      ]
+                    },
+                    "instanceCardinality": {
+                      "type": "string",
+                      "enum": [
+                        "multiple",
+                        "singleton-per-project"
+                      ]
+                    },
+                    "displayAlias": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "placement": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "module"
+                          ]
+                        },
+                        "moduleRef": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "moduleRef"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "compatible",
+                    "driverNature",
+                    "instanceCardinality",
+                    "placement"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [
@@ -90338,6 +90461,99 @@
       "ModuleStructurePreviewResponse": {
         "type": "object",
         "properties": {
+          "driverCreation": {
+            "type": "object",
+            "properties": {
+              "phase": {
+                "type": "string",
+                "enum": [
+                  "required",
+                  "publishing",
+                  "ready",
+                  "applied",
+                  "blocked"
+                ]
+              },
+              "drivers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "compatible": {
+                      "type": "string"
+                    },
+                    "driverNature": {
+                      "type": "string",
+                      "enum": [
+                        "physical-device",
+                        "logical-service"
+                      ]
+                    },
+                    "instanceCardinality": {
+                      "type": "string",
+                      "enum": [
+                        "multiple",
+                        "singleton-per-project"
+                      ]
+                    },
+                    "displayAlias": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "placement": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "module"
+                          ]
+                        },
+                        "moduleRef": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "moduleRef"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "compatible",
+                    "driverNature",
+                    "instanceCardinality",
+                    "placement"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "candidateId": {
+                "type": "string"
+              },
+              "jobId": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "phase",
+              "drivers"
+            ],
+            "additionalProperties": false
+          },
           "changes": {
             "type": "array",
             "items": {
@@ -92718,6 +92934,67 @@
                     "name",
                     "kind",
                     "archived"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "newDrivers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "compatible": {
+                      "type": "string"
+                    },
+                    "driverNature": {
+                      "type": "string",
+                      "enum": [
+                        "physical-device",
+                        "logical-service"
+                      ]
+                    },
+                    "instanceCardinality": {
+                      "type": "string",
+                      "enum": [
+                        "multiple",
+                        "singleton-per-project"
+                      ]
+                    },
+                    "displayAlias": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "placement": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "module"
+                          ]
+                        },
+                        "moduleRef": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "moduleRef"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "compatible",
+                    "driverNature",
+                    "instanceCardinality",
+                    "placement"
                   ],
                   "additionalProperties": false
                 }

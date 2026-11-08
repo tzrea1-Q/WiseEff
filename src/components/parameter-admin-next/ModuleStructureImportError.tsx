@@ -12,6 +12,7 @@ type ImportIssue = {
   jsonPointer?: string;
   rule?: string;
   subject?: { subjectId?: string; kind?: string; displayAlias?: string | null; index?: number };
+  newDriver?: { ref?: string; compatible?: string; displayAlias?: string | null; index?: number };
   module?: { ref?: string; sourceId?: string; name?: string; index?: number };
   expected?: unknown;
   received?: unknown;
@@ -31,7 +32,7 @@ export type ImportDiagnostic = {
   requestId?: string;
   issues: ImportIssue[];
   truncated: boolean;
-  phase: "read" | "preview" | "apply";
+  phase: "read" | "preview" | "publish" | "apply";
 };
 const MAX_ISSUES = 50;
 const MAX_TEXT = 2048;
@@ -62,6 +63,7 @@ const normalizeIssue = (issue: Record<string, unknown>): ImportIssue => ({
   message: boundedText(typeof issue.message === "string" ? issue.message : "字段无效"),
   ...Object.fromEntries(["code", "hint", "jsonPointer", "rule"].flatMap(key => typeof issue[key] === "string" ? [[key, boundedText(issue[key])]] : [])),
   ...(record(issue.subject) ? { subject: issueIdentity(issue.subject, ["subjectId", "kind", "displayAlias"]) } : {}),
+  ...(record(issue.newDriver) ? { newDriver: issueIdentity(issue.newDriver, ["ref", "compatible", "displayAlias"]) } : {}),
   ...(record(issue.module) ? { module: issueIdentity(issue.module, ["ref", "sourceId", "name"]) } : {}),
   ...Object.fromEntries(["expected", "received", "allowedValues", "example"].flatMap(key => {
     if (!Object.prototype.hasOwnProperty.call(issue, key)) return [];
@@ -122,6 +124,9 @@ export function ModuleStructureImportError({ diagnostic, context }: {
           {issue.subject ? <p>主体：{issue.subject.displayAlias ? `${issue.subject.displayAlias} · ` : ""}<code>{issue.subject.subjectId}</code>
             {issue.subject.kind ? ` · ${subjectKinds[issue.subject.kind] ?? issue.subject.kind}` : ""}
             {issue.subject.index !== undefined ? ` · subjects[${issue.subject.index}]（第 ${issue.subject.index + 1} 个主体）` : ""}</p> : null}
+          {issue.newDriver ? <p>新驱动：{issue.newDriver.displayAlias ? `${issue.newDriver.displayAlias} · ` : ""}<code>{issue.newDriver.ref}</code>
+            {issue.newDriver.compatible ? ` · ${issue.newDriver.compatible}` : ""}
+            {issue.newDriver.index !== undefined ? ` · newDrivers[${issue.newDriver.index}]（第 ${issue.newDriver.index + 1} 个新驱动）` : ""}</p> : null}
           {issue.module ? <p>模块：{issue.module.name ? `${issue.module.name} · ` : ""}<code>{issue.module.ref ?? issue.module.sourceId}</code>
             {issue.module.index !== undefined ? ` · modules[${issue.module.index}]（第 ${issue.module.index + 1} 个模块）` : ""}</p> : null}
           {issue.jsonPointer !== undefined ? <p>文件位置（JSON Pointer）：<code>{issue.jsonPointer || "（文档根节点，空指针）"}</code></p> : null}

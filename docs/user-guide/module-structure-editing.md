@@ -1,6 +1,6 @@
 # Editing a module structure package
 
-Import can combine module creation, hierarchy moves, deletion and metadata updates with root Subject registration, lifecycle, placement, aliases and recognition settings. Copy mode carries modules and complete retained Subject snapshots to another organization in the same deployment. Moving a retired registration does not activate it. Invalid or unsupported combinations reject the entire import.
+Import can combine module creation, hierarchy moves, deletion and metadata updates with root Subject registration, lifecycle, placement, aliases and recognition settings. It can also publish new driver declarations before applying their organization registration. Copy mode carries modules and complete retained Subject snapshots to another organization in the same deployment. Moving a retired registration does not activate it. Invalid or unsupported combinations are rejected before that stage is applied.
 
 Keep the original export as a backup. Edit the JSON as data: do not execute text in it. A person must review and confirm the import in WiseEff. The package contains organization taxonomy and Subject settings, not project values, Bindings, source files, credentials, permissions, or audit history.
 
@@ -50,6 +50,40 @@ Preview lists **current organization Subject type: node type → driver**, the e
 Re-export reflects `kind: "driver"` and the effective driver rule. Reimporting the same corrected package is a no-op. Copying this export carries the organization-local correction; existing target rules require an explicit conflict choice. To undo the correction, set `recognition.mode: "inherit"` and `override: null`; preview shows the return to the Catalog node type. A concurrent recognition edit or a change after preview requires conflict review or a new preview.
 
 This correction is limited to standalone roots. Owned child nodes and configuration schemas cannot be converted by importing a compatible. Their ownership and Catalog authoring need a separate explicit change.
+
+## Create modules and new drivers together
+
+In **Update current organization** mode, add a top-level `newDrivers` array to an exported document. These entries create previously nonexistent root drivers; use `subjects` with a real `subjectId` to register an existing Catalog subject. No parameter definition is required. Copy mode does not accept new-driver declarations.
+
+| Field | Meaning |
+| --- | --- |
+| `ref` | Unique, stable reference for the new driver in this export package; not a database ID. |
+| `compatible` | One exact DTS compatible string. Do not use `compatibles`, wildcards or invented IDs. |
+| `driverNature` | Required: `physical-device` or `logical-service`. |
+| `instanceCardinality` | Required: `multiple` or `singleton-per-project`. |
+| `displayAlias` | Optional organization display alias; omit or use null when no alias is needed. |
+| `placement` | `{ "kind": "module", "moduleRef": "battery-auth" }`, referring to an existing or newly declared business module. |
+
+Append these entries to the corresponding arrays in your actual export. This fragment is not a complete upload: retain all original metadata and unrelated entries. Replace the fictional compatible with verified source information.
+
+```json
+{
+  "modules": [
+    { "ref": "battery-auth", "operation": "upsert", "name": "Battery authentication", "parentRef": null, "description": "", "scope": "", "sortOrder": 0, "importance": "medium" }
+  ],
+  "newDrivers": [
+    { "ref": "auth-chip", "compatible": "acme,auth-chip", "driverNature": "physical-device", "instanceCardinality": "multiple", "displayAlias": "Authentication chip", "placement": { "kind": "module", "moduleRef": "battery-auth" } }
+  ]
+}
+```
+
+At most 128 new drivers can be declared in one file. Existing module/subject and byte limits still apply. Keep `source`, `exportId`, `counts`, `limits` and `references` unchanged, and preserve new-driver refs when retrying.
+
+Preview lists new declarations and destination paths alongside module changes. Publishing requires existing Catalog authoring/publication permissions and the instance publication policy. Review the shared-directory scope and confirm **Publish new drivers**. The publication manager processes the job; the dialog shows progress and supports refreshing it. A frozen or unavailable publisher does not create organization modules or registrations.
+
+After publication, review the fresh module/registration preview and choose **Confirm submit**. Drivers are shared Catalog identities; their registration, alias and placement belong to the current organization. Parameters, DTS files and project instances are not created.
+
+If the window closes or the browser reloads, upload the same edited file and preview again to resume. Keep each driver's `ref`, `compatible`, nature and cardinality unchanged; the order of declarations may change. Before final submission you may correct the target module or organization alias and preview again. Do not forge `subjectId` values or switch modes to bypass a conflict. If publication succeeded but organization submission failed, the drivers remain published and the interface reports that modules and registration are pending. Resolve the diagnostic and retry that stage without publishing duplicate drivers. A blocked publication requires a fresh preview and explicit **Republish drivers** confirmation; it is never silently resubmitted. Only the final import receipt confirms completion. After completion, re-export before editing these drivers through ordinary `subjects` entries.
 
 ## Review and import
 
