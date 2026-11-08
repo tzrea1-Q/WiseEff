@@ -122,19 +122,19 @@ export function KnowledgePage({
   const [deleteError, setDeleteError] = useState("");
   const listRequest = useRef(0);
   const searchRequest = useRef(0);
-  const latestEntryRead = useRef<{ entry: KnowledgeEntry } | null>(null);
+  const latestEntrySnapshot = useRef<{ entry: KnowledgeEntry } | null>(null);
   const loadRevisions = useCallback((entryId: string) => repository.listRevisions(entryId), [repository]);
 
   const loadEntries = useCallback(async () => {
     const request = ++listRequest.current;
-    const entryReadAtStart = latestEntryRead.current;
+    const entrySnapshotAtStart = latestEntrySnapshot.current;
     setLoading(true);
     setListError("");
     try {
       const result = await repository.list(pendingSuggestions ? { pendingSuggestions: true } : undefined);
       if (request !== listRequest.current) return;
-      // Preserve only a get completed after this list started, never an older cached lookup.
-      const freshEntry = latestEntryRead.current !== entryReadAtStart ? latestEntryRead.current?.entry : null;
+      // Preserve a detail read or lifecycle update completed after this list started, never an older snapshot.
+      const freshEntry = latestEntrySnapshot.current !== entrySnapshotAtStart ? latestEntrySnapshot.current?.entry : null;
       setRows(freshEntry
         ? [freshEntry, ...result.items.filter((entry) => entry.id !== freshEntry.id)]
         : result.items);
@@ -172,7 +172,7 @@ export function KnowledgePage({
   // Citation deep link (/knowledge?entryId=…) opens the entry detail directly.
   const loadCitation = useCallback(async () => {
     const request = ++citationRequest.current;
-    latestEntryRead.current = null;
+    latestEntrySnapshot.current = null;
     setCitationError("");
     setCitationLoading(Boolean(linkedEntryId));
     setSelectedId(null);
@@ -197,7 +197,7 @@ export function KnowledgePage({
         const { page } = parseKnowledgeEntryQuery(new URLSearchParams(linkedPage ? { page: linkedPage } : {}));
         setCitation({ revisionId: revision.id, page: revision.fileId ? page : null, historical: revision.revisionNumber !== entry.headRevisionNumber });
       }
-      latestEntryRead.current = { entry };
+      latestEntrySnapshot.current = { entry };
       setRows((current) => (current.some((item) => item.id === entry.id)
         ? current.map((item) => item.id === entry.id ? entry : item)
         : [entry, ...current]));
@@ -251,7 +251,7 @@ export function KnowledgePage({
   const refreshEntry = async (entryId: string) => {
     const fresh = await repository.get(entryId);
     if (fresh) {
-      latestEntryRead.current = { entry: fresh };
+      latestEntrySnapshot.current = { entry: fresh };
       setRows((current) => {
         const exists = current.some((item) => item.id === entryId);
         return exists ? current.map((item) => (item.id === entryId ? fresh : item)) : [fresh, ...current];
@@ -460,7 +460,7 @@ export function KnowledgePage({
       await repository.hardDelete(deleteEntry.id);
       setRows((current) => current.filter((entry) => entry.id !== deleteEntry.id));
       setSearchResults((current) => current.filter((entry) => entry.entryId !== deleteEntry.id));
-      latestEntryRead.current = null;
+      latestEntrySnapshot.current = null;
       setSelectedId((current) => current === deleteEntry.id ? null : current);
       setDeleteEntry(null);
       if (initialEntryId === deleteEntry.id) onNavigate?.("/knowledge");
@@ -655,14 +655,17 @@ export function KnowledgePage({
         onShowRevisions={(entry) => setRevisionsEntry(entry)}
         onPublish={async (entry) => {
           const updated = await repository.publish(entry.id);
+          latestEntrySnapshot.current = { entry: updated };
           setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         }}
         onArchive={async (entry) => {
           const updated = await repository.archive(entry.id);
+          latestEntrySnapshot.current = { entry: updated };
           setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         }}
         onRestore={async (entry) => {
           const updated = await repository.restore(entry.id);
+          latestEntrySnapshot.current = { entry: updated };
           setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         }}
         onDownloadFile={handleDownload}
