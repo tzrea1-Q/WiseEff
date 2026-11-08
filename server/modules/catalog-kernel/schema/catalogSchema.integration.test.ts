@@ -931,11 +931,11 @@ describe("canonical parameter Catalog schema", () => {
       "véndor,driver",
     ],
     [
-      "driver compatible whitespace",
+      "driver compatible whitespace in vendor portion",
       "catalog_subjects",
       "catalog_subject_canonical_key_ck",
       "driver",
-      "vendor, driver",
+      "vendor ,driver",
     ],
     [
       "driver compatible quote",
@@ -1065,7 +1065,9 @@ describe("canonical parameter Catalog schema", () => {
         array[
           parameter_catalog.is_canonical_compatible_selector('vendor,driver'),
           parameter_catalog.is_canonical_compatible_selector('simple'),
-          parameter_catalog.is_canonical_compatible_selector('vendor+tag,driver.rev/1')
+          parameter_catalog.is_canonical_compatible_selector('vendor+tag,driver.rev/1'),
+           parameter_catalog.is_canonical_compatible_selector('huawei, wireless_aux_tx'),
+           parameter_catalog.is_canonical_compatible_selector('huawei,  wireless_aux_tx')
         ] as compatible,
         array[
           parameter_catalog.is_canonical_node_type_name('/'),
@@ -1081,7 +1083,7 @@ describe("canonical parameter Catalog schema", () => {
 
     expect(result.rows).toEqual([
       {
-        compatible: [true, true, true],
+        compatible: [true, true, true, true, true],
         node_name: [true, true, true],
         property_key: [true, true, true],
       },
