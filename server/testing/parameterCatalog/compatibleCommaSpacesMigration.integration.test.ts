@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyMigrations, migrationsDir, withTempDatabase } from "../tempDatabase";
-import { readCanonicalSchemaFingerprint, S2_SCH_0335_FINGERPRINT } from "./database";
+import { readCanonicalSchemaFingerprint, S2_SCH_0335_FINGERPRINT, S2_SCH_0336_FINGERPRINT } from "./database";
 
 describe("compatible delimiter-space forward migration", () => {
   it("preserves historical 0335 and changes only the exact SQL predicate", async () => {
@@ -26,7 +26,7 @@ describe("compatible delimiter-space forward migration", () => {
         "huawei,wireless_aux_tx ", "huawei,\tdevice", "huawei,*", "huawei,wireless_aux_tx,other"]) {
         expect(await check(value), value).toBe(false);
       }
-      expect(await readCanonicalSchemaFingerprint(connectionString)).not.toBe(beforeFingerprint);
+      expect(await readCanonicalSchemaFingerprint(connectionString)).toBe(S2_SCH_0336_FINGERPRINT);
 
       // Restore the original function body inside the disposable DB to prove
       // there were no other Catalog schema changes in this migration.
