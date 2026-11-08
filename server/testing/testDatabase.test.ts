@@ -134,6 +134,8 @@ describe("fresh database fixture policy", () => {
       "server/modules/parameter-catalog-migration/sourceOccurrenceGuard.integration.test.ts": ["srcintegrityupgrade:false"],
       "server/modules/parameter-files/canonicalJsonSource.integration.test.ts": ["json_digest_upgrade:false"],
       "server/modules/parameter-files/memberAdditionIntentUpgrade.integration.test.ts": ["intentupgrade:false"],
+      // Provision an API LOGIN on 0334, then replay its bounded 0335 grants.
+      "server/modules/parameter-governance/moduleStructure/driverPublicationMigration.integration.test.ts": ["module_driver_upgrade:false"],
       "server/modules/parameter-kernel/parameterIdentityMode.integration.test.ts": ["test_t1080ci2_identity:false"],
       "server/modules/parameter-specs/specReviewTenantEvidence.integration.test.ts": ["mig0055:false"],
       "server/modules/parameter-topology/manifestBackfillMigration.test.ts": ["mig0054:false"],
@@ -152,6 +154,8 @@ describe("fresh database fixture policy", () => {
       // Backend termination must own its database and physical connections.
       "server/shared/database/clientConnectionRecovery.integration.test.ts": ["client_pool_recovery:false", "client_tx_recovery:false"],
       "server/shared/database/migrationCompatibility.integration.test.ts": ["purge_bounds:false", "purge_cutover:false", "purge_existing:false", "purge_retry:false"],
+      // Compare exact Catalog changes and restore the historical projection around 0335.
+      "server/testing/parameterCatalog/driverPublicationFingerprint.integration.test.ts": ["driver_catalog:false"],
       // Compare the Catalog projection before and after replaying migration 0334.
       "server/testing/parameterCatalog/receiptMigration.integration.test.ts": ["receipt_catalog:false"],
       "server/testing/testDatabase.test.ts": ["cleanup_race:false", "emptycompare:false", "freshcompare:true", "freshguard:true", "role_lease_a:false", "role_lease_b:false"]

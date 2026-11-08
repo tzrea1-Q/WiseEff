@@ -261,6 +261,7 @@ describe("S8-CON threat matrix", () => {
       route.path.includes("publication")
     );
     expect(publication.map((route) => `${route.method} ${route.path}`)).toEqual([
+      "POST /api/v2/organizations/:organizationId/module-structure/driver-publications",
       "POST /api/v2/catalog/publication-candidates",
       "GET /api/v2/catalog/publication-candidates/:candidateId",
       "POST /api/v2/catalog/publication-candidates/:candidateId/publish",

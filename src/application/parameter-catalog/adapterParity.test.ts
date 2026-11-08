@@ -10,6 +10,7 @@ import {
 
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createParameterCatalogClient } from "@/infrastructure/http/parameterCatalogClient";
+import type { ModuleStructureApplyRequest } from "@/infrastructure/http/parameterCatalogDtos";
 
 import { createApiCatalogPorts } from "./apiAdapter";
 import {
@@ -254,6 +255,30 @@ describe("catalog API and mock adapter parity", () => {
         "function"
       );
     }
+  });
+
+  it("forwards driver publication through governance while mock mode stays explicitly unavailable", async () => {
+    const body: ModuleStructureApplyRequest = { mode: "update", token: "a".repeat(64), idempotencyKey: "import-new-drivers", reason: "Reviewed driver declarations",
+      resolutions: {}, mappings: {}, document: { format: "wiseeff-module-structure", version: 1,
+        source: { exportId: "export-drivers", organizationId: CATALOG_ORGANIZATION_ID, catalogReleaseId: CATALOG_RELEASE_ID },
+        counts: { modules: 0, subjects: 0 }, limits: { maxBytes: 4194304, maxEntries: 10000 }, references: [], subjects: [],
+        modules: [{ ref: "power", operation: "upsert", name: "Power", parentRef: null, description: "", scope: "", sortOrder: 0, importance: "medium" }],
+        newDrivers: [{ ref: "new-driver", compatible: "acme,new-driver", driverNature: "physical-device", instanceCardinality: "multiple",
+          placement: { kind: "module", moduleRef: "power" } }],
+      } };
+    const progress = { token: "b".repeat(64), changes: [], conflicts: [], impact: [], driverCreation: {
+      phase: "publishing", drivers: body.document.newDrivers, candidateId: "candidate-drivers", jobId: "job-drivers",
+    } };
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(progress));
+    const api = createApiCatalogPorts(createParameterCatalogClient({ fetchImpl }));
+    await expect(api.governance.publishModuleStructureDrivers(CATALOG_ORGANIZATION_ID, body)).resolves.toEqual(progress);
+    expect(fetchImpl).toHaveBeenCalledExactlyOnceWith(`/api/v2/organizations/${CATALOG_ORGANIZATION_ID}/module-structure/driver-publications`,
+      expect.objectContaining({ method: "POST" }));
+    expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toEqual(body);
+    const mock = createMockCatalogPorts();
+    await expect(mock.governance.publishModuleStructureDrivers(CATALOG_ORGANIZATION_ID, body)).rejects.toMatchObject({
+      code: "SERVICE_UNAVAILABLE", details: { reason: "mock-module-structure-unavailable" },
+    });
   });
 
   it("rejects Effective/Governance extra power on both adapters", () => {

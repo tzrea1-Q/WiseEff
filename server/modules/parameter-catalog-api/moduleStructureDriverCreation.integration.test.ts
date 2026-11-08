@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { z } from "zod";
 import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog";
+import { getAuthContext } from "../auth/repository";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { createCatalogInstaller } from "../catalog-kernel/install/installer";
 import { bootstrapFirstAcme, persistPredecessorArtifact } from "../catalog-kernel/install/publicationTestHarness";
@@ -27,7 +28,7 @@ describe("module structure creates drivers through publication before atomic org
   let admin: pg.Client;
   const runToken = `msnew${randomUUID().replaceAll("-", "").slice(0, 12)}`;
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     fixture = await createDisposableParameterCatalogDatabase("structuredriver");
     db = createPostgresDatabase(fixture.url);
     admin = new pg.Client({ connectionString: fixture.url });
@@ -43,7 +44,7 @@ describe("module structure creates drivers through publication before atomic org
     )).rows[0]?.superuser).toBe(false);
   }, 120_000);
 
-  afterAll(async () => {
+  afterEach(async () => {
     await api?.close();
     await manager?.close();
     if (fixture) await dropLabRuntimeLogins(fixture.url, runToken);
@@ -57,8 +58,9 @@ describe("module structure creates drivers through publication before atomic org
     await db.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [`${id}-admin`, id]);
     await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [`${id}-role`, `${id}-admin`, id]);
     await db.query("insert into parameter_modules(id,organization_id,name,path,kind,origin) values ($1,$2,'Existing',$1,'business','curated')", [`${id}-module`, id]);
-    let auth = makeTestAuthContext({ organizationId: id, userId: `${id}-admin`, roleId: "admin" });
-    const app = createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () => auth } } });
+    const auth = makeTestAuthContext({ organizationId: id, userId: `${id}-admin`, roleId: "admin" });
+    const createApp = () => createWiseEffServer({ db: api, auth: { mode: "production", verifier: { verify: async () => auth } } });
+    const app = createApp();
     const path = `/api/v2/organizations/${id}/module-structure`;
     const exported = async (): Promise<Document> => {
       const response = await requestJson(app, `${path}/exports`, { method: "POST", body: "{}" });
@@ -68,13 +70,13 @@ describe("module structure creates drivers through publication before atomic org
     const preview = (document: unknown, mode = "update") => requestJson(app, `${path}/previews`, {
       method: "POST", body: JSON.stringify({ mode, document, resolutions: {} }),
     });
+    // requestJson owns listen/close. Concurrent confirmations need independent
+    // HTTP listeners while sharing the same real API pool and database locks.
     const confirm = (endpoint: "driver-publications" | "applies", document: Document, token: string, key: string) =>
-      requestJson(app, `${path}/${endpoint}`, { method: "POST", body: JSON.stringify({
+      requestJson(createApp(), `${path}/${endpoint}`, { method: "POST", body: JSON.stringify({
         mode: "update", document, resolutions: {}, token, idempotencyKey: key, reason: "Reviewed new drivers and module destinations",
       }) });
-    return { app, path, exported, preview, confirm,
-      setPermissions: (permissions: string[]) => { auth = makeTestAuthContext({ organizationId: id, userId: `${id}-admin`, roleId: "admin", permissions }); },
-      resetPermissions: () => { auth = makeTestAuthContext({ organizationId: id, userId: `${id}-admin`, roleId: "admin" }); } };
+    return { app, path, exported, preview, confirm };
   }
 
   function withDrivers(document: Document, suffix: string): Document {
@@ -247,11 +249,21 @@ describe("module structure creates drivers through publication before atomic org
     expect(cross.status, cross.bodyText).toBe(403);
     const ownForeign = await other.preview(document);
     expect(ownForeign.status, ownForeign.bodyText).toBe(403);
-    const all = makeTestAuthContext({ organizationId: id, userId: `${id}-admin`, roleId: "admin" }).permissions;
-    source.setPermissions(all.filter(permission => permission !== "catalog:publish"));
-    const rejected = await source.confirm("driver-publications", document, initial.token, "without-publish");
+    // Production authentication reloads database roles and ignores permissions
+    // supplied by the verifier. Platform admins retain organization import access
+    // but require an explicit Catalog capability grant to publish.
+    await db.query("update user_role_bindings set role_id='platform-admin' where id=$1", [`${id}-role`]);
+    await db.query(`insert into roles(id,name,level,permissions)
+      values ('catalog-capability-module-driver-author','Driver author','user',array['catalog:author'])`);
+    await db.query(`insert into user_role_bindings(id,user_id,organization_id,role_id)
+      values ($1,$2,$3,'catalog-capability-module-driver-author')`, [`${id}-author`, `${id}-admin`, id]);
+    const restricted = await getAuthContext(api, `${id}-admin`);
+    expect(restricted.permissions).toContain("catalog:author");
+    expect(restricted.permissions).not.toContain("catalog:publish");
+    const allowedImport = await checkedPreview(source, document);
+    const rejected = await source.confirm("driver-publications", document, allowedImport.token, "without-publish");
     expect(rejected.status, rejected.bodyText).toBe(403);
-    source.resetPermissions();
+    expect(rejected.body).toMatchObject({ error: { code: "FORBIDDEN", details: { reason: "publication-capability-missing" } } });
     expect(await snapshot(id)).toEqual(before);
   });
 

@@ -77,6 +77,7 @@ export interface ParameterCatalogGovernanceRepository {
   exportModuleStructure(organizationId: string): Promise<ModuleStructureDocument>;
   previewModuleStructure(organizationId: string, body: ModuleStructurePreviewRequest): Promise<ModuleStructurePreviewResponse>;
   applyModuleStructure(organizationId: string, body: ModuleStructureApplyRequest): Promise<ModuleStructureReceipt>;
+  publishModuleStructureDrivers(organizationId: string, body: ModuleStructureApplyRequest): Promise<ModuleStructurePreviewResponse>;
   listUnregisteredSubjects(organizationId: string, source: "organization" | "all", catalogReleaseId: string): Promise<CatalogUnregisteredSubjectsResponse>;
   createBatchRegistration(organizationId: string, body: CatalogBatchRegistrationRequest, context: CatalogIdempotentWriteContext): Promise<CatalogBatchRegistrationResponse>;
   listRegistrations(
