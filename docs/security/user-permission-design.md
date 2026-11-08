@@ -19,7 +19,9 @@ This note defines the current WiseEff platform permission model for role behavio
 
 ## Organization administration
 
-`/organization` is the Organization administration profile. `/organization/members` is people management. Both are home-organization tenant operations. `GET /api/v1/organization` is available to any active authenticated member. `PATCH /api/v1/organization` requires `users:manage`, accepts `{ name }` only, and writes `organization-update` in the same transaction. The name is a label, not a globally unique identifier. This is distinct from Organization-scoped governance on `/parameter-admin`.
+`/organization` is the Organization administration profile. `/organization/members` is people management. Ordinary administrators operate in their Home organization; platform administrators may explicitly select an Operating organization under ADR-0051. `GET /api/v1/organization` is available to active authenticated members within their authorized scope. `PATCH /api/v1/organization` requires `users:manage`, accepts `{ name }` only, and writes `organization-update` in the same transaction. The name is a label, not a globally unique identifier. This is distinct from Organization-scoped governance on `/parameter-admin`.
+
+Bulk local-account creation uses the same administrator scope and grant rules. Organization administrators may grant Organization administrator roles; only platform administrators may grant `platform-admin`. Every batch targets one Organization, with current authority rechecked at confirmation and receipt lookup. Imported Organization roles confer no Team membership, project participation or review-duty assignment. See [bulk import security](../SECURITY.md#bulk-local-account-import).
 
 ## Inclusion Rules
 

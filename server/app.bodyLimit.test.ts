@@ -10,6 +10,13 @@ import { requestJson } from "./test/testClient";
 const samplePath = "/api/v1/log-skills/skill-1/sample";
 const sampleBodyLimit = Math.ceil(2 * 1024 * 1024 * 4 / 3) + 4 + 64 * 1024;
 
+it("bounds both user-import JSON commands to 4 MiB before body collection", async () => {
+  for (const path of ["/api/v1/users/imports/preview", "/api//v1//users//imports//"]) {
+    expect(resolveRouteBodyLimit({ method: "POST", path })).toBe(4 * 1024 * 1024);
+    expect(await requestDeclaredOversize(createHttpServer(createRouter(), { maxBodyBytes: resolveRouteBodyLimit }), path, "POST", 4 * 1024 * 1024 + 1)).toMatchObject({ status: 413 });
+  }
+});
+
 describe("module structure transport body limit", () => {
   it("bounds preview and apply before collecting their request bodies", async () => {
     const cap = 8 * 1024 * 1024;

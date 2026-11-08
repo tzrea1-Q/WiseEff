@@ -35,6 +35,15 @@ afterEach(async () => {
 });
 
 describe("PostgreSQL HTTP error boundary", () => {
+  it("rejects malformed credential-bearing JSON without logging or returning its contents", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const baseUrl = await listen(createHttpServer({ handle: async () => ({ status: 200, body: {} }) }));
+    const response = await fetch(`${baseUrl}/api/v1/users/imports`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"password":"sensitive-json-secret" unexpected' });
+    expect(response.status).toBe(400);
+    expect(await response.text()).not.toContain("sensitive-json-secret");
+    expect(JSON.stringify(log.mock.calls)).not.toContain("sensitive-json-secret");
+    expect(log).not.toHaveBeenCalled();
+  });
   it.each([
     ["55000", "Pinned source graph is immutable", 409, "CONFLICT"],
     ["55000", "Pinned source file identity and version are immutable", 500, "INTERNAL_ERROR"],

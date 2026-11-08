@@ -102,6 +102,12 @@ Catalog 定义行在等宽属性键旁保留已发布的显示名；中文名称
 
 本地账号注册没有组织下拉；新账号加入评估组织（有种子时是 ChargeLab）。自助注册角色下拉使用：`guest`、`hardware-user`、`software-user`、`hardware-committer`、`software-committer`。`admin` 与 `platform-admin` 只能通过组织管理分配，且后者仅已持有 `platform-admin` 的调用方可以授予或撤销；不能在注册页自助选择。
 
+## 成员批量导入
+
+`UserPermissionsPage` 只在选定组织的本地账号管理中打开 `features/organization/UserImportDialog.tsx`。`application/userImportWorkbook.ts` 负责模板生成和有界工作簿解析，`userGovernanceClient` 调用权威预检、确认和结果接口。弹窗只在临时内存中保留含凭据的行，对外展示明确排除密码的投影。恢复最多在标签页会话存储中保留最近的操作者、组织与批次定位信息。
+
+复用现有弹窗、按钮、徽标、表格和状态样式。目标组织、逐行问题、管理员授予及已确认或未知结果必须清楚可见并支持键盘。真实 API 流程检查 1440×900，密集弹窗额外检查一个较小 PC 窗口；组件测试不能单独证明布局或服务端权限。
+
 ## 参数库
 
 只读参数库 `/parameters/definitions` 与项目参数并列，复用规范 Catalog 读取；默认筛选有效主体和有效定义，不隐式筛选组织登记状态。组织登记和模块筛选需要明确选择，列表与修订历史状态保存在 URL。完整定义页复用安全 Markdown 子集，明确标记示例，将 schema 和身份放在次级区域。

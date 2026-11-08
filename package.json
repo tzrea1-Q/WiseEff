@@ -19,7 +19,7 @@
     "publication:manager": "tsx server/modules/catalog-publication/jobs/managerRunner.ts",
     "reload:sweep-artifacts": "tsx scripts/sweep-reload-artifacts.ts",
     "typecheck": "NODE_OPTIONS='--max-old-space-size=4096' tsx scripts/run-cached-tool.ts tsc",
-    "build": "NODE_OPTIONS='--max-old-space-size=4096' tsx scripts/run-cached-tool.ts tsc && NODE_OPTIONS='--max-old-space-size=2048' vite build",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' tsx scripts/run-cached-tool.ts tsc && NODE_OPTIONS='--max-old-space-size=3072' vite build",
     "test": "NODE_OPTIONS='--max-old-space-size=768' tsx scripts/run-vitest.ts",
     "test:impact": "tsx scripts/test-impact.ts",
     "test:browser:codex": "tsx scripts/run-codex-browser.ts",

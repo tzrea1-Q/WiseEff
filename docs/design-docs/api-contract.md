@@ -16,6 +16,10 @@ Rules:
 - Long-running work exposes job status or event streams.
 - OpenAPI contract freshness is checked in CI.
 
+## Local-user batch imports
+
+`POST /api/v1/users/imports/preview` validates without writes. `POST /api/v1/users/imports` accepts `{ importId, previewToken, rows }` and creates the batch atomically. `GET /api/v1/users/imports/:importId` retrieves the committed receipt for its original currently authorized operator and Operating organization. A committed replay returns the receipt before preview freshness or password validation; changed non-secret intent conflicts and passwords never reset existing accounts. An absent receipt or uncertain response does not establish rollback. Preview and confirmation bodies are limited to 4 MiB; responses and receipts omit passwords.
+
 ## Endpoint Groups
 
 - Auth and users: `/me`, home organization `GET`/`PATCH /api/v1/organization`, user listing, user creation, permanent non-self deletion (`DELETE /api/v1/users/:userId`), activation, role replacement. Deletion returns `204`, removes account-owned rows, and leaves durable history with nullable user references.

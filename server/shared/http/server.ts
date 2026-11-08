@@ -172,7 +172,11 @@ async function readBody(request: IncomingMessage, maxBytes = DEFAULT_MAX_REQUEST
     return { kind: "raw", contentType, bytes } satisfies RawBody;
   }
 
-  return JSON.parse(bytes.toString("utf8"));
+  try {
+    return JSON.parse(bytes.toString("utf8"));
+  } catch {
+    throw new ApiError("VALIDATION_FAILED", "Invalid JSON request body.");
+  }
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown) {

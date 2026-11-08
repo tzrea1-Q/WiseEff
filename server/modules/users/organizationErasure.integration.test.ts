@@ -40,6 +40,11 @@ describe("Durable empty Organization erasure through HTTP and PostgreSQL", () =>
   }
   it("really erases management records and inactive platform accounts, retaining only an independent minimal receipt", async () => {
     await db.query("insert into knowledge_entries(id,organization_id,title,content_form,created_by_user_id) values('00000000-0000-4000-8000-000000000095','erasure-home','Foreign knowledge must remain','markdown','erasure-inactive')");
+    await db.query("insert into users(id,organization_id,name,title,is_active) values('erasure-original-operator','erasure-target','Original platform operator','Admin',true)");
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values('erasure-original-role','erasure-original-operator','erasure-target','platform-admin')");
+    await db.query(`insert into user_import_receipts(id,organization_id,actor_user_id,actor_id_snapshot,item_count,intent_digest,results) values
+      ('a0274db7-0344-4c3d-a19a-9be7e3bd88c0','erasure-target','erasure-member','erasure-member',1,repeat('a',64),'[{"row":2,"userId":"historical-user"}]'),
+      ('b0274db7-0344-4c3d-a19a-9be7e3bd88c0','erasure-home','erasure-original-operator','erasure-original-operator',1,repeat('b',64),'[{"row":2,"userId":"foreign-user"}]')`);
     const foreignHistory = (await db.query("select historical_attribution from knowledge_entries where id='00000000-0000-4000-8000-000000000095'")).rows;
     const result = await start(); expect(result.status, result.bodyText).toBe(202);
     expect(result.body.item).toMatchObject({ status: "deleted", actorUserId: "erasure-platform", targetOrganizationId: "erasure-target" });
@@ -48,6 +53,7 @@ describe("Durable empty Organization erasure through HTTP and PostgreSQL", () =>
       expect((await db.query(`select count(*)::int n from ${table} where ${column}='erasure-target'`)).rows).toEqual([{ n: 0 }]);
     }
     expect((await db.query("select count(*)::int n from users where id='erasure-platform'")).rows).toEqual([{ n: 1 }]);
+    expect((await db.query("select organization_id,actor_user_id,actor_id_snapshot,results from user_import_receipts")).rows).toEqual([{ organization_id: "erasure-home", actor_user_id: null, actor_id_snapshot: "erasure-original-operator", results: [{ row: 2, userId: "foreign-user" }] }]);
     expect((await db.query("select title,created_by_user_id from knowledge_entries where id='00000000-0000-4000-8000-000000000095'")).rows).toEqual([{ title: "Foreign knowledge must remain", created_by_user_id: null }]);
     expect((await db.query("select historical_attribution from knowledge_entries where id='00000000-0000-4000-8000-000000000095'")).rows).toEqual(foreignHistory);
     const receipt = await request<{ item: unknown }>(`/api/v1/platform/organization-deletions/${result.body.item.id}`);

@@ -41,6 +41,14 @@ The recovery procedure and evidence fields are defined in the [effective catalog
 - Provider outages and device failures must leave audit/readiness evidence rather than silently passing.
 - Production mock runtime must alert or fail fast.
 
+## Bulk user creation and recovery
+
+Bulk import hashes at most four passwords concurrently before entering the administrator mutation lock. One transaction revalidates current authority and intent, then writes every account, credential, role, per-user audit and minimal receipt. Any confirmed rollback leaves no partial batch. Existing username constraints remain the final race guard.
+
+The client creates a batch ID before submitting. A committed receipt is resolved before stale-preview or new-account checks, so response loss and page refresh can recover the original result. The first committed non-secret intent wins; conflicting reuse of its ID fails. An absent receipt or rejected COMMIT response alone is not proof of rollback. Keep the original ID while the result is uncertain and never automatically create a replacement batch. Recovery stores only a non-sensitive locator and may require the original workbook again. Receipt retention follows Organization lifetime; there is no background import queue or history UI.
+
+The 500-user limit requires a complete local API/PostgreSQL measurement, including lock hold time and unrelated administrator responsiveness. Workstation evidence does not establish target-host proxy or timeout support; operators must verify those deployment limits separately.
+
 ## Operational Targets
 
 - Normal API pages: P95 response below 800ms in MVP design.

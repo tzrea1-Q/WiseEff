@@ -60,6 +60,7 @@ import { parameterInvocation, parameterRequestAccess, withParameterAccess } from
 import { previewAccountTransfer, transferAccount } from "./accountTransfer";
 import { accountTransferRequestSchema, accountTransferTargetSchema } from "../contracts/dtoSchemas/accountTransfer";
 import { getOrganizationWorkspaceSummary } from "./workspaceSummary";
+import { createUserImport, previewUserImport, readUserImport } from "./userImport";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -287,6 +288,25 @@ export function registerUserRoutes(
     const { projectId, userId } = parseWithSchema(projectUserParamsSchema, request.params);
     const body = parseWithSchema(updateProjectMemberBodySchema, request.body);
     return { status: 200, body: await updateGovernedProjectMember(db, await operatingInvocation(db, auth, request), projectId, userId, body, request.requestId) };
+  });
+
+  router.post("/api/v1/users/imports/preview", async (request) => {
+    if (options.authenticationProvider !== "local") throw new ApiError("FORBIDDEN", "当前认证方式不支持本地用户导入。");
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    try { return { status: 200, body: { item: await previewUserImport(db, await operatingInvocation(db, auth, request), request.body) } }; }
+    catch (error) { if (error instanceof ApiError) throw error; throw new ApiError("INTERNAL_ERROR", "预检失败，请重试。"); }
+  });
+
+  router.post("/api/v1/users/imports", async request => {
+    if (options.authenticationProvider !== "local") throw new ApiError("FORBIDDEN", "当前认证方式不支持本地用户导入。");
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    try { return { status: 200, body: { item: await createUserImport(db, await operatingInvocation(db, auth, request), request.body, request.requestId) } }; }
+    catch (error) { if (error instanceof ApiError) throw error; throw new ApiError("INTERNAL_ERROR", "结果尚未确认，请使用原批次查询或重试。", { code: "import-not-confirmed" }); }
+  });
+  router.get("/api/v1/users/imports/:importId", async request => {
+    if (options.authenticationProvider !== "local") throw new ApiError("FORBIDDEN", "当前认证方式不支持本地用户导入。");
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    return { status: 200, body: { item: await readUserImport(db, await operatingInvocation(db, auth, request), request.params.importId) } };
   });
 
   router.post("/api/v1/users", async (request) => {
