@@ -31,7 +31,7 @@ export async function inspectNewDrivers(client: pg.PoolClient, organizationId: s
       invalidNewDriver(index, "ref", "新增驱动 ref 必须唯一且不含首尾空白或控制字符。", "为每个新增驱动提供独立、稳定的包内 ref。", driver.ref);
     refs.add(driver.ref);
     const parsed = parseCanonicalCompatibleSelector(driver.compatible);
-    if (!parsed.ok || parsed.value !== driver.compatible) invalidNewDriver(index, "compatible", "compatible 必须是一个精确、合法的驱动标识。", "填写源码中的单个 compatible 字符串；允许保留厂商逗号后源码原有的 ASCII 空格，但不要删除或自动改写；不允许通配符、数组或节点名。", driver.compatible);
+    if (!parsed.ok || parsed.value !== driver.compatible) invalidNewDriver(index, "compatible", "compatible 必须是一个精确、合法的驱动标识。", "填写源码中一个完整的 compatible 字符串，可包含多个逗号且逗号后允许原样保留 ASCII 空格（例如 onewire-phy,pl061,gpio）；不要将字符串内的逗号拆成多个驱动，也不要删除空格；不允许空片段、通配符、数组或节点名。", driver.compatible);
     if (compatibles.has(driver.compatible)) invalidNewDriver(index, "compatible", "同一文件不能重复创建相同 compatible 的驱动。", "合并重复声明，每个 compatible 仅保留一项。", driver.compatible);
     compatibles.add(driver.compatible);
     if (driver.displayAlias !== undefined && driver.displayAlias !== null && (driver.displayAlias !== driver.displayAlias.trim()
