@@ -63,6 +63,23 @@ test("project-role reader sees Organization usage without project write access",
     expect(denied.status()).toBe(403);
     await signInBrowserAsRole(page, "software-user", `${catalogRuntime.frontendUrl}/parameter-admin/specs?subjectId=csub_acme_power&definitionId=${definitionId}`);
     await expect(page.getByRole("region", { name: "无权访问" })).toContainText("无权访问该页面");
+    const navigationErrors: string[] = [];
+    const onPageError = (error: Error) => navigationErrors.push(error.message);
+    const onResponse = (response: import("playwright/test").Response) => {
+      if (response.url().includes("/api/") && response.status() >= 500) navigationErrors.push(`${response.status()} ${new URL(response.url()).pathname}`);
+    };
+    page.on("pageerror", onPageError);
+    page.on("response", onResponse);
+    await page.goto(`${catalogRuntime.frontendUrl}/parameters/definitions`);
+    const navigation = page.getByRole("navigation", { name: "参数定义模块树" });
+    await expect(navigation.getByText("Scope driver", { exact: true })).toBeVisible();
+    await expect(navigation.getByText("未分类", { exact: true })).toHaveCount(0);
+    await expect(navigation.getByText("unset（未分配模块）", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("正在加载参数库", { exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("library-navigation-1440.png") });
+    page.off("pageerror", onPageError);
+    page.off("response", onResponse);
+    expect(navigationErrors).toEqual([]);
     await page.goto(`${catalogRuntime.frontendUrl}/parameters?project=parlib-scope-a`);
     await page.locator(`[data-binding-id="${firstBinding}"]`).getByRole("button", { name: /^参数详情 / }).click();
     const detail = page.getByRole("dialog", { name: /参数详情/ });

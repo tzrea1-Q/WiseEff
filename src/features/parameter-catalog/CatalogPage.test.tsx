@@ -74,6 +74,24 @@ it("keeps library refresh and unpublished messages about reading", async () => {
   expect(screen.queryByText(/请先发布/)).not.toBeInTheDocument();
 });
 
+it("hides unclassified and unset navigation groups in the library while keeping definitions visible", async () => {
+  const repository = createMockParameterCatalogRepository();
+  const unset = { ...registeredSubject, id: "unset-driver", registration: { ...registeredSubject.registration,
+    placement: { id: "unset-placement", displayName: "unset", parentPlacementId: null } } };
+  repository.listSubjects = vi.fn(async (query) => ({ items: query?.lifecycle === "retired" ? [] : [registeredSubject, unset],
+    catalogReleaseId: CATALOG_RELEASE_ID, totalCount: 2, hasMore: false, nextCursor: null }));
+  const registry = moduleRegistry([
+    { id: CATALOG_MODULE_ID, name: "Battery", parentId: null, sortOrder: 0 },
+    { ...{ id: "uncategorized", name: "未分类", parentId: null, sortOrder: 1, kind: "unclassified" as const } }
+  ]);
+  render(<CatalogHarness libraryMode actor="user" repository={repository} moduleRegistry={registry} />);
+  expect(await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` })).toBeVisible();
+  const navigation = screen.getByRole("navigation", { name: "参数定义模块树" });
+  expect(within(navigation).getByText("Battery")).toBeVisible();
+  expect(within(navigation).queryByText("未分类")).not.toBeInTheDocument();
+  expect(within(navigation).queryByText("unset（未分配模块）")).not.toBeInTheDocument();
+});
+
 it("browses library modules with owned node types and preserves exact subject selection through history", async () => {
   const repository = createMockParameterCatalogRepository();
   const driver = { ...registeredSubject, canonicalName: "vendor,battery" };
