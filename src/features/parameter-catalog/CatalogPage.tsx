@@ -742,7 +742,10 @@ export function CatalogPage({
     []
   );
   const navigatorNodes = useMemo(
-    () => buildCatalogModuleTree(navigationSubjects, describeSubject, modules, { nestOwnedNodeTypes: libraryMode }),
+    () => {
+      const nodes = buildCatalogModuleTree(navigationSubjects, describeSubject, modules, { nestOwnedNodeTypes: libraryMode });
+      return libraryMode ? nodes.filter(node => node.id !== "group:unset" && !modules.some(module => module.id === node.id && module.kind === "unclassified")) : nodes;
+    },
     [navigationSubjects, describeSubject, modules, libraryMode]
   );
   const totalCount = snapshot?.definitions.totalCount ?? null;
