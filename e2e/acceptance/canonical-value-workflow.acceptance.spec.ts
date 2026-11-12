@@ -584,7 +584,10 @@ test.describe("canonical value workflow on real sources", () => {
     await expect(page).toHaveURL(/parameter-changes\?/);
     expect(new URL(page.url()).searchParams.get("project")).toBe("aurora");
     expect(new URL(page.url()).searchParams.get("scope")).toBe("review");
-    await expect(page.getByText("暂无待审核请求", { exact: true })).toBeVisible();
+    expect(new URL(page.url()).searchParams.get("view")).toBe("history");
+    await expect(page.getByRole("tab", { name: "已处理", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByText("暂无已处理记录", { exact: true })).toBeVisible();
+    await expect(page.locator(`[data-review-row-id="${deletionRequestId}"]`)).toHaveCount(0);
   });
 });
 
