@@ -56,7 +56,7 @@ async function expectUsableShell(page: Page, testInfo: TestInfo, route: string) 
     await expect(home.getByRole("heading", { name: "一条可审阅工作流，四种场景接入" })).toBeVisible();
     await expect(home.getByRole("link", { name: /进入知识库/ })).toHaveAttribute("href", "/knowledge");
     await expect(home.getByRole("tab", { name: "知识库", exact: true })).toBeVisible();
-    await expect(home.getByText("上传并整理组织自己的调参经验、故障案例、硬件手册与流程规范。")).toBeVisible();
+    await expect(home.getByText("上传并整理调参经验、故障案例、硬件手册与流程规范。")).toBeVisible();
     await expect(page.locator('.linear-nav a[href="/knowledge"]')).toBeVisible();
     await expect(page.locator('.linear-footer a[href="/knowledge"]')).toBeVisible();
     await expect(home.getByRole("link", { name: /进入日志分析/ })).toHaveAttribute("href", "/logs");
