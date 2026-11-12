@@ -134,7 +134,7 @@ test("organization overview retains administrator scope while ordinary members u
     expect(pausedSuggestions).toEqual([]);
     const restored = await page.request.patch(apiRoute(`/api/v1/platform/organizations/${org}/lifecycle`), { headers: authHeadersForRole("platform-admin"), data: { status: "active", expectedStatus: "suspended" } });
     expect(restored.status()).toBe(200); suspendedSuccessfully = false;
-    const proactiveEnabled = process.env.VITE_XIAOZE_PROACTIVE_ENABLED?.trim().toLowerCase() === "true";
+    const proactiveEnabled = (process.env.VITE_XIAOZE_PROACTIVE_ENABLED ?? "true").trim().toLowerCase() === "true";
     const resumed = proactiveEnabled ? page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/agent/xiaoze/suggest" && response.request().method() === "POST") : null;
     await page.reload(); await prepareInteractionSurface(page);
     if (resumed) expect((await resumed).status()).toBe(200);
