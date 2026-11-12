@@ -18,6 +18,7 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   home: "guest",
   "parameter-home": "guest",
   parameters: "guest",
+  "parameter-changes": "hardware-user",
   "parameter-submissions": "hardware-user",
   "parameter-comparison": "guest",
   "parameter-review": "hardware-committer",
@@ -89,6 +90,10 @@ export function canAccessPage(roleId: string, pageKey: PageKey, scope?: { path: 
     catch { return false; }
   }
   const normalizedRole = migrateLegacyRoleId(roleId);
+  if (pageKey === "parameter-changes") {
+    return canAccessPage(roleId, "parameter-submissions", scope) || canAccessParameterReviewPage(roleId)
+      || Boolean(scope?.runtimeMode === "api" && scope.projectMemberships?.length);
+  }
   if (pageKey === "parameter-review") {
     return canAccessParameterReviewPage(normalizedRole);
   }

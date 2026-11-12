@@ -189,6 +189,8 @@ test.describe("canonical value workflow on real sources", () => {
       expect((await client.query(`select id from parameter_submission_rounds where project_id=$1`, [projectId])).rows).toEqual([]);
       await client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
         values ('tracking-nonowner',$1,$2,$3,'hardware-user')`, [acceptanceCast.zhaoHeng.userId, organizationId, projectId]);
+      await client.query(`insert into project_members(organization_id,project_id,user_id,roles)
+        values ($1,$2,$3,ARRAY['hardware-user'])`, [organizationId, projectId, acceptanceCast.zhaoHeng.userId]);
       await client.query(`insert into organizations(id,name) values ('tracking-foreign-org','Tracking foreign tenant')`);
       await client.query(`insert into projects(id,organization_id,name,code,status)
         values ('tracking-foreign-project','tracking-foreign-org','Foreign','TRACKFOREIGN','initialized')`);
@@ -217,8 +219,8 @@ test.describe("canonical value workflow on real sources", () => {
     // @acceptance PARAM-CANONICAL-VALUE-WORKFLOW-001
     // @operation PARAM-CANONICAL-VALUE-WORKFLOW-001
     test.setTimeout(180_000);
-    const openParameters = async () => {
-      await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameters?project=${projectId}`);
+    const openParameters = async (role: "hardware-user" | "software-user" = "software-user") => {
+      await signInBrowserAsRole(page, role, `${runtime.frontendUrl}/parameters?project=${projectId}`);
       const dismiss = page.getByRole("button", { name: "不再提示" });
       if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
       await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toBeVisible();
@@ -260,15 +262,22 @@ test.describe("canonical value workflow on real sources", () => {
       return item.id as string;
     };
     const openReview = async (role: "software-user" | "software-committer", requestId?: string) => {
-      await signInBrowserAsRole(page, role, `${runtime.frontendUrl}/parameter-review?project=${projectId}`);
+      await signInBrowserAsRole(page, role, `${runtime.frontendUrl}/parameter-changes?project=${projectId}`);
       await expect(page.getByRole("combobox", { name: "项目", exact: true })).toContainText("Canonical review local");
+      await expect(page.getByRole("radio", { name: "审阅队列" })).toBeChecked();
+      await page.getByRole("radio", { name: "我的提交" }).click();
+      await expect(page.getByRole("table", { name: "我的提交", exact: true })).toBeVisible();
+      await page.getByRole("radio", { name: "我的提交" }).focus();
+      await page.keyboard.press("ArrowRight");
+      await expect(page.getByRole("radio", { name: "审阅队列" })).toBeChecked();
+      await expect(page).toHaveURL(/scope=review/);
       if (requestId) {
         await page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${requestId}"]`)
           .getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
       }
       return page.getByRole("region", { name: "软件配置审核" });
     };
-    await openParameters();
+    await openParameters("hardware-user");
     const removedDraft = await createDraft();
     const deleted = page.waitForResponse(r => r.request().method() === "DELETE" && r.url().endsWith(`/parameter-value-drafts/${removedDraft}`));
     await page.getByRole("button", { name: "移出本轮修改" }).click();
@@ -284,19 +293,47 @@ test.describe("canonical value workflow on real sources", () => {
     expect(draftsResponse.ok(), await draftsResponse.text()).toBe(true);
     expect((await draftsResponse.json()).items).toEqual([]);
     await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
-    let review = await openReview("software-user", withdrawnId);
+    await signInBrowserAsRole(page, "hardware-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}`);
+    await expect(page.getByRole("table", { name: "我的提交", exact: true })).toBeVisible();
+    const personalReads: URL[] = [];
+    const observePersonalReads = (request: Request) => {
+      const url = new URL(request.url());
+      if (request.method() === "GET" && ([`/api/v2/projects/${projectId}/parameter-value-change-requests`,
+        `/api/v2/projects/${projectId}/parameter-value-change-requests/batches`,
+        `/api/v2/projects/${projectId}/parameter-value-change-requests/member-removals`,
+        `/api/v2/projects/${projectId}/source-revision-requests`].includes(url.pathname)
+        || url.pathname === "/api/v1/parameter-submission-rounds" || url.pathname === "/api/v1/parameter-change-requests")) {
+        personalReads.push(url);
+      }
+    };
+    page.on("request", observePersonalReads);
+    const personalLoaded = page.waitForResponse((response) => response.request().method() === "GET"
+      && new URL(response.url()).pathname === `/api/v2/projects/${projectId}/parameter-value-change-requests`);
+    await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "变更中心" }).click();
+    expect((await personalLoaded).ok()).toBe(true);
+    await expect(page.getByRole("table", { name: "我的提交", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "审阅队列" })).toHaveCount(0);
+    expect(personalReads.length).toBeGreaterThan(0);
+    expect(personalReads.every((url) => url.searchParams.get("mine") === "true")).toBe(true);
+    page.off("request", observePersonalReads);
+    await page.getByRole("table", { name: "我的提交", exact: true }).locator(`[data-review-row-id="${withdrawnId}"]`)
+      .getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
+    await page.screenshot({ path: info.outputPath("change-center-personal.png"), animations: "disabled" });
+
+    let review = page.getByRole("region", { name: "我的参数提交" });
     await expect(review.getByRole("button", { name: "批准软件配置" })).toHaveCount(0);
     const withdrawn = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/withdraw"));
     await review.getByRole("button", { name: "撤回我的提交" }).click();
     await page.getByRole("dialog", { name: "确认撤回提交", exact: true }).getByRole("button", { name: "撤回提交", exact: true }).click();
     expect((await withdrawn).ok()).toBe(true);
-    const assertTracking = async (requestId: string, status: string) => {
+    const assertTracking = async (requestId: string, status: string, role: "hardware-user" | "software-user" = "software-user") => {
       const listed = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests?mine=true`), {
-        headers: authHeadersForRole("software-user")
+        headers: authHeadersForRole(role)
       });
       expect(listed.status(), await listed.text()).toBe(200);
-      expect((await listed.json()).items).toContainEqual(expect.objectContaining({ id: requestId, status, submitterUserId: acceptanceCast.liuMin.userId }));
-      await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}&request=${requestId}`);
+      expect((await listed.json()).items).toContainEqual(expect.objectContaining({ id: requestId, status,
+        submitterUserId: role === "hardware-user" ? acceptanceCast.zhaoHeng.userId : acceptanceCast.liuMin.userId }));
+      await signInBrowserAsRole(page, role, `${runtime.frontendUrl}/parameter-submissions?project=${projectId}&request=${requestId}`);
       await expect(page.getByRole("combobox", { name: "项目", exact: true })).toContainText("Canonical review local");
       await page.getByRole("article", { name: "源文件请求详情" }).getByText("溯源信息", { exact: true }).click();
       await expect(page.getByRole("article", { name: "源文件请求详情" }).getByLabel("完整溯源数据")).toBeVisible();
@@ -313,8 +350,9 @@ test.describe("canonical value workflow on real sources", () => {
       await expect(page.getByLabel("固定源变更前")).toBeVisible();
       await page.screenshot({ path: info.outputPath(`tracking-${status}.png`), animations: "disabled" });
     };
-    await assertTracking(withdrawnId, "withdrawn");
+    await assertTracking(withdrawnId, "withdrawn", "hardware-user");
     await openParameters();
+    await createDraft();
     const rejectedId = await submit();
     review = await openReview("software-committer", rejectedId);
     const rejected = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/review"));
@@ -330,7 +368,7 @@ test.describe("canonical value workflow on real sources", () => {
     const nonownerHeaders = authHeadersForUser(acceptanceCast.zhaoHeng.userId, acceptanceCast.zhaoHeng.email, acceptanceCast.zhaoHeng.name);
     const nonowner = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests`), { headers: nonownerHeaders });
     expect(nonowner.status(), await nonowner.text()).toBe(200);
-    expect((await nonowner.json()).items).toEqual([]);
+    expect((await nonowner.json()).items).not.toContainEqual(expect.objectContaining({ id: approvedId }));
     const hiddenDiff = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${approvedId}/source-diff`), { headers: nonownerHeaders });
     expect(hiddenDiff.status()).toBe(404);
     const crossProject = await request.get(apiRoute(`/api/v2/projects/aurora/parameter-value-change-requests/${approvedId}/source-diff`), { headers: authHeadersForRole("software-user") });

@@ -68,7 +68,9 @@ export function ParameterReviewPage({
   search,
   parameterActions,
   runtime,
-  runtimeMode
+  runtimeMode,
+  onBusyChange,
+  scopeToProject = false
 }: PageProps) {
   const sourceRepository = useMemo(() => runtimeMode === "api" ? runtime?.parameterFileRepository ?? resolveParameterFileRepository("api") : undefined, [runtimeMode, runtime?.parameterFileRepository]);
   const reviewProjectId = getContextQuery(search).projectId || state.activeProjectId;
@@ -187,44 +189,50 @@ export function ParameterReviewPage({
       || (role.roleId === "admin" && role.projectId === null)
   ));
   const canReviewInitialization = canPerform(reviewerRoleId, "parameter.review");
+  const projectRequests = useMemo(() => scopeToProject ? state.changeRequests.filter((request) => {
+    const requestProjectId = request.projectId
+      ?? findRetainedSubmissionRound(state.parameterSubmissionRounds, request)?.projectId
+      ?? state.parameters.find((parameter) => parameter.id === request.parameterId)?.projectId;
+    return requestProjectId ? requestProjectId === canonicalProjectId : runtimeMode === "api";
+  }) : state.changeRequests, [scopeToProject, state.changeRequests, state.parameterSubmissionRounds, state.parameters, canonicalProjectId, runtimeMode]);
   const { pending: pendingRequests, history: historyRequests } = useMemo(() => {
     // API mode's canonical panel owns project-value requests. Keeping the
     // legacy semantic queue here would duplicate pending work and expose its
     // old actions beside the canonical workflow. Initialization reviews have
     // a separate contract and remain visible below.
     if (runtimeMode === "api") {
-      const nodes = state.changeRequests.filter((request) => request.editSubjectKind === "node-enablement"
+      const nodes = projectRequests.filter((request) => request.editSubjectKind === "node-enablement"
         && (request.assignedTo === state.currentUserId || reviewerRoleId === "admin"));
       return {
         pending: splitChangeRequestsForReviewQueue(reviewerRoleId, nodes).pending,
-        history: splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests).history
+        history: splitChangeRequestsForReviewQueue(reviewerRoleId, projectRequests).history
       };
     }
-    return splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests);
-  }, [reviewerRoleId, runtimeMode, state.changeRequests, state.currentUserId]);
+    return splitChangeRequestsForReviewQueue(reviewerRoleId, projectRequests);
+  }, [reviewerRoleId, runtimeMode, projectRequests, state.currentUserId]);
   const pendingInitializationRows = useMemo(
     () =>
       canReviewInitialization
         ? state.parameterInitializationReviews
-            .filter((review) => review.status === "pending")
+            .filter((review) => review.projectId === canonicalProjectId && review.status === "pending")
             .flatMap((review): ParameterInitializationReviewRow[] => {
               const draft = state.parameterInitializationDrafts.find((item) => item.id === review.draftId);
               return draft ? [{ kind: "initialization", review, draft }] : [];
             })
         : [],
-    [canReviewInitialization, state.parameterInitializationDrafts, state.parameterInitializationReviews]
+    [canReviewInitialization, canonicalProjectId, state.parameterInitializationDrafts, state.parameterInitializationReviews]
   );
   const historyInitializationRows = useMemo(
     () =>
       canReviewInitialization
         ? state.parameterInitializationReviews
-            .filter((review) => review.status !== "pending")
+            .filter((review) => review.projectId === canonicalProjectId && review.status !== "pending")
             .flatMap((review): ParameterInitializationReviewRow[] => {
               const draft = state.parameterInitializationDrafts.find((item) => item.id === review.draftId);
               return draft ? [{ kind: "initialization", review, draft }] : [];
             })
         : [],
-    [canReviewInitialization, state.parameterInitializationDrafts, state.parameterInitializationReviews]
+    [canReviewInitialization, canonicalProjectId, state.parameterInitializationDrafts, state.parameterInitializationReviews]
   );
   const visibleRequests = reviewMode === "history" ? historyRequests : pendingRequests;
   const visibleInitializationRows = reviewMode === "history" ? historyInitializationRows : pendingInitializationRows;
@@ -603,6 +611,7 @@ export function ParameterReviewPage({
         state={state} search={search} canReview={canReviewCanonical} legacyRows={inboxLegacyRows}
         onNavigate={onNavigate}
         busy={actionPending || batchProgress !== null}
+        onBusyChange={onBusyChange}
         loading={Boolean(reviewProjectionPending)} error={currentReviewProjection?.error}
         onRequestsChanged={() => setRefreshVersion((version) => version + 1)}
         onVisibleLegacyIds={setVisibleLegacyIds}

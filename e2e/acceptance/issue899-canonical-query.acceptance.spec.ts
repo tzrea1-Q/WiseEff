@@ -12,6 +12,7 @@ import { makeTestAuthContext } from "../../server/testing/authContext";
 import { createPostgresDatabase } from "../../server/shared/database/client";
 import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { waitForInteractionSurfaceReady } from "./helpers/interactionSurface";
 import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
@@ -32,6 +33,9 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
   let definitionId: string;
   let effectiveRevisionId: string;
   let initialCurrentValueId: string;
+  let registrationId: string;
+  let registrationEtag: string;
+  let catalogReleaseId: string;
 
   test.beforeAll(async ({ request }) => {
     test.setTimeout(180_000);
@@ -41,6 +45,7 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     const bundle = firstReleaseBundle();
     const compiled = compileCatalogRelease(bundle);
     if (!compiled.ok) throw new Error("Catalog fixture compilation failed");
+    catalogReleaseId = compiled.value.release.id;
     const pool = new pg.Pool({ connectionString: runtime.databaseUrl });
     try {
       const installed = await installPublishedRelease(pool, {
@@ -62,6 +67,8 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
       data: { subjectId: "csub_acme_power", destinationModuleId: "issue899-module", placement: { mode: "use-default" }, reason: "Issue 899 isolated fixture" }
     });
     expect(registered.status(), await registered.text()).toBe(201);
+    registrationId = (await registered.json()).item.id;
+    registrationEtag = registered.headers().etag;
     for (const [id, name, values] of [
       [projectId, "Issue 899 A", [1000, 1100]],
       ["issue899-project-b", "Issue 899 B", [1200, 1300]]
@@ -122,6 +129,66 @@ test.describe("Issue 899 canonical-only DTS queries", () => {
     test.setTimeout(60_000);
     try { await runtime?.dispose(disposableRuntimeOutcomeFromTestInfo(info)); }
     finally { restoreProcessEnvFromDisposableRuntime(environment); }
+  });
+
+  test("reloads current project parameters after registration retirement and restoration", async ({ page, request }, info) => {
+    test.setTimeout(120_000);
+    const route = `${runtime.frontendUrl}/parameters?project=${projectId}`;
+    const registrationPath = `/api/v2/organizations/${organizationId}/subject-registrations/${registrationId}`;
+    const currentPath = `/api/v2/projects/${projectId}/parameter-bindings`;
+    const headers = authHeadersForRole("admin");
+    const mutate = (action: "retire" | "restore", etag: string) => request.post(apiRoute(`${registrationPath}/${action}`), {
+      headers: { ...headers, "X-WiseEff-Catalog-Release": catalogReleaseId, "If-Match": etag, "Idempotency-Key": `issue1545-${action}` },
+      data: { reason: "Verify project current visibility" },
+    });
+    const navigateAndRead = async (navigate: () => Promise<unknown>, count: number) => {
+      const requested = page.waitForResponse(response => response.request().method() === "GET"
+        && new URL(response.url()).pathname === currentPath && response.status() === 200);
+      await navigate();
+      expect((await (await requested).json()).items).toHaveLength(count);
+      await waitForInteractionSurfaceReady(page);
+      await expect(page.locator(".project-parameters-loading")).toHaveCount(0);
+      const workspace = page.locator(`section.dts-parameter-workbench[data-project-id="${projectId}"][data-revision-id]`);
+      await expect(workspace).toBeVisible();
+      await expect(workspace.locator('[aria-label="当前参数范围"]').getByRole("status"))
+        .toHaveText(`${count} / ${count} 个参数`);
+      if (count === 0) await expect(workspace.getByText("当前筛选范围内没有参数。", { exact: true })).toBeVisible();
+    };
+    await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-admin/projects/${projectId}/configuration`);
+    await page.getByRole("button", { name: "项目参数", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/parameters\\?project=${projectId}`));
+    const row = page.locator(`[data-binding-id="${bindingId}"]`);
+    await expect(row).toBeVisible();
+    await row.getByRole("button", { name: /^参数详情 / }).click();
+    await expect(page.getByRole("dialog", { name: /参数详情/ })).toContainText("1000");
+    await page.keyboard.press("Escape");
+    await page.screenshot({ path: info.outputPath("project-active-1440.png") });
+    const retired = await mutate("retire", registrationEtag);
+    expect(retired.status(), await retired.text()).toBe(200);
+    let restored = false;
+    try {
+      const current = await request.get(apiRoute(currentPath), { headers: authHeadersForRole("software-user") });
+      expect(current.status(), await current.text()).toBe(200);
+      expect((await current.json()).items).toEqual([]);
+      await navigateAndRead(() => page.reload(), 0);
+      await expect(row).toHaveCount(0);
+      await page.screenshot({ path: info.outputPath("project-retired-1440.png") });
+      await page.goto(`${runtime.frontendUrl}/parameter-home`);
+      await navigateAndRead(() => page.goto(route), 0);
+      await expect(row).toHaveCount(0);
+      await page.screenshot({ path: info.outputPath("project-retired-reentered-1440.png") });
+      const response = await mutate("restore", retired.headers().etag);
+      expect(response.status(), await response.text()).toBe(200);
+      restored = true;
+      await navigateAndRead(() => page.reload(), 2);
+      await expect(row).toBeVisible();
+      await page.screenshot({ path: info.outputPath("project-restored-1440.png") });
+    } finally {
+      if (!restored) {
+        const response = await mutate("restore", retired.headers().etag);
+        expect(response.status(), await response.text()).toBe(200);
+      }
+    }
   });
 
   test("reports a stale binding deep link without substituting a current Binding after reload", async ({ page }) => {

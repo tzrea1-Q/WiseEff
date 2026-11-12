@@ -341,9 +341,9 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const showsApplicationFooter = !isProjectConfigurationWorkbenchPath(path)
-    && page.key !== "parameter-review" && page.key !== "parameter-submissions";
+    && page.key !== "parameter-review" && page.key !== "parameter-submissions" && page.key !== "parameter-changes";
   const usesProjectScope = page.path !== "/parameters/definitions" && pageUsesProjectScope(page.key);
-  const pageProjectId = (page.path !== "/parameters/definitions" && (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions")
+  const pageProjectId = (page.path !== "/parameters/definitions" && (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions" || page.key === "parameter-changes")
     ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") : null) || state.activeProjectId;
   const xiaozePageContext = useMemo(
     () => ({
@@ -811,7 +811,7 @@ function AppShell({
     if (!businessScopeReady || !apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
       return;
     }
-    const urlProjectId = page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
+    const urlProjectId = page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions" || page.key === "parameter-changes"
       ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") : null;
     const projectId = urlProjectId || state.activeProjectId;
     if (!projectId) {
@@ -1230,6 +1230,8 @@ function AppShell({
             activeSearch={search}
             operatingOrganizationId={operatingOrganizationId}
             currentRoleId={currentRoleId}
+            runtimeMode={runtimeMode}
+            projectMemberships={apiProjectMemberships}
             visibleWorkflows={visibleWorkflows}
             canManageOrganization={canManageOrganization}
             canManagePublication={canManagePublication}
@@ -1426,6 +1428,8 @@ function Sidebar({
   activeSearch,
   operatingOrganizationId,
   currentRoleId,
+  runtimeMode,
+  projectMemberships,
   visibleWorkflows,
   canManageOrganization,
   canManagePublication,
@@ -1438,6 +1442,8 @@ function Sidebar({
   activeSearch: string;
   operatingOrganizationId?: string;
   currentRoleId: string;
+  runtimeMode: string;
+  projectMemberships: AuthContextDto["projectMemberships"];
   visibleWorkflows: readonly WorkflowId[];
   canManageOrganization: boolean;
   canManagePublication: boolean;
@@ -1447,14 +1453,14 @@ function Sidebar({
   onFeedback: () => void;
 }) {
   const activePageKey = getPageByPath(activePath).key;
-  const projectRoutes = ["/parameters", "/parameter-review", "/parameter-submissions"];
+  const projectRoutes = ["/parameters", "/parameter-review", "/parameter-submissions", "/parameter-changes"];
   const params = new URLSearchParams(activeSearch);
   const projectId = projectRoutes.includes(activePath) ? params.get("project") || params.get("projectId") : null;
   const compactHeight = useMediaQuery("(max-height: 820px)");
   const [managementOpen, setManagementOpen] = useState(false);
   useEffect(() => setManagementOpen(false), [compactHeight, isCollapsed]);
   const visibleNavigationItems = navigationItems.filter(
-    (item) => item.key !== "parameter-submissions" && canAccessPage(currentRoleId, item.key) && isDiscoveryGroupVisible(item.group, visibleWorkflows)
+    (item) => canAccessPage(currentRoleId, item.key, { path: item.path, runtimeMode, projectMemberships }) && isDiscoveryGroupVisible(item.group, visibleWorkflows)
   );
   const groups = visibleNavigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
     acc[item.group] = [...(acc[item.group] ?? []), item];
@@ -1538,7 +1544,8 @@ function Sidebar({
               <div className="nav-group-label">{group}</div>
               {items.map((item) => {
                 const Icon = item.icon;
-                const isActive = item.key === activePageKey && (item.key !== "parameters" || item.path === activePath);
+                const isActive = (item.key === activePageKey && (item.key !== "parameters" || item.path === activePath))
+                  || (item.key === "parameter-changes" && (activePageKey === "parameter-review" || activePageKey === "parameter-submissions"));
                 const href = withBusinessOrganizationScope(projectId && projectRoutes.includes(item.path) ? `${item.path}?project=${encodeURIComponent(projectId)}` : item.path, operatingOrganizationId);
                 return (
                   <Tooltip key={item.path}>
@@ -1649,12 +1656,17 @@ function TopBar({
   const visibleUserName = currentUser?.name ?? "账户信息暂不可用";
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =
-    page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
+    page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions" || page.key === "parameter-changes"
       ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") || state.activeProjectId : state.activeProjectId;
   const commitProjectChange = (projectId: string) => {
     dispatch({ type: "SET_PROJECT", projectId });
 
-    if (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions") {
+    if (page.key === "parameter-changes") {
+      const params = new URLSearchParams(window.location.search);
+      params.set("project", projectId);
+      params.delete("projectId"); params.delete("request"); params.delete("legacyRequest"); params.delete("memberRequest");
+      onNavigate(`/parameter-changes?${params.toString()}`);
+    } else if (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions") {
       onNavigate(`/${page.key}?project=${encodeURIComponent(projectId)}`);
     }
   };

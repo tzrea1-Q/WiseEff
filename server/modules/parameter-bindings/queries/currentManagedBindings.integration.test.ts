@@ -1,13 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getRootPostgresPool } from "../../../shared/database/client";
-import { setSourceRevisionRegistrationStatus } from "../../../testing/parameterCatalog/sourceRevision";
+import { publishSourceRevisionLifecycleFixture, setSourceRevisionRegistrationStatus } from "../../../testing/parameterCatalog/sourceRevision";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { createSourceAdminFixture, sourceAdminText } from "../../parameter-files/sourceAdministration.testHelpers";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";
 import {
   exportCanonicalBindingSource, findCatalogBindingRow, listCanonicalInitializationBindingCandidates,
-  listCatalogBindingRowsForProject, listCatalogBindingsForImport, readCanonicalBindingChangeHistory,
+  listCatalogBindingRowsForProject, listCatalogBindingsForImport, loadPublishedCatalog, readCanonicalBindingChangeHistory,
 } from "../catalogProjectValueSync";
+import { registerCatalogProjectValueConsumerRoutes } from "../catalogProjectValueRoutes";
 import { countSourceBackedBindingsByProject } from "../dashboardRead";
 import { readOwnedCurrentBinding } from "../values";
 import { readCanonicalCompareRows } from "./dts";
@@ -72,6 +73,10 @@ describe("current managed source reads (PostgreSQL API role)", () => {
     } finally {
       await setSourceRevisionRegistrationStatus(f.db, { organizationId: f.organizationId, registrationId, status: "active" });
     }
+    expect((await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId })).map(row => row.id)).toEqual([bindingId]);
+    expect((await candidates()).map(row => row.sourceBindingId)).toEqual([bindingId]);
+    expect((await importCandidates()).map(row => row.projectParameterValueId)).toEqual([bindingId]);
+    expect((await countSourceBackedBindingsByProject(f.api, f.organizationId)).get(f.projectId)).toBe(1);
   });
 
   it("keeps an eligible exact pin current after an unrelated configuration parse", async () => {
@@ -120,4 +125,67 @@ describe("current managed source reads (PostgreSQL API role)", () => {
       await setSourceRevisionRegistrationStatus(f.db, { organizationId: f.organizationId, registrationId, status: "active" });
     }
   });
+});
+
+describe.each(["definition", "subject"] as const)("current project surfaces after %s publication", target => {
+  let f: Awaited<ReturnType<typeof createSourceAdminFixture>>;
+  beforeAll(async () => { f = await createSourceAdminFixture(`current-${target}`, createUserInvocation); }, 120_000);
+  afterAll(async () => { await f?.close(); });
+
+  it("hides retired current values and restores them without changing exact history or source", async () => {
+    const row = (await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId }))[0]!;
+    const scope = { organizationId: f.organizationId, projectId: f.projectId, bindingId: row.id };
+    const router = createRouter();
+    registerCatalogProjectValueConsumerRoutes(router, { db: f.api, objectStore: f.storage, getCurrentAuthContext: () => f.auth });
+    const read = <T,>(path: string) => requestJson<T>(createHttpServer(router), path);
+    const projectPath = `/api/v2/projects/${f.projectId}/parameter-bindings`;
+    const exportPath = `${projectPath}/${row.id}/export?projectValueId=${row.currentValueId}`;
+    const historyPath = `${projectPath}/${row.id}/change-history`;
+    const historicalExport = await read(exportPath);
+    const history = await read(historyPath);
+    expect(historicalExport.status).toBe(200);
+    expect(history.status).toBe(200);
+    const checkCurrent = async (visible: boolean) => {
+      const response = await read<{ items: Array<{ id: string; currentValueId: string; rawValue: string }> }>(projectPath);
+      expect(response.status).toBe(200);
+      expect(response.body.items).toEqual(visible ? [expect.objectContaining({ id: row.id, currentValueId: row.currentValueId, rawValue: "<36>" })] : []);
+      for (const limit of [undefined, 1]) {
+        expect((await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId, limit })).map(item => item.id))
+          .toEqual(visible ? [row.id] : []);
+      }
+      expect((await listCanonicalInitializationBindingCandidates(f.api, { organizationId: f.organizationId,
+        projectIds: [f.projectId], bindingIds: [row.id] })).map(item => item.sourceBindingId)).toEqual(visible ? [row.id] : []);
+      expect((await listCatalogBindingsForImport(f.api, { ...scope, names: ["iin_max"], definitionIds: [row.definitionId] }))
+        .map(item => item.projectParameterValueId)).toEqual(visible ? [row.id] : []);
+      expect(await findCatalogBindingRow(f.api, scope)).toEqual(visible ? expect.objectContaining({ id: row.id }) : null);
+      expect(await readCanonicalCompareRows(f.api, scope)).toEqual(visible ? [] : null);
+      expect((await countSourceBackedBindingsByProject(f.api, f.organizationId)).get(f.projectId)).toBe(visible ? 1 : undefined);
+      expect((await read(exportPath)).body).toEqual(historicalExport.body);
+      expect((await read(historyPath)).body).toEqual(history.body);
+    };
+    const current = await loadPublishedCatalog(getRootPostgresPool(f.db)!);
+    if (!current) throw new Error("Current Catalog unavailable");
+    await checkCurrent(true);
+    const retired = await publishSourceRevisionLifecycleFixture(f.db, current.release, { target, lifecycle: "retired" });
+    await checkCurrent(false);
+    await publishSourceRevisionLifecycleFixture(f.db, retired.release, { target, lifecycle: "active", previousBundle: retired.bundle });
+    await checkCurrent(true);
+  }, 120_000);
+});
+
+describe("deprecated current definitions", () => {
+  let f: Awaited<ReturnType<typeof createSourceAdminFixture>>;
+  beforeAll(async () => { f = await createSourceAdminFixture("current-deprecated", createUserInvocation); }, 120_000);
+  afterAll(async () => { await f?.close(); });
+
+  it("keeps the bound exact revision visible after a deprecated head is published", async () => {
+    const before = await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId });
+    expect(before).toHaveLength(1);
+    const current = await loadPublishedCatalog(getRootPostgresPool(f.db)!);
+    if (!current) throw new Error("Current Catalog unavailable");
+    await publishSourceRevisionLifecycleFixture(f.db, current.release, { target: "definition", lifecycle: "deprecated" });
+    const after = await listCatalogBindingRowsForProject(f.api, f.auth, { projectId: f.projectId });
+    expect(after).toMatchObject([{ id: before[0]!.id, currentValueId: before[0]!.currentValueId, rawValue: "<36>" }]);
+    expect((await countSourceBackedBindingsByProject(f.api, f.organizationId)).get(f.projectId)).toBe(1);
+  }, 120_000);
 });

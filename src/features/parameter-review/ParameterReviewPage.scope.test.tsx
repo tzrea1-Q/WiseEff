@@ -34,6 +34,16 @@ function initialization(status: "pending" | "rejected") {
 }
 
 describe("legacy review evidence and action scope", () => {
+  it("keeps cached initialization reviews in the selected project on the legacy page", () => {
+    const state = initialization("pending");
+    const draft = state.parameterInitializationDrafts[0];
+    const initReview = state.parameterInitializationReviews[0];
+    review({ ...state, parameterInitializationDrafts: [draft, { ...draft, id: "other-draft", projectId: "nebula", projectName: "Nebula" }],
+      parameterInitializationReviews: [initReview, { ...initReview, id: "other-review", draftId: "other-draft", projectId: "nebula" }] });
+    const table = screen.getByRole("table", { name: "审阅队列" });
+    expect(table).toHaveTextContent("Aurora 初始化");
+    expect(table).not.toHaveTextContent("Nebula 初始化");
+  });
   it("retains node semantics without a round and does not invent frozen risk or units", () => {
     review({ ...initialState, parameters: [], changeRequests: [{ ...node, submissionRoundId: undefined }],
       parameterSubmissionRounds: [], parameterInitializationReviews: [] });

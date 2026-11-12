@@ -2267,7 +2267,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(nav).getByRole("link", { name: "我的工作台" })).toHaveAttribute("href", "/parameter-home");
     fireEvent.click(parameters);
     expect(new URLSearchParams(window.location.search).get("project")).toBe(project.id);
-    expect(within(nav).getByRole("link", { name: "变更审阅" })).toHaveAttribute("href", `/parameter-review?project=${encodeURIComponent(project.id)}`);
+    expect(within(nav).getByRole("link", { name: "变更中心" })).toHaveAttribute("href", `/parameter-changes?project=${encodeURIComponent(project.id)}`);
   });
 
   it("keeps the operating Organization in native sidebar links and SPA navigation", () => {
@@ -3678,7 +3678,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-home",
-        present: ["热榜", "概览", "项目参数", "变更审阅"],
+        present: ["热榜", "概览", "项目参数", "变更中心"],
         absent: [
           "推荐依据",
           "保留原看板指标，用来解释工作台行动排序",

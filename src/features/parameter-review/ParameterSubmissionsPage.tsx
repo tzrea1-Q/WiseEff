@@ -47,7 +47,8 @@ export function ParameterSubmissionsPage({
   parameterActions,
   search,
   runtime,
-  runtimeMode
+  runtimeMode,
+  onBusyChange
 }: PageProps) {
   const isApiMode = runtimeMode === "api";
   const sourceRepository = useMemo(() => isApiMode ? runtime?.parameterFileRepository ?? resolveParameterFileRepository("api") : undefined, [isApiMode, runtime?.parameterFileRepository]);
@@ -296,6 +297,7 @@ export function ParameterSubmissionsPage({
         mineOnly
         canReview={false}
         busy={withdrawingRound}
+        onBusyChange={onBusyChange}
         legacyRows={legacyRows}
         renderLegacyDetail={renderLegacyDetail}
         onRequestsChanged={() => setRefreshVersion((version) => version + 1)}

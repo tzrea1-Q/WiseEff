@@ -11,6 +11,7 @@ describe("WiseEff prototype configuration", () => {
     expect(navigationItems.filter((item) => item.key === "log-admin")).toHaveLength(1);
   });
   it("names the personal workflow for both pending and completed submissions", () => {
+    expect(getPageByPath("/parameter-changes")).toMatchObject({ label: "变更中心", title: "变更中心" });
     expect(getPageByPath("/parameter-submissions")).toMatchObject({ label: "我的提交", title: "我的提交" });
     expect(getPageByPath("/parameter-review")).toMatchObject({ label: "变更审阅", title: "变更审阅" });
   });
@@ -24,8 +25,7 @@ describe("WiseEff prototype configuration", () => {
       "/parameter-home",
       "/parameters/definitions",
       "/parameters",
-      "/parameter-submissions",
-      "/parameter-review",
+      "/parameter-changes",
       "/parameter-admin",
       "/dts-reload",
       "/node-debugging",
