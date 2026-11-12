@@ -3940,6 +3940,7 @@ test.describe("project configuration workbench post-cutover semantic identity", 
             const detail = detailPage.getByRole("region", { name: "DTS 整文件审核" });
             await expect(detail).toContainText("#1419 set only in this project");
             await expect(detail).not.toContainText("发生组织：");
+            await detailPage.screenshot({ path: testInfo.outputPath("source-review-ordinary-user-1440.png") });
           } finally {
             await detailPage.close();
             diagnostics.assertNoBrowserDiagnosticsFailures();
