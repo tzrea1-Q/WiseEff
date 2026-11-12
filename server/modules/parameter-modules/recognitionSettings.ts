@@ -220,6 +220,7 @@ export async function loadOrganizationCatalogSnapshot<T extends CatalogSnapshot>
     if (detail.status !== "found" && detail.status !== "retired") throw new Error("Published subject detail is unavailable");
     return effectiveSubject(detail.subject);
   });
+  const subjectsById = new Map(subjects.map(subject => [subject.id, subject]));
   const effective = new Proxy(snapshot, {
     get(target, property) {
       if (property === "resolveSubject") return (selector: Parameters<CatalogSnapshot["resolveSubject"]>[0]) => resolveCatalogSubject(subjects, selector);
@@ -231,14 +232,15 @@ export async function loadOrganizationCatalogSnapshot<T extends CatalogSnapshot>
         // Filter the complete effective set before delegating native cursor pagination.
         // Keep the published identity ordering; include the effective type scope in the
         // cursor fingerprint so a changed override cannot silently reuse a stale page.
+        const selectedIds = query.selection.kind === "only" ? new Set(query.selection.ids) : null;
         const ids = subjects.filter(subject =>
           (query.kinds.length === 0 || query.kinds.includes(subject.kind)) &&
-          (query.selection.kind === "all" || query.selection.ids.includes(subject.id))).map(subject => subject.id);
+          (!selectedIds || selectedIds.has(subject.id))).map(subject => subject.id);
         const fingerprint = createHash("sha256").update(JSON.stringify({ organizationId, selection: query.selection,
           kinds: query.kinds, types: subjects.map(subject => [subject.id, subject.kind]) })).digest("hex");
         const result = target.listSubjects({ ...query, kinds: [], selection: { kind: "only", ids, fingerprint } });
         return result.status === "found" ? { ...result, page: { ...result.page, items: result.page.items.map(item =>
-          subjects.find(subject => subject.id === item.id) ?? item) } } : result;
+          subjectsById.get(item.id) ?? item) } } : result;
       };
       const value = Reflect.get(target, property);
       return typeof value === "function" ? value.bind(target) : value;

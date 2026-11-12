@@ -299,7 +299,7 @@ test("manages exact Definition references, published-only reverse links and same
     await page.reload();
     await expect(page.getByRole("region", { name: "定义详情" })).toBeVisible();
     await page.getByRole("button", { name: "返回参数库" }).click();
-    await expect(page).toHaveURL(`${frontendUrl}/parameters/definitions?catalogReleaseId=${fixture.pin.id}`);
+    await expect(page).toHaveURL(`${frontendUrl}/parameters/definitions`);
     await page.evaluate((value) => localStorage.setItem("wiseeff.localAuthToken", value), token);
     await page.goto(`${frontendUrl}/knowledge?entryId=${entryId}`);
 

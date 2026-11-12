@@ -207,6 +207,7 @@ export type CatalogReadPorts = {
 export type LoadedCatalogSnapshot = CurrentCatalogSnapshot | PinnedCatalogSnapshot;
 
 export type CatalogListQuery = {
+  readonly view?: "library";
   readonly cursor: OptionalValue<CatalogCursor>;
   readonly limit: number;
   readonly type?: "driver" | "node-type" | "configuration-schema";
