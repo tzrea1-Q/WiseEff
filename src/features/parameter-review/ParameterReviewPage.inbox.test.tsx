@@ -164,7 +164,7 @@ it("confirms the initialization scope and keeps a failed approval open for retry
   render(<ParameterReviewPage state={{ ...initialState, activeRoleId: "admin", changeRequests: [], parameterSubmissionRounds: [],
     parameterInitializationDrafts: [draft], parameterInitializationReviews: [{ id: "init-review", draftId: draft.id,
       projectId: project.id, status: "pending", submittedBy: null, submittedAt: draft.createdAt }] }}
-    runtime={{ parameterInitializationRepository: { approve } } as never} runtimeMode="api"
+    runtime={{ parameterInitializationRepository: { approve } } as never} runtimeMode="api" sessionPermissions={["admin:access", "parameter:review"]}
     dispatch={vi.fn()} onNavigate={vi.fn()} search={`?project=${project.id}&legacyRequest=init-review`} />);
   fireEvent.click(screen.getByRole("button", { name: "通过初始化" }));
   expect(approve).not.toHaveBeenCalled();

@@ -1649,7 +1649,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
               isActive: true
             },
             organization: { id: "org-chargelab", name: "ChargeLab" },
-            roles: [{ projectId: null, roleId: "software-user" }],
+            roles: [{ projectId: apiProject.id, roleId: "software-user" }],
             permissions: ["parameter:view", "parameter:edit"]
           })
         }}
@@ -1692,7 +1692,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
               isActive: true
             },
             organization: { id: "org-chargelab", name: "ChargeLab" },
-            roles: [{ projectId: null, roleId: "software-user" }],
+            roles: [{ projectId: apiProject.id, roleId: "software-user" }],
             permissions: ["parameter:view", "parameter:edit"]
           })
         }}
@@ -1752,7 +1752,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
               isActive: true
             },
             organization: { id: "org-chargelab", name: "ChargeLab" },
-            roles: [{ projectId: null, roleId: "software-user" }],
+            roles: [{ projectId: apiProject.id, roleId: "software-user" }],
             permissions: ["parameter:view", "parameter:edit"]
           })
         }}
@@ -1802,7 +1802,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
               isActive: true
             },
             organization: { id: "org-chargelab", name: "ChargeLab" },
-            roles: [{ projectId: null, roleId: "hardware-committer" }],
+            roles: [{ projectId: apiProject.id, roleId: "hardware-committer" }],
             permissions: ["parameter:review"]
           })
         }}

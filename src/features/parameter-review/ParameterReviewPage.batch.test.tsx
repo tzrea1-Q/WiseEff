@@ -77,7 +77,7 @@ describe("ParameterReviewPage deep link", () => {
     { roleProject: "nebula", roleId: "software-committer" as const, allowed: false },
     { roleProject: "aurora", roleId: "software-committer" as const, allowed: true },
     { roleProject: null, roleId: "admin" as const, allowed: true },
-    { roleProject: "aurora", roleId: "admin" as const, allowed: false }
+    { roleProject: "aurora", roleId: "admin" as const, allowed: true }
   ])("scopes canonical review actions to $roleId in $roleProject", async ({ roleProject, roleId, allowed }) => {
     const runtime = { parameterCatalogRepository: {
       listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [{
