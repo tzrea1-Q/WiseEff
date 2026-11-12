@@ -44,6 +44,7 @@ function fixture(userId = "reviewer", override: { dbRole?: boolean; admin?: bool
     permissions: override.admin === false ? ["parameter:view", "parameter:edit", "parameter:review"] : undefined });
   const state = row();
   const db: Database = { query: vi.fn(async (query, values) => {
+    if (query === "select id, name, status from organizations where id = $1") return { rows: [{ id: values?.[0], name: "Organization", status: "active" }], rowCount: 1 };
     if (query.includes("select distinct users.id")) return { rows: [],rowCount: 0 };
     if (query.includes("select distinct catalog_release_id")) return { rows: [], rowCount: 0 };
     if (query.startsWith("update public.project_parameter_value_change_requests")) {
@@ -122,6 +123,15 @@ describe("whole-source request HTTP boundaries (mocked database)", () => {
     expect(f.db.query).toHaveBeenCalledWith(expect.stringContaining("request.submitter_user_id=$4 or ($5::boolean and request.assigned_to_user_id=$4)"), ["org", "project", "pending", "reviewer", false,false]);
     expect(f.storage.getBounded).not.toHaveBeenCalled();
     await expect(f.request("", "GET", undefined, { mine: "malformed" })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+
+  it("lists the submitter's source requests in an explicit authorized organization", async () => {
+    const f = fixture("author");
+    const response = await f.request("", "GET", undefined, { mine: "true", organizationId: "org" });
+    expect(response.body).toMatchObject({ items: [{ id: "request" }] });
+    expect(f.db.query).toHaveBeenCalledWith(expect.stringContaining("request.submitter_user_id=$4 or ($5::boolean and request.assigned_to_user_id=$4)"), ["org", "project", null, "author", false, false]);
+    await expect(f.request("", "GET", undefined, { mine: "true", organizationId: "foreign" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(f.request("", "GET", undefined, { mine: "true", organizationId: "org", unknown: "value" })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
   });
 
   it("allows another current file administrator to inspect the frozen source without review authority", async () => {
