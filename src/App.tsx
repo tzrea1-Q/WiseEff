@@ -72,6 +72,7 @@ import {
 import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/useXiaozePageContext";
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
 import { OrganizationBusinessWorkspace } from "@/features/organization/OrganizationBusinessWorkspace";
+import type { OrganizationWorkspaceClient } from "@/infrastructure/http/userGovernanceClient";
 import { InvitationAcceptancePage } from "@/features/organization/InvitationAcceptancePage";
 import { isOrganizationBusinessPath, withBusinessOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
@@ -431,6 +432,14 @@ function AppShell({
   const canManagePublication = runtimeMode === "api"
     ? Boolean(apiAuthRoles?.some((role) => role.projectId === null && role.roleId === "platform-admin"))
     : currentRoleId === "platform-admin";
+  const businessScopeKey = `${scopeGeneration}:${canManageOrganization}:${canManagePublication}`;
+  const [confirmedBusinessScope, setConfirmedBusinessScope] = useState<{ key: string; scope: Awaited<ReturnType<OrganizationWorkspaceClient["enterOperatingContext"]>> } | null>(null);
+  const confirmedScope = confirmedBusinessScope?.key === businessScopeKey ? confirmedBusinessScope.scope : undefined;
+  const requiresBusinessScope = runtimeMode === "api" && operatingOrganizationId !== undefined && isOrganizationBusinessPath(path);
+  const businessScopeReady = !requiresBusinessScope || Boolean(confirmedScope);
+  const handleBusinessScopeResolved = useCallback((scope: Awaited<ReturnType<OrganizationWorkspaceClient["enterOperatingContext"]>>) => {
+    setConfirmedBusinessScope({ key: businessScopeKey, scope });
+  }, [businessScopeKey]);
   const visibleWorkflows = WORKFLOW_IDS.filter((id) =>
     (isPublicationAdministrator || publication.status === "ready" && publication.publication?.workflows[id] === true) &&
     navigationItems.some((item) => workflowForGroup(item.group) === id && canAccessPage(currentRoleId, item.key))
@@ -799,7 +808,7 @@ function AppShell({
   }, [state]);
 
   useEffect(() => {
-    if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
+    if (!businessScopeReady || !apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
       return;
     }
     const urlProjectId = page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions" || page.key === "parameter-changes"
@@ -811,6 +820,7 @@ function AppShell({
     void hydrateActiveProjectInitialization(projectId);
   }, [
     apiRuntimeSynced,
+    businessScopeReady,
     apiRuntimeFailures,
     hydrateActiveProjectInitialization,
     page.key,
@@ -819,11 +829,11 @@ function AppShell({
   ]);
 
   useEffect(() => {
-    if (runtimeMode !== "api" || apiAuthStatus !== "authenticated" || page.key === "home") {
+    if (runtimeMode !== "api" || apiAuthStatus !== "authenticated" || !businessScopeReady || page.key === "home") {
       return;
     }
     void refreshParameterInitializationFromApi();
-  }, [apiAuthStatus, page.key, refreshParameterInitializationFromApi, runtimeMode]);
+  }, [apiAuthStatus, businessScopeReady, page.key, refreshParameterInitializationFromApi, runtimeMode]);
 
   useEffect(() => {
     pageKeyRef.current = page.key;
@@ -833,6 +843,7 @@ function AppShell({
     if (
       runtimeMode !== "api" ||
       apiAuthStatus !== "authenticated" ||
+      !businessScopeReady ||
       page.key === "home" ||
       domainDataHydratedRef.current
     ) {
@@ -840,7 +851,7 @@ function AppShell({
     }
     domainDataHydratedRef.current = true;
     void refreshApiRuntimeData();
-  }, [apiAuthStatus, page.key, refreshApiRuntimeData, runtimeMode]);
+  }, [apiAuthStatus, businessScopeReady, page.key, refreshApiRuntimeData, runtimeMode]);
 
   useEffect(() => {
     writeSidebarCollapsedPreference(sidebarCollapsed);
@@ -1178,7 +1189,7 @@ function AppShell({
   const pageRuntimeDomain: ApiRuntimeDataDomain | null = !canAccessCurrentPage || page.path === "/parameters/definitions" ? null : page.group === "参数管理" || page.key === "dts-reload"
     ? "parameters"
     : page.group === "日志分析" ? "logs" : page.group === "调试平台" && page.key !== "debugging-admin" ? "debugging" : null;
-  const pageRuntimeState = runtimeMode !== "api" || !pageRuntimeDomain
+  const pageRuntimeState = runtimeMode !== "api" || !pageRuntimeDomain || !businessScopeReady
     ? "ready"
     : apiRuntimePending.has(pageRuntimeDomain) ? "loading" : apiRuntimeFailures.has(pageRuntimeDomain) ? "error" : "ready";
   const loadingProjectParameters = page.key === "parameters" && pageRuntimeState === "loading";
@@ -1263,7 +1274,7 @@ function AppShell({
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
           {isPlatformHome ? (
             <div className="main-content home-content" data-runtime-state="ready">
-              <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+              <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} initialScope={requiresBusinessScope ? confirmedScope : undefined} onScopeResolved={requiresBusinessScope ? handleBusinessScopeResolved : undefined} onNavigate={navigate}>
               <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                 page={page}
                 publication={publication}
@@ -1318,7 +1329,7 @@ function AppShell({
               {publicationPreviewBanner}
               {loadingProjectParameters ? <ProjectParametersLoading /> : null}
               <div className="page-content" inert={pageRuntimeState === "loading"} hidden={loadingProjectParameters}>
-                <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+                <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} initialScope={requiresBusinessScope ? confirmedScope : undefined} onScopeResolved={requiresBusinessScope ? handleBusinessScopeResolved : undefined} onNavigate={navigate}>
                 <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                   page={page}
                   publication={publication}
@@ -1372,7 +1383,7 @@ function AppShell({
           </div>
         ) : null}
       </div>
-      {runtimeMode === "api" && !isPlatformHome && canAccessCurrentPage ? (
+      {runtimeMode === "api" && businessScopeReady && !isPlatformHome && canAccessCurrentPage ? (
         <XiaozePageContextRegistrar
           path={path}
           pageKey={page.key}
@@ -1405,7 +1416,7 @@ function AppShell({
 
   return runtimeMode === "api" ? (
     <XiaozePageContext.Provider value={xiaozePageContext}>
-      <XiaozeProvider enableInspector={enableXiaozeInspector} userId={state.currentUserId} organizationId={operatingOrganizationId} homeOrganizationId={organizationId} permissions={apiAuthPermissions}>{appShell}</XiaozeProvider>
+      <XiaozeProvider enabled={businessScopeReady} enableInspector={enableXiaozeInspector} userId={state.currentUserId} organizationId={operatingOrganizationId} homeOrganizationId={organizationId} permissions={apiAuthPermissions}>{appShell}</XiaozeProvider>
     </XiaozePageContext.Provider>
   ) : (
     appShell

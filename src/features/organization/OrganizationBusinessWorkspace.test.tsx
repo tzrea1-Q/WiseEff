@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { OrganizationBusinessWorkspace } from "./OrganizationBusinessWorkspace";
 import { createOrganizationWorkspaceClient } from "@/infrastructure/http/userGovernanceClient";
@@ -25,6 +25,31 @@ describe("business workspace admits proactive work only in an active organizatio
     expect(screen.queryByLabelText("当前操作组织")).not.toBeInTheDocument();
     expect(screen.queryByText("Secret Home")).not.toBeInTheDocument();
     expect(screen.queryByText("home")).not.toBeInTheDocument();
+  });
+  it("reuses a server-confirmed scope when the shell remounts", () => {
+    const fetchImpl = vi.fn();
+    const scope = { actor: { user: { id: "member", organizationId: "home", name: "Member", title: "", isActive: true }, organization: { id: "home", name: "Home" }, roles: [{ projectId: null, roleId: "hardware-user" }], permissions: ["parameter:view"] }, organization: { id: "home", name: "Home" } };
+    render(<OrganizationBusinessWorkspace {...props} actorId="member" organizationId="home" initialScope={scope} workspaceClient={createOrganizationWorkspaceClient(createApiClient({ baseUrl: "", fetchImpl }))} />);
+    expect(screen.getByText("只读业务内容")).toBeVisible();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it("does not reuse a different target's confirmed scope", async () => {
+    const fetchImpl = vi.fn(() => new Promise<Response>(() => {}));
+    const scope = { actor: { user: { id: "member", organizationId: "home", name: "Member", title: "", isActive: true }, organization: { id: "home", name: "Home" }, roles: [{ projectId: null, roleId: "hardware-user" }], permissions: ["parameter:view"] }, organization: { id: "home", name: "Home" } };
+    render(<OrganizationBusinessWorkspace {...props} actorId="member" organizationId="foreign" initialScope={scope} workspaceClient={createOrganizationWorkspaceClient(createApiClient({ baseUrl: "", fetchImpl }))} />);
+    expect(screen.queryByText("只读业务内容")).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalledOnce());
+  });
+  it("fails closed if scope resolution returns a different actor or target", async () => {
+    const fetchImpl = vi.fn(async () => Response.json({
+      actor: { user: { id: "other", organizationId: "home", name: "Other", title: "", isActive: true }, organization: { id: "home", name: "Home" }, roles: [], permissions: [] },
+      organization: { id: "home", name: "Home" }
+    }));
+    const onScopeResolved = vi.fn();
+    render(<OrganizationBusinessWorkspace {...props} actorId="member" organizationId="foreign" onScopeResolved={onScopeResolved} workspaceClient={createOrganizationWorkspaceClient(createApiClient({ baseUrl: "", fetchImpl }))} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法确认该工作区");
+    expect(screen.queryByText("只读业务内容")).not.toBeInTheDocument();
+    expect(onScopeResolved).not.toHaveBeenCalled();
   });
   it("does not render business content when an explicit target is rejected", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: { code: "FORBIDDEN", message: "Cannot operate in this Organization.", details: {} } }), { status: 403 }));
