@@ -154,6 +154,28 @@ it("keeps merge actions when a project user also holds a same-rank hardware role
   expect(await screen.findByLabelText("合入链接")).toBeInTheDocument();
 });
 
+it("keeps cached initialization and mock requests inside the current project", () => {
+  const request = { ...initialState.changeRequests[0], id: "aurora-request", projectId: "aurora", title: "当前项目变更",
+    status: "硬件Committer检视" as const, submissionRoundId: undefined };
+  const draft = { id: "aurora-draft", projectId: "aurora", projectName: "Aurora", projectCode: "AUR",
+    ownerUserId: null, sourceProjectIds: [], primarySourceProjectId: "", supplementSourceProjectIds: [], selectedModules: [],
+    selectedRisks: [], selectedParameterIds: [], parameterSnapshots: [], notes: "", createdBy: null,
+    createdAt: "2026-08-28T00:00:00.000Z", updatedAt: "2026-08-28T00:00:00.000Z" };
+  const review = { id: "aurora-init", draftId: draft.id, projectId: "aurora", status: "pending" as const,
+    submittedBy: null, submittedAt: draft.createdAt };
+  window.history.replaceState(null, "", "/parameter-changes?project=aurora&scope=review");
+  render(<ParameterChangesPage state={{ ...initialState, activeRoleId: "admin", changeRequests: [request,
+    { ...request, id: "other-request", projectId: "nebula", title: "其他项目变更" }], parameterSubmissionRounds: [],
+    parameterInitializationDrafts: [draft, { ...draft, id: "nebula-draft", projectId: "nebula", projectName: "Nebula" }],
+    parameterInitializationReviews: [review, { ...review, id: "nebula-init", draftId: "nebula-draft", projectId: "nebula" }] }}
+    dispatch={vi.fn()} onNavigate={vi.fn()} search={window.location.search} runtimeMode="mock" />);
+  const table = screen.getByRole("table", { name: "审阅队列" });
+  expect(table).toHaveTextContent("当前项目变更");
+  expect(table).toHaveTextContent("Aurora 初始化");
+  expect(table).not.toHaveTextContent("其他项目变更");
+  expect(table).not.toHaveTextContent("Nebula 初始化");
+});
+
 it("restores scope and status on browser navigation without retaining an old confirmation", async () => {
   const request = { ...initialState.changeRequests[0], id: "review-target", title: "待处理请求", submissionRoundId: undefined };
   window.history.replaceState(null, "", "/parameter-changes?project=aurora&scope=review&legacyRequest=review-target");

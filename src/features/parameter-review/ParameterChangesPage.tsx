@@ -42,7 +42,7 @@ export function ParameterChangesPage(props: PageProps) {
       params.delete("request"); params.delete("legacyRequest"); params.delete("memberRequest");
       onNavigate(`/parameter-changes?${params.toString()}`);
     }} items={[{ value: "mine", label: "我的提交", disabled: busy }, { value: "review", label: "审阅队列", disabled: busy }]} /> : null}
-    {scope === "review" ? <ParameterReviewPage key={scopeKey} {...props} state={reviewState} onBusyChange={onBusyChange} />
+    {scope === "review" ? <ParameterReviewPage key={scopeKey} {...props} state={reviewState} onBusyChange={onBusyChange} scopeToProject />
       : <ParameterSubmissionsPage key={scopeKey} {...props} onBusyChange={onBusyChange} />}
   </div>;
 }

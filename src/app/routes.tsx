@@ -119,6 +119,7 @@ export type PageProps = {
   sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
   projectMemberships?: AuthContextDto["projectMemberships"];
   onBusyChange?: (busy: boolean) => void;
+  scopeToProject?: boolean;
 };
 
 /**
