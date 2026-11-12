@@ -24,10 +24,10 @@ describe("view-switch consistency", () => {
       "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
       "/parameter-admin/projects", "/parameter-admin/projects/aurora/configuration?tab=conflicts",
       "/parameter-admin/projects/aurora/review-roles", "/parameter-admin/spec-review",
-      "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping", "/parameter-home", "/parameter-review",
-      "/parameter-submissions", "/parameters", "/user-permissions"
+      "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping", "/parameter-home",
+      "/parameter-changes?scope=review", "/parameter-changes?scope=mine", "/parameters", "/user-permissions"
     ];
-    expect(Object.keys(viewSwitchStyleExpectations).sort()).toEqual(auditPaths);
+    expect(Object.keys(viewSwitchStyleExpectations).sort()).toEqual(auditPaths.sort());
     expect(viewSwitchStyleExpectations["/user-permissions"]).toEqual(["section", "tabs"]);
     for (const path of auditPaths) {
       expect(consistencyRoutes.find((route) => route.path === path)?.required).toContain("viewSwitchSignatures");
@@ -65,7 +65,7 @@ describe("view-switch consistency", () => {
   });
   it.each([
     ...["/parameter-home"].map((path) => [path, "toggle"]),
-    ...["/logs", "/parameters", "/parameter-review", "/parameter-submissions",
+    ...["/logs", "/parameters",
       "/parameter-admin/projects/aurora/configuration?tab=conflicts"]
       .map((path) => [path, "tabs"]),
     ...["/debugging-admin", "/debugging-admin/nodes", "/parameter-admin", "/parameter-admin/specs",
@@ -79,6 +79,13 @@ describe("view-switch consistency", () => {
       }, path);
       if (style.variant === variant) expect(assertStyles).not.toThrow();
       else expect(assertStyles).toThrow("matched 0");
+    }
+  });
+
+  it.each(["/parameter-changes?scope=mine", "/parameter-changes?scope=review"])("requires both view and status switches on %s", (path) => {
+    expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(signatures[1]), measurement(signatures[2])], viewSwitchSignatures: signatures }, path)).not.toThrow();
+    for (const style of [signatures[1], signatures[2]]) {
+      expect(() => requireViewSwitchStyles({ viewSwitches: [measurement(style)], viewSwitchSignatures: signatures }, path)).toThrow("missing view-switch tiers");
     }
   });
 
@@ -123,7 +130,7 @@ describe("view-switch consistency", () => {
     }, path)).toThrow("matched 0");
   });
 
-  it.each(["/parameters", "/parameter-review"])("requires local content tabs on %s", (path) => {
+  it.each(["/parameters"])("requires local content tabs on %s", (path) => {
     expect(() => requireViewSwitchStyles({
       viewSwitches: [measurement(signatures[1]), measurement(signatures[1], false)], viewSwitchSignatures: signatures
     }, path)).not.toThrow();
@@ -138,7 +145,7 @@ describe("view-switch consistency", () => {
     "/parameter-admin", "/parameter-admin/specs", "/parameter-admin/specs/identity-mapping",
     "/parameter-admin/modules", "/parameter-admin/modules/queue", "/parameter-admin/modules/registry",
     "/parameter-admin/identity-mapping", "/parameter-admin/spec-review", "/parameter-admin/projects",
-    "/parameter-admin/projects/aurora/review-roles", "/parameter-review", "/parameter-submissions"
+    "/parameter-admin/projects/aurora/review-roles", "/parameter-changes?scope=review", "/parameter-changes?scope=mine"
   ])("rejects legacy styles and requires signatures on ticket #1101 route %s", (path) => {
     expect(() => requireViewSwitchStyles({
       viewSwitches: [{ ...measurement(), height: 43 }], viewSwitchSignatures: signatures
@@ -224,7 +231,7 @@ describe("view-switch consistency", () => {
       .toThrow(`missing consistency measurements: ${category}`);
   });
 
-  it.each(["/parameters", "/parameter-review"])("requires formerly legacy switches after both migrations on %s", (path) => {
+  it.each(["/parameters", "/parameter-changes?scope=review"])("requires formerly legacy switches after both migrations on %s", (path) => {
     expect(() => requireViewSwitchStyles({ viewSwitches: [], viewSwitchSignatures: [] }, path))
       .toThrow("missing consistency measurements: viewSwitches, viewSwitchSignatures");
   });

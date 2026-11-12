@@ -1,3 +1,4 @@
+import { changeCenterHref } from "../../../../src/domain/parameters/changeCenterUrl";
 import { ApiError } from "../../../shared/http/errors";
 import type { Database } from "../../../shared/database/client";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
@@ -50,7 +51,7 @@ function submissionCitation(changeRequestId: string, projectId: string, targetVa
       type: "parameter" as const,
       id: changeRequestId,
       label: `Change request ${changeRequestId}`,
-      href: `/parameter-review?request=${encodeURIComponent(changeRequestId)}&project=${encodeURIComponent(projectId)}${organizationId ? `&organizationId=${encodeURIComponent(organizationId)}` : ""}`,
+      href: changeCenterHref("review", { request: changeRequestId, project: projectId, organizationId }),
       snippet: `${targetValue} pending review for ${projectId}.`
     }
   ];

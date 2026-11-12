@@ -128,12 +128,12 @@ it.each(["role", "permission"])("drops the review queue immediately when current
   expect(listChangeRequests).toHaveBeenCalledTimes(1);
 });
 
-it("reports an invalid project without querying another project", () => {
+it.each(["?project=missing", "?project=", "?projectId="])("reports invalid project context %s without querying another project", (search) => {
   const listChangeRequests = vi.fn();
   const listSubmissionRounds = vi.fn();
   const runtime = { parameterRepository: { listChangeRequests, listSubmissionRounds } } as unknown as AppRuntime;
   render(<ParameterChangesPage state={{ ...initialState, activeRoleId: "admin" }} dispatch={vi.fn()} onNavigate={vi.fn()}
-    search="?project=missing" runtime={runtime} runtimeMode="api" sessionRoles={[{ projectId: null, roleId: "admin" }]} />);
+    search={search} runtime={runtime} runtimeMode="api" sessionRoles={[{ projectId: null, roleId: "admin" }]} />);
   expect(screen.getByRole("alert")).toHaveTextContent("项目链接无效");
   expect(listChangeRequests).not.toHaveBeenCalled();
   expect(listSubmissionRounds).not.toHaveBeenCalled();

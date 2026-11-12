@@ -15,8 +15,8 @@ import { openWorkbenchPanel } from "../acceptance/helpers/runtime";
 const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const coreRoutes = [
   "/parameters",
-  "/parameter-review",
-  "/parameter-submissions",
+  "/parameter-changes?scope=review",
+  "/parameter-changes?scope=mine",
   "/parameter-admin",
   "/logs",
   "/debugging",
@@ -122,17 +122,17 @@ test.describe("M5.11 accessibility quality gate", () => {
 
   for (const { route, theme } of [
     ...coreRoutes.map((route) => ({ route, theme: "light" as const })),
-    { route: "/parameter-review", theme: "dark" as const }
+    { route: "/parameter-changes?scope=review", theme: "dark" as const }
   ]) {
     test(`has no WCAG A/AA violations on ${route}${theme === "dark" ? " (dark)" : ""}`, async ({ page }, testInfo) => {
-      const populatedReview = route === "/parameter-review" && visualReviewFixtureAllowed();
+      const populatedReview = route === "/parameter-changes?scope=review" && visualReviewFixtureAllowed();
       if (populatedReview) {
-        await signInBrowserAsRole(page, "software-committer", `${route}?project=aurora`);
+        await signInBrowserAsRole(page, "software-committer", `${route}&project=aurora`);
       } else {
         await test.step("quality:navigation", () => page.goto(route));
       }
       await expect(page.locator("main, .main-content").first()).toBeVisible();
-      await test.step("quality:readiness", () => settleQualityRoute(page, route.split("?")[0]));
+      await test.step("quality:readiness", () => settleQualityRoute(page, route));
       await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
       if (populatedReview) {
         const title = "将 Aurora 电池 CCCV 起始电压从 4500 调整为 4600";

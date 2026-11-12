@@ -1,3 +1,4 @@
+import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import type { ApplyParameterFileSourceInput, ParameterFileCandidate, ParameterFileCandidateDiagnostic, ParameterFileRepository, ParameterFileSourcePreview, SubmitParameterFileSourceReviewInput, ProjectLocalOverrideInput } from "@/application/ports/ParameterFileRepository";
 import type { SourceEditSaveSnapshot, SourceEditSession } from "@/application/project-configuration/sourceEditSession";
@@ -317,7 +318,7 @@ export function WorkbenchSourceEditingPane({ scope: inputScope, fileName, baseVe
     {legacyDraftsDirty ? <p className="workbench-source-editing__notice">已有参数草稿，请先处理后保存完整 DTS。<Button size="sm" variant="ghost" onClick={onOpenLegacyDrafts}>查看已有草稿</Button></p> : null}
     {file?.storageError ? <p className="workbench-source-editing__notice" role="alert">本地恢复不可用：{file.storageError}<Button size="sm" variant="ghost" onClick={() => download()}>下载草稿</Button></p> : null}
     {requestId ? <p className="workbench-source-editing__notice">待审核请求 <code>{requestId}</code>
-      <a href={`/parameter-submissions?project=${encodeURIComponent(scope.projectId)}&request=${encodeURIComponent(requestId)}`}>查看提交记录</a>
+      <a href={changeCenterHref("mine", { project: scope.projectId, request: requestId })}>查看提交记录</a>
       <Button size="sm" variant="ghost" onClick={() => void checkRequest()}>检查审核结果</Button></p> : null}
     {error && !saveOpen ? <p className="workbench-source-editing__notice" role="alert">{error}</p> : null}
     <Suspense fallback={<p role="status">正在加载 DTS 编辑器…</p>}>

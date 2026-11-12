@@ -110,7 +110,7 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
   const requestedKind = params.has("legacyRequest") ? "legacy" : params.has("memberRequest") ? "member" : null;
   const writeQuery = useCallback((next: URLSearchParams, replace = false) => {
     const value = next.toString();
-    window.history[replace ? "replaceState" : "pushState"](null, "", `${window.location.pathname}${value ? `?${value}` : ""}`);
+    window.history[replace ? "replaceState" : "pushState"](null, "", `${window.location.pathname}${value ? `?${value}` : ""}${window.location.hash}`);
     setQuery(value);
   }, []);
 

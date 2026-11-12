@@ -1,3 +1,4 @@
+import { changeCenterHref } from "../../../src/domain/parameters/changeCenterUrl";
 import type { z } from "zod";
 import { createHash } from "node:crypto";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -137,7 +138,7 @@ export async function assignProjectHandover(db: Database, auth: AuthContext, kin
       await writeAuditEventInTx(asAuditTx(tx), invocation, { requestId }, { app: "parameters", kind: "project-handover", action: "assign-responsibility", severity: "Medium", projectId: item.projectId, targetType: kind, targetId: id,
         metadata: { previousResponsibleUserId: item.responsibleUserId, responsibleUserId: body.responsibleUserId } });
       if (body.responsibleUserId && !kind.endsWith("draft")) await notifyUsers(tx, { organizationId, recipientUserIds: [body.responsibleUserId], category: "parameter.review.handover", title: `项目待办交接 · ${item.projectName}`,
-        body: item.title, severity: "info", actionUrl: `/parameter-review?project=${encodeURIComponent(item.projectId)}&request=${encodeURIComponent(item.id)}`,
+        body: item.title, severity: "info", actionUrl: changeCenterHref("review", { project: item.projectId, [kind === "value-review" ? "request" : "legacyRequest"]: item.id }),
         sourceKind: kind, sourceId: `${item.id}:${body.expectedVersion}`, metadata: { projectId: item.projectId, requestId: item.id } });
     });
   } catch (error) {

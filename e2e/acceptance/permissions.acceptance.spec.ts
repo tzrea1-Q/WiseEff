@@ -573,7 +573,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       body: await page.screenshot({ fullPage: true, animations: "disabled" }), contentType: "image/png"
     });
 
-    await page.goto("/parameter-review");
+    await page.goto("/parameter-changes?scope=review&project=acceptance-delete-project&legacyRequest=acceptance-delete-init-review");
     const retainedInitializationRow = page.getByRole("row").filter({ hasText: "Deleted user initialization" });
     await expect(retainedInitializationRow).toContainText(createdUser!.name);
     await testInfo.attach("deleted-user-initialization-attribution-1440", {

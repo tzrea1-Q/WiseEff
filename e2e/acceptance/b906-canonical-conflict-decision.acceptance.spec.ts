@@ -314,7 +314,7 @@ for (const [format, choice, decision] of [
         }
         expect(submitResponse.status(), await submitResponse.text()).toBe(201);
         const requestId = (await submitResponse.json()).item.requestId as string;
-        await expect(page).toHaveURL(new RegExp(`/parameter-submissions\\?project=${projectId}&request=${requestId}`));
+        await expect(page).toHaveURL(new RegExp(`/parameter-changes\\?scope=mine&project=${projectId}&request=${requestId}`));
         await expect(page.getByRole("article", { name: "源文件请求详情" })).toContainText(`${format} ${choice} 页面决策`);
         const replay = await request.post(api(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateId}/source-conflict-submit`), {
           headers: authHeadersForRole("admin"), data: submitResponse.request().postDataJSON()

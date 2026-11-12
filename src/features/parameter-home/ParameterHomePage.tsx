@@ -161,7 +161,7 @@ export function ParameterHomePage({
       onSummaryRetry={reloadSummary}
       onNavigate={(path) => {
         const [pathname, query = ""] = path.split("?", 2);
-        if (["/parameters", "/parameter-review", "/parameter-submissions"].includes(pathname)
+        if (["/parameters", "/parameter-changes"].includes(pathname)
           && !new URLSearchParams(query).get("project")) {
           setProjectDestination(path);
         } else {

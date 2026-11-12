@@ -50,6 +50,7 @@ import {
   initialDashboardState
 } from "@/application/parameters/dashboardState";
 import { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
+import { normalizeLegacyChangeHref } from "@/domain/parameters/changeCenterUrl";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
@@ -298,7 +299,11 @@ function AppShell({
 }) {
   const [state, dispatch] = useReducer(reducer, initialAppState);
   const stateRef = useRef(state);
-  const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
+  const [path, setPath] = useState(() => {
+    const normalized = normalizeLegacyChangeHref(window.location.pathname, window.location.search, window.location.hash);
+    if (normalized) window.history.replaceState(window.history.state, "", normalized);
+    return getPageByPath(window.location.pathname).path;
+  });
   const [search, setSearch] = useState(() => window.location.pathname === "/log-dashboard" ? "" : window.location.search);
   const operatingOrganizationId = new URLSearchParams(search).get("organizationId") ?? undefined;
   const scopeKey = `${state.currentUserId}:${operatingOrganizationId ?? "home"}`;
@@ -342,7 +347,9 @@ function AppShell({
   const showsApplicationFooter = !isProjectConfigurationWorkbenchPath(path)
     && page.key !== "parameter-review" && page.key !== "parameter-submissions" && page.key !== "parameter-changes";
   const usesProjectScope = page.path !== "/parameters/definitions" && pageUsesProjectScope(page.key);
-  const pageProjectId = (page.path !== "/parameters/definitions" && (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions" || page.key === "parameter-changes")
+  const pageProjectId = page.key === "parameter-changes"
+    ? new URLSearchParams(search).get("project") ?? new URLSearchParams(search).get("projectId") ?? state.activeProjectId
+    : (page.path !== "/parameters/definitions" && (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions")
     ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") : null) || state.activeProjectId;
   const xiaozePageContext = useMemo(
     () => ({
@@ -802,10 +809,11 @@ function AppShell({
     if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
       return;
     }
+    const params = new URLSearchParams(search);
     const urlProjectId = page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions" || page.key === "parameter-changes"
-      ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") : null;
-    const projectId = urlProjectId || state.activeProjectId;
-    if (!projectId) {
+      ? params.get("project") ?? params.get("projectId") : null;
+    const projectId = page.key === "parameter-changes" ? urlProjectId ?? state.activeProjectId : urlProjectId || state.activeProjectId;
+    if (!projectId || (page.key === "parameter-changes" && !state.configDraft.projects.some((project) => project.id === projectId))) {
       return;
     }
     void hydrateActiveProjectInitialization(projectId);
@@ -815,6 +823,7 @@ function AppShell({
     hydrateActiveProjectInitialization,
     page.key,
     search,
+    state.configDraft.projects,
     state.activeProjectId
   ]);
 
@@ -911,10 +920,12 @@ function AppShell({
       const applyNavigation = () => {
         historyIndex.current = nextIndex;
         if (isStaticDownloadPath(window.location.pathname)) return;
+        const normalized = normalizeLegacyChangeHref(window.location.pathname, window.location.search, window.location.hash);
+        if (normalized) window.history.replaceState(window.history.state, "", normalized);
         const nextPage = getPageByPath(window.location.pathname);
         const nextSearch = window.location.pathname === "/log-dashboard" ? "" : window.location.search;
         if (nextPage.path !== window.location.pathname) {
-          window.history.replaceState({ ...window.history.state, wiseeffNavigationIndex: nextIndex }, "", `${nextPage.path}${nextSearch}`);
+          window.history.replaceState({ ...window.history.state, wiseeffNavigationIndex: nextIndex }, "", `${nextPage.path}${nextSearch}${window.location.hash}`);
         }
         setPath(nextPage.path);
         setSearch(nextSearch);
@@ -961,7 +972,9 @@ function AppShell({
 
   const navigate = useCallback((nextPath: string, options?: { replace?: boolean }) => {
     const request = ++navigationRequest.current;
-    const url = new URL(nextPath, window.location.origin);
+    let url = new URL(nextPath, window.location.origin);
+    const normalized = normalizeLegacyChangeHref(url.pathname, url.search, url.hash);
+    if (normalized) url = new URL(normalized, window.location.origin);
     if (isStaticDownloadPath(url.pathname)) {
       const decision = requestSettingsLeave();
       if (decision instanceof Promise) void decision.then((allowed) => { if (allowed && request === navigationRequest.current) window.location.assign(url.href); });
@@ -970,8 +983,8 @@ function AppShell({
     }
     const nextPage = getPageByPath(url.pathname);
     if (url.pathname === "/log-dashboard") url.search = "";
-    const nextUrl = `${nextPage.path}${url.search}`;
-    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    const nextUrl = `${nextPage.path}${url.search}${url.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
     if (nextUrl === currentUrl) {
       setPath(nextPage.path);
@@ -1645,7 +1658,8 @@ function TopBar({
   const visibleUserName = currentUser?.name ?? "账户信息暂不可用";
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =
-    page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions" || page.key === "parameter-changes"
+    page.key === "parameter-changes" ? new URLSearchParams(search).get("project") ?? new URLSearchParams(search).get("projectId") ?? state.activeProjectId
+      : page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
       ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") || state.activeProjectId : state.activeProjectId;
   const commitProjectChange = (projectId: string) => {
     dispatch({ type: "SET_PROJECT", projectId });

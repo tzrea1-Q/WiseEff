@@ -1,3 +1,4 @@
+import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { SubmissionWorkflowTimeline } from "@/components/SubmissionWorkflowTimeline";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { useTopBarActions } from "@/components/layout";
@@ -305,7 +306,7 @@ export function ParameterSubmissionsPage({
         loading={isApiMode && (!projectionMatchesScope || submissionProjection.status === "loading")}
         error={(projectionMatchesScope ? submissionProjection.error : null) || (isApiMode && !canonicalRepository ? "新版参数提交暂不可用，请稍后重试。" : null)}
       /> : <div className="review-state"><p role="alert">项目链接无效，未加载其他项目的提交。</p>
-        <Button type="button" variant="outline" onClick={() => onNavigate("/parameter-submissions")}>返回我的提交</Button>
+        <Button type="button" variant="outline" onClick={() => onNavigate(changeCenterHref("mine", { project: canonicalProjectId }))}>返回我的提交</Button>
       </div>}
       <ConfirmDialog
         open={withdrawConfirmOpen && withdrawTarget !== null && withdrawScopeKey === projectionScopeKey}

@@ -1,3 +1,4 @@
+import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createDefaultApiClient } from "@/infrastructure/http/defaultApiClient";
 import { presentError } from "@/infrastructure/http/presentError";
@@ -55,7 +56,7 @@ export function OrganizationProjectHandoverPanel({ organizationId, currentUserId
     }
     const params = new URLSearchParams({ project: item.projectId });
     if (!item.kind.endsWith("draft")) params.set(item.kind === "value-review" ? "request" : "legacyRequest", item.id);
-    onNavigate(withOrganizationScope(`${item.kind.endsWith("draft") ? "/parameters" : "/parameter-review"}?${params}`, organizationId));
+    onNavigate(withOrganizationScope(item.kind.endsWith("draft") ? `/parameters?${params}` : changeCenterHref("review", Object.fromEntries(params)), organizationId));
   }, [initialization, onNavigate, organizationId]);
   useEffect(() => {
     if (continuation && !saving && !assignment) {
@@ -116,7 +117,7 @@ export function OrganizationProjectHandoverPanel({ organizationId, currentUserId
       {({ titleId, descriptionId }) => <><h2 id={titleId}>继续项目初始化</h2><p id={descriptionId}>{initialDraft?.projectName} · {initialDraft?.emptyLibrary ? "从空项目开始" : `保留 ${initialDraft?.bindingSnapshots.length ?? 0} 项来源快照`}</p>
         {initialStatus === "initialization_pending_review" ? <p role="status">该初始化已经提交，等待管理员在参数审核中处理。原始提交署名保留。</p> : <label className="flex flex-col gap-2 text-sm">初始化说明<Textarea value={notes} onChange={event => setNotes(event.target.value)} disabled={saving} /></label>}
         {assignmentError ? <p role="alert" className="text-destructive">{assignmentError}</p> : null}
-        <div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={async () => { if (await requestSettingsLeave()) setInitialDraft(null); }}>关闭</Button>{initialStatus !== "initialization_pending_review" ? <><Button variant="outline" disabled={saving} onClick={() => void saveInitialization(false)}>保存初始化草稿</Button><Button disabled={saving} onClick={() => void saveInitialization(true)}>提交初始化审核</Button></> : <Button onClick={() => { setInitialDraft(null); onNavigate(withOrganizationScope(`/parameter-review?project=${encodeURIComponent(initialDraft!.projectId)}`, organizationId)); }}>前往参数审核</Button>}</div></>}
+        <div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={async () => { if (await requestSettingsLeave()) setInitialDraft(null); }}>关闭</Button>{initialStatus !== "initialization_pending_review" ? <><Button variant="outline" disabled={saving} onClick={() => void saveInitialization(false)}>保存初始化草稿</Button><Button disabled={saving} onClick={() => void saveInitialization(true)}>提交初始化审核</Button></> : <Button onClick={() => { setInitialDraft(null); onNavigate(withOrganizationScope(changeCenterHref("review", { project: initialDraft!.projectId }), organizationId)); }}>前往参数审核</Button>}</div></>}
     </ModalDialog>
   </section>;
 }

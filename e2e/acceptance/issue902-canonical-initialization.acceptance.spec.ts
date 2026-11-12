@@ -168,8 +168,8 @@ test.describe("issue902 canonical-only JSON project initialization", () => {
     expect((await beforeApproval.json()).items).toEqual([]);
 
     await signInBrowserAsRole(page, "admin", `${runtime.frontendUrl}/parameter-review?project=${targetProjectId}`);
-    await expect(page).toHaveURL((url) => url.pathname === "/parameter-review"
-      && url.searchParams.get("project") === targetProjectId);
+    await expect(page).toHaveURL((url) => url.pathname === "/parameter-changes"
+      && url.searchParams.get("scope") === "review" && url.searchParams.get("project") === targetProjectId);
     const reviewRow = page.getByRole("table", { name: "审阅队列" })
       .locator(`[data-review-row-id="${review.id}"]`);
     await reviewRow.getByRole("button", { name: /提交详情$/ }).click();

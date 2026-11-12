@@ -54,6 +54,36 @@ const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
 
+it.each([
+  ["/parameter-submissions", "mine"],
+  ["/parameter-review", "review"]
+])("replaces a legacy %s bookmark without losing its encoded context", async (path, scope) => {
+  const query = "projectId=missing%20project&module=A%2FB&request=req%2B1&memberRequest=file%2F1&legacyRequest=old%3D1&view=history&status=done&type=dts&organizationId=org%2B1";
+  window.history.replaceState(null, "", `${path}?${query}&scope=wrong#detail%20anchor`);
+  const historyLength = window.history.length;
+  renderApp({ initialAppState: adminState });
+  await waitFor(() => expect(window.location.pathname + window.location.search + window.location.hash)
+    .toBe(`/parameter-changes?${query}&scope=${scope}#detail%20anchor`));
+  expect(window.history.length).toBe(historyLength);
+});
+
+it("replaces an old history entry and restores it on forward navigation", async () => {
+  window.history.replaceState(null, "", "/parameter-home");
+  renderApp({ initialAppState: adminState });
+  act(() => {
+    window.history.pushState(null, "", "/parameter-review?project=aurora&request=missing#detail");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await waitFor(() => expect(window.location.pathname + window.location.search + window.location.hash)
+    .toBe("/parameter-changes?project=aurora&request=missing&scope=review#detail"));
+  window.history.back();
+  await waitFor(() => expect(window.location.pathname).toBe("/parameter-home"));
+  window.history.forward();
+  await waitFor(() => expect(window.location.pathname + window.location.hash).toBe("/parameter-changes#detail"));
+  expect(new URLSearchParams(window.location.search).get("request")).toBe("missing");
+  expect(new URLSearchParams(window.location.search).get("scope")).toBe("review");
+});
+
 it("replaces legacy module bookmarks and restores governance tabs on browser Back", async () => {
   window.history.replaceState(null, "", "/parameter-admin/modules/queue?q=power");
   const historyLength = window.history.length;
@@ -1478,6 +1508,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
+        parameterCatalogRepository={{ listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [] }) } as never}
         authClient={{
           getCurrentAuthContext: async () => ({
             user: {
@@ -1510,6 +1541,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const merged = {
       ...initialState.changeRequests.find((request) => request.status === "已合入")!,
       id: "merged-with-link",
+      projectId: "aurora",
       status: "已合入" as const,
       reviewerNote: "https://example.com/mr/99"
     };
@@ -1519,6 +1551,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
+        parameterCatalogRepository={{ listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [] }) } as never}
         authClient={{
           getCurrentAuthContext: async () => ({
             user: {
@@ -1568,6 +1601,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const merged = {
       ...initialState.changeRequests.find((request) => request.status === "已合入")!,
       id: "merged-without-link",
+      projectId: "aurora",
       status: "已合入" as const,
       reviewerNote: "legacy free-text note"
     };
@@ -1577,6 +1611,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
+        parameterCatalogRepository={{ listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [] }) } as never}
         authClient={{
           getCurrentAuthContext: async () => ({
             user: {
@@ -1626,6 +1661,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
+        parameterCatalogRepository={{ listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [] }) } as never}
         authClient={{
           getCurrentAuthContext: async () => ({
             user: {
@@ -2227,7 +2263,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("dialog", { name: "用户菜单" })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
     await userEvent.click(trigger);
-    await userEvent.click(screen.getByText("变更审阅", { selector: ".topbar-title" }));
+    await userEvent.click(screen.getByText("变更中心", { selector: ".topbar-title" }));
     expect(screen.queryByRole("dialog", { name: "用户菜单" })).not.toBeInTheDocument();
     await userEvent.click(trigger);
     act(() => {
@@ -2512,7 +2548,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     renderApp({ initialAppState: userState });
 
-    expect(window.location.pathname).toBe("/parameter-submissions");
+    expect(window.location.pathname).toBe("/parameter-changes");
+    expect(new URLSearchParams(window.location.search).get("scope")).toBe("mine");
     expect(screen.getByRole("table", { name: "我的提交" })).toBeInTheDocument();
     const submissionStatus = screen.getByRole("tablist", { name: "提交状态" });
     expect(within(submissionStatus).getByRole("tab", { name: "审核中" })).toHaveAttribute("aria-selected", "true");
@@ -2521,7 +2558,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(within(topbar).queryByRole("button", { name: "返回参数修改" })).not.toBeInTheDocument();
-    expect(topbar).toHaveTextContent("我的提交");
+    expect(topbar).toHaveTextContent("变更中心");
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("link", { name: "我的提交" })).not.toBeInTheDocument();
   });
@@ -2964,7 +3001,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       }
     });
 
-    render(<App initialAppState={{ ...state, activeRoleId: "admin" }} />);
+    window.history.replaceState(null, "", `/parameter-review?project=${state.parameterInitializationReviews[0].projectId}`);
+    render(<App initialAppState={{ ...state, activeRoleId: "admin", configDraft: { ...state.configDraft,
+      projects: [...state.configDraft.projects, { id: state.parameterInitializationReviews[0].projectId, name: "Zephyr", code: "ZEP" }] } }} />);
 
     const reviewTable = screen.getByRole("table");
     expect(within(reviewTable).getByRole("button", { name: "查看 Zephyr 初始化 提交详情" })).toBeInTheDocument();
@@ -3138,7 +3177,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(reviewDetail).toHaveTextContent("Charging Policy");
     const oldestMatchingRequest = initialState.changeRequests
-      .filter((request) => request.module === "Charging Policy" && request.status === "硬件Committer检视")
+      .filter((request) => request.projectId === initialState.activeProjectId && request.module === "Charging Policy" && request.status === "硬件Committer检视")
       .sort((left, right) => Date.parse(left.createdAtTs) - Date.parse(right.createdAtTs))[0];
     expect(reviewDetail).toHaveTextContent(oldestMatchingRequest.title);
     expect(reviewDetail).not.toHaveTextContent(/PRQ-\d+/);
@@ -3150,7 +3189,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     renderAppForCurrentPath();
 
     expect(document.querySelector(".workbench-page > .page-header")).not.toBeInTheDocument();
-    expect(document.querySelector(".topbar-title")).toHaveTextContent("变更审阅");
+    expect(document.querySelector(".topbar-title")).toHaveTextContent("变更中心");
   });
 
   it("keeps parameter review filters together above the compact table", () => {
@@ -3242,19 +3281,19 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(pendingTab).toHaveAttribute("aria-selected", "true");
     expect(within(pendingTable).getByText("快充输入电流调整")).toBeInTheDocument();
-    expect(within(pendingTable).queryByText("SOC 平滑窗口调整")).not.toBeInTheDocument();
+    expect(within(pendingTable).queryByText("无线充热降额比例调整")).not.toBeInTheDocument();
 
     fireEvent.mouseDown(historyTab, { button: 0, ctrlKey: false });
 
     const historyTable = screen.getByRole("table");
     expect(historyTab).toHaveAttribute("aria-selected", "true");
-    expect(within(historyTable).getByText("SOC 平滑窗口调整")).toBeInTheDocument();
+    expect(within(historyTable).getByText("无线充热降额比例调整")).toBeInTheDocument();
     expect(within(historyTable).queryByText("快充输入电流调整")).not.toBeInTheDocument();
 
-    fireEvent.click(within(historyTable).getByText("SOC 平滑窗口调整"));
+    fireEvent.click(within(historyTable).getByText("无线充热降额比例调整"));
 
     const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
-    expect(reviewDetail).toHaveTextContent("SOC 平滑窗口调整");
+    expect(reviewDetail).toHaveTextContent("无线充热降额比例调整");
     expect(reviewDetail).not.toHaveTextContent(/PRQ-\d+/);
     expect(within(reviewDetail).queryByRole("button", { name: "通过检视" })).not.toBeInTheDocument();
     expect(within(reviewDetail).queryByRole("button", { name: "打回修改" })).not.toBeInTheDocument();
@@ -3265,7 +3304,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(historyTab).toHaveAttribute("aria-selected", "false");
     const restoredPendingTable = screen.getByRole("table");
     expect(within(restoredPendingTable).getByText("快充输入电流调整")).toBeInTheDocument();
-    expect(within(restoredPendingTable).queryByText("SOC 平滑窗口调整")).not.toBeInTheDocument();
+    expect(within(restoredPendingTable).queryByText("无线充热降额比例调整")).not.toBeInTheDocument();
   });
 
   it("labels and aligns the review change column", () => {

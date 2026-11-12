@@ -1,3 +1,4 @@
+import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleCheck, Pencil, Send, X } from "lucide-react";
 
@@ -578,7 +579,7 @@ export function DtsBindingDraftTray({
           {submitting ? "提交中…" : `提交审核（${submitDrafts.length} 项）`}
         </button>
         {submitted ? (
-          <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>查看变更审阅</button>
+          <button type="button" className="button subtle" onClick={() => onNavigate(changeCenterHref("mine", { project: projectId }))}>查看我的提交</button>
         ) : null}
       </div>
     </section>

@@ -32,13 +32,13 @@ const archetypeVisualPaths = new Set<string>([
   "/parameter-admin/projects",
   "/parameter-home",
   "/organization",
-  "/parameter-review"
+  "/parameter-changes?scope=review"
 ]);
 
 const stableRoutes = [
   { path: "/", name: "home-shell" },
   { path: "/parameters", name: "parameters-workbench" },
-  { path: "/parameter-review", name: "parameter-review-workbench" },
+  { path: "/parameter-changes?scope=review", name: "parameter-review-workbench" },
   { path: "/parameter-admin", name: "parameter-admin-workbench" },
   { path: "/parameter-admin/projects", name: "projects-admin-list" },
   { path: "/logs", name: "logs-workbench" },
@@ -101,14 +101,14 @@ test.describe("M5.11 visual quality gate", () => {
   )) {
     test(`keeps stable visual baseline for ${route.path} (${theme})`, async ({ page }) => {
       test.skip(
-        route.path === "/parameter-review" && !allowVisualReviewFixture,
+        route.path === "/parameter-changes?scope=review" && !allowVisualReviewFixture,
         "planned target-synthetic skip: populated review visual requires an explicitly isolated fixture database"
       );
       if (route.path === "/organization") {
         await stabilizeOrganizationVisualClock(page);
       }
-      if (route.path === "/parameter-review" && allowVisualReviewFixture) {
-        await signInBrowserAsRole(page, "software-committer", `${route.path}?project=aurora`);
+      if (route.path === "/parameter-changes?scope=review" && allowVisualReviewFixture) {
+        await signInBrowserAsRole(page, "software-committer", `${route.path}&project=aurora`);
       } else {
         await test.step("quality:navigation", () => page.goto(route.path));
       }
@@ -128,7 +128,7 @@ test.describe("M5.11 visual quality gate", () => {
           page.locator('.dts-parameter-workbench-table__body [role="row"]').first()
         ).toBeVisible();
       }
-      if (route.path === "/parameter-review") {
+      if (route.path === "/parameter-changes?scope=review") {
         await expectLocalizedVisualReviewFixture(page);
       }
       if (route.path === "/parameter-admin/projects") {
@@ -146,7 +146,7 @@ test.describe("M5.11 visual quality gate", () => {
           await expect(cell).toBeVisible();
         }
       }
-      if (route.path === "/parameter-review") {
+      if (route.path === "/parameter-changes?scope=review") {
         // Processing timestamps are inside the closed record disclosure.
         expect(masks.slice(-1)).toHaveLength(1);
         for (const mask of masks.slice(-1)) {

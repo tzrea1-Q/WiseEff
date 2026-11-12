@@ -1,3 +1,4 @@
+import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { SelectControl } from "@/components/common/SelectControl";
 import { SectionEmpty } from "@/components/common/SectionState";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -976,7 +977,7 @@ export function ParametersPage({
         <button
           className="button subtle"
           type="button"
-          onClick={() => onNavigate(resolvedProjectId ? `/parameter-submissions?project=${encodeURIComponent(resolvedProjectId)}` : "/parameter-submissions")}
+          onClick={() => onNavigate(changeCenterHref("mine", { project: resolvedProjectId || undefined }))}
         >
           我的提交
         </button>
@@ -1161,7 +1162,7 @@ export function ParametersPage({
             onUpdateDraft={updateDraft}
             onSaveDraft={saveDraft}
             onSubmit={submitParameterToModifiedTable}
-            onViewSubmissions={() => onNavigate(resolvedProjectId ? `/parameter-submissions?project=${encodeURIComponent(resolvedProjectId)}` : "/parameter-submissions")}
+            onViewSubmissions={() => onNavigate(changeCenterHref("mine", { project: resolvedProjectId || undefined }))}
           />
           ) : null}
           </>

@@ -218,7 +218,7 @@ test("settles project review roles on its loaded governance content, not a DTS f
   await expect(page.getByText("aurora-board.dts")).toHaveCount(0);
 });
 
-for (const [path, queue, width] of [["/parameter-review", "审阅队列", 1280], ["/parameter-submissions", "我的提交", 1280], ["/parameter-review", "审阅队列", 1440]] as const) {
+for (const [path, queue, width] of [["/parameter-changes?scope=review", "审阅队列", 1280], ["/parameter-changes?scope=mine", "我的提交", 1280], ["/parameter-changes?scope=review", "审阅队列", 1440]] as const) {
   test(`settles ${path} after its actual review API response, including an empty queue at ${width}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: width === 1280 ? 800 : 900 });
     let release!: () => void, received!: () => void;

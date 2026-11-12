@@ -1210,7 +1210,7 @@ describe("ProjectConfigurationWorkbench", () => {
 
   it("navigates pending readiness remediation to the canonical request review surface", async () => {
     const ready = await createDtsRepository().getReleaseReadiness(PROJECT.id, "cs-default");
-    const href = "/parameter-review?project=project-1&request=request-pending";
+    const href = "/parameter-changes?scope=review&project=project-1&request=request-pending";
     const { onNavigate } = renderWorkbench({ dtsRepository: createDtsRepository({
       getReleaseReadiness: vi.fn<DtsStructuredRepository["getReleaseReadiness"]>(async () => ({ ...ready, level: "blocked", canRelease: false,
         canCreateBaseline: false, blockers: [{ id: "pending", severity: "blocker", code: "pending-change",
@@ -1660,7 +1660,7 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "提交审核" }));
     expect(await screen.findByText("已提交审核 · 工作配置尚未更新")).toBeInTheDocument();
     expect(f.submitCandidateSourceReview).toHaveBeenCalledWith(PROJECT.id, "source-candidate", expect.objectContaining({ reason: "Update source", assignedToUserId: "reviewer", expectedCurrentVersionId: "version-board-12", expectedProofToken: "source-proof" }));
-    expect(screen.getByRole("link", { name: "查看提交记录" })).toHaveAttribute("href", "/parameter-submissions?project=project-1&request=source-request");
+    expect(screen.getByRole("link", { name: "查看提交记录" })).toHaveAttribute("href", "/parameter-changes?scope=mine&project=project-1&request=source-request");
   });
 
   it("recovers full-source text after remount under the same user/file scope", async () => {
@@ -2870,7 +2870,7 @@ describe("ProjectConfigurationWorkbench", () => {
       selectedBindingId: "binding-a", selectedDraftId: "draft-a", choice: "draft", expectedDecisionProofDigest: "d".repeat(64),
       assignedToUserId: "reviewer", reason: "只处理当前冲突"
     }));
-    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/parameter-submissions?project=project-1&request=single-conflict-request"));
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("/parameter-changes?scope=mine&project=project-1&request=single-conflict-request"));
     expect(submitBatch).not.toHaveBeenCalled();
     expect(submitOrdinary).not.toHaveBeenCalled();
   });
@@ -2994,7 +2994,7 @@ describe("ProjectConfigurationWorkbench", () => {
       ? "已有待处理的来源审核，请等待审核完成后再放弃或重算候选。"
       : "来源审核已通过，候选仍保留审核关联，不能放弃或重算。")).toBeVisible();
     fireEvent.click(within(inspector).getByRole("button", { name: "查看审核" }));
-    expect(onNavigate).toHaveBeenLastCalledWith(`/parameter-submissions?project=project-1&request=${requestId}`);
+    expect(onNavigate).toHaveBeenLastCalledWith(`/parameter-changes?scope=mine&project=project-1&request=${requestId}`);
     for (const mutate of [submitCandidateSourceReview, activateCandidate, abandonCandidate, recomputeCandidate]) expect(mutate).not.toHaveBeenCalled();
   });
 

@@ -128,7 +128,7 @@ test("#906 B submits JSON member removal through UI and reviews complete frozen 
           frozenProof: { members: unknown[]; cohort: unknown[] } };
         expect(item.frozenProof.members).toHaveLength(2);
         expect(item.frozenProof.cohort).toHaveLength(2);
-        await expect(page).toHaveURL(new RegExp(`/parameter-submissions\\?project=aurora&memberRequest=${item.id}`));
+        await expect(page).toHaveURL(new RegExp(`/parameter-changes\\?scope=mine&project=aurora&memberRequest=${item.id}`));
         await expect(page.getByRole("article", { name: "JSON 配置文件移除请求详情" })).toContainText(reason);
         return item;
       };

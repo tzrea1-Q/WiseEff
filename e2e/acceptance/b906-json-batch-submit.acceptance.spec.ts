@@ -120,7 +120,7 @@ test("#906 B creates and reviews canonical JSON batches from the page over real 
         expect(item.status).toBe("pending");
         expect(item.targets.map((target) => target.ordinal)).toEqual([0, 1]);
         expect(item.batchProofDigest).toMatch(/^[0-9a-f]{64}$/);
-        await expect(page).toHaveURL(new RegExp(`/parameter-submissions\\?project=aurora&request=${item.id}`));
+        await expect(page).toHaveURL(new RegExp(`/parameter-changes\\?scope=mine&project=aurora&request=${item.id}`));
         await expect(page.getByRole("article", { name: "批量源文件请求详情" })).toContainText(reason);
         return item;
       };

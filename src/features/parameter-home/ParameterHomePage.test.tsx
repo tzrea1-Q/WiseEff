@@ -135,7 +135,7 @@ describe("ParameterHomePage", () => {
     const dialog = screen.getByRole("dialog", { name: "选择要查看的项目" });
     const project = initialState.configDraft.projects[0];
     fireEvent.click(within(dialog).getByRole("button", { name: project.name, exact: true }));
-    expect(onNavigate).toHaveBeenCalledWith(`/parameter-review?project=${project.id}`);
+    expect(onNavigate).toHaveBeenCalledWith(`/parameter-changes?scope=review&project=${project.id}`);
   });
   it("defaults to the overview workbench page", () => {
     renderPage({ roleId: "hardware-user" });

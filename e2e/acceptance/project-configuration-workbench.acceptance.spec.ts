@@ -646,7 +646,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       expect((await currentFiles.json()).items.find((item: { id: string }) => item.id === file.fileId).currentVersionId).toBe(file.versionId);
       page.once("dialog", (dialog) => dialog.accept());
       await page.getByRole("link", { name: "查看提交记录", exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`/parameter-submissions\\?project=${projectId}&request=`));
+      await expect(page).toHaveURL(new RegExp(`/parameter-changes\\?scope=mine&project=${projectId}&request=`));
       await expect(page.getByRole("region", { name: "DTS 整文件审核" })).toContainText("PROJ-CONFIG-EDIT-001 source comment review");
       await page.screenshot({ path: testInfo.outputPath("source-comment-review.png"), fullPage: true });
       await recordOperationEvidence({ operationId: "PROJ-CONFIG-EDIT-001", title: "Whole-source comment review submission",

@@ -2024,11 +2024,11 @@ describe("ApiProjectTopologyWorkspace", () => {
         }
       });
     });
-    // Consumed drafts leave the tray; the success notice keeps the review entry.
+    // Consumed drafts leave the tray; the success notice links to the submitter's records.
     const successNotice = await screen.findByRole("region", { name: "参数提交结果" });
     expect(within(successNotice).getByRole("status")).toHaveTextContent(/已提交正式审核（1 项）/);
-    fireEvent.click(within(successNotice).getByRole("button", { name: "查看变更审阅" }));
-    expect(onNavigate).toHaveBeenCalledWith("/parameter-review");
+    fireEvent.click(within(successNotice).getByRole("button", { name: "查看我的提交" }));
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-changes?scope=mine&project=aurora");
   });
 
   it("replaces a draft for the same binding and keeps the original binding value in the current-edits diff", async () => {

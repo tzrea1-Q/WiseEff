@@ -2,14 +2,14 @@ import { canAccessParameterReviewPage } from "@/app/permissions";
 import type { PageProps } from "@/app/routes";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { migrateLegacyRoleId, pickPrimaryPlatformRoleId } from "@/domain/users/types";
-import { getContextQuery } from "@/workbenchUi";
 import { useCallback, useMemo, useState } from "react";
 import { ParameterReviewPage } from "./ParameterReviewPage";
 import { ParameterSubmissionsPage } from "./ParameterSubmissionsPage";
 
 export function ParameterChangesPage(props: PageProps) {
   const { state, search, runtimeMode, sessionRoles, projectMemberships, onNavigate } = props;
-  const projectId = getContextQuery(search).projectId || state.activeProjectId;
+  const params = new URLSearchParams(search);
+  const projectId = params.get("project") ?? params.get("projectId") ?? state.activeProjectId;
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const projectRoles = useMemo(() => sessionRoles?.filter((role) => role.projectId === null || role.projectId === projectId) ?? [], [sessionRoles, projectId]);
   const canReview = runtimeMode === "api"
@@ -17,7 +17,7 @@ export function ParameterChangesPage(props: PageProps) {
       && (!props.sessionPermissions || props.sessionPermissions.includes("parameter:review")
         || (migrateLegacyRoleId(role.roleId) === "software-user" && props.sessionPermissions.includes("parameter:edit")))))
     : canAccessParameterReviewPage(state.activeRoleId);
-  const requestedScope = new URLSearchParams(search).get("scope");
+  const requestedScope = params.get("scope");
   const scope = canReview && requestedScope !== "mine" ? "review" : "mine";
   const scopeKey = JSON.stringify([scope, projectId, state.currentUserId, state.activeRoleId, currentUser?.isActive,
     currentUser?.roles, sessionRoles, projectMemberships, props.sessionPermissions]);
@@ -40,7 +40,7 @@ export function ParameterChangesPage(props: PageProps) {
       const params = new URLSearchParams(window.location.search);
       params.set("scope", value);
       params.delete("request"); params.delete("legacyRequest"); params.delete("memberRequest");
-      onNavigate(`/parameter-changes?${params.toString()}`);
+      onNavigate(`/parameter-changes?${params.toString()}${window.location.hash}`);
     }} items={[{ value: "mine", label: "我的提交", disabled: busy }, { value: "review", label: "审阅队列", disabled: busy }]} /> : null}
     {scope === "review" ? <ParameterReviewPage key={scopeKey} {...props} state={reviewState} onBusyChange={onBusyChange} scopeToProject />
       : <ParameterSubmissionsPage key={scopeKey} {...props} onBusyChange={onBusyChange} />}

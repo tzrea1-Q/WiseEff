@@ -38,8 +38,6 @@ import { AuditCenterPage } from "@/AuditCenterPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LinearTemplateHome } from "@/linear-template/LinearTemplateHome";
 import { LogsPage } from "@/features/log-analysis/LogsPage";
-import { ParameterReviewPage } from "@/features/parameter-review/ParameterReviewPage";
-import { ParameterSubmissionsPage } from "@/features/parameter-review/ParameterSubmissionsPage";
 import { ParameterChangesPage } from "@/features/parameter-review/ParameterChangesPage";
 import { LogAdminPage } from "@/LogAdminPage";
 import { SkillWorkspace } from "@/features/log-skills/SkillWorkspace";
@@ -370,18 +368,6 @@ export function PageRouter({
       return <ParameterChangesPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search}
         parameterActions={parameterActions} runtime={runtime} runtimeMode={runtimeMode} sessionPermissions={sessionPermissions}
         sessionRoles={sessionRoles} projectMemberships={projectMemberships} />;
-    case "parameter-submissions":
-      return (
-        <ParameterSubmissionsPage
-          state={state}
-          dispatch={dispatch}
-          onNavigate={onNavigate}
-          search={search}
-          parameterActions={parameterActions}
-          runtime={runtime}
-          runtimeMode={runtimeMode}
-        />
-      );
     case "parameter-home":
       return (
         <ParameterHomePage
@@ -405,18 +391,6 @@ export function PageRouter({
           actionLabel="参数工作台"
           actionPath="/parameters"
           onNavigate={onNavigate}
-        />
-      );
-    case "parameter-review":
-      return (
-        <ParameterReviewPage
-          state={state}
-          dispatch={dispatch}
-          onNavigate={onNavigate}
-          search={search}
-          parameterActions={parameterActions}
-          runtime={runtime}
-          runtimeMode={runtimeMode}
         />
       );
     case "parameter-admin": {

@@ -6,7 +6,7 @@ const catalogRoutes = [
   ...["configuration", "files", "config-sets", "structure", "conflicts", "review-roles"]
     .map((area) => `/parameter-admin/projects/aurora/${area}`),
 ];
-const parameterRoutes = ["/parameters", "/parameters/definitions", "/parameter-comparison", "/parameter-review", "/parameter-submissions", "/parameter-home", ...catalogRoutes];
+const parameterRoutes = ["/parameters", "/parameters/definitions", "/parameter-comparison", "/parameter-changes", "/parameter-home", ...catalogRoutes];
 
 export const routeOwnership: Readonly<Record<string, readonly string[]>> = {
   "src/linear-template/": ["/"],

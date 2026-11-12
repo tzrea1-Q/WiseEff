@@ -1,3 +1,4 @@
+import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { canAccessPage } from "@/app/permissions";
 import type { PageKey } from "@/appConfig";
 import type { ChangeRequest } from "@/domain/parameters/types";
@@ -134,7 +135,7 @@ function buildUserActions(input: DerivePersonalWorkbenchInput): WorkbenchAction[
       title: "补充被退回的参数修改",
       description: "有变更申请被审阅打回，请补充说明后重新提交。",
       meta: `${input.signals.returnedChanges} 项退回`,
-      path: withProjectScope("/parameter-submissions", input.projectScope),
+      path: withProjectScope(changeCenterHref("mine"), input.projectScope),
       source: "submission"
     });
   }
@@ -153,7 +154,7 @@ function buildCommitterActions(input: DerivePersonalWorkbenchInput): WorkbenchAc
       title: "处理待审阅参数变更",
       description: "优先处理已进入当前角色审阅节点的参数修改。",
       meta: `${input.signals.reviewQueue} 项待审阅 · 风险分类不可用`,
-      path: withProjectScope("/parameter-review", input.projectScope),
+      path: withProjectScope(changeCenterHref("review"), input.projectScope),
       source: "review"
     });
   }
@@ -322,8 +323,8 @@ function buildScenarioEntries(
         ]
       : roleView === "committer"
         ? [
-            entry("review", "处理审阅", "进入当前角色的变更审阅队列。", withProjectScope("/parameter-review", input.projectScope), "parameter-review", "待审", input.signals.reviewQueue),
-            entry("changes", "关注变更", "按近期变更热度聚焦审阅对象。", withProjectScope("/parameter-review", input.projectScope), "parameter-review", "热区", hotspotMetric),
+            entry("review", "处理审阅", "进入当前角色的变更审阅队列。", withProjectScope(changeCenterHref("review"), input.projectScope), "parameter-review", "待审", input.signals.reviewQueue),
+            entry("changes", "关注变更", "按近期变更热度聚焦审阅对象。", withProjectScope(changeCenterHref("review"), input.projectScope), "parameter-review", "热区", hotspotMetric),
             entry("library", "查看参数库", "回到参数目录核对当前项目上下文。", withProjectScope("/parameters", input.projectScope), "parameters", "参数", activeBindingMetric(input.activeBindingCount))
           ]
         : roleView === "user"

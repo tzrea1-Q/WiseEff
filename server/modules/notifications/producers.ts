@@ -4,9 +4,10 @@ import {
   type TrustedInvocationContext
 } from "../auth/trustedInvocation";
 import { notifyUsers } from "./service";
+import { changeCenterHref } from "../../../src/domain/parameters/changeCenterUrl";
 
 function reviewQueueUrl(projectId: string) {
-  return `/parameter-review?project=${encodeURIComponent(projectId)}`;
+  return changeCenterHref("review", { project: projectId });
 }
 
 function parameterAdminUrl(projectId: string) {

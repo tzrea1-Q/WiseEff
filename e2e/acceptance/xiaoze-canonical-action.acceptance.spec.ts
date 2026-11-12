@@ -303,9 +303,9 @@ test("canonical JSON Agent search, edited approval, refresh, product review and 
     expect.objectContaining({ bindingId: fixture.bindingId, oldValueId: before, sourcePinId: fixture.sourcePinId })
   ]));
   const reviewLink = popup.getByRole("link", { name: `Change request ${pending.id}` });
-  await expect(reviewLink).toHaveAttribute("href", `/parameter-review?request=${pending.id}&project=${fixture.projectId}`);
+  await expect(reviewLink).toHaveAttribute("href", `/parameter-changes?scope=review&request=${pending.id}&project=${fixture.projectId}`);
   await reviewLink.click();
-  await expect(page).toHaveURL(new RegExp(`/parameter-review\\?request=${pending.id}&project=${fixture.projectId}$`));
+  await expect(page).toHaveURL(new RegExp(`/parameter-changes\\?scope=review&request=${pending.id}&project=${fixture.projectId}$`));
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`/parameters\\?project=${fixture.projectId}$`));
   const drafts = await draftRows();

@@ -38,8 +38,8 @@ export const viewSwitchStyleExpectations: Readonly<Record<string, readonly ("sec
   "/parameter-admin/spec-review": ["section"],
   "/parameter-admin/projects": ["section"],
   "/parameter-admin/projects/aurora/review-roles": ["section"],
-  "/parameter-review": ["tabs"],
-  "/parameter-submissions": ["tabs"],
+  "/parameter-changes?scope=review": ["tabs", "toggle"],
+  "/parameter-changes?scope=mine": ["tabs", "toggle"],
   "/user-permissions": ["section", "tabs"]
 };
 export const viewSwitchStylePaths = Object.keys(viewSwitchStyleExpectations);
@@ -91,7 +91,7 @@ export const consistencyRoutes = [...new Set([...Object.values(applicablePaths).
     const [pathname, search = ""] = path.split("?");
     const moduleView = parseParameterAdminModulesSubView(pathname, search);
     const contractPath = moduleView && moduleView !== "tree" ? `/parameter-admin/modules/${moduleView}`
-      : pathname === "/log-admin" ? path : pathname;
+      : pathname === "/log-admin" || pathname === "/parameter-changes" ? path : pathname;
     return {
       path,
       required: [

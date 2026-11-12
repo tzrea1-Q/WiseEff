@@ -1,3 +1,4 @@
+import { changeCenterHref } from "../../../../src/domain/parameters/changeCenterUrl";
 import { parameterOrganizationId } from "../operatingScope";
 import type { AuthContext } from "../../auth/types";
 import type { Database } from "../../../shared/database/client";
@@ -154,14 +155,14 @@ function buildHotspotPath(
 ) {
   if (kind === "project") {
     return relatedRequestCount > 0
-      ? `/parameter-review?project=${encodeURIComponent(groupId)}`
+      ? changeCenterHref("review", { project: groupId })
       : `/parameters?project=${encodeURIComponent(groupId)}`;
   }
 
   return relatedRequestCount > 0
     ? projectId
-      ? `/parameter-review?project=${encodeURIComponent(projectId)}`
-      : "/parameter-review"
+      ? changeCenterHref("review", { project: projectId })
+      : changeCenterHref("review")
     : projectId
       ? `/parameters?project=${encodeURIComponent(projectId)}`
       : "/parameters";
