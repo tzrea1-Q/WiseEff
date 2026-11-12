@@ -224,6 +224,8 @@ test("reads grouped DTS and software instances with exact counts and full values
     await page.getByRole("button", { name: "复制完整原值" }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(fullSourceToken);
     const configurationLink = page.url();
+    const softwareBinding = new URL(configurationLink).searchParams.get("instance");
+    expect(softwareBinding).toBeTruthy();
     expect(configurationLink).toContain("configSetId=");
     expect(decodeURIComponent(configurationLink)).not.toContain("\\u0073oftware");
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(configurationLink).search}`);
@@ -234,13 +236,23 @@ test("reads grouped DTS and software instances with exact counts and full values
     try {
       await pool.query("update parameter_catalog.organization_subject_registrations set status='retired' where id=$1", [software.value.registrationId]);
       await page.reload();
-      await expect(page.getByRole("alert")).toContainText("选中的实例已不可用");
-      await page.getByRole("tab", { name: "定义", exact: true }).click();
-      await expect(page.getByRole("tabpanel", { name: "定义" })).toContainText("定义说明");
+      await expect(page.getByRole("region", { name: "参数定义目录" }).getByRole("status")).toHaveText("该定义当前不可用。");
+      await expect(page.getByRole("button", { name: "返回参数库" })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "定义", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("region", { name: "选中的完整值" })).toHaveCount(0);
     } finally {
       await pool.query("update parameter_catalog.organization_subject_registrations set status='active' where id=$1", [software.value.registrationId]);
     }
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(configurationLink).search}`);
+    await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(fullSourceToken);
+    const mismatchedSelection = new URL(configurationLink);
+    mismatchedSelection.searchParams.set("instance", directBinding!);
+    await page.goto(mismatchedSelection.toString());
+    await expect(page.getByRole("alert")).toContainText("选中的实例已不可用");
+    await page.getByRole("tab", { name: "定义", exact: true }).click();
+    await expect(page.getByRole("tabpanel", { name: "定义" })).toContainText("定义说明");
+    await page.goto(configurationLink);
+    await expect(page.getByRole("region", { name: "选中的完整值" })).toContainText(fullSourceToken);
     await page.getByLabel("实例 / 来源").fill("nothing-matches");
     await page.getByRole("button", { name: "筛选", exact: true }).click();
     await expect(page.getByText(/没有匹配的项目配置/)).toBeVisible();
@@ -382,13 +394,20 @@ test("reads grouped DTS and software instances with exact counts and full values
     try {
       await pool.query("update parameter_catalog.organization_subject_registrations set status='retired' where id=$1", [driver.value.registrationId]);
       await page.reload();
-      await expect(page.getByRole("alert")).toContainText("基准实例已不可用");
-      await page.getByRole("button", { name: "重新选择" }).click();
-      await expect(page.getByRole("alert")).toHaveCount(0);
-      await expect(page.getByText("当前没有可用于对比的项目配置。")).toBeVisible();
+      await expect(page.getByRole("region", { name: "参数定义目录" }).getByRole("status")).toHaveText("该定义当前不可用。");
+      await expect(page.getByRole("button", { name: "返回参数库" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "实例对比" })).toHaveCount(0);
     } finally {
       await pool.query("update parameter_catalog.organization_subject_registrations set status='active' where id=$1", [driver.value.registrationId]);
     }
+    await page.goto(baselineUrl);
+    await expect(page.getByRole("heading", { name: "基准实例" })).toBeVisible();
+    const mismatchedBaseline = new URL(baselineUrl);
+    mismatchedBaseline.searchParams.set("baseline", softwareBinding!);
+    await page.goto(mismatchedBaseline.toString());
+    await expect(page.getByRole("alert")).toContainText("基准实例已不可用");
+    await page.getByRole("button", { name: "重新选择" }).click();
+    await expect(page.getByRole("alert")).toHaveCount(0);
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${jsonDefinition}&tab=compare`);
     await expect(page.getByRole("combobox", { name: "左侧项目" })).toHaveAttribute("data-value", "parlib-instances-b");
     await expect(page.getByText("只有一个已配置项目，可选择同一项目中的其他实例。")).toBeVisible();
