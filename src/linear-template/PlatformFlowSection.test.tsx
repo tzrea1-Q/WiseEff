@@ -63,11 +63,11 @@ describe("PlatformFlowSection", () => {
     expect(container).not.toHaveTextContent(/Aurora|Nebula|Atlas|ChargeLab_X01|charging_thermal_trace|battery_pack_temp|关键温度/);
   });
 
-  it("shows the organization document workflow when knowledge is selected", () => {
+  it("shows the document workflow when knowledge is selected", () => {
     render(<PlatformFlowSection />);
     fireEvent.click(screen.getByRole("tab", { name: "知识库" }));
     expect(screen.getByRole("tab", { name: "知识库" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("集中整理组织自己的调参经验、故障案例、硬件手册与流程规范。")).toBeInTheDocument();
+    expect(screen.getByText("集中整理调参经验、故障案例、硬件手册与流程规范。")).toBeInTheDocument();
     expect(screen.getByText("人工检查内容与标签，发布后才进入知识检索。")).toBeInTheDocument();
   });
 
@@ -128,6 +128,6 @@ describe("PlatformFlowSection", () => {
     rerender(<PlatformFlowSection visibleWorkflows={["debugging"]} />);
     expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("调试场景")).toBeInTheDocument();
-    expect(screen.queryByText("组织文档")).not.toBeInTheDocument();
+    expect(screen.queryByText("工程文档")).not.toBeInTheDocument();
   });
 });

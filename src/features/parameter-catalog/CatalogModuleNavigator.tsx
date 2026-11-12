@@ -132,7 +132,7 @@ export function CatalogModuleNavigator({
   onSelectNode,
   defaultExpandDepth = 0,
   ariaLabel = "参数定义模块树",
-  emptyMessage = "当前组织还没有模块放置。",
+  emptyMessage = "当前还没有模块分类。",
   searchLabel
 }: CatalogModuleNavigatorProps) {
   const [search, setSearch] = useState("");

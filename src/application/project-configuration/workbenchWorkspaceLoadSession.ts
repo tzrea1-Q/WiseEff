@@ -399,7 +399,7 @@ export function createWorkbenchWorkspaceLoadSession(): WorkbenchWorkspaceLoadSes
         structureNodes = result.nodes;
         structureNavigation = result.navigation ?? null;
         if (options?.navigationScope && result.navigation?.status !== "ready") {
-          structureNavigationError = "组织配置导航暂时不可用，请重试。";
+          structureNavigationError = "模块分类导航暂时不可用，请重试。";
         }
       } catch (error: unknown) {
         if (generation !== structureGeneration) return;

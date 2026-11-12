@@ -46,9 +46,9 @@ export function SubAppEntryRow({ onNavigate, visibleWorkflows = VISIBLE_WORKFLOW
       workflowId: "knowledge",
       accent: "var(--success)",
       icon: BookOpen,
-      kicker: "组织知识",
+      kicker: "工程知识",
       title: "知识库",
-      description: "上传并整理组织自己的调参经验、故障案例、硬件手册与流程规范。",
+      description: "上传并整理调参经验、故障案例、硬件手册与流程规范。",
       chips: ["批量导入", "整理发布", "检索引用"],
       primary: { label: "进入知识库", href: "/knowledge" },
       secondary: { label: "打开知识后台", href: "/knowledge-admin" }

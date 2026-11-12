@@ -37,7 +37,7 @@ describe("SubAppEntryRow", () => {
     expect(screen.getByRole("link", { name: /进入节点调试/ })).toHaveAttribute("href", "/node-debugging");
     expect(screen.getByRole("link", { name: /进入日志分析/ })).toHaveAttribute("href", "/logs");
     expect(screen.getByRole("link", { name: /进入知识库/ })).toHaveAttribute("href", "/knowledge");
-    expect(screen.getByText("上传并整理组织自己的调参经验、故障案例、硬件手册与流程规范。")).toBeInTheDocument();
+    expect(screen.getByText("上传并整理调参经验、故障案例、硬件手册与流程规范。")).toBeInTheDocument();
   });
 
   it("links the secondary CTAs to the admin routes", () => {

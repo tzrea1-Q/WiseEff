@@ -131,7 +131,7 @@ describe("Catalog definition action capability", () => {
     await user.click(await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` }));
     const dialog = await screen.findByRole("dialog", { name: `查看 ${activeDefinition.propertyKey}` });
     expect(within(dialog).getByText(publicationSurfaceCopy.fetchFailed)).toBeVisible();
-    expect(within(dialog).queryByText("如需编辑参数定义，请联系组织管理员开通参数目录编写权限。")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("如需编辑参数定义，请联系管理员开通参数目录编写权限。")).not.toBeInTheDocument();
   });
   it.each([
     ["catalog-not-adopted", publicationSurfaceCopy.notAdopted],
@@ -144,7 +144,7 @@ describe("Catalog definition action capability", () => {
     await user.click(await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` }));
     const dialog = await screen.findByRole("dialog", { name: `查看 ${activeDefinition.propertyKey}` });
     expect(within(dialog).getByText(message)).toBeVisible();
-    expect(within(dialog).queryByText("如需编辑参数定义，请联系组织管理员开通参数目录编写权限。")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("如需编辑参数定义，请联系管理员开通参数目录编写权限。")).not.toBeInTheDocument();
   });
   it("preserves a real definition draft on cancelled dismissal and discards it only after confirmation", async () => {
     renderSurface(true);
@@ -225,7 +225,7 @@ describe("Catalog definition action capability", () => {
     await user.click(action);
     const dialog = await screen.findByRole("dialog", { name: `查看 ${activeDefinition.propertyKey}` });
     expect(within(dialog).getByRole("heading", { name: `查看 ${activeDefinition.propertyKey}` })).toBeVisible();
-    expect(within(dialog).getAllByText("如需编辑参数定义，请联系组织管理员开通参数目录编写权限。")).toHaveLength(1);
+    expect(within(dialog).getAllByText("如需编辑参数定义，请联系管理员开通参数目录编写权限。")).toHaveLength(1);
     expect(dialog).not.toHaveTextContent("当前会话缺少目录编写能力");
     expect(dialog).not.toHaveTextContent("catalog:author");
     expect(dialog).not.toHaveTextContent("有效编写能力由服务端");
@@ -258,6 +258,6 @@ describe("Catalog definition action capability", () => {
     expect(save).toBeDisabled();
     expect(save).toHaveAttribute("title", "当前目录暂不允许发布，请查看发布状态说明。");
     expect(dialog).not.toHaveTextContent("当前会话缺少目录编写能力");
-    expect(dialog).not.toHaveTextContent("请联系组织管理员");
+    expect(dialog).not.toHaveTextContent("请联系管理员");
   });
 });

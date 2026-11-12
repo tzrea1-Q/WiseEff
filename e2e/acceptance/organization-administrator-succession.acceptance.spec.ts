@@ -144,24 +144,17 @@ test.describe("organization administrator succession with actual local login", (
     const successor = await signIn(page, nextUsername, "/organization/members");
     const departed = await requestSelfDemotion(page, nextName, successorId);
     expect(departed.response.status()).toBe(200);
-    await expect(page).toHaveURL(new URL("/", page.url()).toString());
+    await expect(page).toHaveURL(/\/parameter-home$/);
     await prepareInteractionSurface(page);
     await expect(page.getByRole("dialog", { name: "放弃未保存的更改？", exact: true })).toHaveCount(0);
     await expect(page.getByRole("dialog", { name: `${nextName} · 成员资料`, exact: true })).toHaveCount(0);
     const actual = await page.request.get(apiRoute("/api/v1/me"), { headers: { Authorization: `Bearer ${successor.token}` } });
     expect(actual.status()).toBe(200);
     expect((await actual.json() as Session["auth"]).permissions).not.toContain("users:manage");
-    await page.getByRole("link", { name: "打开雷泽工作台", exact: true }).click();
-    await expect(page).toHaveURL(/\/parameter-home$/);
-    await prepareInteractionSurface(page);
-    await page.getByRole("link", { name: "组织管理", exact: true }).click();
-    const navigation = page.getByRole("navigation", { name: "组织管理范围" });
-    for (const name of ["成员与权限", "邀请", "团队", "项目参与", "业务交接"]) {
-      await expect(navigation.getByRole("button", { name, exact: true })).toHaveCount(0);
-    }
+    await expect(page.getByRole("link", { name: "组织管理", exact: true })).toHaveCount(0);
     await page.goto("/organization/members");
     await prepareInteractionSurface(page);
-    await expect(page.getByText("此区域由组织管理员维护。", { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/parameter-home$/);
     await expect(page.getByRole("button", { name: "添加成员", exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("administrator-self-handover-permissions-refreshed-1440.png"), animations: "disabled" });
   });

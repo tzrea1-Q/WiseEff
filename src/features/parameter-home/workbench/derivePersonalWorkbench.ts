@@ -46,6 +46,7 @@ export type PersonalWorkbenchViewModel = {
 
 export type DerivePersonalWorkbenchInput = {
   roleId: string;
+  canManageOrganization?: boolean;
   signals: WorkbenchSignals;
   /** The dashboard's explicit project context; null means all projects. */
   projectScope?: string | null;
@@ -336,7 +337,7 @@ function buildScenarioEntries(
               entry("read-hotspots", "查看关注热区", "了解近期参数变更热度。", withProjectScope("/parameter-home", input.projectScope), "parameter-home", "热区", hotspotMetric)
           ];
 
-  return candidates.filter((candidate) => canAccessPage(roleId, candidate.pageKey));
+  return candidates.filter((candidate) => (candidate.pageKey !== "user-permissions" || input.canManageOrganization !== false) && canAccessPage(roleId, candidate.pageKey));
 }
 
 function activeBindingMetric(value: number | undefined): number | string {

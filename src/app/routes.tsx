@@ -386,6 +386,7 @@ export function PageRouter({
       return (
         <ParameterHomePage
           state={state}
+          canManageOrganization={canAccessPage(currentRoleId, "user-permissions", { path: "/organization", runtimeMode: runtimeMode ?? "mock", permissions: sessionPermissions, roles: sessionRoles })}
           dashboardState={dashboardState!}
           dashboardRuntime={dashboardRuntime!}
           onDashboardWindowChange={onDashboardWindowChange!}
@@ -595,6 +596,7 @@ export function PageRouter({
       return (
         <OrganizationComponent
           workspaceClient={runtime?.organizationWorkspaceClient}
+          onAuthorityLost={onAuthContextRefresh}
           state={state}
           dispatch={dispatch}
           onNavigate={onNavigate}
@@ -610,7 +612,6 @@ export function PageRouter({
             try {
               const context = await runtime!.authClient.getCurrentAuthContext();
               onAuthContextRefresh?.(context);
-              if (!context.permissions.includes("users:manage")) onNavigate("/");
             } catch {
               // The mutation already succeeded; replace stale authority with a fresh login.
               await onEndSession?.();

@@ -27,6 +27,7 @@ const EMPTY_SIGNALS: WorkbenchSignals = {
 
 export type ParameterHomePageProps = {
   state: PrototypeState;
+  canManageOrganization?: boolean;
   dashboardState: DashboardState;
   dashboardRuntime: ReturnType<typeof createParameterDashboardRuntime>;
   onDashboardWindowChange: (window: DashboardWindow) => void;
@@ -39,6 +40,7 @@ export type ParameterHomePageProps = {
 
 export function ParameterHomePage({
   state,
+  canManageOrganization,
   dashboardState,
   dashboardRuntime,
   onDashboardWindowChange,
@@ -100,6 +102,7 @@ export function ParameterHomePage({
     () =>
       derivePersonalWorkbench({
         roleId: state.activeRoleId,
+        canManageOrganization,
         signals: summary?.workbenchSignals ?? EMPTY_SIGNALS,
         projectScope: dashboardState.projectScope,
         activeBindingCount: summary?.kpis.totalBindings,
@@ -115,6 +118,7 @@ export function ParameterHomePage({
       }),
     [
       state.activeRoleId,
+      canManageOrganization,
       dashboardState.projectScope,
       dashboardState.hotspots.status,
       state.changeRequests,

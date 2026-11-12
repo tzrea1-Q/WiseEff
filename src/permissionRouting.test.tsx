@@ -45,7 +45,7 @@ describe("permission-aware routing", () => {
     expect(sidebar.textContent?.includes("知识库")).toBe(canAccessPage(roleId, "knowledge"));
   });
 
-  it.each([false, true])("lets Guest enter the organization workspace without admin controls with compact height %s", async (compactHeight) => {
+  it.each([false, true])("hides organization management from Guest at compact height %s", async (compactHeight) => {
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: compactHeight && query === "(max-height: 820px)", media: query,
       addEventListener: vi.fn(), removeEventListener: vi.fn()
@@ -59,35 +59,55 @@ describe("permission-aware routing", () => {
     expect(navigation.queryByRole("link", { name: /变更审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
     expect(navigation.queryByRole("link", { name: /参数调试|鍙傛暟璋冭瘯/ })).not.toBeInTheDocument();
     const sidebar = within(screen.getByRole("complementary", { name: "主导航侧边栏" }));
-    if (compactHeight) fireEvent.click(sidebar.getByRole("button", { name: "平台管理" }));
-    const management = within(screen.getByRole("navigation", { name: "平台管理" }));
-    expect(management.queryByRole("link", { name: /工作流发布|反馈管理|审计中心/ })).not.toBeInTheDocument();
-    fireEvent.click(management.getByRole("link", { name: "组织管理" }));
-    expect(window.location.pathname).toBe("/organization");
-    fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "资源" }));
-    expect(await screen.findByRole("button", { name: "参数资源" })).toBeInTheDocument();
-    const resources = within(screen.getByRole("region", { name: "组织资源" }));
-    expect(resources.getByRole("button", { name: "知识库" })).toBeInTheDocument();
-    expect(resources.queryByRole("button", { name: "设备代理" })).not.toBeInTheDocument();
-    expect(resources.queryByRole("button", { name: "集成凭据" })).not.toBeInTheDocument();
+    expect(sidebar.queryByRole("link", { name: "组织管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开 组织管理" })).not.toBeInTheDocument();
     expect(sidebar.getByRole("button", { name: "问题反馈" })).toBeInTheDocument();
   });
 
-  it.each(["guest", "user", "committer"])("keeps member management unavailable to %s through the legacy organization URL", (activeRoleId) => {
-    window.history.replaceState(null, "", "/user-permissions");
+  it.each(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer"])("returns %s to the workbench from an old management address", async (activeRoleId) => {
+    window.history.replaceState(null, "", "/user-permissions?organizationId=secret");
     const userGovernanceActions = {
       listUsers: vi.fn(), createUser: vi.fn(), updateOrganizationRoles: vi.fn(),
       setUserActive: vi.fn(), deleteUser: vi.fn(), listRegistrationRoleRequests: vi.fn()
     };
     render(<App initialAppState={{ ...initialState, activeRoleId }} userGovernanceActions={userGovernanceActions} />);
 
-    expect(screen.getByText("此区域由组织管理员维护。")).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe("/parameter-home"));
+    expect(window.location.search).toBe("");
+    expect(screen.getByText("该页面不可访问，已返回工作台。")).toBeInTheDocument();
+    expect(screen.queryByText("组织概览")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "用户权限" })).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "平台用户" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加成员" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "管理邀请" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "业务交接" })).not.toBeInTheDocument();
     for (const action of Object.values(userGovernanceActions)) expect(action).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: "project-scoped administrator", roles: [{ projectId: "project-a", roleId: "admin" }], permissions: ["parameter:view"] },
+    { label: "organization administrator without management permission", roles: [{ projectId: null, roleId: "admin" }], permissions: ["parameter:view"] }
+  ])("does not expose management to an API $label", async ({ roles, permissions }) => {
+    window.history.replaceState(null, "", "/organization/projects");
+    const authClient = { getCurrentAuthContext: vi.fn(async () => ({
+      user: { id: "project-admin", organizationId: "home", name: "Project Admin", title: "", isActive: true },
+      organization: { id: "home", name: "Home" },
+      roles, permissions,
+      projectMemberships: [{ projectId: "project-a", roles: ["hardware-user" as const] }]
+    })) };
+    render(<App runtimeMode="api" initialAppState={initialState} authClient={authClient} />);
+
+    await waitFor(() => expect(window.location.pathname).toBe("/parameter-home"));
+    expect(screen.queryByRole("link", { name: "组织管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开 组织管理" })).not.toBeInTheDocument();
+    expect(screen.queryByText("组织概览")).not.toBeInTheDocument();
+  });
+
+  it.each(["/organization", "/organization/resources", "/organization/settings", "/user-permissions/legacy"])("returns a guest from %s", async (path) => {
+    window.history.replaceState(null, "", path);
+    render(<App initialAppState={guestState} />);
+    await waitFor(() => expect(window.location.pathname).toBe("/parameter-home"));
+    expect(screen.queryByRole("navigation", { name: "组织管理范围" })).not.toBeInTheDocument();
   });
 
   it("removes the retired platform console utility entry for platform-admin", async () => {
@@ -203,22 +223,22 @@ describe("permission-aware routing", () => {
 });
 
 describe("permission route matrix", () => {
-  it("lets User enter the organization workspace while keeping review and admin pages restricted", () => {
+  it("keeps User out of organization management and review and admin pages", () => {
     expect(canAccessPage("user", "parameter-review")).toBe(false);
     expect(canAccessPage("software-user", "parameter-review")).toBe(true);
     expect(canAccessPage("user", "parameter-admin")).toBe(false);
     expect(canAccessPage("user", "log-admin")).toBe(false);
     expect(canAccessPage("user", "debugging-admin")).toBe(false);
-    expect(canAccessPage("user", "user-permissions")).toBe(true);
+    expect(canAccessPage("user", "user-permissions")).toBe(false);
     expect(canAccessPage("user", "logs")).toBe(true);
     expect(canAccessPage("user", "debugging")).toBe(true);
   });
 
-  it("lets Committer enter the organization workspace and review while keeping admin pages restricted", () => {
+  it("lets Committer review while keeping organization management and admin pages restricted", () => {
     expect(canAccessPage("committer", "parameter-review")).toBe(true);
     expect(canAccessPage("committer", "parameter-admin")).toBe(false);
     expect(canAccessPage("committer", "log-admin")).toBe(false);
     expect(canAccessPage("committer", "debugging-admin")).toBe(false);
-    expect(canAccessPage("committer", "user-permissions")).toBe(true);
+    expect(canAccessPage("committer", "user-permissions")).toBe(false);
   });
 });

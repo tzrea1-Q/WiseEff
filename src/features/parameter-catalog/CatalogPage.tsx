@@ -1074,7 +1074,7 @@ export function CatalogPage({
               items={[{ value: "definition", label: "定义", id: "library-tab-definition", panelId: "library-panel-definition" },
                 { value: "configurations", label: "当前项目配置", id: "library-tab-configurations", panelId: "library-panel-configurations" },
                 { value: "compare", label: "对比", id: "library-tab-compare", panelId: "library-panel-compare" }]} />
-            <span className="parameter-library-detail__hint">视图按当前组织权限读取，数据可能已变化。</span>
+            <span className="parameter-library-detail__hint">视图按当前可查看范围读取，数据可能已变化。</span>
             </div>
             {(["configurations", "compare"] as const).map((tab) => <TabPanel key={tab} className="parameter-library-detail__panel" hidden={activeTab !== tab}
               id={`library-panel-${tab}`} aria-labelledby={`library-tab-${tab}`}>
@@ -1176,7 +1176,7 @@ export function CatalogPage({
             <SelectControl ariaLabel="主体类型" size="filter" value={anchor.type ?? ""} onValueChange={(value) => {
               setCursorTrail([]); commitAnchor({ ...anchor, type: value || null, subjectId: null, cursor: null, cursorTrail: null }, "push");
             }} options={[{ value: "", label: "全部类型" }, { value: "driver", label: "驱动" }, { value: "node-type", label: "节点类型" }, { value: "configuration-schema", label: "配置模型" }]} />
-            <SelectControl ariaLabel="组织登记" size="filter" value={anchor.registration ?? ""} onValueChange={(value) => {
+            <SelectControl ariaLabel="登记状态" size="filter" value={anchor.registration ?? ""} onValueChange={(value) => {
               setCursorTrail([]); commitAnchor({ ...anchor, registration: value || null, cursor: null, cursorTrail: null }, "push");
             }} options={[{ value: "", label: "全部登记状态" }, { value: "unregistered", label: "未登记" }, { value: "active", label: "已登记" }]} />
             <button type="button" className="button subtle sm" onClick={() => {
@@ -1293,7 +1293,7 @@ export function CatalogPage({
                 options={[{ value: "", label: "全部项目" }, ...(projectOptions && projectOptions.organizationId === organizationId ? projectOptions.items.map((project) => ({ value: project.id, label: project.name })) : [])]} /></div>
               {projectOptionsError ? <button type="button" className="button subtle sm" onClick={() => setProjectOptionsRetry((value) => value + 1)}>项目读取失败，重试</button> : null}
               {anchor.usageProjectId ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
-              <span className="parameter-catalog__muted">数量为{anchor.usageProjectId ? "所选项目" : "当前组织"}已配置数量</span>
+              <span className="parameter-catalog__muted">数量为{anchor.usageProjectId ? "所选项目" : "当前可查看范围"}已配置数量</span>
             </div> : null}
             {canPublishDefinitions && onBatchDefinitionCommand ? <>
               {anchor.subjectId && release ? <button type="button" className="button subtle sm" disabled={selectingSubject}

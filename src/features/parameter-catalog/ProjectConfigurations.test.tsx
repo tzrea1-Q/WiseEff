@@ -56,7 +56,7 @@ it("allows resetting a project filter that is unavailable in the current Organiz
   const repository = { ...createMockParameterCatalogRepository(), getProjectConfigurations: vi.fn()
     .mockRejectedValue(new WiseEffApiError("NOT_FOUND", "missing", { reason: "invalid-filter" }, "request")) };
   render(<ProjectConfigurations repository={repository} organizationId="org-b" definitionId="definition" projectId="old-project" onChange={onChange} />);
-  expect(await screen.findByRole("alert")).toHaveTextContent("所选项目或配置集在当前组织中不可用");
+  expect(await screen.findByRole("alert")).toHaveTextContent("所选项目或配置集在当前可查看范围内不可用");
   fireEvent.click(screen.getByRole("button", { name: "重置项目和配置集" }));
   expect(onChange).toHaveBeenCalledWith({ configProjectId: null, configSetId: null, instanceCursor: null });
 });
@@ -67,6 +67,7 @@ it("labels a DTS boolean as present even when its source value has no text", asy
   data.items[0].valueKind = "boolean";
   const repository = { ...createMockParameterCatalogRepository(), getProjectConfigurations: vi.fn().mockResolvedValue(data) };
   render(<ProjectConfigurations repository={repository} organizationId="org-a" definitionId="definition" onChange={() => {}} />);
+  expect(await screen.findByText("当前可查看范围")).toBeVisible();
   expect(await screen.findByText("存在")).toBeVisible();
 });
 

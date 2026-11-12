@@ -94,7 +94,7 @@ export function WorkbenchPackageImportDialog({ projectId, onDismiss, onApplied, 
             </div>)}</fieldset>:null}
           <details><summary>构建设置</summary><label>include 搜索目录（每行一个）<Textarea value={includePaths} disabled={locked} onChange={event=>{invalidate();setIncludePaths(event.target.value);}} /></label><label>构建宏（每行 NAME=VALUE）<Textarea value={defines} disabled={locked} onChange={event=>{invalidate();setDefines(event.target.value);}} /></label></details>
         </section>}
-        <p>{ownership === "reuse" ? "只引用当前组织可用的相同发布版本，后续发布不会自动更新本项目。" : "保留全部原始源码及构建输入，不创建共享资源或共享引用。"}</p>
+        <p>{ownership === "reuse" ? "只引用当前可用的相同发布版本，后续发布不会自动更新本项目。" : "保留全部原始源码及构建输入，不创建共享资源或共享引用。"}</p>
         {pending ? <p role="status">{pending === "file" ? "正在读取配置包…" : pending === "preview" ? "正在验证原始源码、版本与构建…" : "正在导入配置…"}</p> : null}
         {preview ? <section aria-label="配置导入预览">
           <p className="configuration-workbench__package-path">入口：{preview.entryFile ?? "JSON 配置"} · {preview.nodeCount} 个节点</p>

@@ -59,10 +59,11 @@ test("suspends and restores a fixed Organization, preserves readonly member acce
     await expect(page.getByRole("status").filter({ hasText: "可继续办理交接" })).toBeVisible();
     const memberContext = await browser.newContext({ viewport: { width: 1440, height: 900 } }), memberPage = await memberContext.newPage();
     await signInBrowserAsUser(memberPage, member, `${member}@example.test`, memberName, "/organization/settings", org);
-    await expect(memberPage.getByRole("region", { name: "当前操作组织" })).toContainText("已停用 · 仅可查看");
-    await expect(memberPage.getByRole("status").filter({ hasText: "组织已停用" })).toHaveCount(1);
-    await expect(memberPage.getByLabel("显示名称", { exact: true })).toHaveValue(name);
-    await expect(memberPage.getByLabel("显示名称", { exact: true })).toBeDisabled();
+    await expect(memberPage).toHaveURL(/\/parameter-home$/);
+    await expect(memberPage.getByRole("region", { name: "当前操作组织" })).toHaveCount(0);
+    await expect(memberPage.getByRole("status").filter({ hasText: "当前工作区仅可查看，请联系管理员" })).toHaveCount(1);
+    await expect(memberPage.getByText(name, { exact: true })).toHaveCount(0);
+    await expect(memberPage.getByLabel("显示名称", { exact: true })).toHaveCount(0);
     const forbidden = await memberPage.request.patch(apiRoute("/api/v1/organization"), { headers: authHeadersForUser(member, `${member}@example.test`, memberName, org), data: { name: "Must not change" } });
     expect(forbidden.status()).toBe(403);
     await memberPage.screenshot({ path: testInfo.outputPath("organization-member-readonly-1440.png"), animations: "disabled" });

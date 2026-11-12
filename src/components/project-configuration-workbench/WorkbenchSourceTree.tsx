@@ -135,7 +135,7 @@ export function WorkbenchSourceTree({
       : []
     : structureNodes, [organizationNavigation, structureNavigation, structureNodes]);
   const navigationError = organizationNavigation && structureNavigation?.status !== "ready"
-    ? structureNavigationError || "组织配置导航暂时不可用，请重试。" : "";
+    ? structureNavigationError || "模块分类导航暂时不可用，请重试。" : "";
   const targetOutsideNavigation = organizationNavigation && structureNavigation?.status === "ready"
     && Boolean(selectedNodePath) && structureNodes.some((node) => node.nodePath === selectedNodePath)
     && !navigationNodes.some((node) => node.nodePath === selectedNodePath
@@ -290,7 +290,7 @@ export function WorkbenchSourceTree({
                   {!structureLoading && !structureError && !navigationError ? (
                     <WorkbenchStructureTree
                       nodes={navigationNodes}
-                      emptyMessage={organizationNavigation ? "当前文件没有匹配组织已登记模块的节点。" : undefined}
+                      emptyMessage={organizationNavigation ? "当前文件没有匹配已登记模块的节点。" : undefined}
                       fileId={item.fileId}
                       selectedNodePath={selectedNodePath}
                       selectedPropertyName={selectedPropertyName}
