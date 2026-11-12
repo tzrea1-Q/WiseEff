@@ -427,6 +427,7 @@ function AppShell({
   const isPublicationAdministrator = runtimeMode === "api"
     ? Boolean(apiAuthRoles?.some((role) => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")))
     : currentRoleId === "admin" || currentRoleId === "platform-admin";
+  const canManageOrganization = canAccessPage(currentRoleId, "user-permissions", { path: "/organization", runtimeMode, permissions: apiAuthPermissions, roles: apiAuthRoles });
   const canManagePublication = runtimeMode === "api"
     ? Boolean(apiAuthRoles?.some((role) => role.projectId === null && role.roleId === "platform-admin"))
     : currentRoleId === "platform-admin";
@@ -989,6 +990,14 @@ function AppShell({
     else if (decision) applyNavigation();
   }, []);
 
+  useEffect(() => {
+    if (page.key !== "user-permissions" || canManageOrganization || (runtimeMode === "api" && apiAuthStatus !== "authenticated")) return;
+    window.history.replaceState(null, "", "/parameter-home");
+    setPath("/parameter-home");
+    setSearch("");
+    dispatch({ type: "ADD_NOTIFICATION", message: "该页面不可访问，已返回工作台。" });
+  }, [page.key, canManageOrganization, runtimeMode, apiAuthStatus]);
+
   const retryAuthProbe = useCallback(() => {
     setApiAuthStatus("checking");
     setAuthProbeAttempt((attempt) => attempt + 1);
@@ -1211,6 +1220,7 @@ function AppShell({
             operatingOrganizationId={operatingOrganizationId}
             currentRoleId={currentRoleId}
             visibleWorkflows={visibleWorkflows}
+            canManageOrganization={canManageOrganization}
             canManagePublication={canManagePublication}
             isCollapsed={effectiveSidebarCollapsed}
             onNavigate={navigateFromSidebar}
@@ -1251,7 +1261,7 @@ function AppShell({
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
           {isPlatformHome ? (
             <div className="main-content home-content" data-runtime-state="ready">
-              <OrganizationBusinessWorkspace proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+              <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
               <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                 page={page}
                 publication={publication}
@@ -1306,7 +1316,7 @@ function AppShell({
               {publicationPreviewBanner}
               {loadingProjectParameters ? <ProjectParametersLoading /> : null}
               <div className="page-content" inert={pageRuntimeState === "loading"} hidden={loadingProjectParameters}>
-                <OrganizationBusinessWorkspace proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+                <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
                 <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                   page={page}
                   publication={publication}
@@ -1406,6 +1416,7 @@ function Sidebar({
   operatingOrganizationId,
   currentRoleId,
   visibleWorkflows,
+  canManageOrganization,
   canManagePublication,
   isCollapsed,
   onNavigate,
@@ -1417,6 +1428,7 @@ function Sidebar({
   operatingOrganizationId?: string;
   currentRoleId: string;
   visibleWorkflows: readonly WorkflowId[];
+  canManageOrganization: boolean;
   canManagePublication: boolean;
   isCollapsed: boolean;
   onNavigate: (path: string) => void;
@@ -1442,6 +1454,7 @@ function Sidebar({
   const visibleUtilityItems = utilityItems.map(item => ({ ...item,
     path: item.path === "/organization" && canManagePublication ? "/platform/organizations" : item.path
   })).filter((item) => item.path &&
+    (item.path !== "/organization" || canManageOrganization) &&
     canAccessPage(currentRoleId, getPageByPath(item.path).key) &&
     ((item.path !== "/workflow-publication" && item.path !== "/platform/organizations") || canManagePublication));
   const activeManagementItem = visibleUtilityItems.find((item) => item.path && (getPageByPath(item.path).key === activePageKey
@@ -2143,7 +2156,7 @@ export function ProfileDialog({
               <span className="eyebrow">账号</span>
               <h2 id={titleId}>个人资料</h2>
               <p>{userAccountIdentifier(user)}</p>
-              {provider === "oidc" ? <p className="auth-field-hint">登录标识由组织身份提供方管理。姓名和职务仅更新雷泽中的显示资料。</p> : null}
+              {provider === "oidc" ? <p className="auth-field-hint">登录标识由身份提供方管理。姓名和职务仅更新雷泽中的显示资料。</p> : null}
             </header>
             <label>
               <span>姓名</span>
@@ -2165,8 +2178,8 @@ export function ProfileDialog({
           </form>
           {capabilityError ? <div role="alert" className="auth-error">无法确认密码修改能力，个人资料仍可保存。<button type="button" className="button ghost" onClick={() => setCapabilityAttempt((value) => value + 1)}>重试账号能力</button></div>
             : !provider ? <p role="status" className="auth-field-hint">正在确认账号能力…</p>
-            : provider === "oidc" ? <p className="auth-field-hint">密码由组织身份提供方管理，请在组织身份系统中修改。</p>
-            : provider !== "local" ? <p className="auth-field-hint">当前登录方式不提供本地密码修改，请联系组织管理员。</p> : null}
+            : provider === "oidc" ? <p className="auth-field-hint">密码由身份提供方管理，请在身份系统中修改。</p>
+            : provider !== "local" ? <p className="auth-field-hint">当前登录方式不提供本地密码修改，请联系管理员。</p> : null}
           {provider === "local" && onChangePassword ? (
             <form className="profile-dialog__password" onSubmit={submitPassword} aria-labelledby="profile-password-title">
               <h3 id="profile-password-title">修改密码</h3>

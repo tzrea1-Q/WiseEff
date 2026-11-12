@@ -12,6 +12,15 @@ function response(body: unknown) { return new Response(JSON.stringify(body), { s
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("organization workspace target ownership", () => {
+  it("leaves management without showing target data when the resolved session has lost management permission", async () => {
+    const revoked = { ...actor, permissions: [] };
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => response({ actor: revoked, organization: { id: "target", name: "Secret target" } })));
+    const onAuthorityLost = vi.fn();
+    render(<OrganizationWorkspace state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="?organizationId=target" area="profile" workspaceClient={createOrganizationWorkspaceClient()} onAuthorityLost={onAuthorityLost} />);
+    await vi.waitFor(() => expect(onAuthorityLost).toHaveBeenCalledWith(revoked));
+    expect(screen.queryByText("Secret target")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("显示名称")).not.toBeInTheDocument();
+  });
   it("shows editable target participants with their exact roles and inactive status", async () => {
     vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => {
       const url = new URL(String(input), "http://localhost");

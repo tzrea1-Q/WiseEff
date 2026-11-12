@@ -14,7 +14,7 @@ describe("app permission policy", () => {
       projectMemberships:[{projectId:"project-a",roles:["hardware-user"]}]};
     expect(canAccessPage("hardware-user","parameter-admin",scope)).toBe(true);
     expect(canAccessPage("hardware-user","parameter-admin",{...scope,permissions:["parameter:view"]})).toBe(true);
-    expect(canAccessPage("guest","parameter-admin",{...scope,path:"/parameter-admin/projects/project-b/configuration",permissions:["parameter:view"],projectMemberships:[],roles:[{projectId:null}]})).toBe(true);
+    expect(canAccessPage("guest","parameter-admin",{...scope,path:"/parameter-admin/projects/project-b/configuration",permissions:["parameter:view"],projectMemberships:[],roles:[{projectId:null,roleId:"guest"}]})).toBe(true);
     expect(canAccessPage("guest","parameter-admin",{...scope,path:"/parameter-admin/sources",permissions:["parameter:view"],projectMemberships:[]})).toBe(true);
     for(const changed of [{...scope,path:"/parameter-admin"},{...scope,path:"/parameter-admin/projects/project-b/configuration"},
       {...scope,permissions:[]},{...scope,projectMemberships:[]},{...scope,runtimeMode:"mock"}]) {
@@ -46,7 +46,7 @@ describe("app permission policy", () => {
     for (const roleId of ["hardware-committer", "software-committer"]) {
       expect(canAccessPage(roleId, "parameter-review")).toBe(true);
       expect(canAccessPage(roleId, "log-admin")).toBe(false);
-      expect(canAccessPage(roleId, "user-permissions")).toBe(true);
+      expect(canAccessPage(roleId, "user-permissions")).toBe(false);
       expect(canPerform(roleId, "users.manage")).toBe(false);
     }
   });

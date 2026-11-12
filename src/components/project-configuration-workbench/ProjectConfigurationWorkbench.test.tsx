@@ -741,8 +741,8 @@ describe("ProjectConfigurationWorkbench", () => {
         bytes: new TextEncoder().encode('/dts-v1/;\n/ { model = "Aurora"; };\n') }));
       renderWorkbench({ apiMode: true, dtsRepository: createDtsRepository({ getStructure }),
         fileRepository: createFileRepository({ downloadVersion }) });
-      expect(await screen.findByText("组织配置导航暂时不可用，请重试。")).toBeInTheDocument();
-      expect(screen.queryByText("当前文件没有匹配组织已登记模块的节点。")).not.toBeInTheDocument();
+      expect(await screen.findByText("模块分类导航暂时不可用，请重试。")).toBeInTheDocument();
+      expect(screen.queryByText("当前文件没有匹配已登记模块的节点。")).not.toBeInTheDocument();
       expect(screen.queryByRole("treeitem", { name: "节点 board" })).not.toBeInTheDocument();
       await waitFor(() => expect(screen.getByRole("main", { name: /DTS 源码/ })).toHaveTextContent("Aurora"));
       const sourceLoads = downloadVersion.mock.calls.length;
@@ -759,7 +759,7 @@ describe("ProjectConfigurationWorkbench", () => {
         navigation: { status: "ready" as const, catalogReleaseId: "release-1", managedNodePaths: [] }
       }))
     }) });
-    const empty = await screen.findByRole("treeitem", { name: "当前文件没有匹配组织已登记模块的节点。" });
+    const empty = await screen.findByRole("treeitem", { name: "当前文件没有匹配已登记模块的节点。" });
     expect(empty).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("treeitem", { name: "aurora-board.dts 基础 v12" })).toBeInTheDocument();
     expect(screen.queryByRole("treeitem", { name: "节点 board" })).not.toBeInTheDocument();
