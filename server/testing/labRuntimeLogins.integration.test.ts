@@ -7,7 +7,7 @@ import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins, revokeForeignT
 import { dropLabRuntimeLogins as dropViaBarrel, provisionPublicationRuntimeLogins as provisionViaBarrel } from "../modules/catalog-publication/runtime";
 import { applyTestMigrations, migrationsDir, withAdminClient } from "./tempDatabase";
 import { createEphemeralTestDatabase, isGeneratedTestDatabaseName, isTestDatabaseAvailable, TEMPLATE_BUILD_LOCK, withTestClusterRoleCatalogLock } from "./testDatabase";
-import { createCheckedEmptyDatabase, parameterCatalogRunDatabasePrefix } from "./parameterCatalog";
+import { createCheckedEmptyDatabase, parameterCatalogRunDatabasePrefix, parameterCatalogWorkerDatabasePrefix } from "./parameterCatalog";
 
 const available = await isTestDatabaseAvailable();
 
@@ -22,6 +22,23 @@ it("routes transitive runtime exports through cleanup and excludes application d
   const otherRun = current === "wiseeff_pcat_r999999_" ? "wiseeff_pcat_r999998_" : "wiseeff_pcat_r999999_";
   expect(isGeneratedTestDatabaseName(`${otherRun}2_modulead_0e0f9855`)).toBe(false);
   expect(isGeneratedTestDatabaseName(`${current}2_modulead_nothex`)).toBe(false);
+});
+
+it("does not mistake a run with an underscored suffix for a current-run Catalog worker", () => {
+  try {
+    for (const run of ["r123", "p123"]) {
+      vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", run);
+      for (const worker of ["1", "2", "37", ""]) {
+        vi.stubEnv("VITEST_POOL_ID", worker);
+        const workerPrefix = parameterCatalogWorkerDatabasePrefix();
+        expect(isGeneratedTestDatabaseName(`${workerPrefix}modulead_0e0f9855`)).toBe(true);
+      }
+      expect(isGeneratedTestDatabaseName(`wiseeff_pcat_${run}_9_2_modulead_0e0f9855`)).toBe(false);
+      expect(isGeneratedTestDatabaseName(`wiseeff_pcat_${run}_9_7_2_modulead_0e0f9855`)).toBe(false);
+    }
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
 
 describe.skipIf(!available)("lab runtime role isolation", () => {
