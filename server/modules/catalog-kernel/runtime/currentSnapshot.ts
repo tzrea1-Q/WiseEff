@@ -324,6 +324,7 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
   }
 
   listSubjects(query: SubjectListQuery): ReturnType<CatalogSnapshot["listSubjects"]> {
+    const selectedIds = query.selection.kind === "only" ? new Set(query.selection.ids) : null;
     const fingerprint = fingerprintCatalogQuery(
       pageQuery({
         selection: query.selection,
@@ -341,7 +342,7 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
         ) {
           return false;
         }
-        if (query.selection.kind === "only" && !query.selection.ids.includes(subject.id)) {
+        if (selectedIds && !selectedIds.has(subject.id)) {
           return false;
         }
         if (query.search.kind === "present") {
@@ -393,6 +394,7 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
   }
 
   listDefinitions(query: DefinitionListQuery): ReturnType<CatalogSnapshot["listDefinitions"]> {
+    const selectedIds = query.selection.kind === "only" ? new Set(query.selection.ids) : null;
     const scopedSubjectId =
       query.scope.kind === "subject" ? query.scope.subjectId : null;
     if (query.scope.kind === "subject") {
@@ -420,7 +422,7 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
       if (scopedSubjectIds && !scopedSubjectIds.has(definition.subjectId)) {
         return false;
       }
-      if (query.selection.kind === "only" && !query.selection.ids.includes(definition.id)) {
+      if (selectedIds && !selectedIds.has(definition.id)) {
         return false;
       }
       if (

@@ -34,6 +34,7 @@ import { createParameterModuleForAuth, deleteParameterModuleForAuth, moveParamet
 import type { Queryable } from "../../../shared/database/client";
 import { lockOrganizationModuleRecognition } from "../../parameter-modules/recognitionLock";
 import { lockSourceCatalogGovernance } from "../../parameter-bindings/catalogProjectValueSync";
+import { catalogDefinitionListResponseSchema, catalogSubjectListResponseSchema } from "../../contracts/dtoSchemas/parameterCatalog";
 
 describe("conditional registration lifecycle on the real application SQL LOGIN", () => {
   let database: EphemeralTestDatabase;
@@ -170,6 +171,53 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     if (!result.ok) throw new Error(`registration failed: ${JSON.stringify(result.error)}`);
     registration = result.value;
   });
+
+  it("keeps a retired organization registration out of current library reads while another organization and governance retain access", async () => {
+    const otherOrg = `org-${randomUUID()}`;
+    const userId = `reader-${randomUUID()}`;
+    const otherUser = `reader-${randomUUID()}`;
+    await admin.query("insert into public.organizations(id,name) values ($1,'Other')", [otherOrg]);
+    await admin.query("insert into public.users(id,organization_id,name,title,is_active) values ($1,$2,'Reader','Reader',true),($3,$4,'Other','Reader',true)", [userId, organizationId, otherUser, otherOrg]);
+    const app = (id: string, org: string) => createWiseEffServer({ db: apiDatabase, auth: { mode: "production",
+      verifier: { verify: async () => makeTestAuthContext({ userId: id, organizationId: org, roles: [], permissions: ["parameter:view"] }) } } });
+    const mine = app(userId, organizationId);
+    const other = app(otherUser, otherOrg);
+    const list = async (server: ReturnType<typeof app>, query = "") => {
+      const response = await requestJson(server, `/api/v2/catalog/definitions?view=library${query}`);
+      expect(response.status, response.bodyText).toBe(200);
+      return catalogDefinitionListResponseSchema.parse(response.body);
+    };
+    const before = await list(mine, "&search=iin_max&limit=1");
+    expect(before.items.some((item) => item.id === "pdef_acme_power_iin_max")).toBe(true);
+    const retired = await createRegistrationService(api).execute(lifecycle("retire"));
+    expect(retired.ok).toBe(true);
+    if (!retired.ok) return;
+    const after = await list(mine, "&search=iin_max&limit=1");
+    expect(after.totalCount).toBe(before.totalCount! - 1);
+    expect(after.items.some((item) => item.id === "pdef_acme_power_iin_max")).toBe(false);
+    expect((await list(mine, "&registration=retired&lifecycle=active,retired&catalogReleaseId=crel_old")).items.some((item) => item.id === "pdef_acme_power_iin_max")).toBe(false);
+    const subjects = await requestJson(mine, "/api/v2/catalog/subjects?view=library&lifecycle=active,retired");
+    expect(catalogSubjectListResponseSchema.parse(subjects.body).items.some((item) => item.id === "csub_acme_power")).toBe(false);
+    expect((await requestJson(mine, "/api/v2/catalog/definitions/pdef_acme_power_iin_max?view=library&catalogReleaseId=crel_old")).status).toBe(404);
+    expect((await list(other, "&search=iin_max")).items.some((item) => item.id === "pdef_acme_power_iin_max")).toBe(true);
+    expect((await requestJson(mine, "/api/v2/catalog/definitions/pdef_acme_power_iin_max")).status).toBe(200);
+    const restored = await createRegistrationService(api).execute(lifecycle("restore", retired.value));
+    expect(restored.ok).toBe(true);
+    expect((await list(mine, "&search=iin_max")).items.some((item) => item.id === "pdef_acme_power_iin_max")).toBe(true);
+
+    const readSubjects = async (server: ReturnType<typeof app>) => catalogSubjectListResponseSchema.parse(
+      (await requestJson(server, "/api/v2/catalog/subjects?view=library&limit=100")).body).items.map((item) => item.id);
+    expect(await readSubjects(mine)).toContain(ownedNodeSubject);
+    const retiredOwner = await createRegistrationService(api).execute({ kind: "retire-unregistered", organizationId,
+      subjectId: targetSubject, expectedRelease: pin, idempotencyKey: randomUUID(), context, reason: "Remove unused driver" });
+    if (!retiredOwner.ok) throw new Error(JSON.stringify(retiredOwner.error));
+    expect(await readSubjects(mine)).not.toContain(ownedNodeSubject);
+    expect(await readSubjects(other)).toContain(ownedNodeSubject);
+    expect((await admin.query("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, ownedNodeSubject])).rowCount).toBe(0);
+    const restoredOwner = await createRegistrationService(api).execute(lifecycle("restore", retiredOwner.value));
+    expect(restoredOwner.ok).toBe(true);
+    expect(await readSubjects(mine)).toContain(ownedNodeSubject);
+  }, 120_000);
 
   it("transfers a driver lifecycle with its owned child and preserves the child identity", async () => {
     const userId = `transfer-admin-${randomUUID()}`;

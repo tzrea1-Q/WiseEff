@@ -214,6 +214,8 @@ export type CatalogCreateNodeEnablementDraftRequest = z.infer<
 export type CatalogNodeEnablementDraftResponse = z.infer<typeof nodeEnablementDraftResponseSchema>;
 
 export type CatalogListQuery = {
+  /** Current business library; historical Catalog reads retain their existing contract. */
+  view?: "library";
   cursor?: string;
   limit?: number;
   type?: "driver" | "node-type" | "configuration-schema";
