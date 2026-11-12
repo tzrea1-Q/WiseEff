@@ -1660,7 +1660,7 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "提交审核" }));
     expect(await screen.findByText("已提交审核 · 工作配置尚未更新")).toBeInTheDocument();
     expect(f.submitCandidateSourceReview).toHaveBeenCalledWith(PROJECT.id, "source-candidate", expect.objectContaining({ reason: "Update source", assignedToUserId: "reviewer", expectedCurrentVersionId: "version-board-12", expectedProofToken: "source-proof" }));
-    expect(screen.getByRole("link", { name: "查看提交记录" })).toHaveAttribute("href", "/parameter-changes?scope=mine&project=project-1&request=source-request");
+    expect(screen.getByRole("link", { name: "查看提交记录" })).toHaveAttribute("href", "/parameter-changes?scope=mine&project=project-1&request=source-request&organizationId=org-1");
   });
 
   it("recovers full-source text after remount under the same user/file scope", async () => {
