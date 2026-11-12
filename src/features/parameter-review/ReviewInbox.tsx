@@ -3,6 +3,7 @@ import { SearchField } from "@/components/common/SearchField";
 import { RefreshCw, ArrowRight, Inbox, SlidersHorizontal, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PageProps } from "@/app/routes";
+import { canAccessPage } from "@/app/permissions";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
@@ -45,7 +46,7 @@ export type ReviewInboxRow = {
   view: "pending" | "history";
 };
 
-type Props = {
+type Props = Pick<PageProps, "runtimeMode" | "sessionPermissions" | "sessionRoles"> & {
   projectId: string;
   repository?: ParameterCatalogRepository;
   sourceRepository?: ParameterFileRepository;
@@ -75,10 +76,12 @@ const searchProfile: SearchProfile<ReviewInboxRow> = { fields: [
   { name: "context", weight: 2, getValues: (row) => [row.project, row.module, row.submitter, row.assignedTo, row.status] }
 ] };
 
-export function ReviewInbox({ projectId, repository, sourceRepository, state, search, mineOnly = false, canReview = false,
+export function ReviewInbox({ projectId, repository, sourceRepository, state, search, runtimeMode, sessionPermissions, sessionRoles, mineOnly = false, canReview = false,
   legacyRows, renderLegacyDetail, onLegacySelect, renderRowSelection, renderRowTitle, selectAll, queueActions,
   onRequestsChanged, loading: legacyLoading = false, error: legacyError, onVisibleLegacyIds, onNavigate, busy = false, onBusyChange }: Props) {
   const [query, setQuery] = useState(search);
+  const canManageOrganization = canAccessPage(state.activeRoleId, "user-permissions", { path: "/organization",
+    runtimeMode: runtimeMode ?? "mock", permissions: sessionPermissions, roles: sessionRoles });
   const [refresh, setRefresh] = useState(0);
   const identityScope = useMemo(() => ({ repository, sourceRepository, projectId, mineOnly, canReview, userId: state.currentUserId, roleId: state.activeRoleId }),
     [repository, sourceRepository, projectId, mineOnly, canReview, state.currentUserId, state.activeRoleId]);
@@ -389,7 +392,7 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
       <p className="review-inbox__detail-context sr-only">{selected.project} · {selected.typeLabel ?? typeLabels[selected.kind]}</p>
       {selected.kind === "source" && sourceRepository ? <SourceRevisionReviewPanel key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.id])}
         projectId={projectId} requestId={selected.id} repository={sourceRepository} currentUserId={state.currentUserId} canReview={canReview}
-        refreshVersion={detailRefresh} onRequestsChanged={changed} onBusyChange={setDetailBusy} />
+        canViewOrganization={canManageOrganization} refreshVersion={detailRefresh} onRequestsChanged={changed} onBusyChange={setDetailBusy} />
       : selected.kind === "legacy" ? renderLegacyDetail(selected) : selected.kind === "value" ? <CanonicalProjectValueReviewPanel
         key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.kind, selected.id])} refreshVersion={detailRefresh} projectId={projectId} repository={repository} currentUserId={state.currentUserId} canReview={canReview}
         mineOnly={mineOnly} initialRequestId={selected.id} detailOnly externalView={view} users={state.users} parameters={state.parameters} onRequestsChanged={changed} onBusyChange={setDetailBusy}

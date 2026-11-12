@@ -49,6 +49,8 @@ export function ParameterSubmissionsPage({
   search,
   runtime,
   runtimeMode,
+  sessionPermissions,
+  sessionRoles,
   onBusyChange
 }: PageProps) {
   const isApiMode = runtimeMode === "api";
@@ -294,6 +296,9 @@ export function ParameterSubmissionsPage({
         repository={isApiMode ? canonicalRepository : undefined}
         sourceRepository={sourceRepository}
         state={state}
+        runtimeMode={runtimeMode}
+        sessionPermissions={sessionPermissions}
+        sessionRoles={sessionRoles}
         search={inboxParams.toString() ? `?${inboxParams.toString()}` : ""}
         mineOnly
         canReview={false}

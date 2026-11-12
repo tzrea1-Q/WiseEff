@@ -70,6 +70,7 @@ export function ParameterReviewPage({
   runtime,
   runtimeMode,
   sessionPermissions,
+  sessionRoles,
   onBusyChange,
   scopeToProject = false
 }: PageProps) {
@@ -617,7 +618,7 @@ export function ParameterReviewPage({
     <WorkbenchLayout title={reviewPageTitle}>
       <ReviewInbox projectId={canonicalProjectId} repository={runtimeMode === "api" ? runtime?.parameterCatalogRepository : undefined}
         sourceRepository={sourceRepository}
-        state={state} search={search} canReview={canReviewCanonical} legacyRows={inboxLegacyRows}
+        state={state} search={search} runtimeMode={runtimeMode} sessionPermissions={sessionPermissions} sessionRoles={sessionRoles} canReview={canReviewCanonical} legacyRows={inboxLegacyRows}
         onNavigate={onNavigate}
         busy={actionPending || batchProgress !== null}
         onBusyChange={onBusyChange}

@@ -15,6 +15,33 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
+it.each([
+  ["hardware submitter", "hardware-user", "mine", "aurora", ["parameter:view", "parameter:edit"], false],
+  ["project administrator", "admin", "review", "aurora", ["parameter:view", "parameter:review", "admin:access", "users:manage"], false],
+  ["administrator without organization permission", "admin", "review", null, ["parameter:view", "parameter:review", "admin:access"], false],
+  ["organization administrator", "admin", "review", null, ["parameter:view", "parameter:review", "users:manage"], true],
+  ["platform administrator", "platform-admin", "mine", null, ["parameter:view", "users:manage"], true]
+] as const)("limits the source request organization label for %s", async (_name, roleId, scope, roleProject, permissions, visible) => {
+  const source = { id: "source-request", projectId: "aurora", candidateId: "candidate", fileId: "file", fileName: "board.dts",
+    configSetId: "set", status: "pending", applicationMode: "separate_review", reason: "来源变更", organizationName: "组织快照名称",
+    submitterUserId: initialState.currentUserId, assignedToUserId: "reviewer", reviewerUserId: null, reviewerNote: null,
+    createdAt: "2026-10-19T00:00:00Z", updatedAt: "2026-10-19T00:00:00Z", proofDigest: "a".repeat(64),
+    impact: { parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0 }, before: "/ {};", after: "/ {}; // change" };
+  const runtime = { parameterRepository: { listSubmissionRounds: vi.fn().mockResolvedValue([]), listChangeRequests: vi.fn().mockResolvedValue([]) },
+    parameterCatalogRepository: { listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [] }),
+      listMemberRemovalRequests: vi.fn().mockResolvedValue({ items: [] }) },
+    parameterFileRepository: { listSourceRevisionRequests: vi.fn().mockResolvedValue([source]), getSourceRevisionRequest: vi.fn().mockResolvedValue(source) }
+  } as unknown as AppRuntime;
+  const search = `?project=aurora&scope=${scope}&request=source-request`;
+  window.history.replaceState(null, "", `/parameter-changes${search}`);
+  render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
+    <ParameterChangesPage state={{ ...initialState, activeRoleId: roleId }} dispatch={vi.fn()} onNavigate={vi.fn()} search={search}
+      runtime={runtime} runtimeMode="api" sessionRoles={[{ projectId: roleProject, roleId }]} sessionPermissions={permissions} />
+  </TopBarActionsContext.Provider>);
+  const detail = await screen.findByRole("region", { name: "DTS 整文件审核" });
+  expect(within(detail).queryByText("发生组织：组织快照名称") !== null).toBe(visible);
+});
+
 it("keeps an ordinary project member in their personal queue even when review is requested", async () => {
   const listSubmissionRounds = vi.fn().mockResolvedValue([]);
   const listChangeRequests = vi.fn().mockResolvedValue([]);
