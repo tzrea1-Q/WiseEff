@@ -443,10 +443,16 @@ test("reads grouped DTS and software instances with exact counts and full values
     await expect(page.getByRole("combobox", { name: "项目使用" })).toHaveAttribute("data-value", "parlib-instances-b");
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}`);
-    await expect(page).toHaveURL(/catalogReleaseId=/);
+    await expect(page.getByRole("tabpanel", { name: "定义" })).toBeVisible();
+    await expect(page.getByText("当前发布 · 修订 #3")).toBeVisible();
+    expect(new URL(page.url()).searchParams.get("catalogReleaseId")).toBeNull();
     const definitionLink = page.url();
+    await page.reload();
+    await expect(page.getByText("当前发布 · 修订 #3")).toBeVisible();
+    expect(new URL(page.url()).searchParams.get("catalogReleaseId")).toBeNull();
     await page.goto(`${runtime.frontendUrl}/parameters/definitions${new URL(definitionLink).search}`);
     await expect(page.getByRole("tabpanel", { name: "定义" })).toBeVisible();
+    await expect(page.getByText("当前发布 · 修订 #3")).toBeVisible();
     await expect(page.getByRole("button", { name: "复制当前视图链接" })).toHaveCount(0);
     expect((await new AxeBuilder({ page }).include(".parameter-library-detail").analyze()).violations).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath("definition-1440.png") });
@@ -483,9 +489,12 @@ test("reads grouped DTS and software instances with exact counts and full values
       return url.pathname.endsWith(`/definitions/${definitionId}/project-configurations`) && url.searchParams.get("baselineBindingId") === directBinding;
     });
     await page.goto(`${runtime.frontendUrl}/parameters/definitions?definitionId=${definitionId}&catalogReleaseId=${pin.id}&tab=compare&baseline=${directBinding}`);
-    await expect(page.getByText("历史发布 · 修订 #1")).toBeVisible();
+    await expect(page.getByText("当前发布 · 修订 #3")).toBeVisible();
+    await expect(page.getByText("历史发布 · 修订 #1")).toHaveCount(0);
     await expect(page.getByText("最新定义修订 #3")).toBeVisible();
-    expect((await (await historicalPairRead).json()).baseline).toMatchObject({ definitionRevisionNumber: "1", effectiveRevisionId: "drev_parlib_head_2" });
+    const historicalPair = await historicalPairRead;
+    expect(historicalPair.status()).toBe(200);
+    expect((await historicalPair.json()).baseline).toMatchObject({ definitionRevisionNumber: "1", effectiveRevisionId: "drev_parlib_head_2" });
     await expect(page.getByRole("region", { name: "实例对比" })).not.toContainText("值固定修订");
     await page.screenshot({ path: testInfo.outputPath("compare-historical-revisions-1440.png"), fullPage: true });
   } finally {
