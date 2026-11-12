@@ -435,6 +435,43 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     }
   });
 
+  it("keeps another Organization visible when a registration retires and restores", async () => {
+    const pool = getRootPostgresPool(root)!;
+    const a = { authorization: "Bearer scope-only-a" };
+    const b = { authorization: "Bearer scope-other-org" };
+    const projectA = "/api/v2/projects/scope-project-b/parameter-bindings";
+    const projectB = "/api/v2/projects/scope-project-c/parameter-bindings";
+    const binding = bindingIds.get("scope-project-b")!;
+    const compare = `/api/v2/projects/scope-project-b/bindings/${binding}/compare`;
+    const configurations = `/api/v2/catalog/definitions/${definitionId}/project-configurations`;
+    const read = async (path: string, headers: Record<string, string>) => {
+      const response = await fetch(`${baseUrl}${path}`, { headers });
+      return { status: response.status, body: await response.json() as { items: unknown[] } };
+    };
+    const check = async (retired: boolean) => {
+      const currentA = await read(projectA, a);
+      const currentB = await read(projectB, b);
+      expect(currentA.status).toBe(200);
+      expect(currentB.status).toBe(200);
+      expect(currentA.body.items).toHaveLength(retired ? 0 : 2);
+      expect(currentB.body.items).toHaveLength(4);
+      const summaryA = await read(configurations, a);
+      const summaryB = await read(configurations, b);
+      expect(summaryA.status).toBe(200);
+      expect(summaryB.status).toBe(200);
+      expect(catalogProjectConfigurationsResponseSchema.parse(summaryA.body).summary)
+        .toEqual({ configuredProjectCount: retired ? 0 : 2, configuredInstanceCount: retired ? 0 : 3 });
+      expect(catalogProjectConfigurationsResponseSchema.parse(summaryB.body).summary)
+        .toEqual({ configuredProjectCount: 1, configuredInstanceCount: 4 });
+      expect((await read(compare, a)).status).toBe(retired ? 404 : 200);
+    };
+    await check(false);
+    await pool.query("update parameter_catalog.organization_subject_registrations set status='retired' where organization_id='scope-org-a'");
+    try { await check(true); }
+    finally { await pool.query("update parameter_catalog.organization_subject_registrations set status='active' where organization_id='scope-org-a'"); }
+    await check(false);
+  });
+
   it("compares explicitly selected current Bindings across pages without widening scope", async () => {
     const headers = { authorization: "Bearer scope-only-a" };
     const base = bindingIds.get("scope-project-b")!;
