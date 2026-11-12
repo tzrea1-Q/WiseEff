@@ -618,7 +618,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     const before = await source.text();
     const edited = `${before}\n/* PROJ-CONFIG-EDIT-001 reviewed comment */\n`;
     const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({
-      configSet: configSet.id, file: binding!.sourceFileId, node: binding!.sourceNodePath,
+      organizationId, configSet: configSet.id, file: binding!.sourceFileId, node: binding!.sourceNodePath,
       property: binding!.propertyKey
     })}`;
     await signInBrowserAsRole(page, "admin", route);
@@ -644,9 +644,15 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       const currentFiles = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), { headers });
       expect(currentFiles.status(), await currentFiles.text()).toBe(200);
       expect((await currentFiles.json()).items.find((item: { id: string }) => item.id === file.fileId).currentVersionId).toBe(file.versionId);
+      const submissionLink = page.getByRole("link", { name: "查看提交记录", exact: true });
+      await expect(submissionLink).toHaveAttribute("href", `/parameter-changes?${new URLSearchParams({
+        scope: "mine", project: projectId, request: submitted.receipt.requestId, organizationId
+      })}`);
       page.once("dialog", (dialog) => dialog.accept());
-      await page.getByRole("link", { name: "查看提交记录", exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`/parameter-changes\\?scope=mine&project=${projectId}&request=`));
+      await submissionLink.click();
+      await expect(page).toHaveURL((url) => url.pathname === "/parameter-changes"
+        && url.searchParams.get("scope") === "mine" && url.searchParams.get("project") === projectId
+        && url.searchParams.get("request") === submitted!.receipt.requestId && url.searchParams.get("organizationId") === organizationId);
       await expect(page.getByRole("region", { name: "DTS 整文件审核" })).toContainText("PROJ-CONFIG-EDIT-001 source comment review");
       await page.screenshot({ path: testInfo.outputPath("source-comment-review.png"), fullPage: true });
       await recordOperationEvidence({ operationId: "PROJ-CONFIG-EDIT-001", title: "Whole-source comment review submission",
