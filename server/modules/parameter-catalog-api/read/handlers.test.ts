@@ -177,6 +177,36 @@ describe("definition owner lifecycle filtering", () => {
     return { ports, subjects, definitions };
   }
 
+  it.each(["subjects", "definitions"])("rejects an incomplete %s snapshot before paging the library", async (kind) => {
+    const { ports } = lifecycleHarness();
+    const load = ports.runtime.loadCurrentCatalog;
+    ports.runtime.loadCurrentCatalog = async (...args) => {
+      const result = await load(...args);
+      if (!result.ok) return result;
+      const snapshot = result.value;
+      return { ok: true, value: new Proxy(snapshot, { get(target, key, receiver) {
+        if (kind === "subjects" && key === "listSubjects") {
+          return (query: Parameters<CatalogSnapshot["listSubjects"]>[0]) => {
+            const found = target.listSubjects(query);
+            return found.status === "found" ? { ...found, page: { ...found.page,
+              next: { kind: "present", value: cursor }, pageInfo: { ...found.page.pageInfo, hasMore: true } } } : found;
+          };
+        }
+        if (kind === "definitions" && key === "listDefinitions") {
+          return (query: Parameters<CatalogSnapshot["listDefinitions"]>[0]) => {
+            const found = target.listDefinitions(query);
+            return found.status === "found" ? { ...found, page: { ...found.page,
+              next: { kind: "present", value: cursor }, pageInfo: { ...found.page.pageInfo, hasMore: true } } } : found;
+          };
+        }
+        const value = Reflect.get(target, key, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      } }) };
+    };
+    const response = await handleCatalogRead(ports, get("/api/v2/catalog/definitions", { query: { view: "library", limit: "1" } }));
+    expect(response.status).toBe(503);
+  });
+
   it("leaves the unfiltered default intact and filters/counts the complete set before pagination", async () => {
     const { ports } = lifecycleHarness(503);
     const all = await handleCatalogRead(ports, get("/api/v2/catalog/definitions", { query: { limit: "1" } }));

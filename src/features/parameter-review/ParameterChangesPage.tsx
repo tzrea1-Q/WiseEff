@@ -36,12 +36,12 @@ export function ParameterChangesPage(props: PageProps) {
   }
 
   return <div className="parameter-changes-page">
-    {canReview ? <ViewSwitch variant="toggle" ariaLabel="变更中心视图" value={scope} onValueChange={(value) => {
+    {canReview ? <div className="parameter-changes-page__scope"><ViewSwitch variant="toggle" ariaLabel="变更中心视图" value={scope} onValueChange={(value) => {
       const params = new URLSearchParams(window.location.search);
       params.set("scope", value);
       params.delete("request"); params.delete("legacyRequest"); params.delete("memberRequest");
       onNavigate(`/parameter-changes?${params.toString()}${window.location.hash}`);
-    }} items={[{ value: "mine", label: "我的提交", disabled: busy }, { value: "review", label: "审阅队列", disabled: busy }]} /> : null}
+    }} items={[{ value: "mine", label: "我的提交", disabled: busy }, { value: "review", label: "审阅队列", disabled: busy }]} /></div> : null}
     {scope === "review" ? <ParameterReviewPage key={scopeKey} {...props} state={reviewState} onBusyChange={onBusyChange} scopeToProject />
       : <ParameterSubmissionsPage key={scopeKey} {...props} onBusyChange={onBusyChange} />}
   </div>;

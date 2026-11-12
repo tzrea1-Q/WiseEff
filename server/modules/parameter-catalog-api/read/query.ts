@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { PropertyKey } from "../../catalog-kernel/interface";
+import { PropertyKey, type CatalogSubjectSnapshot, type ParameterDefinitionSnapshot } from "../../catalog-kernel/interface";
 import {
   catalogForbiddenSpoofHeaders,
   CATALOG_RELEASE_HEADER,
@@ -117,6 +117,27 @@ export function mergeIdSelection<Id extends string>(
   const allowed = new Set(right.ids);
   const ids = left.ids.filter((id) => allowed.has(id));
   return { kind: "only", ids, fingerprint: fingerprintIdSelection(ids) };
+}
+
+/** Build trusted selections from complete Catalog snapshots before the user's page is requested. */
+export function currentLibrarySubjectIds(
+  subjects: readonly CatalogSubjectSnapshot[],
+  eligible: CatalogIdSelection<CatalogSubjectId>,
+  trusted: CatalogIdSelection<CatalogSubjectId>,
+): CatalogSubjectId[] {
+  const eligibleIds = eligible.kind === "only" ? new Set(eligible.ids) : null;
+  const trustedIds = trusted.kind === "only" ? new Set(trusted.ids) : null;
+  const activeIds = new Set(subjects.filter((item) => !eligibleIds || eligibleIds.has(item.id)).map((item) => item.id));
+  return subjects.filter((item) => activeIds.has(item.id) && (!item.owner || activeIds.has(item.owner))
+    && (!trustedIds || trustedIds.has(item.id))).map((item) => item.id);
+}
+
+export function currentLibraryDefinitionIds(
+  definitions: readonly ParameterDefinitionSnapshot[],
+  subjectIds: readonly CatalogSubjectId[],
+): ParameterDefinitionId[] {
+  const visibleSubjects = new Set(subjectIds);
+  return definitions.filter((item) => visibleSubjects.has(item.subjectId)).map((item) => item.id);
 }
 
 export function observedReleaseId(request: CatalogReadRequest): string | undefined {

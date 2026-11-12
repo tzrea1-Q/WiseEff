@@ -114,7 +114,7 @@ describe("organization child ownership on the application SQL login", () => {
     const projectId = `project-${organizationId}`;
     await admin.query("insert into public.projects(id,organization_id,name,code) values ($1,$2,'Owner preservation',$1)", [projectId, organizationId]);
     const bound = await createSourceBackedBindingService(admin, { initialPayload: { kind: "number", value: 5 } }).stabilize({
-      snapshot: loaded.value, organizationId, projectId, logicalNodeId: "child_unit", registrationId: SubjectRegistrationId(childRegistrationId),
+      snapshot: loaded.value, organizationId, projectId, logicalNodeId: `child_unit_${organizationId.replaceAll("-", "_")}`, registrationId: SubjectRegistrationId(childRegistrationId),
       definitionId: ParameterDefinitionId("organization-child-weight"), effectiveRevisionId: DefinitionRevisionId("organization-child-weight-1"),
       expectedEffectiveRevisionId: null });
     if (!bound.ok) throw new Error(JSON.stringify(bound));
@@ -242,7 +242,7 @@ describe("organization child ownership on the application SQL login", () => {
     const projectId = `project-${organizationId}`;
     await admin.query("insert into public.projects(id,organization_id,name,code) values ($1,$2,'Owner lifecycle',$1)", [projectId, organizationId]);
     const bound = await createSourceBackedBindingService(admin, { initialPayload: { kind: "number", value: 5 } }).stabilize({
-      snapshot: loaded.value, organizationId, projectId, logicalNodeId: "child_unit", registrationId: SubjectRegistrationId(childRegistrationId),
+      snapshot: loaded.value, organizationId, projectId, logicalNodeId: `child_unit_${organizationId.replaceAll("-", "_")}`, registrationId: SubjectRegistrationId(childRegistrationId),
       definitionId: ParameterDefinitionId("organization-child-weight"), effectiveRevisionId: DefinitionRevisionId("organization-child-weight-1"),
       expectedEffectiveRevisionId: null });
     if (!bound.ok) throw new Error(JSON.stringify(bound));

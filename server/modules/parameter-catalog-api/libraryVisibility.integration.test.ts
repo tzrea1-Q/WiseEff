@@ -35,6 +35,17 @@ it("enforces current definition lifecycle and pagination on the real API role wh
     const second = catalogDefinitionListResponseSchema.parse((await get(`/definitions?view=library&search=${fixture.searchTerm}&limit=1&cursor=${encodeURIComponent(first.nextCursor!)}`)).body);
     expect(second.totalCount).toBe(fixture.searchableDefinitionCount);
     expect(second.items[0]!.id).not.toBe(first.items[0]!.id);
+    const seen = new Set([first.items[0]!.id, second.items[0]!.id]);
+    let next = second.nextCursor;
+    while (next) {
+      const page = catalogDefinitionListResponseSchema.parse((await get(`/definitions?view=library&search=${fixture.searchTerm}&limit=1&cursor=${encodeURIComponent(next)}`)).body);
+      expect(page.totalCount).toBe(fixture.searchableDefinitionCount);
+      expect(page.items).toHaveLength(1);
+      expect(seen.has(page.items[0]!.id)).toBe(false);
+      seen.add(page.items[0]!.id);
+      next = page.nextCursor;
+    }
+    expect(seen.size).toBe(fixture.searchableDefinitionCount);
     const retired = await get(`/definitions?view=library&lifecycle=retired&search=knowledge_retired_property`);
     expect(retired.status).toBe(200);
     expect(catalogDefinitionListResponseSchema.parse(retired.body)).toMatchObject({ totalCount: 0, items: [] });

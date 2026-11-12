@@ -48,6 +48,8 @@ import {
   asDefinitionId,
   asSubjectId,
   catalogPageLimit,
+  currentLibraryDefinitionIds,
+  currentLibrarySubjectIds,
   defaultDefinitionLifecycles,
   defaultSubjectLifecycles,
   fingerprintIdSelection,
@@ -236,20 +238,18 @@ function catalogDefinitionIndex(
 async function currentLibraryScope(snapshot: CatalogSnapshot, ports: CatalogReadPorts, scope: TrustedCatalogScope): Promise<TrustedCatalogScope> {
   const subjects = snapshot.listSubjects({ selection: { kind: "all" }, kinds: [], lifecycles: ["active"],
     search: absent, page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent } });
-  if (subjects.status !== "found") throw new CatalogProjectionError({ kind: "query-unavailable", operation: "currentLibrarySubjects" });
+  if (subjects.status !== "found" || subjects.page.next.kind !== "absent" || subjects.page.pageInfo.hasMore)
+    throw new CatalogProjectionError({ kind: "query-unavailable", operation: "currentLibrarySubjects" });
   const eligible = await ports.registration.selectSubjectIds({ organizationId: scope.organizationId,
     principalId: scope.principalId, registration: "not-retired", catalogSubjectIds: subjects.page.items.map((item) => item.id) });
-  const eligibleIds = eligible.kind === "only" ? new Set(eligible.ids) : null;
-  const trustedSubjectIds = scope.subjects.kind === "only" ? new Set(scope.subjects.ids) : null;
-  const activeIds = new Set(subjects.page.items.filter((item) => !eligibleIds || eligibleIds.has(item.id)).map((item) => item.id));
-  const subjectIds = subjects.page.items.filter((item) => activeIds.has(item.id) && (!item.owner || activeIds.has(item.owner))
-    && (!trustedSubjectIds || trustedSubjectIds.has(item.id))).map((item) => item.id);
-  const visibleSubjects = new Set(subjectIds);
+  const subjectIds = currentLibrarySubjectIds(subjects.page.items, eligible, scope.subjects);
   const definitions = snapshot.listDefinitions({ selection: scope.definitions, scope: { kind: "all" },
     lifecycles: ["active", "deprecated"], propertyKey: absent, search: absent,
     page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent } });
-  if (definitions.status !== "found" && definitions.status !== "retired") throw new CatalogProjectionError({ kind: "query-unavailable", operation: "currentLibraryDefinitions" });
-  const definitionIds = definitions.page.items.filter((item) => visibleSubjects.has(item.subjectId)).map((item) => item.id);
+  if ((definitions.status !== "found" && definitions.status !== "retired")
+    || definitions.page.next.kind !== "absent" || definitions.page.pageInfo.hasMore)
+    throw new CatalogProjectionError({ kind: "query-unavailable", operation: "currentLibraryDefinitions" });
+  const definitionIds = currentLibraryDefinitionIds(definitions.page.items, subjectIds);
   return { ...scope,
     subjects: { kind: "only", ids: subjectIds, fingerprint: fingerprintIdSelection(subjectIds) },
     definitions: { kind: "only", ids: definitionIds, fingerprint: fingerprintIdSelection(definitionIds) } };

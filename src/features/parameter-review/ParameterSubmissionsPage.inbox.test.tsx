@@ -33,7 +33,7 @@ describe("ParameterSubmissionsPage unified inbox", () => {
     expect(listProjectValueChangeRequests).not.toHaveBeenCalled();
     expect(onNavigate).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "返回我的提交" }));
-    expect(onNavigate).toHaveBeenCalledExactlyOnceWith("/parameter-submissions");
+    expect(onNavigate).toHaveBeenCalledExactlyOnceWith(`/parameter-changes?scope=mine&project=${initialState.activeProjectId}`);
   });
 
   it("hides the previous owner's cached rounds immediately and ignores their late response after an identity change", async () => {

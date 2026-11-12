@@ -263,6 +263,31 @@ it("waits for live projects before reading their initialization state", async ()
   expect(getInitialization.mock.calls.every(([id]) => id === "live-only-project")).toBe(true);
 });
 
+it("does not request project initialization after logout completes", async () => {
+  window.history.replaceState(null, "", "/parameters");
+  let loggedOut = false;
+  const requestsAfterLogout: string[] = [];
+  const getInitialization = vi.fn(async (projectId: string) => {
+    if (loggedOut) requestsAfterLogout.push(projectId);
+    return { status: "initialized" as const, draft: null };
+  });
+  const authClient = { getCurrentAuthContext: vi.fn(async () => ({
+    user: { id: "u-xu-yun", organizationId: "org-chargelab", name: "Xu Yun", title: "Owner", isActive: true },
+    organization: { id: "org-chargelab", name: "ChargeLab" }, roles: [{ projectId: null, roleId: "admin" }],
+    permissions: ["admin:access", "parameter:view", "parameter:review"]
+  })), logout: vi.fn(async () => { loggedOut = true; }) };
+  render(<App runtimeMode="api" initialAppState={adminState} authClient={authClient}
+    parameterRepository={createTestParameterRepository()} parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
+    logAnalysisRepository={createTestLogAnalysisRepository()}
+    parameterInitializationRepository={{ getInitialization, listPendingReviews: vi.fn().mockResolvedValue([]),
+      upsertDraft: vi.fn(), previewSnapshot: vi.fn(), submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
+  await waitFor(() => expect(getInitialization).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole("button", { name: /打开用户菜单$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+  expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+  expect(requestsAfterLogout).toEqual([]);
+});
+
 it.each(["identity", "permission", "partial permission", "organization"])("discards an in-flight initialization list after %s changes", async (change) => {
   window.history.replaceState(null, "", "/parameter-changes?project=aurora&scope=review");
   let finish!: (reviews: InitializationReviewDto[]) => void;

@@ -841,7 +841,7 @@ function AppShell({
   }, [state]);
 
   useEffect(() => {
-    if (!businessScopeReady || !apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
+    if ((runtimeMode === "api" && apiAuthStatus !== "authenticated") || !businessScopeReady || !apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
       return;
     }
     const params = new URLSearchParams(search);
@@ -854,10 +854,12 @@ function AppShell({
     void hydrateActiveProjectInitialization(projectId);
   }, [
     apiRuntimeSynced,
+    apiAuthStatus,
     businessScopeReady,
     apiRuntimeFailures,
     hydrateActiveProjectInitialization,
     page.key,
+    runtimeMode,
     search,
     state.configDraft.projects,
     state.activeProjectId

@@ -688,7 +688,7 @@
   min-height: 0;
 }
 
-.parameter-changes-page > .view-switch {
+.parameter-changes-page__scope {
   align-self: flex-start;
   flex-shrink: 0;
   margin-bottom: var(--space-3);
