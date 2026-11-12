@@ -3926,14 +3926,14 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         const requestId=(await submitted.json()).item.requestId as string;
         await expect(page.getByText("已提交审核 · 工作配置尚未更新",{exact:true})).toBeVisible();
         if(action === "set") {
-          const href = await page.getByRole("link",{ name: "查看提交记录",exact: true }).getAttribute("href");
-          expect(href).toBeTruthy();
+          const detailRoute = `/parameter-changes?${new URLSearchParams({ scope: "mine", project: projectId, request: requestId, organizationId })}`;
+          await expect(page.getByRole("link",{ name: "查看提交记录",exact: true })).toHaveAttribute("href", detailRoute);
           const detailPage = await page.context().newPage();
           const diagnostics = installBrowserDiagnostics(detailPage, testInfo, { expectedApiFailures: expectedBrowserApiFailures });
           try {
             const loaded = detailPage.waitForResponse(response => response.request().method() === "GET"
               && new URL(response.url()).pathname === `/api/v2/projects/${projectId}/source-revision-requests/${requestId}`);
-            await detailPage.goto(disposablePageUrl(disposableRuntime, href!));
+            await detailPage.goto(disposablePageUrl(disposableRuntime, detailRoute));
             const response = await loaded;
             expect(response.status(), await response.text()).toBe(200);
             expect((await response.json()).item).toHaveProperty("organizationName");
