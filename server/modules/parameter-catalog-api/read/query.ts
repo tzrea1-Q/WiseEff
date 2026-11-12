@@ -137,6 +137,7 @@ export function parseCatalogListQuery(
   const subjectIdsRaw = queryArray(request.query, "subjectIds");
   const placementModuleIdRaw = queryValue(request.query, "placementModuleId");
   const placementScopeRaw = queryValue(request.query, "placementScope");
+  const viewRaw = queryValue(request.query, "view");
   const propertyKeyRaw = queryValue(request.query, "propertyKey");
   const usageProjectId = queryValue(request.query, "usageProjectId");
   if (usageProjectId !== undefined && (!usageProjectId.trim() || usageProjectId.length > 200 || /[\u0000-\u001f\u007f-\u009f]/u.test(usageProjectId) || usageProjectId.trim() !== usageProjectId)) return { ok: false, response: validationFailed(request.requestId, "usageProjectId") };
@@ -200,6 +201,9 @@ export function parseCatalogListQuery(
   if (placementScopeRaw !== undefined && placementScopeRaw !== "library") {
     return { ok: false, response: validationFailed(request.requestId, "placementScope") };
   }
+  if (viewRaw !== undefined && viewRaw !== "library") {
+    return { ok: false, response: validationFailed(request.requestId, "view") };
+  }
 
   let propertyKey: PropertyKey | undefined;
   if (propertyKeyRaw !== undefined) {
@@ -221,6 +225,7 @@ export function parseCatalogListQuery(
   return {
     ok: true,
     query: {
+      view: viewRaw,
       cursor,
       limit,
       type: typeRaw as CatalogListQuery["type"],

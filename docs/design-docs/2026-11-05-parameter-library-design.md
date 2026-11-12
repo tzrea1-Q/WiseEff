@@ -78,7 +78,7 @@ These concrete details develop the confirmed direction and will be reviewed with
 
 - Show the authorized Organization context for registration and project usage. A shell project selection must not silently narrow the library; a project is an explicit, removable usage filter.
 - Use the existing PC layout tokens at 1440×900: a collapsible subject navigator beside the main results table. Keep search, active filters, result count and reset above the table.
-- Default to active published definitions and subjects, irrespective of this Organization's registration lifecycle. Provide lifecycle, subject type/subject, registration, business-module and project-usage filters. Clearly label Organization-only filters.
+- Default to active published definitions whose subject and owning driver are current and whose Organization registrations are not retired. Valid unregistered definitions remain readable. Provide active/deprecated lifecycle, subject type/subject, active/unregistered registration, business-module and project-usage filters. Deprecated remains distinct from retired.
 - Reuse existing case-insensitive substring search over keys, display names, documentation and subject aliases/identity. Do not promise relevance ranking, fuzzy search or an independently stored description. A short preview can come from the existing documentation.
 - Main columns: name/property key; subject/type; documentation preview; value type/unit; configured projects; current value instances. Exceptional lifecycle and registration are compact labels rather than governance controls. Keep technical IDs in secondary details.
 - Reuse server pagination and 20/50/100 page sizes, default 50, with deterministic ordering. Apply all filters before pagination. Counts and usage filters require server-owned queries rather than loading all project values into the browser.
@@ -93,6 +93,8 @@ The header contains the readable name, property key, subject and lifecycle, foll
 | Revision context | Show the currently published definition; allow existing revision history on demand. An instance's value is always interpreted with its own pinned revision, not the latest head. Historical definition content must not imply historical project usage. |
 | Source/provenance | Fold technical identity, release and detailed schema into secondary inspection. Render documentation safely using the existing Markdown capabilities; do not claim unsupported tables/images or invent missing content. |
 | Governance handoff | An authorized user may open existing definition governance. Opening or reading never creates a registration, draft or publication intent. |
+
+The library uses the Catalog read API with `view=library`. The server resolves the current release and Organization registration before applying client filters, counting or paging. Historical release pins and retired filters cannot widen this view; an unavailable definition link shows a short unavailable state. Existing authorized Catalog governance and exact-revision reads retain their separate historical contract.
 
 ### Project configurations and comparison
 
@@ -197,7 +199,8 @@ Copy value requires an explicit row/detail action and copies the full chosen raw
 | Unsupported complex shape/reference | Raw/structural inspection labelled as such | Equal text proves equal cross-project meaning |
 | Empty string / boolean presence / JSON null | Preserve typed presence and distinguish each from absent | Blank text always means no value |
 | Proven placeholder versus missing value/pin | Placeholder has No current value and only proven evidence; dangling/malformed current data returns unavailable and withholds unproven totals | Missing records or read failures are ordinary unset values |
-| Retired definition/registration or suspended source | Explain the known current-unavailability reason; retain definition history/deep links allowed by existing owners | History was deleted or current configuration never existed |
+| Retired definition/subject/registration | Hide it from the current library and show an unavailable state for its old detail link; authorized governance retains history | History was deleted or current configuration never existed |
+| Suspended source | Explain the known current-unavailability reason | History was deleted or current configuration never existed |
 | Deleted/replaced retained Binding | Selected item unavailable; existing exact history link only when supported | A similarly named instance is the replacement |
 | History existence unknown | No current configuration; do not assert retained history exists | Zero current count proves or disproves historical usage |
 | Permission denied / request failed | Explicit denied/unavailable or retry state; keep readable definition | A successful empty result |

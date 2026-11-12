@@ -42,18 +42,31 @@ async function installLibraryFixture(pool: pg.Pool, predecessor: CatalogReleaseP
   const installed = await createCatalogInstaller(pool).installPublishedRelease({ mode: "advance", source: jsonCatalogReleaseSource(successor),
     expectedCurrent: predecessor, expectedTargetDigest: compiled.aggregateDigest });
   if (!installed.ok) throw new Error(`Library fixture install failed: ${installed.error.kind}`);
+  const latest = structuredClone(next);
+  Object.assign(latest.manifest.release, { id: "crel_parlib_updated", version: "1.7.0", sequence: 8,
+    publishedAt: "2026-09-08T00:00:00Z", predecessor: { id: compiled.release.id, digest: compiled.release.digest } });
+  const revised = latest.documents.find((item) => item.kind === "definition" && item.content.id === "pdef_parlib_driver_29");
+  if (!revised || revised.kind !== "definition") throw new Error("Missing current library definition");
+  Object.assign(revised.content.revision, { id: "drev_parlib_driver_29_2", number: 2, documentation: "Updated description for parlib_driver_29" });
+  refreshReleaseSource(latest);
+  const updated = { ...successor, targetReleaseId: latest.manifest.release.id, releases: [...successor.releases, latest] };
+  const compiledLatest = compileOrThrow(updated);
+  const advanced = await createCatalogInstaller(pool).installPublishedRelease({ mode: "advance", source: jsonCatalogReleaseSource(updated),
+    expectedCurrent: { id: compiled.release.id, digest: compiled.release.digest }, expectedTargetDigest: compiledLatest.aggregateDigest });
+  if (!advanced.ok) throw new Error(`Library fixture update failed: ${advanced.error.kind}`);
 }
 
 test.use({ viewport: { width: 1440, height: 900 }, catalogRuntimeScope: import.meta.url, catalogRuntimeDatabaseUrl: process.env.TEST_DATABASE_URL });
 useBrowserDiagnostics(test, { expectedApiFailures: [...CATALOG_EXPECTED_API_FAILURES,
-  { method: "GET", path: `/api/v2/catalog/definitions/${X_DEFINITION_ID}/revisions`, status: 503, exact: true }] });
+  { method: "GET", path: `/api/v2/catalog/definitions/${X_DEFINITION_ID}`, status: 404, exact: true },
+  { method: "GET", path: "/api/v2/catalog/definitions/pdef_parlib_driver_29/revisions", status: 503, exact: true }] });
 
 test("opens a global definition from the library without a project", async ({ page, catalogAcceptanceRuntime }, testInfo) => {
   // @acceptance PARLIB-READ-001
   // @operation PARLIB-READ-001
   const { fixture } = catalogAcceptanceRuntime;
   await installLibraryFixture(fixture.pool, fixture.chain.pinF);
-  await signInCatalogActor(page, "org-admin", "/parameter-home");
+  await signInCatalogActor(page, "user", "/parameter-home");
   await dismissXiaozeHint(page);
   await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "参数库" }).click();
   await expect(page).toHaveURL(/\/parameters\/definitions/);
@@ -73,22 +86,29 @@ test("opens a global definition from the library without a project", async ({ pa
   await page.getByRole("button", { name: "查看 parlib_driver_29" }).click();
   await expect(page.getByRole("region", { name: "定义详情" })).toContainText("未登记");
   await expect(page.getByRole("region", { name: "定义详情" })).toContainText("当前发布");
-  await expect(page.getByRole("region", { name: "定义详情" })).toContainText("Published description for parlib_driver_29");
+  await expect(page.getByRole("region", { name: "定义详情" })).toContainText("Updated description for parlib_driver_29");
   await page.getByRole("button", { name: "返回参数库" }).click();
   const response = await catalogJson(page.request, "GET", `/api/v2/catalog/definitions/${fixture.xDefinitionId}?catalogReleaseId=${fixture.chain.pinC.id}`);
   expect(response.status).toBe(200);
-  await page.goto(catalogAppUrl(`/parameters/definitions?catalogReleaseId=${fixture.chain.pinC.id}`));
+  await page.goto(catalogAppUrl(`/parameters/definitions?catalogReleaseId=${fixture.chain.pinC.id}&lifecycle=retired&registration=retired&includeRetiredSubjects=true`));
   await expect(page.getByRole("table", { name: "参数定义列表" })).toBeVisible();
+  await expect(page.getByRole("status", { name: "结果计数" })).toContainText("32");
+  await expect(page.getByRole("checkbox", { name: /包含已停用和退役主体/ })).toHaveCount(0);
   await search.fill("iin_max");
   await search.press("Enter");
-  await page.getByRole("button", { name: "查看 iin_max" }).click();
-  await expect(page.getByRole("region", { name: "定义详情" })).toContainText("iin_max");
-  await expect(page.getByRole("region", { name: "定义详情" })).toContainText("未登记");
-  await expect(page.getByRole("region", { name: "定义详情" })).toContainText("历史发布");
+  await expect(page.getByRole("button", { name: "查看 iin_max" })).toHaveCount(0);
+  await page.goto(catalogAppUrl(`/parameters/definitions?definitionId=${X_DEFINITION_ID}&catalogReleaseId=${fixture.chain.pinC.id}&history=true`));
+  await expect(page.getByText("该定义当前不可用。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "定义详情" })).toHaveCount(0);
+  await catalogScreenshot(page, testInfo, "parlib-retired-definition");
+  await page.getByRole("button", { name: "返回参数库" }).click();
+  await search.fill("parlib_driver_29");
+  await search.press("Enter");
+  await page.getByRole("button", { name: "查看 parlib_driver_29" }).click();
   const historyRoute = "**/api/v2/catalog/definitions/*/revisions?*";
   await page.route(historyRoute, (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "catalog-not-ready" } }) }));
   await page.getByRole("button", { name: /查看历史/ }).click();
-  await expect(page.getByRole("region", { name: "定义详情" })).toContainText("Documented maximum accepted input current.");
+  await expect(page.getByRole("region", { name: "定义详情" })).toContainText("Updated description for parlib_driver_29");
   await expect(page.getByText("修订历史读取失败，请重试。")).toBeVisible();
   await page.unroute(historyRoute);
   await page.getByRole("button", { name: "重试" }).click();
@@ -96,7 +116,7 @@ test("opens a global definition from the library without a project", async ({ pa
   await page.reload();
   await expect(page.getByRole("list", { name: "定义时间线" })).toBeVisible();
   await page.getByText(/^修订 #1 · 查看内容/).click();
-  await expect(page.getByRole("table", { name: "修订 #1 内容比较" })).toContainText("Maximum accepted input current.");
+  await expect(page.getByRole("table", { name: "修订 #1 内容比较" })).toContainText("Published description for parlib_driver_29");
   await catalogScreenshot(page, testInfo, "parlib-read-definition");
   await recordOperationEvidence({ operationId: "PARLIB-READ-001", title: testInfo.title, status: "passed", page, testInfo,
     assertions: ["ui", "api", "screenshot"], api: [{ method: "GET", path: "/api/v2/catalog/definitions/:definitionId", status: response.status,
