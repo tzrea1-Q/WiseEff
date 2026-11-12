@@ -68,7 +68,8 @@ export function ParameterReviewPage({
   search,
   parameterActions,
   runtime,
-  runtimeMode
+  runtimeMode,
+  onBusyChange
 }: PageProps) {
   const sourceRepository = useMemo(() => runtimeMode === "api" ? runtime?.parameterFileRepository ?? resolveParameterFileRepository("api") : undefined, [runtimeMode, runtime?.parameterFileRepository]);
   const reviewProjectId = getContextQuery(search).projectId || state.activeProjectId;
@@ -603,6 +604,7 @@ export function ParameterReviewPage({
         state={state} search={search} canReview={canReviewCanonical} legacyRows={inboxLegacyRows}
         onNavigate={onNavigate}
         busy={actionPending || batchProgress !== null}
+        onBusyChange={onBusyChange}
         loading={Boolean(reviewProjectionPending)} error={currentReviewProjection?.error}
         onRequestsChanged={() => setRefreshVersion((version) => version + 1)}
         onVisibleLegacyIds={setVisibleLegacyIds}

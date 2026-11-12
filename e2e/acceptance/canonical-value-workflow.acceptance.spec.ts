@@ -260,8 +260,15 @@ test.describe("canonical value workflow on real sources", () => {
       return item.id as string;
     };
     const openReview = async (role: "software-user" | "software-committer", requestId?: string) => {
-      await signInBrowserAsRole(page, role, `${runtime.frontendUrl}/parameter-review?project=${projectId}`);
+      await signInBrowserAsRole(page, role, `${runtime.frontendUrl}/parameter-changes?project=${projectId}`);
       await expect(page.getByRole("combobox", { name: "项目", exact: true })).toContainText("Canonical review local");
+      await expect(page.getByRole("radio", { name: "审阅队列" })).toBeChecked();
+      await page.getByRole("radio", { name: "我的提交" }).click();
+      await expect(page.getByRole("table", { name: "我的提交", exact: true })).toBeVisible();
+      await page.getByRole("radio", { name: "我的提交" }).focus();
+      await page.keyboard.press("ArrowRight");
+      await expect(page.getByRole("radio", { name: "审阅队列" })).toBeChecked();
+      await expect(page).toHaveURL(/scope=review/);
       if (requestId) {
         await page.getByRole("table", { name: "审阅队列", exact: true }).locator(`[data-review-row-id="${requestId}"]`)
           .getByRole("button", { name: /查看 .+ 提交详情$/ }).click();
@@ -284,7 +291,31 @@ test.describe("canonical value workflow on real sources", () => {
     expect(draftsResponse.ok(), await draftsResponse.text()).toBe(true);
     expect((await draftsResponse.json()).items).toEqual([]);
     await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
-    let review = await openReview("software-user", withdrawnId);
+    await signInBrowserAsRole(page, "hardware-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}`);
+    await expect(page.getByRole("table", { name: "我的提交", exact: true })).toBeVisible();
+    const personalReads: URL[] = [];
+    const observePersonalReads = (request: Request) => {
+      const url = new URL(request.url());
+      if (request.method() === "GET" && (url.pathname.includes(`/projects/${projectId}/parameter-value-change-requests`)
+        || url.pathname.includes(`/projects/${projectId}/source-revision-requests`)
+        || url.pathname === "/api/v1/parameter-submission-rounds" || url.pathname === "/api/v1/parameter-change-requests")) {
+        personalReads.push(url);
+      }
+    };
+    page.on("request", observePersonalReads);
+    const personalLoaded = page.waitForResponse((response) => response.request().method() === "GET"
+      && new URL(response.url()).pathname === `/api/v2/projects/${projectId}/parameter-value-change-requests`);
+    await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "变更中心" }).click();
+    expect((await personalLoaded).ok()).toBe(true);
+    await expect(page.getByRole("table", { name: "我的提交", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "审阅队列" })).toHaveCount(0);
+    expect(personalReads.length).toBeGreaterThan(0);
+    expect(personalReads.every((url) => url.searchParams.get("mine") === "true")).toBe(true);
+    page.off("request", observePersonalReads);
+    await page.screenshot({ path: info.outputPath("change-center-personal.png"), animations: "disabled" });
+
+    await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-changes?project=${projectId}&scope=mine&request=${withdrawnId}`);
+    let review = page.getByRole("region", { name: "我的参数提交" });
     await expect(review.getByRole("button", { name: "批准软件配置" })).toHaveCount(0);
     const withdrawn = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/withdraw"));
     await review.getByRole("button", { name: "撤回我的提交" }).click();

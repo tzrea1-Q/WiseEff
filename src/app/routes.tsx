@@ -40,6 +40,7 @@ import { LinearTemplateHome } from "@/linear-template/LinearTemplateHome";
 import { LogsPage } from "@/features/log-analysis/LogsPage";
 import { ParameterReviewPage } from "@/features/parameter-review/ParameterReviewPage";
 import { ParameterSubmissionsPage } from "@/features/parameter-review/ParameterSubmissionsPage";
+import { ParameterChangesPage } from "@/features/parameter-review/ParameterChangesPage";
 import { LogAdminPage } from "@/LogAdminPage";
 import { SkillWorkspace } from "@/features/log-skills/SkillWorkspace";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
@@ -117,6 +118,7 @@ export type PageProps = {
   sessionPermissions?: readonly string[] | null;
   sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
   projectMemberships?: AuthContextDto["projectMemberships"];
+  onBusyChange?: (busy: boolean) => void;
 };
 
 /**
@@ -363,6 +365,10 @@ export function PageRouter({
           runtimeMode={runtimeMode}
         />
       );
+    case "parameter-changes":
+      return <ParameterChangesPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search}
+        parameterActions={parameterActions} runtime={runtime} runtimeMode={runtimeMode} sessionPermissions={sessionPermissions}
+        sessionRoles={sessionRoles} projectMemberships={projectMemberships} />;
     case "parameter-submissions":
       return (
         <ParameterSubmissionsPage

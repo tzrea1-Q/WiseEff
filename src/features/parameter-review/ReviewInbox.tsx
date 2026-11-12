@@ -66,6 +66,7 @@ type Props = {
   onVisibleLegacyIds?: (ids: string[]) => void;
   onNavigate?: (path: string) => void;
   busy?: boolean;
+  onBusyChange?: (busy: boolean) => void;
 };
 
 const typeLabels = { all: "全部类型", value: "软件配置", source: "DTS 来源修改", member: "配置文件移除", legacy: "参数与节点" };
@@ -76,7 +77,7 @@ const searchProfile: SearchProfile<ReviewInboxRow> = { fields: [
 
 export function ReviewInbox({ projectId, repository, sourceRepository, state, search, mineOnly = false, canReview = false,
   legacyRows, renderLegacyDetail, onLegacySelect, renderRowSelection, renderRowTitle, selectAll, queueActions,
-  onRequestsChanged, loading: legacyLoading = false, error: legacyError, onVisibleLegacyIds, onNavigate, busy = false }: Props) {
+  onRequestsChanged, loading: legacyLoading = false, error: legacyError, onVisibleLegacyIds, onNavigate, busy = false, onBusyChange }: Props) {
   const [query, setQuery] = useState(search);
   const [refresh, setRefresh] = useState(0);
   const identityScope = useMemo(() => ({ repository, sourceRepository, projectId, mineOnly, canReview, userId: state.currentUserId, roleId: state.activeRoleId }),
@@ -97,6 +98,7 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
   const [detailRefresh, setDetailRefresh] = useState(0);
   const [detailBusy, setDetailBusy] = useState(false);
   const interactionBusy = busy || detailBusy;
+  useEffect(() => { onBusyChange?.(interactionBusy); }, [interactionBusy, onBusyChange]);
   const tabsId = useId();
   const queueRef = useRef<HTMLElement>(null);
   const detailRef = useRef<HTMLElement>(null);

@@ -9,6 +9,13 @@ import {
 } from "./permissions";
 
 describe("app permission policy", () => {
+  it("opens change center for existing submission or review access, including API project membership", () => {
+    expect(canAccessPage("hardware-user", "parameter-changes")).toBe(true);
+    expect(canAccessPage("software-user", "parameter-changes")).toBe(true);
+    expect(canAccessPage("guest", "parameter-changes")).toBe(false);
+    expect(canAccessPage("guest", "parameter-changes", { path: "/parameter-changes", runtimeMode: "api",
+      projectMemberships: [{ projectId: "aurora", roles: ["hardware-user"] }] })).toBe(true);
+  });
   it("admits a current project editor only to that project's configuration, keeping administration restricted", () => {
     const scope={path:"/parameter-admin/projects/project-a/configuration",runtimeMode:"api",permissions:["parameter:view","parameter:edit"],
       projectMemberships:[{projectId:"project-a",roles:["hardware-user"]}]};
