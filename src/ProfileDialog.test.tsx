@@ -11,7 +11,7 @@ describe("authentication-aware profile dialog", () => {
     const onSave = vi.fn().mockResolvedValue(undefined), onChangePassword = vi.fn();
     render(<ProfileDialog user={user} onCancel={vi.fn()} onSave={onSave} onChangePassword={onChangePassword}
       getAuthConfig={async () => ({ provider: "oidc", selfRegisterEnabled: false, hasLocalAdmin: true, evaluationOrganizationName: null })} />);
-    expect(await screen.findByText(/密码由组织身份提供方管理/)).toBeVisible();
+    expect(await screen.findByText(/密码由身份提供方管理/)).toBeVisible();
     expect(screen.queryByLabelText("当前密码")).toBeNull();
     expect(screen.queryByRole("link")).toBeNull();
     fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Application display name" } });
@@ -44,6 +44,6 @@ describe("authentication-aware profile dialog", () => {
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
     expect(screen.queryByLabelText("当前密码")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "重试账号能力" }));
-    expect(await screen.findByText(/密码由组织身份提供方管理/)).toBeVisible();
+    expect(await screen.findByText(/密码由身份提供方管理/)).toBeVisible();
   });
 });

@@ -78,7 +78,7 @@ const allTabs: TabConfig[] = [
     key: "knowledge",
     workflowId: "knowledge",
     label: "知识库",
-    headline: "组织文档",
+    headline: "工程文档",
     meta: "整理后发布",
     previewRows: [
       ["导入文档", "批量创建草稿", "保留来源"],
@@ -86,7 +86,7 @@ const allTabs: TabConfig[] = [
       ["检索引用", "关联参数定义", "回到原文"]
     ],
     features: [
-      { title: "上传组织文档。", text: "集中整理组织自己的调参经验、故障案例、硬件手册与流程规范。" },
+      { title: "上传工程文档。", text: "集中整理调参经验、故障案例、硬件手册与流程规范。" },
       { title: "批量导入。", text: "每份文档独立生成草稿，查看导入报告后继续整理。" },
       { title: "确认发布。", text: "人工检查内容与标签，发布后才进入知识检索。" },
       { title: "检索与引用。", text: "从知识库、参数定义或分析报告回到相关原文。" }
