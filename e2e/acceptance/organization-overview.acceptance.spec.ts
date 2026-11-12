@@ -115,14 +115,15 @@ test("organization overview retains administrator scope while ordinary members u
     await page.reload(); await prepareInteractionSurface(page);
     await expect(page.getByRole("link", { name: "组织管理", exact: true })).toHaveCount(0);
     await page.goto(`/parameters?organizationId=${empty}`);
-    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "没有权限执行该操作" })).toBeVisible();
+    await expect(page.getByText("无法连接雷泽参数 API，当前无数据", { exact: true })).toHaveCount(0);
     await expect(page).toHaveURL(url => url.searchParams.get("organizationId") === empty);
     await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toHaveCount(0);
     await page.goBack();
     await expect(page).toHaveURL(url => url.pathname === "/parameter-home" && !url.search);
     await page.goForward();
     await expect(page).toHaveURL(url => url.pathname === "/parameters" && url.searchParams.get("organizationId") === empty);
-    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "没有权限执行该操作" })).toBeVisible();
     await page.goto("/organization/resources");
     await expect(page).toHaveURL(url => url.pathname === "/parameter-home" && !url.search);
     await expect(page.getByRole("navigation", { name: "组织管理范围" })).toHaveCount(0);
@@ -133,7 +134,7 @@ test("organization overview retains administrator scope while ordinary members u
     expect(pausedSuggestions).toEqual([]);
     const restored = await page.request.patch(apiRoute(`/api/v1/platform/organizations/${org}/lifecycle`), { headers: authHeadersForRole("platform-admin"), data: { status: "active", expectedStatus: "suspended" } });
     expect(restored.status()).toBe(200); suspendedSuccessfully = false;
-    const proactiveEnabled = process.env.VITE_XIAOZE_PROACTIVE_ENABLED?.trim().toLowerCase() === "true";
+    const proactiveEnabled = (process.env.VITE_XIAOZE_PROACTIVE_ENABLED ?? "true").trim().toLowerCase() === "true";
     const resumed = proactiveEnabled ? page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/agent/xiaoze/suggest" && response.request().method() === "POST") : null;
     await page.reload(); await prepareInteractionSurface(page);
     if (resumed) expect((await resumed).status()).toBe(200);

@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getPageByPath } from "@/appConfig";
 import { initialState } from "@/mockData";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
-import { activeDefinition, CATALOG_RELEASE_ID } from "@/application/parameter-catalog/fixtures";
+import { activeDefinition } from "@/application/parameter-catalog/fixtures";
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { createMockParameterModuleRegistryRepository } from "@/infrastructure/mock/mockParameterModuleRegistryRepository";
@@ -20,7 +20,7 @@ describe("Knowledge Definition navigation", () => {
     vi.spyOn(moduleRegistryResolve, "resolveParameterModuleRegistryRepository")
       .mockReturnValue(createMockParameterModuleRegistryRepository());
   });
-  it.each([undefined, "org-selected"])("preserves only the explicit operating organization when pinning the library release (%s)", async (operatingOrganizationId) => {
+  it.each([undefined, "org-selected"])("preserves only the explicit operating organization when filtering the current library (%s)", async (operatingOrganizationId) => {
     const ports = createMockCatalogPorts();
     const navigate = vi.fn();
     render(<ToastProvider><PageRouter page={getPageByPath("/parameters/definitions")}
@@ -29,10 +29,15 @@ describe("Knowledge Definition navigation", () => {
       runtime={{ parameterCatalogRepository: ports.catalog, operatingOrganizationId } as AppRuntime}
       runtimeMode="api" onNavigate={navigate} onFeedback={() => undefined} sessionPermissions={[]}
       DebuggingAdminPage={() => null} /></ToastProvider>);
+    await screen.findByRole("button", { name: `查看 ${activeDefinition.propertyKey}` });
+    expect(navigate).not.toHaveBeenCalled();
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("searchbox", { name: "搜索参数定义" }), `${activeDefinition.propertyKey}{Enter}`);
     await waitFor(() => expect(navigate).toHaveBeenCalled());
     const destination = new URL(navigate.mock.calls.at(-1)![0], "http://localhost");
     expect(destination.pathname).toBe("/parameters/definitions");
-    expect(destination.searchParams.get("catalogReleaseId")).toBe(CATALOG_RELEASE_ID);
+    expect(destination.searchParams.get("q")).toBe(activeDefinition.propertyKey);
+    expect(destination.searchParams.has("catalogReleaseId")).toBe(false);
     expect(destination.searchParams.get("organizationId")).toBe(operatingOrganizationId ?? null);
   });
   it.each([false, true])("gates definition-page linking by knowledge:edit (%s)", async (canEdit) => {
@@ -107,7 +112,7 @@ describe("Knowledge Definition navigation", () => {
       await waitFor(() => expect(new URL(navigate.mock.calls.at(-1)![0], "http://localhost").pathname)
         .toBe("/parameters/definitions"));
       const closedDestination = new URL(navigate.mock.calls.at(-1)![0], "http://localhost");
-      expect(closedDestination.searchParams.get("catalogReleaseId")).toBe(CATALOG_RELEASE_ID);
+      expect(closedDestination.searchParams.has("catalogReleaseId")).toBe(false);
       expect(closedDestination.searchParams.has("definitionId")).toBe(false);
     } else {
       // Administrative page access does not grant Catalog authoring permission.

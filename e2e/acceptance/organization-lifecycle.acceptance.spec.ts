@@ -18,7 +18,7 @@ useBrowserDiagnostics(test, { expectedApiFailures: [
   { method: "PATCH", path: "/api/v1/organization", status: 403 }
 ] });
 
-test("suspends and restores a fixed Organization, preserves readonly member access and supports keyboard retry", async ({ page, browser }, testInfo) => {
+test("suspends and restores a fixed Organization, preserves readonly administrator access and supports keyboard retry", async ({ page, browser }, testInfo) => {
   await seedAcceptanceRoleMatrix();
   const suffix = randomUUID().slice(0, 8), org = `lifecycle-${suffix}`, member = `lifecycle-member-${suffix}`, disabled = `lifecycle-disabled-${suffix}`;
   const name = `生命周期验收组织-${suffix}`, memberName = `组织管理员-${suffix}`;
@@ -59,11 +59,17 @@ test("suspends and restores a fixed Organization, preserves readonly member acce
     await expect(page.getByRole("status").filter({ hasText: "可继续办理交接" })).toBeVisible();
     const memberContext = await browser.newContext({ viewport: { width: 1440, height: 900 } }), memberPage = await memberContext.newPage();
     await signInBrowserAsUser(memberPage, member, `${member}@example.test`, memberName, "/organization/settings", org);
-    await expect(memberPage).toHaveURL(/\/parameter-home$/);
-    await expect(memberPage.getByRole("region", { name: "当前操作组织" })).toHaveCount(0);
-    await expect(memberPage.getByRole("status").filter({ hasText: "当前工作区仅可查看，请联系管理员" })).toHaveCount(1);
-    await expect(memberPage.getByText(name, { exact: true })).toHaveCount(0);
-    await expect(memberPage.getByLabel("显示名称", { exact: true })).toHaveCount(0);
+    const session = await memberPage.request.get(apiRoute("/api/v1/me"), { headers: authHeadersForUser(member, `${member}@example.test`, memberName, org) });
+    expect(session.status()).toBe(200);
+    const auth = await session.json() as { roles: Array<{ projectId: string | null; roleId: string }>; permissions: string[]; organization: { id: string; status: string } };
+    expect(auth.roles).toContainEqual({ projectId: null, roleId: "admin" });
+    expect(auth.permissions).toContain("users:manage");
+    expect(auth.organization).toMatchObject({ id: org, status: "suspended" });
+    await expect(memberPage).toHaveURL(/\/organization\/settings$/);
+    await expect(memberPage.getByRole("region", { name: "当前操作组织" })).toContainText("已停用 · 仅可查看");
+    await expect(memberPage.getByRole("status").filter({ hasText: "组织已停用" })).toHaveCount(1);
+    await expect(memberPage.getByLabel("显示名称", { exact: true })).toHaveValue(name);
+    await expect(memberPage.getByLabel("显示名称", { exact: true })).toBeDisabled();
     const forbidden = await memberPage.request.patch(apiRoute("/api/v1/organization"), { headers: authHeadersForUser(member, `${member}@example.test`, memberName, org), data: { name: "Must not change" } });
     expect(forbidden.status()).toBe(403);
     await memberPage.screenshot({ path: testInfo.outputPath("organization-member-readonly-1440.png"), animations: "disabled" });
@@ -89,7 +95,7 @@ test("suspends and restores a fixed Organization, preserves readonly member acce
     await recordOperationEvidence({ operationId: "ORG-LIFECYCLE-001", title: "Organization suspend and restore", status: "passed", page, testInfo,
       artifacts: ["organization-suspend-confirmation-1440.png", "organization-suspended-directory-1440.png", "organization-member-readonly-1440.png"].map(file => testInfo.outputPath(file)),
       api: [{ method: "PATCH", path: lifecycle, status: 200, responseSummary: "Suspended and restored with compare-and-set confirmation; injected 503 kept the dialog retryable." },
-        { method: "PATCH", path: "/api/v1/organization", status: forbidden.status(), responseSummary: "Suspended member business mutation refused." }],
+        { method: "PATCH", path: "/api/v1/organization", status: forbidden.status(), responseSummary: "Suspended administrator mutation refused." }],
       db: [{ table: "organizations", predicate: "the selected organization", observed: "active after explicit restore", rowCount: 1 },
         { table: "users", predicate: "the individually disabled fixture member", observed: "is_active remains false", rowCount: 1 }],
       audit: [{ kind: "organization-lifecycle", action: "suspend", targetId: org }, { kind: "organization-lifecycle", action: "restore", targetId: org }]

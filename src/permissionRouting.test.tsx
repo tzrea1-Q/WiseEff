@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/features/agent/XiaozeProvider", () => ({
@@ -14,6 +14,8 @@ import App from "./App";
 import { appReducer } from "@/application/state/appState";
 import { initialState } from "./mockData";
 import { declarationsFor, readStylesheet } from "./test/cssAssertions";
+import { createTestLogAnalysisRepository, createTestParameterRepository } from "./test/harness";
+import { createMockParameterCatalogRepository } from "@/application/parameter-catalog/mockAdapter";
 
 const guestState = { ...initialState, activeRoleId: "guest" };
 
@@ -24,6 +26,49 @@ afterEach(() => {
 });
 
 describe("permission-aware routing", () => {
+  it("waits for server scope confirmation before loading business data and fails closed", async () => {
+    window.history.replaceState(null, "", "/parameters?organizationId=foreign");
+    let resolveScope!: (value: Response) => void;
+    const fetchImpl = vi.fn((input: RequestInfo | URL) => String(input).includes("/api/v1/organization/operating-scope")
+      ? new Promise<Response>((resolve) => { resolveScope = resolve; })
+      : Promise.resolve(Response.json({})));
+    vi.stubGlobal("fetch", fetchImpl);
+    const listProjects = vi.fn(async () => []), listLogs = vi.fn(async () => []);
+    const authClient = { getCurrentAuthContext: vi.fn(async () => ({
+      user: { id: "reader", organizationId: "home", name: "Reader", title: "", isActive: true },
+      organization: { id: "home", name: "Home" }, roles: [{ projectId: null, roleId: "hardware-user" }], permissions: ["parameter:view"]
+    })) };
+    render(<App runtimeMode="api" initialAppState={initialState} authClient={authClient}
+      parameterRepository={createTestParameterRepository({ listProjects })} parameterCatalogRepository={createMockParameterCatalogRepository()}
+      logAnalysisRepository={createTestLogAnalysisRepository([], { listLogs })} />);
+
+    await waitFor(() => expect(resolveScope).toBeTypeOf("function"));
+    expect(listProjects).not.toHaveBeenCalled();
+    expect(listLogs).not.toHaveBeenCalled();
+    await act(async () => resolveScope(Response.json({ error: { code: "FORBIDDEN", message: "Forbidden.", details: {} } }, { status: 403 })));
+    expect(await screen.findByRole("alert")).toHaveTextContent("没有权限执行该操作");
+    expect(window.location.search).toBe("?organizationId=foreign");
+    expect(listProjects).not.toHaveBeenCalled();
+    expect(listLogs).not.toHaveBeenCalled();
+    act(() => { window.history.pushState(null, "", "/parameters?organizationId=home"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    await waitFor(() => expect(fetchImpl.mock.calls.filter(([input]) => String(input).includes("/api/v1/organization/operating-scope"))).toHaveLength(2));
+    await act(async () => resolveScope(Response.json({
+      actor: await authClient.getCurrentAuthContext(), organization: { id: "home", name: "Home", status: "active" }
+    })));
+    await waitFor(() => expect(listProjects).toHaveBeenCalled());
+    expect(listLogs).toHaveBeenCalled();
+    expect(fetchImpl.mock.calls.filter(([input]) => String(input).includes("/api/v1/organization/operating-scope"))).toHaveLength(2);
+    const projectReads = listProjects.mock.calls.length, logReads = listLogs.mock.calls.length;
+    act(() => { window.history.pushState(null, "", "/parameters?organizationId=foreign"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    await waitFor(() => expect(fetchImpl.mock.calls.filter(([input]) => String(input).includes("/api/v1/organization/operating-scope"))).toHaveLength(3));
+    expect(listProjects).toHaveBeenCalledTimes(projectReads);
+    expect(listLogs).toHaveBeenCalledTimes(logReads);
+    await act(async () => resolveScope(Response.json({ error: { code: "FORBIDDEN", message: "Forbidden.", details: {} } }, { status: 403 })));
+    expect(await screen.findByRole("alert")).toHaveTextContent("没有权限执行该操作");
+    expect(listProjects).toHaveBeenCalledTimes(projectReads);
+    expect(listLogs).toHaveBeenCalledTimes(logReads);
+  });
+
   it("opens the personal change center from the main navigation for a hardware user", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     render(<App initialAppState={{ ...initialState, activeRoleId: "hardware-user" }} />);
