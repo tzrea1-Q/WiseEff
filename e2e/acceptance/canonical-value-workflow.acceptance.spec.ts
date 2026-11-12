@@ -352,6 +352,7 @@ test.describe("canonical value workflow on real sources", () => {
     };
     await assertTracking(withdrawnId, "withdrawn", "hardware-user");
     await openParameters();
+    await createDraft();
     const rejectedId = await submit();
     review = await openReview("software-committer", rejectedId);
     const rejected = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/review"));
