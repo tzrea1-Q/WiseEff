@@ -2,7 +2,7 @@ import { selectControlOption } from "./helpers/selectControl";
 import "./helpers/loadAcceptanceEnvironment";
 import { createHash } from "node:crypto";
 import pg from "pg";
-import { expect, test, type APIRequestContext, type Request } from "playwright/test";
+import { expect, test, type APIRequestContext, type Frame, type Request } from "playwright/test";
 import { compileCatalogRelease } from "../../server/modules/catalog-kernel/compiler/index";
 import { installPublishedRelease } from "../../server/modules/catalog-kernel/install/installer";
 import { jsonCatalogReleaseSource } from "../../server/modules/catalog-kernel/interface";
@@ -313,12 +313,27 @@ test.describe("canonical value workflow on real sources", () => {
     await expect(page.getByRole("table", { name: "我的提交", exact: true }).locator(`[data-review-row-id="${withdrawnId}"]`)).toBeVisible();
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(`/parameters\\?project=${projectId}`));
-    const reloadedDrafts = page.waitForResponse(r => r.request().method() === "GET"
-      && r.url().endsWith(`/projects/${projectId}/parameter-value-drafts`));
-    await page.reload();
-    const draftsResponse = await reloadedDrafts;
-    expect(draftsResponse.ok(), await draftsResponse.text()).toBe(true);
-    expect((await draftsResponse.json()).items).toEqual([]);
+    let reloadRequested = false;
+    let reloadCommitted = false;
+    const observeReloadRequest = (outgoing: Request) => {
+      if (outgoing.isNavigationRequest() && outgoing.frame() === page.mainFrame()) reloadRequested = true;
+    };
+    const observeReloadCommit = (frame: Frame) => {
+      if (reloadRequested && frame === page.mainFrame()) reloadCommitted = true;
+    };
+    page.on("request", observeReloadRequest);
+    page.on("framenavigated", observeReloadCommit);
+    try {
+      const reloadedDrafts = page.waitForResponse(response => reloadCommitted && response.request().method() === "GET"
+        && new URL(response.url()).pathname === `/api/v2/projects/${projectId}/parameter-value-drafts`)
+        .then(async response => ({ status: response.status(), body: await response.json() }));
+      const [, draftsResponse] = await Promise.all([page.reload(), reloadedDrafts]);
+      expect(draftsResponse.status).toBe(200);
+      expect(draftsResponse.body.items).toEqual([]);
+    } finally {
+      page.off("request", observeReloadRequest);
+      page.off("framenavigated", observeReloadCommit);
+    }
     await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
     await page.goForward();
     await expect(page).toHaveURL(/parameter-changes\?/);
