@@ -21,7 +21,7 @@ import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrow
 import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
-import { useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
+import { installBrowserDiagnostics, useBrowserDiagnostics, type ExpectedApiFailure } from "./helpers/browserDiagnostics";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
@@ -618,7 +618,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     const before = await source.text();
     const edited = `${before}\n/* PROJ-CONFIG-EDIT-001 reviewed comment */\n`;
     const route = `/parameter-admin/projects/${projectId}/configuration?${new URLSearchParams({
-      configSet: configSet.id, file: binding!.sourceFileId, node: binding!.sourceNodePath,
+      organizationId, configSet: configSet.id, file: binding!.sourceFileId, node: binding!.sourceNodePath,
       property: binding!.propertyKey
     })}`;
     await signInBrowserAsRole(page, "admin", route);
@@ -636,7 +636,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       expect(submitted.item.impact).toEqual({ parameterChanges: 0, nodeAdditions: 0, nodeRemovals: 0, restoredParameters: 0 });
       const detail = await request.get(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${submitted.receipt.requestId}`), { headers });
       expect(detail.status(), await detail.text()).toBe(200);
-      expect((await detail.json()).item).toMatchObject({ status: "pending", before, after: edited,
+      const sourceDetail = (await detail.json()).item as SourceRevisionRequest;
+      expect(sourceDetail).toHaveProperty("organizationName");
+      expect(sourceDetail).toMatchObject({ status: "pending", before, after: edited,
         assignedToUserId: submitted.reviewer.userId, proofDigest: submitted.item.proofToken });
       const after = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings`), { headers });
       expect(after.status(), await after.text()).toBe(200);
@@ -644,10 +646,17 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       const currentFiles = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), { headers });
       expect(currentFiles.status(), await currentFiles.text()).toBe(200);
       expect((await currentFiles.json()).items.find((item: { id: string }) => item.id === file.fileId).currentVersionId).toBe(file.versionId);
+      const submissionLink = page.getByRole("link", { name: "查看提交记录", exact: true });
+      await expect(submissionLink).toHaveAttribute("href", `/parameter-changes?${new URLSearchParams({
+        scope: "mine", project: projectId, request: submitted.receipt.requestId, organizationId
+      })}`);
       page.once("dialog", (dialog) => dialog.accept());
-      await page.getByRole("link", { name: "查看提交记录", exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`/parameter-submissions\\?project=${projectId}&request=`));
+      await submissionLink.click();
+      await expect(page).toHaveURL((url) => url.pathname === "/parameter-changes"
+        && url.searchParams.get("scope") === "mine" && url.searchParams.get("project") === projectId
+        && url.searchParams.get("request") === submitted!.receipt.requestId && url.searchParams.get("organizationId") === organizationId);
       await expect(page.getByRole("region", { name: "DTS 整文件审核" })).toContainText("PROJ-CONFIG-EDIT-001 source comment review");
+      await expect(page.getByRole("region", { name: "DTS 整文件审核" })).toContainText(`发生组织：${sourceDetail.organizationName ?? "历史组织名称未记录"}`);
       await page.screenshot({ path: testInfo.outputPath("source-comment-review.png"), fullPage: true });
       await recordOperationEvidence({ operationId: "PROJ-CONFIG-EDIT-001", title: "Whole-source comment review submission",
         status: "passed", role: "Admin", route, page, testInfo, assertions: ["ui", "api", "screenshot"],
@@ -3916,6 +3925,27 @@ test.describe("project configuration workbench post-cutover semantic identity", 
         const submitted=await submission;expect(submitted.status(),await submitted.text()).toBe(200);
         const requestId=(await submitted.json()).item.requestId as string;
         await expect(page.getByText("已提交审核 · 工作配置尚未更新",{exact:true})).toBeVisible();
+        if(action === "set") {
+          const detailRoute = `/parameter-changes?${new URLSearchParams({ scope: "mine", project: projectId, request: requestId, organizationId })}`;
+          await expect(page.getByRole("link",{ name: "查看提交记录",exact: true })).toHaveAttribute("href", detailRoute);
+          const detailPage = await page.context().newPage();
+          const diagnostics = installBrowserDiagnostics(detailPage, testInfo, { expectedApiFailures: expectedBrowserApiFailures });
+          try {
+            const loaded = detailPage.waitForResponse(response => response.request().method() === "GET"
+              && new URL(response.url()).pathname === `/api/v2/projects/${projectId}/source-revision-requests/${requestId}`);
+            await detailPage.goto(disposablePageUrl(disposableRuntime, detailRoute));
+            const response = await loaded;
+            expect(response.status(), await response.text()).toBe(200);
+            expect((await response.json()).item).toHaveProperty("organizationName");
+            const detail = detailPage.getByRole("region", { name: "DTS 整文件审核" });
+            await expect(detail).toContainText("#1419 set only in this project");
+            await expect(detail).not.toContainText("发生组织：");
+            await detailPage.screenshot({ path: testInfo.outputPath("source-review-ordinary-user-1440.png") });
+          } finally {
+            await detailPage.close();
+            diagnostics.assertNoBrowserDiagnosticsFailures();
+          }
+        }
         const approval=await request.post(apiRoute(`/api/v2/projects/${projectId}/source-revision-requests/${requestId}/review`),{headers:authHeadersForUser(reviewer!.userId,Object.values(acceptanceCast).find(person=>person.userId===reviewer!.userId)!.email,reviewer!.name),
           data:{decision:"approve",proofDigest:sourcePreview.proofToken}});
         expect(approval.status(),await approval.text()).toBe(200);

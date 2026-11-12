@@ -627,7 +627,7 @@ export function SharedDtsiPage({ apiClient, canWrite, canCreateSubject=false,can
     </TabPanel>
     <TabPanel id="shared-usages-panel" aria-labelledby="shared-usages-tab" hidden={tab!=="usages"}>
       {tab==="usages" && !error && usages ? <>
-        <p>{usages.visibility==="authorized-projects"?"仅显示当前有权访问的项目配置。":"当前组织的项目配置。"} 共 {usages.total} 个授权使用。</p>
+        <p>{usages.visibility==="authorized-projects"?"仅显示当前有权访问的项目配置。":"当前可查看范围内的项目配置。"} 共 {usages.total} 个授权使用。</p>
         <DataTable rows={usages.items} rowKey={row=>`${row.projectId}/${row.configSetId}`} fluid pageSize={20} columns={[
           {key:"project",header:"项目 / 配置",render:row=>{const params=new URLSearchParams({...(organizationId?{organization:organizationId}:{}),configSet:row.configSetId,tab:"effective"});
             const target=`/parameter-admin/projects/${encodeURIComponent(row.projectId)}/configuration?${params}`;

@@ -13,10 +13,10 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-function renderReview(state: PrototypeState) {
+function renderReview(state: PrototypeState, search = "") {
   render(
     <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
-      <ParameterReviewPage state={state} dispatch={vi.fn()} onNavigate={() => {}} search="" />
+      <ParameterReviewPage state={state} dispatch={vi.fn()} onNavigate={() => {}} search={search} />
     </TopBarActionsContext.Provider>
   );
 }
@@ -65,7 +65,7 @@ describe("parameter action panels", () => {
         notes: "Initialize from Aurora"
       }
     });
-    renderReview({ ...initializationState, activeRoleId: "admin" });
+    renderReview({ ...initializationState, activeRoleId: "admin" }, `?project=${initializationState.parameterInitializationReviews[0].projectId}`);
     fireEvent.click(screen.getByRole("button", { name: "查看 Zephyr 初始化 提交详情" }));
 
     const initializationDetail = screen.getByRole("complementary", { name: "审阅详情" });

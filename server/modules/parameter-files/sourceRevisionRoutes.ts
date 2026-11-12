@@ -50,7 +50,8 @@ type Row = {
   cancellation_user_id: string | null; cancellation_name: string | null; cancellation_reason: string | null;
 };
 const paramsSchema = z.object({ projectId: z.string().min(1), requestId: z.string().min(1) });
-const querySchema = z.object({ mine: z.enum(["true", "false"]).optional(), status: z.enum(["pending", "approved", "rejected", "withdrawn"]).optional() }).strict();
+const querySchema = z.object({ mine: z.enum(["true", "false"]).optional(), status: z.enum(["pending", "approved", "rejected", "withdrawn"]).optional(),
+  organizationId: z.string().trim().min(1).max(200).optional() }).strict();
 const reviewSchema = z.object({ decision: z.enum(["approve", "reject"]), proofDigest: z.string().regex(/^[0-9a-f]{64}$/), note: z.string().trim().max(2000).optional() }).strict();
 export const sourceRequestCancelSchema = z.object({ proofDigest: z.string().regex(/^[0-9a-f]{64}$/),
   expectedAssignedToUserId: z.string().min(1).nullable(),reason: z.string().trim().min(1).max(2000) }).strict();

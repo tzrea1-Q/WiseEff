@@ -70,6 +70,7 @@ describe.each([
     await waitFor(() => expect(screen.getByRole("button", { name: "提交审核" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
     await waitFor(() => expect(session.getFile(props.scope)?.submission?.requestId).toBe("request"));
+    expect(screen.getByRole("link", { name: "查看提交记录" })).toHaveAttribute("href", "/parameter-changes?scope=mine&project=p&request=request&organizationId=o");
     const getSourceRevisionRequest = vi.fn().mockResolvedValue({ status: "approved", after: "/ { next; };",
       appliedSourceResult: { fileVersionId: "v2", configRevisionId: "c2" } });
     rerender(<WorkbenchSourceEditingPane {...props} repository={{ ...props.repository, getSourceRevisionRequest }} />);

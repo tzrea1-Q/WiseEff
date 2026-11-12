@@ -2,11 +2,14 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
+import { sourceRevisionLifecycleFixtureBundle } from "../../../testing/parameterCatalog/sourceRevision";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
 import { firstAcmePredecessor, frozenPageIdentity, integerContent } from "../../catalog-publication/builder/predecessorHarness";
 import { buildCompleteSuccessor } from "../../catalog-publication/builder/completeSuccessor";
 import { refreshSuccessorSource } from "../../catalog-publication/builder/bundleCodec";
 import { compileCatalogRelease } from "../compiler";
+import { refreshAuthoritativeSource } from "../compiler/__fixtures__/catalogReleaseBundle";
+import type { CatalogReleaseBundle } from "../compiler/types";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../catalog-publication/runtime/provisionRuntimeLogins";
 import { createCatalogKernel, jsonCatalogReleaseSource, CatalogSubjectId, DriverCompatible, NormalizedNodeTypeName } from "../interface";
 import { installPublishedRelease } from "../install/installer";
@@ -29,6 +32,7 @@ describe("organization child ownership on the application SQL login", () => {
   let pin: CatalogReleasePin;
   let organizationId: string;
   let childRegistrationId: string;
+  let publishedBundle: CatalogReleaseBundle;
   const source = "csub_acme_power", target = "organization-owner-target", child = "organization-owned-child";
   const sibling = "organization-sibling";
   const context = { actorKind: "org-admin" as const, principalId: "organization-owner-admin" };
@@ -75,7 +79,7 @@ describe("organization child ownership on the application SQL login", () => {
     const withAlias = refreshSuccessorSource({ ...release, documents: [...release.documents,
       { ...structuredClone(alias), content: { ...structuredClone(alias.content), id: "organization-sibling-alias",
         subjectId: sibling, selectorKind: "node-type-name", normalizedSelector: "sibling_alias" } }] }, release.sources[0]!.path);
-    const publishedBundle = { ...bundle, releases: bundle.releases.map(item => item === release ? withAlias : item) };
+    publishedBundle = { ...bundle, releases: bundle.releases.map(item => item === release ? withAlias : item) };
     const compiled = compileCatalogRelease(publishedBundle);
     if (!compiled.ok) throw new Error(JSON.stringify(compiled));
     pin = { id: compiled.value.release.id, digest: compiled.value.release.digest };
@@ -110,7 +114,7 @@ describe("organization child ownership on the application SQL login", () => {
     const projectId = `project-${organizationId}`;
     await admin.query("insert into public.projects(id,organization_id,name,code) values ($1,$2,'Owner preservation',$1)", [projectId, organizationId]);
     const bound = await createSourceBackedBindingService(admin, { initialPayload: { kind: "number", value: 5 } }).stabilize({
-      snapshot: loaded.value, organizationId, projectId, logicalNodeId: "child_unit", registrationId: SubjectRegistrationId(childRegistrationId),
+      snapshot: loaded.value, organizationId, projectId, logicalNodeId: `child_unit_${organizationId.replaceAll("-", "_")}`, registrationId: SubjectRegistrationId(childRegistrationId),
       definitionId: ParameterDefinitionId("organization-child-weight"), effectiveRevisionId: DefinitionRevisionId("organization-child-weight-1"),
       expectedEffectiveRevisionId: null });
     if (!bound.ok) throw new Error(JSON.stringify(bound));
@@ -148,6 +152,8 @@ describe("organization child ownership on the application SQL login", () => {
     expect(await readCurrentManagedSourceBindingIds(db, { organizationId, projectId, bindingIds: [bindingId] })).toEqual(new Set([bindingId]));
     await api.query("update parameter_catalog.organization_subject_registrations set status='retired' where organization_id=$1 and subject_id=$2", [organizationId, target]);
     expect(await readCurrentManagedSourceBindingIds(db, { organizationId, projectId, bindingIds: [bindingId] })).toEqual(new Set());
+    await api.query("update parameter_catalog.organization_subject_registrations set status='active' where organization_id=$1 and subject_id=$2", [organizationId, target]);
+    expect(await readCurrentManagedSourceBindingIds(db, { organizationId, projectId, bindingIds: [bindingId] })).toEqual(new Set([bindingId]));
   });
 
   it("rejects inactive and non-driver targets", async () => {
@@ -229,4 +235,49 @@ describe("organization child ownership on the application SQL login", () => {
       ownerWriter.release(); recognitionWriter.release();
     }
   });
+
+  it("hides an active child while its Catalog owner is retired and shows it after restoration", async () => {
+    const loaded = await createCatalogKernel(api).loadCurrentCatalog(pin);
+    if (!loaded.ok) throw new Error(JSON.stringify(loaded));
+    const projectId = `project-${organizationId}`;
+    await admin.query("insert into public.projects(id,organization_id,name,code) values ($1,$2,'Owner lifecycle',$1)", [projectId, organizationId]);
+    const bound = await createSourceBackedBindingService(admin, { initialPayload: { kind: "number", value: 5 } }).stabilize({
+      snapshot: loaded.value, organizationId, projectId, logicalNodeId: `child_unit_${organizationId.replaceAll("-", "_")}`, registrationId: SubjectRegistrationId(childRegistrationId),
+      definitionId: ParameterDefinitionId("organization-child-weight"), effectiveRevisionId: DefinitionRevisionId("organization-child-weight-1"),
+      expectedEffectiveRevisionId: null });
+    if (!bound.ok) throw new Error(JSON.stringify(bound));
+    const bindingIds = [bound.value.binding.id];
+    const read = () => readCurrentManagedSourceBindingIds(db, { organizationId, projectId, bindingIds });
+    let currentRelease = loaded.value.release;
+    const publishOwner = async (lifecycle: "active" | "retired") => {
+      const bundle = sourceRevisionLifecycleFixtureBundle(currentRelease, { target: "definition", lifecycle: "active", previousBundle: publishedBundle });
+      const release = bundle.releases.at(-1) as Parameters<typeof refreshAuthoritativeSource>[0];
+      for (const document of release.documents) {
+        if (document.kind === "subject" && document.content.id === source) {
+          document.content.lifecycle = lifecycle;
+          document.content.tombstone = lifecycle === "retired" ? { reason: "Owner lifecycle fixture",
+            withdrawnByReleaseId: release.manifest.release.id, previousSelector: document.content.selector.value } : null;
+        }
+        if (document.kind === "alias" && document.content.subjectId === source) {
+          document.content.lifecycle = lifecycle;
+          document.content.tombstone = lifecycle === "retired" ? { reason: "Owner lifecycle fixture",
+            withdrawnByReleaseId: release.manifest.release.id, previousSelector: document.content.normalizedSelector } : null;
+        }
+      }
+      refreshAuthoritativeSource(release);
+      const compiled = compileCatalogRelease(bundle);
+      if (!compiled.ok) throw new Error(JSON.stringify(compiled.error));
+      const installed = await installPublishedRelease(admin, { mode: "advance", source: jsonCatalogReleaseSource(bundle),
+        expectedCurrent: pin, expectedTargetDigest: compiled.value.aggregateDigest });
+      if (!installed.ok) throw new Error(JSON.stringify(installed.error));
+      publishedBundle = bundle;
+      currentRelease = compiled.value.release;
+      pin = compiled.value.release;
+    };
+    expect(await read()).toEqual(new Set(bindingIds));
+    await publishOwner("retired");
+    expect(await read()).toEqual(new Set());
+    await publishOwner("active");
+    expect(await read()).toEqual(new Set(bindingIds));
+  }, 120_000);
 });

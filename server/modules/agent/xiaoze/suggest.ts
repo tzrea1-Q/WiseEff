@@ -13,6 +13,7 @@ export type XiaozeSuggestResult = z.infer<typeof xiaozeSuggestResponseSchema>;
 
 const PAGE_SUGGEST_TOOLS: Record<string, string> = {
   "parameter-review": "perception.getProjectOverview",
+  "parameter-changes": "perception.getProjectOverview",
   parameters: "perception.getProjectOverview",
   logs: "perception.getRecentLogConclusions"
 };
@@ -62,7 +63,7 @@ function buildParameterSuggestion(options: {
   }
 
   const headline =
-    options.pageKey === "parameter-review"
+    options.pageKey === "parameter-review" || options.pageKey === "parameter-changes"
       ? `当前有 ${openChangeRequests} 条参数变更待审阅`
       : `有 ${openChangeRequests} 条参数变更待审阅`;
 
@@ -127,7 +128,7 @@ function buildSuggestion(options: {
   if (options.pageKey === "logs") {
     return buildLogSuggestion({ result: options.result });
   }
-  if (options.pageKey === "parameters" || options.pageKey === "parameter-review") {
+  if (options.pageKey === "parameters" || options.pageKey === "parameter-review" || options.pageKey === "parameter-changes") {
     return buildParameterSuggestion(options);
   }
   return null;

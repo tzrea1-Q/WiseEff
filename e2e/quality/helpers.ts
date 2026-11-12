@@ -243,7 +243,7 @@ export async function stableMasks(page: Page, routePath = ""): Promise<Locator[]
     masks.push(page.locator(".parameter-home__chart-shell"));
   }
 
-  if (routePath === "/parameter-review") {
+  if (routePath === "/parameter-changes?scope=review") {
     masks.push(page.getByRole("table", { name: "审阅队列" }).getByRole("row", { selected: true }).locator("time"));
   }
 
@@ -296,12 +296,12 @@ export async function waitForFontsAndNextPaint(page: Page) {
 export async function settleQualityRoute(page: Page, routePath: string, options: { readOnly?: boolean } = {}) {
   const timeout = 20_000;
 
-  if (["/parameter-review", "/parameter-submissions"].includes(routePath.split("?")[0])) {
+  if (routePath.split("?")[0] === "/parameter-changes") {
     const inbox = page.locator(".review-inbox");
     // The shell and tabs mount before the legacy/canonical queue reads finish.
     // The enabled refresh action and loaded table distinguish even an empty queue.
     await expect(inbox.getByRole("button", { name: "刷新队列", exact: true })).toBeEnabled({ timeout });
-    await expect(inbox.getByRole("table", { name: routePath.split("?")[0] === "/parameter-review" ? "审阅队列" : "我的提交", exact: true })).toBeVisible({ timeout });
+    await expect(inbox.getByRole("table", { name: new URLSearchParams(routePath.split("?")[1]).get("scope") === "mine" ? "我的提交" : "审阅队列", exact: true })).toBeVisible({ timeout });
     await test.step("quality:readiness", () => waitForFontsAndNextPaint(page));
     return;
   }

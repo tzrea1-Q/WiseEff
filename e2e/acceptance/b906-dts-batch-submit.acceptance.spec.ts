@@ -156,7 +156,7 @@ test("#906 B submits and reviews canonical-only DTS batches through the page", a
         expect(item.targets.map((target) => [target.bindingId, target.sourcePinId, target.action, target.targetText]))
           .toEqual(fixture.preview.bindings!.map((binding) =>
             [binding.bindingId, binding.sourcePinId, binding.action, binding.afterText ?? null]));
-        await expect(page).toHaveURL(new RegExp(`/parameter-submissions\\?project=aurora&request=${item.id}`));
+        await expect(page).toHaveURL(new RegExp(`/parameter-changes\\?scope=mine&project=aurora&request=${item.id}`));
         const mine = page.getByRole("article", { name: "批量源文件请求详情" });
         await expect(mine).toContainText(reason);
         await expect(mine.getByRole("list", { name: "批量审核目标" }).getByRole("listitem")).toHaveCount(2);

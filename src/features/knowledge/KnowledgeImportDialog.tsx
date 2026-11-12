@@ -144,7 +144,7 @@ export function KnowledgeImportDialog({ open, repository, onClose, onComplete, o
           )}</ol>
         </div>}
       </div>
-      {pending ? <p className="text-xs text-muted-foreground">已提交的文档会继续保存在当前组织，完成后可关闭。</p> : null}
+      {pending ? <p className="text-xs text-muted-foreground">已提交的文档会继续保存，完成后可关闭。</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       <div className="flex shrink-0 justify-end gap-2">
         <Button variant="outline" size="sm" onClick={requestClose}>关闭</Button>

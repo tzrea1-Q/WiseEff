@@ -1,3 +1,4 @@
+import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileJson, SlidersHorizontal } from "lucide-react";
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
@@ -1164,7 +1165,7 @@ export function ApiProjectTopologyWorkspace({
             }
           }
           if (isCurrentProjectRequest(input.projectId, requestGeneration)) {
-            setSubmitSuccessNotice(`已提交软件审核（${input.draftIds.length} 项），可在审核队列查看进度。`);
+            setSubmitSuccessNotice(`已提交软件审核（${input.draftIds.length} 项），可在我的提交查看进度。`);
           }
         } catch (error) {
           const message = presentError(error, "提交软件审核失败，请稍后重试。");
@@ -1395,8 +1396,8 @@ export function ApiProjectTopologyWorkspace({
     <section className="dts-binding-draft-tray dts-draft-tray" aria-label="参数提交结果">
       <p role="status">{submitSuccessNotice}</p>
       <div className="binding-draft-submission__actions">
-        <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>
-          查看变更审阅
+        <button type="button" className="button subtle" onClick={() => onNavigate(changeCenterHref("mine", { project: projectId }))}>
+          查看我的提交
         </button>
         <button
           type="button"

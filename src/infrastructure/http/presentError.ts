@@ -159,6 +159,7 @@ export function presentError(err: unknown, fallback: string): string {
   }
 
   if (err instanceof WiseEffApiError) {
+    if (err.details.reason === "organization-suspended") return "当前工作区仅可查看，请联系管理员。";
     if (err.details.reason === "toolchain-unavailable" || err.details.failureCode === "toolchain-unavailable" || err.details.code === "toolchain-unavailable") {
       return DTS_TOOLCHAIN_UNAVAILABLE_MESSAGE;
     }

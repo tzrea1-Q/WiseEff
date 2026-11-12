@@ -17,7 +17,7 @@ type XiaozeToggleHintProps = {
 
 export function XiaozeToggleHint({ userId, visible, onOpen }: XiaozeToggleHintProps) {
   const page = useXiaozePageContextValue();
-  const hintVisible = visible && page?.pageKey !== "parameter-review" && page?.pageKey !== "parameter-submissions";
+  const hintVisible = visible && page?.pageKey !== "parameter-review" && page?.pageKey !== "parameter-submissions" && page?.pageKey !== "parameter-changes";
   const [dismissed, setDismissed] = useState(() => readXiaozeToggleHintDismissed(userId));
   const [revealed, setRevealed] = useState(false);
 

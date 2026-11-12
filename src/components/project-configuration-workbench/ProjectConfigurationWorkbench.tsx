@@ -1,3 +1,4 @@
+import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { digestSourceText } from "@/application/project-configuration/sourceDigest";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
@@ -1225,7 +1226,7 @@ export function ProjectConfigurationWorkbench({
         );
         setSourceWorkflowReloadToken((value) => value + 1);
         setVersionsReloadToken((value) => value + 1);
-        onNavigate(`/parameter-review?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(result.requestId)}`);
+        onNavigate(changeCenterHref("review", { project: project.id, request: result.requestId }));
       } catch (error: unknown) {
         setRollbackReviewError(presentError(error, "提交来源回滚审核失败。"));
       } finally {
@@ -1929,8 +1930,8 @@ export function ProjectConfigurationWorkbench({
               onOpenReview={() => {
                 const requestId = sourcePreview?.request?.id ?? sourceReviewResult?.requestId;
                 onNavigate(requestId
-                  ? `/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`
-                  : `/parameter-review?project=${encodeURIComponent(project.id)}`);
+                  ? changeCenterHref("mine", { project: project.id, request: requestId })
+                  : changeCenterHref("review", { project: project.id }));
               }}
               canRecompute={canAdmin && canRecompute}
               canActivate={canAdmin && !selectedMember?.sharedReference && canActivate && (activeCandidate?.fileId ? legacySourceWorkflowConfirmed : sourceWorkflowSetReady && !sourceWorkflowSetCanonical && sourcePreview?.kind === "legacy" && !sourcePreviewLoading && !sourcePreviewError)}
@@ -2335,7 +2336,7 @@ export function ProjectConfigurationWorkbench({
           onSubmitWithoutConflict={canSubmitSourceReview ? handleConfirmSourceReview : undefined}
           onReturnToBatch={canSubmitBatchReview
             ? () => setSingleConflictReview((value) => value ? { ...value, active: false } : null) : undefined}
-          onSubmitted={(requestId) => onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`)} />
+          onSubmitted={(requestId) => onNavigate(changeCenterHref("mine", { project: project.id, request: requestId }))} />
       ) : null}
       {canSubmitBatchReview && sourcePreview && activeCandidate ? (
         <CanonicalBatchSubmitDialog key={`batch-review:${activeCandidate.id}`} inlineTarget={singleConflictActive ? null : sourceUpdateReviewTarget}
@@ -2348,7 +2349,7 @@ export function ProjectConfigurationWorkbench({
           onDismiss={closeInspector}
           onSubmitted={(requestId) => {
             setSourceWorkflowReloadToken((value) => value + 1);
-            onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+            onNavigate(changeCenterHref("mine", { project: project.id, request: requestId }));
           }} />
       ) : null}
 
@@ -2372,9 +2373,9 @@ export function ProjectConfigurationWorkbench({
             setSourceWorkflowReloadToken((value) => value + 1);
             setVersionsReloadToken((value) => value + 1);
             notifyMutation("多目标历史回滚审核已提交；审核通过前当前 Value、来源 pin 和活跃文件版本不变。");
-            onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`);
+            onNavigate(changeCenterHref("mine", { project: project.id, request: requestId }));
           },
-          onOpenExisting: (requestId) => onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&request=${encodeURIComponent(requestId)}`)
+          onOpenExisting: (requestId) => onNavigate(changeCenterHref("mine", { project: project.id, request: requestId }))
         } : undefined}
       /> : null}
 
@@ -2412,7 +2413,7 @@ export function ProjectConfigurationWorkbench({
         onReloadMembers={() => dtsRepository.listConfigSetFiles(project.id, selectedConfigSet.id)}
         onDismiss={() => setReviewedMemberRemovalTarget(null)} onSubmitted={(requestId) => {
           setReviewedMemberRemovalTarget(null);
-          onNavigate(`/parameter-submissions?project=${encodeURIComponent(project.id)}&memberRequest=${encodeURIComponent(requestId)}`);
+          onNavigate(changeCenterHref("mine", { project: project.id, memberRequest: requestId }));
         }} /> : null}
       <WorkbenchBaselineDialogs
         createOpen={createBaselineOpen}

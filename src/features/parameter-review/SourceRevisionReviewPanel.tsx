@@ -8,10 +8,10 @@ import { ReviewSourceDiff } from "./ReviewSourceDiff";
 import { canonicalStatusLabels } from "./canonicalSubmissionTracking";
 import { presentError } from "@/infrastructure/http/presentError";
 
-export function SourceRevisionReviewPanel({ projectId, requestId, repository, currentUserId, canReview,
+export function SourceRevisionReviewPanel({ projectId, requestId, repository, currentUserId, canReview, canViewOrganization,
   refreshVersion, onRequestsChanged, onBusyChange }: {
   projectId: string; requestId: string; repository: ParameterFileRepository;
-  currentUserId: string; canReview: boolean; refreshVersion: number;
+  currentUserId: string; canReview: boolean; canViewOrganization: boolean; refreshVersion: number;
   onRequestsChanged: () => void; onBusyChange: (busy: boolean) => void;
 }) {
   const [retry, setRetry] = useState(0);
@@ -74,7 +74,7 @@ export function SourceRevisionReviewPanel({ projectId, requestId, repository, cu
   return <section className="review-inspector" aria-label="DTS 整文件审核" aria-busy={busy}>
     <header><h2>{request.fileName}</h2><p>{request.cancellation ? "已取消" : canonicalStatusLabels[request.status]} · DTS 来源修改</p></header>
     <p>{request.reason}</p>
-    {request.organizationName !== undefined ? <p>发生组织：{request.organizationName ?? "历史组织名称未记录"}</p> : null}
+    {canViewOrganization && request.organizationName !== undefined ? <p>发生组织：{request.organizationName ?? "历史组织名称未记录"}</p> : null}
     <p>{request.impact.parameterChanges} 项参数变化 · 新增 {request.impact.nodeAdditions} 个节点 · 删除 {request.impact.nodeRemovals} 个节点</p>
     {request.applicationMode === "administrator_direct" ? <>
       <p>管理员本人直接应用 · 未经过独立审核</p><p>操作人：{request.submitterName ?? "管理员"}</p>

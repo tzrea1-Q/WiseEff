@@ -1,3 +1,4 @@
+import { changeCenterHref } from "../../../src/domain/parameters/changeCenterUrl";
 import { parameterOrganizationId } from "../parameters/operatingScope";
 import { createHash } from "node:crypto";
 
@@ -341,8 +342,7 @@ export async function evaluateReleaseReadiness(
       ...(canonicalPendingRequestIds[0] ? { target: { changeRequestId: canonicalPendingRequestIds[0] } } : {}),
       remediation: {
         kind: "complete-pending-change", label: "Review pending change requests or withdraw your submissions",
-        href: `/parameter-review?project=${encodeURIComponent(configSet.projectId)}${canonicalPendingRequestIds[0]
-          ? `&request=${encodeURIComponent(canonicalPendingRequestIds[0])}` : ""}`
+        href: changeCenterHref("review", { project: configSet.projectId, request: canonicalPendingRequestIds[0] })
       }
     });
   }

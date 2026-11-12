@@ -143,10 +143,10 @@ describe("parameter catalog client contract", () => {
         readAt: "2026-11-06T00:00:00Z", nextCursor: null, continuedProjectId: null, selected: null, items: [] }
       : { items: [], nextCursor: null, catalogReleaseId: "crel_01K42", totalCount: 0, hasMore: false }));
     const client = createParameterCatalogClient({ fetchImpl: fetchMock });
-    await client.listDefinitions({ placementModuleId: "module", placementScope: "library" });
+    await client.listDefinitions({ view: "library", placementModuleId: "module", placementScope: "library" });
     await client.getProjectConfigurations("definition", { limit: 1, excludeProjectId: "project a", valueState: "present" });
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/v2/catalog/definitions?placementModuleId=module&placementScope=library",
+      "/api/v2/catalog/definitions?view=library&placementModuleId=module&placementScope=library",
       "/api/v2/catalog/definitions/definition/project-configurations?limit=1&excludeProjectId=project+a&valueState=present"
     ]);
   });

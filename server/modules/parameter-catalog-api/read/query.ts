@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { PropertyKey } from "../../catalog-kernel/interface";
+import { PropertyKey, type CatalogSubjectSnapshot, type ParameterDefinitionSnapshot } from "../../catalog-kernel/interface";
 import {
   catalogForbiddenSpoofHeaders,
   CATALOG_RELEASE_HEADER,
@@ -119,6 +119,27 @@ export function mergeIdSelection<Id extends string>(
   return { kind: "only", ids, fingerprint: fingerprintIdSelection(ids) };
 }
 
+/** Build trusted selections from complete Catalog snapshots before the user's page is requested. */
+export function currentLibrarySubjectIds(
+  subjects: readonly CatalogSubjectSnapshot[],
+  eligible: CatalogIdSelection<CatalogSubjectId>,
+  trusted: CatalogIdSelection<CatalogSubjectId>,
+): CatalogSubjectId[] {
+  const eligibleIds = eligible.kind === "only" ? new Set(eligible.ids) : null;
+  const trustedIds = trusted.kind === "only" ? new Set(trusted.ids) : null;
+  const activeIds = new Set(subjects.filter((item) => !eligibleIds || eligibleIds.has(item.id)).map((item) => item.id));
+  return subjects.filter((item) => activeIds.has(item.id) && (!item.owner || activeIds.has(item.owner))
+    && (!trustedIds || trustedIds.has(item.id))).map((item) => item.id);
+}
+
+export function currentLibraryDefinitionIds(
+  definitions: readonly ParameterDefinitionSnapshot[],
+  subjectIds: readonly CatalogSubjectId[],
+): ParameterDefinitionId[] {
+  const visibleSubjects = new Set(subjectIds);
+  return definitions.filter((item) => visibleSubjects.has(item.subjectId)).map((item) => item.id);
+}
+
 export function observedReleaseId(request: CatalogReadRequest): string | undefined {
   return queryValue(request.query, "catalogReleaseId") ?? headerValue(request.headers, CATALOG_RELEASE_HEADER);
 }
@@ -137,6 +158,7 @@ export function parseCatalogListQuery(
   const subjectIdsRaw = queryArray(request.query, "subjectIds");
   const placementModuleIdRaw = queryValue(request.query, "placementModuleId");
   const placementScopeRaw = queryValue(request.query, "placementScope");
+  const viewRaw = queryValue(request.query, "view");
   const propertyKeyRaw = queryValue(request.query, "propertyKey");
   const usageProjectId = queryValue(request.query, "usageProjectId");
   if (usageProjectId !== undefined && (!usageProjectId.trim() || usageProjectId.length > 200 || /[\u0000-\u001f\u007f-\u009f]/u.test(usageProjectId) || usageProjectId.trim() !== usageProjectId)) return { ok: false, response: validationFailed(request.requestId, "usageProjectId") };
@@ -200,6 +222,9 @@ export function parseCatalogListQuery(
   if (placementScopeRaw !== undefined && placementScopeRaw !== "library") {
     return { ok: false, response: validationFailed(request.requestId, "placementScope") };
   }
+  if (viewRaw !== undefined && viewRaw !== "library") {
+    return { ok: false, response: validationFailed(request.requestId, "view") };
+  }
 
   let propertyKey: PropertyKey | undefined;
   if (propertyKeyRaw !== undefined) {
@@ -221,6 +246,7 @@ export function parseCatalogListQuery(
   return {
     ok: true,
     query: {
+      view: viewRaw,
       cursor,
       limit,
       type: typeRaw as CatalogListQuery["type"],

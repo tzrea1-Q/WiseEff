@@ -49,10 +49,41 @@ import { createApiClient, WiseEffApiError } from "@/infrastructure/http/apiClien
 import { createAuthClient } from "@/infrastructure/http/authClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { SettingsFormPage } from "@/components/layout/SettingsFormPage";
+import type { InitializationReviewDto, ProjectInitializationStateDto } from "@/domain/parameters/initializationTypes";
 
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
+
+it.each([
+  ["/parameter-submissions", "mine"],
+  ["/parameter-review", "review"]
+])("replaces a legacy %s bookmark without losing its encoded context", async (path, scope) => {
+  const query = "projectId=missing%20project&module=A%2FB&request=req%2B1&memberRequest=file%2F1&legacyRequest=old%3D1&view=history&status=done&type=dts&organizationId=org%2B1";
+  window.history.replaceState(null, "", `${path}?${query}&scope=wrong#detail%20anchor`);
+  const historyLength = window.history.length;
+  renderApp({ initialAppState: adminState });
+  await waitFor(() => expect(window.location.pathname + window.location.search + window.location.hash)
+    .toBe(`/parameter-changes?${query}&scope=${scope}#detail%20anchor`));
+  expect(window.history.length).toBe(historyLength);
+});
+
+it("replaces an old history entry and restores it on forward navigation", async () => {
+  window.history.replaceState(null, "", "/parameter-home");
+  renderApp({ initialAppState: adminState });
+  act(() => {
+    window.history.pushState(null, "", "/parameter-review?project=aurora&request=missing#detail");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await waitFor(() => expect(window.location.pathname + window.location.search + window.location.hash)
+    .toBe("/parameter-changes?project=aurora&request=missing&scope=review#detail"));
+  window.history.back();
+  await waitFor(() => expect(window.location.pathname).toBe("/parameter-home"));
+  window.history.forward();
+  await waitFor(() => expect(window.location.pathname + window.location.hash).toBe("/parameter-changes#detail"));
+  expect(new URLSearchParams(window.location.search).get("request")).toBe("missing");
+  expect(new URLSearchParams(window.location.search).get("scope")).toBe("review");
+});
 
 it("replaces legacy module bookmarks and restores governance tabs on browser Back", async () => {
   window.history.replaceState(null, "", "/parameter-admin/modules/queue?q=power");
@@ -230,6 +261,134 @@ it("waits for live projects before reading their initialization state", async ()
   });
   await waitFor(() => expect(getInitialization).toHaveBeenCalledWith("live-only-project"));
   expect(getInitialization.mock.calls.every(([id]) => id === "live-only-project")).toBe(true);
+});
+
+it("does not request project initialization after logout completes", async () => {
+  window.history.replaceState(null, "", "/parameters");
+  let loggedOut = false;
+  const requestsAfterLogout: string[] = [];
+  const getInitialization = vi.fn(async (projectId: string) => {
+    if (loggedOut) requestsAfterLogout.push(projectId);
+    return { status: "initialized" as const, draft: null };
+  });
+  const authClient = { getCurrentAuthContext: vi.fn(async () => ({
+    user: { id: "u-xu-yun", organizationId: "org-chargelab", name: "Xu Yun", title: "Owner", isActive: true },
+    organization: { id: "org-chargelab", name: "ChargeLab" }, roles: [{ projectId: null, roleId: "admin" }],
+    permissions: ["admin:access", "parameter:view", "parameter:review"]
+  })), logout: vi.fn(async () => { loggedOut = true; }) };
+  render(<App runtimeMode="api" initialAppState={adminState} authClient={authClient}
+    parameterRepository={createTestParameterRepository()} parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
+    logAnalysisRepository={createTestLogAnalysisRepository()}
+    parameterInitializationRepository={{ getInitialization, listPendingReviews: vi.fn().mockResolvedValue([]),
+      upsertDraft: vi.fn(), previewSnapshot: vi.fn(), submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
+  await waitFor(() => expect(getInitialization).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole("button", { name: /打开用户菜单$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+  expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+  expect(requestsAfterLogout).toEqual([]);
+});
+
+it.each(["identity", "permission", "partial permission", "organization"])("discards an in-flight initialization list after %s changes", async (change) => {
+  window.history.replaceState(null, "", "/parameter-changes?project=aurora&scope=review");
+  let finish!: (reviews: InitializationReviewDto[]) => void;
+  const pending = new Promise<InitializationReviewDto[]>((resolve) => { finish = resolve; });
+  const listPendingReviews = vi.fn().mockReturnValueOnce(pending).mockResolvedValue([]);
+  const getInitialization = vi.fn().mockResolvedValue({ status: "initialized" });
+  const auth = { user: { id: "u-xu-yun", organizationId: "org-chargelab", name: "Xu Yun", title: "Owner", isActive: true },
+    organization: { id: "org-chargelab", name: "ChargeLab" }, roles: [{ projectId: null, roleId: "admin" }],
+    permissions: ["admin:access", "parameter:view", "parameter:review", "users:manage"] };
+  const authClient = { getCurrentAuthContext: vi.fn(async () => auth), updateCurrentUserProfile: vi.fn(async () => ({
+    ...auth, user: { ...auth.user, id: change === "identity" ? "other-admin" : auth.user.id, name: "Updated",
+      organizationId: change === "organization" ? "other-org" : auth.user.organizationId },
+    organization: change === "organization" ? { id: "other-org", name: "Other" } : auth.organization,
+    permissions: change === "permission" ? ["parameter:view", "parameter:review"]
+      : change === "partial permission" ? ["admin:access", "parameter:view"] : auth.permissions
+  })) };
+  render(<App runtimeMode="api" initialAppState={adminState} authClient={authClient}
+    parameterRepository={createTestParameterRepository()} parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
+    logAnalysisRepository={createTestLogAnalysisRepository()}
+    parameterInitializationRepository={{ getInitialization, listPendingReviews, upsertDraft: vi.fn(), previewSnapshot: vi.fn(),
+      submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
+  await waitFor(() => expect(listPendingReviews).toHaveBeenCalled());
+  fireEvent.click(await screen.findByRole("button", { name: /打开用户菜单$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
+  fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Updated" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(authClient.updateCurrentUserProfile).toHaveBeenCalled());
+  await screen.findByRole("button", { name: "Updated，打开用户菜单" });
+  await act(async () => {
+    finish([{ id: "old-review", draftId: "old-draft", organizationId: "org-chargelab", projectId: "stale-project",
+      status: "pending", submittedByUserId: "u-xu-yun", submittedAt: "2026-01-01T00:00:00Z" }]);
+    await pending;
+  });
+  expect(getInitialization).not.toHaveBeenCalledWith("stale-project");
+  expect(screen.queryByText("old-review")).not.toBeInTheDocument();
+});
+
+it("does not restore initialization details from a previous administrator", async () => {
+  window.history.replaceState(null, "", "/parameter-changes?project=aurora&scope=review");
+  let finish!: (state: ProjectInitializationStateDto) => void;
+  const pending = new Promise<ProjectInitializationStateDto>((resolve) => { finish = resolve; });
+  let previousSession = true;
+  const getInitialization = vi.fn(() => previousSession ? pending : Promise.resolve({ status: "initialized" as const, draft: null }));
+  const listPendingReviews = vi.fn().mockResolvedValueOnce([{ id: "old-review", draftId: "old-draft", organizationId: "org-chargelab",
+    projectId: "aurora", status: "pending", submittedByUserId: "u-xu-yun", submittedAt: "2026-01-01T00:00:00Z" }]).mockResolvedValue([]);
+  const auth = { user: { id: "u-xu-yun", organizationId: "org-chargelab", name: "Xu Yun", title: "Owner", isActive: true },
+    organization: { id: "org-chargelab", name: "ChargeLab" }, roles: [{ projectId: null, roleId: "admin" }],
+    permissions: ["admin:access", "parameter:view", "parameter:review", "users:manage"] };
+  const authClient = { getCurrentAuthContext: vi.fn(async () => auth), updateCurrentUserProfile: vi.fn(async () => {
+    previousSession = false;
+    return { ...auth, user: { ...auth.user, id: "other-admin", name: "Updated" } };
+  }) };
+  render(<App runtimeMode="api" initialAppState={adminState} authClient={authClient}
+    parameterRepository={createTestParameterRepository()} parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
+    logAnalysisRepository={createTestLogAnalysisRepository()}
+    parameterInitializationRepository={{ getInitialization, listPendingReviews, upsertDraft: vi.fn(), previewSnapshot: vi.fn(),
+      submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
+  await waitFor(() => expect(getInitialization).toHaveBeenCalledWith("aurora"));
+  fireEvent.click(await screen.findByRole("button", { name: /打开用户菜单$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
+  fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Updated" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await screen.findByRole("button", { name: "Updated，打开用户菜单" });
+  await act(async () => {
+    finish({ status: "initialization_pending_review", draft: { id: "old-draft", organizationId: "org-chargelab", projectId: "aurora",
+      projectName: "Previous-session project", projectCode: "OLD", ownerUserId: null, sourceProjectIds: [], primarySourceProjectId: null,
+      supplementSourceProjectIds: [], selectedModuleIds: [], selectedRisks: [], selectedSourceBindingIds: [], bindingSnapshots: [],
+      emptyLibrary: true, notes: "", createdByUserId: "u-xu-yun", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" } });
+    await pending;
+  });
+  expect(screen.queryByText("Previous-session project 初始化")).not.toBeInTheDocument();
+});
+
+it("clears cached initialization when permissions change even if administrator access remains", async () => {
+  window.history.replaceState(null, "", "/parameter-changes?project=aurora&scope=review");
+  let changed = false;
+  const draft: ProjectInitializationStateDto = { status: "initialization_pending_review", draft: { id: "old-draft", organizationId: "org-chargelab",
+    projectId: "aurora", projectName: "Cached project", projectCode: "OLD", ownerUserId: null, sourceProjectIds: [], primarySourceProjectId: null,
+    supplementSourceProjectIds: [], selectedModuleIds: [], selectedRisks: [], selectedSourceBindingIds: [], bindingSnapshots: [],
+    emptyLibrary: true, notes: "", createdByUserId: "u-xu-yun", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" } };
+  const listPendingReviews = vi.fn().mockResolvedValueOnce([{ id: "old-review", draftId: "old-draft", organizationId: "org-chargelab",
+    projectId: "aurora", status: "pending", submittedByUserId: "u-xu-yun", submittedAt: "2026-01-01T00:00:00Z" }]).mockResolvedValue([]);
+  const auth = { user: { id: "u-xu-yun", organizationId: "org-chargelab", name: "Xu Yun", title: "Owner", isActive: true },
+    organization: { id: "org-chargelab", name: "ChargeLab" }, roles: [{ projectId: null, roleId: "admin" }],
+    permissions: ["admin:access", "parameter:view", "parameter:review", "users:manage"] };
+  const authClient = { getCurrentAuthContext: vi.fn(async () => auth), updateCurrentUserProfile: vi.fn(async () => {
+    changed = true;
+    return { ...auth, user: { ...auth.user, name: "Updated" }, permissions: [...auth.permissions, "parameter:edit"] };
+  }) };
+  render(<App runtimeMode="api" initialAppState={adminState} authClient={authClient}
+    parameterRepository={createTestParameterRepository()} parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
+    logAnalysisRepository={createTestLogAnalysisRepository()}
+    parameterInitializationRepository={{ getInitialization: vi.fn(async () => changed ? { status: "initialized" as const, draft: null } : draft),
+      listPendingReviews, upsertDraft: vi.fn(), previewSnapshot: vi.fn(), submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
+  expect((await screen.findAllByText("Cached project 初始化")).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole("button", { name: /打开用户菜单$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
+  fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Updated" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await screen.findByRole("button", { name: "Updated，打开用户菜单" });
+  expect(screen.queryByText("Cached project 初始化")).not.toBeInTheDocument();
 });
 
 function parameterAdminNavGroup(sidebar: HTMLElement): HTMLElement {
@@ -1478,6 +1637,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
+        parameterCatalogRepository={{ listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [] }) } as never}
         authClient={{
           getCurrentAuthContext: async () => ({
             user: {
@@ -1489,7 +1649,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
               isActive: true
             },
             organization: { id: "org-chargelab", name: "ChargeLab" },
-            roles: [{ projectId: null, roleId: "software-user" }],
+            roles: [{ projectId: apiProject.id, roleId: "software-user" }],
             permissions: ["parameter:view", "parameter:edit"]
           })
         }}
@@ -1510,6 +1670,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const merged = {
       ...initialState.changeRequests.find((request) => request.status === "已合入")!,
       id: "merged-with-link",
+      projectId: "aurora",
       status: "已合入" as const,
       reviewerNote: "https://example.com/mr/99"
     };
@@ -1519,6 +1680,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
+        parameterCatalogRepository={{ listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [] }) } as never}
         authClient={{
           getCurrentAuthContext: async () => ({
             user: {
@@ -1530,7 +1692,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
               isActive: true
             },
             organization: { id: "org-chargelab", name: "ChargeLab" },
-            roles: [{ projectId: null, roleId: "software-user" }],
+            roles: [{ projectId: apiProject.id, roleId: "software-user" }],
             permissions: ["parameter:view", "parameter:edit"]
           })
         }}
@@ -1568,6 +1730,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const merged = {
       ...initialState.changeRequests.find((request) => request.status === "已合入")!,
       id: "merged-without-link",
+      projectId: "aurora",
       status: "已合入" as const,
       reviewerNote: "legacy free-text note"
     };
@@ -1577,6 +1740,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
+        parameterCatalogRepository={{ listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [] }) } as never}
         authClient={{
           getCurrentAuthContext: async () => ({
             user: {
@@ -1588,7 +1752,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
               isActive: true
             },
             organization: { id: "org-chargelab", name: "ChargeLab" },
-            roles: [{ projectId: null, roleId: "software-user" }],
+            roles: [{ projectId: apiProject.id, roleId: "software-user" }],
             permissions: ["parameter:view", "parameter:edit"]
           })
         }}
@@ -1626,6 +1790,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
+        parameterCatalogRepository={{ listProtectedProjectBindings: vi.fn().mockResolvedValue({ items: [] }) } as never}
         authClient={{
           getCurrentAuthContext: async () => ({
             user: {
@@ -1637,7 +1802,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
               isActive: true
             },
             organization: { id: "org-chargelab", name: "ChargeLab" },
-            roles: [{ projectId: null, roleId: "hardware-committer" }],
+            roles: [{ projectId: apiProject.id, roleId: "hardware-committer" }],
             permissions: ["parameter:review"]
           })
         }}
@@ -2227,7 +2392,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("dialog", { name: "用户菜单" })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
     await userEvent.click(trigger);
-    await userEvent.click(screen.getByText("变更审阅", { selector: ".topbar-title" }));
+    await userEvent.click(screen.getByText("变更中心", { selector: ".topbar-title" }));
     expect(screen.queryByRole("dialog", { name: "用户菜单" })).not.toBeInTheDocument();
     await userEvent.click(trigger);
     act(() => {
@@ -2267,7 +2432,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(nav).getByRole("link", { name: "我的工作台" })).toHaveAttribute("href", "/parameter-home");
     fireEvent.click(parameters);
     expect(new URLSearchParams(window.location.search).get("project")).toBe(project.id);
-    expect(within(nav).getByRole("link", { name: "变更审阅" })).toHaveAttribute("href", `/parameter-review?project=${encodeURIComponent(project.id)}`);
+    expect(within(nav).getByRole("link", { name: "变更中心" })).toHaveAttribute("href", `/parameter-changes?project=${encodeURIComponent(project.id)}`);
   });
 
   it("keeps the operating Organization in native sidebar links and SPA navigation", () => {
@@ -2512,7 +2677,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     renderApp({ initialAppState: userState });
 
-    expect(window.location.pathname).toBe("/parameter-submissions");
+    expect(window.location.pathname).toBe("/parameter-changes");
+    expect(new URLSearchParams(window.location.search).get("scope")).toBe("mine");
     expect(screen.getByRole("table", { name: "我的提交" })).toBeInTheDocument();
     const submissionStatus = screen.getByRole("tablist", { name: "提交状态" });
     expect(within(submissionStatus).getByRole("tab", { name: "审核中" })).toHaveAttribute("aria-selected", "true");
@@ -2521,7 +2687,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(within(topbar).queryByRole("button", { name: "返回参数修改" })).not.toBeInTheDocument();
-    expect(topbar).toHaveTextContent("我的提交");
+    expect(topbar).toHaveTextContent("变更中心");
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("navigation", { name: "主导航" })).queryByRole("link", { name: "我的提交" })).not.toBeInTheDocument();
   });
@@ -2964,7 +3130,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       }
     });
 
-    render(<App initialAppState={{ ...state, activeRoleId: "admin" }} />);
+    window.history.replaceState(null, "", `/parameter-review?project=${state.parameterInitializationReviews[0].projectId}`);
+    render(<App initialAppState={{ ...state, activeRoleId: "admin", configDraft: { ...state.configDraft,
+      projects: [...state.configDraft.projects, { id: state.parameterInitializationReviews[0].projectId, name: "Zephyr", code: "ZEP" }] } }} />);
 
     const reviewTable = screen.getByRole("table");
     expect(within(reviewTable).getByRole("button", { name: "查看 Zephyr 初始化 提交详情" })).toBeInTheDocument();
@@ -3138,7 +3306,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(reviewDetail).toHaveTextContent("Charging Policy");
     const oldestMatchingRequest = initialState.changeRequests
-      .filter((request) => request.module === "Charging Policy" && request.status === "硬件Committer检视")
+      .filter((request) => request.projectId === initialState.activeProjectId && request.module === "Charging Policy" && request.status === "硬件Committer检视")
       .sort((left, right) => Date.parse(left.createdAtTs) - Date.parse(right.createdAtTs))[0];
     expect(reviewDetail).toHaveTextContent(oldestMatchingRequest.title);
     expect(reviewDetail).not.toHaveTextContent(/PRQ-\d+/);
@@ -3150,7 +3318,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     renderAppForCurrentPath();
 
     expect(document.querySelector(".workbench-page > .page-header")).not.toBeInTheDocument();
-    expect(document.querySelector(".topbar-title")).toHaveTextContent("变更审阅");
+    expect(document.querySelector(".topbar-title")).toHaveTextContent("变更中心");
   });
 
   it("keeps parameter review filters together above the compact table", () => {
@@ -3242,19 +3410,19 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(pendingTab).toHaveAttribute("aria-selected", "true");
     expect(within(pendingTable).getByText("快充输入电流调整")).toBeInTheDocument();
-    expect(within(pendingTable).queryByText("SOC 平滑窗口调整")).not.toBeInTheDocument();
+    expect(within(pendingTable).queryByText("无线充热降额比例调整")).not.toBeInTheDocument();
 
     fireEvent.mouseDown(historyTab, { button: 0, ctrlKey: false });
 
     const historyTable = screen.getByRole("table");
     expect(historyTab).toHaveAttribute("aria-selected", "true");
-    expect(within(historyTable).getByText("SOC 平滑窗口调整")).toBeInTheDocument();
+    expect(within(historyTable).getByText("无线充热降额比例调整")).toBeInTheDocument();
     expect(within(historyTable).queryByText("快充输入电流调整")).not.toBeInTheDocument();
 
-    fireEvent.click(within(historyTable).getByText("SOC 平滑窗口调整"));
+    fireEvent.click(within(historyTable).getByText("无线充热降额比例调整"));
 
     const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
-    expect(reviewDetail).toHaveTextContent("SOC 平滑窗口调整");
+    expect(reviewDetail).toHaveTextContent("无线充热降额比例调整");
     expect(reviewDetail).not.toHaveTextContent(/PRQ-\d+/);
     expect(within(reviewDetail).queryByRole("button", { name: "通过检视" })).not.toBeInTheDocument();
     expect(within(reviewDetail).queryByRole("button", { name: "打回修改" })).not.toBeInTheDocument();
@@ -3265,7 +3433,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(historyTab).toHaveAttribute("aria-selected", "false");
     const restoredPendingTable = screen.getByRole("table");
     expect(within(restoredPendingTable).getByText("快充输入电流调整")).toBeInTheDocument();
-    expect(within(restoredPendingTable).queryByText("SOC 平滑窗口调整")).not.toBeInTheDocument();
+    expect(within(restoredPendingTable).queryByText("无线充热降额比例调整")).not.toBeInTheDocument();
   });
 
   it("labels and aligns the review change column", () => {
@@ -3678,7 +3846,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-home",
-        present: ["热榜", "概览", "项目参数", "变更审阅"],
+        present: ["热榜", "概览", "项目参数", "变更中心"],
         absent: [
           "推荐依据",
           "保留原看板指标，用来解释工作台行动排序",

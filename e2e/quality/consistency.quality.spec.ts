@@ -489,7 +489,7 @@ for (const route of consistencyReadOnlyRoutes) {
         ]);
         expect(authResponse.ok(), "consistency measurements require the real API runtime").toBe(true);
         await test.step("quality:readiness", () => expectUsablePage(page));
-        await test.step("quality:readiness", () => settleQualityRoute(page, routePath, { readOnly: true }));
+        await test.step("quality:readiness", () => settleQualityRoute(page, route.path, { readOnly: true }));
         await test.step("quality:readiness", () => closeXiaozePopupIfOpen(page));
         await test.step("quality:readiness", () => settleXiaozePopupClosed(page));
         await test.step("quality:readiness", () => settleAppToasts(page));
@@ -974,7 +974,7 @@ for (const route of consistencyReadOnlyRoutes) {
           hasDialog: document.body.matches(':has([role="dialog"])'),
           viewportWidth: window.innerWidth
         }));
-        const reviewRoute = ["/parameter-review", "/parameter-submissions"].includes(routePath);
+        const reviewRoute = routePath === "/parameter-changes";
         const requiresHint = !reviewRoute && shouldRequireXiaozeHint(pageState);
         if (reviewRoute) await expect(page.getByTestId("xiaoze-toggle-hint")).toHaveCount(0);
         const historicalIdentity = page.getByRole("region", { name: "节点对应确认", exact: true });
@@ -1007,7 +1007,7 @@ for (const route of consistencyReadOnlyRoutes) {
           requirePageGutter(measurements.pageEdges, route.path, measurements.footerPresent);
           if (route.required.includes("overviewPages")) requireOverviewGeometry(measurements.overviewPages, route.path);
           if (route.required.includes("retiredNotices")) requireRetiredNotice(measurements.retiredNotices, route.path);
-          if (["/parameter-review", "/parameter-submissions"].includes(routePath)) {
+          if (routePath === "/parameter-changes") {
             requireReviewInboxStructure(measurements, route.path);
           }
           if (route.required.includes("moduleTreeLabels") || moduleNavigationPaths.includes(routePath)) {

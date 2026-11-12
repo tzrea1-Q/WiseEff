@@ -68,7 +68,7 @@ test("actual authentication mode controls profile and password actions, preservi
   await page.goto("/feedback");
   let dialog = await openProfile(page);
   if (oidc) {
-    await expect(dialog.getByText(/密码由组织身份提供方管理/)).toBeVisible();
+    await expect(dialog.getByText(/密码由身份提供方管理/)).toBeVisible();
     await expect(dialog.getByLabel("当前密码", { exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("link")).toHaveCount(0);
   } else if (hmac) {
@@ -97,7 +97,7 @@ test("actual authentication mode controls profile and password actions, preservi
   await expect(dialog.getByLabel("姓名", { exact: true })).toHaveValue(name);
   await expect(dialog.getByLabel("职务", { exact: true })).toHaveValue(title);
   if (oidc) {
-    await expect(dialog.getByText(/密码由组织身份提供方管理/)).toBeVisible();
+    await expect(dialog.getByText(/密码由身份提供方管理/)).toBeVisible();
     await expect(dialog.getByLabel("当前密码", { exact: true })).toHaveCount(0);
   } else if (hmac) {
     await expect(dialog.getByText(/当前登录方式不提供本地密码修改/)).toBeVisible();

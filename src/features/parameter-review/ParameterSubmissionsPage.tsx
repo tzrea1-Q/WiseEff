@@ -1,3 +1,4 @@
+import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import { SubmissionWorkflowTimeline } from "@/components/SubmissionWorkflowTimeline";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { useTopBarActions } from "@/components/layout";
@@ -47,7 +48,10 @@ export function ParameterSubmissionsPage({
   parameterActions,
   search,
   runtime,
-  runtimeMode
+  runtimeMode,
+  sessionPermissions,
+  sessionRoles,
+  onBusyChange
 }: PageProps) {
   const isApiMode = runtimeMode === "api";
   const sourceRepository = useMemo(() => isApiMode ? runtime?.parameterFileRepository ?? resolveParameterFileRepository("api") : undefined, [isApiMode, runtime?.parameterFileRepository]);
@@ -292,10 +296,14 @@ export function ParameterSubmissionsPage({
         repository={isApiMode ? canonicalRepository : undefined}
         sourceRepository={sourceRepository}
         state={state}
+        runtimeMode={runtimeMode}
+        sessionPermissions={sessionPermissions}
+        sessionRoles={sessionRoles}
         search={inboxParams.toString() ? `?${inboxParams.toString()}` : ""}
         mineOnly
         canReview={false}
         busy={withdrawingRound}
+        onBusyChange={onBusyChange}
         legacyRows={legacyRows}
         renderLegacyDetail={renderLegacyDetail}
         onRequestsChanged={() => setRefreshVersion((version) => version + 1)}
@@ -303,7 +311,7 @@ export function ParameterSubmissionsPage({
         loading={isApiMode && (!projectionMatchesScope || submissionProjection.status === "loading")}
         error={(projectionMatchesScope ? submissionProjection.error : null) || (isApiMode && !canonicalRepository ? "新版参数提交暂不可用，请稍后重试。" : null)}
       /> : <div className="review-state"><p role="alert">项目链接无效，未加载其他项目的提交。</p>
-        <Button type="button" variant="outline" onClick={() => onNavigate("/parameter-submissions")}>返回我的提交</Button>
+        <Button type="button" variant="outline" onClick={() => onNavigate(changeCenterHref("mine", { project: state.configDraft.projects.some((project) => project.id === state.activeProjectId) ? state.activeProjectId : undefined }))}>返回我的提交</Button>
       </div>}
       <ConfirmDialog
         open={withdrawConfirmOpen && withdrawTarget !== null && withdrawScopeKey === projectionScopeKey}

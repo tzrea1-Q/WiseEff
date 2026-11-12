@@ -18,6 +18,7 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   home: "guest",
   "parameter-home": "guest",
   parameters: "guest",
+  "parameter-changes": "hardware-user",
   "parameter-submissions": "hardware-user",
   "parameter-comparison": "guest",
   "parameter-review": "hardware-committer",
@@ -28,7 +29,7 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   "node-debugging": "hardware-user",
   "dts-reload": "hardware-committer",
   "debugging-admin": "admin",
-  "user-permissions": "guest",
+  "user-permissions": "admin",
   "feedback-admin": "admin",
   "workflow-publication": "platform-admin",
   "platform-organizations": "platform-admin",
@@ -75,9 +76,16 @@ export function canAccessParameterReviewPage(roleId: string): boolean {
   return canPerform(normalizedRole, "parameter.review") || canPerform(normalizedRole, "parameter.merge");
 }
 
+export function projectReviewRoles<T extends { projectId: string | null; roleId: string }>(roles: readonly T[], projectId: string): T[] {
+  return roles.filter((role) => migrateLegacyRoleId(role.roleId) === "admin" || role.projectId === projectId);
+}
+
 export function canAccessPage(roleId: string, pageKey: PageKey, scope?: { path: string; runtimeMode: string;
-  permissions?: readonly string[] | null; roles?: readonly { projectId: string | null }[] | null;
+  permissions?: readonly string[] | null; roles?: readonly { projectId: string | null; roleId: string }[] | null;
   projectMemberships?: readonly { projectId: string; roles: readonly string[] }[] | null }): boolean {
+  if (pageKey === "user-permissions" && scope?.runtimeMode === "api") {
+    return Boolean(scope.permissions?.includes("users:manage") && scope.roles?.some(role => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")));
+  }
   const project = scope?.path.match(/^\/parameter-admin\/projects\/([^/]+)\/configuration\/?$/)?.[1];
   if (pageKey === "parameter-admin" && scope?.runtimeMode === "api" && scope.permissions?.includes("parameter:view")) {
     if (/^\/parameter-admin\/sources\/?$/.test(scope.path)) return true;
@@ -86,6 +94,10 @@ export function canAccessPage(roleId: string, pageKey: PageKey, scope?: { path: 
     catch { return false; }
   }
   const normalizedRole = migrateLegacyRoleId(roleId);
+  if (pageKey === "parameter-changes") {
+    return canAccessPage(roleId, "parameter-submissions", scope) || canAccessParameterReviewPage(roleId)
+      || Boolean(scope?.runtimeMode === "api" && scope.projectMemberships?.length);
+  }
   if (pageKey === "parameter-review") {
     return canAccessParameterReviewPage(normalizedRole);
   }

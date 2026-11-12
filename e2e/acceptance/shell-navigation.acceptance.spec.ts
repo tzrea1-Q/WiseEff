@@ -21,9 +21,9 @@ const routes = [
   "/",
   "/parameter-home",
   "/parameters",
-  "/parameter-submissions",
+  "/parameter-changes?scope=mine",
   "/parameter-comparison",
-  "/parameter-review",
+  "/parameter-changes?scope=review",
   "/parameter-admin",
   "/parameter-admin/projects",
   "/parameter-admin/specs/identity-mapping",
@@ -56,7 +56,7 @@ async function expectUsableShell(page: Page, testInfo: TestInfo, route: string) 
     await expect(home.getByRole("heading", { name: "一条可审阅工作流，四种场景接入" })).toBeVisible();
     await expect(home.getByRole("link", { name: /进入知识库/ })).toHaveAttribute("href", "/knowledge");
     await expect(home.getByRole("tab", { name: "知识库", exact: true })).toBeVisible();
-    await expect(home.getByText("上传并整理组织自己的调参经验、故障案例、硬件手册与流程规范。")).toBeVisible();
+    await expect(home.getByText("上传并整理调参经验、故障案例、硬件手册与流程规范。")).toBeVisible();
     await expect(page.locator('.linear-nav a[href="/knowledge"]')).toBeVisible();
     await expect(page.locator('.linear-footer a[href="/knowledge"]')).toBeVisible();
     await expect(home.getByRole("link", { name: /进入日志分析/ })).toHaveAttribute("href", "/logs");
@@ -68,7 +68,7 @@ async function expectUsableShell(page: Page, testInfo: TestInfo, route: string) 
       body: await page.screenshot({ fullPage: true }),
       contentType: "image/png"
     });
-  } else if (["/parameter-review", "/parameter-submissions"].includes(route)) {
+  } else if (route.startsWith("/parameter-changes?")) {
     await expect(page.locator('footer[aria-label="页脚信息"]').getByRole("button", { name: "问题反馈" })).toBeVisible();
     await page.getByRole("button", { name: /打开用户菜单$/ }).click();
     const menu = page.locator(".topbar-user-menu");
@@ -171,7 +171,7 @@ test.describe("M5.4 manual flow A - shell navigation", () => {
             ? "The rich homepage footer contains one metadata row without a nested footer landmark."
             : route.endsWith("/configuration")
               ? "The full-height project configuration workbench keeps feedback in a footer below its content."
-              : ["/parameter-review", "/parameter-submissions"].includes(route)
+              : route.startsWith("/parameter-changes?")
                 ? "Review workspaces keep one footer feedback entry and account metadata in the user menu."
               : "The normal shell route ends with one compact footer and a current-page feedback trigger."
         });

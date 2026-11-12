@@ -40,6 +40,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import { toggleFilterValue } from "@/components/tableFilterUtils";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type {
   CatalogDefinitionListResponse,
   CatalogDefinitionResponse,
@@ -97,6 +98,14 @@ import {
   catalogTimelineLabel
 } from "./copy";
 import "./parameter-catalog.css";
+
+function libraryAnchor(value: CatalogUrlAnchor): CatalogUrlAnchor {
+  const lifecycle = value.lifecycle?.split(",").filter((item) => item !== "retired").join(",") || null;
+  const resetCursor = Boolean(value.catalogReleaseId || value.includeRetiredSubjects || value.registration === "retired" || lifecycle !== value.lifecycle);
+  return { ...value, catalogReleaseId: null, includeRetiredSubjects: false,
+    registration: value.registration === "retired" ? null : value.registration, lifecycle,
+    ...(resetCursor ? { cursor: null, cursorTrail: null } : {}) };
+}
 
 type DefinitionItem = CatalogDefinitionResponse["item"];
 type SubjectItem = CatalogSubjectResponse["item"];
@@ -312,9 +321,21 @@ export function CatalogPage({
     params.delete("configSetId");
     params.delete("configSearch");
     params.delete("includeUnconfigured");
+    if (libraryMode) {
+      const current = libraryAnchor(parseCatalogUrlAnchor(params.toString()));
+      params.delete("catalogReleaseId");
+      params.delete("includeRetiredSubjects");
+      if (current.lifecycle) params.set("lifecycle", current.lifecycle); else params.delete("lifecycle");
+      if (current.registration) params.set("registration", current.registration); else params.delete("registration");
+      if (!current.cursor) params.delete("cursor");
+      if (!current.cursorTrail) params.delete("cursorTrail");
+    }
     return params.toString();
-  }, [resolvedSearch]);
-  const anchor = useMemo(() => parseCatalogUrlAnchor(resolvedSearch), [resolvedSearch]);
+  }, [libraryMode, resolvedSearch]);
+  const anchor = useMemo(() => {
+    const value = parseCatalogUrlAnchor(resolvedSearch);
+    return libraryMode ? libraryAnchor(value) : value;
+  }, [libraryMode, resolvedSearch]);
   const pageSize: CatalogPageSize =
     parseCatalogPageSize(anchor.pageSize === null ? null : String(anchor.pageSize)) ??
     CATALOG_DEFAULT_PAGE_SIZE;
@@ -466,7 +487,8 @@ export function CatalogPage({
     setHistoryError(null);
     try {
       const catalog = repositoryRef.current;
-      const currentAnchor = parseCatalogUrlAnchor(catalogReadSearch);
+      const parsedAnchor = parseCatalogUrlAnchor(catalogReadSearch);
+      const currentAnchor = libraryMode ? libraryAnchor(parsedAnchor) : parsedAnchor;
       const legacyBookmark = readLegacyCatalogBookmark(catalogReadSearch);
       if (legacyBookmark && !currentAnchor.definitionId && !currentAnchor.subjectId) {
         const mapped = await catalog.getLegacyIdentifier(legacyBookmark.legacyType, legacyBookmark.legacyId);
@@ -482,7 +504,7 @@ export function CatalogPage({
         );
         return;
       }
-      const requestedPin = withCatalogReleasePin(undefined, currentAnchor.catalogReleaseId);
+      const requestedPin = libraryMode ? { view: "library" as const } : withCatalogReleasePin(undefined, currentAnchor.catalogReleaseId);
       const document = await catalog.getCatalog(requestedPin);
       if (generation !== loadGeneration.current) return;
       if (document.item === null) {
@@ -491,11 +513,8 @@ export function CatalogPage({
         setUnpublished(true);
         return;
       }
-      const currentReleaseId = libraryMode && currentAnchor.catalogReleaseId
-        ? (await catalog.getCatalog().catch(() => null))?.item?.catalogReleaseId ?? null
-        : document.item.catalogReleaseId;
-      if (generation !== loadGeneration.current) return;
-      const pin = { catalogReleaseId: document.item.catalogReleaseId };
+      const currentReleaseId = document.item.catalogReleaseId;
+      const pin: CatalogListQuery = { catalogReleaseId: document.item.catalogReleaseId, ...(libraryMode ? { view: "library" } : {}) };
       const listQuery: CatalogListQuery = {
         ...pin,
         ...(!currentAnchor.includeRetiredSubjects ? { subjectLifecycle: "active" as const, ...(!libraryMode ? { registration: "not-retired" } : {}) } : {}),
@@ -527,7 +546,7 @@ export function CatalogPage({
           firstSubjectPage ??= page;
           return page;
         }, { ...pin, limit: 100 }),
-        listAllCanonicalPages((query) => catalog.listSubjects(query), { ...pin, lifecycle: "retired", limit: 100 }),
+        libraryMode ? Promise.resolve([]) : listAllCanonicalPages((query) => catalog.listSubjects(query), { ...pin, lifecycle: "retired", limit: 100 }),
         moduleRegistry?.getRegistry()
       ]);
       const subjectItems = [...new Map([...activeSubjects, ...retiredSubjects].map((item) => [item.id, item])).values()];
@@ -554,9 +573,7 @@ export function CatalogPage({
         const definitionResponse = await catalog.getDefinition(currentAnchor.definitionId, pin);
         definition = definitionResponse.item;
         if (libraryMode) {
-          latestRevision = currentReleaseId === document.item.catalogReleaseId
-            ? definition.currentRevision
-            : (await catalog.getDefinition(currentAnchor.definitionId).catch(() => null))?.item.currentRevision ?? null;
+          latestRevision = definition.currentRevision;
         }
         if (historyOpen) {
           try {
@@ -644,14 +661,14 @@ export function CatalogPage({
     if (!snapshot) {
       return;
     }
-    if (anchor.catalogReleaseId) {
+    if (libraryMode || anchor.catalogReleaseId) {
       return;
     }
     commitAnchor(
       { ...anchor, catalogReleaseId: snapshot.document.item.catalogReleaseId },
       "replace"
     );
-  }, [anchor, commitAnchor, snapshot]);
+  }, [anchor, commitAnchor, libraryMode, snapshot]);
 
   const collection = snapshot ? pickCollection(snapshot.subjects, snapshot.definitions) : undefined;
   const domainState: CatalogDomainState = deriveCatalogDomainState({
@@ -701,7 +718,7 @@ export function CatalogPage({
   const workspaceMessage = libraryMode && workspaceState.kind === "loading" ? "正在加载参数库"
     : libraryMode && workspaceState.kind === "unpublished" ? "参数库暂无可阅读的定义。"
       : libraryMode && workspaceState.kind === "unregistered" ? "该主体尚未登记。"
-        : libraryMode && workspaceState.kind === "retired" ? "该内容已停用，仍可查看历史定义。"
+      : libraryMode && workspaceState.kind === "retired" ? "该内容当前不可用。"
           : workspaceState.kind === "retired" && workspaceState.target === "subject"
             ? "当前主体已退役，参数定义仅供查看。" : catalogStateMessage(workspaceState);
   const readOnlyLabel = domainState.kind !== "retired" ? null
@@ -930,7 +947,7 @@ export function CatalogPage({
       sortAccessor: (row) => row.lifecycle,
       headerFilter: {
         label: "生命周期",
-        values: ["active", "deprecated", "retired"],
+        values: libraryMode ? ["active", "deprecated"] : ["active", "deprecated", "retired"],
         selectedValues: activeLifecycles,
         renderLabel: catalogLifecycleLabel,
         onToggle: toggleLifecycleFilter,
@@ -965,7 +982,8 @@ export function CatalogPage({
     const source = snapshot;
     const generation = loadGeneration.current;
     const selectedId = source.definition!.id;
-    const pin = { catalogReleaseId: source.document.item.catalogReleaseId, limit: 50 };
+    const pin: CatalogListQuery = { catalogReleaseId: source.document.item.catalogReleaseId, limit: 50,
+      ...(libraryMode ? { view: "library" } : {}) };
     setHistoryPending(true);
     setHistoryError(null);
     try {
@@ -1031,8 +1049,10 @@ export function CatalogPage({
         commitAnchor({ ...anchor, definitionId: null, history: null, tab: null, instance: null, instanceCursor: null, baseline: null, target: null }, "push");
       }}><ArrowLeft size={14} aria-hidden="true" />返回参数库</button>
       </div>
-      {inFlight && !reading ? <SectionSkeleton label={catalogLoadingLabel} />
-        : error ? <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />
+      {inFlight ? <SectionSkeleton label={catalogLoadingLabel} />
+        : error ? (error instanceof WiseEffApiError && error.code === "NOT_FOUND"
+          ? <p role="status">该定义当前不可用。</p>
+          : <SectionError message="定义或修订历史读取失败，请重试。" onRetry={() => void load()} />)
           : reading && revision ? <article role="region" aria-label="定义详情" className="parameter-library-detail__body">
             <header className="parameter-library-detail__header">
               <div className="parameter-library-detail__identity">
@@ -1054,7 +1074,7 @@ export function CatalogPage({
               items={[{ value: "definition", label: "定义", id: "library-tab-definition", panelId: "library-panel-definition" },
                 { value: "configurations", label: "当前项目配置", id: "library-tab-configurations", panelId: "library-panel-configurations" },
                 { value: "compare", label: "对比", id: "library-tab-compare", panelId: "library-panel-compare" }]} />
-            <span className="parameter-library-detail__hint">视图按当前组织权限读取，数据可能已变化。</span>
+            <span className="parameter-library-detail__hint">视图按当前可查看范围读取，数据可能已变化。</span>
             </div>
             {(["configurations", "compare"] as const).map((tab) => <TabPanel key={tab} className="parameter-library-detail__panel" hidden={activeTab !== tab}
               id={`library-panel-${tab}`} aria-labelledby={`library-tab-${tab}`}>
@@ -1156,20 +1176,20 @@ export function CatalogPage({
             <SelectControl ariaLabel="主体类型" size="filter" value={anchor.type ?? ""} onValueChange={(value) => {
               setCursorTrail([]); commitAnchor({ ...anchor, type: value || null, subjectId: null, cursor: null, cursorTrail: null }, "push");
             }} options={[{ value: "", label: "全部类型" }, { value: "driver", label: "驱动" }, { value: "node-type", label: "节点类型" }, { value: "configuration-schema", label: "配置模型" }]} />
-            <SelectControl ariaLabel="组织登记" size="filter" value={anchor.registration ?? ""} onValueChange={(value) => {
+            <SelectControl ariaLabel="登记状态" size="filter" value={anchor.registration ?? ""} onValueChange={(value) => {
               setCursorTrail([]); commitAnchor({ ...anchor, registration: value || null, cursor: null, cursorTrail: null }, "push");
-            }} options={[{ value: "", label: "全部登记状态" }, { value: "unregistered", label: "未登记" }, { value: "active", label: "已登记" }, { value: "retired", label: "登记已停用" }]} />
+            }} options={[{ value: "", label: "全部登记状态" }, { value: "unregistered", label: "未登记" }, { value: "active", label: "已登记" }]} />
             <button type="button" className="button subtle sm" onClick={() => {
               setSearchInput(""); setCursorTrail([]);
               commitAnchor({ ...anchor, q: null, type: null, registration: null, lifecycle: null,
                 subjectId: null, moduleNodeId: null, includeRetiredSubjects: false, cursor: null, cursorTrail: null }, "push");
             }}>重置筛选</button>
           </> : null}
-          <label className="parameter-catalog__historical-filter">
+          {!libraryMode ? <label className="parameter-catalog__historical-filter">
             <input type="checkbox" checked={includesRetiredSubjects}
               onChange={(event) => toggleRetiredSubjects(event.target.checked)} />
             包含已停用和退役主体
-          </label>
+          </label> : null}
           {!libraryMode && (actions.length > 0 || onOpenPendingWork || onImportDefinitions || onPublishClaimedOwners || onOpenUnregisteredSubjects) ? (
             <div className="parameter-catalog__actions" role="group" aria-label="目录动作">
               {onOpenUnregisteredSubjects ? <button type="button" className="button subtle sm" onClick={onOpenUnregisteredSubjects}>待登记主体</button> : null}
@@ -1273,7 +1293,7 @@ export function CatalogPage({
                 options={[{ value: "", label: "全部项目" }, ...(projectOptions && projectOptions.organizationId === organizationId ? projectOptions.items.map((project) => ({ value: project.id, label: project.name })) : [])]} /></div>
               {projectOptionsError ? <button type="button" className="button subtle sm" onClick={() => setProjectOptionsRetry((value) => value + 1)}>项目读取失败，重试</button> : null}
               {anchor.usageProjectId ? <button type="button" className="button subtle sm" onClick={() => commitAnchor({ ...anchor, usageProjectId: null, cursor: null, cursorTrail: null }, "push")}>重置使用筛选</button> : null}
-              <span className="parameter-catalog__muted">数量为{anchor.usageProjectId ? "所选项目" : "当前组织"}已配置数量</span>
+              <span className="parameter-catalog__muted">数量为{anchor.usageProjectId ? "所选项目" : "当前可查看范围"}已配置数量</span>
             </div> : null}
             {canPublishDefinitions && onBatchDefinitionCommand ? <>
               {anchor.subjectId && release ? <button type="button" className="button subtle sm" disabled={selectingSubject}

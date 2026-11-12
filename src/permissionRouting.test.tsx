@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/features/agent/XiaozeProvider", () => ({
@@ -14,6 +14,8 @@ import App from "./App";
 import { appReducer } from "@/application/state/appState";
 import { initialState } from "./mockData";
 import { declarationsFor, readStylesheet } from "./test/cssAssertions";
+import { createTestLogAnalysisRepository, createTestParameterRepository } from "./test/harness";
+import { createMockParameterCatalogRepository } from "@/application/parameter-catalog/mockAdapter";
 
 const guestState = { ...initialState, activeRoleId: "guest" };
 
@@ -24,6 +26,91 @@ afterEach(() => {
 });
 
 describe("permission-aware routing", () => {
+  it("waits for server scope confirmation before loading business data and fails closed", async () => {
+    window.history.replaceState(null, "", "/parameters?organizationId=foreign");
+    let resolveScope!: (value: Response) => void;
+    const fetchImpl = vi.fn((input: RequestInfo | URL) => String(input).includes("/api/v1/organization/operating-scope")
+      ? new Promise<Response>((resolve) => { resolveScope = resolve; })
+      : Promise.resolve(Response.json({})));
+    vi.stubGlobal("fetch", fetchImpl);
+    const listProjects = vi.fn(async () => []), listLogs = vi.fn(async () => []);
+    const authClient = { getCurrentAuthContext: vi.fn(async () => ({
+      user: { id: "reader", organizationId: "home", name: "Reader", title: "", isActive: true },
+      organization: { id: "home", name: "Home" }, roles: [{ projectId: null, roleId: "hardware-user" }], permissions: ["parameter:view"]
+    })) };
+    render(<App runtimeMode="api" initialAppState={initialState} authClient={authClient}
+      parameterRepository={createTestParameterRepository({ listProjects })} parameterCatalogRepository={createMockParameterCatalogRepository()}
+      logAnalysisRepository={createTestLogAnalysisRepository([], { listLogs })} />);
+
+    await waitFor(() => expect(resolveScope).toBeTypeOf("function"));
+    expect(document.querySelector("main.main-content")).toHaveAttribute("data-runtime-state", "loading");
+    expect(document.querySelector("main.main-content")).toHaveAttribute("aria-busy", "true");
+    expect(listProjects).not.toHaveBeenCalled();
+    expect(listLogs).not.toHaveBeenCalled();
+    await act(async () => resolveScope(Response.json({ error: { code: "FORBIDDEN", message: "Forbidden.", details: {} } }, { status: 403 })));
+    expect(await screen.findByRole("alert")).toHaveTextContent("没有权限执行该操作");
+    expect(document.querySelector("main.main-content")).toHaveAttribute("data-runtime-state", "error");
+    expect(document.querySelector("main.main-content")).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
+    expect(window.location.search).toBe("?organizationId=foreign");
+    expect(listProjects).not.toHaveBeenCalled();
+    expect(listLogs).not.toHaveBeenCalled();
+    act(() => { window.history.pushState(null, "", "/parameters?organizationId=home"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    await waitFor(() => expect(fetchImpl.mock.calls.filter(([input]) => String(input).includes("/api/v1/organization/operating-scope"))).toHaveLength(2));
+    await act(async () => resolveScope(Response.json({
+      actor: await authClient.getCurrentAuthContext(), organization: { id: "home", name: "Home", status: "active" }
+    })));
+    await waitFor(() => expect(listProjects).toHaveBeenCalled());
+    expect(listLogs).toHaveBeenCalled();
+    expect(fetchImpl.mock.calls.filter(([input]) => String(input).includes("/api/v1/organization/operating-scope"))).toHaveLength(2);
+    const projectReads = listProjects.mock.calls.length, logReads = listLogs.mock.calls.length;
+    act(() => { window.history.pushState(null, "", "/parameters?organizationId=foreign"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    await waitFor(() => expect(fetchImpl.mock.calls.filter(([input]) => String(input).includes("/api/v1/organization/operating-scope"))).toHaveLength(3));
+    expect(listProjects).toHaveBeenCalledTimes(projectReads);
+    expect(listLogs).toHaveBeenCalledTimes(logReads);
+    await act(async () => resolveScope(Response.json({ error: { code: "FORBIDDEN", message: "Forbidden.", details: {} } }, { status: 403 })));
+    expect(await screen.findByRole("alert")).toHaveTextContent("没有权限执行该操作");
+    expect(listProjects).toHaveBeenCalledTimes(projectReads);
+    expect(listLogs).toHaveBeenCalledTimes(logReads);
+  });
+
+  it("reconfirms organization status after leaving and reentering its business workspace", async () => {
+    window.history.replaceState(null, "", "/parameters?organizationId=foreign");
+    const auth = { user: { id: "operator", organizationId: "home", name: "Operator", title: "", isActive: true },
+      organization: { id: "home", name: "Home" }, roles: [{ projectId: null, roleId: "platform-admin" }],
+      permissions: ["admin:access", "users:manage", "parameter:view"] };
+    let status: "active" | "suspended" = "active";
+    const fetchImpl = vi.fn((input: RequestInfo | URL) => String(input).includes("/api/v1/organization/operating-scope")
+      ? Promise.resolve(Response.json({ actor: auth, organization: { id: "foreign", name: "Foreign", status } }))
+      : Promise.resolve(Response.json({})));
+    vi.stubGlobal("fetch", fetchImpl);
+    render(<App runtimeMode="api" initialAppState={initialState} authClient={{ getCurrentAuthContext: vi.fn(async () => auth) }}
+      parameterRepository={createTestParameterRepository()} parameterCatalogRepository={createMockParameterCatalogRepository()}
+      logAnalysisRepository={createTestLogAnalysisRepository()} />);
+    await screen.findByRole("region", { name: "当前操作组织" });
+    const calls = () => fetchImpl.mock.calls.filter(([input]) => String(input).includes("/api/v1/organization/operating-scope")).length;
+    const navigate = (path: string) => act(() => { window.history.pushState(null, "", path); window.dispatchEvent(new PopStateEvent("popstate")); });
+    navigate("/workflow-publication?organizationId=foreign");
+    status = "suspended";
+    navigate("/parameters?organizationId=foreign");
+    await waitFor(() => expect(calls()).toBe(2));
+    expect(await screen.findByText(/组织已停用，业务数据仅可查看/)).toBeInTheDocument();
+    navigate("/workflow-publication?organizationId=foreign");
+    status = "active";
+    navigate("/parameters?organizationId=foreign");
+    await waitFor(() => expect(calls()).toBe(3));
+    await waitFor(() => expect(screen.queryByText(/组织已停用，业务数据仅可查看/)).not.toBeInTheDocument());
+  });
+
+  it("opens the personal change center from the main navigation for a hardware user", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    render(<App initialAppState={{ ...initialState, activeRoleId: "hardware-user" }} />);
+    const navigation = within(screen.getByRole("navigation", { name: "主导航" }));
+    fireEvent.click(navigation.getByRole("link", { name: "变更中心" }));
+    expect(window.location.pathname).toBe("/parameter-changes");
+    expect(await screen.findByRole("table", { name: "我的提交" })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "审阅队列" })).not.toBeInTheDocument();
+  });
   it.each(["guest", "hardware-user", "admin"])("matches workflow sidebar entries to route permissions for %s", (roleId) => {
     window.history.replaceState(null, "", "/parameter-home");
     render(<App initialAppState={{ ...initialState, activeRoleId: roleId }} />);
@@ -36,7 +123,7 @@ describe("permission-aware routing", () => {
     expect(sidebar.textContent?.includes("知识库")).toBe(canAccessPage(roleId, "knowledge"));
   });
 
-  it.each([false, true])("lets Guest enter the organization workspace without admin controls with compact height %s", async (compactHeight) => {
+  it.each([false, true])("hides organization management from Guest at compact height %s", async (compactHeight) => {
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: compactHeight && query === "(max-height: 820px)", media: query,
       addEventListener: vi.fn(), removeEventListener: vi.fn()
@@ -50,35 +137,55 @@ describe("permission-aware routing", () => {
     expect(navigation.queryByRole("link", { name: /变更审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
     expect(navigation.queryByRole("link", { name: /参数调试|鍙傛暟璋冭瘯/ })).not.toBeInTheDocument();
     const sidebar = within(screen.getByRole("complementary", { name: "主导航侧边栏" }));
-    if (compactHeight) fireEvent.click(sidebar.getByRole("button", { name: "平台管理" }));
-    const management = within(screen.getByRole("navigation", { name: "平台管理" }));
-    expect(management.queryByRole("link", { name: /工作流发布|反馈管理|审计中心/ })).not.toBeInTheDocument();
-    fireEvent.click(management.getByRole("link", { name: "组织管理" }));
-    expect(window.location.pathname).toBe("/organization");
-    fireEvent.click(within(screen.getByRole("navigation", { name: "组织管理范围" })).getByRole("button", { name: "资源" }));
-    expect(await screen.findByRole("button", { name: "参数资源" })).toBeInTheDocument();
-    const resources = within(screen.getByRole("region", { name: "组织资源" }));
-    expect(resources.getByRole("button", { name: "知识库" })).toBeInTheDocument();
-    expect(resources.queryByRole("button", { name: "设备代理" })).not.toBeInTheDocument();
-    expect(resources.queryByRole("button", { name: "集成凭据" })).not.toBeInTheDocument();
+    expect(sidebar.queryByRole("link", { name: "组织管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开 组织管理" })).not.toBeInTheDocument();
     expect(sidebar.getByRole("button", { name: "问题反馈" })).toBeInTheDocument();
   });
 
-  it.each(["guest", "user", "committer"])("keeps member management unavailable to %s through the legacy organization URL", (activeRoleId) => {
-    window.history.replaceState(null, "", "/user-permissions");
+  it.each(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer"])("returns %s to the workbench from an old management address", async (activeRoleId) => {
+    window.history.replaceState(null, "", "/user-permissions?organizationId=secret");
     const userGovernanceActions = {
       listUsers: vi.fn(), createUser: vi.fn(), updateOrganizationRoles: vi.fn(),
       setUserActive: vi.fn(), deleteUser: vi.fn(), listRegistrationRoleRequests: vi.fn()
     };
     render(<App initialAppState={{ ...initialState, activeRoleId }} userGovernanceActions={userGovernanceActions} />);
 
-    expect(screen.getByText("此区域由组织管理员维护。")).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe("/parameter-home"));
+    expect(window.location.search).toBe("");
+    expect(screen.getByText("该页面不可访问，已返回工作台。")).toBeInTheDocument();
+    expect(screen.queryByText("组织概览")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "用户权限" })).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "平台用户" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加成员" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "管理邀请" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "业务交接" })).not.toBeInTheDocument();
     for (const action of Object.values(userGovernanceActions)) expect(action).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: "project-scoped administrator", roles: [{ projectId: "project-a", roleId: "admin" }], permissions: ["parameter:view"] },
+    { label: "organization administrator without management permission", roles: [{ projectId: null, roleId: "admin" }], permissions: ["parameter:view"] }
+  ])("does not expose management to an API $label", async ({ roles, permissions }) => {
+    window.history.replaceState(null, "", "/organization/projects");
+    const authClient = { getCurrentAuthContext: vi.fn(async () => ({
+      user: { id: "project-admin", organizationId: "home", name: "Project Admin", title: "", isActive: true },
+      organization: { id: "home", name: "Home" },
+      roles, permissions,
+      projectMemberships: [{ projectId: "project-a", roles: ["hardware-user" as const] }]
+    })) };
+    render(<App runtimeMode="api" initialAppState={initialState} authClient={authClient} />);
+
+    await waitFor(() => expect(window.location.pathname).toBe("/parameter-home"));
+    expect(screen.queryByRole("link", { name: "组织管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开 组织管理" })).not.toBeInTheDocument();
+    expect(screen.queryByText("组织概览")).not.toBeInTheDocument();
+  });
+
+  it.each(["/organization", "/organization/resources", "/organization/settings", "/user-permissions/legacy"])("returns a guest from %s", async (path) => {
+    window.history.replaceState(null, "", path);
+    render(<App initialAppState={guestState} />);
+    await waitFor(() => expect(window.location.pathname).toBe("/parameter-home"));
+    expect(screen.queryByRole("navigation", { name: "组织管理范围" })).not.toBeInTheDocument();
   });
 
   it("removes the retired platform console utility entry for platform-admin", async () => {
@@ -194,22 +301,22 @@ describe("permission-aware routing", () => {
 });
 
 describe("permission route matrix", () => {
-  it("lets User enter the organization workspace while keeping review and admin pages restricted", () => {
+  it("keeps User out of organization management and review and admin pages", () => {
     expect(canAccessPage("user", "parameter-review")).toBe(false);
     expect(canAccessPage("software-user", "parameter-review")).toBe(true);
     expect(canAccessPage("user", "parameter-admin")).toBe(false);
     expect(canAccessPage("user", "log-admin")).toBe(false);
     expect(canAccessPage("user", "debugging-admin")).toBe(false);
-    expect(canAccessPage("user", "user-permissions")).toBe(true);
+    expect(canAccessPage("user", "user-permissions")).toBe(false);
     expect(canAccessPage("user", "logs")).toBe(true);
     expect(canAccessPage("user", "debugging")).toBe(true);
   });
 
-  it("lets Committer enter the organization workspace and review while keeping admin pages restricted", () => {
+  it("lets Committer review while keeping organization management and admin pages restricted", () => {
     expect(canAccessPage("committer", "parameter-review")).toBe(true);
     expect(canAccessPage("committer", "parameter-admin")).toBe(false);
     expect(canAccessPage("committer", "log-admin")).toBe(false);
     expect(canAccessPage("committer", "debugging-admin")).toBe(false);
-    expect(canAccessPage("committer", "user-permissions")).toBe(true);
+    expect(canAccessPage("committer", "user-permissions")).toBe(false);
   });
 });

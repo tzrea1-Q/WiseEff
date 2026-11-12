@@ -1,3 +1,4 @@
+import { changeCenterHref } from "@/domain/parameters/changeCenterUrl";
 import type { ParameterDashboardRepository } from "@/application/ports/ParameterDashboardRepository";
 import type {
   DashboardHotspot,
@@ -319,16 +320,16 @@ type HotspotGroup = {
 function buildHotspotPath(group: HotspotGroup) {
   if (group.kind === "module") {
     return group.relatedRequests.length > 0
-      ? `/parameter-review?module=${encodeURIComponent(group.module)}`
+      ? changeCenterHref("review", { module: group.module })
       : `/parameters?module=${encodeURIComponent(group.module)}`;
   }
   if (group.kind === "project") {
     return group.relatedRequests.length > 0
-      ? `/parameter-review?project=${encodeURIComponent(group.projectId ?? group.id)}`
+      ? changeCenterHref("review", { project: group.projectId ?? group.id })
       : `/parameters?project=${encodeURIComponent(group.projectId ?? group.id)}`;
   }
   return group.relatedRequests.length > 0
-    ? `/parameter-review?parameter=${encodeURIComponent(group.id)}`
+    ? changeCenterHref("review", { parameter: group.id })
     : `/parameters?parameter=${encodeURIComponent(group.id)}`;
 }
 

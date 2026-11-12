@@ -50,6 +50,7 @@ import {
   initialDashboardState
 } from "@/application/parameters/dashboardState";
 import { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
+import { normalizeLegacyChangeHref } from "@/domain/parameters/changeCenterUrl";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
@@ -72,6 +73,7 @@ import {
 import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/useXiaozePageContext";
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
 import { OrganizationBusinessWorkspace } from "@/features/organization/OrganizationBusinessWorkspace";
+import type { OrganizationWorkspaceClient } from "@/infrastructure/http/userGovernanceClient";
 import { InvitationAcceptancePage } from "@/features/organization/InvitationAcceptancePage";
 import { isOrganizationBusinessPath, withBusinessOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
@@ -298,7 +300,11 @@ function AppShell({
 }) {
   const [state, dispatch] = useReducer(reducer, initialAppState);
   const stateRef = useRef(state);
-  const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
+  const [path, setPath] = useState(() => {
+    const normalized = normalizeLegacyChangeHref(window.location.pathname, window.location.search, window.location.hash);
+    if (normalized) window.history.replaceState(window.history.state, "", normalized);
+    return getPageByPath(window.location.pathname).path;
+  });
   const [search, setSearch] = useState(() => window.location.pathname === "/log-dashboard" ? "" : window.location.search);
   const operatingOrganizationId = new URLSearchParams(search).get("organizationId") ?? undefined;
   const scopeKey = `${state.currentUserId}:${operatingOrganizationId ?? "home"}`;
@@ -317,10 +323,18 @@ function AppShell({
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [apiAuthRoles, setApiAuthRoles] = useState<AuthContextDto["roles"] | null>(null);
   const [apiProjectMemberships, setApiProjectMemberships] = useState<AuthContextDto["projectMemberships"]>([]);
-  const [homeOrganizationSuspended, setHomeOrganizationSuspended] = useState(false);
   const [organizationId, setOrganizationId] = useState(
     () => (runtimeMode === "api" ? "" : CATALOG_ORGANIZATION_ID)
   );
+  const initializationKey = JSON.stringify([scopeKey, organizationId, apiAuthStatus, apiAuthPermissions, apiAuthRoles,
+    state.users.find((user) => user.id === state.currentUserId)?.isActive]);
+  const initializationScope = useRef({ key: initializationKey, generation: 0 });
+  const initializationAuth = useRef<string | null>(null);
+  if (initializationScope.current.key !== initializationKey) {
+    initializationScope.current = { key: initializationKey, generation: initializationScope.current.generation + 1 };
+  }
+  const initializationGeneration = initializationScope.current.generation;
+  const [homeOrganizationSuspended, setHomeOrganizationSuspended] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
   // Below 768px the sidebar becomes an overlay drawer (ui-design-system §Layout);
   // between 769–900px it stays the auto-collapsed rail the media query used to force.
@@ -340,9 +354,11 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const showsApplicationFooter = !isProjectConfigurationWorkbenchPath(path)
-    && page.key !== "parameter-review" && page.key !== "parameter-submissions";
+    && page.key !== "parameter-review" && page.key !== "parameter-submissions" && page.key !== "parameter-changes";
   const usesProjectScope = page.path !== "/parameters/definitions" && pageUsesProjectScope(page.key);
-  const pageProjectId = (page.path !== "/parameters/definitions" && (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions")
+  const pageProjectId = page.key === "parameter-changes"
+    ? new URLSearchParams(search).get("project") ?? new URLSearchParams(search).get("projectId") ?? state.activeProjectId
+    : (page.path !== "/parameters/definitions" && (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions")
     ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") : null) || state.activeProjectId;
   const xiaozePageContext = useMemo(
     () => ({
@@ -427,9 +443,24 @@ function AppShell({
   const isPublicationAdministrator = runtimeMode === "api"
     ? Boolean(apiAuthRoles?.some((role) => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin")))
     : currentRoleId === "admin" || currentRoleId === "platform-admin";
+  const canManageOrganization = canAccessPage(currentRoleId, "user-permissions", { path: "/organization", runtimeMode, permissions: apiAuthPermissions, roles: apiAuthRoles });
   const canManagePublication = runtimeMode === "api"
     ? Boolean(apiAuthRoles?.some((role) => role.projectId === null && role.roleId === "platform-admin"))
     : currentRoleId === "platform-admin";
+  const requiresBusinessScope = runtimeMode === "api" && operatingOrganizationId !== undefined && isOrganizationBusinessPath(path);
+  const scopeEntry = useRef({ active: false, generation: 0 });
+  if (requiresBusinessScope && !scopeEntry.current.active) scopeEntry.current.generation += 1;
+  scopeEntry.current.active = requiresBusinessScope;
+  const businessScopeKey = `${scopeGeneration}:${canManageOrganization}:${canManagePublication}:${scopeEntry.current.generation}`;
+  const [confirmedBusinessScope, setConfirmedBusinessScope] = useState<{ key: string; scope: Awaited<ReturnType<OrganizationWorkspaceClient["enterOperatingContext"]>> } | null>(null);
+  const [failedBusinessScope, setFailedBusinessScope] = useState<string | null>(null);
+  const confirmedScope = confirmedBusinessScope?.key === businessScopeKey ? confirmedBusinessScope.scope : undefined;
+  const businessScopeReady = !requiresBusinessScope || Boolean(confirmedScope);
+  const handleBusinessScopeResolved = useCallback((scope: Awaited<ReturnType<OrganizationWorkspaceClient["enterOperatingContext"]>>) => {
+    setConfirmedBusinessScope({ key: businessScopeKey, scope });
+    setFailedBusinessScope(null);
+  }, [businessScopeKey]);
+  const handleBusinessScopeError = useCallback((failed: boolean) => setFailedBusinessScope(failed ? businessScopeKey : null), [businessScopeKey]);
   const visibleWorkflows = WORKFLOW_IDS.filter((id) =>
     (isPublicationAdministrator || publication.status === "ready" && publication.publication?.workflows[id] === true) &&
     navigationItems.some((item) => workflowForGroup(item.group) === id && canAccessPage(currentRoleId, item.key))
@@ -526,17 +557,19 @@ function AppShell({
       return;
     }
     // Admin-only endpoint; non-admins must not probe it (browser diagnostics treat 403 as failure).
-    const canListInitReviews =
-      apiAuthPermissions.includes("admin:access") || canPerform(migrateLegacyRoleId(stateRef.current.activeRoleId), "admin.access");
+    const canListInitReviews = apiAuthPermissions.includes("admin:access")
+      && stateRef.current.users.some((user) => user.id === stateRef.current.currentUserId && user.isActive);
     if (!canListInitReviews) {
       return;
     }
     try {
       const pending = await parameterInitializationRepositoryClient.listPendingReviews();
+      if (initializationScope.current.generation !== initializationGeneration) return;
       const drafts: ProjectParameterInitializationDraft[] = [];
       const statuses: Record<string, ProjectInitializationStatus> = {};
       for (const review of pending) {
         const stateDto = await parameterInitializationRepositoryClient.getInitialization(review.projectId);
+        if (initializationScope.current.generation !== initializationGeneration) return;
         statuses[review.projectId] = stateDto.status;
         if (stateDto.draft) {
           drafts.push(toLegacyInitializationDraft(stateDto.draft));
@@ -558,7 +591,7 @@ function AppShell({
       // Background hydrate must not toast — API-mode unit tests and non-review
       // pages would otherwise accumulate spurious "无法刷新…" notifications.
     }
-  }, [apiAuthPermissions, parameterInitializationRepositoryClient, runtimeMode]);
+  }, [apiAuthPermissions, initializationGeneration, parameterInitializationRepositoryClient, runtimeMode]);
 
   const hydratedParameterScope = useRef<number | null>(null);
   const hydrateActiveProjectInitialization = useCallback(
@@ -568,12 +601,13 @@ function AppShell({
       }
       try {
         const stateDto = await parameterInitializationRepositoryClient.getInitialization(projectId);
+        if (initializationScope.current.generation !== initializationGeneration) return;
         dispatch({
           type: "HYDRATE_PROJECT_INITIALIZATION_STATUS",
           projectId,
           status: stateDto.status
         });
-        if (stateDto.draft) {
+        if (stateDto.draft && apiAuthPermissions.includes("admin:access")) {
           const legacyDraft = toLegacyInitializationDraft(stateDto.draft);
           const without = stateRef.current.parameterInitializationDrafts.filter(
             (draft) => draft.projectId !== projectId
@@ -587,7 +621,7 @@ function AppShell({
         // Keep local status when the project is unavailable or unauthorized.
       }
     },
-    [parameterInitializationRepositoryClient, runtimeMode]
+    [apiAuthPermissions, initializationGeneration, parameterInitializationRepositoryClient, runtimeMode]
   );
 
   const initializationCreatedProjectIds = useRef(new Set<string>());
@@ -688,6 +722,11 @@ function AppShell({
   );
 
   const hydrateAuthContext = useCallback((context: AuthContextDto) => {
+    initializationScope.current.generation += 1;
+    const authKey = JSON.stringify([context.user.id, context.user.isActive, context.organization.id, context.roles, context.permissions]);
+    const clearInitialization = initializationAuth.current !== authKey;
+    initializationAuth.current = authKey;
+    if (clearInitialization) initializationCreatedProjectIds.current.clear();
     const primaryRole = pickPrimaryPlatformRoleId(context.roles.map((role) => role.roleId));
     setApiAuthPermissions(context.permissions);
     setApiAuthRoles(context.roles);
@@ -697,6 +736,8 @@ function AppShell({
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
       roleId: primaryRole,
+      canReadParameterInitialization: context.user.isActive && context.permissions.includes("admin:access"),
+      clearParameterInitialization: clearInitialization,
       user: {
         id: context.user.id,
         name: context.user.name,
@@ -733,6 +774,8 @@ function AppShell({
     dashboardDispatch({ type: "DASHBOARD_HOTSPOTS_LOADING" });
     dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", projects: [], parameters: [], changeRequests: [], parameterSubmissionRounds: [], parameterDrafts: [] });
     dispatch({ type: "HYDRATE_LOG_RUNTIME", logs: [] });
+    dispatch({ type: "CLEAR_PARAMETER_INITIALIZATION" });
+    initializationCreatedProjectIds.current.clear();
   }, [runtimeMode, apiAuthStatus, scopeGeneration]);
 
   const refreshApiRuntimeData = useCallback(
@@ -798,31 +841,36 @@ function AppShell({
   }, [state]);
 
   useEffect(() => {
-    if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
+    if ((runtimeMode === "api" && apiAuthStatus !== "authenticated") || !businessScopeReady || !apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
       return;
     }
-    const urlProjectId = page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
-      ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") : null;
-    const projectId = urlProjectId || state.activeProjectId;
-    if (!projectId) {
+    const params = new URLSearchParams(search);
+    const urlProjectId = page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions" || page.key === "parameter-changes"
+      ? params.get("project") ?? params.get("projectId") : null;
+    const projectId = page.key === "parameter-changes" ? urlProjectId ?? state.activeProjectId : urlProjectId || state.activeProjectId;
+    if (!projectId || (page.key === "parameter-changes" && !state.configDraft.projects.some((project) => project.id === projectId))) {
       return;
     }
     void hydrateActiveProjectInitialization(projectId);
   }, [
     apiRuntimeSynced,
+    apiAuthStatus,
+    businessScopeReady,
     apiRuntimeFailures,
     hydrateActiveProjectInitialization,
     page.key,
+    runtimeMode,
     search,
+    state.configDraft.projects,
     state.activeProjectId
   ]);
 
   useEffect(() => {
-    if (runtimeMode !== "api" || apiAuthStatus !== "authenticated" || page.key === "home") {
+    if (runtimeMode !== "api" || apiAuthStatus !== "authenticated" || !businessScopeReady || page.key === "home") {
       return;
     }
     void refreshParameterInitializationFromApi();
-  }, [apiAuthStatus, page.key, refreshParameterInitializationFromApi, runtimeMode]);
+  }, [apiAuthStatus, businessScopeReady, page.key, refreshParameterInitializationFromApi, runtimeMode]);
 
   useEffect(() => {
     pageKeyRef.current = page.key;
@@ -832,6 +880,7 @@ function AppShell({
     if (
       runtimeMode !== "api" ||
       apiAuthStatus !== "authenticated" ||
+      !businessScopeReady ||
       page.key === "home" ||
       domainDataHydratedRef.current
     ) {
@@ -839,7 +888,7 @@ function AppShell({
     }
     domainDataHydratedRef.current = true;
     void refreshApiRuntimeData();
-  }, [apiAuthStatus, page.key, refreshApiRuntimeData, runtimeMode]);
+  }, [apiAuthStatus, businessScopeReady, page.key, refreshApiRuntimeData, runtimeMode]);
 
   useEffect(() => {
     writeSidebarCollapsedPreference(sidebarCollapsed);
@@ -910,10 +959,12 @@ function AppShell({
       const applyNavigation = () => {
         historyIndex.current = nextIndex;
         if (isStaticDownloadPath(window.location.pathname)) return;
+        const normalized = normalizeLegacyChangeHref(window.location.pathname, window.location.search, window.location.hash);
+        if (normalized) window.history.replaceState(window.history.state, "", normalized);
         const nextPage = getPageByPath(window.location.pathname);
         const nextSearch = window.location.pathname === "/log-dashboard" ? "" : window.location.search;
         if (nextPage.path !== window.location.pathname) {
-          window.history.replaceState({ ...window.history.state, wiseeffNavigationIndex: nextIndex }, "", `${nextPage.path}${nextSearch}`);
+          window.history.replaceState({ ...window.history.state, wiseeffNavigationIndex: nextIndex }, "", `${nextPage.path}${nextSearch}${window.location.hash}`);
         }
         setPath(nextPage.path);
         setSearch(nextSearch);
@@ -960,7 +1011,9 @@ function AppShell({
 
   const navigate = useCallback((nextPath: string, options?: { replace?: boolean }) => {
     const request = ++navigationRequest.current;
-    const url = new URL(nextPath, window.location.origin);
+    let url = new URL(nextPath, window.location.origin);
+    const normalized = normalizeLegacyChangeHref(url.pathname, url.search, url.hash);
+    if (normalized) url = new URL(normalized, window.location.origin);
     if (isStaticDownloadPath(url.pathname)) {
       const decision = requestSettingsLeave();
       if (decision instanceof Promise) void decision.then((allowed) => { if (allowed && request === navigationRequest.current) window.location.assign(url.href); });
@@ -969,8 +1022,8 @@ function AppShell({
     }
     const nextPage = getPageByPath(url.pathname);
     if (url.pathname === "/log-dashboard") url.search = "";
-    const nextUrl = `${nextPage.path}${url.search}`;
-    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    const nextUrl = `${nextPage.path}${url.search}${url.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
     if (nextUrl === currentUrl) {
       setPath(nextPage.path);
@@ -988,6 +1041,14 @@ function AppShell({
     if (decision instanceof Promise) void decision.then((allowed) => { if (allowed && request === navigationRequest.current) applyNavigation(); });
     else if (decision) applyNavigation();
   }, []);
+
+  useEffect(() => {
+    if (page.key !== "user-permissions" || canManageOrganization || (runtimeMode === "api" && apiAuthStatus !== "authenticated")) return;
+    window.history.replaceState(null, "", "/parameter-home");
+    setPath("/parameter-home");
+    setSearch("");
+    dispatch({ type: "ADD_NOTIFICATION", message: "该页面不可访问，已返回工作台。" });
+  }, [page.key, canManageOrganization, runtimeMode, apiAuthStatus]);
 
   const retryAuthProbe = useCallback(() => {
     setApiAuthStatus("checking");
@@ -1079,6 +1140,10 @@ function AppShell({
       // A failed server-side logout must not trap the user in the app;
       // always clear the local session and return to the login screen.
     }
+    initializationScope.current.generation += 1;
+    initializationAuth.current = null;
+    initializationCreatedProjectIds.current.clear();
+    dispatch({ type: "CLEAR_PARAMETER_INITIALIZATION" });
     clearLocalAuthToken();
     clearSessionDraftsForLogout();
     setApiAuthRoles(null);
@@ -1169,12 +1234,13 @@ function AppShell({
   const pageRuntimeDomain: ApiRuntimeDataDomain | null = !canAccessCurrentPage || page.path === "/parameters/definitions" ? null : page.group === "参数管理" || page.key === "dts-reload"
     ? "parameters"
     : page.group === "日志分析" ? "logs" : page.group === "调试平台" && page.key !== "debugging-admin" ? "debugging" : null;
-  const pageRuntimeState = runtimeMode !== "api" || !pageRuntimeDomain
-    ? "ready"
+  const pageRuntimeState = runtimeMode !== "api" ? "ready"
+    : !businessScopeReady ? failedBusinessScope === businessScopeKey ? "error" : "loading"
+    : !pageRuntimeDomain ? "ready"
     : apiRuntimePending.has(pageRuntimeDomain) ? "loading" : apiRuntimeFailures.has(pageRuntimeDomain) ? "error" : "ready";
-  const loadingProjectParameters = page.key === "parameters" && pageRuntimeState === "loading";
+  const loadingProjectParameters = businessScopeReady && page.key === "parameters" && pageRuntimeState === "loading";
   const apiRuntimeStatusBanner =
-    pageRuntimeState === "error" && pageRuntimeDomain ? (
+    !businessScopeReady ? null : pageRuntimeState === "error" && pageRuntimeDomain ? (
       <div className="api-runtime-error-banner" role="alert" aria-live="assertive">
         <AlertTriangle size={18} aria-hidden="true" />
         <div className="api-runtime-error-banner__body">
@@ -1210,7 +1276,10 @@ function AppShell({
             activeSearch={search}
             operatingOrganizationId={operatingOrganizationId}
             currentRoleId={currentRoleId}
+            runtimeMode={runtimeMode}
+            projectMemberships={apiProjectMemberships}
             visibleWorkflows={visibleWorkflows}
+            canManageOrganization={canManageOrganization}
             canManagePublication={canManagePublication}
             isCollapsed={effectiveSidebarCollapsed}
             onNavigate={navigateFromSidebar}
@@ -1251,7 +1320,7 @@ function AppShell({
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
           {isPlatformHome ? (
             <div className="main-content home-content" data-runtime-state="ready">
-              <OrganizationBusinessWorkspace proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+              <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} initialScope={requiresBusinessScope ? confirmedScope : undefined} onScopeResolved={requiresBusinessScope ? handleBusinessScopeResolved : undefined} onScopeError={requiresBusinessScope ? handleBusinessScopeError : undefined} onNavigate={navigate}>
               <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                 page={page}
                 publication={publication}
@@ -1306,7 +1375,7 @@ function AppShell({
               {publicationPreviewBanner}
               {loadingProjectParameters ? <ProjectParametersLoading /> : null}
               <div className="page-content" inert={pageRuntimeState === "loading"} hidden={loadingProjectParameters}>
-                <OrganizationBusinessWorkspace proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} onNavigate={navigate}>
+                <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} initialScope={requiresBusinessScope ? confirmedScope : undefined} onScopeResolved={requiresBusinessScope ? handleBusinessScopeResolved : undefined} onScopeError={requiresBusinessScope ? handleBusinessScopeError : undefined} onNavigate={navigate}>
                 <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                   page={page}
                   publication={publication}
@@ -1360,7 +1429,7 @@ function AppShell({
           </div>
         ) : null}
       </div>
-      {runtimeMode === "api" && !isPlatformHome && canAccessCurrentPage ? (
+      {runtimeMode === "api" && businessScopeReady && !isPlatformHome && canAccessCurrentPage ? (
         <XiaozePageContextRegistrar
           path={path}
           pageKey={page.key}
@@ -1393,7 +1462,7 @@ function AppShell({
 
   return runtimeMode === "api" ? (
     <XiaozePageContext.Provider value={xiaozePageContext}>
-      <XiaozeProvider enableInspector={enableXiaozeInspector} userId={state.currentUserId} organizationId={operatingOrganizationId} homeOrganizationId={organizationId} permissions={apiAuthPermissions}>{appShell}</XiaozeProvider>
+      <XiaozeProvider enabled={businessScopeReady} enableInspector={enableXiaozeInspector} userId={state.currentUserId} organizationId={operatingOrganizationId} homeOrganizationId={organizationId} permissions={apiAuthPermissions}>{appShell}</XiaozeProvider>
     </XiaozePageContext.Provider>
   ) : (
     appShell
@@ -1405,7 +1474,10 @@ function Sidebar({
   activeSearch,
   operatingOrganizationId,
   currentRoleId,
+  runtimeMode,
+  projectMemberships,
   visibleWorkflows,
+  canManageOrganization,
   canManagePublication,
   isCollapsed,
   onNavigate,
@@ -1416,7 +1488,10 @@ function Sidebar({
   activeSearch: string;
   operatingOrganizationId?: string;
   currentRoleId: string;
+  runtimeMode: string;
+  projectMemberships: AuthContextDto["projectMemberships"];
   visibleWorkflows: readonly WorkflowId[];
+  canManageOrganization: boolean;
   canManagePublication: boolean;
   isCollapsed: boolean;
   onNavigate: (path: string) => void;
@@ -1424,14 +1499,14 @@ function Sidebar({
   onFeedback: () => void;
 }) {
   const activePageKey = getPageByPath(activePath).key;
-  const projectRoutes = ["/parameters", "/parameter-review", "/parameter-submissions"];
+  const projectRoutes = ["/parameters", "/parameter-review", "/parameter-submissions", "/parameter-changes"];
   const params = new URLSearchParams(activeSearch);
   const projectId = projectRoutes.includes(activePath) ? params.get("project") || params.get("projectId") : null;
   const compactHeight = useMediaQuery("(max-height: 820px)");
   const [managementOpen, setManagementOpen] = useState(false);
   useEffect(() => setManagementOpen(false), [compactHeight, isCollapsed]);
   const visibleNavigationItems = navigationItems.filter(
-    (item) => item.key !== "parameter-submissions" && canAccessPage(currentRoleId, item.key) && isDiscoveryGroupVisible(item.group, visibleWorkflows)
+    (item) => canAccessPage(currentRoleId, item.key, { path: item.path, runtimeMode, projectMemberships }) && isDiscoveryGroupVisible(item.group, visibleWorkflows)
   );
   const groups = visibleNavigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
     acc[item.group] = [...(acc[item.group] ?? []), item];
@@ -1442,6 +1517,7 @@ function Sidebar({
   const visibleUtilityItems = utilityItems.map(item => ({ ...item,
     path: item.path === "/organization" && canManagePublication ? "/platform/organizations" : item.path
   })).filter((item) => item.path &&
+    (item.path !== "/organization" || canManageOrganization) &&
     canAccessPage(currentRoleId, getPageByPath(item.path).key) &&
     ((item.path !== "/workflow-publication" && item.path !== "/platform/organizations") || canManagePublication));
   const activeManagementItem = visibleUtilityItems.find((item) => item.path && (getPageByPath(item.path).key === activePageKey
@@ -1514,7 +1590,8 @@ function Sidebar({
               <div className="nav-group-label">{group}</div>
               {items.map((item) => {
                 const Icon = item.icon;
-                const isActive = item.key === activePageKey && (item.key !== "parameters" || item.path === activePath);
+                const isActive = (item.key === activePageKey && (item.key !== "parameters" || item.path === activePath))
+                  || (item.key === "parameter-changes" && (activePageKey === "parameter-review" || activePageKey === "parameter-submissions"));
                 const href = withBusinessOrganizationScope(projectId && projectRoutes.includes(item.path) ? `${item.path}?project=${encodeURIComponent(projectId)}` : item.path, operatingOrganizationId);
                 return (
                   <Tooltip key={item.path}>
@@ -1625,12 +1702,18 @@ function TopBar({
   const visibleUserName = currentUser?.name ?? "账户信息暂不可用";
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =
-    page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
+    page.key === "parameter-changes" ? new URLSearchParams(search).get("project") ?? new URLSearchParams(search).get("projectId") ?? state.activeProjectId
+      : page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions"
       ? new URLSearchParams(search).get("project") || new URLSearchParams(search).get("projectId") || state.activeProjectId : state.activeProjectId;
   const commitProjectChange = (projectId: string) => {
     dispatch({ type: "SET_PROJECT", projectId });
 
-    if (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions") {
+    if (page.key === "parameter-changes") {
+      const params = new URLSearchParams(window.location.search);
+      params.set("project", projectId);
+      params.delete("projectId"); params.delete("request"); params.delete("legacyRequest"); params.delete("memberRequest");
+      onNavigate(`/parameter-changes?${params.toString()}`);
+    } else if (page.key === "parameters" || page.key === "parameter-review" || page.key === "parameter-submissions") {
       onNavigate(`/${page.key}?project=${encodeURIComponent(projectId)}`);
     }
   };
@@ -2143,7 +2226,7 @@ export function ProfileDialog({
               <span className="eyebrow">账号</span>
               <h2 id={titleId}>个人资料</h2>
               <p>{userAccountIdentifier(user)}</p>
-              {provider === "oidc" ? <p className="auth-field-hint">登录标识由组织身份提供方管理。姓名和职务仅更新雷泽中的显示资料。</p> : null}
+              {provider === "oidc" ? <p className="auth-field-hint">登录标识由身份提供方管理。姓名和职务仅更新雷泽中的显示资料。</p> : null}
             </header>
             <label>
               <span>姓名</span>
@@ -2165,8 +2248,8 @@ export function ProfileDialog({
           </form>
           {capabilityError ? <div role="alert" className="auth-error">无法确认密码修改能力，个人资料仍可保存。<button type="button" className="button ghost" onClick={() => setCapabilityAttempt((value) => value + 1)}>重试账号能力</button></div>
             : !provider ? <p role="status" className="auth-field-hint">正在确认账号能力…</p>
-            : provider === "oidc" ? <p className="auth-field-hint">密码由组织身份提供方管理，请在组织身份系统中修改。</p>
-            : provider !== "local" ? <p className="auth-field-hint">当前登录方式不提供本地密码修改，请联系组织管理员。</p> : null}
+            : provider === "oidc" ? <p className="auth-field-hint">密码由身份提供方管理，请在身份系统中修改。</p>
+            : provider !== "local" ? <p className="auth-field-hint">当前登录方式不提供本地密码修改，请联系管理员。</p> : null}
           {provider === "local" && onChangePassword ? (
             <form className="profile-dialog__password" onSubmit={submitPassword} aria-labelledby="profile-password-title">
               <h3 id="profile-password-title">修改密码</h3>

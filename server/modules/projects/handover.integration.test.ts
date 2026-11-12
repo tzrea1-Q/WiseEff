@@ -106,6 +106,11 @@ describe("project business handover (real HTTP/PostgreSQL)", () => {
     expect(review).toMatchObject({ kind: "value-review", pending: true, responsibleUserId: "handover-reviewer" });
     const reassigned = await api(`organization/project-handovers/value-review/${review.id}`, "PATCH", { responsibleUserId: "handover-admin", expectedVersion: review.version });
     expect(reassigned.status, reassigned.bodyText).toBe(200);
+    const notifications = await api<{ items: Array<{ actionUrl: string }> }>("notifications", "GET", undefined, "admin");
+    expect(notifications.status, notifications.bodyText).toBe(200);
+    expect(notifications.body.items).toContainEqual(expect.objectContaining({
+      actionUrl: `/parameter-changes?scope=review&project=handover-project&request=${encodeURIComponent(review.id)}`
+    }));
     const approved = await api(`/api/v2/projects/handover-project/parameter-value-change-requests/${review.id}/review`, "POST", { decision: "approve" }, "admin");
     expect(approved.status, approved.bodyText).toBe(200);
   });

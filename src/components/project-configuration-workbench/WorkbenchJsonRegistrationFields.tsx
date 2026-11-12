@@ -82,7 +82,7 @@ export function WorkbenchJsonRegistrationFields({ projectId, file, existingFile,
     <SelectControl ariaLabel="配置规范" value={value.configurationSchemaId} disabled={specLoading} placeholder="选择配置规范"
       options={[{ value: "", label: "不登记参数" }, ...specs.map((item) => ({ value: item.canonicalName, label: item.canonicalName }))]}
       onValueChange={(configurationSchemaId) => onChange({ configurationSchemaId, mappings: configurationSchemaId ? [{ definitionId: "", pointer: null }] : [] })} />
-    {specLoading ? <p role="status">正在加载配置规范…</p> : specError ? <p role="alert">{specError}</p> : !specs.length ? <p role="status">当前组织没有可用的配置规范。</p> : null}
+    {specLoading ? <p role="status">正在加载配置规范…</p> : specError ? <p role="alert">{specError}</p> : !specs.length ? <p role="status">当前没有可用的配置规范。</p> : null}
     {value.configurationSchemaId ? <>
       {definitionLoading || pathLoading ? <p role="status">正在加载参数定义与 JSON 字段…</p> : null}
       {pathError ? <p role="alert">{pathError}</p> : null}

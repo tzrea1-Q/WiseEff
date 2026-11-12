@@ -52,7 +52,7 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   if (state === "loading" || (loaded && (loaded.repository !== repository || loaded.context !== readContext))) return <SectionSkeleton label="正在读取当前项目配置" />;
   const result = loaded?.data;
   if (state === "forbidden") return <SectionError message="没有权限读取当前项目配置。" onRetry={() => setRetry((value) => value + 1)} />;
-  if (state === "invalid-filter") return <div role="alert"><p>所选项目或配置集在当前组织中不可用。</p>
+  if (state === "invalid-filter") return <div role="alert"><p>所选项目或配置集在当前可查看范围内不可用。</p>
     <button type="button" className="button subtle sm" onClick={() => onChange({ configProjectId: null, configSetId: null, instanceCursor: null })}>重置项目和配置集</button></div>;
   if (state === "stale" || state === "missing") return <div role="alert">
     <p>{state === "stale" ? "项目配置已变化，请返回第一页重新读取。" : "选中的实例已不可用，请重新选择。"}</p>
@@ -72,7 +72,7 @@ export function ProjectConfigurations({ repository, organizationId, definitionId
   for (const row of result.items) groups.set(row.projectId, [...(groups.get(row.projectId) ?? []), row]);
   return <div className="parameter-library-configurations">
     <div className="parameter-library-configurations__summary">
-      <span>{configSetId ? "所选配置集范围" : projectId ? "所选项目范围" : "当前组织范围"}</span>
+      <span>{configSetId ? "所选配置集范围" : projectId ? "所选项目范围" : "当前可查看范围"}</span>
       <span>已配置项目 {result.summary.configuredProjectCount} · 已配置实例 {result.summary.configuredInstanceCount}</span>
       <span className="parameter-catalog__muted">筛选结果 {result.totalCount} 条（本页 {result.items.length} 条）</span>
     </div>

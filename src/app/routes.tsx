@@ -38,8 +38,7 @@ import { AuditCenterPage } from "@/AuditCenterPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LinearTemplateHome } from "@/linear-template/LinearTemplateHome";
 import { LogsPage } from "@/features/log-analysis/LogsPage";
-import { ParameterReviewPage } from "@/features/parameter-review/ParameterReviewPage";
-import { ParameterSubmissionsPage } from "@/features/parameter-review/ParameterSubmissionsPage";
+import { ParameterChangesPage } from "@/features/parameter-review/ParameterChangesPage";
 import { LogAdminPage } from "@/LogAdminPage";
 import { SkillWorkspace } from "@/features/log-skills/SkillWorkspace";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
@@ -117,6 +116,8 @@ export type PageProps = {
   sessionPermissions?: readonly string[] | null;
   sessionRoles?: readonly AuthContextDto["roles"][number][] | null;
   projectMemberships?: AuthContextDto["projectMemberships"];
+  onBusyChange?: (busy: boolean) => void;
+  scopeToProject?: boolean;
 };
 
 /**
@@ -363,29 +364,22 @@ export function PageRouter({
           runtimeMode={runtimeMode}
         />
       );
-    case "parameter-submissions":
-      return (
-        <ParameterSubmissionsPage
-          state={state}
-          dispatch={dispatch}
-          onNavigate={onNavigate}
-          search={search}
-          parameterActions={parameterActions}
-          runtime={runtime}
-          runtimeMode={runtimeMode}
-        />
-      );
+    case "parameter-changes":
+      return <ParameterChangesPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search}
+        parameterActions={parameterActions} runtime={runtime} runtimeMode={runtimeMode} sessionPermissions={sessionPermissions}
+        sessionRoles={sessionRoles} projectMemberships={projectMemberships} />;
     case "parameter-home":
       return (
         <ParameterHomePage
           state={state}
+          canManageOrganization={canAccessPage(currentRoleId, "user-permissions", { path: "/organization", runtimeMode: runtimeMode ?? "mock", permissions: sessionPermissions, roles: sessionRoles })}
           dashboardState={dashboardState!}
           dashboardRuntime={dashboardRuntime!}
           onDashboardWindowChange={onDashboardWindowChange!}
           onDashboardDimensionChange={onDashboardDimensionChange!}
           onDashboardOverviewScopeChange={onDashboardOverviewScopeChange!}
           onDashboardProjectChange={onDashboardProjectChange!}
-          onNavigate={onNavigate}
+          onNavigate={navigateParameters}
           onNewProject={onNewProject}
         />
       );
@@ -397,18 +391,6 @@ export function PageRouter({
           actionLabel="参数工作台"
           actionPath="/parameters"
           onNavigate={onNavigate}
-        />
-      );
-    case "parameter-review":
-      return (
-        <ParameterReviewPage
-          state={state}
-          dispatch={dispatch}
-          onNavigate={onNavigate}
-          search={search}
-          parameterActions={parameterActions}
-          runtime={runtime}
-          runtimeMode={runtimeMode}
         />
       );
     case "parameter-admin": {
@@ -588,6 +570,7 @@ export function PageRouter({
       return (
         <OrganizationComponent
           workspaceClient={runtime?.organizationWorkspaceClient}
+          onAuthorityLost={onAuthContextRefresh}
           state={state}
           dispatch={dispatch}
           onNavigate={onNavigate}
@@ -603,7 +586,6 @@ export function PageRouter({
             try {
               const context = await runtime!.authClient.getCurrentAuthContext();
               onAuthContextRefresh?.(context);
-              if (!context.permissions.includes("users:manage")) onNavigate("/");
             } catch {
               // The mutation already succeeded; replace stale authority with a fresh login.
               await onEndSession?.();

@@ -3,6 +3,7 @@ import { SearchField } from "@/components/common/SearchField";
 import { RefreshCw, ArrowRight, Inbox, SlidersHorizontal, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PageProps } from "@/app/routes";
+import { canAccessPage } from "@/app/permissions";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
@@ -45,7 +46,7 @@ export type ReviewInboxRow = {
   view: "pending" | "history";
 };
 
-type Props = {
+type Props = Pick<PageProps, "runtimeMode" | "sessionPermissions" | "sessionRoles"> & {
   projectId: string;
   repository?: ParameterCatalogRepository;
   sourceRepository?: ParameterFileRepository;
@@ -66,6 +67,7 @@ type Props = {
   onVisibleLegacyIds?: (ids: string[]) => void;
   onNavigate?: (path: string) => void;
   busy?: boolean;
+  onBusyChange?: (busy: boolean) => void;
 };
 
 const typeLabels = { all: "全部类型", value: "软件配置", source: "DTS 来源修改", member: "配置文件移除", legacy: "参数与节点" };
@@ -74,10 +76,12 @@ const searchProfile: SearchProfile<ReviewInboxRow> = { fields: [
   { name: "context", weight: 2, getValues: (row) => [row.project, row.module, row.submitter, row.assignedTo, row.status] }
 ] };
 
-export function ReviewInbox({ projectId, repository, sourceRepository, state, search, mineOnly = false, canReview = false,
+export function ReviewInbox({ projectId, repository, sourceRepository, state, search, runtimeMode, sessionPermissions, sessionRoles, mineOnly = false, canReview = false,
   legacyRows, renderLegacyDetail, onLegacySelect, renderRowSelection, renderRowTitle, selectAll, queueActions,
-  onRequestsChanged, loading: legacyLoading = false, error: legacyError, onVisibleLegacyIds, onNavigate, busy = false }: Props) {
+  onRequestsChanged, loading: legacyLoading = false, error: legacyError, onVisibleLegacyIds, onNavigate, busy = false, onBusyChange }: Props) {
   const [query, setQuery] = useState(search);
+  const canManageOrganization = canAccessPage(state.activeRoleId, "user-permissions", { path: "/organization",
+    runtimeMode: runtimeMode ?? "mock", permissions: sessionPermissions, roles: sessionRoles });
   const [refresh, setRefresh] = useState(0);
   const identityScope = useMemo(() => ({ repository, sourceRepository, projectId, mineOnly, canReview, userId: state.currentUserId, roleId: state.activeRoleId }),
     [repository, sourceRepository, projectId, mineOnly, canReview, state.currentUserId, state.activeRoleId]);
@@ -97,6 +101,7 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
   const [detailRefresh, setDetailRefresh] = useState(0);
   const [detailBusy, setDetailBusy] = useState(false);
   const interactionBusy = busy || detailBusy;
+  useEffect(() => { onBusyChange?.(interactionBusy); }, [interactionBusy, onBusyChange]);
   const tabsId = useId();
   const queueRef = useRef<HTMLElement>(null);
   const detailRef = useRef<HTMLElement>(null);
@@ -108,7 +113,7 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
   const requestedKind = params.has("legacyRequest") ? "legacy" : params.has("memberRequest") ? "member" : null;
   const writeQuery = useCallback((next: URLSearchParams, replace = false) => {
     const value = next.toString();
-    window.history[replace ? "replaceState" : "pushState"](null, "", `${window.location.pathname}${value ? `?${value}` : ""}`);
+    window.history[replace ? "replaceState" : "pushState"](null, "", `${window.location.pathname}${value ? `?${value}` : ""}${window.location.hash}`);
     setQuery(value);
   }, []);
 
@@ -387,7 +392,7 @@ export function ReviewInbox({ projectId, repository, sourceRepository, state, se
       <p className="review-inbox__detail-context sr-only">{selected.project} · {selected.typeLabel ?? typeLabels[selected.kind]}</p>
       {selected.kind === "source" && sourceRepository ? <SourceRevisionReviewPanel key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.id])}
         projectId={projectId} requestId={selected.id} repository={sourceRepository} currentUserId={state.currentUserId} canReview={canReview}
-        refreshVersion={detailRefresh} onRequestsChanged={changed} onBusyChange={setDetailBusy} />
+        canViewOrganization={canManageOrganization} refreshVersion={detailRefresh} onRequestsChanged={changed} onBusyChange={setDetailBusy} />
       : selected.kind === "legacy" ? renderLegacyDetail(selected) : selected.kind === "value" ? <CanonicalProjectValueReviewPanel
         key={JSON.stringify([projectId, state.currentUserId, state.activeRoleId, mineOnly, canReview, selected.kind, selected.id])} refreshVersion={detailRefresh} projectId={projectId} repository={repository} currentUserId={state.currentUserId} canReview={canReview}
         mineOnly={mineOnly} initialRequestId={selected.id} detailOnly externalView={view} users={state.users} parameters={state.parameters} onRequestsChanged={changed} onBusyChange={setDetailBusy}

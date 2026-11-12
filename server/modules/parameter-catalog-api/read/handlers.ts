@@ -48,6 +48,8 @@ import {
   asDefinitionId,
   asSubjectId,
   catalogPageLimit,
+  currentLibraryDefinitionIds,
+  currentLibrarySubjectIds,
   defaultDefinitionLifecycles,
   defaultSubjectLifecycles,
   fingerprintIdSelection,
@@ -138,7 +140,7 @@ function hiddenId(selection: { kind: "all" } | { kind: "only"; ids: readonly str
 async function resolvePlacementSelection(
   ports: CatalogReadPorts,
   scope: TrustedCatalogScope,
-  query: { readonly placementModuleId?: string; readonly placementScope?: "library" },
+  query: { readonly placementModuleId?: string; readonly placementScope?: "library"; readonly view?: "library" },
   snapshot: CatalogSnapshot,
   lifecycles: readonly SubjectLifecycle[],
 ): Promise<
@@ -152,7 +154,7 @@ async function resolvePlacementSelection(
     organizationId: scope.organizationId,
     principalId: scope.principalId,
     moduleId: query.placementModuleId,
-    includeRetired: query.placementScope === "library",
+    includeRetired: query.placementScope === "library" && query.view !== "library",
   });
   const allowed = scope.subjects.kind === "all" ? null : new Set<string>(scope.subjects.ids);
   const subjectIds = allowed
@@ -230,6 +232,27 @@ function catalogDefinitionIndex(
     return [];
   }
   return result.page.items.map((item) => ({ id: item.id, subjectId: item.subjectId }));
+}
+
+/** Restrict the business library before the kernel counts or pages results. */
+async function currentLibraryScope(snapshot: CatalogSnapshot, ports: CatalogReadPorts, scope: TrustedCatalogScope): Promise<TrustedCatalogScope> {
+  const subjects = snapshot.listSubjects({ selection: { kind: "all" }, kinds: [], lifecycles: ["active"],
+    search: absent, page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent } });
+  if (subjects.status !== "found" || subjects.page.next.kind !== "absent" || subjects.page.pageInfo.hasMore)
+    throw new CatalogProjectionError({ kind: "query-unavailable", operation: "currentLibrarySubjects" });
+  const eligible = await ports.registration.selectSubjectIds({ organizationId: scope.organizationId,
+    principalId: scope.principalId, registration: "not-retired", catalogSubjectIds: subjects.page.items.map((item) => item.id) });
+  const subjectIds = currentLibrarySubjectIds(subjects.page.items, eligible, scope.subjects);
+  const definitions = snapshot.listDefinitions({ selection: scope.definitions, scope: { kind: "all" },
+    lifecycles: ["active", "deprecated"], propertyKey: absent, search: absent,
+    page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent } });
+  if ((definitions.status !== "found" && definitions.status !== "retired")
+    || definitions.page.next.kind !== "absent" || definitions.page.pageInfo.hasMore)
+    throw new CatalogProjectionError({ kind: "query-unavailable", operation: "currentLibraryDefinitions" });
+  const definitionIds = currentLibraryDefinitionIds(definitions.page.items, subjectIds);
+  return { ...scope,
+    subjects: { kind: "only", ids: subjectIds, fingerprint: fingerprintIdSelection(subjectIds) },
+    definitions: { kind: "only", ids: definitionIds, fingerprint: fingerprintIdSelection(definitionIds) } };
 }
 
 function observedPin(snapshot: CatalogSnapshot) {
@@ -415,14 +438,13 @@ async function handleListSubjects(
   for (const subject of result.page.items) {
     const projection = projections.get(subject.id);
     if (!projection) return catalogNotReady(request.requestId);
-    items.push(
-      mapCatalogSubject(subject, projection.registration, {
-        organizationOwnership: snapshot.snapshotKind === "current",
-        reviewCount: projection.reviewCount,
-        availableActions:
-          !subject.owner && projection.registration.status === "unregistered" && scope.canRegister ? ["register"] : [],
-      }),
-    );
+    const mapped = mapCatalogSubject(subject, projection.registration, {
+      organizationOwnership: snapshot.snapshotKind === "current",
+      reviewCount: projection.reviewCount,
+      availableActions:
+        !subject.owner && projection.registration.status === "unregistered" && scope.canRegister ? ["register"] : [],
+    });
+    items.push(parsed.query.view === "library" ? { ...mapped, definitionCounts: { ...mapped.definitionCounts, retired: 0 } } : mapped);
   }
   const extraFiltered = Boolean(
     parsed.query.type ||
@@ -473,15 +495,14 @@ async function handleGetSubject(
     canRegister: scope.canRegister,
     observedRelease: observedPin(snapshot),
   });
+  const mapped = mapCatalogSubject(subject, projection.registration, {
+    organizationOwnership: snapshot.snapshotKind === "current",
+    reviewCount: projection.reviewCount,
+    availableActions:
+      !subject.owner && projection.registration.status === "unregistered" && scope.canRegister ? ["register"] : [],
+  });
   return catalogReadOk(
-    {
-      item: mapCatalogSubject(subject, projection.registration, {
-        organizationOwnership: snapshot.snapshotKind === "current",
-        reviewCount: projection.reviewCount,
-        availableActions:
-          !subject.owner && projection.registration.status === "unregistered" && scope.canRegister ? ["register"] : [],
-      }),
-    },
+    { item: queryValue(request.query, "view") === "library" ? { ...mapped, definitionCounts: { ...mapped.definitionCounts, retired: 0 } } : mapped },
     snapshot.release.id,
     request.requestId,
   );
@@ -818,9 +839,19 @@ export async function handleCatalogRead(
   ports: CatalogReadPorts,
   rawRequest: CatalogReadRequest,
 ): Promise<CatalogReadResponse> {
+  const libraryView = queryValue(rawRequest.query, "view") === "library";
+  if (queryValue(rawRequest.query, "view") !== undefined && !libraryView) return validationFailed(rawRequest.requestId, "view");
+  const headers = stripSpoofHeaders(rawRequest.headers);
+  const query = { ...rawRequest.query };
+  if (libraryView) {
+    delete query.catalogReleaseId;
+    delete query.catalogReleaseDigest;
+    for (const key of Object.keys(headers)) if (key.toLowerCase() === CATALOG_RELEASE_HEADER.toLowerCase()) delete headers[key];
+  }
   const request: CatalogReadRequest = {
     ...rawRequest,
-    headers: stripSpoofHeaders(rawRequest.headers),
+    query,
+    headers,
   };
   const matched = matchCatalogReadRoute(request.path);
   if (!matched || rawRequest.method !== "GET") {
@@ -848,32 +879,34 @@ export async function handleCatalogRead(
   const scopedRequest = { ...request, params: { ...request.params, ...matched.params } };
 
   try {
-    const snapshot = loaded.snapshot.snapshotKind === "current" && ORGANIZATION_RECOGNITION_ROUTES.has(matched.id)
+    const snapshot = loaded.snapshot.snapshotKind === "current" && (ORGANIZATION_RECOGNITION_ROUTES.has(matched.id) || (libraryView && matched.id !== "catalog.get"))
       && ports.projectOrganizationRecognition
       ? await ports.projectOrganizationRecognition(auth.scope.organizationId, loaded.snapshot)
       : loaded.snapshot;
+    const scope = libraryView && matched.id !== "catalog.get"
+      ? await currentLibraryScope(snapshot, ports, auth.scope) : auth.scope;
     // Await inside this boundary so asynchronous projection failures use the Catalog contract.
     switch (matched.id) {
       case "catalog.get":
         return await handleGetCatalog(snapshot, facts.facts, request.requestId);
       case "catalog.exportRevisionDocument":
-        return await handleRevisionExport(snapshot, ports, auth.scope, scopedRequest);
+        return await handleRevisionExport(snapshot, ports, scope, scopedRequest);
       case "catalog.listSubjects":
-        return await handleListSubjects(snapshot, ports, auth.scope, scopedRequest);
+        return await handleListSubjects(snapshot, ports, scope, scopedRequest);
       case "catalog.getSubject":
-        return await handleGetSubject(snapshot, ports, auth.scope, scopedRequest);
+        return await handleGetSubject(snapshot, ports, scope, scopedRequest);
       case "catalog.listSubjectDefinitions":
-        return await handleListDefinitions(snapshot, ports, auth.scope, scopedRequest, scopedRequest.params.subjectId);
+        return await handleListDefinitions(snapshot, ports, scope, scopedRequest, scopedRequest.params.subjectId);
       case "catalog.listDefinitions":
-        return await handleListDefinitions(snapshot, ports, auth.scope, scopedRequest);
+        return await handleListDefinitions(snapshot, ports, scope, scopedRequest);
       case "catalog.getDefinition":
-        return await handleGetDefinition(snapshot, ports, auth.scope, scopedRequest);
+        return await handleGetDefinition(snapshot, ports, scope, scopedRequest);
       case "catalog.listDefinitionRevisions":
-        return await handleListRevisions(snapshot, scopedRequest, auth.scope);
+        return await handleListRevisions(snapshot, scopedRequest, scope);
       case "catalog.getDefinitionRevision":
-        return await handleGetRevision(snapshot, scopedRequest, auth.scope);
+        return await handleGetRevision(snapshot, scopedRequest, scope);
       case "catalog.listDefinitionTimeline":
-        return await handleListTimeline(snapshot, ports, auth.scope, scopedRequest);
+        return await handleListTimeline(snapshot, ports, scope, scopedRequest);
       default:
         return notFound(request.requestId, "definition-not-found");
     }

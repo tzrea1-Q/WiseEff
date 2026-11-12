@@ -23,7 +23,7 @@ function setup() {
   const changed = vi.fn(), busy = vi.fn();
   const element = (options: { userId?: string; canReview?: boolean; requestId?: string; refreshVersion?: number } = {}) => <SourceRevisionReviewPanel
     projectId="project" requestId={options.requestId ?? pending.id} repository={repository} currentUserId={options.userId ?? "reviewer"}
-    canReview={options.canReview ?? true} refreshVersion={options.refreshVersion ?? 0} onRequestsChanged={changed} onBusyChange={busy} />;
+    canReview={options.canReview ?? true} canViewOrganization={false} refreshVersion={options.refreshVersion ?? 0} onRequestsChanged={changed} onBusyChange={busy} />;
   return { get, review, withdraw, changed, busy, repository, element };
 }
 

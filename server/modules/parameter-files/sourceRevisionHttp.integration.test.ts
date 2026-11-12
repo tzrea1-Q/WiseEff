@@ -122,6 +122,12 @@ describe("whole-source HTTP through the real API database role", () => {
     expect(pending.preview).toMatchObject({ kind: "source_revision", format: "dts", impact: { parameterChanges: 1 }, reviewers: expect.arrayContaining([{ userId: REVIEWER, name: "Reviewer" }]) });
     const mine = await requestJson<{ items: SourceRevisionRequestDto[] }>(route(), `${path}?mine=true&status=pending`);
     expect(mine.status).toBe(200); expect(mine.body.items.map((item) => item.id)).toContain(pending.id);
+    const scopedMine = await requestJson<{ items: SourceRevisionRequestDto[] }>(route(), `${path}?mine=true&organizationId=${ORG}`);
+    expect(scopedMine.status, scopedMine.bodyText).toBe(200);
+    expect(scopedMine.body.items.map((item) => item.id)).toContain(pending.id);
+    expect((await requestJson(route(), `${path}?mine=true&organizationId=${foreign.organization.id}`)).status).toBe(403);
+    expect((await requestJson(route(foreign), `${path}?mine=true&organizationId=${ORG}`)).status).toBe(403);
+    expect((await requestJson(route(), `${path}?mine=true&organizationId=${ORG}&unknown=value`)).status).toBe(400);
     const detail = await requestJson<{ item: SourceRevisionRequestDto }>(route(reviewer), `${path}/${pending.id}`);
     expect(detail.status).toBe(200); expect(detail.body.item).toMatchObject({ before: source, after: pending.text });
     expect((await post(`${path}/${pending.id}/review`, { decision: "approve", proofDigest: pending.proofDigest }, author)).status).toBe(403);
@@ -440,6 +446,12 @@ describe("whole-source HTTP through the real API database role", () => {
       return { id: submitted.body.item.requestId, digest: preview.body.item.proofToken };
     }
     const pending = await targetPending("cross-organization-approval");
+    const platformMine = await scoped<{ items: SourceRevisionRequestDto[] }>(`${path}?mine=true`);
+    expect(platformMine.status, platformMine.bodyText).toBe(200);
+    expect(platformMine.body.items.map(item => item.id)).toContain(pending.id);
+    const targetQueue = await scoped<{ items: SourceRevisionRequestDto[] }>(`${path}?status=pending`, undefined, REVIEWER, ORG);
+    expect(targetQueue.status, targetQueue.bodyText).toBe(200);
+    expect(targetQueue.body.items.map(item => item.id)).toContain(pending.id);
     const handoverPath = `/api/v1/organization/project-handovers/value-review/${pending.id}`;
     const readHandover = async () => {
       const response = await scoped<{ items: Array<{ id: string; version: string; responsibleUserId: string | null; pending: boolean }> }>("/api/v1/organization/project-handovers");

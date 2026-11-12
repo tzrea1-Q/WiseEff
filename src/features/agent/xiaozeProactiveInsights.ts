@@ -3,6 +3,7 @@ import type { PageKey } from "@/appConfig";
 export const XIAOZE_PROACTIVE_INSIGHT_PAGE_KEYS = new Set<PageKey>([
   "parameters",
   "parameter-review",
+  "parameter-changes",
   "logs"
 ]);
 

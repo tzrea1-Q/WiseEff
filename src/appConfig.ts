@@ -44,6 +44,7 @@ export type PageKey =
   | "home"
   | "parameter-home"
   | "parameters"
+  | "parameter-changes"
   | "parameter-submissions"
   | "parameter-comparison"
   | "parameter-review"
@@ -111,21 +112,12 @@ export const navigationItems: PageConfig[] = [
     subtitle: "查看、筛选、对比并提交充电与电池参数修改请求"
   },
   {
-    key: "parameter-submissions",
-    path: "/parameter-submissions",
-    label: "我的提交",
-    group: "参数管理",
-    icon: FileText,
-    title: "我的提交",
-    subtitle: ""
-  },
-  {
-    key: "parameter-review",
-    path: "/parameter-review",
-    label: "变更审阅",
+    key: "parameter-changes",
+    path: "/parameter-changes",
+    label: "变更中心",
     group: "参数管理",
     icon: ShieldCheck,
-    title: "变更审阅",
+    title: "变更中心",
     subtitle: ""
   },
   {
@@ -210,6 +202,12 @@ export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: strin
 ];
 
 export function getPageByPath(path: string): PageConfig {
+  if (path === "/parameter-submissions" || path === "/parameter-review") {
+    const personal = path === "/parameter-submissions";
+    return { key: personal ? "parameter-submissions" : "parameter-review", path, group: "参数管理",
+      icon: personal ? FileText : ShieldCheck, label: personal ? "我的提交" : "变更审阅",
+      title: personal ? "我的提交" : "变更审阅", subtitle: "" };
+  }
   if (path === "/platform/organizations") {
     return { key: "platform-organizations", path, label: "组织目录", group: "平台总览", icon: Settings2, title: "组织目录", subtitle: "建立组织并指定初始管理员" };
   }
@@ -388,6 +386,7 @@ export function getPageByPath(path: string): PageConfig {
 export function pageUsesProjectScope(pageKey: PageKey): boolean {
   switch (pageKey) {
     case "parameters":
+    case "parameter-changes":
     case "parameter-submissions":
     case "parameter-review":
     case "parameter-home":
@@ -408,6 +407,7 @@ export function getXiaozeContextSummary(path: string): string {
     case "parameter-comparison":
       return "独立参数对比页面已下线，请回到参数工作台查看行级跨项目对比。";
     case "parameter-review":
+    case "parameter-changes":
       return "正在汇总待审阅请求、历史表现和充电安全风险。";
     case "logs":
       return "正在跟踪充电日志解析、温升模式匹配、根因推断和证据链。";

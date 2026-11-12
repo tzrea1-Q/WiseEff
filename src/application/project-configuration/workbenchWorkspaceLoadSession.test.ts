@@ -38,7 +38,7 @@ describe("WorkbenchWorkspaceLoadSession", () => {
       }, { navigationScope: "organization" });
       expect(session.structureNodes).toEqual(nodes);
       expect(session.structureError).toBe("");
-      expect(session.structureNavigationError).toMatch(/组织配置导航.*重试/);
+      expect(session.structureNavigationError).toMatch(/模块分类导航.*重试/);
     }
   );
 

@@ -95,9 +95,12 @@ describe("browser impact selection", () => {
     expect(home.qualityRoutes).toEqual(["/parameter-home"]);
     expect(home.acceptanceSpecs).toEqual([
       "e2e/acceptance/canonical-dashboard.acceptance.spec.ts",
+      "e2e/acceptance/canonical-value-workflow.acceptance.spec.ts",
       "e2e/acceptance/experience-registration.acceptance.spec.ts",
       "e2e/acceptance/issue897-canonical-modules.acceptance.spec.ts",
+      "e2e/acceptance/issue899-canonical-query.acceptance.spec.ts",
       "e2e/acceptance/organization-administrator-succession.acceptance.spec.ts",
+      "e2e/acceptance/organization-overview.acceptance.spec.ts",
       "e2e/acceptance/parameter-admin-projects.acceptance.spec.ts",
       "e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts",
       "e2e/acceptance/parameter-catalog.acceptance.spec.ts",

@@ -9,9 +9,10 @@ import { prepareInteractionSurface } from "./helpers/interactionSurface";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 
 test.use({ viewport: { width: 1440, height: 900 } });
-useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "GET", path: "/api/v1/organization/workspace-summary", status: 503 }] });
+useBrowserDiagnostics(test, { expectedApiFailures: [{ method: "GET", path: "/api/v1/organization/workspace-summary", status: 503 },
+  { method: "POST", path: "/api/v1/organization/operating-scope", status: 403 }] });
 
-test("organization overview entries retain scope, real counts and ordinary read-only access", async ({ page }, testInfo) => {
+test("organization overview retains administrator scope while ordinary members use business pages", async ({ page }, testInfo) => {
   await seedAcceptanceRoleMatrix();
   const suffix = randomUUID().slice(0, 8), org = `overview-${suffix}`, empty = `overview-empty-${suffix}`, admin = `overview-admin-${suffix}`, member = `overview-member-${suffix}`;
   const name = `协作验收组织-${suffix}`, scope = `?organizationId=${org}`;
@@ -97,24 +98,35 @@ test("organization overview entries retain scope, real counts and ordinary read-
     page.on("request", request => { if (/\/api\/v1\/(users|organization\/(teams|project-candidates|invitations|project-handovers)|log-integration-credentials|device-bridges\/organization)(?:\?|$)/.test(request.url())) adminRequests.push(request.url()); });
     page.on("request", request => { if (new URL(request.url()).pathname === "/api/v1/agent/xiaoze/suggest" && request.method() === "POST") pausedSuggestions.push(request.url()); });
     await signInBrowserAsUser(page, member, `${member}@example.test`, "概览普通成员", "/organization", org);
-    await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toContainText("已停用 · 仅可查看");
-    await expect(page.getByRole("region", { name: "组织待办", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "项目 2", exact: true })).toBeVisible();
-    for (const label of ["成员与权限", "邀请", "团队", "项目参与", "业务交接"]) {
-      await expect(nav.getByRole("button", { name: label, exact: true })).toHaveCount(0);
-    }
-    await nav.getByRole("button", { name: "资源", exact: true }).click();
-    for (const title of ["参数资源", "知识库", "日志分析"]) await expect(page.getByRole("region", { name: "组织资源", exact: true }).getByRole("button", { name: title, exact: true })).toBeVisible();
-    await nav.getByRole("button", { name: "组织资料", exact: true }).click();
-    await expect(page.getByLabel("显示名称", { exact: true })).toHaveValue(name);
-    await expect(page.getByLabel("显示名称", { exact: true })).toBeDisabled();
-    await page.screenshot({ path: testInfo.outputPath("organization-member-readonly-1440.png"), animations: "disabled" });
-    await nav.getByRole("button", { name: "概览", exact: true }).click();
-    await page.getByRole("button", { name: "项目 2", exact: true }).click();
-    await expect(page).toHaveURL(url => url.pathname === "/parameters" && url.searchParams.get("organizationId") === org);
+    await expect(page).toHaveURL(url => url.pathname === "/parameter-home" && !url.search);
+    await expect(page.getByRole("link", { name: "组织管理", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "打开 组织管理", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("status").filter({ hasText: "当前工作区仅可查看，请联系管理员" })).toBeVisible();
+    await expect(page.getByText(name, { exact: true })).toHaveCount(0);
+    await page.goto(`/parameters${scope}`);
     await prepareInteractionSurface(page);
+    await expect(page).toHaveURL(url => url.pathname === "/parameters" && url.searchParams.get("organizationId") === org);
+    await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toHaveCount(0);
+    await expect(page.getByText(name, { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("status").filter({ hasText: "当前工作区仅可查看，请联系管理员" })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("business-member-readonly-1440.png"), animations: "disabled" });
     await page.goto("/user-permissions"); await prepareInteractionSurface(page);
-    await expect(page.getByText("此区域由组织管理员维护。", { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(url => url.pathname === "/parameter-home" && !url.search);
+    await page.reload(); await prepareInteractionSurface(page);
+    await expect(page.getByRole("link", { name: "组织管理", exact: true })).toHaveCount(0);
+    await page.goto(`/parameters?organizationId=${empty}`);
+    await expect(page.getByRole("alert").filter({ hasText: "没有权限执行该操作" })).toBeVisible();
+    await expect(page.getByText("无法连接雷泽参数 API，当前无数据", { exact: true })).toHaveCount(0);
+    await expect(page).toHaveURL(url => url.searchParams.get("organizationId") === empty);
+    await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL(url => url.pathname === "/parameter-home" && !url.search);
+    await page.goForward();
+    await expect(page).toHaveURL(url => url.pathname === "/parameters" && url.searchParams.get("organizationId") === empty);
+    await expect(page.getByRole("alert").filter({ hasText: "没有权限执行该操作" })).toBeVisible();
+    await page.goto("/organization/resources");
+    await expect(page).toHaveURL(url => url.pathname === "/parameter-home" && !url.search);
+    await expect(page.getByRole("navigation", { name: "组织管理范围" })).toHaveCount(0);
     expect(adminRequests).toEqual([]);
     await signInBrowserAsRole(page, "platform-admin", `/parameters${scope}`); await prepareInteractionSurface(page);
     await expect(page.getByRole("region", { name: "当前操作组织", exact: true })).toContainText("所属组织：");
@@ -122,7 +134,7 @@ test("organization overview entries retain scope, real counts and ordinary read-
     expect(pausedSuggestions).toEqual([]);
     const restored = await page.request.patch(apiRoute(`/api/v1/platform/organizations/${org}/lifecycle`), { headers: authHeadersForRole("platform-admin"), data: { status: "active", expectedStatus: "suspended" } });
     expect(restored.status()).toBe(200); suspendedSuccessfully = false;
-    const proactiveEnabled = process.env.VITE_XIAOZE_PROACTIVE_ENABLED?.trim().toLowerCase() === "true";
+    const proactiveEnabled = (process.env.VITE_XIAOZE_PROACTIVE_ENABLED ?? "true").trim().toLowerCase() === "true";
     const resumed = proactiveEnabled ? page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/agent/xiaoze/suggest" && response.request().method() === "POST") : null;
     await page.reload(); await prepareInteractionSurface(page);
     if (resumed) expect((await resumed).status()).toBe(200);

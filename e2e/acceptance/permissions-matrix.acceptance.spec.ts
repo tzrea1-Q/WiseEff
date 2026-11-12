@@ -22,13 +22,13 @@ useBrowserDiagnostics(test);
 const permissionsEligibilityReason = "M5.5 permissions matrix eligibility guard";
 
 const visibleRoleExpectations = [
-  { role: "Guest", uiRoleLabel: "访客", canOpenDebugging: false, canOpenReview: false },
-  { role: "Hardware User", uiRoleLabel: "硬件开发", canOpenDebugging: true, canOpenReview: false },
-  { role: "Software User", uiRoleLabel: "软件开发", canOpenDebugging: true, canOpenReview: true },
-  { role: "Hardware Committer", uiRoleLabel: "硬件MDE", canOpenDebugging: true, canOpenReview: true },
-  { role: "Software Committer", uiRoleLabel: "软件MDE", canOpenDebugging: true, canOpenReview: true },
-  { role: "Admin", uiRoleLabel: "管理员", canOpenDebugging: true, canOpenReview: true },
-  { role: "Platform Super Admin", uiRoleLabel: "平台超级管理员", canOpenDebugging: true, canOpenReview: true }
+  { role: "Guest", uiRoleLabel: "访客", canOpenDebugging: false, canOpenChanges: false, canReviewProject: false },
+  { role: "Hardware User", uiRoleLabel: "硬件开发", canOpenDebugging: true, canOpenChanges: true, canReviewProject: false },
+  { role: "Software User", uiRoleLabel: "软件开发", canOpenDebugging: true, canOpenChanges: true, canReviewProject: true },
+  { role: "Hardware Committer", uiRoleLabel: "硬件MDE", canOpenDebugging: true, canOpenChanges: true, canReviewProject: true },
+  { role: "Software Committer", uiRoleLabel: "软件MDE", canOpenDebugging: true, canOpenChanges: true, canReviewProject: true },
+  { role: "Admin", uiRoleLabel: "管理员", canOpenDebugging: true, canOpenChanges: true, canReviewProject: true },
+  { role: "Platform Super Admin", uiRoleLabel: "平台超级管理员", canOpenDebugging: true, canOpenChanges: true, canReviewProject: false }
 ] as const;
 
 async function setPrototypeRole(page: import("playwright/test").Page, roleName: string) {
@@ -73,10 +73,19 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         await expect(page.getByText(`当前角色：${expectation.uiRoleLabel}`)).toBeVisible();
       }
 
-      await navigateWithinApp(page, "/parameter-review");
-      if (expectation.canOpenReview) {
+      await navigateWithinApp(page, "/parameter-review?project=aurora");
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/parameter-changes");
+      expect(new URL(page.url()).searchParams.get("project")).toBe("aurora");
+      expect(new URL(page.url()).searchParams.get("scope")).toBe("review");
+      if (expectation.canOpenChanges) {
         await expect(page.getByRole("heading", { name: /无权访问该页面/i })).toHaveCount(0);
-        await expect(page.locator("main, .main-content").first()).toBeVisible();
+        await expect(page.getByRole("main", { name: "变更中心" })).toBeVisible();
+        if (expectation.canReviewProject) {
+          await expect(page.getByRole("radio", { name: "审阅队列" })).toHaveAttribute("aria-checked", "true");
+        } else {
+          await expect(page.getByRole("radio", { name: "审阅队列" })).toHaveCount(0);
+          await expect(page.getByRole("region", { name: "我的提交" })).toBeVisible();
+        }
       } else {
         await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
         await expect(page.getByText(`当前角色：${expectation.uiRoleLabel}`)).toBeVisible();
@@ -97,7 +106,7 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         status: "passed",
         page,
         testInfo,
-        notes: `${expectation.role} visibility was checked for debugging, parameter review, and the removed platform console route.`
+        notes: `${expectation.role} visibility was checked for debugging, the project-scoped change center, and the removed platform console route.`
       });
 
       if (expectation.role === "Platform Super Admin" || expectation.role === "Admin") {

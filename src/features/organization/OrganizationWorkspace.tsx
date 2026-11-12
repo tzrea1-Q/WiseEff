@@ -4,19 +4,20 @@ import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { OrganizationWorkspaceClient } from "@/infrastructure/http/userGovernanceClient";
+import type { AuthContextDto } from "@/infrastructure/http/authClient";
 import { presentError } from "@/infrastructure/http/presentError";
 import { listOrganizationBridges, revokeOrganizationBridge } from "@/infrastructure/http/deviceBridgeClient";
 import { createIntegrationCredentialClient } from "@/infrastructure/http/logClient";
 import { createAccountTransferClient } from "@/infrastructure/http/accountTransferClient";
 
 /** A URL target owns its clients and view state. No session-wide organization switch. */
-export function OrganizationWorkspace({ workspaceClient, ...props }: OrganizationPageProps & { workspaceClient?: OrganizationWorkspaceClient }) {
+export function OrganizationWorkspace({ workspaceClient, onAuthorityLost, ...props }: OrganizationPageProps & { workspaceClient?: OrganizationWorkspaceClient; onAuthorityLost?: (context: AuthContextDto) => void }) {
   const requestedId = new URLSearchParams(props.search).get("organizationId") ?? undefined;
   if (!workspaceClient) return requestedId === undefined ? <OrganizationPage {...props} /> : <SectionEmpty message="当前组织管理连接不支持切换组织。" actionLabel="返回所属组织" onAction={() => props.onNavigate("/organization")} />;
-  return <ResolvedOrganizationWorkspace key={requestedId ?? "home"} {...props} requestedId={requestedId} workspaceClient={workspaceClient} />;
+  return <ResolvedOrganizationWorkspace key={requestedId ?? "home"} {...props} requestedId={requestedId} workspaceClient={workspaceClient} onAuthorityLost={onAuthorityLost} />;
 }
 
-function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props }: OrganizationPageProps & { requestedId?: string; workspaceClient: OrganizationWorkspaceClient }) {
+function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, onAuthorityLost, ...props }: OrganizationPageProps & { requestedId?: string; workspaceClient: OrganizationWorkspaceClient; onAuthorityLost?: (context: AuthContextDto) => void }) {
   const [scope, setScope] = useState<Awaited<ReturnType<typeof workspaceClient.enterOperatingContext>> | null>(null);
   const [error, setError] = useState(""), [attempt, setAttempt] = useState(0);
   const [projects, setProjects] = useState<Array<{ id: string; name: string }> | null>(null), [projectError, setProjectError] = useState("");
@@ -32,10 +33,16 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, ...props 
   useEffect(() => {
     let cancelled = false;
     setError("");
-    void workspaceClient.enterOperatingContext(requestedId).then((next) => { if (!cancelled) setScope(next); })
+    void workspaceClient.enterOperatingContext(requestedId).then((next) => {
+      if (cancelled) return;
+      if (!next.actor.permissions.includes("users:manage") || !next.actor.roles.some(role => role.projectId === null && (role.roleId === "admin" || role.roleId === "platform-admin"))) {
+        setScope(null); setError("当前账号无法访问此页面。"); onAuthorityLost?.(next.actor); return;
+      }
+      setScope(next);
+    })
       .catch((failure: unknown) => { if (!cancelled) setError(presentError(failure, "无法进入该组织，请返回组织目录重试。")); });
     return () => { cancelled = true; };
-  }, [workspaceClient, requestedId, attempt]);
+  }, [workspaceClient, requestedId, attempt, onAuthorityLost]);
   useEffect(() => {
     if (props.area !== "members" || !client || !administrator) return;
     let cancelled = false;

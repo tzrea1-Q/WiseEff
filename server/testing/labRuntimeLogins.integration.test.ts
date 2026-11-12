@@ -7,6 +7,7 @@ import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins, revokeForeignT
 import { dropLabRuntimeLogins as dropViaBarrel, provisionPublicationRuntimeLogins as provisionViaBarrel } from "../modules/catalog-publication/runtime";
 import { applyTestMigrations, migrationsDir, withAdminClient } from "./tempDatabase";
 import { createEphemeralTestDatabase, isGeneratedTestDatabaseName, isTestDatabaseAvailable, TEMPLATE_BUILD_LOCK, withTestClusterRoleCatalogLock } from "./testDatabase";
+import { createCheckedEmptyDatabase, parameterCatalogRunDatabasePrefix, parameterCatalogWorkerDatabasePrefix } from "./parameterCatalog";
 
 const available = await isTestDatabaseAvailable();
 
@@ -16,9 +17,56 @@ it("routes transitive runtime exports through cleanup and excludes application d
     expect(isGeneratedTestDatabaseName(name)).toBe(false);
   }
   expect(isGeneratedTestDatabaseName("wiseeff_cleanup_acl_upgrade_1729080000000_12345")).toBe(true);
+  const current = parameterCatalogRunDatabasePrefix();
+  expect(isGeneratedTestDatabaseName(`${current}2_modulead_0e0f9855`)).toBe(true);
+  const otherRun = current === "wiseeff_pcat_r999999_" ? "wiseeff_pcat_r999998_" : "wiseeff_pcat_r999999_";
+  expect(isGeneratedTestDatabaseName(`${otherRun}2_modulead_0e0f9855`)).toBe(false);
+  expect(isGeneratedTestDatabaseName(`${current}2_modulead_nothex`)).toBe(false);
+});
+
+it("does not mistake a run with an underscored suffix for a current-run Catalog worker", () => {
+  try {
+    for (const run of ["r123", "p123"]) {
+      vi.stubEnv("WISEEFF_TEST_RUN_TOKEN", run);
+      for (const worker of ["1", "2", "37", ""]) {
+        vi.stubEnv("VITEST_POOL_ID", worker);
+        const workerPrefix = parameterCatalogWorkerDatabasePrefix();
+        expect(isGeneratedTestDatabaseName(`${workerPrefix}modulead_0e0f9855`)).toBe(true);
+      }
+      expect(isGeneratedTestDatabaseName(`wiseeff_pcat_${run}_9_2_modulead_0e0f9855`)).toBe(false);
+      expect(isGeneratedTestDatabaseName(`wiseeff_pcat_${run}_9_7_2_modulead_0e0f9855`)).toBe(false);
+    }
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
 
 describe.skipIf(!available)("lab runtime role isolation", () => {
+  it("removes only the owned runtime grants copied into a current-run Catalog migration fixture", async () => {
+    const source = await createEphemeralTestDatabase("pcatrole");
+    const target = await createCheckedEmptyDatabase("modulead");
+    const upgraded = createPostgresDatabase(target.url);
+    const token = `pcatrole${randomBytes(5).toString("hex")}`;
+    let runtime: Awaited<ReturnType<typeof provisionPublicationRuntimeLogins>> | undefined;
+    try {
+      runtime = await provisionPublicationRuntimeLogins(source.url, { mode: "lab", runToken: token });
+      await applyTestMigrations(upgraded, migrationsDir);
+      const hasGrant = async () => (await upgraded.query<{ allowed: boolean }>(
+        "select has_function_privilege($1, 'parameter_catalog.preview_parameter_definition_purge(text)', 'EXECUTE') as allowed", [runtime!.apiRole]
+      )).rows[0]!.allowed;
+      expect(await hasGrant()).toBe(true);
+      await withTestClusterRoleCatalogLock(() => revokeForeignTestRuntimeGrants(source.url, [runtime!.apiRole], `${runtime!.ownershipComment}other`));
+      expect(await hasGrant()).toBe(true);
+      expect((await dropLabRuntimeLogins(source.url, token)).failed).toEqual([]);
+      expect((await upgraded.query("select 1 as alive")).rows).toEqual([{ alive: 1 }]);
+    } finally {
+      await upgraded.close();
+      await target.close();
+      if (runtime) expect((await dropLabRuntimeLogins(source.url, token)).failed).toEqual([]);
+      await source.drop();
+    }
+  }, 120_000);
+
   it("borrows the active outer lease for default provision and cleanup without releasing it", async () => {
     const source = await createEphemeralTestDatabase("borrowrole");
     const token = `borrowrole${randomBytes(5).toString("hex")}`;

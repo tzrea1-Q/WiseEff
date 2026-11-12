@@ -160,7 +160,7 @@ describe("#1061 assembled-server canonical release readiness", () => {
       target: expect.objectContaining({ changeRequestId: requestId }),
       remediation: expect.objectContaining({
         label: expect.stringContaining("Review"),
-        href: `/parameter-review?project=${encodeURIComponent(projectId)}&request=${encodeURIComponent(requestId)}`
+        href: `/parameter-changes?scope=review&project=${encodeURIComponent(projectId)}&request=${encodeURIComponent(requestId)}`
       })
     }));
     const reviewed = await request<{ item: { status: string } }>(`/api/v2/projects/${projectId}/parameter-value-change-requests/${requestId}/${decision === "withdraw" ? "withdraw" : "review"}`,

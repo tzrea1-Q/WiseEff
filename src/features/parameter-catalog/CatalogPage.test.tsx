@@ -37,6 +37,29 @@ import type { CatalogModule } from "./catalogModuleScope";
 
 type PageProps = ComponentProps<typeof CatalogPage>;
 
+it("keeps old retirement filters and release pins out of the current library", async () => {
+  const repository = createMockParameterCatalogRepository();
+  const list = vi.spyOn(repository, "listDefinitions");
+  render(<CatalogPage libraryMode repository={repository} actor="user" organizationId="org"
+    search="?lifecycle=retired&registration=retired&includeRetiredSubjects=true&catalogReleaseId=crel_old" />);
+  await waitFor(() => expect(list).toHaveBeenCalled());
+  expect(screen.queryByRole("checkbox", { name: /包含已停用和退役主体/ })).not.toBeInTheDocument();
+  expect(list.mock.lastCall?.[0]).toMatchObject({ view: "library" });
+  expect(list.mock.lastCall?.[0]).not.toMatchObject({ lifecycle: "retired" });
+  expect(list.mock.lastCall?.[0]).not.toMatchObject({ registration: "retired" });
+  expect(list.mock.lastCall?.[0]).not.toMatchObject({ catalogReleaseId: "crel_old" });
+});
+
+it("shows only an unavailable message and return action for a retired definition link", async () => {
+  const repository = createMockParameterCatalogRepository();
+  vi.spyOn(repository, "getDefinition").mockRejectedValue(catalogApiFailure("definition-not-found"));
+  render(<CatalogPage libraryMode repository={repository} actor="user" organizationId="org"
+    search={`?definitionId=${CATALOG_DEFINITION_ID}&catalogReleaseId=crel_old&history=true`} />);
+  expect(await screen.findByText("该定义当前不可用。")).toBeVisible();
+  expect(screen.getByRole("button", { name: "返回参数库" })).toBeVisible();
+  expect(screen.queryByRole("region", { name: "定义详情" })).not.toBeInTheDocument();
+});
+
 it.each(["list", "definition", "configurations", "compare"])("keeps the library %s surface free of governance controls even for an administrator", async tab => {
   const repository = createMockParameterCatalogRepository();
   repository.getProjectConfigurations = vi.fn().mockResolvedValue({ summary: { configuredProjectCount: 0, configuredInstanceCount: 0 }, totalCount: 0,
@@ -148,28 +171,27 @@ it("keeps detail tab panels addressable and switches them with the keyboard", as
   expect(within(tabs).getByRole("tab", { name: "当前项目配置" })).toHaveFocus();
 });
 
-it("shows the current published head separately when comparing values while reading a historical release", async () => {
+it("uses the current published head for an old release link while comparing values", async () => {
   const repository = createMockParameterCatalogRepository();
   const historical = await repository.getDefinition(CATALOG_DEFINITION_ID);
   const catalog = await repository.getCatalog();
   if (!catalog.item) throw new Error("Expected a published catalog");
-  const currentCatalog = { item: { ...catalog.item, catalogReleaseId: "current-release" } };
-  const getCatalog = vi.spyOn(repository, "getCatalog").mockImplementation(async (query) => query ? catalog : currentCatalog);
-  const getDefinition = vi.spyOn(repository, "getDefinition").mockImplementation(async (_id, query) => ({ item: { ...historical.item,
-    currentRevision: { ...historical.item.currentRevision, id: query ? "historical-revision" : "latest-revision", revisionNumber: query ? 1 : 3 } } }));
+  const getCatalog = vi.spyOn(repository, "getCatalog").mockResolvedValue(catalog);
+  const getDefinition = vi.spyOn(repository, "getDefinition").mockResolvedValue({ item: { ...historical.item,
+    currentRevision: { ...historical.item.currentRevision, id: "latest-revision", revisionNumber: 3 } } });
   const item = { kind: "instance" as const, bindingId: "binding", projectId: "project", projectName: "项目", configSetId: "set", configSetName: "配置集",
     sourceOccurrenceId: "source", sourceFormat: "dts" as const, fileId: "file", fileVersionId: "version", fileName: "board.dts", sourceLocator: { propertyName: "limit" }, sourceLocation: "/node · limit",
     currentValueId: "value", definitionRevisionId: "pinned-revision", definitionRevisionNumber: "1", effectiveRevisionId: "effective-revision",
     unit: null, definitionLifecycle: "active" as const, valueState: "present" as const, valueKind: "number" as const, valuePreview: "42", valuePreviewTruncated: false };
   repository.getProjectConfigurations = vi.fn().mockResolvedValue({ summary: { configuredProjectCount: 1, configuredInstanceCount: 1 }, totalCount: 1,
     readAt: "2026-11-05T00:00:00Z", nextCursor: null, continuedProjectId: null, selected: null, items: [item], baseline: { ...item, rawValue: "42" } });
-  render(<CatalogPage libraryMode repository={repository} actor="user" organizationId="org" search={`?definitionId=${CATALOG_DEFINITION_ID}&catalogReleaseId=${CATALOG_RELEASE_ID}&tab=compare&baseline=binding`} />);
-  expect(await screen.findByText(/历史发布 · 修订 #1/)).toBeVisible();
+  render(<CatalogPage libraryMode repository={repository} actor="user" organizationId="org" search={`?definitionId=${CATALOG_DEFINITION_ID}&catalogReleaseId=crel_old&tab=compare&baseline=binding`} />);
+  expect(await screen.findByText(/当前发布 · 修订 #3/)).toBeVisible();
   expect(await screen.findByText(/最新定义修订 #3/)).toBeVisible();
   expect(await screen.findByRole("textbox", { name: "基准实例原值" })).toHaveTextContent("42");
   expect(repository.getProjectConfigurations).toHaveBeenCalledWith(CATALOG_DEFINITION_ID, { baselineBindingId: "binding" });
-  expect(getCatalog).toHaveBeenCalledWith();
-  expect(getDefinition).toHaveBeenCalledWith(CATALOG_DEFINITION_ID);
+  expect(getCatalog).toHaveBeenCalledWith({ view: "library" });
+  expect(getDefinition).toHaveBeenCalledWith(CATALOG_DEFINITION_ID, { catalogReleaseId: CATALOG_RELEASE_ID, view: "library" });
 });
 
 it("does not show delayed project options from another Organization", async () => {
@@ -897,7 +919,7 @@ describe("CatalogPage", { timeout: 15_000 }, () => {
     expect(action).toHaveTextContent("查看");
     await user.click(action);
     const dialog = await screen.findByRole("dialog", { name: `查看 ${activeDefinition.propertyKey}` });
-    expect(within(dialog).getAllByText("如需编辑参数定义，请联系组织管理员开通参数目录编写权限。")).toHaveLength(1);
+    expect(within(dialog).getAllByText("如需编辑参数定义，请联系管理员开通参数目录编写权限。")).toHaveLength(1);
     expect(within(dialog).getByRole("region", { name: "定义详情" })).toHaveTextContent(activeDefinition.propertyKey);
   });
 

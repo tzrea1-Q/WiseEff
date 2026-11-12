@@ -474,14 +474,15 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     }
 
     await setPrototypeRole(page, "Hardware User");
-    await expect(page.getByText("此区域由组织管理员维护。", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "查看组织资源", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/parameter-home$/);
+    await expect(page.getByRole("link", { name: "组织管理", exact: true })).toHaveCount(0);
     await expect(page.getByRole("region", { name: "用户权限" })).toHaveCount(0);
     const deniedUsers = await page.request.get(apiRoute("/api/v1/users"), { headers: authHeadersForRole("hardware-user") });
     expect(deniedUsers.status()).toBe(403);
     await page.screenshot({ path: testInfo.outputPath("permissions-hardware-member-readonly-1440.png"), animations: "disabled" });
 
     await setPrototypeRole(page, "Admin");
+    await page.goto("/organization/members");
     await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
 
     await recordOperationEvidence({
@@ -572,7 +573,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       body: await page.screenshot({ fullPage: true, animations: "disabled" }), contentType: "image/png"
     });
 
-    await page.goto("/parameter-review");
+    await page.goto("/parameter-changes?scope=review&project=acceptance-delete-project&legacyRequest=acceptance-delete-init-review");
     const retainedInitializationRow = page.getByRole("row").filter({ hasText: "Deleted user initialization" });
     await expect(retainedInitializationRow).toContainText(createdUser!.name);
     await testInfo.attach("deleted-user-initialization-attribution-1440", {
@@ -605,8 +606,8 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
 
     await page.goto("/organization/members");
     await setPrototypeRole(page, "Software User");
-    await expect(page.getByText("此区域由组织管理员维护。", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "查看组织资源", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/parameter-home$/);
+    await expect(page.getByRole("link", { name: "组织管理", exact: true })).toHaveCount(0);
     await expect(page.getByRole("table", { name: "平台用户" })).toHaveCount(0);
 
     const deniedDelete = await page.request.delete(apiRoute("/api/v1/users/u-wang-jie"), {
