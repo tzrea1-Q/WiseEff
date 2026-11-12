@@ -7,6 +7,8 @@ import {
   notifyDebugSnapshotRollback,
   notifyLogAnalysisCompleted,
   notifyLogAnalysisFailed,
+  notifyParameterReviewAdvanced,
+  notifyParameterReviewRejected,
   notifyParameterMergeCompleted,
   notifyUserDeactivated,
   notifyUserRoleChanged
@@ -29,6 +31,26 @@ describe("notification producers", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("links rejection and advancement recipients to the matching legacy request in their own view", async () => {
+    const notifyUsers = vi.spyOn(service, "notifyUsers").mockResolvedValue(undefined);
+    const db = {} as Queryable;
+    const request = { organizationId: "org-1", projectId: "project 1", requestId: "legacy/+1", parameterName: "cpu.freq", reviewerName: "Reviewer" };
+    await notifyParameterReviewRejected(db, { ...request, submitterUserId: "u-submitter", note: "needs evidence" });
+    await notifyParameterReviewAdvanced(db, { ...request, submitterUserId: "u-submitter", toStatus: "软件MDE检视",
+      assigneeUserIds: ["u-reviewer", "u-reviewer", "u-submitter"] });
+
+    expect(notifyUsers).toHaveBeenCalledTimes(3);
+    expect(notifyUsers.mock.calls.map(([, payload]) => payload)).toEqual([
+      expect.objectContaining({ category: "parameter.review.rejected", recipientUserIds: ["u-submitter"],
+        body: "Reviewer 打回了 project 1 的参数变更：needs evidence",
+        actionUrl: "/parameter-changes?scope=mine&project=project+1&legacyRequest=legacy%2F%2B1&organizationId=org-1" }),
+      expect.objectContaining({ category: "parameter.review.advanced", recipientUserIds: ["u-submitter"],
+        actionUrl: "/parameter-changes?scope=mine&project=project+1&legacyRequest=legacy%2F%2B1&organizationId=org-1" }),
+      expect.objectContaining({ category: "parameter.review.advanced", recipientUserIds: ["u-reviewer"],
+        actionUrl: "/parameter-changes?scope=review&project=project+1&legacyRequest=legacy%2F%2B1&organizationId=org-1" })
+    ]);
   });
 
   it("notifies merge participants", async () => {

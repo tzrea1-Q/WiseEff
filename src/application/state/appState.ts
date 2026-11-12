@@ -101,6 +101,8 @@ export type AppAction =
       type: "HYDRATE_AUTH_CONTEXT";
       user: User;
       roleId: string;
+      canReadParameterInitialization?: boolean;
+      clearParameterInitialization?: boolean;
     }
   | HydrateParameterRuntimeAction
   | HydrateLogRuntimeAction
@@ -121,6 +123,7 @@ export type AppAction =
     }
   | { type: "APPROVE_PARAMETER_INITIALIZATION"; reviewId: string }
   | { type: "REJECT_PARAMETER_INITIALIZATION"; reviewId: string; reason: string }
+  | { type: "CLEAR_PARAMETER_INITIALIZATION" }
   | {
       type: "HYDRATE_PROJECT_INITIALIZATION_STATUS";
       projectId: string;
@@ -402,11 +405,15 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     case "HYDRATE_AUTH_CONTEXT": {
       const existingUsers = state.users.filter((user) => user.id !== action.user.id);
       const isDifferentUser = action.user.id !== state.currentUserId;
+      const clearInitialization = isDifferentUser || action.canReadParameterInitialization === false || action.clearParameterInitialization === true;
       return {
         ...state,
         users: [action.user, ...existingUsers],
         currentUserId: action.user.id,
         activeRoleId: action.roleId,
+        parameterInitializationDrafts: clearInitialization ? [] : state.parameterInitializationDrafts,
+        parameterInitializationReviews: clearInitialization ? [] : state.parameterInitializationReviews,
+        projectInitializationStatuses: clearInitialization ? {} : state.projectInitializationStatuses,
         parameterDrafts: isDifferentUser ? [] : state.parameterDrafts,
         parameterSubmissionRounds: isDifferentUser
           ? state.parameterSubmissionRounds.filter((round) => round.status !== "已暂存")
@@ -615,6 +622,8 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         }
       };
     }
+    case "CLEAR_PARAMETER_INITIALIZATION":
+      return { ...state, parameterInitializationDrafts: [], parameterInitializationReviews: [], projectInitializationStatuses: {} };
     case "HYDRATE_PARAMETER_INITIALIZATION": {
       return {
         ...state,

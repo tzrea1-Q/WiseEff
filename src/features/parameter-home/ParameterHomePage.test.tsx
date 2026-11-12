@@ -5,7 +5,10 @@ import type { DashboardState } from "@/application/parameters/dashboardState";
 import type { DashboardSummary, DashboardHotspot } from "@/domain/parameters/dashboardTypes";
 import { TopBarActionsContext } from "@/components/layout";
 import { initialState } from "@/mockData";
-import { ParameterHomePage } from "./ParameterHomePage";
+import { getPageByPath } from "@/appConfig";
+import { PageRouter } from "@/app/routes";
+import type { AppRuntime } from "@/app/appRuntime";
+import { ParameterHomePage, type ParameterHomePageProps } from "./ParameterHomePage";
 
 const summary: DashboardSummary = {
   window: "30d",
@@ -99,12 +102,11 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
 function renderPage(over: {
   roleId?: string;
   dashboardState?: DashboardState;
-  runtime?: { loadSummary: ReturnType<typeof vi.fn>; loadHotspots: ReturnType<typeof vi.fn> };
-  onDashboardOverviewScopeChange?: ReturnType<typeof vi.fn>;
-  onNavigate?: ReturnType<typeof vi.fn>;
+  onDashboardOverviewScopeChange?: ParameterHomePageProps["onDashboardOverviewScopeChange"];
+  onNavigate?: ParameterHomePageProps["onNavigate"];
 } = {}) {
-  const loadSummary = over.runtime?.loadSummary ?? vi.fn();
-  const loadHotspots = over.runtime?.loadHotspots ?? vi.fn();
+  const loadSummary = vi.fn<ParameterHomePageProps["dashboardRuntime"]["loadSummary"]>().mockResolvedValue(undefined);
+  const loadHotspots = vi.fn<ParameterHomePageProps["dashboardRuntime"]["loadHotspots"]>().mockResolvedValue(undefined);
   const onDashboardOverviewScopeChange = over.onDashboardOverviewScopeChange ?? vi.fn();
 
   render(
@@ -127,6 +129,28 @@ function renderPage(over: {
 }
 
 describe("ParameterHomePage", () => {
+  it.each([
+    ["hardware-user", "org-selected", "补充被退回的参数修改", "/parameter-changes", "mine"],
+    ["software-committer", "org-selected", "处理待审阅参数变更", "/parameter-changes", "review"],
+    ["software-committer", undefined, "处理待审阅参数变更", "/parameter-changes", "review"],
+    ["admin", "org-selected", "处理未应用的导入批次", "/parameter-admin", null]
+  ])("preserves explicit organization on the %s home destination", (roleId, operatingOrganizationId, action, pathname, scope) => {
+    const navigate = vi.fn();
+    render(<TopBarActionsHarness><PageRouter page={getPageByPath("/parameter-home")}
+      state={{ ...initialState, activeRoleId: roleId }} dispatch={vi.fn()}
+      search={operatingOrganizationId ? `?organizationId=${operatingOrganizationId}` : ""}
+      runtime={{ operatingOrganizationId } as AppRuntime} runtimeMode="mock" onNavigate={navigate}
+      dashboardState={buildDashboardState({ projectScope: "aurora" })}
+      dashboardRuntime={{ loadSummary: vi.fn(), loadHotspots: vi.fn() } as never}
+      onDashboardWindowChange={vi.fn()} onDashboardDimensionChange={vi.fn()} onDashboardOverviewScopeChange={vi.fn()}
+      onDashboardProjectChange={vi.fn()} onFeedback={vi.fn()} DebuggingAdminPage={() => null} /></TopBarActionsHarness>);
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(action!) }));
+    const destination = new URL(navigate.mock.calls[0][0], "http://localhost");
+    expect(destination.pathname).toBe(pathname);
+    expect(destination.searchParams.get("scope")).toBe(scope);
+    expect(destination.searchParams.get("organizationId")).toBe(operatingOrganizationId ?? null);
+  });
+
   it("requires a project choice before opening an aggregate review queue", () => {
     const onNavigate = vi.fn();
     renderPage({ roleId: "software-committer", onNavigate });
@@ -134,7 +158,7 @@ describe("ParameterHomePage", () => {
     expect(onNavigate).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog", { name: "选择要查看的项目" });
     const project = initialState.configDraft.projects[0];
-    fireEvent.click(within(dialog).getByRole("button", { name: project.name, exact: true }));
+    fireEvent.click(within(dialog).getByRole("button", { name: project.name }));
     expect(onNavigate).toHaveBeenCalledWith(`/parameter-changes?scope=review&project=${project.id}`);
   });
   it("defaults to the overview workbench page", () => {

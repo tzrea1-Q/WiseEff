@@ -1,4 +1,4 @@
-import { canPerform } from "@/app/permissions";
+import { canPerform, projectReviewRoles } from "@/app/permissions";
 import { InitializationCopySummary } from "@/components/InitializationCopySummary";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { type PageProps } from "@/app/routes";
@@ -33,7 +33,7 @@ import {
 import { shouldSummarizeReviewChange } from "@/parameterValueKind";
 import { EmptyState, SectionLabel, WorkbenchLayout, getContextQuery, riskLabels } from "@/workbenchUi";
 import { CheckCircle2, CircleOff, FileText, Link2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "./parameter-review.css";
 import { ReviewInbox, type ReviewInboxRow } from "./ReviewInbox";
 import { ReviewProvenance } from "./ReviewProvenance";
@@ -69,6 +69,7 @@ export function ParameterReviewPage({
   parameterActions,
   runtime,
   runtimeMode,
+  sessionPermissions,
   onBusyChange,
   scopeToProject = false
 }: PageProps) {
@@ -77,7 +78,7 @@ export function ParameterReviewPage({
   const parameterRepository = runtime?.parameterRepository;
   const parameterInitializationRepository = runtime?.parameterInitializationRepository;
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
-  const permissionKey = JSON.stringify([currentUser?.isActive, currentUser?.roles]);
+  const permissionKey = JSON.stringify([currentUser?.isActive, currentUser?.roles, sessionPermissions]);
   const reviewScope = useMemo(() => ({ parameterRepository, parameterInitializationRepository, runtimeMode,
     userId: state.currentUserId, projectId: reviewProjectId, activeRoleId: state.activeRoleId, permissionKey }),
   [parameterRepository, parameterInitializationRepository, runtimeMode, state.currentUserId, reviewProjectId, state.activeRoleId, permissionKey]);
@@ -172,8 +173,12 @@ export function ParameterReviewPage({
   const mergeLinkTargetRef = useRef({ scopeKey: currentActionScopeKey, requestId: selectedId });
   const mergeLink = mergeLinkTargetRef.current.scopeKey === currentActionScopeKey
     && (!selectedId || mergeLinkTargetRef.current.requestId === selectedId) ? mergeLinkValue : "";
-  const actionScopeRef = useRef(currentActionScopeKey);
+  const actionScopeRef = useRef<typeof currentActionScopeKey | null>(currentActionScopeKey);
   actionScopeRef.current = currentActionScopeKey;
+  useLayoutEffect(() => {
+    actionScopeRef.current = currentActionScopeKey;
+    return () => { actionScopeRef.current = null; };
+  }, [currentActionScopeKey]);
   useEffect(() => {
     setBatchSelectedIds(new Set());
     setBatchFailures([]);
@@ -184,11 +189,11 @@ export function ParameterReviewPage({
     setActionMergeLink("");
     setDetailOpenScope(null);
   }, [currentActionScopeKey]);
-  const canReviewCanonical = Boolean(currentUser?.isActive && currentUser.roles?.some((role) =>
-    (role.roleId === "software-committer" && role.projectId === canonicalProjectId)
-      || (role.roleId === "admin" && role.projectId === null)
-  ));
-  const canReviewInitialization = canPerform(reviewerRoleId, "parameter.review");
+  const canReviewCanonical = Boolean(currentUser?.isActive && (!sessionPermissions || sessionPermissions.includes("parameter:review"))
+    && projectReviewRoles(currentUser.roles ?? [], canonicalProjectId).some((role) => role.roleId === "software-committer" || role.roleId === "admin"));
+  const canReviewInitialization = runtimeMode === "api"
+    ? Boolean(currentUser?.isActive && sessionPermissions?.includes("admin:access"))
+    : canPerform(reviewerRoleId, "parameter.review");
   const projectRequests = useMemo(() => scopeToProject ? state.changeRequests.filter((request) => {
     const requestProjectId = request.projectId
       ?? findRetainedSubmissionRound(state.parameterSubmissionRounds, request)?.projectId
@@ -374,11 +379,13 @@ export function ParameterReviewPage({
     setActionError("");
     try {
       if (actionTarget.kind === "initialization") {
+        if (!canReviewInitialization) return;
         if (runtimeMode === "api" && parameterInitializationRepository) {
           const review = await parameterInitializationRepository.reject(
             actionTarget.review.id,
             reason
           );
+          if (actionScopeRef.current !== actionScopeKey) return;
           dispatch({
             type: "HYDRATE_PARAMETER_INITIALIZATION",
             reviews: state.parameterInitializationReviews.map((item) =>
@@ -417,8 +424,10 @@ export function ParameterReviewPage({
     setActionError("");
     try {
       if (actionTarget.kind === "initialization") {
+        if (!canReviewInitialization) return;
         if (runtimeMode === "api" && parameterInitializationRepository) {
           const review = await parameterInitializationRepository.approve(actionTarget.review.id);
+          if (actionScopeRef.current !== actionScopeKey) return;
           dispatch({ type: "APPROVE_PARAMETER_INITIALIZATION", reviewId: review.id });
           dispatch({ type: "HYDRATE_PROJECT_INITIALIZATION_STATUS", projectId: review.projectId, status: "initialized" });
         } else {

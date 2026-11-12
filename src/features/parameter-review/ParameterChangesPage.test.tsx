@@ -86,6 +86,29 @@ it("prevents changing views while a withdrawal is in flight", async () => {
   expect(screen.getByRole("radio", { name: "审阅队列" })).toBeEnabled();
 });
 
+it.each(["project", "identity", "view"])("stops the remaining batch after %s unmounts the old review view", async (change) => {
+  const requests = ["batch-first", "batch-second"].map((id) => ({ ...initialState.changeRequests[0], id,
+    projectId: "aurora", status: "硬件Committer检视" as const, submissionRoundId: undefined }));
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => { finish = resolve; });
+  const reviewChange = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(undefined);
+  const renderPage = (changed: boolean) => <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
+    <ParameterChangesPage state={{ ...initialState, activeRoleId: "admin", currentUserId: changed && change === "identity" ? "u-wang-jie" : "u-xu-yun",
+      changeRequests: requests, parameterSubmissionRounds: [], parameterInitializationReviews: [] }}
+      dispatch={vi.fn()} onNavigate={vi.fn()} parameterActions={{ reviewChange } as never} runtimeMode="mock"
+      search={`?project=${changed && change === "project" ? "nebula" : "aurora"}&scope=${changed && change === "view" ? "mine" : "review"}`} />
+  </TopBarActionsContext.Provider>;
+  window.history.replaceState(null, "", "/parameter-changes?project=aurora&scope=review");
+  const { rerender } = render(renderPage(false));
+  fireEvent.click(screen.getByRole("checkbox", { name: "全选可批量通过的变更" }));
+  fireEvent.click(screen.getByRole("button", { name: "批量通过（2 项）" }));
+  fireEvent.click(within(screen.getByRole("dialog", { name: "确认批量通过" })).getByRole("button", { name: "通过 2 项" }));
+  expect(reviewChange).toHaveBeenCalledTimes(1);
+  rerender(renderPage(true));
+  await act(async () => { finish(); await pending; });
+  expect(reviewChange).toHaveBeenCalledTimes(1);
+});
+
 it("does not turn the API membership-only submission exception into review authority", async () => {
   const listChangeRequests = vi.fn().mockResolvedValue([]);
   const runtime = { parameterRepository: { listChangeRequests, listSubmissionRounds: vi.fn().mockResolvedValue([]) },
@@ -100,6 +123,30 @@ it("does not turn the API membership-only submission exception into review autho
   expect(await screen.findByText("暂无审核中的提交")).toBeInTheDocument();
   expect(screen.queryByRole("radio", { name: "审阅队列" })).not.toBeInTheDocument();
   expect(listChangeRequests).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["hardware-committer", null, false], ["hardware-committer", "aurora", true],
+  ["software-committer", null, false], ["software-committer", "aurora", true],
+  ["software-user", null, false], ["software-user", "aurora", true],
+  ["admin", null, true], ["admin", "nebula", true]
+])("uses the project duty of API role %s at %s for review access", async (roleId, roleProject, allowed) => {
+  const listChangeRequests = vi.fn().mockResolvedValue([]);
+  const runtime = { parameterRepository: { listChangeRequests, listSubmissionRounds: vi.fn().mockResolvedValue([]) },
+    parameterCatalogRepository: { listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [] }),
+      listMemberRemovalRequests: vi.fn().mockResolvedValue({ items: [] }) } } as unknown as AppRuntime;
+  render(<TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
+    <ParameterChangesPage state={{ ...initialState, activeRoleId: roleId }} dispatch={vi.fn()} onNavigate={vi.fn()}
+      search="?project=aurora&scope=review" runtime={runtime} runtimeMode="api"
+      sessionPermissions={["parameter:view", "parameter:review", "parameter:edit", ...(roleId === "admin" ? ["admin:access"] : [])]}
+      sessionRoles={[{ projectId: roleProject, roleId }]} />
+  </TopBarActionsContext.Provider>);
+  if (allowed) await waitFor(() => expect(listChangeRequests).toHaveBeenCalledWith({ projectId: "aurora" }));
+  else {
+    await screen.findByText("暂无审核中的提交");
+    expect(listChangeRequests).not.toHaveBeenCalled();
+  }
+  expect(screen.queryByRole("radio", { name: "审阅队列" }) !== null).toBe(allowed);
 });
 
 it.each(["role", "permission"])("drops the review queue immediately when current-project %s is revoked", async (revoked) => {

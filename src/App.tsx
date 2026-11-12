@@ -323,10 +323,18 @@ function AppShell({
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [apiAuthRoles, setApiAuthRoles] = useState<AuthContextDto["roles"] | null>(null);
   const [apiProjectMemberships, setApiProjectMemberships] = useState<AuthContextDto["projectMemberships"]>([]);
-  const [homeOrganizationSuspended, setHomeOrganizationSuspended] = useState(false);
   const [organizationId, setOrganizationId] = useState(
     () => (runtimeMode === "api" ? "" : CATALOG_ORGANIZATION_ID)
   );
+  const initializationKey = JSON.stringify([scopeKey, organizationId, apiAuthStatus, apiAuthPermissions, apiAuthRoles,
+    state.users.find((user) => user.id === state.currentUserId)?.isActive]);
+  const initializationScope = useRef({ key: initializationKey, generation: 0 });
+  const initializationAuth = useRef<string | null>(null);
+  if (initializationScope.current.key !== initializationKey) {
+    initializationScope.current = { key: initializationKey, generation: initializationScope.current.generation + 1 };
+  }
+  const initializationGeneration = initializationScope.current.generation;
+  const [homeOrganizationSuspended, setHomeOrganizationSuspended] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
   // Below 768px the sidebar becomes an overlay drawer (ui-design-system §Layout);
   // between 769–900px it stays the auto-collapsed rail the media query used to force.
@@ -439,14 +447,20 @@ function AppShell({
   const canManagePublication = runtimeMode === "api"
     ? Boolean(apiAuthRoles?.some((role) => role.projectId === null && role.roleId === "platform-admin"))
     : currentRoleId === "platform-admin";
-  const businessScopeKey = `${scopeGeneration}:${canManageOrganization}:${canManagePublication}`;
-  const [confirmedBusinessScope, setConfirmedBusinessScope] = useState<{ key: string; scope: Awaited<ReturnType<OrganizationWorkspaceClient["enterOperatingContext"]>> } | null>(null);
-  const confirmedScope = confirmedBusinessScope?.key === businessScopeKey ? confirmedBusinessScope.scope : undefined;
   const requiresBusinessScope = runtimeMode === "api" && operatingOrganizationId !== undefined && isOrganizationBusinessPath(path);
+  const scopeEntry = useRef({ active: false, generation: 0 });
+  if (requiresBusinessScope && !scopeEntry.current.active) scopeEntry.current.generation += 1;
+  scopeEntry.current.active = requiresBusinessScope;
+  const businessScopeKey = `${scopeGeneration}:${canManageOrganization}:${canManagePublication}:${scopeEntry.current.generation}`;
+  const [confirmedBusinessScope, setConfirmedBusinessScope] = useState<{ key: string; scope: Awaited<ReturnType<OrganizationWorkspaceClient["enterOperatingContext"]>> } | null>(null);
+  const [failedBusinessScope, setFailedBusinessScope] = useState<string | null>(null);
+  const confirmedScope = confirmedBusinessScope?.key === businessScopeKey ? confirmedBusinessScope.scope : undefined;
   const businessScopeReady = !requiresBusinessScope || Boolean(confirmedScope);
   const handleBusinessScopeResolved = useCallback((scope: Awaited<ReturnType<OrganizationWorkspaceClient["enterOperatingContext"]>>) => {
     setConfirmedBusinessScope({ key: businessScopeKey, scope });
+    setFailedBusinessScope(null);
   }, [businessScopeKey]);
+  const handleBusinessScopeError = useCallback((failed: boolean) => setFailedBusinessScope(failed ? businessScopeKey : null), [businessScopeKey]);
   const visibleWorkflows = WORKFLOW_IDS.filter((id) =>
     (isPublicationAdministrator || publication.status === "ready" && publication.publication?.workflows[id] === true) &&
     navigationItems.some((item) => workflowForGroup(item.group) === id && canAccessPage(currentRoleId, item.key))
@@ -543,17 +557,19 @@ function AppShell({
       return;
     }
     // Admin-only endpoint; non-admins must not probe it (browser diagnostics treat 403 as failure).
-    const canListInitReviews =
-      apiAuthPermissions.includes("admin:access") || canPerform(migrateLegacyRoleId(stateRef.current.activeRoleId), "admin.access");
+    const canListInitReviews = apiAuthPermissions.includes("admin:access")
+      && stateRef.current.users.some((user) => user.id === stateRef.current.currentUserId && user.isActive);
     if (!canListInitReviews) {
       return;
     }
     try {
       const pending = await parameterInitializationRepositoryClient.listPendingReviews();
+      if (initializationScope.current.generation !== initializationGeneration) return;
       const drafts: ProjectParameterInitializationDraft[] = [];
       const statuses: Record<string, ProjectInitializationStatus> = {};
       for (const review of pending) {
         const stateDto = await parameterInitializationRepositoryClient.getInitialization(review.projectId);
+        if (initializationScope.current.generation !== initializationGeneration) return;
         statuses[review.projectId] = stateDto.status;
         if (stateDto.draft) {
           drafts.push(toLegacyInitializationDraft(stateDto.draft));
@@ -575,7 +591,7 @@ function AppShell({
       // Background hydrate must not toast — API-mode unit tests and non-review
       // pages would otherwise accumulate spurious "无法刷新…" notifications.
     }
-  }, [apiAuthPermissions, parameterInitializationRepositoryClient, runtimeMode]);
+  }, [apiAuthPermissions, initializationGeneration, parameterInitializationRepositoryClient, runtimeMode]);
 
   const hydratedParameterScope = useRef<number | null>(null);
   const hydrateActiveProjectInitialization = useCallback(
@@ -585,12 +601,13 @@ function AppShell({
       }
       try {
         const stateDto = await parameterInitializationRepositoryClient.getInitialization(projectId);
+        if (initializationScope.current.generation !== initializationGeneration) return;
         dispatch({
           type: "HYDRATE_PROJECT_INITIALIZATION_STATUS",
           projectId,
           status: stateDto.status
         });
-        if (stateDto.draft) {
+        if (stateDto.draft && apiAuthPermissions.includes("admin:access")) {
           const legacyDraft = toLegacyInitializationDraft(stateDto.draft);
           const without = stateRef.current.parameterInitializationDrafts.filter(
             (draft) => draft.projectId !== projectId
@@ -604,7 +621,7 @@ function AppShell({
         // Keep local status when the project is unavailable or unauthorized.
       }
     },
-    [parameterInitializationRepositoryClient, runtimeMode]
+    [apiAuthPermissions, initializationGeneration, parameterInitializationRepositoryClient, runtimeMode]
   );
 
   const initializationCreatedProjectIds = useRef(new Set<string>());
@@ -705,6 +722,11 @@ function AppShell({
   );
 
   const hydrateAuthContext = useCallback((context: AuthContextDto) => {
+    initializationScope.current.generation += 1;
+    const authKey = JSON.stringify([context.user.id, context.user.isActive, context.organization.id, context.roles, context.permissions]);
+    const clearInitialization = initializationAuth.current !== authKey;
+    initializationAuth.current = authKey;
+    if (clearInitialization) initializationCreatedProjectIds.current.clear();
     const primaryRole = pickPrimaryPlatformRoleId(context.roles.map((role) => role.roleId));
     setApiAuthPermissions(context.permissions);
     setApiAuthRoles(context.roles);
@@ -714,6 +736,8 @@ function AppShell({
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
       roleId: primaryRole,
+      canReadParameterInitialization: context.user.isActive && context.permissions.includes("admin:access"),
+      clearParameterInitialization: clearInitialization,
       user: {
         id: context.user.id,
         name: context.user.name,
@@ -750,6 +774,8 @@ function AppShell({
     dashboardDispatch({ type: "DASHBOARD_HOTSPOTS_LOADING" });
     dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", projects: [], parameters: [], changeRequests: [], parameterSubmissionRounds: [], parameterDrafts: [] });
     dispatch({ type: "HYDRATE_LOG_RUNTIME", logs: [] });
+    dispatch({ type: "CLEAR_PARAMETER_INITIALIZATION" });
+    initializationCreatedProjectIds.current.clear();
   }, [runtimeMode, apiAuthStatus, scopeGeneration]);
 
   const refreshApiRuntimeData = useCallback(
@@ -1112,6 +1138,10 @@ function AppShell({
       // A failed server-side logout must not trap the user in the app;
       // always clear the local session and return to the login screen.
     }
+    initializationScope.current.generation += 1;
+    initializationAuth.current = null;
+    initializationCreatedProjectIds.current.clear();
+    dispatch({ type: "CLEAR_PARAMETER_INITIALIZATION" });
     clearLocalAuthToken();
     clearSessionDraftsForLogout();
     setApiAuthRoles(null);
@@ -1202,12 +1232,13 @@ function AppShell({
   const pageRuntimeDomain: ApiRuntimeDataDomain | null = !canAccessCurrentPage || page.path === "/parameters/definitions" ? null : page.group === "参数管理" || page.key === "dts-reload"
     ? "parameters"
     : page.group === "日志分析" ? "logs" : page.group === "调试平台" && page.key !== "debugging-admin" ? "debugging" : null;
-  const pageRuntimeState = runtimeMode !== "api" || !pageRuntimeDomain || !businessScopeReady
-    ? "ready"
+  const pageRuntimeState = runtimeMode !== "api" ? "ready"
+    : !businessScopeReady ? failedBusinessScope === businessScopeKey ? "error" : "loading"
+    : !pageRuntimeDomain ? "ready"
     : apiRuntimePending.has(pageRuntimeDomain) ? "loading" : apiRuntimeFailures.has(pageRuntimeDomain) ? "error" : "ready";
-  const loadingProjectParameters = page.key === "parameters" && pageRuntimeState === "loading";
+  const loadingProjectParameters = businessScopeReady && page.key === "parameters" && pageRuntimeState === "loading";
   const apiRuntimeStatusBanner =
-    pageRuntimeState === "error" && pageRuntimeDomain ? (
+    !businessScopeReady ? null : pageRuntimeState === "error" && pageRuntimeDomain ? (
       <div className="api-runtime-error-banner" role="alert" aria-live="assertive">
         <AlertTriangle size={18} aria-hidden="true" />
         <div className="api-runtime-error-banner__body">
@@ -1287,7 +1318,7 @@ function AppShell({
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
           {isPlatformHome ? (
             <div className="main-content home-content" data-runtime-state="ready">
-              <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} initialScope={requiresBusinessScope ? confirmedScope : undefined} onScopeResolved={requiresBusinessScope ? handleBusinessScopeResolved : undefined} onNavigate={navigate}>
+              <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} initialScope={requiresBusinessScope ? confirmedScope : undefined} onScopeResolved={requiresBusinessScope ? handleBusinessScopeResolved : undefined} onScopeError={requiresBusinessScope ? handleBusinessScopeError : undefined} onNavigate={navigate}>
               <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                 page={page}
                 publication={publication}
@@ -1342,7 +1373,7 @@ function AppShell({
               {publicationPreviewBanner}
               {loadingProjectParameters ? <ProjectParametersLoading /> : null}
               <div className="page-content" inert={pageRuntimeState === "loading"} hidden={loadingProjectParameters}>
-                <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} initialScope={requiresBusinessScope ? confirmedScope : undefined} onScopeResolved={requiresBusinessScope ? handleBusinessScopeResolved : undefined} onNavigate={navigate}>
+                <OrganizationBusinessWorkspace key={`${canManageOrganization}:${canManagePublication}`} proactiveInsights={proactiveInsightsBanner} homeSuspended={showHomeOrganizationSuspended} homePath={path} actorId={state.currentUserId} organizationId={isOrganizationBusinessPath(path) ? operatingOrganizationId : undefined} workspaceClient={appRuntime.organizationWorkspaceClient} initialScope={requiresBusinessScope ? confirmedScope : undefined} onScopeResolved={requiresBusinessScope ? handleBusinessScopeResolved : undefined} onScopeError={requiresBusinessScope ? handleBusinessScopeError : undefined} onNavigate={navigate}>
                 <PageRouter key={`${state.currentUserId}:${operatingOrganizationId ?? "home"}:${page.key}`}
                   page={page}
                   publication={publication}

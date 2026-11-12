@@ -379,7 +379,7 @@ export function PageRouter({
           onDashboardDimensionChange={onDashboardDimensionChange!}
           onDashboardOverviewScopeChange={onDashboardOverviewScopeChange!}
           onDashboardProjectChange={onDashboardProjectChange!}
-          onNavigate={onNavigate}
+          onNavigate={navigateParameters}
           onNewProject={onNewProject}
         />
       );

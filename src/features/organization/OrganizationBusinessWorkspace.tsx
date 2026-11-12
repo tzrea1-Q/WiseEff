@@ -6,7 +6,7 @@ import { presentError } from "@/infrastructure/http/presentError";
 
 type Scope = Awaited<ReturnType<OrganizationWorkspaceClient["enterOperatingContext"]>>;
 type Props = { actorId: string; organizationId?: string; homeSuspended?: boolean; homePath: string; workspaceClient?: OrganizationWorkspaceClient;
-  initialScope?: Scope; onScopeResolved?: (scope: Scope) => void;
+  initialScope?: Scope; onScopeResolved?: (scope: Scope) => void; onScopeError?: (failed: boolean) => void;
   onNavigate: (path: string) => void; children: ReactNode; proactiveInsights?: ReactNode };
 
 /** The App's approved route owns the workspace, including while Back/Forward awaits a leave decision. */
@@ -16,22 +16,23 @@ export function OrganizationBusinessWorkspace(props: Props) {
   return <ResolvedWorkspace key={`${props.actorId}:${props.organizationId}`} {...props} organizationId={props.organizationId} initialScope={initialScope} />;
 }
 
-function ResolvedWorkspace({ actorId, organizationId, homePath, workspaceClient, children, onNavigate, proactiveInsights, initialScope, onScopeResolved }: Props & { organizationId: string }) {
+function ResolvedWorkspace({ actorId, organizationId, homePath, workspaceClient, children, onNavigate, proactiveInsights, initialScope, onScopeResolved, onScopeError }: Props & { organizationId: string }) {
   const [scope, setScope] = useState<Scope | null>(initialScope ?? null);
   const [error, setError] = useState(""), [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
     if (initialScope) return;
     setError("");
-    if (!workspaceClient) { setError("当前连接不支持此工作区。"); return; }
+    onScopeError?.(false);
+    if (!workspaceClient) { setError("当前连接不支持此工作区。"); onScopeError?.(true); return; }
     void workspaceClient.enterOperatingContext(organizationId).then((value) => {
       if (cancelled) return;
-      if (value.actor.user.id !== actorId || value.organization.id !== organizationId) { setError("无法确认该工作区，请重试。"); return; }
+      if (value.actor.user.id !== actorId || value.organization.id !== organizationId) { setError("无法确认该工作区，请重试。"); onScopeError?.(true); return; }
       setScope(value); onScopeResolved?.(value);
     })
-      .catch((failure: unknown) => { if (!cancelled) setError(presentError(failure, "无法进入该工作区。")); });
+      .catch((failure: unknown) => { if (!cancelled) { setError(presentError(failure, "无法进入该工作区。")); onScopeError?.(true); } });
     return () => { cancelled = true; };
-  }, [workspaceClient, actorId, organizationId, attempt, initialScope, onScopeResolved]);
+  }, [workspaceClient, actorId, organizationId, attempt, initialScope, onScopeResolved, onScopeError]);
   if (error) return <SectionError message={error} onRetry={() => setAttempt((value) => value + 1)} />;
   if (!scope) return <SectionSkeleton label="正在进入工作区" />;
   const platform = scope.actor.roles.some(role => role.projectId === null && role.roleId === "platform-admin");

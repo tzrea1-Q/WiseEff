@@ -3,6 +3,8 @@ import { ApiError } from "../../../shared/http/errors";
 import { createAgentInvocation, TRUSTED_INVOCATION_CONTEXT_ERROR_CODE } from "../../auth/trustedInvocation";
 import { testRefusalAuditSink } from "../../audit/testRefusalSink";
 import { setParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
+import type { AuthContext } from "../../auth/types";
+import type { AgentToolExecutionContext } from "../toolRegistry";
 
 vi.mock("../../parameter-bindings/drafts", () => ({
   createCanonicalValueDraft: vi.fn(),
@@ -34,12 +36,12 @@ const dbMock = {
 };
 const db = dbMock as never;
 
-const agentAuth = {
+const agentAuth: AuthContext = {
   organization: { id: "org1", name: "Test Organization" },
   user: { id: "u1", organizationId: "org1", name: "Admin", title: "Admin", isActive: true },
   roles: [{ roleId: "admin", projectId: null }],
   permissions: ["parameter:edit"]
-} as const;
+};
 
 const durableAgentInvocation = createAgentInvocation(agentAuth, {
   sessionId: "s1",
@@ -47,7 +49,7 @@ const durableAgentInvocation = createAgentInvocation(agentAuth, {
   approval: { required: true, approvalId: "approval-1" }
 });
 
-const adminContext = {
+const adminContext: AgentToolExecutionContext = {
   auth: agentAuth,
   invocation: durableAgentInvocation,
   requestId: "r1",
@@ -55,7 +57,7 @@ const adminContext = {
   toolCallId: "tool-call-1",
   projectId: "p1",
   approvalId: "approval-1"
-} as never;
+};
 
 const canonicalPins = {
   bindingId: "binding-1",

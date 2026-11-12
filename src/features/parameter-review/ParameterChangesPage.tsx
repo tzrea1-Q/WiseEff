@@ -1,4 +1,4 @@
-import { canAccessParameterReviewPage } from "@/app/permissions";
+import { canAccessParameterReviewPage, projectReviewRoles } from "@/app/permissions";
 import type { PageProps } from "@/app/routes";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { migrateLegacyRoleId, pickPrimaryPlatformRoleId } from "@/domain/users/types";
@@ -11,7 +11,7 @@ export function ParameterChangesPage(props: PageProps) {
   const params = new URLSearchParams(search);
   const projectId = params.get("project") ?? params.get("projectId") ?? state.activeProjectId;
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
-  const projectRoles = useMemo(() => sessionRoles?.filter((role) => role.projectId === null || role.projectId === projectId) ?? [], [sessionRoles, projectId]);
+  const projectRoles = useMemo(() => projectReviewRoles(sessionRoles ?? [], projectId), [sessionRoles, projectId]);
   const canReview = runtimeMode === "api"
     ? Boolean(currentUser?.isActive && projectRoles.some((role) => canAccessParameterReviewPage(role.roleId)
       && (!props.sessionPermissions || props.sessionPermissions.includes("parameter:review")

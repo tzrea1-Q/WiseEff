@@ -43,10 +43,15 @@ describe("permission-aware routing", () => {
       logAnalysisRepository={createTestLogAnalysisRepository([], { listLogs })} />);
 
     await waitFor(() => expect(resolveScope).toBeTypeOf("function"));
+    expect(document.querySelector("main.main-content")).toHaveAttribute("data-runtime-state", "loading");
+    expect(document.querySelector("main.main-content")).toHaveAttribute("aria-busy", "true");
     expect(listProjects).not.toHaveBeenCalled();
     expect(listLogs).not.toHaveBeenCalled();
     await act(async () => resolveScope(Response.json({ error: { code: "FORBIDDEN", message: "Forbidden.", details: {} } }, { status: 403 })));
     expect(await screen.findByRole("alert")).toHaveTextContent("没有权限执行该操作");
+    expect(document.querySelector("main.main-content")).toHaveAttribute("data-runtime-state", "error");
+    expect(document.querySelector("main.main-content")).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
     expect(window.location.search).toBe("?organizationId=foreign");
     expect(listProjects).not.toHaveBeenCalled();
     expect(listLogs).not.toHaveBeenCalled();
@@ -67,6 +72,34 @@ describe("permission-aware routing", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("没有权限执行该操作");
     expect(listProjects).toHaveBeenCalledTimes(projectReads);
     expect(listLogs).toHaveBeenCalledTimes(logReads);
+  });
+
+  it("reconfirms organization status after leaving and reentering its business workspace", async () => {
+    window.history.replaceState(null, "", "/parameters?organizationId=foreign");
+    const auth = { user: { id: "operator", organizationId: "home", name: "Operator", title: "", isActive: true },
+      organization: { id: "home", name: "Home" }, roles: [{ projectId: null, roleId: "platform-admin" }],
+      permissions: ["admin:access", "users:manage", "parameter:view"] };
+    let status: "active" | "suspended" = "active";
+    const fetchImpl = vi.fn((input: RequestInfo | URL) => String(input).includes("/api/v1/organization/operating-scope")
+      ? Promise.resolve(Response.json({ actor: auth, organization: { id: "foreign", name: "Foreign", status } }))
+      : Promise.resolve(Response.json({})));
+    vi.stubGlobal("fetch", fetchImpl);
+    render(<App runtimeMode="api" initialAppState={initialState} authClient={{ getCurrentAuthContext: vi.fn(async () => auth) }}
+      parameterRepository={createTestParameterRepository()} parameterCatalogRepository={createMockParameterCatalogRepository()}
+      logAnalysisRepository={createTestLogAnalysisRepository()} />);
+    await screen.findByRole("region", { name: "当前操作组织" });
+    const calls = () => fetchImpl.mock.calls.filter(([input]) => String(input).includes("/api/v1/organization/operating-scope")).length;
+    const navigate = (path: string) => act(() => { window.history.pushState(null, "", path); window.dispatchEvent(new PopStateEvent("popstate")); });
+    navigate("/workflow-publication?organizationId=foreign");
+    status = "suspended";
+    navigate("/parameters?organizationId=foreign");
+    await waitFor(() => expect(calls()).toBe(2));
+    expect(await screen.findByText(/组织已停用，业务数据仅可查看/)).toBeInTheDocument();
+    navigate("/workflow-publication?organizationId=foreign");
+    status = "active";
+    navigate("/parameters?organizationId=foreign");
+    await waitFor(() => expect(calls()).toBe(3));
+    await waitFor(() => expect(screen.queryByText(/组织已停用，业务数据仅可查看/)).not.toBeInTheDocument());
   });
 
   it("opens the personal change center from the main navigation for a hardware user", async () => {

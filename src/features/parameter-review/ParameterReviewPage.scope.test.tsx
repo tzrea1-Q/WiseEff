@@ -1,10 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { TopBarActionsContext } from "@/components/layout";
 import { initialState } from "@/mockData";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { ProjectParameterInitializationDraft } from "@/domain/parameters/types";
+import type { InitializationReviewDto } from "@/domain/parameters/initializationTypes";
+import type { AppRuntime } from "@/app/appRuntime";
 import { ParameterReviewPage } from "./ParameterReviewPage";
 
 afterEach(() => { cleanup(); window.history.replaceState(null, "", "/"); });
@@ -34,6 +36,44 @@ function initialization(status: "pending" | "rejected") {
 }
 
 describe("legacy review evidence and action scope", () => {
+  it("removes cached initialization and confirmation when API administrator permission is revoked", () => {
+    const state = { ...initialization("pending"), activeRoleId: "admin" };
+    const page = (permissions: string[]) => <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
+      <ParameterReviewPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="?project=aurora"
+        runtimeMode="api" sessionPermissions={permissions} />
+    </TopBarActionsContext.Provider>;
+    const { rerender } = render(page(["admin:access", "parameter:review"]));
+    expect(screen.getByRole("table", { name: "审阅队列" })).toHaveTextContent("Aurora 初始化");
+    fireEvent.click(screen.getByRole("button", { name: "通过初始化" }));
+    expect(screen.getByRole("dialog", { name: "确认通过初始化" })).toBeInTheDocument();
+    rerender(page(["parameter:review"]));
+    expect(screen.queryByText("Aurora 初始化")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "通过初始化" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "确认通过初始化" })).not.toBeInTheDocument();
+  });
+
+  it("does not apply an initialization approval response after administrator permission is revoked", async () => {
+    const state = { ...initialization("pending"), activeRoleId: "admin" };
+    let finish!: (review: InitializationReviewDto) => void;
+    const pending = new Promise<InitializationReviewDto>((resolve) => { finish = resolve; });
+    const approve = vi.fn(() => pending);
+    const dispatch = vi.fn();
+    const runtime = { parameterInitializationRepository: { approve } } as unknown as AppRuntime;
+    const page = (permissions: string[]) => <TopBarActionsContext.Provider value={{ setActions: () => {}, setLeadingActions: () => {} }}>
+      <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={vi.fn()} search="?project=aurora"
+        runtime={runtime} runtimeMode="api" sessionPermissions={permissions} />
+    </TopBarActionsContext.Provider>;
+    const { rerender } = render(page(["admin:access", "parameter:review"]));
+    fireEvent.click(screen.getByRole("button", { name: "通过初始化" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "确认通过初始化" })).getByRole("button", { name: "确认通过" }));
+    expect(approve).toHaveBeenCalledOnce();
+    rerender(page(["parameter:review"]));
+    await act(async () => { finish({ id: "scope-init-review", draftId: "scope-init-draft", organizationId: "org-chargelab", projectId: "aurora",
+      status: "approved", submittedByUserId: null, submittedAt: "2026-10-16T00:00:00Z" }); await pending; });
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "APPROVE_PARAMETER_INITIALIZATION" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PROJECT_INITIALIZATION_STATUS" }));
+  });
+
   it("keeps cached initialization reviews in the selected project on the legacy page", () => {
     const state = initialization("pending");
     const draft = state.parameterInitializationDrafts[0];

@@ -49,6 +49,7 @@ import { createApiClient, WiseEffApiError } from "@/infrastructure/http/apiClien
 import { createAuthClient } from "@/infrastructure/http/authClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { SettingsFormPage } from "@/components/layout/SettingsFormPage";
+import type { InitializationReviewDto, ProjectInitializationStateDto } from "@/domain/parameters/initializationTypes";
 
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
@@ -260,6 +261,109 @@ it("waits for live projects before reading their initialization state", async ()
   });
   await waitFor(() => expect(getInitialization).toHaveBeenCalledWith("live-only-project"));
   expect(getInitialization.mock.calls.every(([id]) => id === "live-only-project")).toBe(true);
+});
+
+it.each(["identity", "permission", "partial permission", "organization"])("discards an in-flight initialization list after %s changes", async (change) => {
+  window.history.replaceState(null, "", "/parameter-changes?project=aurora&scope=review");
+  let finish!: (reviews: InitializationReviewDto[]) => void;
+  const pending = new Promise<InitializationReviewDto[]>((resolve) => { finish = resolve; });
+  const listPendingReviews = vi.fn().mockReturnValueOnce(pending).mockResolvedValue([]);
+  const getInitialization = vi.fn().mockResolvedValue({ status: "initialized" });
+  const auth = { user: { id: "u-xu-yun", organizationId: "org-chargelab", name: "Xu Yun", title: "Owner", isActive: true },
+    organization: { id: "org-chargelab", name: "ChargeLab" }, roles: [{ projectId: null, roleId: "admin" }],
+    permissions: ["admin:access", "parameter:view", "parameter:review", "users:manage"] };
+  const authClient = { getCurrentAuthContext: vi.fn(async () => auth), updateCurrentUserProfile: vi.fn(async () => ({
+    ...auth, user: { ...auth.user, id: change === "identity" ? "other-admin" : auth.user.id, name: "Updated",
+      organizationId: change === "organization" ? "other-org" : auth.user.organizationId },
+    organization: change === "organization" ? { id: "other-org", name: "Other" } : auth.organization,
+    permissions: change === "permission" ? ["parameter:view", "parameter:review"]
+      : change === "partial permission" ? ["admin:access", "parameter:view"] : auth.permissions
+  })) };
+  render(<App runtimeMode="api" initialAppState={adminState} authClient={authClient}
+    parameterRepository={createTestParameterRepository()} parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
+    logAnalysisRepository={createTestLogAnalysisRepository()}
+    parameterInitializationRepository={{ getInitialization, listPendingReviews, upsertDraft: vi.fn(), previewSnapshot: vi.fn(),
+      submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
+  await waitFor(() => expect(listPendingReviews).toHaveBeenCalled());
+  fireEvent.click(await screen.findByRole("button", { name: /打开用户菜单$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
+  fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Updated" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(authClient.updateCurrentUserProfile).toHaveBeenCalled());
+  await screen.findByRole("button", { name: "Updated，打开用户菜单" });
+  await act(async () => {
+    finish([{ id: "old-review", draftId: "old-draft", organizationId: "org-chargelab", projectId: "stale-project",
+      status: "pending", submittedByUserId: "u-xu-yun", submittedAt: "2026-01-01T00:00:00Z" }]);
+    await pending;
+  });
+  expect(getInitialization).not.toHaveBeenCalledWith("stale-project");
+  expect(screen.queryByText("old-review")).not.toBeInTheDocument();
+});
+
+it("does not restore initialization details from a previous administrator", async () => {
+  window.history.replaceState(null, "", "/parameter-changes?project=aurora&scope=review");
+  let finish!: (state: ProjectInitializationStateDto) => void;
+  const pending = new Promise<ProjectInitializationStateDto>((resolve) => { finish = resolve; });
+  let previousSession = true;
+  const getInitialization = vi.fn(() => previousSession ? pending : Promise.resolve({ status: "initialized" as const, draft: null }));
+  const listPendingReviews = vi.fn().mockResolvedValueOnce([{ id: "old-review", draftId: "old-draft", organizationId: "org-chargelab",
+    projectId: "aurora", status: "pending", submittedByUserId: "u-xu-yun", submittedAt: "2026-01-01T00:00:00Z" }]).mockResolvedValue([]);
+  const auth = { user: { id: "u-xu-yun", organizationId: "org-chargelab", name: "Xu Yun", title: "Owner", isActive: true },
+    organization: { id: "org-chargelab", name: "ChargeLab" }, roles: [{ projectId: null, roleId: "admin" }],
+    permissions: ["admin:access", "parameter:view", "parameter:review", "users:manage"] };
+  const authClient = { getCurrentAuthContext: vi.fn(async () => auth), updateCurrentUserProfile: vi.fn(async () => {
+    previousSession = false;
+    return { ...auth, user: { ...auth.user, id: "other-admin", name: "Updated" } };
+  }) };
+  render(<App runtimeMode="api" initialAppState={adminState} authClient={authClient}
+    parameterRepository={createTestParameterRepository()} parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
+    logAnalysisRepository={createTestLogAnalysisRepository()}
+    parameterInitializationRepository={{ getInitialization, listPendingReviews, upsertDraft: vi.fn(), previewSnapshot: vi.fn(),
+      submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
+  await waitFor(() => expect(getInitialization).toHaveBeenCalledWith("aurora"));
+  fireEvent.click(await screen.findByRole("button", { name: /打开用户菜单$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
+  fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Updated" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await screen.findByRole("button", { name: "Updated，打开用户菜单" });
+  await act(async () => {
+    finish({ status: "initialization_pending_review", draft: { id: "old-draft", organizationId: "org-chargelab", projectId: "aurora",
+      projectName: "Previous-session project", projectCode: "OLD", ownerUserId: null, sourceProjectIds: [], primarySourceProjectId: null,
+      supplementSourceProjectIds: [], selectedModuleIds: [], selectedRisks: [], selectedSourceBindingIds: [], bindingSnapshots: [],
+      emptyLibrary: true, notes: "", createdByUserId: "u-xu-yun", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" } });
+    await pending;
+  });
+  expect(screen.queryByText("Previous-session project 初始化")).not.toBeInTheDocument();
+});
+
+it("clears cached initialization when permissions change even if administrator access remains", async () => {
+  window.history.replaceState(null, "", "/parameter-changes?project=aurora&scope=review");
+  let changed = false;
+  const draft: ProjectInitializationStateDto = { status: "initialization_pending_review", draft: { id: "old-draft", organizationId: "org-chargelab",
+    projectId: "aurora", projectName: "Cached project", projectCode: "OLD", ownerUserId: null, sourceProjectIds: [], primarySourceProjectId: null,
+    supplementSourceProjectIds: [], selectedModuleIds: [], selectedRisks: [], selectedSourceBindingIds: [], bindingSnapshots: [],
+    emptyLibrary: true, notes: "", createdByUserId: "u-xu-yun", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" } };
+  const listPendingReviews = vi.fn().mockResolvedValueOnce([{ id: "old-review", draftId: "old-draft", organizationId: "org-chargelab",
+    projectId: "aurora", status: "pending", submittedByUserId: "u-xu-yun", submittedAt: "2026-01-01T00:00:00Z" }]).mockResolvedValue([]);
+  const auth = { user: { id: "u-xu-yun", organizationId: "org-chargelab", name: "Xu Yun", title: "Owner", isActive: true },
+    organization: { id: "org-chargelab", name: "ChargeLab" }, roles: [{ projectId: null, roleId: "admin" }],
+    permissions: ["admin:access", "parameter:view", "parameter:review", "users:manage"] };
+  const authClient = { getCurrentAuthContext: vi.fn(async () => auth), updateCurrentUserProfile: vi.fn(async () => {
+    changed = true;
+    return { ...auth, user: { ...auth.user, name: "Updated" }, permissions: [...auth.permissions, "parameter:edit"] };
+  }) };
+  render(<App runtimeMode="api" initialAppState={adminState} authClient={authClient}
+    parameterRepository={createTestParameterRepository()} parameterCatalogRepository={createTestAppPorts().parameterCatalogRepository}
+    logAnalysisRepository={createTestLogAnalysisRepository()}
+    parameterInitializationRepository={{ getInitialization: vi.fn(async () => changed ? { status: "initialized" as const, draft: null } : draft),
+      listPendingReviews, upsertDraft: vi.fn(), previewSnapshot: vi.fn(), submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
+  expect((await screen.findAllByText("Cached project 初始化")).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole("button", { name: /打开用户菜单$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
+  fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Updated" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await screen.findByRole("button", { name: "Updated，打开用户菜单" });
+  expect(screen.queryByText("Cached project 初始化")).not.toBeInTheDocument();
 });
 
 function parameterAdminNavGroup(sidebar: HTMLElement): HTMLElement {

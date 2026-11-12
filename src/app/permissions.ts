@@ -76,6 +76,10 @@ export function canAccessParameterReviewPage(roleId: string): boolean {
   return canPerform(normalizedRole, "parameter.review") || canPerform(normalizedRole, "parameter.merge");
 }
 
+export function projectReviewRoles<T extends { projectId: string | null; roleId: string }>(roles: readonly T[], projectId: string): T[] {
+  return roles.filter((role) => migrateLegacyRoleId(role.roleId) === "admin" || role.projectId === projectId);
+}
+
 export function canAccessPage(roleId: string, pageKey: PageKey, scope?: { path: string; runtimeMode: string;
   permissions?: readonly string[] | null; roles?: readonly { projectId: string | null; roleId: string }[] | null;
   projectMemberships?: readonly { projectId: string; roles: readonly string[] }[] | null }): boolean {

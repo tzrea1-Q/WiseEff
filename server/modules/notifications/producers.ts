@@ -93,7 +93,7 @@ export async function notifyParameterReviewRejected(
     title: `审阅打回 · ${input.parameterName}`,
     body: `${input.reviewerName} 打回了 ${projectLabel} 的参数变更${noteSuffix}`,
     severity: "warning",
-    actionUrl: reviewQueueUrl(input.projectId),
+    actionUrl: changeCenterHref("mine", { project: input.projectId, legacyRequest: input.requestId, organizationId: input.organizationId }),
     sourceKind: "parameter-change-request",
     sourceId: input.requestId,
     metadata: {
@@ -119,15 +119,14 @@ export async function notifyParameterReviewAdvanced(
   }
 ) {
   const projectLabel = input.projectName?.trim() || input.projectId;
-  const recipients = uniqueRecipients([input.submitterUserId, ...(input.assigneeUserIds ?? [])]);
-  await notifyUsers(db, {
+  const submitter = input.submitterUserId.trim();
+  const assignees = uniqueRecipients(input.assigneeUserIds ?? []).filter((id) => id !== submitter);
+  const notification = {
     organizationId: input.organizationId,
-    recipientUserIds: recipients,
     category: "parameter.review.advanced",
     title: `审阅推进 · ${input.parameterName}`,
     body: `${input.reviewerName} 将 ${projectLabel} 的参数变更推进至 ${input.toStatus}。`,
-    severity: "info",
-    actionUrl: reviewQueueUrl(input.projectId),
+    severity: "info" as const,
     sourceKind: "parameter-change-request",
     sourceId: `${input.requestId}:${input.toStatus}`,
     metadata: {
@@ -136,7 +135,11 @@ export async function notifyParameterReviewAdvanced(
       reviewerName: input.reviewerName,
       toStatus: input.toStatus
     }
-  });
+  };
+  await notifyUsers(db, { ...notification, recipientUserIds: submitter ? [submitter] : [],
+    actionUrl: changeCenterHref("mine", { project: input.projectId, legacyRequest: input.requestId, organizationId: input.organizationId }) });
+  if (assignees.length) await notifyUsers(db, { ...notification, recipientUserIds: assignees,
+    actionUrl: changeCenterHref("review", { project: input.projectId, legacyRequest: input.requestId, organizationId: input.organizationId }) });
 }
 
 
