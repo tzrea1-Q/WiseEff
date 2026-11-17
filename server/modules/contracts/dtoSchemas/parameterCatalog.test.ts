@@ -334,12 +334,12 @@ describe("S8-CON threat matrix", () => {
     ).toBe(false);
   });
 
-  it("accepts up to 128 publication changes", () => {
+  it("accepts up to 1024 publication changes", () => {
     const change = { op: "create-definition", subjectId: "csub_acme_power", propertyKey: "current", content: {
       displayName: "电流", documentation: "", valueSchema: { type: "integer" },
     } };
-    expect(catalogCreatePublicationCandidateRequestSchema.safeParse({ changeSet: Array(128).fill(change) }).success).toBe(true);
-    expect(catalogCreatePublicationCandidateRequestSchema.safeParse({ changeSet: Array(129).fill(change) }).success).toBe(false);
+    expect(catalogCreatePublicationCandidateRequestSchema.safeParse({ changeSet: Array(1024).fill(change) }).success).toBe(true);
+    expect(catalogCreatePublicationCandidateRequestSchema.safeParse({ changeSet: Array(1025).fill(change) }).success).toBe(false);
   });
 
   it("fails closed when a canonical client method is missing for a catalog route", () => {
