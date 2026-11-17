@@ -158,7 +158,7 @@ describe("catalog publication capability allow-list", () => {
       expect(result.ok, entry.detail).toBe(false);
       if (result.ok) return;
       expect(result.error.kind).toBe("unsupported-catalog-capability");
-      expect(result.error.detail).toBe(entry.detail);
+      expect(result.error).toMatchObject({ detail: entry.detail });
     }
   });
 
@@ -174,7 +174,7 @@ describe("catalog publication capability allow-list", () => {
     );
     expect(extraField.ok).toBe(false);
     if (!extraField.ok) {
-      expect(extraField.error.detail).toBe("unknown-field");
+      expect(extraField.error).toMatchObject({ detail: "unknown-field" });
     }
 
     const unit = validateSupportedDefinitionContent(
@@ -188,7 +188,7 @@ describe("catalog publication capability allow-list", () => {
     );
     expect(unit.ok).toBe(false);
     if (!unit.ok) {
-      expect(unit.error.detail).toBe("unsupported-unit");
+      expect(unit.error).toMatchObject({ detail: "unsupported-unit" });
     }
 
     const examples = validateSupportedDefinitionContent(
@@ -202,7 +202,7 @@ describe("catalog publication capability allow-list", () => {
     );
     expect(examples.ok).toBe(false);
     if (!examples.ok) {
-      expect(examples.error.detail).toBe("example-does-not-match-schema");
+      expect(examples.error).toMatchObject({ detail: "example-does-not-match-schema" });
     }
   });
 
@@ -217,7 +217,7 @@ describe("catalog publication capability allow-list", () => {
     );
     expect(name.ok).toBe(false);
     if (!name.ok) {
-      expect(name.error.detail).toBe("resource-budget-exceeded");
+      expect(name.error).toMatchObject({ detail: "resource-budget-exceeded" });
     }
   });
 
@@ -229,7 +229,7 @@ describe("catalog publication capability allow-list", () => {
     expect(CATALOG_CAPABILITY_CONTRACT_REVISION).toBe("catalog-capability/v4");
     expect(CATALOG_CAPABILITY_V3_ALLOW_LIST.revision).toBe(CATALOG_CAPABILITY_V3_REVISION);
     expect(CATALOG_CAPABILITY_V3_ALLOW_LIST.budgets.maxChangeSetOps).toBe(32);
-    expect(CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxChangeSetOps).toBe(128);
+    expect(CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxChangeSetOps).toBe(1024);
     expect(CATALOG_CAPABILITY_ALLOW_LIST.units).toEqual(["non-empty-short-string"]);
     expect(CATALOG_CAPABILITY_ALLOW_LIST.valueTypes).toEqual([
       "integer",
@@ -312,7 +312,7 @@ describe("catalog publication capability allow-list", () => {
     expect(nested.ok).toBe(false);
     if (!nested.ok) {
       expect(["unsupported-value-schema-type", "unknown-json-schema-keyword"]).toContain(
-        nested.error.detail,
+        "detail" in nested.error ? nested.error.detail : undefined,
       );
     }
     const withMinItems = validateSupportedDefinitionContentAt(
@@ -384,7 +384,7 @@ describe("catalog publication capability allow-list", () => {
     );
     expect(deep.ok).toBe(false);
     if (!deep.ok) {
-      expect(deep.error.detail).toBe("resource-budget-exceeded");
+      expect(deep.error).toMatchObject({ detail: "resource-budget-exceeded" });
     }
   });
 });

@@ -1115,30 +1115,30 @@ describe("buildCompleteSuccessor", () => {
     }
   });
 
-  it("admits 33 change-set ops on v4 and refuses 129", async () => {
+  it("admits 1024 change-set ops on v4 and refuses 1025", async () => {
     const predecessor = firstAcmePredecessor();
-    const thirtyThree = Array.from({ length: 33 }, (_, index) =>
+    const atLimit = Array.from({ length: 1024 }, (_, index) =>
       pageIntegerChange(`page_${index}`, `Page ${index}`),
     );
     const admitted = await buildCompleteSuccessor({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
-      changeSet: thirtyThree,
+      changeSet: atLimit,
       frozenIdentity: frozenPageIdentity(
-        thirtyThree.map((change) => allocationFor(change.propertyKey)),
-        "budget-33",
+        atLimit.map((change) => allocationFor(change.propertyKey)),
+        "budget-1024",
       ),
     });
     expect(admitted.ok, JSON.stringify(admitted)).toBe(true);
 
-    const oneTwentyNine = Array.from({ length: 129 }, (_, index) =>
+    const overLimit = Array.from({ length: 1025 }, (_, index) =>
       pageIntegerChange(`over_${index}`, `Over ${index}`),
     );
     const refused = await buildCompleteSuccessor({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
-      changeSet: oneTwentyNine,
+      changeSet: overLimit,
       frozenIdentity: frozenPageIdentity(
-        oneTwentyNine.map((change) => allocationFor(change.propertyKey)),
-        "budget-129",
+        overLimit.map((change) => allocationFor(change.propertyKey)),
+        "budget-1025",
       ),
     });
     expect(refused.ok).toBe(false);

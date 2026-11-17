@@ -99,16 +99,28 @@ test("imports an owned definition and explicitly registers its child without cha
       "| 最小值 | 0 |", "| 最大值 | 1 |", "| 示例 | 1 |", "", "长属性键示例。"
     ].join("\n");
     const longName = `${"battery-".repeat(24)}.md`;
+    let batchPreviewRequests = 0;
+    page.on("request", request => {
+      if (request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/catalog/publication-candidates") batchPreviewRequests += 1;
+    });
     await dialog.getByLabel("上传 .md 文件", { exact: true }).setInputFiles([
       { name: longName, mimeType: "text/markdown", buffer: Buffer.from(importedDocument) },
       { name: "second.md", mimeType: "text/markdown", buffer: Buffer.from(importedDocument) },
+      { name: "errors.md", mimeType: "text/markdown", buffer: Buffer.from("# Driver `acme,power`\n## `iin_max` 错误与冲突\n| 字段 | 值 |\n| --- | --- |\n| 类型 | enum |\n| 未知 | x |") },
     ]);
     await expect(dialog.getByRole("button", { name: longName, exact: true })).toBeVisible();
     await dialog.getByRole("button", { name: "解析并预览", exact: true }).click();
     await expect(dialog.getByRole("table", { name: "导入结果" })).toContainText("second.md");
+    await expect(dialog.getByRole("region", { name: "整批导入结果" })).toBeFocused();
+    await expect(dialog.getByRole("region", { name: "整批导入结果" })).toContainText("已完成全部 3 个文件");
+    await expect(dialog.getByRole("table", { name: "导入结果" })).toContainText("目录中已有此属性键");
+    await expect(dialog.getByRole("table", { name: "导入结果" })).toContainText("暂不支持该字段");
+    await expect(dialog.getByRole("button", { name: "解析并预览", exact: true })).toBeDisabled();
+    expect(batchPreviewRequests).toBe(1);
     await expect(dialog.getByRole("button", { name: "发布到目录", exact: true })).toHaveCount(0);
     await assertNoPageOverflow(page);
     await catalogScreenshot(page, testInfo, "definition-import-multiple-conflict-1440x900");
+    await dialog.getByRole("button", { name: "移除 errors.md", exact: true }).click();
     await dialog.getByRole("button", { name: "second.md", exact: true }).click();
     await dialog.getByLabel("Markdown 文档", { exact: true }).fill(importedDocument.replace("clear_water_intrused_flag_after_read", "second_property"));
     const previewing = page.waitForResponse(response => response.request().method() === "POST"

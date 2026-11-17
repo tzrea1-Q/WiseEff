@@ -27,6 +27,42 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("does not invent format errors for valid revision clears when the target is missing", () => {
+    const input = "# Driver `acme,power`\n## `missing` 缺失\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 最小值 | - |\n| 最多项数 | - |\n| 示例 | - |";
+    for (const document of [input, input + "\n| 类型 | integer |"]) {
+      const plan = planMarkdownImport(document, "missing.md", firstAcmePredecessor().first);
+      expect(plan.entries[0]!.diagnostics.map(item => item.field)).toEqual(["操作"]);
+    }
+  });
+  it("reports independent errors and existing-key conflicts from all files in one plan", () => {
+    const prefix = "# Driver `acme,power`\n";
+    const table = "\n| 字段 | 值 |\n| --- | --- |\n";
+    const plan = planMarkdownImport(prefix + "## `missing` 缺失修订" + table
+      + "| 操作 | 修订 |\n| 类型 | enum |\n| 未知 | x |", "missing.md", firstAcmePredecessor().first, [
+      { fileName: "bounds.md", document: prefix + "## `bounds` 边界" + table
+        + "| 类型 | integer |\n| 最小值 | 1.5 |\n| 最大值 | 2.5 |" },
+      { fileName: "conflict.md", document: prefix + "## `iin_max` 已有定义" + table + "| 类型 | enum |" },
+    ]);
+    expect(plan.changeSet).toBeNull();
+    expect(plan.entries).toHaveLength(3);
+    expect(plan.entries[0]!.diagnostics.map(item => item.field)).toEqual(expect.arrayContaining(["操作", "类型", "未知"]));
+    expect(plan.entries[1]!.diagnostics.map(item => item.field)).toEqual(expect.arrayContaining(["最小值", "最大值"]));
+    expect(plan.entries[2]!.diagnostics.map(item => item.field)).toEqual(expect.arrayContaining(["类型", "属性键"]));
+    expect(plan.entries.map(item => item.fileName)).toEqual(["missing.md", "bounds.md", "conflict.md"]);
+  });
+
+  it("plans and compiles 1024 definitions as one successor", async () => {
+    const predecessor = firstAcmePredecessor();
+    const keys = Array.from({ length: 1024 }, (_, index) => `bulk_${index}`);
+    const markdown = "# Driver `acme,power`\n" + keys.map(key => `## \`${key}\` 名称\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`).join("\n");
+    const plan = planMarkdownImport(markdown, "1024.md", predecessor.first);
+    expect(plan.entries).toHaveLength(1024);
+    expect(plan.changeSet).toHaveLength(1024);
+    if (!plan.changeSet) throw new Error("missing batch");
+    const built = await buildCompleteSuccessor({ predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      frozenIdentity: frozenPageIdentity(keys.map(allocationFor)), changeSet: plan.changeSet });
+    expect(built.ok).toBe(true);
+  });
   it("plans files atomically, retaining local lines and detecting cross-file duplicates", () => {
     const snapshot = firstAcmePredecessor().first;
     const next = document.replaceAll("import-one", "other-one").replaceAll("import-two", "other-two");
@@ -46,9 +82,9 @@ describe("Definition import planner", () => {
     const next = document.replaceAll("import-one", "other-one").replaceAll("import-two", "other-two");
     const isolated = planMarkdownImport(document + "\n```\nunfinished", "fence.md", snapshot, [{ document: next, fileName: "next.md" }]);
     expect(isolated.entries).toHaveLength(4);
-    const oversized = planMarkdownImport(document, "first.md", snapshot, Array.from({ length: 64 }, (_, i) => ({ document, fileName: `${i}.md` })));
+    const oversized = planMarkdownImport(document, "first.md", snapshot, Array.from({ length: 512 }, (_, i) => ({ document, fileName: `${i}.md` })));
     expect(oversized.changeSet).toBeNull();
-    expect(oversized.entries[0]?.diagnostics[0]?.message).toContain("130");
+    expect(oversized.entries[0]?.diagnostics[0]?.message).toContain("1026");
   });
   it("keeps long vendor keys exact through preview and successor compilation", async () => {
     const keys = [
@@ -391,12 +427,12 @@ describe("Definition import planner", () => {
     expect(planMarkdownImport(document + document.slice(document.indexOf("##")), "d.md", snapshot).changeSet).toBeNull();
     expect(planMarkdownImport(document.replace("# Driver `acme,power`", "# Driver `acme,power`\nnature: logical-service · cardinality: multiple"), "d.md", snapshot).changeSet).toBeNull();
     expect(planMarkdownImport(`意外内容\n${document}`, "d.md", snapshot).changeSet).toBeNull();
-    const many = `# Driver \`acme,power\`\n${Array.from({ length: 129 }, (_, i) => `## \`import-${i}\` 名称\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |`).join("\n")}`;
+    const many = `# Driver \`acme,power\`\n${Array.from({ length: 1025 }, (_, i) => `## \`import-${i}\` 名称\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |`).join("\n")}`;
     const oversized = planMarkdownImport(many, "d.md", snapshot);
     expect(oversized.changeSet).toBeNull();
     expect(oversized.entries).toHaveLength(1);
     expect(oversized.entries[0]).toMatchObject({ outcome: "error", subjectHeading: "", diagnostics: [
-      expect.objectContaining({ field: "文档", message: "最多导入 128 条定义（本批次 129 条），请分批导入。" }),
+      expect.objectContaining({ field: "文档", message: "最多导入 1024 条定义（本批次 1025 条），请分批导入。" }),
     ] });
   });
 
@@ -415,12 +451,12 @@ describe("Definition import planner", () => {
       diagnostics: expect.arrayContaining([expect.objectContaining({ message: "主体性质或基数与目录不一致。" })]) });
   });
 
-  it("counts definitions, not document-level diagnostics, against the 128-definition limit", () => {
-    const definitions = Array.from({ length: 128 }, (_, i) =>
+  it("counts definitions, not document-level diagnostics, against the 1024-definition limit", () => {
+    const definitions = Array.from({ length: 1024 }, (_, i) =>
       `## \`import-${i}\` 名称\n| 字段 | 值 |\n| --- | --- |\n| 类型 | string |`).join("\n");
     const plan = planMarkdownImport(`额外内容\n# Driver \`acme,power\`\n${definitions}`, "d.md", firstAcmePredecessor().first);
     expect(plan.changeSet).toBeNull();
-    expect(plan.entries.flatMap((entry) => entry.diagnostics).some((item) => item.message.includes("128 条"))).toBe(false);
+    expect(plan.entries.flatMap((entry) => entry.diagnostics).some((item) => item.message.includes("1024 条"))).toBe(false);
   });
 
   it("keeps Markdown tables and fenced headings in documentation after the field table", () => {

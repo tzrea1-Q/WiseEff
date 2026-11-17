@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { CatalogReleaseNode } from "../../../catalog-kernel/compiler/types";
 import type { CatalogChange, SupportedDefinitionContent } from "../../builder/types";
 import { tighterConstraint } from "../../builder/completeSuccessor";
+import { CATALOG_CAPABILITY_ALLOW_LIST } from "../../builder/capabilities";
 import { classifyEntry } from "./classify";
 import { buildContent, isRevisionEntry } from "./content";
 import { parseMarkdown } from "./parse";
@@ -11,7 +12,7 @@ import { diagnostic, type ImportDiagnostic, type ImportEntry, type SyntaxDiagnos
 
 const publicDiagnostic = ({ subjectHeading, definitionHeading, field, message, line }: SyntaxDiagnostic)
   : ImportDiagnostic => ({ subjectHeading, definitionHeading, field, message, line });
-const MAX_IMPORT_DEFINITIONS = 128;
+const MAX_IMPORT_DEFINITIONS = CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxChangeSetOps;
 const documentError = (issue: ImportDiagnostic): ImportEntry => ({
   subjectHeading: "", definitionHeading: "", selector: "", propertyKey: "", displayName: "",
   outcome: "error", diagnostics: [issue],
@@ -89,10 +90,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
           ...syntax.diagnostics.filter((item) => item.definitionLine === definition.line).map(publicDiagnostic),
         ];
         if (revise && !existing) {
-          entries.push({ subjectHeading: section.heading, definitionHeading: definition.heading,
-            selector: section.selector, propertyKey: definition.propertyKey, displayName: definition.displayName,
-            outcome: "error", diagnostics: [...diagnostics, diagnostic(section, definition, "操作", "修订的定义不存在。", definition.line)] });
-          continue;
+          diagnostics.push(diagnostic(section, definition, "操作", "修订的定义不存在。", definition.line));
         }
         const content = buildContent(section, definition, revise && existing?.kind === "definition" ? existing.content.revision : undefined);
         diagnostics.push(...content.diagnostics);

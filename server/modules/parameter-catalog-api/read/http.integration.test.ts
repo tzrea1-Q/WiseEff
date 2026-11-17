@@ -151,6 +151,9 @@ describe("S8-READ HTTP against a real catalog snapshot", () => {
       definitions: { kind: "only", ids: [ParameterDefinitionId(active)], fingerprint: "limited" } } }) });
     expect(agent.status).toBe(200);
     expect(agent.body.item).toEqual(exported.body.item);
+    const atLimit = await requestJson(createCatalogReadHttpServer(ports),
+      `/api/v2/catalog/revision-document?catalogReleaseId=${releaseId}&${Array.from({ length: 128 }, () => `definitionId=${active}`).join("&")}`);
+    expect(atLimit.status).toBe(200);
     const tooMany = await requestJson(createCatalogReadHttpServer(ports),
       `/api/v2/catalog/revision-document?catalogReleaseId=${releaseId}&${Array.from({ length: 129 }, () => `definitionId=${active}`).join("&")}`);
     expect(tooMany.status).toBe(400);

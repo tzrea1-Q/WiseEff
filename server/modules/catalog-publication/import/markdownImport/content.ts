@@ -35,6 +35,7 @@ export function buildContent(section: Subject, definition: Definition, current?:
     fields.set(field.name, values);
   }
   const first = (field: string) => fields.get(field)?.[0];
+  const revision = isRevisionEntry(definition);
   const clears = (field: Field | undefined) => field?.value === "-" && !field.literalDash;
   const operation = first("操作");
   if (operation && operation.value !== "新建" && operation.value !== "修订") problem("操作", "操作须为新建或修订。", operation.line);
@@ -45,6 +46,7 @@ export function buildContent(section: Subject, definition: Definition, current?:
   const currentDepth = currentArrays.length;
   const currentType = current ? formatValueType(current.valueSchema as Record<string, unknown>) : "";
   const type = first("类型")?.value ?? currentType;
+  const unknownRevisionType = !current && revision && !first("类型");
   let itemType = type;
   let depth = 0;
   const maxDepth = CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxArraySchemaDepth ?? 0;
@@ -52,13 +54,13 @@ export function buildContent(section: Subject, definition: Definition, current?:
     depth += 1;
     itemType = itemType.slice(6, -1);
   }
-  if (!["integer", "number", "string", "boolean", "null", "mixed"].includes(itemType) || depth > maxDepth) {
+  if (!unknownRevisionType && (!["integer", "number", "string", "boolean", "null", "mixed"].includes(itemType) || depth > maxDepth)) {
     problem("类型", `类型须为 integer、number、string、boolean、null、mixed 或 array<…>；数组最多嵌套 ${maxDepth} 层。`, first("类型")?.line ?? definition.line);
   }
   const description = first("类型说明");
   if (itemType === "mixed" && (!(description?.value ?? (typeof currentItem.description === "string" ? currentItem.description : "")).trim() || (current && clears(description)))) {
     problem("类型说明", "mixed 必须填写类型说明。", description?.line ?? first("类型")?.line ?? definition.line);
-  } else if (itemType !== "mixed" && description) {
+  } else if (!unknownRevisionType && itemType !== "mixed" && description) {
     problem("类型说明", "类型说明仅适用于 mixed。", description.line);
   }
   if (current && depth < currentDepth && currentArrays.slice(depth).some((array) =>
@@ -79,9 +81,10 @@ export function buildContent(section: Subject, definition: Definition, current?:
   for (const [field, property] of [["最小值", "minimum"], ["最大值", "maximum"]] as const) {
     const row = first(field);
     if (!row) continue;
-    if (current && clears(row)) { delete itemSchema[property]; continue; }
+    if (revision && clears(row)) { delete itemSchema[property]; continue; }
     const value = Number(row.value);
-    if (!row.value || !Number.isFinite(value) || (itemType !== "integer" && itemType !== "number")) {
+    if (!row.value || !Number.isFinite(value) || Object.is(value, -0)
+      || (itemType === "integer" && !Number.isInteger(value)) || (!unknownRevisionType && itemType !== "integer" && itemType !== "number")) {
       problem(field, "数值边界无效。", row.line);
     } else {
       itemSchema[property] = value;
@@ -90,9 +93,9 @@ export function buildContent(section: Subject, definition: Definition, current?:
   for (const [field, property] of [["最少项数", "minItems"], ["最多项数", "maxItems"]] as const) {
     const row = first(field);
     if (!row) continue;
-    if (current && clears(row)) { delete valueSchema[property]; continue; }
+    if (revision && clears(row)) { delete valueSchema[property]; continue; }
     const value = Number(row.value);
-    if (!depth || !row.value || !Number.isInteger(value) || value < 0
+    if ((!unknownRevisionType && !depth) || !row.value || !Number.isInteger(value) || value < 0
       || value > (CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxItemsBound ?? 0) || Object.is(value, -0)) {
       problem(field, `项数须为 0 至 ${CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxItemsBound} 的整数，且仅适用于数组。`, row.line);
     } else valueSchema[property] = value;
@@ -103,12 +106,13 @@ export function buildContent(section: Subject, definition: Definition, current?:
   }
   const examples: ContractJsonValue[] = [];
   const exampleLines: number[] = [];
-  if (current && (fields.get("示例")?.length ?? 0) > 1 && fields.get("示例")?.some(clears)) {
+  if (revision && (fields.get("示例")?.length ?? 0) > 1 && fields.get("示例")?.some(clears)) {
     const row = fields.get("示例")!.find(clears)!;
     problem("示例", "清空示例时不能同时填写其他示例。", row.line);
   }
   for (const row of fields.get("示例") ?? []) {
-    if (current && clears(row)) continue;
+    if (unknownRevisionType) continue;
+    if (revision && clears(row)) continue;
     try {
       examples.push(type === "string" ? row.value : JSON.parse(row.value, (_key, value: unknown) => {
         if (typeof value === "number" && !Number.isFinite(value)) throw new Error("invalid number");
@@ -139,6 +143,7 @@ export function buildContent(section: Subject, definition: Definition, current?:
     const labels = { displayName: "显示名", documentation: "正文", description: "简述", unit: "单位", valueSchema: "类型" };
     let schemaValid = false;
     for (const key of keys) {
+      if (key === "valueSchema" && unknownRevisionType) continue;
       const result = validateSupportedDefinitionContent({ ...baseline, [key]: content[key] }, "content");
       if (key === "valueSchema") schemaValid = result.ok;
       if (!result.ok && content[key] !== undefined) {

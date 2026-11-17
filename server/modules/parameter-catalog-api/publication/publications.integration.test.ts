@@ -334,11 +334,11 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     ] } });
     expect((await post(base.replace("# Driver `acme,power`", "# Driver `acme,power`\nnature: logical-service · cardinality: multiple"))).body)
       .toMatchObject({ item: { candidate: null, entries: [{ outcome: "error" }] } });
-    const tooMany = `# Driver \`acme,power\`\n${Array.from({ length: 129 }, (_, i) => `## \`cap_${i}\` Name\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`).join("\n")}`;
-    const atLimit = tooMany.slice(0, tooMany.lastIndexOf("## `cap_128`"));
-    expect((await post(atLimit)).body).toMatchObject({ item: { candidate: { impactSummary: { addedDefinitionCount: 128 } } } });
+    const tooMany = `# Driver \`acme,power\`\n${Array.from({ length: 1025 }, (_, i) => `## \`cap_${i}\` Name\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`).join("\n")}`;
+    const atLimit = tooMany.slice(0, tooMany.lastIndexOf("## `cap_1024`"));
+    expect((await post(atLimit)).body).toMatchObject({ item: { candidate: { impactSummary: { addedDefinitionCount: 1024 } } } });
     expect((await post(tooMany)).body).toMatchObject({ item: { candidate: null, entries: [
-      { outcome: "error", diagnostics: [expect.objectContaining({ message: expect.stringContaining("最多导入 128 条"), line: 1 })] },
+      { outcome: "error", diagnostics: [expect.objectContaining({ message: expect.stringContaining("最多导入 1024 条"), line: 1 })] },
     ] } });
   });
 
@@ -424,13 +424,13 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
       .toMatchObject({ item: { candidate: null, noChange: false, entries: [{ outcome: "error" }] } });
   });
 
-  it("accepts 128 changes on the preview route and rejects 129", async () => {
+  it("accepts 1024 changes on the preview route and rejects 1025", async () => {
     authenticateAs(publisherScope());
-    const changes = Array.from({ length: 129 }, (_, i) => changeSetFor(`cap_${i}`)[0]);
+    const changes = Array.from({ length: 1025 }, (_, i) => changeSetFor(`cap_${i}`)[0]);
     const post = (body: unknown) => request("POST", "/api/v2/catalog/publication-candidates", { headers: { [CATALOG_RELEASE_HEADER]: pinId }, body });
-    const accepted = await post({ changeSet: changes.slice(0, 128) });
+    const accepted = await post({ changeSet: changes.slice(0, 1024) });
     expect(accepted.status).toBe(201);
-    expect(accepted.body).toMatchObject({ item: { impactSummary: { addedDefinitionCount: 128 } } });
+    expect(accepted.body).toMatchObject({ item: { impactSummary: { addedDefinitionCount: 1024 } } });
     expect((await post({ changeSet: changes })).status).toBe(400);
   });
 
