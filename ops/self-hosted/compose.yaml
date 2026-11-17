@@ -133,8 +133,8 @@ services:
     image: *wiseeff-image
     build: *wiseeff-build
     restart: unless-stopped
-    mem_limit: 512m
-    memswap_limit: 768m
+    mem_limit: ${WISEEFF_API_MEMORY_LIMIT:-2g}
+    memswap_limit: ${WISEEFF_API_MEMORY_SWAP_LIMIT:-3g}
     env_file: ${WISEEFF_ENV_FILE:-.env}
     environment:
       <<: *wiseeff-runtime-proxy
@@ -158,7 +158,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-    command: ["npx", "tsx", "server/index.ts"]
+    # A CLI heap limit preserves other NODE_OPTIONS while overriding a stale heap flag there.
+    command: ["node", "--max-old-space-size=${WISEEFF_API_MAX_OLD_SPACE_SIZE_MB:-1536}", "--import", "tsx", "server/index.ts"]
 
   worker:
     image: *wiseeff-image
@@ -196,8 +197,8 @@ services:
     image: *wiseeff-image
     build: *wiseeff-build
     restart: unless-stopped
-    mem_limit: 384m
-    memswap_limit: 576m
+    mem_limit: ${WISEEFF_PUBLICATION_MANAGER_MEMORY_LIMIT:-2g}
+    memswap_limit: ${WISEEFF_PUBLICATION_MANAGER_MEMORY_SWAP_LIMIT:-3g}
     env_file:
       - ${WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager}
     environment:
@@ -222,7 +223,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-    command: ["npm", "run", "publication:manager"]
+    command: ["node", "--max-old-space-size=${WISEEFF_PUBLICATION_MANAGER_MAX_OLD_SPACE_SIZE_MB:-1536}", "--import", "tsx", "server/modules/catalog-publication/jobs/managerRunner.ts"]
 
   web:
     image: *wiseeff-image

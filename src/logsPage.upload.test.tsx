@@ -74,6 +74,9 @@ function renderApiLogs(repository = createLogRepository(), initialPath = "/logs"
 async function waitForApiRuntime(repository: LogAnalysisRepository) {
   await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
   await waitFor(() => expect(document.querySelector(".api-runtime-sync-banner")).not.toBeInTheDocument());
+  // Log hydration and workflow publication settle independently. Await the page
+  // before interacting with it or switching an upload scenario to fake timers.
+  await screen.findByRole("button", { name: "上传新日志" });
 }
 
 function openUploadDialog() {

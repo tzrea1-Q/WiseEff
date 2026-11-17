@@ -1606,10 +1606,18 @@ const validateLineage = (
   return violations;
 };
 
-export const validateForCompilation = (
+export interface PreparedCompilation {
+  readonly bundle: CatalogReleaseBundle;
+  readonly validation: CompilerValidation;
+}
+
+// Keep the source-derived documents from this validation pass. Re-deriving
+// them after validation duplicates every historical release's YAML work and
+// creates another object graph while the previous one is awaiting collection.
+export const prepareForCompilation = (
   bundle: CatalogReleaseBundle,
   rules: StableCatalogRules = stableCatalogRules,
-): CompilerValidation => {
+): PreparedCompilation => {
   const releases = orderedReleaseNodes(bundle.releases).map((release) => ({
     ...release,
     manifest: {
@@ -1633,9 +1641,12 @@ export const validateForCompilation = (
   const sourceViolations = validateSources(releases, rules.manifestRules);
   if (sourceViolations.length > 0) {
     return {
-      source: orderViolations(sourceViolations),
-      compile: [],
-      lineage: [],
+      bundle,
+      validation: {
+        source: orderViolations(sourceViolations),
+        compile: [],
+        lineage: [],
+      },
     };
   }
 
@@ -1677,9 +1688,12 @@ export const validateForCompilation = (
   });
   if (sourceViolations.length > 0) {
     return {
-      source: orderViolations(sourceViolations),
-      compile: [],
-      lineage: [],
+      bundle,
+      validation: {
+        source: orderViolations(sourceViolations),
+        compile: [],
+        lineage: [],
+      },
     };
   }
 
@@ -1688,40 +1702,30 @@ export const validateForCompilation = (
     releases: derivedReleases,
   };
   return {
-    source: [],
-    compile: orderViolations([
-      ...validateCompileContent(derivedReleases, rules),
-      ...validateStableIdentityLineage(derivedReleases, rules.identityRules),
-      ...validatePermanentSelectorOwnership(
-        derivedReleases,
-        rules.selectorRules,
-      ),
-    ]),
-    lineage: orderViolations([
-      ...validateLineage(authoritativeBundle, rules.lineageRules),
-      ...validateLineageContent(authoritativeBundle, rules),
-      ...validateRetirementLineage(authoritativeBundle, rules.retirementRules),
-    ]),
+    bundle: authoritativeBundle,
+    validation: {
+      source: [],
+      compile: orderViolations([
+        ...validateCompileContent(derivedReleases, rules),
+        ...validateStableIdentityLineage(derivedReleases, rules.identityRules),
+        ...validatePermanentSelectorOwnership(
+          derivedReleases,
+          rules.selectorRules,
+        ),
+      ]),
+      lineage: orderViolations([
+        ...validateLineage(authoritativeBundle, rules.lineageRules),
+        ...validateLineageContent(authoritativeBundle, rules),
+        ...validateRetirementLineage(authoritativeBundle, rules.retirementRules),
+      ]),
+    },
   };
 };
 
-export interface PreparedCompilation {
-  readonly bundle: CatalogReleaseBundle;
-  readonly validation: CompilerValidation;
-}
-
-export const prepareForCompilation = (
+export const validateForCompilation = (
   bundle: CatalogReleaseBundle,
   rules: StableCatalogRules = stableCatalogRules,
-): PreparedCompilation => {
-  const validation = validateForCompilation(bundle, rules);
-  if (validation.source.length > 0) return { bundle, validation };
-  const releases = bundle.releases.map((release) => ({
-    ...release,
-    documents: deriveSourceDocuments(release).documents,
-  }));
-  return { bundle: { ...bundle, releases }, validation };
-};
+): CompilerValidation => prepareForCompilation(bundle, rules).validation;
 
 export const firstFailedPhase = (
   validation: CompilerValidation,

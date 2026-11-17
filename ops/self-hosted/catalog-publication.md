@@ -60,7 +60,9 @@ needed for these grants; Catalog content and project initialization are separate
 
 ## 1. Deploy the manager
 
-Same application image as api/worker/web. Command inside the image: `npm run publication:manager`.
+Same application image as api/worker/web. Compose runs `managerRunner.ts` through
+`node --import tsx` with an explicit service heap limit; the manual development
+entry remains `npm run publication:manager`.
 
 ```bash
 ./scripts/compose --env-file .env ps -a
@@ -72,6 +74,69 @@ curl -fsS http://127.0.0.1:8791/health/live   # from inside the manager containe
 ```
 
 API and log worker set `WISEEFF_API_PROCESS=1` / `LOG_WORKER_ENABLED=true` and never load `.env.publication-manager`. The manager entry requires `WISEEFF_PUBLICATION_MANAGER=1`.
+
+### Memory budgets for preview and publication
+
+Both API preview and manager activation compile Catalog data. Each service defaults
+to 2 GiB RAM, 3 GiB RAM plus swap, and 1536 MiB V8 old-space. The difference leaves
+room for young generation, native allocations, Buffers and the TypeScript loader;
+it is not a guarantee that every Catalog fits. The host must have capacity for
+both services and the rest of the stack. Configure these non-secret settings in
+the main `.env` used by Compose interpolation, including the manager settings:
+
+| Service | RAM ceiling | RAM + swap ceiling | V8 old-space, MiB |
+| --- | --- | --- | --- |
+| API | `WISEEFF_API_MEMORY_LIMIT=2g` | `WISEEFF_API_MEMORY_SWAP_LIMIT=3g` | `WISEEFF_API_MAX_OLD_SPACE_SIZE_MB=1536` |
+| Publication manager | `WISEEFF_PUBLICATION_MANAGER_MEMORY_LIMIT=2g` | `WISEEFF_PUBLICATION_MANAGER_MEMORY_SWAP_LIMIT=3g` | `WISEEFF_PUBLICATION_MANAGER_MAX_OLD_SPACE_SIZE_MB=1536` |
+
+Defaults also apply to existing `.env` files that omit these keys. Compose passes
+old-space on the Node command line, preserving other `NODE_OPTIONS` and overriding
+an older `--max-old-space-size` in that variable. Keep the heap below the RAM
+ceiling. `FATAL ERROR: ... JavaScript heap out of memory` is a V8 failure even when
+Docker reports `OOMKilled=false`.
+
+Use the normal [upgrade procedure](upgrade.md) to deploy application code changes.
+For a configuration-only recovery using the already running image, first update
+the Compose configuration, then run the following during a short API interruption.
+This example applies to the standard stack where API and manager share a tagged
+image. Pin the image from this Compose project's API, rather than another stack:
+
+```bash
+free -h
+wiseeff_api_cid="$(./scripts/compose --env-file .env ps -q api)"
+wiseeff_app_image="$(docker inspect --format '{{.Config.Image}}' "$wiseeff_api_cid")"
+# Verify this is the expected repository:tag before continuing.
+printf '%s\n' "$wiseeff_app_image"
+WISEEFF_APP_IMAGE="${wiseeff_app_image%:*}" \
+WISEEFF_APP_TAG="${wiseeff_app_image##*:}" \
+  ./scripts/compose --env-file .env up -d --no-deps --no-build \
+    --force-recreate api publication-manager
+```
+
+Recreation is required: `restart` alone does not apply Compose limits or commands,
+and `docker update` alone does not persist them for the next recreation. The
+configuration-only command keeps the current application image; it does not
+install code fixes from a newer checkout. For an image referenced by digest,
+use the normal upgrade procedure instead of splitting a tagged image above.
+
+Verify the actual recreated containers and their main-process arguments:
+
+```bash
+./scripts/compose --env-file .env ps -a -q api publication-manager |
+  xargs -r docker inspect --format \
+  '{{.Name}} memory={{.HostConfig.Memory}} memorySwap={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}} restarts={{.RestartCount}}'
+./scripts/compose --env-file .env exec -T api \
+  curl -fsS http://127.0.0.1:8787/health/live
+./scripts/compose --env-file .env exec -T publication-manager \
+  curl -fsS http://127.0.0.1:8791/health/live
+./scripts/compose --env-file .env logs --since 5m --tail 100 api publication-manager
+```
+
+At defaults, inspect shows `memory=2147483648`, `memorySwap=3221225472` and
+`--max-old-space-size=1536` for both services. A separate `exec ... node -e` without
+that CLI flag reports the new probe's default heap, not the running service's heap.
+Retry one import preview, then confirm it completes and restart counts remain
+unchanged. Health alone does not establish import or publication acceptance.
 
 ## 2. Inspect a preexisting Catalog
 

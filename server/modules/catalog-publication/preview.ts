@@ -17,7 +17,12 @@ import {
   impactSummaryFromReport,
   persistSuccessorBuild,
 } from "./builder/completeSuccessor";
-import { parseBundleBytes, targetReleaseOf } from "./builder/bundleCodec";
+import { targetReleaseOf } from "./builder/bundleCodec";
+import {
+  preparePredecessorArtifact,
+  preparedPredecessorBundle,
+  type PreparedPredecessorArtifact,
+} from "./builder/preparedPredecessor";
 import type { CatalogReleaseNode } from "../catalog-kernel/compiler/types";
 import type {
   CatalogChange,
@@ -374,6 +379,7 @@ const mintFrozenIdentity = (
 export async function previewPublicationCandidate(input: {
   readonly db: Database;
   readonly predecessorDigest: string;
+  readonly predecessorArtifact?: PreparedPredecessorArtifact;
   readonly changeSet: readonly CatalogChange[];
   readonly authorPrincipalId: string;
   readonly authorOrganizationId: string;
@@ -381,15 +387,21 @@ export async function previewPublicationCandidate(input: {
   readonly proposalRevisionId?: string;
   readonly markdownSource?: { readonly fileName: string; readonly sha256: string; readonly parserVersion: string };
 }): Promise<{ ok: true; value: PreviewPublicationValue } | { ok: false; error: PreviewPublicationError }> {
-  const artifact = await getArtifactByDigest(input.db, input.predecessorDigest);
-  if (!artifact.ok) {
-    return { ok: false, error: { kind: "artifact-missing" } };
+  let predecessorArtifact = input.predecessorArtifact;
+  if (!predecessorArtifact) {
+    const artifact = await getArtifactByDigest(input.db, input.predecessorDigest);
+    if (!artifact.ok) return { ok: false, error: { kind: "artifact-missing" } };
+    const prepared = preparePredecessorArtifact({
+      digest: input.predecessorDigest, bytes: artifact.value.artifactBytes,
+    });
+    if (!prepared.ok) return { ok: false, error: { kind: "predecessor-incomplete", detail: prepared.detail } };
+    predecessorArtifact = prepared.artifact;
   }
-  const parsed = parseBundleBytes(artifact.value.artifactBytes);
-  if (!parsed.ok) {
-    return { ok: false, error: { kind: "predecessor-incomplete", detail: parsed.detail } };
+  const bundle = preparedPredecessorBundle(predecessorArtifact);
+  if (!bundle || predecessorArtifact.digest !== input.predecessorDigest) {
+    return { ok: false, error: { kind: "invalid-input", reason: "predecessor-artifact-mismatch" } };
   }
-  const predecessorTarget = targetReleaseOf(parsed.bundle);
+  const predecessorTarget = targetReleaseOf(bundle);
   if (!predecessorTarget) {
     return { ok: false, error: { kind: "predecessor-incomplete", detail: "predecessor-target-missing" } };
   }
@@ -416,7 +428,7 @@ export async function previewPublicationCandidate(input: {
     : "m1";
 
   const built = await buildCompleteSuccessor({
-    predecessorArtifact: { digest: input.predecessorDigest, bytes: artifact.value.artifactBytes },
+    predecessorArtifact,
     changeSet: input.changeSet,
     frozenIdentity: frozen,
     proposal,
