@@ -27,7 +27,7 @@ describe("publication preview memory work", () => {
       toolchain: {}, createdAt: "2026-11-17T00:00:00Z",
     } });
     vi.spyOn(currentPointer, "readCurrentCatalogPointer").mockResolvedValue({
-      kind: "installed", current: predecessor.compiled.release, predecessorReleaseId: null,
+      kind: "installed", current: predecessor.compiled.release, predecessorReleaseId: null, subjectOwnerEpoch: "0",
     });
     const persist = vi.spyOn(successorBuilder, "persistSuccessorBuild").mockImplementation(async (_request, artifact, candidate) => ({
       kind: "persisted",
@@ -76,7 +76,7 @@ describe("publication preview duplicate definitions", () => {
         },
       });
       vi.spyOn(currentPointer, "readCurrentCatalogPointer").mockResolvedValue({
-        kind: "installed", current: predecessor.compiled.release, predecessorReleaseId: null,
+        kind: "installed", current: predecessor.compiled.release, predecessorReleaseId: null, subjectOwnerEpoch: "0",
       });
       const db = { query: vi.fn(), transaction: vi.fn() } as unknown as Database;
       const commands = bindCatalogPublicationCommands({ db, pool: {} as Parameters<typeof currentPointer.readCurrentCatalogPointer>[0] });
@@ -131,7 +131,7 @@ describe("publication preview retired owner boundary", () => {
         },
       });
       vi.spyOn(currentPointer, "readCurrentCatalogPointer").mockResolvedValue({
-        kind: "installed", current: vendor.compiled.release, predecessorReleaseId: null,
+        kind: "installed", current: vendor.compiled.release, predecessorReleaseId: null, subjectOwnerEpoch: "0",
       });
       const db = { query: vi.fn(), transaction: vi.fn() } as unknown as Database;
       const commands = bindCatalogPublicationCommands({ db, pool: {} as Parameters<typeof currentPointer.readCurrentCatalogPointer>[0] });
