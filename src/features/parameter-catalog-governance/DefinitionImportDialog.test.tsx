@@ -27,20 +27,34 @@ function renderImport(options: {
   const ports = createMockCatalogPorts({ publicationOutcome: options.outcome ?? "active" });
   options.prepare?.(ports);
   const completed = vi.fn();
-  render(<DefinitionImportDialog open initialDocument={options.initialDocument} runtimeMode={options.runtimeMode ?? "api"}
+  const ui = (catalogReleaseId: string = CATALOG_RELEASE_ID) => <DefinitionImportDialog open initialDocument={options.initialDocument} runtimeMode={options.runtimeMode ?? "api"}
     actor="org-admin" sessionPermissions={["catalog:author", "catalog:publish"]}
     domainState={deriveCatalogDomainState({ document: readyCatalogDocument })} catalog={ports.catalog}
     governance={ports.governance}
     moduleRegistry={{ getRegistry: async () => ({ modules: options.modules ?? [module("business", "电源", null, "business"),
       module("target", "充电器", "business", "driver-group")], mappings: [] }) }}
-    catalogReleaseId={CATALOG_RELEASE_ID} currentPersonId={CATALOG_AUTHOR_PERSON_ID}
+    catalogReleaseId={catalogReleaseId} currentPersonId={CATALOG_AUTHOR_PERSON_ID}
     organizationId={CATALOG_ORGANIZATION_ID} publicationSurface={{ publicationEnabled: true,
       lowRiskSingleActorPublish: false, policyRevision: 1, frozen: false, adopted: true,
       currentReleaseId: CATALOG_RELEASE_ID, authoringAllowed: true, publishingAllowed: true,
       reviewHighRiskAllowed: false, blockers: [] }}
-    createIdempotencyKey={() => "pub-key"} onOpenChange={vi.fn()} onCompleted={completed} />);
-  return { ports, completed };
+    createIdempotencyKey={() => "pub-key"} onOpenChange={vi.fn()} onCompleted={completed} />;
+  const view = render(ui());
+  return { ports, completed, rerenderRelease: (releaseId: string) => view.rerender(ui(releaseId)) };
 }
+
+it("allows one new preview against an updated Catalog even when the previous result had no candidate", async () => {
+  const preview = vi.fn(async () => ({ item: { candidate: null, noChange: true, placementHints: [], entries: [],
+    source: { fileName: "first.md", sha256: "test", parserVersion: "v3" } } }));
+  const { rerenderRelease } = renderImport({ initialDocument: "document", prepare: ports => { ports.catalog.previewMarkdownImport = preview; } });
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "解析并预览" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "解析并预览" })).toBeDisabled());
+  rerenderRelease("new-catalog-release");
+  await user.click(screen.getByRole("button", { name: "解析并预览" }));
+  await waitFor(() => expect(preview).toHaveBeenCalledTimes(2));
+  expect(preview.mock.calls[1]).toEqual([{ markdownImport: { document: "document", fileName: "粘贴.md" } }, { catalogReleaseId: "new-catalog-release" }]);
+});
 
 it("opens a prepared document as editable pasted text without previewing or publishing", async () => {
   const preview = vi.fn();
@@ -365,7 +379,13 @@ it("uploads multiple files, edits and removes them before one preview", async ()
   await waitFor(() => expect(preview).toHaveBeenCalledWith({ markdownImport: {
     document: "content 0", fileName: "first.md", additionalDocuments: [{ document: "content 1 edited", fileName: "second.md" }],
   } }, { catalogReleaseId: CATALOG_RELEASE_ID }));
+  expect(screen.getByRole("region", { name: "整批导入结果" })).toHaveFocus();
+  expect(screen.getByText("已完成全部 2 个文件的解析与预览。请核对本批全部结果。")).toBeVisible();
+  expect(screen.getByRole("button", { name: "解析并预览" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "解析并预览" }));
+  expect(preview).toHaveBeenCalledTimes(1);
   await user.click(screen.getByRole("button", { name: "移除 first.md" }));
+  expect(screen.getByRole("button", { name: "解析并预览" })).toBeEnabled();
   expect(screen.queryByText("没有需要发布的变更。")).not.toBeInTheDocument();
   expect(screen.getByLabelText("Markdown 文档")).toHaveValue("content 1 edited");
   await user.click(screen.getByRole("button", { name: "移除 second.md" }));

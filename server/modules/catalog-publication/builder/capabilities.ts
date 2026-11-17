@@ -66,7 +66,7 @@ export const CATALOG_CAPABILITY_ALLOW_LIST: CapabilityAllowListIdentity = {
   },
   budgets: {
     ...SHARED_BUDGETS,
-    maxChangeSetOps: 128,
+    maxChangeSetOps: 1024,
     maxArraySchemaDepth: 4,
     maxSchemaContainerNodes: 256,
     maxItemsBound: 4096,

@@ -896,7 +896,7 @@ export const catalogChangeSchema = z.union([
 ]);
 
 export const catalogTypedPublicationCandidateRequestSchema = catalogObject({
-  changeSet: z.array(catalogChangeSchema).min(1).max(128),
+  changeSet: z.array(catalogChangeSchema).min(1).max(1024),
   proposalId: z.string().optional(),
   proposalRevisionId: z.string().optional()
 });

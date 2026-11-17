@@ -73,13 +73,15 @@ export function classifyEntry(input: {
         .map((field) => ({ field, oldValue: oldFields[field], newValue: newFields[field] }));
       return { outcome: "revise", diagnostics, revisionClass: contentClassOf(revision, next), diffs };
     }
-    if (content || revision.lifecycle !== "active") {
+    if (content || revision.lifecycle !== "active" || !revise) {
       const hasErrors = diagnostics.length > 0;
       if (hasErrors && revise && revision.lifecycle === "active") return { outcome: "error", diagnostics };
       diagnostics.push(diagnostic(
         section, definition, "属性键", revision.lifecycle === "retired"
           ? "定义已退役，请先在目录列表中恢复。" : revise
-            ? "仅可修订现行定义。" : "目录中已有不同内容的定义；如要修订，请加 `操作：修订`。", definition.line,
+            ? "仅可修订现行定义。" : content
+              ? "目录中已有不同内容的定义；如要修订，请加 `操作：修订`。"
+              : "目录中已有此属性键的定义；如要修订，请加 `操作：修订`。", definition.line,
       ));
       return { outcome: hasErrors && revision.lifecycle === "active" ? "error" : "conflict", diagnostics };
     }

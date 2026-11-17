@@ -63,10 +63,12 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const [additionalDocuments, setAdditionalDocuments] = useState<{ document: string; fileName: string }[]>([]);
   const [activeFile, setActiveFile] = useState(0);
   const documents = [{ document, fileName }, ...additionalDocuments];
-  const fingerprint = JSON.stringify(documents);
+  const fingerprint = JSON.stringify([catalogReleaseId, documents]);
   const hasContent = documents.some(item => item.document.trim());
   const fileInput = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<CatalogMarkdownImportResponse["item"]["entries"] | null>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const [parsedFingerprint, setParsedFingerprint] = useState<string | null>(null);
   const [noChange, setNoChange] = useState(false);
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [leaveConfirm, setLeaveConfirm] = useState(false);
@@ -113,6 +115,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setAdditionalDocuments([]);
     setActiveFile(0);
     setEntries(null);
+    setParsedFingerprint(null);
     setNoChange(false);
     setErrorsOnly(false);
     setPlacementHints([]);
@@ -126,6 +129,10 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     registrationGate.current.reset();
     return () => { registrationEpoch.current += 1; flow.stopPolling(); };
   }, [open, catalog, props.currentPersonId, props.organizationId]);
+
+  useEffect(() => {
+    if (entries) resultsRef.current?.focus();
+  }, [entries]);
 
   useEffect(() => {
     if (!open || !dirty) return undefined;
@@ -166,6 +173,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const updateDocument = (nextDocument: string, nextFileName: string) => {
     flow.reset();
     setEntries(null);
+    setParsedFingerprint(null);
     setPlacementHints([]);
     setNoChange(false);
     setErrorsOnly(false);
@@ -173,12 +181,13 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setFileName(nextFileName);
   };
   const runPreview = async () => {
-    if (!canPreview || pending || !hasContent || !catalog.previewMarkdownImport) return;
+    if (!canPreview || pending || !hasContent || (parsedFingerprint === fingerprint && !mustRePreview) || !catalog.previewMarkdownImport) return;
     await flow.preview(async () => {
       const result = await catalog.previewMarkdownImport!(
         { markdownImport: { document, fileName, ...(additionalDocuments.length ? { additionalDocuments } : {}) } }, { catalogReleaseId },
       );
       setEntries(result.item.entries);
+      setParsedFingerprint(fingerprint);
       setPlacementHints(result.item.placementHints ?? []);
       setNoChange(result.item.noChange);
       setErrorsOnly(false);
@@ -288,7 +297,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
       {({ titleId, descriptionId }) => <>
         <h2 id={titleId}>批量导入定义</h2>
         <div className="confirm-dialog__scroll"><div id={descriptionId} className="governance-confirm-dialog__body">
-          <p>粘贴或一次上传多个 .md 文件，格式见模板。每批最多 20 个文件、合计 1 MiB、128 条定义；统一预览，全部通过后一次发布。业务分类和展示别名为可选的登记提示，不影响发布。</p>
+          <p>粘贴或一次上传多个 .md 文件，格式见模板。每批最多 20 个文件、合计 1 MiB、1024 条定义；点击一次即可解析全部文件，集中显示错误与冲突，全部通过后一次发布。业务分类和展示别名为可选的登记提示，不影响发布。</p>
           {unavailable ? <p role="status">{unavailable}</p> : null}
           {advisory ? <p role="status" data-tone={advisory.tone}>{advisory.message}</p> : null}
           {status ? <p role="status" aria-label="发布任务状态" data-publication-status={job?.status}
@@ -381,7 +390,9 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
                 }} />
             </label>
           </div> : null}
-            {entries ? <div className="parameter-catalog-import-dialog__results">
+            {entries ? <div ref={resultsRef} tabIndex={-1} role="region" aria-label="整批导入结果" className="parameter-catalog-import-dialog__results">
+              <p role="status">已完成全部 {documents.length} 个文件的解析与预览。{counts.error || counts.conflict
+                ? "以下列出本批全部错误与冲突，修正后重新预览。" : "请核对本批全部结果。"}</p>
               {placementWarnings.length ? <section className="definition-editor__banner" data-tone="warning" aria-label="登记提示（不影响发布）">
                 <strong>登记提示（不影响发布）</strong>
                 <ul className="list-disc space-y-1 pl-4">{placementWarnings.map((item, index) =>
@@ -429,8 +440,8 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         <div className="dialog-actions">
           {canPreview && !succeeded && (!candidate || mustRePreview)
             ? <button type="button" className="button primary sm"
-            disabled={pending || !hasContent} onClick={() => void runPreview()}>
-            {mustRePreview ? publicationCopy.rebase : "解析并预览"}</button> : null}
+            disabled={pending || !hasContent || (parsedFingerprint === fingerprint && !mustRePreview)} onClick={() => void runPreview()}>
+            {pending ? "正在解析全部文件…" : mustRePreview ? publicationCopy.rebase : "解析并预览"}</button> : null}
           {canPublish && candidate && !succeeded ? <button type="button" className="button primary sm"
             disabled={pending || mustRePreview || Boolean(job && publicationJobIsPending(job.status))}
             onClick={() => setConfirm("publish")}>
