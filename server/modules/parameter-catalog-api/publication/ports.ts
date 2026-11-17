@@ -16,7 +16,12 @@ import { withPublicationCoordinator } from "../../catalog-publication/coordinato
 import { enqueuePublicationJob } from "../../catalog-publication/enqueue";
 import { impactFactsFromAllocation } from "../../catalog-publication/jobs/execute";
 import { parsePublicationChangeSet, previewPublicationCandidate } from "../../catalog-publication/preview";
-import { parseBundleBytes, targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
+import { targetReleaseOf } from "../../catalog-publication/builder/bundleCodec";
+import {
+  preparePredecessorArtifact,
+  preparedPredecessorBundle,
+  type PreparedPredecessorArtifact,
+} from "../../catalog-publication/builder/preparedPredecessor";
 import { planMarkdownImport } from "../../catalog-publication/import/markdownImport";
 
 import { modulePath, readPlacementHintEvidence } from "../../parameter-governance/registration/readRepository";
@@ -256,11 +261,17 @@ export function bindCatalogPublicationCommands(input: {
       }
       let plan: ReturnType<typeof planMarkdownImport> | undefined;
       let placementHints: PlacementHintWithWarnings[] = [];
-      if (command.markdownImport) {
+      let predecessorArtifact: PreparedPredecessorArtifact | undefined;
+      if (command.markdownImport || command.claimedOwners) {
         const artifact = await getArtifactByDigest(db, pointer.current.digest);
         if (!artifact.ok) return { ok: false, error: { kind: "reason", reason: "artifact-missing" } };
-        const bundle = parseBundleBytes(artifact.value.artifactBytes);
-        const snapshot = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
+        const prepared = preparePredecessorArtifact({ digest: pointer.current.digest, bytes: artifact.value.artifactBytes });
+        if (!prepared.ok) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
+        predecessorArtifact = prepared.artifact;
+      }
+      if (command.markdownImport) {
+        const bundle = predecessorArtifact && preparedPredecessorBundle(predecessorArtifact);
+        const snapshot = bundle ? targetReleaseOf(bundle) : null;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
         plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot);
         placementHints = plan.placementHints;
@@ -295,10 +306,8 @@ export function bindCatalogPublicationCommands(input: {
       }
       let claimedChanges;
       if (command.claimedOwners) {
-        const artifact = await getArtifactByDigest(db, pointer.current.digest);
-        if (!artifact.ok) return { ok: false, error: { kind: "reason", reason: "artifact-missing" } };
-        const bundle = parseBundleBytes(artifact.value.artifactBytes);
-        const predecessor = bundle.ok ? targetReleaseOf(bundle.bundle) : null;
+        const bundle = predecessorArtifact && preparedPredecessorBundle(predecessorArtifact);
+        const predecessor = bundle ? targetReleaseOf(bundle) : null;
         if (!predecessor) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
         const planned = await planClaimedOwners(db, predecessor);
         if (!planned.ok) return { ok: false, error: { kind: "reason", reason: "candidate-stale" } };
@@ -310,6 +319,7 @@ export function bindCatalogPublicationCommands(input: {
       const previewed = await previewPublicationCandidate({
         db,
         predecessorDigest: pointer.current.digest,
+        predecessorArtifact,
         changeSet: parsed,
         authorPrincipalId: command.principalId,
         authorOrganizationId: command.organizationId,

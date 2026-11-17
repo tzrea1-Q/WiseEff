@@ -43,7 +43,8 @@ setup preflight 与 doctor 解析 `DATABASE_URL`：bootstrap 用户 `wiseeff` �
 
 ## 1. 部署管理进程
 
-与 api/worker/web 使用同一应用镜像。容器内命令：`npm run publication:manager`。
+与 api/worker/web 使用同一应用镜像。Compose 通过 `node --import tsx` 运行
+`managerRunner.ts`，并显式设置服务堆内存上限；手动开发入口仍为 `npm run publication:manager`。
 
 ```bash
 ./scripts/compose --env-file .env ps -a
@@ -53,6 +54,64 @@ setup preflight 与 doctor 解析 `DATABASE_URL`：bootstrap 用户 `wiseeff` �
 ```
 
 API 设置 `WISEEFF_API_PROCESS=1`，日志 worker 设置 `LOG_WORKER_ENABLED=true`，两者都不加载 `.env.publication-manager`。管理入口要求 `WISEEFF_PUBLICATION_MANAGER=1`。
+
+### 预览和发布的内存预算
+
+API 预览和管理进程激活都会编译 Catalog 数据。两个服务各自默认使用 2 GiB RAM
+上限、3 GiB RAM 与交换空间合计上限、1536 MiB V8 老生代堆上限。差额用于年轻代、
+原生内存、Buffer 和 TypeScript 加载器，并不保证任意规模的目录都能容纳。主机需要
+为两个服务及其余组件保留余量。以下非敏感配置都写在 Compose 插值使用的主 `.env`
+中，包括管理进程的配置：
+
+| 服务 | RAM 上限 | RAM + 交换空间上限 | V8 老生代堆，MiB |
+| --- | --- | --- | --- |
+| API | `WISEEFF_API_MEMORY_LIMIT=2g` | `WISEEFF_API_MEMORY_SWAP_LIMIT=3g` | `WISEEFF_API_MAX_OLD_SPACE_SIZE_MB=1536` |
+| 发布管理进程 | `WISEEFF_PUBLICATION_MANAGER_MEMORY_LIMIT=2g` | `WISEEFF_PUBLICATION_MANAGER_MEMORY_SWAP_LIMIT=3g` | `WISEEFF_PUBLICATION_MANAGER_MAX_OLD_SPACE_SIZE_MB=1536` |
+
+既有 `.env` 未填写这些键时也会采用默认值。Compose 在 Node 命令行中传入堆上限，
+保留其他 `NODE_OPTIONS`，并覆盖该变量中遗留的 `--max-old-space-size`。堆上限应低于
+RAM 上限。日志出现 `FATAL ERROR: ... JavaScript heap out of memory` 就属于 V8
+内存耗尽，即使 Docker 显示 `OOMKilled=false`。
+
+应用代码修改按正常[升级流程](upgrade.zh-CN.md)部署。如果只是用当前运行镜像恢复
+资源配置，先更新 Compose 配置，然后在允许 API 短暂中断时执行以下命令。示例适用于
+API 和管理进程共用带标签镜像的标准部署；从当前 Compose 项目的 API 固定镜像，避免
+误用其他部署实例的镜像：
+
+```bash
+free -h
+wiseeff_api_cid="$(./scripts/compose --env-file .env ps -q api)"
+wiseeff_app_image="$(docker inspect --format '{{.Config.Image}}' "$wiseeff_api_cid")"
+# 确认输出为预期的 repository:tag 后继续。
+printf '%s\n' "$wiseeff_app_image"
+WISEEFF_APP_IMAGE="${wiseeff_app_image%:*}" \
+WISEEFF_APP_TAG="${wiseeff_app_image##*:}" \
+  ./scripts/compose --env-file .env up -d --no-deps --no-build \
+    --force-recreate api publication-manager
+```
+
+必须重建容器：单独 `restart` 不应用 Compose 中的新限制和启动参数；单独
+`docker update` 也不会将配置保留到下次重建。上述配置恢复命令保留当前应用镜像，
+不会安装新源码中的代码修复。镜像若使用 digest 引用，请采用正常升级流程，不要按
+上述方式拆分镜像标签。
+
+核实重建后的实际容器限制和主进程参数：
+
+```bash
+./scripts/compose --env-file .env ps -a -q api publication-manager |
+  xargs -r docker inspect --format \
+  '{{.Name}} memory={{.HostConfig.Memory}} memorySwap={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}} restarts={{.RestartCount}}'
+./scripts/compose --env-file .env exec -T api \
+  curl -fsS http://127.0.0.1:8787/health/live
+./scripts/compose --env-file .env exec -T publication-manager \
+  curl -fsS http://127.0.0.1:8791/health/live
+./scripts/compose --env-file .env logs --since 5m --tail 100 api publication-manager
+```
+
+默认配置下，两个服务都应显示 `memory=2147483648`、`memorySwap=3221225472` 和
+`--max-old-space-size=1536`。单独执行未携带该命令行参数的 `exec ... node -e`，得到的
+是新探针进程默认堆上限，而非运行中服务的堆上限。重试一次导入预览，确认成功且重启
+计数没有增加。健康检查通过不能代替导入与发布验收。
 
 ## 2. 预检已有目录
 

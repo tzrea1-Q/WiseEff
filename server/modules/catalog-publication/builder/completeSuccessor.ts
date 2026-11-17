@@ -66,6 +66,7 @@ import type {
   SuccessorBuildValue,
   SupportedDefinitionContent,
 } from "./types";
+import { preparedPredecessorBundle } from "./preparedPredecessor";
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CREATE_DEFINITION_KEYS = new Set(["op", "subjectId", "propertyKey", "content"]);
@@ -168,7 +169,6 @@ const loadPredecessor = async (
 ): Promise<
   | {
       readonly ok: true;
-      readonly bytes: Uint8Array;
       readonly bundle: CatalogReleaseBundle;
       readonly digest: string;
     }
@@ -178,6 +178,35 @@ const loadPredecessor = async (
   if (!SHA256_DIGEST.test(digest)) {
     return { ok: false, error: { kind: "invalid-input", reason: "predecessor digest must be sha256:<64 lowercase hex>" } };
   }
+  let bundle = preparedPredecessorBundle(input.predecessorArtifact);
+  if (!bundle) {
+    const parsed = await readPredecessorBytes(input);
+    if (!parsed.ok) return parsed;
+    bundle = parsed.bundle;
+  }
+  // Reusing JSON never skips source, lineage or aggregate-digest validation.
+  const compiled = compileCatalogRelease(bundle);
+  if (!compiled.ok) {
+    return { ok: false, error: { kind: "predecessor-incomplete", cause: compiled.error } };
+  }
+  if (compiled.value.aggregateDigest !== digest) {
+    return {
+      ok: false,
+      error: {
+        kind: "artifact-digest-mismatch",
+        expected: digest,
+        actual: compiled.value.aggregateDigest,
+      },
+    };
+  }
+  return { ok: true, bundle, digest };
+};
+
+const readPredecessorBytes = async (
+  input: BuildCompleteSuccessorInput,
+): Promise<{ readonly ok: true; readonly bundle: CatalogReleaseBundle }
+  | { readonly ok: false; readonly error: BuildCompleteSuccessorError }> => {
+  const digest = input.predecessorArtifact.digest;
   let bytes: Uint8Array | undefined =
     "bytes" in input.predecessorArtifact ? input.predecessorArtifact.bytes : undefined;
   if (bytes === undefined) {
@@ -212,21 +241,7 @@ const loadPredecessor = async (
       error: { kind: "predecessor-incomplete", cause: { detail: parsed.detail } },
     };
   }
-  const compiled = compileCatalogRelease(parsed.bundle);
-  if (!compiled.ok) {
-    return { ok: false, error: { kind: "predecessor-incomplete", cause: compiled.error } };
-  }
-  if (compiled.value.aggregateDigest !== digest) {
-    return {
-      ok: false,
-      error: {
-        kind: "artifact-digest-mismatch",
-        expected: digest,
-        actual: compiled.value.aggregateDigest,
-      },
-    };
-  }
-  return { ok: true, bytes, bundle: parsed.bundle, digest };
+  return { ok: true, bundle: parsed.bundle };
 };
 
 const definitionDocuments = (

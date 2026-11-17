@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import { parse } from "yaml";
 import { evaluateSelfHostedConfig } from "./check-self-hosted-config";
 
 const validPackageJson = {
@@ -75,13 +77,15 @@ services:
   api:
     image: *wiseeff-image
     build: *wiseeff-build
+    mem_limit: \${WISEEFF_API_MEMORY_LIMIT:-2g}
+    memswap_limit: \${WISEEFF_API_MEMORY_SWAP_LIMIT:-3g}
     env_file: \${WISEEFF_ENV_FILE:-.env}
     environment:
       <<: *wiseeff-runtime-proxy
       WISEEFF_API_PROCESS: "1"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8787/health/live"]
-    command: ["npx", "tsx", "server/index.ts"]
+    command: ["node", "--max-old-space-size=\${WISEEFF_API_MAX_OLD_SPACE_SIZE_MB:-1536}", "--import", "tsx", "server/index.ts"]
   worker:
     image: *wiseeff-image
     build: *wiseeff-build
@@ -97,6 +101,8 @@ services:
   publication-manager:
     image: *wiseeff-image
     build: *wiseeff-build
+    mem_limit: \${WISEEFF_PUBLICATION_MANAGER_MEMORY_LIMIT:-2g}
+    memswap_limit: \${WISEEFF_PUBLICATION_MANAGER_MEMORY_SWAP_LIMIT:-3g}
     env_file:
       - \${WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager}
     environment:
@@ -104,7 +110,7 @@ services:
       WISEEFF_API_PROCESS: "0"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8791/health/live"]
-    command: ["npm", "run", "publication:manager"]
+    command: ["node", "--max-old-space-size=\${WISEEFF_PUBLICATION_MANAGER_MAX_OLD_SPACE_SIZE_MB:-1536}", "--import", "tsx", "server/modules/catalog-publication/jobs/managerRunner.ts"]
   web:
     image: *wiseeff-image
     build: *wiseeff-build
@@ -334,13 +340,38 @@ describe("self-hosted config metadata", () => {
   it("starts application services without a login shell that rewrites image PATH", () => {
     const compose = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "compose.yaml"), "utf8");
 
-    expect(compose).toContain('command: ["npx", "tsx", "server/index.ts"]');
+    expect(compose).toContain('command: ["node", "--max-old-space-size=${WISEEFF_API_MAX_OLD_SPACE_SIZE_MB:-1536}", "--import", "tsx", "server/index.ts"]');
     expect(compose).toContain('command: ["npm", "run", "worker:logs"]');
-    expect(compose).toContain('command: ["npm", "run", "publication:manager"]');
+    expect(compose).toContain('command: ["node", "--max-old-space-size=${WISEEFF_PUBLICATION_MANAGER_MAX_OLD_SPACE_SIZE_MB:-1536}", "--import", "tsx", "server/modules/catalog-publication/jobs/managerRunner.ts"]');
     expect(compose).toContain(
       'command: ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]'
     );
     expect(compose).not.toContain('command: ["sh", "-lc",');
+  });
+
+  it.each(["api", "publication-manager"])("gives %s persistent container headroom and an explicit heap without replacing NODE_OPTIONS", (name) => {
+    const compose = parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "compose.yaml"), "utf8"), { merge: true });
+    const service = compose.services[name] as { mem_limit: string; memswap_limit: string; command: string[]; environment: Record<string, string> };
+    const defaults = (value: string) => value.replace(/\$\{[^}:]+:-([^}]+)\}/gu, "$1");
+    expect(defaults(service.mem_limit)).toBe("2g");
+    expect(defaults(service.memswap_limit)).toBe("3g");
+    expect(service.environment).not.toHaveProperty("NODE_OPTIONS");
+    expect(service.command[0]).toBe("node");
+
+    // Exercise the exact configured runtime flags, including the TypeScript loader,
+    // without starting a server or needing production credentials.
+    const runtimeFlags = service.command.slice(1, -1).map(defaults);
+    const probe = spawnSync(process.execPath, [...runtimeFlags, "-e", `
+      console.log(JSON.stringify({
+        heapLimitMiB: require("node:v8").getHeapStatistics().heap_size_limit / 1048576,
+        stackTraceLimit: Error.stackTraceLimit
+      }));
+    `], { encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "--stack-trace-limit=13 --max-old-space-size=96" } });
+    expect(probe.status, probe.stderr).toBe(0);
+    const result = JSON.parse(probe.stdout);
+    expect(result.heapLimitMiB).toBeGreaterThanOrEqual(1536);
+    expect(result.heapLimitMiB).toBeLessThan(2048);
+    expect(result.stackTraceLimit).toBe(13);
   });
 
   it("passes when compose, env, proxy, and package scripts describe a self-hosted runtime", () => {
