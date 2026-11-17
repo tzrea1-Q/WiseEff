@@ -4,7 +4,6 @@ import type {
   CurrentCatalogSnapshot,
 } from "../../catalog-kernel/interface";
 import { serializeMarkdownRevision } from "../../catalog-publication/import/markdownImport";
-import { CATALOG_CAPABILITY_ALLOW_LIST } from "../../catalog-publication/builder/capabilities";
 import type { z } from "zod";
 import {
   CATALOG_RELEASE_HEADER,
@@ -352,7 +351,7 @@ async function handleGetCatalog(
 async function handleRevisionExport(snapshot: CatalogSnapshot, ports: CatalogReadPorts, scope: TrustedCatalogScope,
   request: CatalogReadRequest): Promise<CatalogReadResponse> {
   const ids = queryArray(request.query, "definitionId");
-  if (!queryValue(request.query, "catalogReleaseId") || !ids?.length || ids.length > CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxChangeSetOps || ids.some((id) => !id.trim())) {
+  if (!queryValue(request.query, "catalogReleaseId") || !ids?.length || ids.length > 128 || ids.some((id) => !id.trim())) {
     return validationFailed(request.requestId, "definitionId");
   }
   const current = await ports.readiness.current();
