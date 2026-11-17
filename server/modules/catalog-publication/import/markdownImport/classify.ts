@@ -33,8 +33,10 @@ export function classifyEntry(input: {
   const { section, definition, subject, duplicate } = input.entry;
   const revise = isRevisionEntry(definition);
   const diagnostics = [...input.entry.diagnostics];
-  if (!parseCanonicalPropertyKey(definition.propertyKey).ok) {
-    diagnostics.push(diagnostic(section, definition, "属性键", "属性键格式无效。", definition.line));
+  const parsedPropertyKey = parseCanonicalPropertyKey(definition.propertyKey);
+  if (!parsedPropertyKey.ok) {
+    diagnostics.push(diagnostic(section, definition, "属性键", parsedPropertyKey.error === "length-out-of-range"
+      ? "属性键不能超过 64 个字符。" : "属性键格式无效。", definition.line));
   }
   if (duplicate) {
     diagnostics.push(diagnostic(section, definition, "属性键", "文档中存在重复属性键。", definition.line));

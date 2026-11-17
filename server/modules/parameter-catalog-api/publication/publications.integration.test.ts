@@ -832,7 +832,12 @@ it("publishes a mixed Markdown create and revision in one Candidate", async () =
   }
 }, 120_000);
 
-it.each([false, true])("publishes a three-definition Markdown import (new subject: %s) through the manager and records an activation receipt", async (newSubject) => {
+it.each([
+  { newSubject: false, vendorSubjects: false, keys: ["batch_a", "batch_b", "batch_c"] },
+  { newSubject: true, vendorSubjects: false, keys: ["batch_a", "batch_b", "batch_c"] },
+  { newSubject: false, vendorSubjects: false, keys: ["clear_water_intrused_flag_after_read", "support_sink_hiz_switch_from_rsc", "adapter_protocol_ic_sysfs_support"] },
+  { newSubject: true, vendorSubjects: true, keys: ["clear_water_intrused_flag_after_read", "support_sink_hiz_switch_from_rsc", "adapter_protocol_ic_sysfs_support"] },
+])("publishes a three-definition Markdown import through the manager: %j", async ({ newSubject, vendorSubjects, keys }) => {
   const database = await createEphemeralTestDatabase("mdimport");
   const db = createPostgresDatabase(database.url);
   const pool = getRootPostgresPool(db)!;
@@ -855,11 +860,16 @@ it.each([false, true])("publishes a three-definition Markdown import (new subjec
       const response = await fetch(`${server.baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", [CATALOG_RELEASE_HEADER]: pin }, body: JSON.stringify(body) });
       return { status: response.status, body: await response.json() };
     };
-    const document = `# Driver \`${newSubject ? "acme,new" : "acme,power"}\`\n${newSubject ? "nature: physical-device · cardinality: multiple\n" : ""}${["a", "b", "c"].map((key) => `## \`batch_${key}\` 参数 ${key}\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`).join("\n")}`;
+    const definition = (key: string) => `## \`${key}\` 参数 ${key}\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |`;
+    const driverFacts = "nature: physical-device · cardinality: multiple\n";
+    const document = vendorSubjects
+      ? `# Driver \`huawei,charger\`\n${driverFacts}${keys.slice(0, 2).map(definition).join("\n")}\n# Driver \`huawei,pd3in1\`\n${driverFacts}${definition(keys[2]!)}`
+      : `# Driver \`${newSubject ? "acme,new" : "acme,power"}\`\n${newSubject ? driverFacts : ""}${keys.map(definition).join("\n")}`;
     const preview = await post("/api/v2/catalog/publication-candidates", { markdownImport: { document, fileName: "three.md" } });
     expect(preview.status).toBe(201);
     const plan = catalogMarkdownImportResponseSchema.parse(preview.body).item;
     expect(plan.entries).toHaveLength(3);
+    expect(plan.entries.map((entry) => [entry.propertyKey, entry.outcome])).toEqual(keys.map((key) => [key, "create"]));
     expect(plan.candidate).not.toBeNull();
     expect(plan.candidate?.riskClass).toBe(newSubject ? "high" : "low");
     const candidateId = plan.candidate!.id;
@@ -887,12 +897,19 @@ it.each([false, true])("publishes a three-definition Markdown import (new subjec
       `select count(*)::text as n from catalog_publication.candidates`,
     ));
     expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
-    const definitions = await client.query<{ property_key: string }>(`select d.property_key from parameter_catalog.parameter_definitions d
+    const definitions = await client.query<{ property_key: string; subject: string }>(`select d.property_key, sub.canonical_key as subject from parameter_catalog.parameter_definitions d
+      join parameter_catalog.catalog_subjects sub on sub.id = d.subject_id
       join parameter_catalog.catalog_release_definition_heads h on h.definition_id = d.id
       join parameter_catalog.catalog_state s on s.current_catalog_release_id = h.release_id
-      where d.property_key in ('batch_a', 'batch_b', 'batch_c') order by d.property_key`);
-    expect(definitions.rows.map((row) => row.property_key)).toEqual(["batch_a", "batch_b", "batch_c"]);
-    if (newSubject) {
+      where d.property_key = any($1::text[]) order by d.property_key`, [keys]);
+    expect(definitions.rows.map((row) => row.property_key)).toEqual([...keys].sort());
+    if (vendorSubjects) {
+      expect(definitions.rows).toEqual(expect.arrayContaining([
+        { subject: "huawei,charger", property_key: keys[0] },
+        { subject: "huawei,charger", property_key: keys[1] },
+        { subject: "huawei,pd3in1", property_key: keys[2] },
+      ]));
+    } else if (newSubject) {
       const subject = await client.query<{ n: string }>(`select count(*)::text as n from parameter_catalog.catalog_subjects where canonical_key = 'acme,new'`);
       expect(subject.rows[0]?.n).toBe("1");
     }

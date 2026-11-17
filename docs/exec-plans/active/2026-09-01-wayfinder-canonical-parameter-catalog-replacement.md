@@ -72,6 +72,8 @@ At the Phase A stopping point, `ACTUAL_LAUNCH_READY_SET` was empty and S0-ID was
 
 ## G0.1 contract amendment (2026-09-02)
 
+**Property-key compatibility amendment (2026-11-17):** The historical 31-byte property-key limit and its 32-byte rejection vector below are superseded by a 64-byte product limit, to preserve long vendor DTS keys in use. The accepted ASCII grammar, structural exclusions, exact-byte identity and failure ordering remain unchanged. A 64-byte key is accepted and a 65-byte key returns `length-out-of-range`; node-name limits are unchanged. This compatibility policy is not a claim that Devicetree specifies a 64-character property-name limit. The TypeScript constructor and PostgreSQL predicate must agree, and upgrades apply migration `0338_long_catalog_property_keys.sql`.
+
 The owner authorized this correction after independent Wave 2 Standards and Spec reviews. It is append-only contract clarification for S0-ID, S0-RAT, S0-FIX, S1-BND, S2-SCH, and S12-AGT. The launch set remains 53 nodes; native relationships remain `CD=90`, `CF=54`, `ID=27`, and `RE=18`. Existing CF slots carry the amended fingerprints: S1-BND continues to require the exact merged S0-ID SHA and contract fingerprint through its existing CD text, and S2-SCH continues to consume S0-ID through its existing CF slot. No new slot or edge is created.
 
 ### Closed subject subtype and canonical identity contract

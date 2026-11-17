@@ -210,7 +210,9 @@ export const parseCanonicalPropertyKey = (
   }
 
   const propertyKey = input as string;
-  if (propertyKey.length > 31) {
+  // Vendor DTS files in use can exceed the Devicetree specification's 31-character
+  // limit. Accept these names as exact identities without changing their bytes.
+  if (propertyKey.length > 64) {
     return { ok: false, error: "length-out-of-range" };
   }
   if (
@@ -219,7 +221,7 @@ export const parseCanonicalPropertyKey = (
   ) {
     return { ok: false, error: "structural-property" };
   }
-  if (!/^[A-Za-z0-9,._+?#-]{1,31}$/u.test(propertyKey)) {
+  if (!/^[A-Za-z0-9,._+?#-]+$/u.test(propertyKey)) {
     return { ok: false, error: "invalid-syntax" };
   }
   return { ok: true, value: asPropertyKey(propertyKey) };
