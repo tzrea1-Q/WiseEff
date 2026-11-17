@@ -34,6 +34,7 @@ export type Subject = {
 export type SyntaxTree = { subjects: Subject[]; diagnostics: SyntaxDiagnostic[] };
 
 export type ImportEntry = {
+  fileName?: string;
   subjectHeading: string;
   definitionHeading: string;
   selector: string;

@@ -103,7 +103,8 @@ export type PreviewPublicationCommand = {
   readonly catalogReleaseId: string;
   readonly changeSet?: unknown;
   readonly claimedOwners?: true;
-  readonly markdownImport?: { readonly document: string; readonly fileName: string };
+  readonly markdownImport?: { readonly document: string; readonly fileName: string;
+    readonly additionalDocuments?: { document: string; fileName: string }[] };
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
 };

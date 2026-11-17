@@ -17,112 +17,126 @@ const documentError = (issue: ImportDiagnostic): ImportEntry => ({
   outcome: "error", diagnostics: [issue],
 });
 
-/** Plan one document against an immutable Catalog snapshot without side effects. */
-export function planMarkdownImport(document: string, fileName: string, snapshot: CatalogReleaseNode) {
+/** Parse files separately and plan one atomic batch against an immutable Catalog snapshot. */
+export function planMarkdownImport(document: string, fileName: string, snapshot: CatalogReleaseNode,
+  additionalDocuments: { document: string; fileName: string }[] = []) {
+  const documents = [{ document, fileName }, ...additionalDocuments];
+  const sources = documents.map(item => ({ fileName: item.fileName,
+    sha256: `sha256:${createHash("sha256").update(item.document, "utf8").digest("hex")}` }));
   const source = {
     fileName,
-    sha256: `sha256:${createHash("sha256").update(document, "utf8").digest("hex")}`,
-    parserVersion: "markdown-import/v2",
+    sha256: additionalDocuments.length
+      ? `sha256:${createHash("sha256").update(JSON.stringify(sources), "utf8").digest("hex")}` : sources[0]!.sha256,
+    parserVersion: additionalDocuments.length ? "markdown-import/v3" : "markdown-import/v2",
+    ...(additionalDocuments.length ? { files: sources } : {}),
   };
-  const syntax = parseMarkdown(document);
-  const definitionCount = syntax.subjects.reduce((count, subject) => count + subject.definitions.length, 0);
+  const syntaxes = documents.map(item => parseMarkdown(item.document));
+  const definitionCount = syntaxes.reduce((total, syntax) => total + syntax.subjects.reduce((count, subject) => count + subject.definitions.length, 0), 0);
   if (definitionCount > MAX_IMPORT_DEFINITIONS) {
     return { entries: [documentError({ subjectHeading: "", definitionHeading: "", field: "文档", line: 1,
-      message: `最多导入 ${MAX_IMPORT_DEFINITIONS} 条定义（本文档 ${definitionCount} 条），请按主体拆分文档。` })],
+      message: `最多导入 ${MAX_IMPORT_DEFINITIONS} 条定义（本批次 ${definitionCount} 条），请分批导入。` })],
     changeSet: null, noChange: false, source, placementHints: [] };
   }
   const entries: ImportEntry[] = [];
   const changes: CatalogChange[] = [];
-  const placementHints: { kind: string; selector: string; subjectId?: string; categoryPath?: string; displayAlias?: string; line: number; warnings: { message: string; line: number }[] }[] = [];
+  const placementHints: { fileName?: string; kind: string; selector: string; subjectId?: string; categoryPath?: string; displayAlias?: string; line: number; warnings: { message: string; line: number }[] }[] = [];
   const seen = new Set<string>();
   const newSubjects = new Map<string, ReturnType<typeof resolveSubject>>();
-  for (const issue of syntax.diagnostics.filter((item) => item.subjectLine === undefined)) {
-    entries.push(documentError(publicDiagnostic(issue)));
-  }
-  for (const section of syntax.subjects) {
-    const resolved = resolveSubject(section, snapshot);
-    if (section.kind && resolved.hintLine !== undefined) placementHints.push({ kind: section.kind, selector: section.selector,
-      ...(resolved.subject ? { subjectId: resolved.subject.content.id } : {}),
-      ...(resolved.categoryPath ? { categoryPath: resolved.categoryPath } : {}),
-      ...(resolved.displayAlias ? { displayAlias: resolved.displayAlias } : {}), line: resolved.hintLine, warnings: resolved.warnings });
-    if (!resolved.subject && section.kind) {
-      const subjectKey = `${resolved.ownerSubjectId ?? ""}\0${section.selector}`;
-      const previous = newSubjects.get(subjectKey);
-      if (previous && (previous.section.kind !== section.kind || previous.nature !== resolved.nature
-        || previous.cardinality !== resolved.cardinality)) {
-        resolved.diagnostics.push(diagnostic(section, null, "主体", "文档中主体的类型、性质或基数不一致。", section.line));
-      } else if (!previous) newSubjects.set(subjectKey, resolved);
+  for (const [fileIndex, syntax] of syntaxes.entries()) {
+    const entryStart = entries.length;
+    const hintStart = placementHints.length;
+    for (const issue of syntax.diagnostics.filter((item) => item.subjectLine === undefined)) {
+      entries.push(documentError(publicDiagnostic(issue)));
     }
-    const creations: { propertyKey: string; content: SupportedDefinitionContent }[] = [];
-    const createdEntries: ImportEntry[] = [];
-    const sectionDiagnostics = [
-      ...syntax.diagnostics.filter((item) => item.subjectLine === section.line && item.definitionLine === undefined)
-        .map(publicDiagnostic),
-      ...resolved.diagnostics,
-    ];
-    if (section.definitions.length === 0) {
-      const diagnostics = sectionDiagnostics.length ? sectionDiagnostics : [
-        diagnostic(section, null, "主体", "主体下没有定义。", section.line),
+    for (const section of syntax.subjects) {
+      const resolved = resolveSubject(section, snapshot);
+      if (section.kind && resolved.hintLine !== undefined) placementHints.push({ kind: section.kind, selector: section.selector,
+        ...(resolved.subject ? { subjectId: resolved.subject.content.id } : {}),
+        ...(resolved.categoryPath ? { categoryPath: resolved.categoryPath } : {}),
+        ...(resolved.displayAlias ? { displayAlias: resolved.displayAlias } : {}), line: resolved.hintLine, warnings: resolved.warnings });
+      if (!resolved.subject && section.kind) {
+        const subjectKey = `${resolved.ownerSubjectId ?? ""}\0${section.selector}`;
+        const previous = newSubjects.get(subjectKey);
+        if (previous && (previous.section.kind !== section.kind || previous.nature !== resolved.nature
+          || previous.cardinality !== resolved.cardinality)) {
+          resolved.diagnostics.push(diagnostic(section, null, "主体", "文档中主体的类型、性质或基数不一致。", section.line));
+        } else if (!previous) newSubjects.set(subjectKey, resolved);
+      }
+      const creations: { propertyKey: string; content: SupportedDefinitionContent }[] = [];
+      const createdEntries: ImportEntry[] = [];
+      const sectionDiagnostics = [
+        ...syntax.diagnostics.filter((item) => item.subjectLine === section.line && item.definitionLine === undefined)
+          .map(publicDiagnostic),
+        ...resolved.diagnostics,
       ];
-      entries.push({ subjectHeading: section.heading, definitionHeading: "", selector: section.selector,
-        propertyKey: "", displayName: "", outcome: "error", diagnostics });
-      continue;
-    }
-    for (const definition of section.definitions) {
-      const revise = isRevisionEntry(definition);
-      const existing = resolved.subject ? snapshot.documents.find((item) => item.kind === "definition"
-        && item.content.subjectId === resolved.subject!.content.id && item.content.propertyKey === definition.propertyKey) : undefined;
-      const naturalKey = `${resolved.subject?.content.id ?? `${section.kind}:${resolved.ownerSubjectId ?? ""}:${section.selector}`}\0${definition.propertyKey}`;
-      const duplicate = seen.has(naturalKey);
-      seen.add(naturalKey);
-      const diagnostics = [
-        ...sectionDiagnostics.map((item) => ({ ...item, definitionHeading: definition.heading })),
-        ...syntax.diagnostics.filter((item) => item.definitionLine === definition.line).map(publicDiagnostic),
-      ];
-      if (revise && !existing) {
-        entries.push({ subjectHeading: section.heading, definitionHeading: definition.heading,
-          selector: section.selector, propertyKey: definition.propertyKey, displayName: definition.displayName,
-          outcome: "error", diagnostics: [...diagnostics, diagnostic(section, definition, "操作", "修订的定义不存在。", definition.line)] });
+      if (section.definitions.length === 0) {
+        const diagnostics = sectionDiagnostics.length ? sectionDiagnostics : [
+          diagnostic(section, null, "主体", "主体下没有定义。", section.line),
+        ];
+        entries.push({ subjectHeading: section.heading, definitionHeading: "", selector: section.selector,
+          propertyKey: "", displayName: "", outcome: "error", diagnostics });
         continue;
       }
-      const content = buildContent(section, definition, revise && existing?.kind === "definition" ? existing.content.revision : undefined);
-      diagnostics.push(...content.diagnostics);
-      const classified = classifyEntry({
-        entry: { section, definition, subject: resolved.subject, content: content.content, duplicate, diagnostics },
-        snapshot,
-      });
-      const entry: ImportEntry = { subjectHeading: section.heading, definitionHeading: definition.heading,
-        selector: section.selector, propertyKey: definition.propertyKey, displayName: definition.displayName,
-        ...(existing?.kind === "definition" ? { definitionId: existing.content.id } : {}), ...classified };
-      entries.push(entry);
-      if (classified.outcome === "create" && content.content) {
-        creations.push({ propertyKey: definition.propertyKey, content: content.content });
-        createdEntries.push(entry);
+      for (const definition of section.definitions) {
+        const revise = isRevisionEntry(definition);
+        const existing = resolved.subject ? snapshot.documents.find((item) => item.kind === "definition"
+          && item.content.subjectId === resolved.subject!.content.id && item.content.propertyKey === definition.propertyKey) : undefined;
+        const naturalKey = `${resolved.subject?.content.id ?? `${section.kind}:${resolved.ownerSubjectId ?? ""}:${section.selector}`}\0${definition.propertyKey}`;
+        const duplicate = seen.has(naturalKey);
+        seen.add(naturalKey);
+        const diagnostics = [
+          ...sectionDiagnostics.map((item) => ({ ...item, definitionHeading: definition.heading })),
+          ...syntax.diagnostics.filter((item) => item.definitionLine === definition.line).map(publicDiagnostic),
+        ];
+        if (revise && !existing) {
+          entries.push({ subjectHeading: section.heading, definitionHeading: definition.heading,
+            selector: section.selector, propertyKey: definition.propertyKey, displayName: definition.displayName,
+            outcome: "error", diagnostics: [...diagnostics, diagnostic(section, definition, "操作", "修订的定义不存在。", definition.line)] });
+          continue;
+        }
+        const content = buildContent(section, definition, revise && existing?.kind === "definition" ? existing.content.revision : undefined);
+        diagnostics.push(...content.diagnostics);
+        const classified = classifyEntry({
+          entry: { section, definition, subject: resolved.subject, content: content.content, duplicate, diagnostics },
+          snapshot,
+        });
+        const entry: ImportEntry = { subjectHeading: section.heading, definitionHeading: definition.heading,
+          selector: section.selector, propertyKey: definition.propertyKey, displayName: definition.displayName,
+          ...(existing?.kind === "definition" ? { definitionId: existing.content.id } : {}), ...classified };
+        entries.push(entry);
+        if (classified.outcome === "create" && content.content) {
+          creations.push({ propertyKey: definition.propertyKey, content: content.content });
+          createdEntries.push(entry);
+        }
+        if (classified.outcome === "revise" && content.content && existing?.kind === "definition" && classified.revisionClass) {
+          entry.operationIndex = changes.length;
+          entry.tightensExistingContract = tighterConstraint(existing.content.revision.valueSchema, content.content.valueSchema);
+          changes.push({ op: "revise-definition", definitionId: existing.content.id, class: classified.revisionClass, content: content.content });
+        }
       }
-      if (classified.outcome === "revise" && content.content && existing?.kind === "definition" && classified.revisionClass) {
-        entry.operationIndex = changes.length;
-        entry.tightensExistingContract = tighterConstraint(existing.content.revision.valueSchema, content.content.valueSchema);
-        changes.push({ op: "revise-definition", definitionId: existing.content.id, class: classified.revisionClass, content: content.content });
-      }
-    }
-    for (const change of subjectChanges(resolved, creations)) {
-      const previous = change.op === "create-subject-with-definitions"
-        ? changes.find((item) => item.op === "create-subject-with-definitions" && item.canonicalKey === change.canonicalKey && item.ownerSubjectId === change.ownerSubjectId)
-        : undefined;
-      const operationIndex = previous ? changes.indexOf(previous) : changes.length;
-      if (previous?.op === "create-subject-with-definitions" && change.op === "create-subject-with-definitions") {
-        changes[operationIndex] = { ...previous, definitions: [...previous.definitions, ...change.definitions] };
-      } else changes.push(change);
-      for (const entry of createdEntries) {
-        if (change.op === "create-subject-with-definitions" || (change.op === "create-definition" && change.propertyKey === entry.propertyKey)) {
-          entry.operationIndex = operationIndex;
+      for (const change of subjectChanges(resolved, creations)) {
+        const previous = change.op === "create-subject-with-definitions"
+          ? changes.find((item) => item.op === "create-subject-with-definitions" && item.canonicalKey === change.canonicalKey && item.ownerSubjectId === change.ownerSubjectId)
+          : undefined;
+        const operationIndex = previous ? changes.indexOf(previous) : changes.length;
+        if (previous?.op === "create-subject-with-definitions" && change.op === "create-subject-with-definitions") {
+          changes[operationIndex] = { ...previous, definitions: [...previous.definitions, ...change.definitions] };
+        } else changes.push(change);
+        for (const entry of createdEntries) {
+          if (change.op === "create-subject-with-definitions" || (change.op === "create-definition" && change.propertyKey === entry.propertyKey)) {
+            entry.operationIndex = operationIndex;
+          }
         }
       }
     }
-  }
-  if (!entries.length) {
-    entries.push(documentError({ subjectHeading: "", definitionHeading: "", field: "文档",
-      message: "文档中没有有效的定义标题。", line: 1 }));
+    if (entries.length === entryStart) {
+      entries.push(documentError({ subjectHeading: "", definitionHeading: "", field: "文档",
+        message: "文档中没有有效的定义标题。", line: 1 }));
+    }
+    if (additionalDocuments.length) {
+      for (const entry of entries.slice(entryStart)) entry.fileName = documents[fileIndex]!.fileName;
+      for (const hint of placementHints.slice(hintStart)) hint.fileName = documents[fileIndex]!.fileName;
+    }
   }
   for (const entry of entries) entry.diagnostics.sort((a, b) => a.line - b.line);
   const ready = entries.every((entry) => entry.outcome === "create" || entry.outcome === "revise" || entry.outcome === "skip");

@@ -347,6 +347,45 @@ it("previews pasted text, publishes and tracks the existing publication job", as
   expect(screen.getByRole("table", { name: "导入结果" })).toHaveTextContent("batch_one");
 });
 
+it("uploads multiple files, edits and removes them before one preview", async () => {
+  const preview = vi.fn(async () => ({ item: { candidate: null, noChange: true, placementHints: [], entries: [],
+    source: { fileName: "first.md", sha256: "test", parserVersion: "v3" } } }));
+  renderImport({ prepare: ports => { ports.catalog.previewMarkdownImport = preview; } });
+  const user = userEvent.setup();
+  const files = ["first.md", "second.md"].map((name, index) => {
+    const file = new File([`content ${index}`], name, { type: "text/markdown" });
+    Object.defineProperty(file, "text", { value: async () => `content ${index}` });
+    return file;
+  });
+  await user.upload(screen.getByLabelText("上传 .md 文件"), files);
+  await user.click(await screen.findByRole("button", { name: "second.md" }));
+  expect(screen.getByLabelText("Markdown 文档")).toHaveValue("content 1");
+  await user.type(screen.getByLabelText("Markdown 文档"), " edited");
+  await user.click(screen.getByRole("button", { name: "解析并预览" }));
+  await waitFor(() => expect(preview).toHaveBeenCalledWith({ markdownImport: {
+    document: "content 0", fileName: "first.md", additionalDocuments: [{ document: "content 1 edited", fileName: "second.md" }],
+  } }, { catalogReleaseId: CATALOG_RELEASE_ID }));
+  await user.click(screen.getByRole("button", { name: "移除 first.md" }));
+  expect(screen.queryByText("没有需要发布的变更。")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Markdown 文档")).toHaveValue("content 1 edited");
+  await user.click(screen.getByRole("button", { name: "移除 second.md" }));
+  expect(screen.getByRole("button", { name: "解析并预览" })).toBeDisabled();
+});
+
+it("preserves the draft when any uploaded file cannot be read", async () => {
+  renderImport();
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText("Markdown 文档"), "draft");
+  const files = ["ok.md", "bad.md"].map((name, index) => {
+    const file = new File(["text"], name);
+    Object.defineProperty(file, "text", { value: async () => { if (index) throw new Error("read failed"); return "new"; } });
+    return file;
+  });
+  await user.upload(screen.getByLabelText("上传 .md 文件"), files);
+  expect(await screen.findByRole("alert")).toHaveTextContent("文件读取失败");
+  expect(screen.getByLabelText("Markdown 文档")).toHaveValue("draft");
+});
+
 it("uploads Markdown and shows the line of each diagnostic", async () => {
   const preview = vi.fn(async () => ({ item: { candidate: null, noChange: false, placementHints: [],
     source: { fileName: "bad.md", sha256: "sha256:test", parserVersion: "v1" }, entries: [{

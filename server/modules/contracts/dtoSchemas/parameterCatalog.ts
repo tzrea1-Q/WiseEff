@@ -901,7 +901,11 @@ export const catalogTypedPublicationCandidateRequestSchema = catalogObject({
   proposalRevisionId: z.string().optional()
 });
 export const catalogMarkdownImportRequestSchema = catalogObject({
-  markdownImport: catalogObject({ document: z.string().max(1_048_576), fileName: z.string().min(1).max(255) })
+  markdownImport: catalogObject({ document: z.string().max(1_048_576), fileName: z.string().min(1).max(255),
+    additionalDocuments: z.array(catalogObject({ document: z.string().max(1_048_576),
+      fileName: z.string().min(1).max(255) })).max(19).optional()
+  }).refine(input => [input, ...(input.additionalDocuments ?? [])].reduce((size, item) => size + new TextEncoder().encode(item.document).byteLength, 0) <= 1_048_576,
+    "整批 Markdown 内容不能超过 1 MiB。")
 });
 export const catalogCreatePublicationCandidateRequestSchema = z.union([
   catalogTypedPublicationCandidateRequestSchema, catalogMarkdownImportRequestSchema,
@@ -1565,10 +1569,11 @@ export const catalogPublicationCandidateResponseSchema = itemEnvelopeSchema(
 export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObject({
   candidate: catalogPublicationCandidateDtoSchema.nullable(),
   noChange: z.boolean(),
-  placementHints: z.array(catalogObject({ kind: z.string(), selector: z.string(), subjectId: z.string().optional(),
+  placementHints: z.array(catalogObject({ fileName: z.string().optional(), kind: z.string(), selector: z.string(), subjectId: z.string().optional(),
     categoryPath: z.string().optional(), displayAlias: z.string().optional(), line: z.number().int().positive(),
     warnings: z.array(catalogObject({ message: z.string(), line: z.number().int().positive() })) })),
   entries: z.array(catalogObject({
+    fileName: z.string().optional(),
     subjectHeading: z.string(), definitionHeading: z.string(),
     selector: z.string(), propertyKey: z.string(), displayName: z.string(),
     outcome: z.enum(["create", "revise", "skip", "conflict", "error"]),
@@ -1581,7 +1586,8 @@ export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObj
       line: z.number().int().positive()
     }))
   })),
-  source: catalogObject({ fileName: z.string(), sha256: z.string(), parserVersion: z.string() })
+  source: catalogObject({ fileName: z.string(), sha256: z.string(), parserVersion: z.string(),
+    files: z.array(catalogObject({ fileName: z.string(), sha256: z.string() })).optional() })
 }));
 export const catalogClaimedOwnersResponseSchema = itemEnvelopeSchema(catalogObject({
   candidate: catalogPublicationCandidateDtoSchema.nullable(), noChange: z.boolean()
