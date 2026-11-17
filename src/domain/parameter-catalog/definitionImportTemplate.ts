@@ -22,7 +22,7 @@ export const DEFINITION_IMPORT_GUIDE = `# WiseEff 定义导入填写说明
 ## 输出格式
 1. 输出 UTF-8 的 .md 文件，最多 128 条定义。最终数据直接从 # Driver、# NodeType 或 # ConfigurationSchema 开始；不要加开场白、总结、总标题或包住整份文件的代码围栏。
 2. 主体标题固定为 # 种类 \`标识\`。参数标题固定为 ## \`属性键\` 显示名。标识和属性键不能翻译或改写；显示名也是会保存的数据，修订时除非用户要求改名，否则原样保留。
-3. 属性键最多 31 字符，只用英文字母、数字及 , . _ + ? # -，且不能以 # 开头。compatible、device_type、reg、ranges、status、phandle、linux,phandle、gpio-controller、interrupt-controller 及 # 开头的结构属性不能作为参数定义导入。同一主体内属性键不可重复。
+3. 属性键最多 64 字符，只用英文字母、数字及 , . _ + ? # -，且不能以 # 开头。此上限用于兼容实际厂商 DTS 中的长属性键，并非 Devicetree 规范的长度要求。compatible、device_type、reg、ranges、status、phandle、linux,phandle、gpio-controller、interrupt-controller 及 # 开头的结构属性不能作为参数定义导入。同一主体内属性键不可重复。
 4. 参数标题后先写两列表格，表头必须是“字段”和“值”，下一行是分隔行。字段名照下表填写；每个字段占一行。除“示例”外，字段不能重复。值不加 Markdown 加粗或行内代码标记。
 5. 多行说明放在字段表后的空行之后。说明中用 ### 或更低级标题；# 和 ## 留给主体和参数。说明中的代码块需闭合；不要在主体标题与第一个参数之间插入普通说明。
 6. 表格单元格保持单行。竖线写成 \`\\|\`，一个反斜线写成 \`\\\\\`；字符串中的换行说明放正文。数组/mixed 的 JSON 中如有反斜线，先按 JSON 转义，再按表格规则转义。

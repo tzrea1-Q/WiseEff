@@ -259,7 +259,9 @@ export const S2_SCH_0335_FINGERPRINT = "a84757014637c5dcfab32b7b10685d969ad10774
 export const S2_SCH_0336_FINGERPRINT = "df6018672d57c85b1bee5dcaa2e62e3fbd78fd7f0f20c97399057c4dbefe22ed";
 /** 0337 admits multiple commas in one exact compatible literal (PostgreSQL/pgvector measured). */
 export const S2_SCH_0337_FINGERPRINT = "0eb643b1c8438c3ce184060ef0239e4caf3a17759f63cbbb1ef70a3a39defe90";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0337_FINGERPRINT;
+/** 0338 replaces only the property-key predicate; all prior schema pins remain unchanged. */
+export const S2_SCH_0338_FINGERPRINT = "91311a8fbd21e52e89c3ea854fe8f74b6d98a2ebb9c1ce12eeefe36d99436954";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0338_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

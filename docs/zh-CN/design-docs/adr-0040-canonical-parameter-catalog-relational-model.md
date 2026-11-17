@@ -493,6 +493,8 @@ Definition、DefinitionRevision、Proposal、publication intent、stable ID、re
 
 ### G0.1 封闭 subtype 与 identity 补充
 
+**2026-11-17 属性键补充：** 为保留厂商 DTS 中在用的长属性名，下文历史 31 字节属性键上限由产品侧 64 字节上限取代。逐字节身份、允许的 ASCII 字符和结构属性排除保持不变；节点名上限不受影响。此产品兼容上限不代表 Devicetree 规范的规定。参见迁移 `0338_long_catalog_property_keys.sql`。
+
 2026-09-02 由所有者授权的 G0.1 修正把本 ADR 先前仅作描述的值域封闭：`Driver.nature` 精确为 `physical-device | logical-service`，`Driver.instance_cardinality` 精确为 `multiple | singleton-per-project`；NodeType 不存在 family 字段或 family enum。
 
 Canonical compatible、node-name 与 property-key 是 validation-only identity：接受值逐 byte 保存，不 trim、不转换大小写、不做 NFC/NFKC 或任何其他 Unicode normalization、不去引号、不去 `@`/unit-address。三者都拒绝 empty、non-ASCII、ASCII whitespace/control/DEL 与 matching-quoted raw token。Compatible 使用 `^[A-Za-z0-9][A-Za-z0-9+._/-]*(?:,[A-Za-z0-9][A-Za-z0-9+._/-]*)?$` 并禁止 wildcard。Node name 只接受 `/` 或 `^[A-Za-z][A-Za-z0-9,._+-]{0,30}$`，`@` 以 unit-address presence 拒绝。Property key 使用 `^[A-Za-z0-9,._+?#-]{1,31}$`，并按 ASCII case-insensitive 拒绝 `compatible`、`device_type`、`gpio-controller`、`interrupt-controller`、`linux,phandle`、`phandle`、`ranges`、`reg`、`status`、`#address-cells`、`#gpio-cells`、`#interrupt-cells`、`#size-cells` 以及任意 `#` 前缀。Failure classification 严格按 active #668 规格固定的顺序执行，且 reason set 封闭。

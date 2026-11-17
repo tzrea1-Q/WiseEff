@@ -3400,7 +3400,9 @@ describe("immutable Catalog Release bundle contract", () => {
   });
 
   it("consumes the S0-ID property-key constructor and preserves accepted bytes", () => {
-    for (const input of ["iin_max", "init_para", "vendor,limit?"]) {
+    for (const input of ["iin_max", "init_para", "vendor,limit?",
+      "support_sink_hiz_switch_from_rsc", "adapter_protocol_ic_sysfs_support",
+      "clear_water_intrused_flag_after_read", "V" + "a".repeat(63)]) {
       const accepted = validBundle();
       for (const release of accepted.releases) {
         const definition = release.documents.find(
@@ -3433,8 +3435,8 @@ describe("immutable Catalog Release bundle contract", () => {
     }
 
     for (const [input, reason] of [
-      ["a".repeat(32), "length-out-of-range"],
-      ["#" + "a".repeat(31), "length-out-of-range"],
+      ["a".repeat(65), "length-out-of-range"],
+      ["#" + "a".repeat(64), "length-out-of-range"],
       ["compatible", "structural-property"],
       ["DEVICE_TYPE", "structural-property"],
       ["gpio-controller", "structural-property"],

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -998,7 +999,7 @@ describe("canonical parameter Catalog schema", () => {
       "parameter_definitions",
       "parameter_definition_property_key_ck",
       "property",
-      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "a".repeat(65),
     ],
     [
       "property structural status",
@@ -1090,6 +1091,45 @@ describe("canonical parameter Catalog schema", () => {
         property_key: [true, true, true],
       },
     ]);
+  });
+
+  it("upgrades the old property predicate and preserves exact long keys in the table", async () => {
+    const originalSql = readFileSync(new URL("../../../migrations/0137_canonical_parameter_catalog_schema.sql", import.meta.url), "utf8");
+    const originalPredicate = originalSql.match(/create function parameter_catalog\.is_canonical_property_key\(value text\)[\s\S]*?\n  \);/u)?.[0];
+    if (!originalPredicate) throw new Error("original property predicate missing");
+    const migration = readFileSync(new URL("../../../migrations/0338_long_catalog_property_keys.sql", import.meta.url), "utf8");
+    const keys = [
+      "clear_water_intrused_flag_after_read",
+      "support_sink_hiz_switch_from_rsc",
+      "adapter_protocol_ic_sysfs_support",
+      "V" + "a".repeat(63),
+    ];
+    await client.query("begin");
+    try {
+      await client.query(originalPredicate.replace("create function", "create or replace function"));
+      const before = await client.query<{ accepted: boolean }>(
+        "select parameter_catalog.is_canonical_property_key($1) as accepted", [keys[0]],
+      );
+      expect(before.rows[0]?.accepted).toBe(false);
+      await client.query(migration);
+      for (const [index, key] of keys.entries()) {
+        await client.query(`insert into parameter_catalog.parameter_definitions
+          (id, introduced_release_id, subject_id, property_key, current_revision_id)
+          values ($1, 'missing-release', 'missing-subject', $2, 'missing-revision')`,
+        [`long-property-${index}`, key]);
+      }
+      const stored = await client.query<{ property_key: string }>(
+        "select property_key from parameter_catalog.parameter_definitions where id like 'long-property-%' order by id",
+      );
+      expect(stored.rows.map((row) => row.property_key)).toEqual(keys);
+      const checks = await client.query<{ accepted: boolean }>(
+        "select parameter_catalog.is_canonical_property_key(key) as accepted from unnest($1::text[]) key",
+        [["a".repeat(65), "#custom", "STATUS", "bad/property", "bad key", "véndor,key"]],
+      );
+      expect(checks.rows.map((row) => row.accepted)).toEqual([false, false, false, false, false, false]);
+    } finally {
+      await client.query("rollback");
+    }
   });
 
   it("installs the required ownership keys and domain checks as initially-deferred constraints", async () => {

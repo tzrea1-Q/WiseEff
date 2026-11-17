@@ -137,6 +137,15 @@ describe("canonical parameter identity parsing", () => {
     expect(acceptPropertyKey("iin_max")).toBe("iin_max");
     expect(acceptPropertyKey("init_para")).toBe("init_para");
     expect(acceptPropertyKey("vendor,limit?")).toBe("vendor,limit?");
+    for (const property of [
+      "a".repeat(31),
+      "support_sink_hiz_switch_from_rsc",
+      "adapter_protocol_ic_sysfs_support",
+      "clear_water_intrused_flag_after_read",
+      "V" + "a".repeat(63),
+    ]) {
+      expect(acceptPropertyKey(property)).toBe(property);
+    }
   });
 
   it("rejects the complete case-insensitive structural property set", () => {
@@ -161,8 +170,8 @@ describe("canonical parameter identity parsing", () => {
   });
 
   it("applies property length, structure, and syntax checks in order", () => {
-    expect(rejectPropertyKey("a".repeat(32))).toBe("length-out-of-range");
-    expect(rejectPropertyKey("#" + "a".repeat(31))).toBe(
+    expect(rejectPropertyKey("a".repeat(65))).toBe("length-out-of-range");
+    expect(rejectPropertyKey("#" + "a".repeat(64))).toBe(
       "length-out-of-range"
     );
     expect(rejectPropertyKey("#bad/property")).toBe("structural-property");

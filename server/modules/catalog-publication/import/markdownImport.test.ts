@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { allocationFor, firstAcmePredecessor, frozenPageIdentity } from "../builder/predecessorHarness";
 import { buildCompleteSuccessor } from "../builder/completeSuccessor";
+import { parseBundleBytes, targetReleaseOf } from "../builder/bundleCodec";
 import { planMarkdownImport, serializeMarkdownRevision } from "./markdownImport";
 import { DEFINITION_IMPORT_GUIDE, DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 import { buildCreateDefinitionChangeSet, emptyPublicationDraft } from "../../../../src/features/parameter-catalog-governance/publicationState";
@@ -26,6 +27,45 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("keeps long vendor keys exact through preview and successor compilation", async () => {
+    const keys = [
+      "clear_water_intrused_flag_after_read",
+      "support_sink_hiz_switch_from_rsc",
+      "adapter_protocol_ic_sysfs_support",
+      "V" + "a".repeat(63),
+    ];
+    const predecessor = firstAcmePredecessor();
+    const markdown = "# Driver `acme,power`\n" + keys.map((key) =>
+      `## \`${key}\` 参数\n| 字段 | 值 |\n| --- | --- |\n| 类型 | integer |\n`
+    ).join("\n");
+    const plan = planMarkdownImport(markdown, "long-keys.md", predecessor.first);
+    expect(plan.entries.map((entry) => [entry.propertyKey, entry.outcome])).toEqual(
+      keys.map((key) => [key, "create"]),
+    );
+    expect(plan.changeSet).toHaveLength(keys.length);
+    if (!plan.changeSet) throw new Error("expected long-key changes");
+    const successor = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      frozenIdentity: frozenPageIdentity(keys.map(allocationFor)),
+      changeSet: plan.changeSet,
+    });
+    expect(successor.ok && successor.value.kind === "successor").toBe(true);
+    if (!successor.ok || successor.value.kind !== "successor") throw new Error("expected successor");
+    const parsed = parseBundleBytes(successor.value.artifact.artifactBytes);
+    if (!parsed.ok) throw new Error(parsed.detail);
+    const definitions = targetReleaseOf(parsed.bundle)?.documents.filter((item) => item.kind === "definition") ?? [];
+    expect(definitions.map((item) => item.content.propertyKey)).toEqual(expect.arrayContaining(keys));
+  });
+
+  it("reports an error for a 65-character property key in the import preview", () => {
+    const markdown = document.replace("import-one", "a".repeat(65));
+    const plan = planMarkdownImport(markdown, "too-long.md", firstAcmePredecessor().first);
+    expect(plan.entries[0]).toMatchObject({ outcome: "error", diagnostics: [
+      expect.objectContaining({ field: "属性键", message: "属性键不能超过 64 个字符。" }),
+    ] });
+    expect(plan.changeSet).toBeNull();
+  });
+
   it("accepts a parent driver directive for node-type sections", () => {
     const input = document.replace("# Driver `acme,power`", "# NodeType `battery1`\nparent: acme,power");
     const plan = planMarkdownImport(input, "owned.md", firstAcmePredecessor().first);

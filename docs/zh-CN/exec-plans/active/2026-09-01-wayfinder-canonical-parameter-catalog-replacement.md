@@ -72,6 +72,8 @@ Phase A 于 2026-09-01 从 publisher branch `codex/wayfinder-668-to-tickets-2026
 
 ## G0.1 合同修订（2026-09-02）
 
+**属性键兼容性补充（2026-11-17）：** 为保留实际使用的厂商 DTS 长属性键，下文历史 31 字节上限及 32 字节拒绝向量由产品侧 64 字节上限取代。允许的 ASCII 字符、结构属性排除、逐字节身份及错误判定顺序保持不变。64 字节属性键可以接受，65 字节返回 `length-out-of-range`；节点名上限不变。此兼容规则不表示 Devicetree 规范将属性名上限规定为 64 字符。TypeScript 构造器与 PostgreSQL 校验必须一致，升级时应用迁移 `0338_long_catalog_property_keys.sql`。
+
 所有者在 Wave 2 的 Standards 与 Spec 独立审查后授权本次修正。它是对 S0-ID、S0-RAT、S0-FIX、S1-BND、S2-SCH 与 S12-AGT 的 append-only 合同澄清。launch set 仍为 53 nodes；native relationships 仍为 `CD=90`、`CF=54`、`ID=27`、`RE=18`。原有 CF slots 承载修订后的 fingerprint：S1-BND 继续通过既有 CD 文字要求精确 S0-ID merge SHA 与合同 fingerprint，S2-SCH 继续通过既有 S0-ID CF slot 消费合同；不得新增 slot 或 edge。
 
 ### 封闭的主体 subtype 与 canonical identity 合同

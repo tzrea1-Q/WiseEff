@@ -158,6 +158,8 @@ describe("fresh database fixture policy", () => {
       "server/testing/parameterCatalog/compatibleCommaSpacesMigration.integration.test.ts": ["compatible_spaces:false"],
       // Compare exact Catalog changes and restore the historical projection around 0335.
       "server/testing/parameterCatalog/driverPublicationFingerprint.integration.test.ts": ["driver_catalog:false"],
+      // Replay 0337→0338 and restore the prior property predicate to verify the Catalog fingerprint.
+      "server/testing/parameterCatalog/longPropertyKeyMigration.integration.test.ts": ["long_property_key:false"],
       // Compare the Catalog projection before and after replaying migration 0334.
       "server/testing/parameterCatalog/receiptMigration.integration.test.ts": ["receipt_catalog:false"],
       "server/testing/testDatabase.test.ts": ["cleanup_race:false", "emptycompare:false", "freshcompare:true", "freshguard:true", "role_lease_a:false", "role_lease_b:false"]

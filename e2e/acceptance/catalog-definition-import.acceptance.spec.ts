@@ -78,13 +78,25 @@ test("imports an owned definition and explicitly registers its child without cha
     const download = await downloading;
     expect(download.suggestedFilename()).toBe("定义导入模板.md");
     const template = await readFile((await download.path())!, "utf8");
+    expect(template).toContain("属性键最多 64 字符");
     expect(template).toContain("parent 指定 Catalog 的固定所属驱动");
     expect(template).toContain("> parent: example,charger");
     expect(template).toContain("/parameter-admin/specs");
     await dialog.getByLabel("Markdown 文档", { exact: true }).fill([
-      "# NodeType `import-battery`", "parent: acme,power", "## `design-capacity` 设计容量",
+      "# Driver `acme,power`", `## \`${"a".repeat(65)}\` 超长属性键`,
+      "| 字段 | 值 |", "| --- | --- |", "| 类型 | integer |",
+    ].join("\n"));
+    const checkingLength = page.waitForResponse(response => response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/v2/catalog/publication-candidates");
+    await dialog.getByRole("button", { name: "解析并预览", exact: true }).click();
+    expect((await checkingLength).status()).toBe(200);
+    await expect(dialog.getByRole("table", { name: "导入结果" })).toContainText("属性键不能超过 64 个字符。");
+    await assertNoPageOverflow(page);
+    await catalogScreenshot(page, testInfo, "definition-import-long-key-error-1440x900");
+    await dialog.getByLabel("Markdown 文档", { exact: true }).fill([
+      "# NodeType `import-battery`", "parent: acme,power", "## `clear_water_intrused_flag_after_read` 长属性键示例",
       "| 字段 | 值 |", "| --- | --- |", "| 操作 | 新建 |", "| 类型 | integer |",
-      "| 单位 | mAh |", "| 最小值 | 0 |", "| 示例 | 5000 |", "", "电池设计容量。"
+      "| 最小值 | 0 |", "| 最大值 | 1 |", "| 示例 | 1 |", "", "长属性键示例。"
     ].join("\n"));
     const previewing = page.waitForResponse(response => response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/v2/catalog/publication-candidates");
@@ -94,7 +106,7 @@ test("imports an owned definition and explicitly registers its child without cha
     const candidate = (await preview.json() as CatalogMarkdownImportResponse).item.candidate;
     expect(candidate).toMatchObject({ impactSummary: { addedDefinitionCount: 1, addedSubjectCount: 1 } });
     const childId = candidate!.impactSummary.addedSubjectIds![0]!;
-    await expect(dialog.getByRole("table", { name: "导入结果" })).toContainText("design-capacity");
+    await expect(dialog.getByRole("table", { name: "导入结果" })).toContainText("clear_water_intrused_flag_after_read");
     await assertNoPageOverflow(page);
     await catalogScreenshot(page, testInfo, "definition-import-preview-1440x900");
     const publishing = page.waitForResponse(response => response.request().method() === "POST"
