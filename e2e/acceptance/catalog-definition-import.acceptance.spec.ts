@@ -93,18 +93,31 @@ test("imports an owned definition and explicitly registers its child without cha
     await expect(dialog.getByRole("table", { name: "导入结果" })).toContainText("属性键不能超过 64 个字符。");
     await assertNoPageOverflow(page);
     await catalogScreenshot(page, testInfo, "definition-import-long-key-error-1440x900");
-    await dialog.getByLabel("Markdown 文档", { exact: true }).fill([
+    const importedDocument = [
       "# NodeType `import-battery`", "parent: acme,power", "## `clear_water_intrused_flag_after_read` 长属性键示例",
       "| 字段 | 值 |", "| --- | --- |", "| 操作 | 新建 |", "| 类型 | integer |",
       "| 最小值 | 0 |", "| 最大值 | 1 |", "| 示例 | 1 |", "", "长属性键示例。"
-    ].join("\n"));
+    ].join("\n");
+    const longName = `${"battery-".repeat(24)}.md`;
+    await dialog.getByLabel("上传 .md 文件", { exact: true }).setInputFiles([
+      { name: longName, mimeType: "text/markdown", buffer: Buffer.from(importedDocument) },
+      { name: "second.md", mimeType: "text/markdown", buffer: Buffer.from(importedDocument) },
+    ]);
+    await expect(dialog.getByRole("button", { name: longName, exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "解析并预览", exact: true }).click();
+    await expect(dialog.getByRole("table", { name: "导入结果" })).toContainText("second.md");
+    await expect(dialog.getByRole("button", { name: "发布到目录", exact: true })).toHaveCount(0);
+    await assertNoPageOverflow(page);
+    await catalogScreenshot(page, testInfo, "definition-import-multiple-conflict-1440x900");
+    await dialog.getByRole("button", { name: "second.md", exact: true }).click();
+    await dialog.getByLabel("Markdown 文档", { exact: true }).fill(importedDocument.replace("clear_water_intrused_flag_after_read", "second_property"));
     const previewing = page.waitForResponse(response => response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/v2/catalog/publication-candidates");
     await dialog.getByRole("button", { name: "解析并预览", exact: true }).click();
     const preview = await previewing;
     expect(preview.status()).toBe(201);
     const candidate = (await preview.json() as CatalogMarkdownImportResponse).item.candidate;
-    expect(candidate).toMatchObject({ impactSummary: { addedDefinitionCount: 1, addedSubjectCount: 1 } });
+    expect(candidate).toMatchObject({ impactSummary: { addedDefinitionCount: 2, addedSubjectCount: 1 } });
     const childId = candidate!.impactSummary.addedSubjectIds![0]!;
     await expect(dialog.getByRole("table", { name: "导入结果" })).toContainText("clear_water_intrused_flag_after_read");
     await assertNoPageOverflow(page);

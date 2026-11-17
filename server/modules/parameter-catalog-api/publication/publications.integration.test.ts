@@ -218,6 +218,26 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
       .toEqual(expect.arrayContaining([expect.objectContaining({ field: "类型", line: 6 })]));
     const after = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
     expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+    const batch = { ...markdownImport, additionalDocuments: [{ fileName: "second.md", document: document.replace("import_a", "import_b") }] };
+    expect((await post({ markdownImport: { ...batch, additionalDocuments: Array.from({ length: 20 }, () => markdownImport) } })).status).toBe(400);
+    expect((await post({ markdownImport: { ...batch, document: "字".repeat(350_000) } })).status).toBe(400);
+    const batchInvalid = await post({ markdownImport: { ...batch, additionalDocuments: [{ fileName: "bad.md", document: "unexpected" }] } });
+    expect(batchInvalid.body).toMatchObject({ item: { candidate: null, entries: [
+      { outcome: "create", fileName: "defs.md" }, { outcome: "error", fileName: "bad.md", diagnostics: [{ line: 1 }] },
+    ] } });
+    const afterBatchInvalid = await asCoordinator(client, () => client.query<{ n: string }>(`select count(*)::text as n from catalog_publication.candidates`));
+    expect(afterBatchInvalid.rows).toEqual(after.rows);
+    const batchCreated = await post({ markdownImport: batch });
+    expect(batchCreated.status).toBe(201);
+    const batchResult = catalogMarkdownImportResponseSchema.parse(batchCreated.body).item;
+    expect(batchResult).toMatchObject({
+      candidate: { impactSummary: { addedDefinitionCount: 2 } },
+      source: { parserVersion: "markdown-import/v3", files: [{ fileName: "defs.md" }, { fileName: "second.md" }] },
+    });
+    const batchArtifacts = await asCoordinator(client, () => client.query<{ toolchain: unknown }>(
+      `select a.toolchain from catalog_publication.release_artifacts a join catalog_publication.candidates c on c.artifact_id = a.id where c.id=$1`, [batchResult.candidate!.id],
+    ));
+    expect(batchArtifacts.rows[0]).toMatchObject({ toolchain: { markdownImport: { files: [{ fileName: "defs.md" }, { fileName: "second.md" }] } } });
     const created = await post({ markdownImport });
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({ item: { candidate: { riskClass: "low" }, entries: [{

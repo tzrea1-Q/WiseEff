@@ -27,6 +27,29 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("plans files atomically, retaining local lines and detecting cross-file duplicates", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const next = document.replaceAll("import-one", "other-one").replaceAll("import-two", "other-two");
+    const plan = planMarkdownImport(document, "first.md", snapshot, [{ document: next, fileName: "second.md" }]);
+    expect(plan.changeSet).toHaveLength(4);
+    expect(plan.entries.map(entry => entry.fileName)).toEqual(["first.md", "first.md", "second.md", "second.md"]);
+    expect(plan.source.files).toHaveLength(2);
+    expect(planMarkdownImport(document, "first.md", snapshot, [{ document, fileName: "duplicate.md" }]).changeSet).toBeNull();
+    const invalid = planMarkdownImport(document, "first.md", snapshot, [{ document: "unexpected\n" + next, fileName: "bad.md" }]);
+    expect(invalid.changeSet).toBeNull();
+    expect(invalid.entries.find(entry => entry.outcome === "error")).toMatchObject({ fileName: "bad.md", diagnostics: [{ line: 1 }] });
+    expect(planMarkdownImport(document, "first.md", snapshot, [{ document: "", fileName: "empty.md" }]).changeSet).toBeNull();
+  });
+
+  it("keeps file parsing isolated and enforces the combined definition budget", () => {
+    const snapshot = firstAcmePredecessor().first;
+    const next = document.replaceAll("import-one", "other-one").replaceAll("import-two", "other-two");
+    const isolated = planMarkdownImport(document + "\n```\nunfinished", "fence.md", snapshot, [{ document: next, fileName: "next.md" }]);
+    expect(isolated.entries).toHaveLength(4);
+    const oversized = planMarkdownImport(document, "first.md", snapshot, Array.from({ length: 64 }, (_, i) => ({ document, fileName: `${i}.md` })));
+    expect(oversized.changeSet).toBeNull();
+    expect(oversized.entries[0]?.diagnostics[0]?.message).toContain("130");
+  });
   it("keeps long vendor keys exact through preview and successor compilation", async () => {
     const keys = [
       "clear_water_intrused_flag_after_read",
@@ -373,7 +396,7 @@ describe("Definition import planner", () => {
     expect(oversized.changeSet).toBeNull();
     expect(oversized.entries).toHaveLength(1);
     expect(oversized.entries[0]).toMatchObject({ outcome: "error", subjectHeading: "", diagnostics: [
-      expect.objectContaining({ field: "文档", message: "最多导入 128 条定义（本文档 129 条），请按主体拆分文档。" }),
+      expect.objectContaining({ field: "文档", message: "最多导入 128 条定义（本批次 129 条），请分批导入。" }),
     ] });
   });
 

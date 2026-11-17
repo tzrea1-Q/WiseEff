@@ -273,7 +273,8 @@ export function bindCatalogPublicationCommands(input: {
         const bundle = predecessorArtifact && preparedPredecessorBundle(predecessorArtifact);
         const snapshot = bundle ? targetReleaseOf(bundle) : null;
         if (!snapshot) return { ok: false, error: { kind: "reason", reason: "predecessor-incomplete" } };
-        plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot);
+        plan = planMarkdownImport(command.markdownImport.document, command.markdownImport.fileName, snapshot,
+          command.markdownImport.additionalDocuments);
         placementHints = plan.placementHints;
         const semanticIds = plan.entries.flatMap((entry) => {
           if (entry.outcome !== "revise" || entry.revisionClass !== "semantic" || !entry.definitionId) return [];

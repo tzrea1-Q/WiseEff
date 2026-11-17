@@ -95518,6 +95518,25 @@
                   },
                   "fileName": {
                     "type": "string"
+                  },
+                  "additionalDocuments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "document": {
+                          "type": "string"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "document",
+                        "fileName"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "required": [
@@ -95782,6 +95801,9 @@
                     "items": {
                       "type": "object",
                       "properties": {
+                        "fileName": {
+                          "type": "string"
+                        },
                         "kind": {
                           "type": "string"
                         },
@@ -95834,6 +95856,9 @@
                     "items": {
                       "type": "object",
                       "properties": {
+                        "fileName": {
+                          "type": "string"
+                        },
                         "subjectHeading": {
                           "type": "string"
                         },
@@ -95974,6 +95999,25 @@
                       },
                       "parserVersion": {
                         "type": "string"
+                      },
+                      "files": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "fileName": {
+                              "type": "string"
+                            },
+                            "sha256": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "fileName",
+                            "sha256"
+                          ],
+                          "additionalProperties": false
+                        }
                       }
                     },
                     "required": [
@@ -96248,6 +96292,9 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "fileName": {
+                      "type": "string"
+                    },
                     "kind": {
                       "type": "string"
                     },
@@ -96300,6 +96347,9 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "fileName": {
+                      "type": "string"
+                    },
                     "subjectHeading": {
                       "type": "string"
                     },
@@ -96440,6 +96490,25 @@
                   },
                   "parserVersion": {
                     "type": "string"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "fileName",
+                        "sha256"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "required": [

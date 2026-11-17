@@ -60,6 +60,11 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const [document, setDocument] = useState("");
   const [fileName, setFileName] = useState("粘贴.md");
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [additionalDocuments, setAdditionalDocuments] = useState<{ document: string; fileName: string }[]>([]);
+  const [activeFile, setActiveFile] = useState(0);
+  const documents = [{ document, fileName }, ...additionalDocuments];
+  const fingerprint = JSON.stringify(documents);
+  const hasContent = documents.some(item => item.document.trim());
   const fileInput = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<CatalogMarkdownImportResponse["item"]["entries"] | null>(null);
   const [noChange, setNoChange] = useState(false);
@@ -88,14 +93,14 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     && canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions);
   const previewStale = Boolean(candidate && (!flow.candidateVerified
     || candidate.expectedBaseReleaseId !== catalogReleaseId
-    || (flow.previewFingerprint !== null && flow.previewFingerprint !== JSON.stringify([document, fileName]))));
+    || (flow.previewFingerprint !== null && flow.previewFingerprint !== fingerprint)));
   const mustRePreview = publicationMustRePreview({
     previewStale, jobStatus: job?.status, failureReason: job?.failure?.reason,
   });
   const succeeded = job ? publicationSuccessKind(job) : null;
   const status = job ? publicationStatusCopy(job) : null;
   const advisory = props.publicationSurface ? publicationSurfaceAdvisory(props.publicationSurface) : null;
-  const dirty = Boolean(document) && !succeeded;
+  const dirty = (hasContent || Boolean(uploadedFileName)) && !succeeded;
   const canRefresh = Boolean(props.onRefreshEvidence
     && (failure || job?.status === "needs-rebase" || job?.failure?.reason === "needs-rebase" || advisory));
 
@@ -105,6 +110,8 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setDocument(props.initialDocument ?? "");
     setFileName("粘贴.md");
     setUploadedFileName(null);
+    setAdditionalDocuments([]);
+    setActiveFile(0);
     setEntries(null);
     setNoChange(false);
     setErrorsOnly(false);
@@ -166,17 +173,17 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
     setFileName(nextFileName);
   };
   const runPreview = async () => {
-    if (!canPreview || pending || !document.trim() || !catalog.previewMarkdownImport) return;
+    if (!canPreview || pending || !hasContent || !catalog.previewMarkdownImport) return;
     await flow.preview(async () => {
       const result = await catalog.previewMarkdownImport!(
-        { markdownImport: { document, fileName } }, { catalogReleaseId },
+        { markdownImport: { document, fileName, ...(additionalDocuments.length ? { additionalDocuments } : {}) } }, { catalogReleaseId },
       );
       setEntries(result.item.entries);
       setPlacementHints(result.item.placementHints ?? []);
       setNoChange(result.item.noChange);
       setErrorsOnly(false);
       return result.item.candidate;
-    }, JSON.stringify([document, fileName]), flow.captureError);
+    }, fingerprint, flow.captureError);
   };
   const runPublish = async () => {
     if (!canPublish || pending || !candidate || mustRePreview || (job && publicationJobIsPending(job.status))) return;
@@ -270,7 +277,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
   const summary = (Object.keys(outcomeLabels) as (keyof typeof outcomeLabels)[])
     .filter((outcome) => counts[outcome]).map((outcome) => `${outcomeLabels[outcome]} ${counts[outcome]}`).join(" · ");
   const placementWarnings = placementHints?.flatMap((hint) => hint.warnings.map((warning) => ({
-    selector: hint.selector, line: warning.line, warning: warning.message,
+    selector: hint.selector, fileName: hint.fileName, line: warning.line, warning: warning.message,
   }))) ?? [];
 
   return <>
@@ -281,7 +288,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
       {({ titleId, descriptionId }) => <>
         <h2 id={titleId}>批量导入定义</h2>
         <div className="confirm-dialog__scroll"><div id={descriptionId} className="governance-confirm-dialog__body">
-          <p>粘贴或上传 Markdown 文档，格式见模板；可引用已有主体或新建主体。业务分类和展示别名为可选的登记提示，不影响发布。</p>
+          <p>粘贴或一次上传多个 .md 文件，格式见模板。每批最多 20 个文件、合计 1 MiB、128 条定义；统一预览，全部通过后一次发布。业务分类和展示别名为可选的登记提示，不影响发布。</p>
           {unavailable ? <p role="status">{unavailable}</p> : null}
           {advisory ? <p role="status" data-tone={advisory.tone}>{advisory.message}</p> : null}
           {status ? <p role="status" aria-label="发布任务状态" data-publication-status={job?.status}
@@ -324,31 +331,61 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
             <div className="parameter-catalog-import-dialog__file-actions">
               <button type="button" className="button subtle sm" disabled={inputDisabled}
                 onClick={() => fileInput.current?.click()}>上传 .md 文件</button>
-              <input ref={fileInput} aria-label="上传 .md 文件" type="file" accept=".md,text/markdown"
+              <input ref={fileInput} aria-label="上传 .md 文件" type="file" accept=".md,text/markdown" multiple
                 hidden disabled={inputDisabled} onChange={(event) => {
-                const file = event.target.files?.[0];
+                const files = Array.from(event.target.files ?? []);
                 event.target.value = "";
-                if (!file) return;
-                if (!/\.md$/iu.test(file.name)) { flow.setFailure("请选择 .md 文件。"); return; }
+                if (!files.length) return;
+                if (files.some(file => !/\.md$/iu.test(file.name))) { flow.setFailure("请选择 .md 文件。"); return; }
+                if (files.length > 20 || files.reduce((size, file) => size + file.size, 0) > 1_048_576) {
+                  flow.setFailure("每批最多上传 20 个文件，合计不能超过 1 MiB。"); return;
+                }
                 flow.setPending(true);
-                void file.text().then((text) => { updateDocument(text, file.name); setUploadedFileName(file.name); })
-                  .catch(() => flow.setFailure("文件读取失败，请重试。"))
-                  .finally(() => flow.setPending(false));
+                const epoch = registrationEpoch.current;
+                void Promise.all(files.map(async file => ({ document: await file.text(), fileName: file.name })))
+                  .then(([first, ...rest]) => {
+                    if (epoch !== registrationEpoch.current) return;
+                    updateDocument(first!.document, first!.fileName);
+                    setAdditionalDocuments(rest); setActiveFile(0); setUploadedFileName(first!.fileName);
+                  })
+                  .catch(() => { if (epoch === registrationEpoch.current) flow.setFailure("文件读取失败，请重试。"); })
+                  .finally(() => { if (epoch === registrationEpoch.current) flow.setPending(false); });
               }} />
-              {uploadedFileName ? <span>{uploadedFileName}</span> : null}
+              {uploadedFileName ? <span>已选择 {documents.length} 个文件（重新上传将替换本批文件）</span> : null}
               <a className="link-button" download="定义导入模板.md"
                 href={`data:text/markdown;charset=utf-8,${encodeURIComponent(DEFINITION_IMPORT_TEMPLATE)}`}>下载模板</a>
             </div>
+            {uploadedFileName ? <ul className="space-y-1" aria-label="已选择的文件">
+              {documents.map((item, index) => <li key={index} className="flex items-center gap-2 break-all">
+                <button type="button" className="button subtle sm min-w-0" style={{ whiteSpace: "normal", overflowWrap: "anywhere", textAlign: "left" }} aria-pressed={activeFile === index}
+                  disabled={inputDisabled} onClick={() => setActiveFile(index)}>{item.fileName}</button>
+                <button type="button" className="button ghost sm" aria-label={`移除 ${item.fileName}`}
+                  disabled={inputDisabled} onClick={() => {
+                    const remaining = documents.filter((_, i) => i !== index);
+                    const first = remaining[0];
+                    updateDocument(first?.document ?? "", first?.fileName ?? "粘贴.md");
+                    setAdditionalDocuments(remaining.slice(1)); setActiveFile(0);
+                    setUploadedFileName(first?.fileName ?? null);
+                  }}>移除</button>
+              </li>)}
+            </ul> : null}
             <label>Markdown 文档
-              <Textarea aria-label="Markdown 文档" rows={14} value={document} disabled={inputDisabled}
-                onChange={(event) => updateDocument(event.target.value, fileName)} />
+              <Textarea aria-label="Markdown 文档" rows={14} value={documents[activeFile]?.document ?? ""} disabled={inputDisabled}
+                onChange={(event) => {
+                  if (activeFile === 0) updateDocument(event.target.value, fileName);
+                  else {
+                    updateDocument(document, fileName);
+                    setAdditionalDocuments(items => items.map((item, index) => index === activeFile - 1
+                      ? { ...item, document: event.target.value } : item));
+                  }
+                }} />
             </label>
           </div> : null}
             {entries ? <div className="parameter-catalog-import-dialog__results">
               {placementWarnings.length ? <section className="definition-editor__banner" data-tone="warning" aria-label="登记提示（不影响发布）">
                 <strong>登记提示（不影响发布）</strong>
                 <ul className="list-disc space-y-1 pl-4">{placementWarnings.map((item, index) =>
-                  <li key={`${item.selector}-${item.line}-${index}`}>{item.selector} · 第 {item.line} 行：{item.warning}</li>)}</ul>
+                  <li key={`${item.selector}-${item.line}-${index}`}>{item.fileName ? `${item.fileName} · ` : ""}{item.selector} · 第 {item.line} 行：{item.warning}</li>)}</ul>
               </section> : null}
               <div className="parameter-catalog-import-dialog__summary">
                 {summary ? <p>{summary}</p> : null}
@@ -364,7 +401,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
                   <th scope="col">结果</th><th scope="col">诊断</th>
                 </tr></thead><tbody>{visibleEntries?.map((entry, index) =>
                   <tr key={`${entry.subjectHeading}-${entry.definitionHeading}-${index}`}>
-                    <td>{entry.selector || "—"}</td><td><code>{entry.propertyKey || "—"}</code></td>
+                    <td>{entry.selector || "—"}{entry.fileName ? <div className="break-all text-xs text-muted-foreground">{entry.fileName}</div> : null}</td><td><code>{entry.propertyKey || "—"}</code></td>
                     <td>{entry.displayName || "—"}</td>
                     <td><span className="parameter-catalog__badge"
                       data-tone={entry.outcome === "error" || entry.outcome === "conflict" ? "warning" : undefined}>
@@ -392,7 +429,7 @@ export function DefinitionImportDialog(props: DefinitionImportDialogProps) {
         <div className="dialog-actions">
           {canPreview && !succeeded && (!candidate || mustRePreview)
             ? <button type="button" className="button primary sm"
-            disabled={pending || !document.trim()} onClick={() => void runPreview()}>
+            disabled={pending || !hasContent} onClick={() => void runPreview()}>
             {mustRePreview ? publicationCopy.rebase : "解析并预览"}</button> : null}
           {canPublish && candidate && !succeeded ? <button type="button" className="button primary sm"
             disabled={pending || mustRePreview || Boolean(job && publicationJobIsPending(job.status))}
