@@ -235,6 +235,23 @@ const loopFinalPayload = {
   ]
 };
 
+const toolFoldingScript = [
+  { startLine: 3, endLine: 4 },
+  { startLine: 1, endLine: 1 },
+  { startLine: 6, endLine: 6 }
+].map((args) => ({ content: { action: "tool", tool: "read_line_range", args }, usage: { inputTokens: 250, outputTokens: 20 } }));
+
+const foldedLogEvidence: LogEvalExpectation[] = [
+  { type: "expectsAnalysisSource", source: "agent" },
+  { type: "expectsGroundedEvidence" },
+  { type: "expectsEvidenceNotCitingLines", lineNumbers: [1, 2, 5, 6] },
+  { type: "expectsModelCallCount", count: 4 },
+  { type: "expectsFinalPrompt",
+    contains: ["Folded tool result for read_line_range", '"count":2,"truncated":false', '"file":"charging.log","line":3',
+      "Repeat the tool call to retrieve the original result.", "charge session started", "session heartbeat ok"],
+    excludes: ["thermal foldback engaged", "charge current reduced"] }
+];
+
 const nominalLog = [
   "2026-08-10T09:00:01Z INFO agentd heartbeat ok seq=1",
   "2026-08-10T09:00:31Z INFO agentd heartbeat ok seq=2",
@@ -641,6 +658,28 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
       { type: "expectsTraceArguments", tool: "read_domain_knowledge", arguments: { file: "[redacted]", query: "[redacted]" } },
       { type: "expectsAnalysisSource", source: "agent" },
       { type: "expectsGroundedEvidence" }
+    ]
+  },
+  {
+    name: "loop-folded-tool-result-keeps-early-evidence",
+    category: "loop-context",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    script: [...toolFoldingScript, { content: loopFinalPayload }],
+    expectations: [...foldedLogEvidence, { type: "expectsNoDegradation" }]
+  },
+  {
+    name: "loop-final-answer-uses-token-reserve",
+    category: "loop-convergence",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    tokenBudget: 1000,
+    script: [...toolFoldingScript, { content: loopFinalPayload, usage: { inputTokens: 140, outputTokens: 50 } }],
+    expectations: [
+      ...foldedLogEvidence,
+      { type: "expectsTrace", kinds: ["model-turn", "tool-call", "early-convergence"] },
+      { type: "expectsDegradedReason", reason: "token-budget-exhausted" },
+      { type: "expectsConfidenceAtMost", value: 0.5 }
     ]
   },
   {

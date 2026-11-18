@@ -11,6 +11,8 @@ export type LogEvalRunResult = {
   parsedLineNumbers: number[];
   /** Prompt messages the analyzer sent to the (fake) model, captured by the harness. */
   promptMessages: LogAnalysisChatMessage[];
+  /** Last invocation only, for testing changes to the model's visible history. */
+  finalPromptMessages?: LogAnalysisChatMessage[];
   /** Number of model invocations the kernel made (loop scenarios: budget adherence). */
   modelCallCount?: number;
   /** System prompt captured from the same kernel/input with no skill procedure. */
@@ -33,6 +35,7 @@ export type LogEvalExpectation =
   | { type: "expectsEvidenceNotCitingLines"; lineNumbers: number[] }
   | { type: "expectsPromptVersionRecorded"; promptVersion: string }
   | { type: "expectsPromptContains"; substrings: string[] }
+  | { type: "expectsFinalPrompt"; contains: string[]; excludes: string[] }
   | { type: "expectsProcedurePrompt"; procedure: string }
   | { type: "requiresSubstringsInConclusion"; substrings: string[] }
   | { type: "expectsConfidenceAtMost"; value: number }
@@ -151,6 +154,14 @@ export function evaluateLogEvalExpectation(
       return missing.length === 0
         ? { pass: true }
         : { pass: false, message: `Prompt is missing: ${missing.join(" | ")}` };
+    }
+    case "expectsFinalPrompt": {
+      const promptText = result.finalPromptMessages?.map((message) => message.content).join("\n") ?? "";
+      const missing = expectation.contains.filter((substring) => !promptText.includes(substring));
+      const unexpected = expectation.excludes.filter((substring) => promptText.includes(substring));
+      return missing.length === 0 && unexpected.length === 0
+        ? { pass: true }
+        : { pass: false, message: `Final prompt missing ${JSON.stringify(missing)}, unexpectedly includes ${JSON.stringify(unexpected)}` };
     }
     case "expectsProcedurePrompt": {
       const firstSystem = result.promptMessages.findIndex((message) => message.role === "system");

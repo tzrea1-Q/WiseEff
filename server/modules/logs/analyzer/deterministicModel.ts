@@ -192,14 +192,18 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
 
       const analysisQuestion = parseAnalysisQuestion(promptText);
       const bundlePrefilter = parseToolResult<PrefilterToolResult>(messages, "get_prefilter_findings");
+      const lineRangeResult = parseToolResult<LineRangeToolResult>(messages, "read_line_range");
       const files = bundlePrefilter?.files?.map((file) => ({ filePath: file.file, findings: file.findings.result }))
         ?? [{ filePath: undefined, findings: bundlePrefilter }];
       const selected = conclusionByRuleHit.map((candidate) => files.find((file) => file.findings?.evidence?.some(
         (item) => item.ruleHit === candidate.ruleHit && (item.lineNumbers?.length ?? 0) > 0
       ))).find((file) => file !== undefined) ?? files[0];
-      const filePath = selected?.filePath;
-      const prefilterResult = selected?.findings;
-      const lineRangeResult = parseToolResult<LineRangeToolResult>(messages, "read_line_range");
+      const filePath = bundlePrefilter ? selected?.filePath : lineRangeResult?.lines?.[0]?.file;
+      const prefilterResult: PrefilterToolResult | undefined = selected?.findings ?? (lineRangeResult ? {
+        // After source lookup folds the prefilter, match mission findings only against the lines read below.
+        evidence: parseRuleHits(messages.find((message) => message.role === "user")?.content ?? "")
+          .filter((hit) => hit.filePath === undefined || hit.filePath === filePath)
+      } : undefined);
       const mustConverge = messages.some(
         (message) => message.role === "user" && message.content.startsWith("Budget exhausted:")
       );

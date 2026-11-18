@@ -67,6 +67,48 @@ function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<t
 }
 
 describe("createAgentLoopLogAnalyzer", () => {
+  it("folds old tool results while keeping log and source evidence grounded", async () => {
+    const sourceLocation = { snapshotId: "source", path: "power.c", line: 5 };
+    const sourceExcerpt = "charger_limiter_set(thermal_cap);";
+    const report = {
+      ...finalPayload,
+      evidence: [{ ...finalPayload.evidence[0], sourceLocation }]
+    };
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: { action: "tool", tool: "search_source", args: { pathGlob: "*.c", query: "thermal_cap" } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 6, endLine: 6 } } },
+      { content: { ...report, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [2] }] } },
+      { content: report }
+    ], {
+      maxSteps: 6,
+      bindToolBackends: () => ({
+        searchSource: async () => ({ items: Array.from({ length: 5 }, (_, index) => ({
+          ...sourceLocation, line: index + 1, excerpt: sourceExcerpt, rank: 1, versionLabel: "v1"
+        })), truncated: true })
+      })
+    });
+
+    const output = await adapter.analyze(buildInput({ filePath: "charging.log", sourceSnapshot: { id: "source", status: "ready" } }));
+
+    expect(output).toMatchObject({ analysisSource: "agent", confidence: 0.9, evidence: [{ lineNumbers: [3, 4], sourceLocation }] });
+    expect(model.calls[5].at(-1)?.content).toContain("Grounding violation");
+    expect(model.calls[4].slice(0, 2)).toEqual(model.calls[0]);
+    const beforeFold = model.calls[2].map(({ content }) => content).join("\n");
+    expect(beforeFold).toContain("thermal foldback engaged");
+    expect(beforeFold).toContain(sourceExcerpt);
+    const afterFold = model.calls[4].map(({ content }) => content).join("\n");
+    expect(afterFold).not.toContain("thermal foldback engaged");
+    expect(afterFold).not.toContain(sourceExcerpt);
+    expect(afterFold).toContain("requested_ma=6000");
+    expect(afterFold).toContain("session heartbeat ok");
+    expect(afterFold).toContain('Folded tool result for read_line_range:\n{"args":{"startLine":3,"endLine":4},"count":2,"truncated":false,"anchors":[{"file":"charging.log","line":3}');
+    expect(afterFold).toContain('Folded tool result for search_source:\n{"args":{"pathGlob":"*.c","query":"thermal_cap"},"count":5,"truncated":true,"anchors":[{"snapshotId":"source","path":"power.c","line":1}');
+    expect(afterFold).not.toContain('"path":"power.c","line":5');
+    expect(afterFold).toContain("Repeat the tool call to retrieve the original result.");
+  });
+
   it("grounds exact source search hits and numbered range lines, rejecting unread source lines", async () => {
     const input = buildInput({ sourceSnapshot: { id: "source", status: "ready" } });
     for (const tool of ["search_source", "read_source_range"] as const) {
@@ -404,6 +446,24 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(output.confidence).toBeLessThanOrEqual(0.5);
     expect(output.evidence.length).toBeGreaterThan(0);
     expect(trace).toContainEqual(expect.objectContaining({ kind: "early-convergence", reason: "step-budget-exhausted" }));
+  });
+
+  it("uses the remaining token budget for a grounded final report after investigation uses 80%", async () => {
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } },
+        usage: { inputTokens: 760, outputTokens: 40 } },
+      { content: finalPayload, usage: { inputTokens: 150, outputTokens: 50 } }
+    ], { tokenBudget: 1000 });
+    const trace: LogAnalysisTraceStep[] = [];
+
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+
+    expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted", confidence: 0.5,
+      evidence: [{ lineNumbers: [3, 4] }] });
+    expect(model.calls).toHaveLength(2);
+    expect(model.calls[1].at(-1)?.content).toContain("Do not call any more tools.");
+    expect(trace.map(({ kind }) => kind)).toEqual(["model-turn", "tool-call", "early-convergence", "model-turn"]);
+    expect(trace[2].reason).toBe("token-budget-exhausted");
   });
 
   it.each([

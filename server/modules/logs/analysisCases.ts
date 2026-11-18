@@ -438,6 +438,7 @@ async function analyzeCase(db: Database, store: ObjectStore, analyzer: LogAnalys
   for (const entry of intake.files.filter((file) => file.status === "analyzed")) {
     signal.throwIfAborted();
     const bytes = bundleFileUtf8Bytes(entry), content = bytes.toString("utf8");
+    const { bytes: _bytes, sha256: _sha256, ...inventory } = entry;
     const rawLines = content.split(/\r\n|\n|\r/);
     if (rawLines.at(-1) === "") rawLines.pop();
     rawByFile.set(entry.path, rawLines);
@@ -453,9 +454,9 @@ async function analyzeCase(db: Database, store: ObjectStore, analyzer: LogAnalys
     parsed.rawLines = preview;
     const objectKey = `case-memory/${randomUUID()}`;
     normalized.set(objectKey, bytes);
-    const reader = createLogFileReader(memoryStore, { ...entry, objectKey, encoding: "utf-8", lossy: false }, profile);
+    const reader = createLogFileReader(memoryStore, { ...inventory, objectKey, encoding: "utf-8", lossy: false }, profile);
     const prefilter = await prefilterLogStream(reader.entries({ deadline }), signalRules, createPrefilterBudget());
-    files.push({ ...entry, parsed, reader, prefilter });
+    files.push({ ...inventory, parsed, reader, prefilter });
   }
   const first = files[0];
   if (!first) throw new Error("No analyzable case files");
