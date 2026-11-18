@@ -29,6 +29,7 @@ export type LogRecordDto = {
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
+  historicalRunIds?: string[];
   sourceSnapshot?: LogRecord["sourceSnapshot"];
   sourceSnapshotSelection?: LogRecord["sourceSnapshotSelection"];
   requestedSourceVersion?: string;
@@ -128,6 +129,7 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     skillNameSnapshot: dto.skillNameSnapshot,
     skillRevisionNumberSnapshot: dto.skillRevisionNumberSnapshot,
     knowledgeRevisions: dto.knowledgeRevisions ?? [],
+    ...(dto.historicalRunIds?.length ? { historicalRunIds: dto.historicalRunIds } : {}),
     fileName: dto.fileName,
     files: dto.files,
     signalSummary: dto.signalSummary,

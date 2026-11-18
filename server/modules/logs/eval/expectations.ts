@@ -29,6 +29,7 @@ export type LogEvalExpectation =
   | { type: "expectsDegradedReason"; reason: LogAnalysisDegradedReason }
   | { type: "expectsNoDegradation" }
   | { type: "expectsGroundedEvidence" }
+  | { type: "expectsHistoricalRunIds"; runIds: string[] }
   | { type: "expectsSourceLocations"; locations: SourceLocation[] }
   | { type: "expectsSourceToolBounds"; tool: "search_source" | "read_source_range"; maxBytes: number;
       maxItems?: number; expectedItems?: number; maxExcerptChars?: number; expectedLines?: number; endLine?: number; truncated: boolean }
@@ -97,6 +98,10 @@ export function evaluateLogEvalExpectation(
             pass: false,
             message: `Expected a non-degraded analysis, got source=${result.output.analysisSource ?? "none"} reason=${result.output.degradedReason ?? "none"}`
           };
+    }
+    case "expectsHistoricalRunIds": {
+      const pass = JSON.stringify(result.output.historicalRunIds) === JSON.stringify(expectation.runIds);
+      return pass ? { pass: true } : { pass: false, message: "Expected provenance from returned historical hints." };
     }
     case "expectsGroundedEvidence": {
       if (result.output.evidence.length === 0) {

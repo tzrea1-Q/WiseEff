@@ -15,6 +15,7 @@ import {
   type LogAnalysisLlmTelemetry
 } from "./llmAnalyzer";
 import { createWorkerLogAnalysisToolBackends } from "./tools/workerToolBackends";
+import { hasPastConclusions, searchPastConclusions } from "../pastConclusionsRepository";
 
 export type LogAnalyzerEnv = {
   LOG_ANALYSIS_API_BASE_URL?: string;
@@ -27,6 +28,7 @@ export type LogAnalyzerEnv = {
   LOG_ANALYSIS_KERNEL: "loop" | "single-shot";
   LOG_ANALYSIS_MAX_STEPS: number;
   LOG_ANALYSIS_REPAIR_JSON?: boolean;
+  LOG_ANALYSIS_PAST_CONCLUSIONS?: boolean;
   LOG_ANALYSIS_PROTOCOL?: LogAnalysisProtocol;
 };
 
@@ -187,20 +189,29 @@ export function createLogAnalyzerFromEnv(
       repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
       estimateMissingTokenUsage: !hasTokenBudgetOverride,
       telemetry: options.telemetry,
-      bindToolBackends: (input) =>
-        db && input.organizationId
-          ? createWorkerLogAnalysisToolBackends({
-              db,
-              organizationId: input.organizationId,
-              logDomainId: input.logDomainId,
-              knowledgeEntryIds: input.knowledgeEntryIds,
-              onKnowledgeRetrieved: input.onKnowledgeRetrieved,
-              relatedParameterId: input.relatedParameterId,
-              relatedParameterSnapshot: input.relatedParameterSnapshot,
-              sourceSnapshot: input.sourceSnapshot,
-              embeddingClient: options.embeddingClient
-            })
-          : {}
+      bindToolBackends: async (input) => {
+        if (!db || !input.organizationId) return {};
+        const scope = env.LOG_ANALYSIS_PAST_CONCLUSIONS && input.logDomainId && input.pastConclusionScope
+          ? { ...input.pastConclusionScope, organizationId: input.organizationId, skillId: input.logDomainId } : undefined;
+        const available = scope && await hasPastConclusions(db, scope).catch(() => false);
+        input.signal?.throwIfAborted();
+        return {
+          ...createWorkerLogAnalysisToolBackends({
+            db,
+            organizationId: input.organizationId,
+            logDomainId: input.logDomainId,
+            knowledgeEntryIds: input.knowledgeEntryIds,
+            onKnowledgeRetrieved: input.onKnowledgeRetrieved,
+            relatedParameterId: input.relatedParameterId,
+            relatedParameterSnapshot: input.relatedParameterSnapshot,
+            sourceSnapshot: input.sourceSnapshot,
+            embeddingClient: options.embeddingClient
+          }),
+          ...(scope && available ? {
+            searchPastConclusions: (params) => searchPastConclusions(db, scope, params, options.embeddingClient)
+          } : {})
+        };
+      }
     });
   }
 

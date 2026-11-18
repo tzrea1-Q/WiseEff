@@ -212,6 +212,7 @@ export type LogRecord = {
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
+  historicalRunIds?: string[];
   sourceSnapshot?: import("../logs/types").LogRecord["sourceSnapshot"];
   sourceSnapshotSelection?: import("../logs/types").LogRecord["sourceSnapshotSelection"];
   requestedSourceVersion?: string;

@@ -32,6 +32,7 @@ export type LogRecordDto = {
     reasons: import("./skillRecommendation").LogSkillRecommendationReason[];
   };
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
+  historicalRunIds?: string[];
   sourceSnapshot?: import("./analyzer").AnalyzeLogInput["sourceSnapshot"];
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;

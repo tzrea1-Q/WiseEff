@@ -140,6 +140,8 @@ Poll `GET /api/v1/logs/{logId}` using the credential that uploaded the record un
 
 `GET /api/v1/logs/{logId}` returns the conclusion, impact, severity, confidence, evidence (with line anchors), suggested actions, and the provenance fields `analysisSource` and `degradedReason`. The record API and result webhook use the same reason values.
 
+In user sessions, record and run responses may also carry `historicalRunIds`. These are the run IDs actually returned as untrusted hints from confirmed same-organization, same-skill conclusions. Every evidence anchor still comes from the current analysis. History lookup runs inside the worker for user-submitted records and is disabled by default.
+
 | `degradedReason` | Meaning |
 | --- | --- |
 | `provider-unavailable` | The model service was unavailable through the final job attempt, so the rules engine generated the report. |

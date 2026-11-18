@@ -482,12 +482,13 @@ Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自�
 | `POST` | `/api/v1/log-files` | 创建上传凭证或直接上传 |
 | `POST` | `/api/v1/logs` | 创建日志分析记录 |
 | `GET` | `/api/v1/logs` | 日志列表 |
-| `GET` | `/api/v1/logs/:logId` | 日志详情 |
-| `GET` | `/api/v1/logs/:logId/runs` | 分析 run 列表 |
+| `GET` | `/api/v1/logs/:logId` | 日志详情。用户会话中，报告可能包含 `historicalRunIds`，记录实际返回的同组织、同技能历史运行 ID。检索跨技能修订，并遵守关联参数的项目范围。历史线索不能建立证据锚点。 |
+| `GET` | `/api/v1/logs/:logId/runs` | 分析 run 列表，可能包含去重的 `historicalRunIds` |
 | `POST` | `/api/v1/logs/:logId/rerun` | 重新分析 |
 | `POST` | `/api/v1/logs/:logId/archive` | 归档 |
 | `POST` | `/api/v1/logs/:logId/unarchive` | 取消归档 |
 | `POST` | `/api/v1/logs/:logId/feedback` | 用户反馈 |
+| `POST` | `/api/v1/logs/:logId/reports/:reportId/eval-case-draft` | 管理员确认将当前已完成的技能报告导出为评测草稿。要求本组织 `logs:view` 和 `logs:admin-domains`，返回 `{ ok: true }`。报告已变更或未钉住技能修订时返回 `409`。确认绑定到该次运行。 |
 | `GET` | `/api/v1/logs/feedback-insights` | P3：反馈质量聚合（`logs:view`；可选 `timeWindow=today\|7d\|30d`） |
 | `GET` | `/api/v1/log-domains` | 业务域列表（`logs:view`；`includeArchived=true` 含已归档） |
 | `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`；画像中的模式使用线性时间引擎上的 RE2 语法，不支持环视与反向引用，长度 ≤ 4,096 字符，超过 65,536 字符的行不参与匹配，不支持的模式返回 `400` 并给出字段路径） |

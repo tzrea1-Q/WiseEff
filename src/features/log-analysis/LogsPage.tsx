@@ -1128,6 +1128,10 @@ function LogConclusionCard({
       <ConfidenceBar value={log.confidence} status={log.status} />
     </div> : null}
     {log.analysisQuestion ? <div className="logs-analysis-question"><strong>用户问题</strong><span>{log.analysisQuestion}</span></div> : null}
+    {complete && log.historicalRunIds?.length ? <details className="text-sm text-muted-foreground">
+      <summary>参考历史运行（{log.historicalRunIds.length}）</summary>
+      <ul className="list-disc break-all pl-5">{log.historicalRunIds.map((id) => <li key={id}>{id}</li>)}</ul>
+    </details> : null}
     {complete ? <>
       <div className="logs-conclusion-actions">
         {relatedParameterLocated && onPrimary ? <Button onClick={onPrimary}>查看关联参数</Button> : null}

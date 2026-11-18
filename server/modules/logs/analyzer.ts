@@ -50,6 +50,9 @@ export type AnalyzeLogInput = {
    */
   organizationId?: string;
   logDomainId?: string;
+  /** Set by the user-run worker for history reads, using the run's bound project scope. */
+  pastConclusionScope?: { runId: string; projectId: string | null };
+  onHistoricalRunsRetrieved?: (runIds: string[]) => void;
   relatedParameterId?: string;
   /** Immutable canonical context frozen when this specific run was accepted. */
   relatedParameterSnapshot?: RelatedParameterRunSnapshot;
@@ -84,6 +87,7 @@ export type AnalyzeLogOutput = {
   analysisSource?: LogAnalysisSource;
   degradedReason?: LogAnalysisDegradedReason;
   promptVersion?: string;
+  historicalRunIds?: string[];
   model?: string;
 };
 

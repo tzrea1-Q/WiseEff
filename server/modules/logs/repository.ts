@@ -45,6 +45,7 @@ type RevisionRow = {
   source_snapshot_selection?: "matched_version" | "default" | "none" | null;
   requested_source_version?: string | null;
   knowledge_revisions?: Array<{ entryId: string; revisionId: string; pages?: number[] }>;
+  historical_run_ids?: string[];
 };
 
 type LogRecordRow = RevisionRow & {
@@ -151,6 +152,7 @@ export type LogRunDto = {
   skillNameSnapshot?: string;
   skillRevisionNumberSnapshot?: number;
   knowledgeRevisions: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
+  historicalRunIds?: string[];
   sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
   sourceSnapshotSelection?: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;
@@ -231,6 +233,7 @@ export type PersistLogAnalysisReportInput = {
   runId: string;
   report: {
     knowledgeRevisions?: Array<{ entryId: string; revisionId: string; pages?: number[] }>;
+    historicalRunIds?: string[];
     signalSummary?: import("./genericSignals").LogSignalSummary;
     confidence: number;
     conclusion: string;
@@ -336,6 +339,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
     skillRevisionNumberSnapshot: row.skill_revision_number_snapshot ?? undefined,
     knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId, pages }) => ({ entryId,
       ...(readableKnowledgeIds.has(entryId) ? { revisionId, ...(pages ? { pages } : {}) } : {}) })),
+    ...(row.historical_run_ids?.length ? { historicalRunIds: row.historical_run_ids } : {}),
     logDomainId: row.log_domain_id ?? undefined,
     logDomainName: row.log_domain_name ?? undefined,
     analysisSource: row.analysis_source ?? undefined,
@@ -374,6 +378,7 @@ function toRunDto(row: RunRow, readableKnowledgeIds: Set<string>): LogRunDto {
   return {
     knowledgeRevisions: (row.knowledge_revisions ?? []).map(({ entryId, revisionId, pages }) => ({ entryId,
       ...(readableKnowledgeIds.has(entryId) ? { revisionId, ...(pages ? { pages } : {}) } : {}) })),
+    ...(row.historical_run_ids?.length ? { historicalRunIds: row.historical_run_ids } : {}),
     ...sourceProvenance(row),
     id: row.id,
     logId: row.log_record_id,
@@ -467,7 +472,7 @@ const logSelect = `
     lar.skill_revision_number_snapshot,
     lar.skill_revision_id, sr.revision_number as skill_revision_number,
     lar.source_snapshot_id, lar.source_snapshot_status, lar.source_snapshot_selection, lar.requested_source_version,
-    source.version_label as source_snapshot_version_label, lar.knowledge_revisions
+    source.version_label as source_snapshot_version_label, lar.knowledge_revisions, lar.historical_run_ids
   from log_records lr
   inner join log_file_objects lfo on lfo.id = lr.file_object_id
   left join log_analysis_runs lar on lar.id = lr.current_run_id
@@ -809,6 +814,7 @@ export async function getLogDetail(db: Queryable, auth: LogPrincipal, logId: str
   );
 
   const readableKnowledgeIds = integration ? new Set<string>() : await readableKnowledgeEntryIds(db, auth, (row.knowledge_revisions ?? []).map((revision) => revision.entryId));
+  if (integration) row.historical_run_ids = undefined;
   return { ...toLogDto(row, evidenceResult.rows.map(toEvidenceDto), readableKnowledgeIds), canDelete: !integration && canDeleteLog(auth, row), files: fileInventory(await loadLogFiles(db, organizationId, logId)) };
 }
 
@@ -818,7 +824,7 @@ export async function listRuns(db: Queryable, auth: AuthContext, logId: string) 
     select lar.id, lar.log_record_id, lar.status, lar.current_stage, lar.progress, lar.error_message, lar.updated_at, lar.skill_revision_id, sr.revision_number as skill_revision_number,
       lar.skill_name_snapshot,lar.skill_revision_number_snapshot,
       lar.source_snapshot_id, lar.source_snapshot_status, lar.source_snapshot_selection, lar.requested_source_version,
-      source.version_label as source_snapshot_version_label, lar.knowledge_revisions
+      source.version_label as source_snapshot_version_label, lar.knowledge_revisions, lar.historical_run_ids
     from log_analysis_runs lar
     left join log_skill_revisions sr on sr.id = lar.skill_revision_id and sr.organization_id = lar.organization_id
     left join log_source_snapshots source on source.id = lar.source_snapshot_id and source.organization_id = lar.organization_id
@@ -981,8 +987,8 @@ export async function persistLogDecodedArtifact(db: Database, input: {
 
 export async function persistLogAnalysisReport(db: Database, input: PersistLogAnalysisReportInput) {
   await db.transaction(async (tx) => {
-    await tx.query(`update log_analysis_runs set knowledge_revisions = $3::jsonb where organization_id = $1 and id = $2`,
-      [input.organizationId, input.runId, jsonb(input.report.knowledgeRevisions ?? [])]);
+    await tx.query(`update log_analysis_runs set knowledge_revisions = $3::jsonb, historical_run_ids = $4 where organization_id = $1 and id = $2`,
+      [input.organizationId, input.runId, jsonb(input.report.knowledgeRevisions ?? []), input.report.historicalRunIds ?? []]);
     await tx.query(
       `
       insert into log_analysis_reports (
@@ -1075,8 +1081,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
         throw new LogJobLeaseLostError();
       }
 
-      await tx.query(`update log_analysis_runs set knowledge_revisions = $3::jsonb where organization_id = $1 and id = $2`,
-        [input.organizationId, input.runId, jsonb(input.report.knowledgeRevisions ?? [])]);
+      await tx.query(`update log_analysis_runs set knowledge_revisions = $3::jsonb, historical_run_ids = $4 where organization_id = $1 and id = $2`,
+        [input.organizationId, input.runId, jsonb(input.report.knowledgeRevisions ?? []), input.report.historicalRunIds ?? []]);
 
       await tx.query(
         `
