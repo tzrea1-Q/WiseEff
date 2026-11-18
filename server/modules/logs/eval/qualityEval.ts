@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 import type { AnalyzeLogInput, AnalyzeLogOutput, LogAnalysisAdapter } from "../analyzer";
+import { LOG_ANALYSIS_LOOP_PROMPT_VERSION } from "../analyzer/agentLoop";
+import { LOG_ANALYSIS_PROMPT_VERSION } from "../analyzer/llmAnalyzer";
 import { parseLogText } from "../parser";
+import type { LogAnalysisTraceStep } from "../traceTypes";
 import { analyzeWithDegradation } from "../worker";
 import { resolveLogEvalCaseMetadata, type GoldenLogCase, type LogEvalRootCauseCategory } from "./goldenCases";
 import {
@@ -21,6 +24,7 @@ import {
 
 /** A conclusion at or below this confidence counts as an honest refusal / low-confidence answer. */
 export const QUALITY_REFUSAL_CONFIDENCE_THRESHOLD = 0.5;
+export const QUALITY_CASE_PASS_THRESHOLD = 0.8;
 
 export type QualityJudgeScore = {
   /** 0..1 — how well the conclusion covers the expert root-cause points. */
@@ -207,6 +211,36 @@ export type QualityAggregates = {
   degradedCount: number;
 };
 
+type CaseMetadata = ReturnType<typeof resolveLogEvalCaseMetadata>;
+
+export type QualityEvalSelection = {
+  trials: number;
+  tier: CaseMetadata["tier"] | "all";
+  tags: CaseMetadata["scenarioTags"];
+};
+
+type QualityTrialResult = QualityCaseResult & CaseMetadata & {
+  trial: number;
+  passed: boolean;
+  steps: number;
+  tokens: number | null;
+  earlyConverged: boolean;
+};
+
+type CostDistribution = { median: number | null; p95: number | null; samples: number };
+
+type QualityTrialAggregates = QualityAggregates & {
+  trialCount: number;
+  passAtK: number | null;
+  passPowerK: number | null;
+  steps: CostDistribution;
+  tokens: CostDistribution;
+  latencyMs: CostDistribution;
+  degradedRate: number | null;
+  degradedRatesByReason: Record<string, number>;
+  earlyConvergenceRate: number | null;
+};
+
 export const qualityBaselineFileSchema = z.object({
   note: z.string().optional(),
   createdAt: z.string().min(1),
@@ -229,7 +263,7 @@ export const qualityBaselineFileSchema = z.object({
 export type QualityBaselineFile = z.infer<typeof qualityBaselineFileSchema>;
 
 export type QualityBaselineComparison = {
-  status: "not-configured" | "inactive-pending-real-cases" | "passed" | "failed";
+  status: "not-configured" | "inactive-pending-real-cases" | "not-run-filtered-golden-cases" | "passed" | "failed";
   note: string;
   tolerances?: QualityBaselineFile["tolerances"];
   metrics?: Array<{
@@ -248,13 +282,16 @@ export type QualityEvalReport = {
   kernel: "loop" | "single-shot";
   deterministic: boolean;
   modelLabel: string;
+  promptVersion: string;
   judgeLabel: string;
-  caseResults: Array<QualityCaseResult & ReturnType<typeof resolveLogEvalCaseMetadata>>;
+  selection: QualityEvalSelection;
+  caseResults: QualityTrialResult[];
   aggregates: {
-    all: QualityAggregates;
-    realCases: QualityAggregates | null;
-    realisticCases: QualityAggregates | null;
-    syntheticCases: QualityAggregates | null;
+    all: QualityTrialAggregates;
+    realCases: QualityTrialAggregates | null;
+    realisticCases: QualityTrialAggregates | null;
+    syntheticCases: QualityTrialAggregates | null;
+    byTag: Partial<Record<CaseMetadata["scenarioTags"][number], QualityTrialAggregates>>;
   };
   baseline: QualityBaselineComparison;
   /** Judge calibration (P3b): deterministic human-review sample + judge-human agreement. */
@@ -291,6 +328,45 @@ export function aggregateQualityResults(results: QualityCaseResult[]): QualityAg
     refusalAppropriateRate:
       refusals.length === 0 ? null : refusals.filter((result) => result.refusal.appropriate === true).length / refusals.length,
     degradedCount: results.filter((result) => result.degradedReason !== undefined).length
+  };
+}
+
+function costDistribution(values: number[]): CostDistribution {
+  values.sort((left, right) => left - right);
+  const samples = values.length;
+  if (samples === 0) return { median: null, p95: null, samples };
+  const middle = (samples - 1) / 2;
+  return {
+    median: (values[Math.floor(middle)] + values[Math.ceil(middle)]) / 2,
+    p95: values[Math.ceil(0.95 * samples) - 1],
+    samples
+  };
+}
+
+function aggregateQualityTrials(results: QualityTrialResult[], trials: number): QualityTrialAggregates {
+  const quality = aggregateQualityResults(results);
+  const passes = new Map<string, number>();
+  const degradedCounts = new Map<string, number>();
+  for (const result of results) {
+    passes.set(result.id, (passes.get(result.id) ?? 0) + Number(result.passed));
+    if (result.degradedReason) {
+      degradedCounts.set(result.degradedReason, (degradedCounts.get(result.degradedReason) ?? 0) + 1);
+    }
+  }
+  const passCounts = [...passes.values()];
+  const trialCount = results.length;
+  return {
+    ...quality,
+    caseCount: passes.size,
+    trialCount,
+    passAtK: mean(passCounts.map((count) => Number(count > 0))),
+    passPowerK: mean(passCounts.map((count) => Number(count === trials))),
+    steps: costDistribution(results.map((result) => result.steps)),
+    tokens: costDistribution(results.flatMap((result) => result.tokens ?? [])),
+    latencyMs: costDistribution(results.map((result) => result.latencyMs)),
+    degradedRate: trialCount === 0 ? null : quality.degradedCount / trialCount,
+    degradedRatesByReason: Object.fromEntries([...degradedCounts].sort().map(([reason, count]) => [reason, count / trialCount])),
+    earlyConvergenceRate: mean(results.map((result) => Number(result.earlyConverged)))
   };
 }
 
@@ -405,7 +481,7 @@ export function evaluateQualityCaseOutput(
   };
 }
 
-export type RunQualityEvalOptions = {
+export type RunQualityEvalOptions = Partial<QualityEvalSelection> & {
   analyzer: LogAnalysisAdapter;
   judge: LogAnalysisQualityJudge;
   cases: GoldenLogCase[];
@@ -465,10 +541,15 @@ function prepareQualityCase(goldenCase: GoldenLogCase) {
 
 export async function runQualityEval(options: RunQualityEvalOptions): Promise<QualityEvalReport> {
   const now = options.now ?? (() => Date.now());
+  const { trials = 1, tier = "all", tags = [] } = options;
+  if (!Number.isSafeInteger(trials) || trials < 1) throw new Error("trials must be a positive integer");
   const caseResults: QualityEvalReport["caseResults"] = [];
   const problems = [...options.problems];
+  const selectedCases = options.cases.map((goldenCase) => ({ goldenCase, metadata: resolveLogEvalCaseMetadata(goldenCase) }))
+    .filter(({ metadata }) => (tier === "all" || tier === metadata.tier)
+      && (tags.length === 0 || tags.some((tag) => metadata.scenarioTags.includes(tag))));
 
-  for (const goldenCase of options.cases) {
+  for (const { goldenCase, metadata } of selectedCases) {
     let prepared: ReturnType<typeof prepareQualityCase>;
     try {
       prepared = prepareQualityCase(goldenCase);
@@ -477,42 +558,29 @@ export async function runQualityEval(options: RunQualityEvalOptions): Promise<Qu
       continue;
     }
 
-    const startedAtMs = now();
-    let output: AnalyzeLogOutput;
-    try {
-      // attemptCount MAX_SAFE_INTEGER: a provider failure degrades immediately to
-      // the honest rules fallback instead of crashing the whole eval run.
-      output = await analyzeWithDegradation({
-        analyzer: options.analyzer,
-        analyzeInput: {
-          ...prepared.input,
-          analysisQuestion: goldenCase.analysisQuestion,
-          logDomain: goldenCase.domain === "uncategorized" ? undefined : { name: goldenCase.domain }
-        },
-        job: { attemptCount: Number.MAX_SAFE_INTEGER },
-        maxAttempts: 1,
-        retryBaseDelayMs: 1,
-        now: () => new Date(now())
-      });
-    } catch (error) {
-      problems.push(`${goldenCase.id}: analysis threw (${error instanceof Error ? error.message : String(error)})`);
-      continue;
+    for (let trial = 1; trial <= trials; trial += 1) {
+      try {
+        caseResults.push({ ...await runQualityTrial(options, goldenCase, prepared, now), ...metadata, trial });
+      } catch (error) {
+        problems.push(`${goldenCase.id} (trial ${trial}): ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-    const latencyMs = Math.max(0, now() - startedAtMs);
-
-    const judge = goldenCase.expectRefusal ? null : await options.judge.score({ goldenCase, output });
-    caseResults.push({
-      ...evaluateQualityCaseOutput(goldenCase, output, { latencyMs, judge, ...prepared.scoring }),
-      ...resolveLogEvalCaseMetadata(goldenCase)
-    });
   }
 
-  const realResults = caseResults.filter((result) => result.tier === "golden");
-  const realisticResults = caseResults.filter((result) => result.tier === "realistic");
-  const syntheticResults = caseResults.filter((result) => result.tier === "synthetic");
-  const realAggregates = realResults.length > 0 ? aggregateQualityResults(realResults) : null;
+  const aggregateTier = (caseTier: CaseMetadata["tier"]) => {
+    const results = caseResults.filter((result) => result.tier === caseTier);
+    return results.length > 0 ? aggregateQualityTrials(results, trials) : null;
+  };
+  const realAggregates = aggregateTier("golden");
+  const scenarioTags = [...new Set(caseResults.flatMap((result) => result.scenarioTags))].sort();
+  const totalGoldenCases = options.cases.filter((item) => resolveLogEvalCaseMetadata(item).tier === "golden").length;
+  const selectedGoldenCases = selectedCases.filter(({ metadata }) => metadata.tier === "golden").length;
+  const baseline: QualityBaselineComparison = options.baseline?.realCaseAggregates && selectedGoldenCases < totalGoldenCases
+    ? { status: "not-run-filtered-golden-cases", note: "The selection excludes part or all of the golden corpus." }
+    : compareToQualityBaseline(options.baseline, realAggregates);
   const generatedAt = new Date().toISOString();
   const judgeSampleRate = options.judgeSampleRate ?? 0.2;
+  const calibrationResults = caseResults.filter((result) => result.trial === 1);
 
   return {
     generatedAt,
@@ -520,26 +588,140 @@ export async function runQualityEval(options: RunQualityEvalOptions): Promise<Qu
     kernel: options.kernel,
     deterministic: options.deterministic,
     modelLabel: options.modelLabel,
+    promptVersion: options.kernel === "loop" ? LOG_ANALYSIS_LOOP_PROMPT_VERSION : LOG_ANALYSIS_PROMPT_VERSION,
     judgeLabel: options.judge.label,
+    selection: { trials, tier, tags },
     caseResults,
     aggregates: {
-      all: aggregateQualityResults(caseResults),
+      all: aggregateQualityTrials(caseResults, trials),
       realCases: realAggregates,
-      realisticCases: realisticResults.length > 0 ? aggregateQualityResults(realisticResults) : null,
-      syntheticCases: syntheticResults.length > 0 ? aggregateQualityResults(syntheticResults) : null
+      realisticCases: aggregateTier("realistic"),
+      syntheticCases: aggregateTier("synthetic"),
+      byTag: Object.fromEntries(scenarioTags.map((tag) => [
+        tag, aggregateQualityTrials(caseResults.filter((result) => result.scenarioTags.includes(tag)), trials)
+      ]))
     },
-    baseline: compareToQualityBaseline(options.baseline, realAggregates),
+    baseline,
     judgeSampling: {
       rate: judgeSampleRate,
-      sampledCaseIds: selectJudgeReviewSample(caseResults, judgeSampleRate).map((result) => result.id)
+      sampledCaseIds: selectJudgeReviewSample(calibrationResults, judgeSampleRate).map((result) => result.id)
     },
-    humanAgreement: computeJudgeHumanAgreement(caseResults, options.humanReviews ?? []),
+    humanAgreement: computeJudgeHumanAgreement(calibrationResults, options.humanReviews ?? []),
     problems
+  };
+}
+
+async function runQualityTrial(
+  { analyzer, judge: rubric }: RunQualityEvalOptions,
+  goldenCase: GoldenLogCase,
+  prepared: ReturnType<typeof prepareQualityCase>,
+  now: () => number
+) {
+  const trace: LogAnalysisTraceStep[] = [];
+  const startedAtMs = now();
+  // A provider failure degrades immediately to the production rules fallback.
+  const output = await analyzeWithDegradation({
+    analyzer,
+    analyzeInput: {
+      ...prepared.input,
+      analysisQuestion: goldenCase.analysisQuestion,
+      logDomain: goldenCase.domain === "uncategorized" ? undefined : { name: goldenCase.domain },
+      onTrace: (step) => { trace.push(step); }
+    },
+    job: { attemptCount: Number.MAX_SAFE_INTEGER },
+    maxAttempts: 1,
+    retryBaseDelayMs: 1,
+    now: () => new Date(now())
+  });
+  const latencyMs = Math.max(0, now() - startedAtMs);
+  const judge = goldenCase.expectRefusal ? null : await rubric.score({ goldenCase, output }).catch(() => {
+    throw new Error(`The ${rubric.label} judge failed to score the output.`);
+  });
+  const result = evaluateQualityCaseOutput(goldenCase, output, { latencyMs, judge, ...prepared.scoring });
+  const turns = trace.filter((step) => step.kind === "model-turn");
+  const tokens = turns.reduce<number | null>((sum, { inputTokens, outputTokens }) =>
+    sum === null || inputTokens === undefined || outputTokens === undefined ? null : sum + inputTokens + outputTokens, 0);
+
+  return {
+    ...result,
+    passed: result.expectRefusal ? result.refusal.appropriate === true
+      : (result.judge?.rootCauseScore ?? 0) >= QUALITY_CASE_PASS_THRESHOLD
+        && (result.evidence?.recall ?? 0) >= QUALITY_CASE_PASS_THRESHOLD,
+    steps: turns.length,
+    tokens,
+    earlyConverged: trace.some((step) => step.kind === "early-convergence")
   };
 }
 
 function formatRatio(value: number | null): string {
   return value === null ? "n/a" : value.toFixed(3);
+}
+
+function qualityScopes(report: QualityEvalReport) {
+  return new Map<string, QualityTrialAggregates | null>([
+    ["all", report.aggregates.all],
+    ["golden", report.aggregates.realCases],
+    ["realistic", report.aggregates.realisticCases],
+    ["synthetic", report.aggregates.syntheticCases],
+    ...Object.entries(report.aggregates.byTag)
+  ]);
+}
+
+const trialSummaryColumns = [
+  "范围", "用例", "试验", "根因均分", "证据平均召回", "pass@k", "pass^k", "步数",
+  "token", "时延（ms）", "降级率（按原因）", "早收敛率"
+];
+
+function markdownRow(cells: Array<string | number>) {
+  return `| ${cells.map((cell) => String(cell).replace(/\|/g, "\\|").replace(/\s+/g, " ")).join(" | ")} |`;
+}
+
+function trialSummaryCells(aggregates: QualityTrialAggregates | null) {
+  if (!aggregates) return [0, 0, ...trialSummaryColumns.slice(3).map(() => "—")];
+  const cost = ({ median, p95 }: CostDistribution) => median === null ? "n/a" : `${median} / ${p95}`;
+  const reasons = Object.entries(aggregates.degradedRatesByReason)
+    .map(([reason, rate]) => `${reason} ${formatRatio(rate)}`);
+  const tokenSamples = aggregates.tokens.samples === aggregates.trialCount ? "" : `（n=${aggregates.tokens.samples}）`;
+  return [
+    aggregates.caseCount, aggregates.trialCount, formatRatio(aggregates.rootCauseScoreMean),
+    formatRatio(aggregates.evidenceRecallMean), formatRatio(aggregates.passAtK), formatRatio(aggregates.passPowerK),
+    cost(aggregates.steps), `${cost(aggregates.tokens)}${tokenSamples}`, cost(aggregates.latencyMs),
+    `${formatRatio(aggregates.degradedRate)}${reasons.length ? `（${reasons.join("，")}）` : ""}`,
+    formatRatio(aggregates.earlyConvergenceRate)
+  ];
+}
+
+export function formatQualityComparisonMarkdown(before: QualityEvalReport, after: QualityEvalReport): string {
+  const trialKeys = (report: QualityEvalReport) => JSON.stringify(report.caseResults.map((result) =>
+    JSON.stringify([result.id, result.trial, result.tier, [...result.scenarioTags].sort()])).sort());
+  if (before.problems.length || after.problems.length || before.selection.trials !== after.selection.trials
+      || trialKeys(before) !== trialKeys(after)) {
+    throw new Error("Compare two complete reports with the same cases and trials (including tiers and tags).");
+  }
+
+  const beforeScopes = qualityScopes(before);
+  const afterScopes = qualityScopes(after);
+  const row = (label: string, left: QualityTrialAggregates | null, right: QualityTrialAggregates | null) => {
+    const afterCells = trialSummaryCells(right);
+    return markdownRow([label, ...trialSummaryCells(left).map((value, index) => `${value} → ${afterCells[index]}`)]);
+  };
+  return [
+    "# 日志分析质量评测对比",
+    "",
+    `每个用例运行 ${before.selection.trials} 次。指标按「改动前 → 改动后」显示，成本为「中位数 / p95」。`,
+    "",
+    "| 配置 | 改动前 | 改动后 |",
+    "| --- | --- | --- |",
+    markdownRow(["run", before.runId, after.runId]),
+    markdownRow(["model", before.modelLabel, after.modelLabel]),
+    markdownRow(["kernel", before.kernel, after.kernel]),
+    markdownRow(["promptVersion", before.promptVersion, after.promptVersion]),
+    markdownRow(["judge", before.judgeLabel, after.judgeLabel]),
+    "",
+    markdownRow(trialSummaryColumns),
+    markdownRow(trialSummaryColumns.map(() => "---")),
+    ...[...beforeScopes].map(([label, left]) => row(label, left, afterScopes.get(label) ?? null))
+  ].join("\n");
 }
 
 export function formatQualityReportMarkdown(report: QualityEvalReport): string {
@@ -550,8 +732,20 @@ export function formatQualityReportMarkdown(report: QualityEvalReport): string {
     `- Run id: \`${report.runId}\``,
     `- Kernel: \`${report.kernel}\`${report.deterministic ? " (deterministic mode)" : ""}`,
     `- Model: \`${report.modelLabel}\``,
+    `- Prompt version: \`${report.promptVersion}\``,
     `- Judge: \`${report.judgeLabel}\``,
-    `- Cases: ${report.caseResults.length} (${report.aggregates.realCases?.caseCount ?? 0} golden, ${report.aggregates.realisticCases?.caseCount ?? 0} realistic, ${report.aggregates.syntheticCases?.caseCount ?? 0} synthetic)`,
+    "",
+    "## 中文摘要",
+    "",
+    `共 ${report.aggregates.all.caseCount} 个用例、${report.aggregates.all.trialCount} 次试验。每个用例计划运行 ${report.selection.trials} 次，层级为 ${report.selection.tier}，标签筛选为 ${report.selection.tags.join("、") || "全部"}。`,
+    ...(report.deterministic ? ["", "本次使用确定性模型和评分器，仅用于验证评测流程。"] : []),
+    "",
+    "pass@k 表示至少一次通过的用例比例，pass^k 表示每次都通过的用例比例。成本为「中位数 / p95」，缺少完整 token 用量的试验不计入 token 统计。",
+    "",
+    markdownRow(trialSummaryColumns),
+    markdownRow(trialSummaryColumns.map(() => "---")),
+    ...[...qualityScopes(report)]
+      .map(([label, aggregate]) => markdownRow([label, ...trialSummaryCells(aggregate)])),
     "",
     "## Aggregates",
     "",
@@ -559,13 +753,7 @@ export function formatQualityReportMarkdown(report: QualityEvalReport): string {
     "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
   ];
 
-  const scopes: Array<[string, QualityAggregates | null]> = [
-    ["all", report.aggregates.all],
-    ["golden", report.aggregates.realCases],
-    ["realistic", report.aggregates.realisticCases],
-    ["synthetic (format coverage)", report.aggregates.syntheticCases]
-  ];
-  for (const [label, aggregates] of scopes) {
+  for (const [label, aggregates] of qualityScopes(report)) {
     if (!aggregates) {
       lines.push(`| ${label} | 0 | — | — | — | — | — | — | — | — |`);
       continue;
@@ -624,12 +812,12 @@ export function formatQualityReportMarkdown(report: QualityEvalReport): string {
     "",
     "## Case results",
     "",
-    "| Case | Tier | Source | Degraded | Latency (ms) | Evidence recall | Hallucination | Root-cause | Category | Refusal |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+    "| Case | Tier | Trial | Pass | Source | Degraded | Early convergence | Steps | Tokens | Latency (ms) | Evidence recall | Hallucination | Root-cause | Category | Refusal |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
   );
   for (const result of report.caseResults) {
     lines.push(
-      `| ${result.id} | ${result.tier} | ${result.analysisSource ?? "-"} | ${result.degradedReason ?? "-"} | ${result.latencyMs} | ${result.evidence ? result.evidence.recall.toFixed(2) : "n/a"} | ${result.hallucination.rate.toFixed(2)} | ${result.judge ? result.judge.rootCauseScore.toFixed(2) : "n/a"} | ${result.judge ? (result.judge.categoryMatch ? "match" : "miss") : "n/a"} | ${result.refusal.expected ? (result.refusal.appropriate ? "appropriate" : "MISSED") : "-"} |`
+      `| ${result.id} | ${result.tier} | ${result.trial} | ${result.passed ? "PASS" : "FAIL"} | ${result.analysisSource ?? "-"} | ${result.degradedReason ?? "-"} | ${result.earlyConverged ? "yes" : "-"} | ${result.steps} | ${result.tokens ?? "n/a"} | ${result.latencyMs} | ${result.evidence ? result.evidence.recall.toFixed(2) : "n/a"} | ${result.hallucination.rate.toFixed(2)} | ${result.judge ? result.judge.rootCauseScore.toFixed(2) : "n/a"} | ${result.judge ? (result.judge.categoryMatch ? "match" : "miss") : "n/a"} | ${result.refusal.expected ? (result.refusal.appropriate ? "appropriate" : "MISSED") : "-"} |`
     );
   }
 

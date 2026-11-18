@@ -83,13 +83,25 @@ All three tools are always available and output-capped. Only anchors/lines actua
 
 ## Quality Eval (`logs:eval:quality`)
 
-- Deterministic demo (zero API cost): `LOG_ANALYSIS_DETERMINISTIC=true npm run logs:eval:quality` — runs the golden case set with the deterministic kernel and the deterministic rubric judge.
-- Real-model run: configure `LOG_ANALYSIS_API_*` (and optionally `LOG_ANALYSIS_JUDGE_*` for the LLM-as-judge) and run `npm run logs:eval:quality`.
-- Reports land in `docs/generated/log-analysis-quality.{json,md}` with kernel, model, prompt version, and judge label. The baseline gate (`eval-cases/logs/baseline.json`) compares realLog-case scores against the committed baseline minus stated tolerances; while the set has no real cases the report states `quality baseline pending real cases` and the gate stays inactive.
+- The command uses the deterministic model and rubric judge when the analysis endpoint or key is unavailable. Set `LOG_ANALYSIS_DETERMINISTIC=true` to force this mode. For a live run, configure `LOG_ANALYSIS_API_*` and optionally `LOG_ANALYSIS_JUDGE_*` in the environment. Each run uses one model configuration. Deterministic results verify the pipeline.
+- Use `--trials <k>` to repeat each selected case (default 1), `--tier <golden|realistic|synthetic|all>` to select the tier (default `all`), and `--tags <tag,...>` to keep cases matching any listed tag. The report groups each selected case under its tier and all of its scenario tags.
+- Reports land in `docs/generated/log-analysis-quality.{json,md}` and record the model, kernel, prompt version, and judge. The Chinese summary shows the fraction of cases that passed at least once (pass@k) and every time (pass^k). A diagnosis passes when root-cause score and evidence recall both reach 0.8. An expected refusal passes at confidence 0.5 or lower.
+- Costs use the median and nearest-rank p95 across trials. Steps count model turns. Token totals combine input and output and exclude trials with incomplete usage from the token distribution. Latency covers analysis and any rules fallback. Degradation rates use all completed trials as the denominator, and the early-convergence rate counts trials that emitted an early-convergence event.
+- The baseline gate compares golden scores against `eval-cases/logs/baseline.json`. It stays inactive while real cases are pending. A filter that excludes golden cases skips an active gate.
+
+Save the JSON from each run before starting the next one, which overwrites the generated files. Use the same cases, tier and tag assignments, and trial count for both runs. The comparison prints a Markdown table suitable for PRs.
+
+```bash
+npm run logs:eval:quality -- --trials 3 --tier realistic
+cp docs/generated/log-analysis-quality.json /tmp/log-quality-before.json
+# Run the same eval command after applying the candidate change.
+npm run logs:eval:quality -- --trials 3 --tier realistic
+npm run --silent logs:eval:quality -- --compare /tmp/log-quality-before.json docs/generated/log-analysis-quality.json
+```
 
 ## Judge Calibration (P3b)
 
-- Every quality run deterministically samples judged cases (id-hash, rate `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`, default 0.2, minimum 1) into the human review checklist `docs/generated/log-analysis-judge-sample.md`. The checklist shows the agent conclusion, the judge's scores and reasoning, and a ready-to-fill YAML template.
+- Every quality run deterministically samples first-trial results from judged cases (id-hash, rate `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`, default 0.2, minimum 1) into the human review checklist `docs/generated/log-analysis-judge-sample.md`. The checklist shows the agent conclusion, the judge's scores and reasoning, and a ready-to-fill YAML template.
 - Human reviewers commit the completed template as `eval-cases/logs/reviews/<run-id>.yaml` (`runId`, `reviewer`, `reviewedAt`, per-case `humanRootCauseScore` 0..1 + optional `humanCategoryMatch`/`notes`). Broken review files fail the quality run — they must be fixed, never silently dropped.
 - With reviews present, the report's fixed "Judge calibration" section computes judge-human agreement: exact agreement rate (identical scores), mean absolute difference, and category agreement. Without reviews it honestly says "no human reviews yet". A drifting judge (rising mean difference) means judge prompts/rubric need retuning before its scores gate anything.
 

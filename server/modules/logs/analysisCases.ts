@@ -25,7 +25,7 @@ import { prefilterLogStream, createPrefilterBudget } from "./prefilter";
 import { extractLogSignalsCooperatively } from "./genericSignals";
 import { decodeLogFilesCooperatively, indexDecodedEvents } from "./parsing/workerDecoding";
 import { analyzeWithDegradation } from "./worker";
-import { evaluateQualityCaseOutput } from "./eval/qualityEval";
+import { evaluateQualityCaseOutput, QUALITY_CASE_PASS_THRESHOLD } from "./eval/qualityEval";
 import { resolveQualityJudge } from "./eval/judgeFromEnv";
 import type { GoldenLogCase } from "./eval/goldenCases";
 import type { LogSkillSpec } from "./skillSpec";
@@ -512,7 +512,7 @@ async function analyzeCase(db: Database, store: ObjectStore, analyzer: LogAnalys
   const factors = expectations.expectRefusal ? [quality.refusal.appropriate ? 1 : 0] : [judged?.rootCauseScore ?? 0, judged?.actionsScore ?? 0, recall];
   if (expectations.expectedDegradedReason) factors.push(report.degradedReason === expectations.expectedDegradedReason ? 1 : 0);
   const score = grounded ? Math.round(factors.reduce((sum, value) => sum + value, 0) / factors.length * 10000) / 100 : 0;
-  return { score, passed: grounded && factors.every((value) => value >= 0.8), report: logDryRunReportSchema.parse(report),
+  return { score, passed: grounded && factors.every((value) => value >= QUALITY_CASE_PASS_THRESHOLD), report: logDryRunReportSchema.parse(report),
     quality: anchors?.length ? { ...quality, anchorEvidence: { precision, recall, hits: anchorHits,
       hallucinatedLines, hallucinationRate: citations.length ? hallucinatedLines.length / citations.length : 0,
       misses: anchors.filter((anchor) => !anchorHits!.includes(anchor)) } } : quality,

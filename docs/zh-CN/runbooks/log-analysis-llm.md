@@ -83,13 +83,25 @@ worker 在预处理、解码、信号提取与分析阶段，每隔租约时长�
 
 ## 效果层评测（`logs:eval:quality`）
 
-- 确定性演示（零 API 成本）：`LOG_ANALYSIS_DETERMINISTIC=true npm run logs:eval:quality`——用确定性内核 + 确定性 rubric judge 跑金标准案例集。
-- 真模型运行：配置 `LOG_ANALYSIS_API_*`（可选 `LOG_ANALYSIS_JUDGE_*` 启用 LLM-as-judge）后运行 `npm run logs:eval:quality`。
-- 报告输出到 `docs/generated/log-analysis-quality.{json,md}`，含内核、模型、prompt version 与 judge 标签。基线门禁（`eval-cases/logs/baseline.json`）将 realLog 案例分数与已提交基线减容差比较；案例集尚无真实案例时报告如实输出 `quality baseline pending real cases`，门禁不激活。
+- 未配置分析端点或密钥时，命令使用确定性模型和评分器。也可设置 `LOG_ANALYSIS_DETERMINISTIC=true` 强制启用。真实模型运行通过环境变量 `LOG_ANALYSIS_API_*` 配置，可选用 `LOG_ANALYSIS_JUDGE_*` 配置评分器。每次运行使用一组模型配置。确定性结果用于验证评测流程。
+- `--trials <k>` 设置每个选中用例的运行次数，默认 1 次。`--tier <golden|realistic|synthetic|all>` 筛选层级，默认 `all`。`--tags <tag,...>` 保留命中任一标签的用例。报告将每个选中用例计入所属层级和全部场景标签。
+- 报告输出到 `docs/generated/log-analysis-quality.{json,md}`，记录模型、内核、提示词版本和评分器。中文摘要列出至少一次通过的用例比例（pass@k）与每次都通过的比例（pass^k）。诊断通过要求根因得分和证据召回率均达到 0.8。预期拒答的用例在置信度不高于 0.5 时通过。
+- 成本统计采用中位数和最近秩 p95。步数按模型轮数计。token 为输入与输出之和，缺少完整用量的试验不计入 token 分布。时延涵盖分析和规则兜底。降级率以全部完成的试验为分母，早收敛率统计发出早收敛事件的试验比例。
+- 基线门禁依据 `eval-cases/logs/baseline.json` 比较金标准用例得分。真实用例待补充时门禁保持未激活。筛选排除金标准用例时，跳过已激活的门禁。
+
+下一次评测会覆盖生成文件，运行前先保存上一份 JSON。对比两次报告时使用相同的用例、层级、标签归属和试验次数。对比命令输出可在 PR 中引用的 Markdown 表格。
+
+```bash
+npm run logs:eval:quality -- --trials 3 --tier realistic
+cp docs/generated/log-analysis-quality.json /tmp/log-quality-before.json
+# 应用候选改动后重新运行同一条评测命令。
+npm run logs:eval:quality -- --trials 3 --tier realistic
+npm run --silent logs:eval:quality -- --compare /tmp/log-quality-before.json docs/generated/log-analysis-quality.json
+```
 
 ## judge 校准（P3b）
 
-- 每次效果评测按确定性规则抽样已评分案例（case id 哈希，抽样率 `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`，默认 0.2，至少 1 条），产出人工复核清单 `docs/generated/log-analysis-judge-sample.md`：含 agent 结论、judge 打分与理由，以及可直接填写的 YAML 模板。
+- 每次效果评测按用例 ID 的哈希抽样已评分用例的第一次试验，抽样率由 `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` 设置，默认 0.2，至少 1 条。人工复核清单 `docs/generated/log-analysis-judge-sample.md` 包含 Agent 结论、评分和理由，以及可填写的 YAML 模板。
 - 复核人把填好的模板提交为 `eval-cases/logs/reviews/<run-id>.yaml`（`runId`、`reviewer`、`reviewedAt`，每案例 `humanRootCauseScore` 0..1 + 可选 `humanCategoryMatch`/`notes`）。损坏的复核文件会让效果评测直接失败——必须修复，绝不静默丢弃。
 - 存在复核文件时，报告固定的「Judge calibration」段落计算 judge-human 一致性：精确一致率（分数完全相同）、均差（平均绝对差）与类别一致率；没有复核时如实输出 "no human reviews yet"。judge 漂移（均差上升）意味着在让它的分数参与门禁之前需要先调 judge 提示词/rubric。
 

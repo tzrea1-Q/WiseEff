@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import { createAgentLoopLogAnalyzer } from "../analyzer/agentLoop";
 import { createDeterministicLogAnalysisLoopModel } from "../analyzer/deterministicModel";
 import type { AnalyzeLogOutput, LogAnalysisAdapter } from "../analyzer";
+import { emitLogTrace } from "../traceTypes";
 import { defaultGoldenCasesRoot, loadGoldenLogCases, type GoldenLogCase } from "./goldenCases";
 import {
   aggregateQualityResults,
   compareToQualityBaseline,
   createDeterministicQualityJudge,
   evaluateQualityCaseOutput,
+  formatQualityComparisonMarkdown,
   formatQualityReportMarkdown,
   runQualityEval,
   type LogAnalysisQualityJudge,
@@ -251,6 +253,83 @@ describe("compareToQualityBaseline", () => {
 });
 
 describe("runQualityEval (deterministic end-to-end)", () => {
+  it("filters cases, repeats each selected case, and aggregates quality and costs per tier and tag", async () => {
+    const cases = [
+      makeGoldenCase({ id: "charging-power/a", tier: "realistic", scenarioTags: ["cascade", "multi-file"] }),
+      makeGoldenCase({ id: "charging-power/b", tier: "realistic", scenarioTags: ["generic-analysis", "multi-file"] }),
+      makeGoldenCase({ id: "charging-power/c", tier: "realistic", scenarioTags: ["android"] }),
+      makeGoldenCase({ id: "charging-power/d", tier: "synthetic", scenarioTags: ["cascade"] }),
+      makeGoldenCase({ id: "charging-power/e", tier: "golden", realLog: true, deIdentified: true, scenarioTags: ["cascade"] })
+    ];
+    const measurements = [
+      { latency: 10, tokens: 100 },
+      { latency: 20, tokens: 300, convergence: "step-budget-exhausted" },
+      { latency: 30, tokens: undefined },
+      { latency: 100, tokens: 900, convergence: "token-budget-exhausted" }
+    ] as const;
+    let index = 0;
+    let time = 0;
+    const analyzer: LogAnalysisAdapter = {
+      async analyze(input) {
+        const trial = measurements[index++];
+        time += trial.latency;
+        await emitLogTrace(input, { kind: "model-turn", inputTokens: trial.tokens, outputTokens: 0 });
+        if ("convergence" in trial) {
+          await emitLogTrace(input, { kind: "early-convergence", reason: trial.convergence });
+          await emitLogTrace(input, { kind: "model-turn", inputTokens: 30, outputTokens: 10 });
+        }
+        return makeOutput({
+          degradedReason: "convergence" in trial ? trial.convergence : undefined,
+          evidence: index === 2 ? [] : makeOutput().evidence
+        });
+      }
+    };
+    const report = await runQualityEval({
+      analyzer, cases, trials: 2, tier: "realistic", tags: ["cascade", "generic-analysis"],
+      judge: { label: "fixed", async score() {
+        return { rootCauseScore: 0.8, categoryMatch: true, actionsScore: 0.7, reasoning: "fixed" };
+      } },
+      problems: [], kernel: "loop", deterministic: true, modelLabel: "fixed",
+      baseline: {
+        createdAt: "2026-08-13", kernel: "loop", promptVersion: "test.1", model: "fixed",
+        realCaseAggregates: { caseCount: 1, rootCauseScoreMean: 1, evidenceRecallMean: 1 },
+        tolerances: { rootCauseScoreMean: 0, evidenceRecallMean: 0 }
+      },
+      now: () => time, judgeSampleRate: 1
+    });
+
+    expect(report.problems).toEqual([]);
+    expect(report.caseResults.map(({ id, trial, passed }) => [id, trial, passed])).toEqual([
+      ["charging-power/a", 1, true], ["charging-power/a", 2, false],
+      ["charging-power/b", 1, true], ["charging-power/b", 2, true]
+    ]);
+    expect(report.aggregates.realisticCases).toMatchObject({
+      caseCount: 2, trialCount: 4, passAtK: 1, passPowerK: 0.5,
+      steps: { median: 1.5, p95: 2, samples: 4 },
+      tokens: { median: 340, p95: 940, samples: 3 },
+      latencyMs: { median: 25, p95: 100, samples: 4 },
+      degradedRate: 0.5, degradedRatesByReason: { "step-budget-exhausted": 0.25, "token-budget-exhausted": 0.25 },
+      earlyConvergenceRate: 0.5
+    });
+    expect(report.aggregates.byTag).toMatchObject({
+      cascade: { passAtK: 1, passPowerK: 0 },
+      "generic-analysis": { passAtK: 1, passPowerK: 1 },
+      "multi-file": { caseCount: 2, passAtK: 1, passPowerK: 0.5 }
+    });
+    expect(report.aggregates.realCases).toBeNull();
+    expect(report.aggregates.syntheticCases).toBeNull();
+    expect(report.baseline.status).toBe("not-run-filtered-golden-cases");
+    expect(report.judgeSampling.sampledCaseIds).toEqual(["charging-power/a", "charging-power/b"]);
+
+    const after = { ...report, modelLabel: "candidate" };
+    const comparison = formatQualityComparisonMarkdown(report, after);
+    expect(comparison).toContain("| model | fixed | candidate |");
+    expect(comparison).toContain("| multi-file | 2 → 2 | 4 → 4 |");
+    expect(comparison).toContain("340 / 940（n=3） → 340 / 940（n=3）");
+    expect(() => formatQualityComparisonMarkdown(report, { ...after, caseResults: after.caseResults.slice(1) }))
+      .toThrow("same cases and trials");
+  });
+
   it("runs the committed seed set with the deterministic loop kernel and zero hallucinations", async () => {
     const { cases, problems } = loadGoldenLogCases(defaultGoldenCasesRoot());
     const analyzer = createAgentLoopLogAnalyzer({
@@ -283,6 +362,7 @@ describe("runQualityEval (deterministic end-to-end)", () => {
     expect(report.aggregates.syntheticCases?.caseCount).toBeGreaterThanOrEqual(6);
     expect(report.aggregates.realisticCases?.caseCount).toBeGreaterThanOrEqual(3);
     expect(report.caseResults.find((item) => item.id === "service-jsonl/realistic-healthy-queue")?.refusal.appropriate).toBe(true);
+    expect(report.caseResults.find((item) => item.id === "service-jsonl/realistic-healthy-queue")?.passed).toBe(true);
     // Grounding check keeps hallucinated citations out of the product; the metric must stay 0.
     expect(report.aggregates.all.hallucinationRate).toBe(0);
     // The nominal refusal case must be answered honestly by the deterministic kernel.
@@ -295,6 +375,8 @@ describe("runQualityEval (deterministic end-to-end)", () => {
     const markdown = formatQualityReportMarkdown(report);
     expect(markdown).toContain("quality baseline pending real cases");
     expect(markdown).toContain("`loop`");
+    expect(markdown).toContain("## 中文摘要");
+    expect(markdown).toContain(report.promptVersion);
   });
 
   it("pipes a scriptable judge stub's scores into the report", async () => {
@@ -323,6 +405,7 @@ describe("runQualityEval (deterministic end-to-end)", () => {
 
     expect(report.judgeLabel).toBe("scripted-judge-stub");
     expect(report.caseResults[0].judge).toMatchObject({ rootCauseScore: 0.42, actionsScore: 0.24 });
+    expect(report.caseResults[0].passed).toBe(false);
     expect(report.aggregates.all.rootCauseScoreMean).toBe(0.42);
     expect(report.baseline.status).toBe("not-configured");
   });

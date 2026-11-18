@@ -1,6 +1,6 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-11-18T12:58:14.182Z
+- Generated: 2026-11-18T13:15:27.183Z
 - Single-shot prompt version: `2026-10-19.procedure.signals.source.1`
 - Loop prompt version: `2026-10-19.loop.procedure.signals.source.3`
 - Scenarios: 45 (45 passed)
