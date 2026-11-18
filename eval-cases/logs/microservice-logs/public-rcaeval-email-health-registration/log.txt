@@ -1,0 +1,350 @@
+06:34,1731911684442417356,frontend,request complete,pod-1,node-1
+06:34,1731911684518075742,frontend,request started,pod-1,node-1
+06:34,1731911684518091015,frontend,view user cart,pod-1,node-1
+06:34,1731911684519797547,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911684523612831,cartservice,GetCartAsync called with userId=418ce0b6-15a4-4228-a6cf-27e322509121,pod-3,node-3
+06:34,1731911684524604672,frontend,request started,pod-1,node-1
+06:34,1731911684524615274,frontend,view user cart,pod-1,node-1
+06:34,1731911684525854579,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911684530167930,cartservice,GetCartAsync called with userId=58e83383-a5c9-4a61-9291-cb65bc2a888b,pod-3,node-3
+06:34,1731911684532761958,recommendationservice,"[Recv ListRecommendations] product_ids=['66VCHSJNUP', '1YMWWN1N4O', 'OLJCESPC7Z', '9SIQT8TOJO', '6E92ZMYYFZ']",pod-4,node-2
+06:34,1731911684538598253,recommendationservice,"[Recv ListRecommendations] product_ids=['2ZYFJ3GM2N', 'OLJCESPC7Z', 'L9ECAV7KIM', '66VCHSJNUP', '1YMWWN1N4O']",pod-4,node-2
+06:34,1731911684543473210,shippingservice,[GetQuote] received request,pod-5,node-2
+06:34,1731911684543488870,shippingservice,[GetQuote] completed request,pod-5,node-2
+06:34,1731911684546086497,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684547191927,shippingservice,[GetQuote] received request,pod-5,node-2
+06:34,1731911684547228557,shippingservice,[GetQuote] completed request,pod-5,node-2
+06:34,1731911684550079540,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684551558420,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684553367178,frontend,request complete,pod-1,node-1
+06:34,1731911684555043426,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684559129345,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684563773265,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684566055446,frontend,request complete,pod-1,node-1
+06:34,1731911684615591038,frontend,request started,pod-1,node-1
+06:34,1731911684615604043,frontend,serving product page,pod-1,node-1
+06:34,1731911684618812112,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911684623288383,cartservice,GetCartAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add,pod-3,node-3
+06:34,1731911684630270231,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684638705872,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', 'L9ECAV7KIM', '66VCHSJNUP', '2ZYFJ3GM2N', 'LS4PSXUNUM']",pod-4,node-2
+06:34,1731911684648530154,adservice,received ad request (context_words=[accessories]),pod-6,node-3
+06:34,1731911684650621540,frontend,request complete,pod-1,node-1
+06:34,1731911684653631367,frontend,request started,pod-1,node-1
+06:34,1731911684653640611,frontend,adding to cart,pod-1,node-1
+06:34,1731911684656550106,cartservice,"AddItemAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add, productId=1YMWWN1N4O, quantity=8",pod-3,node-3
+06:34,1731911684664190917,frontend,request complete,pod-1,node-1
+06:34,1731911684666711627,frontend,request started,pod-1,node-1
+06:34,1731911684666752213,frontend,view user cart,pod-1,node-1
+06:34,1731911684668755377,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911684672372709,cartservice,GetCartAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add,pod-3,node-3
+06:34,1731911684682129988,recommendationservice,"[Recv ListRecommendations] product_ids=['OLJCESPC7Z', 'LS4PSXUNUM', '6E92ZMYYFZ', '0PUK6V6EV0', '66VCHSJNUP']",pod-4,node-2
+06:34,1731911684690967186,shippingservice,[GetQuote] received request,pod-5,node-2
+06:34,1731911684690987401,shippingservice,[GetQuote] completed request,pod-5,node-2
+06:34,1731911684694525548,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684699716597,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684702497416,frontend,request complete,pod-1,node-1
+06:34,1731911684785264305,frontend,request started,pod-1,node-1
+06:34,1731911684785298176,frontend,view user cart,pod-1,node-1
+06:34,1731911684786994897,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911684790870952,cartservice,GetCartAsync called with userId=0727db9d-83b9-44b7-acab-68a4f8f289c0,pod-3,node-3
+06:34,1731911684800854842,recommendationservice,"[Recv ListRecommendations] product_ids=['66VCHSJNUP', 'LS4PSXUNUM', '0PUK6V6EV0', '1YMWWN1N4O', 'L9ECAV7KIM']",pod-4,node-2
+06:34,1731911684810695121,shippingservice,[GetQuote] received request,pod-5,node-2
+06:34,1731911684810707820,shippingservice,[GetQuote] completed request,pod-5,node-2
+06:34,1731911684814156555,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684816253992,frontend,request complete,pod-1,node-1
+06:34,1731911684850081313,frontend,request started,pod-1,node-1
+06:34,1731911684850147160,frontend,serving product page,pod-1,node-1
+06:34,1731911684853715301,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911684858184066,cartservice,GetCartAsync called with userId=f3509d43-91d9-45a0-a174-70f597a55fb4,pod-3,node-3
+06:34,1731911684864354563,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684871903199,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', 'OLJCESPC7Z', '0PUK6V6EV0', '1YMWWN1N4O', 'LS4PSXUNUM']",pod-4,node-2
+06:34,1731911684883186148,adservice,received ad request (context_words=[kitchen]),pod-6,node-3
+06:34,1731911684885695544,frontend,request complete,pod-1,node-1
+06:34,1731911684929190843,frontend,request started,pod-1,node-1
+06:34,1731911684929201892,frontend,serving product page,pod-1,node-1
+06:34,1731911684932224544,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911684936098646,cartservice,GetCartAsync called with userId=0ae6d9b6-4e7f-4d38-a0eb-042389dcac30,pod-3,node-3
+06:34,1731911684940326061,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911684946876970,recommendationservice,"[Recv ListRecommendations] product_ids=['1YMWWN1N4O', '0PUK6V6EV0', '2ZYFJ3GM2N', '66VCHSJNUP', 'OLJCESPC7Z']",pod-4,node-2
+06:34,1731911684955981336,adservice,received ad request (context_words=[kitchen]),pod-6,node-3
+06:34,1731911684958826738,frontend,request complete,pod-1,node-1
+06:34,1731911685589099175,frontend,request started,pod-1,node-1
+06:34,1731911685589119208,frontend,serving product page,pod-1,node-1
+06:34,1731911685593145730,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911685597532443,cartservice,GetCartAsync called with userId=e68474c6-7c27-4a5d-9e2c-d5e430b87e55,pod-3,node-3
+06:34,1731911685603979654,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911685612203346,recommendationservice,"[Recv ListRecommendations] product_ids=['2ZYFJ3GM2N', '9SIQT8TOJO', 'OLJCESPC7Z', 'L9ECAV7KIM', '1YMWWN1N4O']",pod-4,node-2
+06:34,1731911685623711888,adservice,"received ad request (context_words=[clothing, tops])",pod-6,node-3
+06:34,1731911685625489088,frontend,request complete,pod-1,node-1
+06:34,1731911685885407064,frontend,request started,pod-1,node-1
+06:34,1731911685885425987,frontend,serving product page,pod-1,node-1
+06:34,1731911685888911380,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911685893486858,cartservice,GetCartAsync called with userId=49eac425-0b6d-4e41-b8ac-4be1a27aeb58,pod-3,node-3
+06:34,1731911685899982899,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911685908011055,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', '9SIQT8TOJO', '2ZYFJ3GM2N', '1YMWWN1N4O', 'OLJCESPC7Z']",pod-4,node-2
+06:34,1731911685917255190,adservice,received ad request (context_words=[footwear]),pod-6,node-3
+06:34,1731911685919194315,frontend,request complete,pod-1,node-1
+06:34,1731911686568526673,frontend,request started,pod-1,node-1
+06:34,1731911686568545577,frontend,serving product page,pod-1,node-1
+06:34,1731911686572190253,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911686576706038,cartservice,GetCartAsync called with userId=0727db9d-83b9-44b7-acab-68a4f8f289c0,pod-3,node-3
+06:34,1731911686583238256,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911686591008479,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', 'OLJCESPC7Z', '0PUK6V6EV0', '1YMWWN1N4O', '66VCHSJNUP']",pod-4,node-2
+06:34,1731911686601455338,adservice,received ad request (context_words=[footwear]),pod-6,node-3
+06:34,1731911686603769772,frontend,request complete,pod-1,node-1
+06:34,1731911686794518573,frontend,request started,pod-1,node-1
+06:34,1731911686794553217,frontend,view user cart,pod-1,node-1
+06:34,1731911686796315864,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911686801203234,cartservice,GetCartAsync called with userId=c216dec4-2181-4773-8cc5-aa587ee59fcc,pod-3,node-3
+06:34,1731911686812080050,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', '6E92ZMYYFZ', '1YMWWN1N4O', 'LS4PSXUNUM', '2ZYFJ3GM2N']",pod-4,node-2
+06:34,1731911686821762722,shippingservice,[GetQuote] received request,pod-5,node-2
+06:34,1731911686821774932,shippingservice,[GetQuote] completed request,pod-5,node-2
+06:34,1731911686825540795,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911686831782856,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911686835762732,frontend,request started,pod-1,node-1
+06:34,1731911686835786908,frontend,serving product page,pod-1,node-1
+06:34,1731911686837048568,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911686838443708,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911686839711279,frontend,request complete,pod-1,node-1
+06:34,1731911686840725622,frontend,request started,pod-1,node-1
+06:34,1731911686840733663,frontend,serving product page,pod-1,node-1
+06:34,1731911686842271321,cartservice,GetCartAsync called with userId=65f4eef7-6576-4be2-805b-c27cafa8ee53,pod-3,node-3
+06:34,1731911686842928993,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911686846152725,cartservice,GetCartAsync called with userId=82f11995-8adf-4db5-b1c6-416954168927,pod-3,node-3
+06:34,1731911686847537306,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911686851582293,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911686856058426,recommendationservice,"[Recv ListRecommendations] product_ids=['LS4PSXUNUM', 'OLJCESPC7Z', 'L9ECAV7KIM', '0PUK6V6EV0', '2ZYFJ3GM2N']",pod-4,node-2
+06:34,1731911686860015452,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', '9SIQT8TOJO', 'LS4PSXUNUM', 'L9ECAV7KIM', '2ZYFJ3GM2N']",pod-4,node-2
+06:34,1731911686868203114,adservice,"received ad request (context_words=[clothing, tops])",pod-6,node-3
+06:34,1731911686869957130,frontend,request complete,pod-1,node-1
+06:34,1731911686871883899,adservice,"received ad request (context_words=[decor, home])",pod-6,node-3
+06:34,1731911686873400026,frontend,request complete,pod-1,node-1
+06:34,1731911687592304023,frontend,request started,pod-1,node-1
+06:34,1731911687592324392,frontend,setting currency,pod-1,node-1
+06:34,1731911687592326601,frontend,request complete,pod-1,node-1
+06:34,1731911687595524670,frontend,request started,pod-1,node-1
+06:34,1731911687595536065,frontend,home,pod-1,node-1
+06:34,1731911687597372136,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911687603319533,cartservice,GetCartAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add,pod-3,node-3
+06:34,1731911687609772128,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911687613268092,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911687618104502,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911687621585750,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911687624960421,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911687628346646,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911687631668006,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911687635705500,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911687639744026,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911687645738410,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+06:34,1731911687647543006,adservice,received ad request (context_words=[]),pod-6,node-3
+06:34,1731911687649413621,frontend,request complete,pod-1,node-1
+06:34,1731911688292510554,frontend,request started,pod-1,node-1
+06:34,1731911688292532744,frontend,serving product page,pod-1,node-1
+06:34,1731911688296603359,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911688301535815,cartservice,GetCartAsync called with userId=65f4eef7-6576-4be2-805b-c27cafa8ee53,pod-3,node-3
+06:34,1731911688308127421,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911688315790563,recommendationservice,"[Recv ListRecommendations] product_ids=['66VCHSJNUP', '1YMWWN1N4O', '0PUK6V6EV0', '9SIQT8TOJO', '2ZYFJ3GM2N']",pod-4,node-2
+06:34,1731911688327396537,adservice,received ad request (context_words=[accessories]),pod-6,node-3
+06:34,1731911688329720418,frontend,request complete,pod-1,node-1
+06:34,1731911688783327013,frontend,request started,pod-1,node-1
+06:34,1731911688783346478,frontend,home,pod-1,node-1
+06:34,1731911688785404012,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911688792476550,cartservice,GetCartAsync called with userId=cc66be0e-8e02-45b2-add1-49cd8f1b4b03,pod-3,node-3
+06:34,1731911688799047090,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911688802197530,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911688805285988,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911688808748903,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911688812138312,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911688816109242,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911688819577026,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911688823277463,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911688826672693,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911688833074951,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+06:34,1731911688834761348,adservice,received ad request (context_words=[]),pod-6,node-3
+06:34,1731911688837581665,frontend,request complete,pod-1,node-1
+06:34,1731911689047393790,emailservice,starting the email service in dummy mode.,pod-7,node-2
+06:34,1731911689047423137,emailservice,Profiler disabled.,pod-7,node-2
+06:34,1731911689095200999,frontend,request started,pod-1,node-1
+06:34,1731911689095219007,frontend,serving product page,pod-1,node-1
+06:34,1731911689099195347,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911689103019895,cartservice,GetCartAsync called with userId=49eac425-0b6d-4e41-b8ac-4be1a27aeb58,pod-3,node-3
+06:34,1731911689109045217,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689116972202,recommendationservice,"[Recv ListRecommendations] product_ids=['OLJCESPC7Z', 'L9ECAV7KIM', '1YMWWN1N4O', '66VCHSJNUP', 'LS4PSXUNUM']",pod-4,node-2
+06:34,1731911689127665815,adservice,received ad request (context_words=[kitchen]),pod-6,node-3
+06:34,1731911689130109405,frontend,request complete,pod-1,node-1
+06:34,1731911689143255980,emailservice,"Traceback (most recent call last):
+  File ""/email_server/email_server.py"", line 199, in <module>
+    start(dummy_mode = True)
+  File ""/email_server/email_server.py"", line 127, in start
+    health_pb2_grpc.add_HealthServicer_to_server(server, service)
+  File ""/usr/local/lib/python3.12/site-packages/grpc_health/v1/health_pb2_grpc.py"", line 65, in add_HealthServicer_to_server
+    servicer.Check,
+    ^^^^^^^^^^^^^^",pod-7,node-2
+06:34,1731911689143792766,emailservice,AttributeError: '_Server' object has no attribute 'Check',pod-7,node-2
+06:34,1731911689431891405,frontend,request started,pod-1,node-1
+06:34,1731911689431906972,frontend,serving product page,pod-1,node-1
+06:34,1731911689435319624,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911689435677071,frontend,request started,pod-1,node-1
+06:34,1731911689435695724,frontend,setting currency,pod-1,node-1
+06:34,1731911689435697988,frontend,request complete,pod-1,node-1
+06:34,1731911689438178656,frontend,request started,pod-1,node-1
+06:34,1731911689438185180,frontend,home,pod-1,node-1
+06:34,1731911689439464371,cartservice,GetCartAsync called with userId=58e83383-a5c9-4a61-9291-cb65bc2a888b,pod-3,node-3
+06:34,1731911689439735073,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911689445729098,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689445872696,cartservice,GetCartAsync called with userId=736a09b5-665e-4823-8520-b8602b0bdbff,pod-3,node-3
+06:34,1731911689451125990,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689452376346,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', 'OLJCESPC7Z', '6E92ZMYYFZ', '2ZYFJ3GM2N', '0PUK6V6EV0']",pod-4,node-2
+06:34,1731911689454400406,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689457560742,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689460790451,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689463816805,adservice,"received ad request (context_words=[clothing, tops])",pod-6,node-3
+06:34,1731911689464237591,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689465861891,frontend,request complete,pod-1,node-1
+06:34,1731911689467505490,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689470924990,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689474685045,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689477713355,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689482711106,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+06:34,1731911689486195116,adservice,received ad request (context_words=[]),pod-6,node-3
+06:34,1731911689486958141,frontend,request started,pod-1,node-1
+06:34,1731911689487022129,frontend,view user cart,pod-1,node-1
+06:34,1731911689487279177,frontend,request complete,pod-1,node-1
+06:34,1731911689488938005,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911689493573328,cartservice,GetCartAsync called with userId=5e004f2d-a61a-45b2-840d-6bfd47a2be43,pod-3,node-3
+06:34,1731911689502707700,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', '9SIQT8TOJO', 'OLJCESPC7Z', 'L9ECAV7KIM', '1YMWWN1N4O']",pod-4,node-2
+06:34,1731911689511756740,shippingservice,[GetQuote] received request,pod-5,node-2
+06:34,1731911689511767957,shippingservice,[GetQuote] completed request,pod-5,node-2
+06:34,1731911689511914007,frontend,request started,pod-1,node-1
+06:34,1731911689511923916,frontend,serving product page,pod-1,node-1
+06:34,1731911689514806890,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689516152451,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911689517152147,frontend,request complete,pod-1,node-1
+06:34,1731911689520108574,cartservice,GetCartAsync called with userId=d4e28c38-1561-4a66-b120-02013f892c20,pod-3,node-3
+06:34,1731911689525705720,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689532145496,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', 'L9ECAV7KIM', '66VCHSJNUP', '1YMWWN1N4O', '2ZYFJ3GM2N']",pod-4,node-2
+06:34,1731911689544984987,adservice,"received ad request (context_words=[decor, home])",pod-6,node-3
+06:34,1731911689547136864,frontend,request complete,pod-1,node-1
+06:34,1731911689550786024,frontend,request started,pod-1,node-1
+06:34,1731911689550800642,frontend,adding to cart,pod-1,node-1
+06:34,1731911689554359791,cartservice,"AddItemAsync called with userId=d4e28c38-1561-4a66-b120-02013f892c20, productId=0PUK6V6EV0, quantity=4",pod-3,node-3
+06:34,1731911689560810353,frontend,request complete,pod-1,node-1
+06:34,1731911689563204601,frontend,request started,pod-1,node-1
+06:34,1731911689563212150,frontend,view user cart,pod-1,node-1
+06:34,1731911689564969413,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911689568613155,cartservice,GetCartAsync called with userId=d4e28c38-1561-4a66-b120-02013f892c20,pod-3,node-3
+06:34,1731911689578157470,recommendationservice,"[Recv ListRecommendations] product_ids=['66VCHSJNUP', '6E92ZMYYFZ', 'LS4PSXUNUM', 'L9ECAV7KIM', 'OLJCESPC7Z']",pod-4,node-2
+06:34,1731911689587963742,shippingservice,[GetQuote] received request,pod-5,node-2
+06:34,1731911689587978132,shippingservice,[GetQuote] completed request,pod-5,node-2
+06:34,1731911689601454526,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689607444563,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689609811643,frontend,request complete,pod-1,node-1
+06:34,1731911689613395066,frontend,request started,pod-1,node-1
+06:34,1731911689613404755,frontend,placing order,pod-1,node-1
+06:34,1731911689615030434,checkoutservice,"[PlaceOrder] user_id=""d4e28c38-1561-4a66-b120-02013f892c20"" user_currency=""JPY""",pod-8,node-1
+06:34,1731911689616535401,cartservice,GetCartAsync called with userId=d4e28c38-1561-4a66-b120-02013f892c20,pod-3,node-3
+06:34,1731911689630790392,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689634113620,shippingservice,[GetQuote] received request,pod-5,node-2
+06:34,1731911689634126148,shippingservice,[GetQuote] completed request,pod-5,node-2
+06:34,1731911689637004861,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689641769663,paymentservice,"PaymentService#Charge invoked with request {""amount"":{""currency_code"":""JPY"",""units"":""9498"",""nanos"":168952016},""credit_card"":{""credit_card_number"":""[redacted]"",""credit_card_cvv"":458,""credit_card_expiration_year"":2025,""credit_card_expiration_month"":7}}",pod-9,node-3
+06:34,1731911689641791647,paymentservice,Transaction processed: visa ending 0084     Amount: JPY9498.168952016,pod-9,node-3
+06:34,1731911689644734085,checkoutservice,payment went through (transaction_id: 8fc78c3a-a411-488d-8808-f5f492aec7f3),pod-8,node-1
+06:34,1731911689645646310,shippingservice,[ShipOrder] received request,pod-5,node-2
+06:34,1731911689645658419,shippingservice,[ShipOrder] completed request,pod-5,node-2
+06:34,1731911689648788203,cartservice,EmptyCartAsync called with userId=d4e28c38-1561-4a66-b120-02013f892c20,pod-3,node-3
+06:34,1731911689784989831,checkoutservice,"failed to send order confirmation to ""[email]"": rpc error: code = Unavailable desc = no healthy upstream",pod-8,node-1
+06:34,1731911689786277043,frontend,order placed,pod-1,node-1
+06:34,1731911689791930273,recommendationservice,"[Recv ListRecommendations] product_ids=['2ZYFJ3GM2N', '9SIQT8TOJO', 'OLJCESPC7Z', '6E92ZMYYFZ', '1YMWWN1N4O']",pod-4,node-2
+06:34,1731911689800834548,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911689803388712,frontend,request complete,pod-1,node-1
+06:34,1731911689841715084,frontend,request started,pod-1,node-1
+06:34,1731911689841727389,frontend,serving product page,pod-1,node-1
+06:34,1731911689845279137,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911689848956618,cartservice,GetCartAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add,pod-3,node-3
+06:34,1731911689854946895,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911689862708375,recommendationservice,"[Recv ListRecommendations] product_ids=['2ZYFJ3GM2N', '0PUK6V6EV0', 'L9ECAV7KIM', 'LS4PSXUNUM', '6E92ZMYYFZ']",pod-4,node-2
+06:34,1731911689871816645,adservice,received ad request (context_words=[accessories]),pod-6,node-3
+06:34,1731911689874840790,frontend,request complete,pod-1,node-1
+06:34,1731911690078488241,frontend,request started,pod-1,node-1
+06:34,1731911690078506273,frontend,serving product page,pod-1,node-1
+06:34,1731911690081681426,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911690086488097,cartservice,GetCartAsync called with userId=b63bea0e-d05f-4589-be71-8fef43557432,pod-3,node-3
+06:34,1731911690091257180,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911690099167130,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', 'OLJCESPC7Z', '9SIQT8TOJO', 'L9ECAV7KIM', 'LS4PSXUNUM']",pod-4,node-2
+06:34,1731911690111939395,adservice,"received ad request (context_words=[clothing, tops])",pod-6,node-3
+06:34,1731911690114437260,frontend,request complete,pod-1,node-1
+06:34,1731911690153804939,frontend,request started,pod-1,node-1
+06:34,1731911690153814168,frontend,view user cart,pod-1,node-1
+06:34,1731911690155738157,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911690160078520,cartservice,GetCartAsync called with userId=33421b66-55b6-413b-9ba9-3230c85c58dc,pod-3,node-3
+06:34,1731911690170513018,recommendationservice,"[Recv ListRecommendations] product_ids=['LS4PSXUNUM', 'L9ECAV7KIM', '66VCHSJNUP', '0PUK6V6EV0', '9SIQT8TOJO']",pod-4,node-2
+06:34,1731911690180812671,shippingservice,[GetQuote] received request,pod-5,node-2
+06:34,1731911690180826426,shippingservice,[GetQuote] completed request,pod-5,node-2
+06:34,1731911690184214941,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911690188878320,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911690193127014,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911690197207539,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911690201337160,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911690203760118,frontend,request complete,pod-1,node-1
+06:34,1731911690368857906,frontend,request started,pod-1,node-1
+06:34,1731911690368884328,frontend,serving product page,pod-1,node-1
+06:34,1731911690372442017,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911690376672484,cartservice,GetCartAsync called with userId=adf41e5f-12f6-4c40-88a0-a1bcf421e416,pod-3,node-3
+06:34,1731911690383098274,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911690390431418,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', 'LS4PSXUNUM', 'L9ECAV7KIM', '0PUK6V6EV0', '66VCHSJNUP']",pod-4,node-2
+06:34,1731911690400176218,adservice,"received ad request (context_words=[hair, beauty])",pod-6,node-3
+06:34,1731911690401990138,frontend,request complete,pod-1,node-1
+06:34,1731911690699131141,frontend,request started,pod-1,node-1
+06:34,1731911690699152653,frontend,serving product page,pod-1,node-1
+06:34,1731911690703055000,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911690707456094,cartservice,GetCartAsync called with userId=acc735c5-72d0-48e6-b237-46a63eac4c4d,pod-3,node-3
+06:34,1731911690715364766,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911690723018762,recommendationservice,"[Recv ListRecommendations] product_ids=['LS4PSXUNUM', 'OLJCESPC7Z', '1YMWWN1N4O', 'L9ECAV7KIM', '9SIQT8TOJO']",pod-4,node-2
+06:34,1731911690734758880,adservice,received ad request (context_words=[kitchen]),pod-6,node-3
+06:34,1731911690737018506,frontend,request complete,pod-1,node-1
+06:34,1731911690754486639,frontend,request started,pod-1,node-1
+06:34,1731911690754670105,frontend,serving product page,pod-1,node-1
+06:34,1731911690757953729,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911690761586538,cartservice,GetCartAsync called with userId=418ce0b6-15a4-4228-a6cf-27e322509121,pod-3,node-3
+06:34,1731911690767691807,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911690776141950,recommendationservice,"[Recv ListRecommendations] product_ids=['LS4PSXUNUM', '2ZYFJ3GM2N', '6E92ZMYYFZ', 'OLJCESPC7Z', 'L9ECAV7KIM']",pod-4,node-2
+06:34,1731911690805203722,adservice,"received ad request (context_words=[clothing, tops])",pod-6,node-3
+06:34,1731911690808039061,frontend,request complete,pod-1,node-1
+06:34,1731911692321089133,frontend,request started,pod-1,node-1
+06:34,1731911692321108752,frontend,view user cart,pod-1,node-1
+06:34,1731911692323142066,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911692327847583,cartservice,GetCartAsync called with userId=fd2169a6-17e7-4d0e-9b57-1a8b67c1ae1a,pod-3,node-3
+06:34,1731911692337799961,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', '2ZYFJ3GM2N', 'OLJCESPC7Z', '66VCHSJNUP', 'LS4PSXUNUM']",pod-4,node-2
+06:34,1731911692349319325,shippingservice,[GetQuote] received request,pod-5,node-2
+06:34,1731911692349331840,shippingservice,[GetQuote] completed request,pod-5,node-2
+06:34,1731911692352001240,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911692354795962,frontend,request complete,pod-1,node-1
+06:34,1731911692775605837,frontend,request started,pod-1,node-1
+06:34,1731911692775618335,frontend,serving product page,pod-1,node-1
+06:34,1731911692779417577,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911692783282164,cartservice,GetCartAsync called with userId=f3509d43-91d9-45a0-a174-70f597a55fb4,pod-3,node-3
+06:34,1731911692788234349,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911692795910348,recommendationservice,"[Recv ListRecommendations] product_ids=['66VCHSJNUP', 'LS4PSXUNUM', '0PUK6V6EV0', '6E92ZMYYFZ', 'L9ECAV7KIM']",pod-4,node-2
+06:34,1731911692805054426,adservice,received ad request (context_words=[accessories]),pod-6,node-3
+06:34,1731911692806940802,frontend,request complete,pod-1,node-1
+06:34,1731911693430740822,frontend,request started,pod-1,node-1
+06:34,1731911693430767023,frontend,serving product page,pod-1,node-1
+06:34,1731911693434130765,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911693438050200,cartservice,GetCartAsync called with userId=49eac425-0b6d-4e41-b8ac-4be1a27aeb58,pod-3,node-3
+06:34,1731911693443142698,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911693450868330,recommendationservice,"[Recv ListRecommendations] product_ids=['LS4PSXUNUM', '66VCHSJNUP', '0PUK6V6EV0', '6E92ZMYYFZ', '1YMWWN1N4O']",pod-4,node-2
+06:34,1731911693459140842,frontend,request started,pod-1,node-1
+06:34,1731911693459162794,frontend,serving product page,pod-1,node-1
+06:34,1731911693462020482,currencyservice,Getting supported currencies...,pod-2,node-2
+06:34,1731911693463230255,adservice,received ad request (context_words=[accessories]),pod-6,node-3
+06:34,1731911693464790563,frontend,request complete,pod-1,node-1
+06:34,1731911693466527599,cartservice,GetCartAsync called with userId=e68474c6-7c27-4a5d-9e2c-d5e430b87e55,pod-3,node-3
+06:34,1731911693471118070,currencyservice,conversion request successful,pod-2,node-2
+06:34,1731911693477267492,recommendationservice,"[Recv ListRecommendations] product_ids=['OLJCESPC7Z', 'LS4PSXUNUM', 'L9ECAV7KIM', '1YMWWN1N4O', '0PUK6V6EV0']",pod-4,node-2
+06:34,1731911693487812487,adservice,"received ad request (context_words=[hair, beauty])",pod-6,node-3
+06:34,1731911693489543465,frontend,request complete,pod-1,node-1
+06:34,1731911693667884337,frontend,request started,pod-1,node-1
+06:34,1731911693667899236,frontend,setting currency,pod-1,node-1
+06:34,1731911693667901301,frontend,request complete,pod-1,node-1
+06:34,1731911693671047230,frontend,request started,pod-1,node-1

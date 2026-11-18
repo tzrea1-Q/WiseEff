@@ -1,0 +1,380 @@
+05:17,1731907061747109619,frontend,serving product page,pod-1,node-1
+05:17,1731907061751397447,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907061755243109,cartservice,GetCartAsync called with userId=c216dec4-2181-4773-8cc5-aa587ee59fcc,pod-3,node-3
+05:17,1731907061760270598,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907061767976260,recommendationservice,"[Recv ListRecommendations] product_ids=['OLJCESPC7Z', '9SIQT8TOJO', '1YMWWN1N4O', 'LS4PSXUNUM', '6E92ZMYYFZ']",pod-4,node-2
+05:17,1731907061810874247,frontend,request started,pod-1,node-1
+05:17,1731907061810899149,frontend,view user cart,pod-1,node-1
+05:17,1731907061812645580,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907061816804436,cartservice,GetCartAsync called with userId=b63bea0e-d05f-4589-be71-8fef43557432,pod-3,node-3
+05:17,1731907061826836953,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', 'LS4PSXUNUM', '1YMWWN1N4O', '2ZYFJ3GM2N', 'OLJCESPC7Z']",pod-4,node-2
+05:17,1731907061836386519,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907061836399866,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907061838759332,frontend,request started,pod-1,node-1
+05:17,1731907061838779031,frontend,serving product page,pod-1,node-1
+05:17,1731907061841232860,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907061842888490,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907061846602791,cartservice,GetCartAsync called with userId=58e83383-a5c9-4a61-9291-cb65bc2a888b,pod-3,node-3
+05:17,1731907061846757456,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907061850740750,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907061852290784,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907061857592740,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907061859108034,recommendationservice,"[Recv ListRecommendations] product_ids=['1YMWWN1N4O', 'LS4PSXUNUM', '66VCHSJNUP', '9SIQT8TOJO', '0PUK6V6EV0']",pod-4,node-2
+05:17,1731907061860261415,frontend,request complete,pod-1,node-1
+05:17,1731907061876321428,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907061876771694,frontend,request complete,pod-1,node-1
+05:17,1731907061969413040,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907061969429902,frontend,request complete,pod-1,node-1
+05:17,1731907062078413685,frontend,request started,pod-1,node-1
+05:17,1731907062078429478,frontend,view user cart,pod-1,node-1
+05:17,1731907062080239363,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907062084072543,cartservice,GetCartAsync called with userId=0ae6d9b6-4e7f-4d38-a0eb-042389dcac30,pod-3,node-3
+05:17,1731907062093955675,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', 'LS4PSXUNUM', '1YMWWN1N4O', '6E92ZMYYFZ', 'L9ECAV7KIM']",pod-4,node-2
+05:17,1731907062104486937,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907062104506874,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907062108175943,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907062111465160,frontend,request complete,pod-1,node-1
+05:17,1731907062377477817,frontend,request started,pod-1,node-1
+05:17,1731907062377495094,frontend,view user cart,pod-1,node-1
+05:17,1731907062379434551,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907062383690824,cartservice,GetCartAsync called with userId=0727db9d-83b9-44b7-acab-68a4f8f289c0,pod-3,node-3
+05:17,1731907062394399710,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', '0PUK6V6EV0', 'LS4PSXUNUM', 'L9ECAV7KIM', '66VCHSJNUP']",pod-4,node-2
+05:17,1731907062404380985,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907062404394275,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907062407563787,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907062412114947,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907062414835425,frontend,request complete,pod-1,node-1
+05:17,1731907062978558716,frontend,request started,pod-1,node-1
+05:17,1731907062978576565,frontend,serving product page,pod-1,node-1
+05:17,1731907062981959417,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907062987022487,cartservice,GetCartAsync called with userId=82f11995-8adf-4db5-b1c6-416954168927,pod-3,node-3
+05:17,1731907062993259215,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907063001013526,recommendationservice,"[Recv ListRecommendations] product_ids=['L9ECAV7KIM', '9SIQT8TOJO', '1YMWWN1N4O', '2ZYFJ3GM2N', '0PUK6V6EV0']",pod-4,node-2
+05:17,1731907063073498350,frontend,request started,pod-1,node-1
+05:17,1731907063073517590,frontend,view user cart,pod-1,node-1
+05:17,1731907063075008509,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907063079857976,cartservice,GetCartAsync called with userId=f3509d43-91d9-45a0-a174-70f597a55fb4,pod-3,node-3
+05:17,1731907063090791151,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', '6E92ZMYYFZ', '66VCHSJNUP', '0PUK6V6EV0', '1YMWWN1N4O']",pod-4,node-2
+05:17,1731907063100033594,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907063100046054,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907063104090099,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907063108965703,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907063111965263,frontend,request complete,pod-1,node-1
+05:17,1731907063113598520,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907063113604996,frontend,request complete,pod-1,node-1
+05:17,1731907063116161354,frontend,request started,pod-1,node-1
+05:17,1731907063116170729,frontend,adding to cart,pod-1,node-1
+05:17,1731907063118561530,cartservice,"AddItemAsync called with userId=82f11995-8adf-4db5-b1c6-416954168927, productId=66VCHSJNUP, quantity=7",pod-3,node-3
+05:17,1731907063125632205,frontend,request complete,pod-1,node-1
+05:17,1731907063128598741,frontend,request started,pod-1,node-1
+05:17,1731907063128607087,frontend,view user cart,pod-1,node-1
+05:17,1731907063129936271,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907063133952687,cartservice,GetCartAsync called with userId=82f11995-8adf-4db5-b1c6-416954168927,pod-3,node-3
+05:17,1731907063142309282,recommendationservice,"[Recv ListRecommendations] product_ids=['1YMWWN1N4O', 'L9ECAV7KIM', 'LS4PSXUNUM', '0PUK6V6EV0', 'OLJCESPC7Z']",pod-4,node-2
+05:17,1731907063152971102,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907063152985433,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907063158133870,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907063163921439,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907063166065725,frontend,request complete,pod-1,node-1
+05:17,1731907063246830237,frontend,request started,pod-1,node-1
+05:17,1731907063246852021,frontend,serving product page,pod-1,node-1
+05:17,1731907063250077143,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907063254017395,cartservice,GetCartAsync called with userId=e68474c6-7c27-4a5d-9e2c-d5e430b87e55,pod-3,node-3
+05:17,1731907063259545075,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907063267457863,recommendationservice,"[Recv ListRecommendations] product_ids=['OLJCESPC7Z', '6E92ZMYYFZ', '2ZYFJ3GM2N', 'LS4PSXUNUM', 'L9ECAV7KIM']",pod-4,node-2
+05:17,1731907063377308593,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907063377328644,frontend,request complete,pod-1,node-1
+05:17,1731907063428946502,frontend,request started,pod-1,node-1
+05:17,1731907063428964839,frontend,serving product page,pod-1,node-1
+05:17,1731907063432756491,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907063436968409,cartservice,GetCartAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add,pod-3,node-3
+05:17,1731907063443161950,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907063451733059,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', '2ZYFJ3GM2N', '9SIQT8TOJO', 'L9ECAV7KIM', '66VCHSJNUP']",pod-4,node-2
+05:17,1731907063561182883,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907063561492738,frontend,request complete,pod-1,node-1
+05:17,1731907063747016165,adservice,AdService starting.,pod-6,node-2
+05:17,1731907063839696607,adservice,"Stats enabled, but temporarily unavailable",pod-6,node-2
+05:17,1731907063840792368,adservice,Tracing enabled but temporarily unavailable,pod-6,node-2
+05:17,1731907063841552333,adservice,See https://github.com/GoogleCloudPlatform/microservices-demo/issues/422 for more info.,pod-6,node-2
+05:17,1731907063842289197,adservice,Tracing enabled - Stackdriver exporter initialized.,pod-6,node-2
+05:17,1731907064352929434,frontend,request started,pod-1,node-1
+05:17,1731907064352949047,frontend,serving product page,pod-1,node-1
+05:17,1731907064356701898,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907064361256871,cartservice,GetCartAsync called with userId=acc735c5-72d0-48e6-b237-46a63eac4c4d,pod-3,node-3
+05:17,1731907064367159911,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907064376023995,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', '2ZYFJ3GM2N', '0PUK6V6EV0', '9SIQT8TOJO', 'L9ECAV7KIM']",pod-4,node-2
+05:17,1731907064486352539,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907064486580710,frontend,request complete,pod-1,node-1
+05:17,1731907064556675573,frontend,request started,pod-1,node-1
+05:17,1731907064556694714,frontend,serving product page,pod-1,node-1
+05:17,1731907064560379195,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907064565517654,cartservice,GetCartAsync called with userId=418ce0b6-15a4-4228-a6cf-27e322509121,pod-3,node-3
+05:17,1731907064572106243,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907064578902621,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', 'LS4PSXUNUM', '1YMWWN1N4O', '66VCHSJNUP', '2ZYFJ3GM2N']",pod-4,node-2
+05:17,1731907064687633766,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907064687877002,frontend,request complete,pod-1,node-1
+05:17,1731907064983174967,frontend,request started,pod-1,node-1
+05:17,1731907064983192202,frontend,setting currency,pod-1,node-1
+05:17,1731907064983307876,frontend,request complete,pod-1,node-1
+05:17,1731907064985692511,frontend,request started,pod-1,node-1
+05:17,1731907064985698875,frontend,home,pod-1,node-1
+05:17,1731907064987474964,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907064993944260,cartservice,GetCartAsync called with userId=0727db9d-83b9-44b7-acab-68a4f8f289c0,pod-3,node-3
+05:17,1731907064998766641,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065002580047,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065006358152,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065009248696,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065012684257,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065016487178,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065019828716,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065023792017,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065027825029,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065034801359,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+05:17,1731907065135226882,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907065135795950,frontend,request complete,pod-1,node-1
+05:17,1731907065161386420,frontend,request started,pod-1,node-1
+05:17,1731907065161403065,frontend,view user cart,pod-1,node-1
+05:17,1731907065163688763,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907065167586735,cartservice,GetCartAsync called with userId=e68474c6-7c27-4a5d-9e2c-d5e430b87e55,pod-3,node-3
+05:17,1731907065176878469,recommendationservice,"[Recv ListRecommendations] product_ids=['66VCHSJNUP', 'L9ECAV7KIM', '0PUK6V6EV0']",pod-4,node-2
+05:17,1731907065186637578,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907065186649748,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907065189374551,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065194327856,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065196527263,frontend,request started,pod-1,node-1
+05:17,1731907065196672340,frontend,setting currency,pod-1,node-1
+05:17,1731907065196780099,frontend,request complete,pod-1,node-1
+05:17,1731907065199132319,frontend,request started,pod-1,node-1
+05:17,1731907065199139341,frontend,home,pod-1,node-1
+05:17,1731907065200047200,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065201505854,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907065205577664,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065208773580,cartservice,GetCartAsync called with userId=736a09b5-665e-4823-8520-b8602b0bdbff,pod-3,node-3
+05:17,1731907065210015326,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065215430171,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065216406781,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065219467349,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065220557926,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065222886881,frontend,request complete,pod-1,node-1
+05:17,1731907065222897372,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065226303385,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065229410756,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065240029498,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065244176963,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065247816884,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065250873521,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065258076664,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+05:17,1731907065358522809,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907065358826006,frontend,request complete,pod-1,node-1
+05:17,1731907065449948926,adservice,"Exception in thread ""main"" java.io.IOException: Failed to bind to address 0.0.0.0/0.0.0.0:15000
+	at io.grpc.netty.NettyServer.start(NettyServer.java:333)
+	at io.grpc.internal.ServerImpl.start(ServerImpl.java:185)
+	at io.grpc.internal.ServerImpl.start(ServerImpl.java:94)
+	at hipstershop.AdService.start(AdService.java:63)
+	at hipstershop.AdService.main(AdService.java:236)",pod-6,node-2
+05:17,1731907065450477907,adservice,"Caused by: java.net.BindException: Address in use
+	at java.base/sun.nio.ch.Net.bind0(Native Method)
+	at java.base/sun.nio.ch.Net.bind(Unknown Source)
+	at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(Unknown Source)
+	at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(Unknown Source)
+	at io.netty.channel.socket.nio.NioServerSocketChannel.doBind(NioServerSocketChannel.java:141)
+	at io.netty.channel.AbstractChannel$AbstractUnsafe.bind(AbstractChannel.java:562)
+	at io.netty.channel.DefaultChannelPipeline$HeadContext.bind(DefaultChannelPipeline.java:1334)
+	at io.netty.channel.AbstractChannelHandlerContext.invokeBind(AbstractChannelHandlerContext.java:600)
+	at io.netty.channel.AbstractChannelHandlerContext.bind(AbstractChannelHandlerContext.java:579)
+	at io.netty.channel.DefaultChannelPipeline.bind(DefaultChannelPipeline.java:973)
+	at io.netty.channel.AbstractChannel.bind(AbstractChannel.java:260)
+	at io.netty.bootstrap.AbstractBootstrap$2.run(AbstractBootstrap.java:356)
+	at io.netty.util.concurrent.AbstractEventExecutor.runTask(AbstractEventExecutor.java:173)
+	at io.netty.util.concurrent.AbstractEventExecutor.safeExecute(AbstractEventExecutor.java:166)
+	at io.netty.util.concurrent.SingleThreadEventExecutor.runAllTasks(SingleThreadEventExecutor.java:470)
+	at io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:569)
+	at io.netty.util.concurrent.SingleThreadEventExecutor$4.run(SingleThreadEventExecutor.java:997)
+	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+	at java.base/java.lang.Thread.run(Unknown Source)",pod-6,node-2
+05:17,1731907065904999226,frontend,request started,pod-1,node-1
+05:17,1731907065905015244,frontend,serving product page,pod-1,node-1
+05:17,1731907065908212060,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907065912693332,cartservice,GetCartAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add,pod-3,node-3
+05:17,1731907065917812505,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907065924475197,recommendationservice,"[Recv ListRecommendations] product_ids=['0PUK6V6EV0', 'LS4PSXUNUM', '2ZYFJ3GM2N', 'OLJCESPC7Z', 'L9ECAV7KIM']",pod-4,node-2
+05:17,1731907065999291383,frontend,request started,pod-1,node-1
+05:17,1731907065999372680,frontend,setting currency,pod-1,node-1
+05:17,1731907065999439767,frontend,request complete,pod-1,node-1
+05:17,1731907066002591968,frontend,request started,pod-1,node-1
+05:17,1731907066002597917,frontend,home,pod-1,node-1
+05:17,1731907066004112265,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907066010035476,cartservice,GetCartAsync called with userId=65f4eef7-6576-4be2-805b-c27cafa8ee53,pod-3,node-3
+05:17,1731907066015118241,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066018734489,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066022246304,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066025867525,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066028920844,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066032085606,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066033517818,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907066033528469,frontend,request complete,pod-1,node-1
+05:17,1731907066035325679,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066035674533,frontend,request started,pod-1,node-1
+05:17,1731907066035726035,frontend,adding to cart,pod-1,node-1
+05:17,1731907066038321657,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066039209707,cartservice,"AddItemAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add, productId=9SIQT8TOJO, quantity=2",pod-3,node-3
+05:17,1731907066041250931,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066043921283,frontend,request complete,pod-1,node-1
+05:17,1731907066046402002,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+05:17,1731907066046498143,frontend,request started,pod-1,node-1
+05:17,1731907066046505055,frontend,view user cart,pod-1,node-1
+05:17,1731907066047789377,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907066051702579,cartservice,GetCartAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add,pod-3,node-3
+05:17,1731907066061294078,recommendationservice,"[Recv ListRecommendations] product_ids=['0PUK6V6EV0', '66VCHSJNUP', 'LS4PSXUNUM', 'L9ECAV7KIM', '1YMWWN1N4O']",pod-4,node-2
+05:17,1731907066072339136,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907066072353448,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907066075082670,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066079877616,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066085617882,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066090527700,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066092958342,frontend,request complete,pod-1,node-1
+05:17,1731907066146096368,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907066146133905,frontend,request complete,pod-1,node-1
+05:17,1731907066383765671,frontend,request started,pod-1,node-1
+05:17,1731907066383779329,frontend,serving product page,pod-1,node-1
+05:17,1731907066388433403,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907066393045832,cartservice,GetCartAsync called with userId=5e004f2d-a61a-45b2-840d-6bfd47a2be43,pod-3,node-3
+05:17,1731907066400780091,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066408927974,recommendationservice,"[Recv ListRecommendations] product_ids=['2ZYFJ3GM2N', '1YMWWN1N4O', 'OLJCESPC7Z', 'LS4PSXUNUM', '0PUK6V6EV0']",pod-4,node-2
+05:17,1731907066419917043,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907066420360231,frontend,request complete,pod-1,node-1
+05:17,1731907066790708183,frontend,request started,pod-1,node-1
+05:17,1731907066791106150,frontend,home,pod-1,node-1
+05:17,1731907066793038413,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907066799326120,cartservice,GetCartAsync called with userId=49eac425-0b6d-4e41-b8ac-4be1a27aeb58,pod-3,node-3
+05:17,1731907066804817395,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066808081395,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066811560034,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066814538908,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066818025206,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066821218526,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066824413343,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066828005758,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066831512143,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066839160171,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+05:17,1731907066839520041,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907066839880681,frontend,request complete,pod-1,node-1
+05:17,1731907066843061503,frontend,request started,pod-1,node-1
+05:17,1731907066843067561,frontend,view user cart,pod-1,node-1
+05:17,1731907066844131362,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907066849353404,cartservice,GetCartAsync called with userId=fd2169a6-17e7-4d0e-9b57-1a8b67c1ae1a,pod-3,node-3
+05:17,1731907066859865945,recommendationservice,"[Recv ListRecommendations] product_ids=['LS4PSXUNUM', '2ZYFJ3GM2N']",pod-4,node-2
+05:17,1731907066865658809,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907066865671951,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907066868457499,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066872818357,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066877603339,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066881595637,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066886403632,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066891195142,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066895585179,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066900275649,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907066902900314,frontend,request complete,pod-1,node-1
+05:17,1731907067422643085,frontend,request started,pod-1,node-1
+05:17,1731907067422662807,frontend,view user cart,pod-1,node-1
+05:17,1731907067424608649,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907067429193797,cartservice,GetCartAsync called with userId=0ae6d9b6-4e7f-4d38-a0eb-042389dcac30,pod-3,node-3
+05:17,1731907067440127071,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', 'L9ECAV7KIM', '2ZYFJ3GM2N', '1YMWWN1N4O', '66VCHSJNUP']",pod-4,node-2
+05:17,1731907067450851530,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907067450866724,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907067454030479,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907067456627620,frontend,request complete,pod-1,node-1
+05:17,1731907067730599636,frontend,request started,pod-1,node-1
+05:17,1731907067730621777,frontend,serving product page,pod-1,node-1
+05:17,1731907067735032016,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907067739303330,cartservice,GetCartAsync called with userId=5e004f2d-a61a-45b2-840d-6bfd47a2be43,pod-3,node-3
+05:17,1731907067745630147,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907067753570965,recommendationservice,"[Recv ListRecommendations] product_ids=['0PUK6V6EV0', 'L9ECAV7KIM', '1YMWWN1N4O', '2ZYFJ3GM2N', '66VCHSJNUP']",pod-4,node-2
+05:17,1731907067762986807,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907067763807939,frontend,request complete,pod-1,node-1
+05:17,1731907068026365333,frontend,request started,pod-1,node-1
+05:17,1731907068026382576,frontend,serving product page,pod-1,node-1
+05:17,1731907068029747911,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907068033678872,cartservice,GetCartAsync called with userId=cc66be0e-8e02-45b2-add1-49cd8f1b4b03,pod-3,node-3
+05:17,1731907068039954170,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907068047984683,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', '66VCHSJNUP', 'OLJCESPC7Z', '2ZYFJ3GM2N', '1YMWWN1N4O']",pod-4,node-2
+05:17,1731907068056662437,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907068056709334,frontend,request complete,pod-1,node-1
+05:17,1731907068139094403,frontend,request started,pod-1,node-1
+05:17,1731907068139109222,frontend,serving product page,pod-1,node-1
+05:17,1731907068142227205,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907068146445664,cartservice,GetCartAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add,pod-3,node-3
+05:17,1731907068151724373,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907068159363003,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', 'OLJCESPC7Z', '66VCHSJNUP', '2ZYFJ3GM2N', 'LS4PSXUNUM']",pod-4,node-2
+05:17,1731907068169892493,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907068170137621,frontend,request complete,pod-1,node-1
+05:17,1731907068322774048,frontend,request started,pod-1,node-1
+05:17,1731907068322792865,frontend,view user cart,pod-1,node-1
+05:17,1731907068324057426,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907068328391040,cartservice,GetCartAsync called with userId=d4e28c38-1561-4a66-b120-02013f892c20,pod-3,node-3
+05:17,1731907068338996584,recommendationservice,"[Recv ListRecommendations] product_ids=['0PUK6V6EV0', 'L9ECAV7KIM', '2ZYFJ3GM2N', '66VCHSJNUP', 'OLJCESPC7Z']",pod-4,node-2
+05:17,1731907068352028180,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907068352133027,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907068355660201,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907068358626987,frontend,request complete,pod-1,node-1
+05:17,1731907068561478987,frontend,request started,pod-1,node-1
+05:17,1731907068561495112,frontend,view user cart,pod-1,node-1
+05:17,1731907068563230521,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907068567398177,cartservice,GetCartAsync called with userId=33421b66-55b6-413b-9ba9-3230c85c58dc,pod-3,node-3
+05:17,1731907068577072595,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', '2ZYFJ3GM2N', '9SIQT8TOJO', 'LS4PSXUNUM', '66VCHSJNUP']",pod-4,node-2
+05:17,1731907068586860251,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907068586874648,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907068589828055,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907068592497805,frontend,request complete,pod-1,node-1
+05:17,1731907069359129549,frontend,request started,pod-1,node-1
+05:17,1731907069359157514,frontend,serving product page,pod-1,node-1
+05:17,1731907069363196760,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907069366652496,frontend,request started,pod-1,node-1
+05:17,1731907069366666559,frontend,serving product page,pod-1,node-1
+05:17,1731907069368208077,cartservice,GetCartAsync called with userId=adf41e5f-12f6-4c40-88a0-a1bcf421e416,pod-3,node-3
+05:17,1731907069369626476,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907069373495625,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907069373636780,cartservice,GetCartAsync called with userId=82f11995-8adf-4db5-b1c6-416954168927,pod-3,node-3
+05:17,1731907069379724812,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907069381002053,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', 'L9ECAV7KIM', 'OLJCESPC7Z', '9SIQT8TOJO', '1YMWWN1N4O']",pod-4,node-2
+05:17,1731907069385883328,recommendationservice,"[Recv ListRecommendations] product_ids=['L9ECAV7KIM', 'OLJCESPC7Z', '2ZYFJ3GM2N', 'LS4PSXUNUM', '66VCHSJNUP']",pod-4,node-2
+05:17,1731907069489890664,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907069490460334,frontend,request complete,pod-1,node-1
+05:17,1731907069494542130,frontend,failed to retrieve ads,pod-1,node-1
+05:17,1731907069494802668,frontend,request complete,pod-1,node-1
+05:17,1731907069497971257,frontend,request started,pod-1,node-1
+05:17,1731907069497983593,frontend,adding to cart,pod-1,node-1
+05:17,1731907069502954457,cartservice,"AddItemAsync called with userId=82f11995-8adf-4db5-b1c6-416954168927, productId=9SIQT8TOJO, quantity=2",pod-3,node-3
+05:17,1731907069510444397,frontend,request complete,pod-1,node-1
+05:17,1731907069513644684,frontend,request started,pod-1,node-1
+05:17,1731907069513653084,frontend,view user cart,pod-1,node-1
+05:17,1731907069515880923,currencyservice,Getting supported currencies...,pod-2,node-2
+05:17,1731907069520583293,cartservice,GetCartAsync called with userId=82f11995-8adf-4db5-b1c6-416954168927,pod-3,node-3
+05:17,1731907069531250218,recommendationservice,"[Recv ListRecommendations] product_ids=['OLJCESPC7Z', '2ZYFJ3GM2N', 'L9ECAV7KIM', '6E92ZMYYFZ', '0PUK6V6EV0']",pod-4,node-2
+05:17,1731907069541523316,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907069541538925,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907069544547017,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907069549662383,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907069554602903,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907069557090803,frontend,request complete,pod-1,node-1
+05:17,1731907069560878442,frontend,request started,pod-1,node-1
+05:17,1731907069560889203,frontend,placing order,pod-1,node-1
+05:17,1731907069561987884,checkoutservice,"[PlaceOrder] user_id=""82f11995-8adf-4db5-b1c6-416954168927"" user_currency=""CAD""",pod-7,node-1
+05:17,1731907069563712393,cartservice,GetCartAsync called with userId=82f11995-8adf-4db5-b1c6-416954168927,pod-3,node-3
+05:17,1731907069570918240,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907069575852474,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907069579792550,shippingservice,[GetQuote] received request,pod-5,node-2
+05:17,1731907069579806810,shippingservice,[GetQuote] completed request,pod-5,node-2
+05:17,1731907069583233597,currencyservice,conversion request successful,pod-2,node-2
+05:17,1731907069587032514,paymentservice,"PaymentService#Charge invoked with request {""amount"":{""currency_code"":""CAD"",""units"":""204"",""nanos"":606032731},""credit_card"":{""credit_card_number"":""[redacted]"",""credit_card_cvv"":756,""credit_card_expiration_year"":2088,""credit_card_expiration_month"":5}}",pod-8,node-3
+05:17,1731907069587063068,paymentservice,Transaction processed: visa ending 0606     Amount: CAD204.606032731,pod-8,node-3
+05:17,1731907069589515911,checkoutservice,payment went through (transaction_id: b8ee51d3-3b17-4fba-b69a-4f014013c8cc),pod-7,node-1
+05:17,1731907069590710676,shippingservice,[ShipOrder] received request,pod-5,node-2
+05:17,1731907069590723200,shippingservice,[ShipOrder] completed request,pod-5,node-2
+05:17,1731907069595087211,cartservice,EmptyCartAsync called with userId=82f11995-8adf-4db5-b1c6-416954168927,pod-3,node-3
+05:17,1731907069601846362,emailservice,A request to send order confirmation email to [email] has been received.,pod-9,node-1
+05:17,1731907069603776311,checkoutservice,"order confirmation email sent to ""[email]""",pod-7,node-1
+05:17,1731907069604870083,frontend,order placed,pod-1,node-1
+05:17,1731907069610156700,recommendationservice,"[Recv ListRecommendations] product_ids=['2ZYFJ3GM2N', '0PUK6V6EV0', '66VCHSJNUP', '1YMWWN1N4O', '6E92ZMYYFZ']",pod-4,node-2
+05:17,1731907069622413953,currencyservice,Getting supported currencies...,pod-2,node-2
