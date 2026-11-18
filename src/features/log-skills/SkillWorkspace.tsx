@@ -112,7 +112,7 @@ function Procedure({ spec, setSpec, disabled, procedureEdited }: SectionProps) {
   const [view, setView] = useState("edit");
   const id = useId();
   const procedure = spec.procedure === procedureOutline && !procedureEdited ? "" : spec.procedure ?? "";
-  const preview = useMemo(() => renderMarkdownPreview(procedure), [procedure]);
+  const preview = useMemo(() => renderMarkdownPreview(procedure, { omitTaskListMarkers: true }), [procedure]);
   const checks = useMemo(() => parseProcedureChecks(procedure), [procedure]);
   return <section className="skill-section" aria-label="诊断流程"><h2>诊断流程</h2>
     <div className="skill-section-toolbar"><ViewSwitch variant="tabs" ariaLabel="诊断流程视图" value={view} onValueChange={setView} items={[
