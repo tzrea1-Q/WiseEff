@@ -260,7 +260,7 @@ stateDiagram-v2
 | `LogDomain` | Org-scoped registration of one business's log intake: unique `name` per organization, optional description, `status` (`active` \| `archived`), an optional declarative `format_profile` JSON (timestamp pattern, multi-line merge rule, severity mapping), P3b webhook config columns (`webhook_url`, write-only `webhook_secret`, `webhook_enabled`), and an optional `model_override` that swaps only the model name for that domain's analyses (endpoint/key/budget stay global). |
 | `LogDomainKnowledgeLink` | P2: a domain's link to a published knowledge-base entry (`log_domain_knowledge_links`, composite FKs enforce organization consistency). The link set bounds `read_domain_knowledge` retrieval; entries archived after linking drop out of retrieval automatically while the stale link stays visible to governance. |
 | `LogWebhookDelivery` | P3b: one result-webhook delivery ATTEMPT (`log_webhook_deliveries`, 0107-style composite org FKs, cascade with domain/record): `kind` (`result` \| `test`), `attempt`, `status` (`delivered` \| `retrying` \| `failed`), `http_status?`, `error?`, timestamp. `log_record_id`/`run_id` are NULL for admin test deliveries. Best-effort channel — rows record honesty, never analysis state. |
-| Analyzer provenance | Additive columns on `log_analysis_reports`: `analysis_source` (`agent` \| `rules-fallback`, NULL for legacy rule reports), `degraded_reason` (`provider-unavailable` \| `token-budget-exhausted`), `prompt_version`, and `model` (the effective model — the domain override when set). |
+| Analyzer provenance | Additive columns on `log_analysis_reports`: `analysis_source` (`agent` \| `rules-fallback`, NULL for legacy rule reports), `degraded_reason` (`provider-unavailable` \| `invalid-model-output` \| `step-budget-exhausted` \| `token-budget-exhausted`), `prompt_version`, and `model` (the effective model — the domain override when set). |
 
 Rules:
 
@@ -279,8 +279,8 @@ Degraded analysis (see the glossary entry in `CONTEXT.md`) is a provenance state
 
 - LLM kernel succeeds with grounded output → `analysis_source = 'agent'`, no degraded reason.
 - Transient provider failure rides the existing job retry/backoff; the retry-exhausting final attempt falls back to the deterministic rule engine → `analysis_source = 'rules-fallback'`, `degraded_reason = 'provider-unavailable'`, job completes normally (no dead letter).
-- The budgeted single shot cannot produce a valid grounded output (invalid JSON or every citation rejected by the grounding check) → immediate fallback with `degraded_reason = 'token-budget-exhausted'`.
-- Loop kernel: exhausted steps/tokens or repeated protocol violations trigger one early-convergence attempt; a grounded convergence returns `analysis_source = 'agent'` with `degraded_reason = 'token-budget-exhausted'` and confidence capped at 0.5 (the glossary's "early-converged low-confidence agent conclusion"); anything less lands on the rule fallback with the same reason.
+- Invalid or ungrounded output triggers immediate `invalid-model-output` fallback in the single-shot kernel. The loop uses the same reason after three consecutive invalid outputs.
+- The loop marks exhausted steps as `step-budget-exhausted` and exhausted tokens as `token-budget-exhausted`. When convergence is allowed and yields a grounded final, the report has `analysis_source = 'agent'` and confidence capped at 0.5. Otherwise the rule fallback carries the reason that triggered convergence.
 - Only a failing fallback continues into the existing failure/dead-letter path. Degraded results must never impersonate a full agent analysis; the UI shows the provenance badge and reason.
 
 ### Knowledge Base

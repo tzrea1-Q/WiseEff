@@ -1,3 +1,4 @@
+import type { LogDegradedReason } from "../../../src/domain/logs/types";
 import type { ParsedLogEntry, ParseResult } from "./parser";
 import { collectRuleEvidence } from "./prefilter";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
@@ -12,7 +13,7 @@ export type LogRuleHit = string;
 
 /** Analyzer provenance for the additive output contract: degraded analysis never impersonates a full agent analysis. */
 export type LogAnalysisSource = "agent" | "rules-fallback";
-export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
+export type LogAnalysisDegradedReason = LogDegradedReason;
 
 export type AnalyzeLogInput = {
   onTrace?: (step: LogAnalysisTraceStep) => void | Promise<void>;

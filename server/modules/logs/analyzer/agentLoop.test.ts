@@ -192,7 +192,7 @@ describe("createAgentLoopLogAnalyzer", () => {
     ], { bindToolBackends: () => ({ loadRelatedParameterContext: async () => ({ parameterId: "binding-1", name: "threshold", projectId: "project-1",
       snapshot: { payload: { file: "b.log", lineNumbers: [2] } } as unknown as RelatedParameterRunSnapshot }) }) });
 
-    expect(await adapter.analyze(input)).toMatchObject({ analysisSource: "rules-fallback", degradedReason: "token-budget-exhausted" });
+    expect(await adapter.analyze(input)).toMatchObject({ analysisSource: "rules-fallback", degradedReason: "invalid-model-output" });
     expect(model.calls.flat().some((message) => message.content.startsWith("Tool result for get_related_parameter_context:")
       && message.content.includes('"file":"b.log","lineNumbers":[2]'))).toBe(true);
     expect(model.calls.at(-1)?.at(-1)?.content).toContain("Grounding violation");
@@ -339,9 +339,9 @@ describe("createAgentLoopLogAnalyzer", () => {
     const output = await adapter.analyze(buildInput());
 
     expect(output.analysisSource).toBe("rules-fallback");
-    expect(output.degradedReason).toBe("token-budget-exhausted");
+    expect(output.degradedReason).toBe("invalid-model-output");
     expect(output.promptVersion).toBe(LOG_ANALYSIS_LOOP_PROMPT_VERSION);
-    expect(degradations).toEqual([{ reason: "token-budget-exhausted", model: "loop-test" }]);
+    expect(degradations).toEqual([{ reason: "invalid-model-output", model: "loop-test" }]);
   });
 
   it("corrects non-JSON output and degrades when it never recovers", async () => {
@@ -353,7 +353,21 @@ describe("createAgentLoopLogAnalyzer", () => {
 
     const output = await adapter.analyze(buildInput());
     expect(output.analysisSource).toBe("rules-fallback");
-    expect(output.degradedReason).toBe("token-budget-exhausted");
+    expect(output.degradedReason).toBe("invalid-model-output");
+  });
+
+  it("counts an ungrounded final toward the third consecutive invalid output", async () => {
+    const { model, adapter } = analyzer([
+      { content: "Not JSON" },
+      { content: { action: "tool", tool: "nonexistent_tool", args: {} } },
+      { content: { ...finalPayload, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [999] }] } }
+    ], { maxSteps: 3 });
+    const trace: LogAnalysisTraceStep[] = [];
+
+    expect(await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
+      .toMatchObject({ analysisSource: "rules-fallback", degradedReason: "invalid-model-output" });
+    expect(model.calls).toHaveLength(3);
+    expect(trace).toContainEqual(expect.objectContaining({ kind: "degradation", reason: "invalid-model-output" }));
   });
 
   it("rejects an ungrounded final, lets the model correct, and prunes fabricated lines", async () => {
@@ -382,12 +396,14 @@ describe("createAgentLoopLogAnalyzer", () => {
       { maxSteps: 2 }
     );
 
-    const output = await adapter.analyze(buildInput());
+    const trace: LogAnalysisTraceStep[] = [];
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
 
     expect(output.analysisSource).toBe("agent");
-    expect(output.degradedReason).toBe("token-budget-exhausted");
+    expect(output.degradedReason).toBe("step-budget-exhausted");
     expect(output.confidence).toBeLessThanOrEqual(0.5);
     expect(output.evidence.length).toBeGreaterThan(0);
+    expect(trace).toContainEqual(expect.objectContaining({ kind: "early-convergence", reason: "step-budget-exhausted" }));
   });
 
   it.each([
@@ -434,7 +450,7 @@ describe("createAgentLoopLogAnalyzer", () => {
 
     const output = await adapter.analyze(buildInput());
     expect(output.analysisSource).toBe("rules-fallback");
-    expect(output.degradedReason).toBe("token-budget-exhausted");
+    expect(output.degradedReason).toBe("step-budget-exhausted");
   });
 
   it("propagates provider failures for the worker retry chain", async () => {

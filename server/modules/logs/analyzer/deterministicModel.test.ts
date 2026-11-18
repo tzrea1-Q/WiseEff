@@ -110,7 +110,7 @@ describe("deterministic loop source citations", () => {
       tokenBudget: 100_000, maxSteps: 2, bindToolBackends: () => ({ locateLogStatement }) }).analyze({
       ...inputFor([{ path: "charging.log", content: chargingLog }]), sourceSnapshot: { id: "thermal-source", status: "ready" }
     });
-    expect(report).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted" });
+    expect(report).toMatchObject({ analysisSource: "agent", degradedReason: "step-budget-exhausted" });
     expect(report.evidence[0].sourceLocation).toBeUndefined();
     expect(locateLogStatement).not.toHaveBeenCalled();
   });

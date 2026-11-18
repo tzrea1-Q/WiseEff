@@ -2,6 +2,7 @@ import { z } from "zod";
 import { historicalAttributionSchema } from "./historicalAttribution";
 import { logDeletionPreviewSchema, logDeletionStatusSchema } from "../../../../src/domain/logs/deletionPreview";
 import { MAX_FILE_ROLE_LENGTH } from "../../../../src/domain/logs/fileApplicability";
+import { LOG_DEGRADED_REASONS } from "../../../../src/domain/logs/types";
 import { LOG_SKILL_RECOMMENDATION_LIMITS } from "../../logs/skillRecommendation";
 
 import { itemEnvelopeSchema, itemsEnvelopeSchema, okEnvelopeSchema } from "./envelopes";
@@ -32,7 +33,7 @@ export const logRunStatusSchema = z.enum(["queued", "processing", "complete", "f
 export const logArchiveStateSchema = z.enum(["active", "archived"]);
 export const logSeveritySchema = z.enum(["Critical", "Warning", "Info"]);
 export const logAnalysisSourceSchema = z.enum(["agent", "rules-fallback"]);
-export const logDegradedReasonSchema = z.enum(["provider-unavailable", "token-budget-exhausted"]);
+export const logDegradedReasonSchema = z.enum(LOG_DEGRADED_REASONS);
 export const logDomainStatusSchema = z.enum(["active", "archived"]);
 export const logSkillRecommendationReasonSchema = z.object({
   kind: z.enum(["file", "pattern"]), file: z.string(), detail: z.string(),

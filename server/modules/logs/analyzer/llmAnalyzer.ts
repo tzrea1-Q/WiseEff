@@ -395,8 +395,7 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
       });
 
       if (!usable) {
-        // The budgeted single shot could not produce a valid grounded output; degrade honestly.
-        return degradeToFallback(input, "token-budget-exhausted");
+        return degradeToFallback(input, "invalid-model-output");
       }
 
       return {

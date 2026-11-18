@@ -12,7 +12,8 @@ export type TimeWindow = "all" | "today" | "7d" | "30d";
 
 export type LogAnalysisSource = "agent" | "rules-fallback";
 
-export type LogDegradedReason = "provider-unavailable" | "token-budget-exhausted";
+export const LOG_DEGRADED_REASONS = ["provider-unavailable", "token-budget-exhausted", "invalid-model-output", "step-budget-exhausted"] as const;
+export type LogDegradedReason = (typeof LOG_DEGRADED_REASONS)[number];
 
 export type LogDomainStatus = "active" | "archived";
 export type LogSkillRecommendationReason = {

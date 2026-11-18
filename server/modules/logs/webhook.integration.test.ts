@@ -5,7 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable, type EphemeralTestDatabase } from "../../testing/testDatabase";
+import { createMemoryObjectStore } from "../../testing/objectStore";
 import { createPostgresDatabase, type Database, type RootDatabase } from "../../shared/database/client";
+import { createRouter } from "../../shared/http/router";
+import { createHttpServer } from "../../shared/http/server";
+import { requestJson } from "../../test/testClient";
+import { logRecordResponseSchema } from "../contracts/dtoSchemas/logs";
+import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
+import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
+import { registerLogRoutes } from "./routes";
+import { processLogAnalysisJobById } from "./worker";
 import { claimLogWebhook, enqueueLogWebhook } from "./webhookOutbox";
 import { decryptLogWebhookSecret, encryptLogWebhookSecret, ensureLogWebhookSecretsEncrypted } from "./webhookSecrets";
 import { resolveLogWebhookSecretKey } from "../../config/logWebhookSecretKey";
@@ -26,7 +35,7 @@ const ORG_ID = "org-log-webhooks";
 const ADMIN_ID = "user-log-webhook-admin";
 const SECRET = "integration-webhook-secret-0123456789";
 
-const adminPermissions: BackendPermission[] = ["logs:view", "logs:admin-domains"];
+const adminPermissions: BackendPermission[] = ["logs:view", "logs:upload", "logs:analyze", "logs:admin-domains"];
 
 function makeAuth(): AuthContext {
   return {
@@ -378,6 +387,36 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     expect(deliveries.items).toEqual([
       expect.objectContaining({ kind: "result", attempt: 1, status: "delivered", httpStatus: 200, logRecordId: logId })
     ]);
+  });
+
+  it.each([
+    { degradedReason: "invalid-model-output", maxSteps: 6, content: "Malformed output" },
+    { degradedReason: "step-budget-exhausted", maxSteps: 1, content: { action: "tool", tool: "get_prefilter_findings", args: {} } }
+  ])("exposes $degradedReason from upload through the record API and result webhook", async ({ degradedReason, maxSteps, content }) => {
+    await configureWebhook();
+    const objectStore = createMemoryObjectStore();
+    const router = createRouter();
+    registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => auth });
+    const upload = await requestJson<{ log: { id: string }; job: { id: string } }>(createHttpServer(router), "/api/v1/log-files", {
+      method: "POST",
+      body: JSON.stringify({ fileName: "charging.log", contentType: "text/plain", skillId: domainId,
+        contentBase64: Buffer.from("INFO charging started\nERROR thermal foldback\n").toString("base64") })
+    });
+    expect(upload.status).toBe(201);
+    const { log, job } = upload.body;
+    const analyzer = createAgentLoopLogAnalyzer({ model: createScriptedLogAnalysisModel([{ content }]),
+      modelLabel: "scripted", tokenBudget: 8000, maxSteps });
+
+    expect(await processLogAnalysisJobById({ db, objectStore, jobId: job.id, analyzer })).toEqual({ status: "processed" });
+    const record = await requestJson(createHttpServer(router), `/api/v1/logs/${log.id}`);
+    expect(record.status).toBe(200);
+    expect(record.body).toMatchObject({ item: { status: "complete", analysisSource: "rules-fallback", degradedReason } });
+
+    expect(await makeDeliverer().processNext()).toMatchObject({ status: "delivered", attempts: 1 });
+    expect(received).toHaveLength(1);
+    expect(JSON.parse(received[0].body)).toMatchObject({ event: "log-analysis.completed", recordId: log.id,
+      analysisSource: "rules-fallback", degraded: true, degradedReason });
+    expect(logRecordResponseSchema.parse(record.body).item.degradedReason).toBe(degradedReason);
   });
 
   it("records retrying then failed rows when the receiver keeps erroring", async () => {

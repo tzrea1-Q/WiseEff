@@ -335,9 +335,9 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       const buildSuccessOutput = (
         final: z.infer<typeof finalStepSchema>,
         grounded: ReturnType<typeof groundLlmEvidence>,
-        degraded: boolean
+        degradedReason?: LogAnalysisDegradedReason
       ): AnalyzeLogOutput => ({
-        confidence: degraded ? Math.min(final.confidence, EARLY_CONVERGENCE_MAX_CONFIDENCE) : final.confidence,
+        confidence: degradedReason ? Math.min(final.confidence, EARLY_CONVERGENCE_MAX_CONFIDENCE) : final.confidence,
         conclusion: final.conclusion,
         impact: final.impact,
         severity: final.severity,
@@ -349,7 +349,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           entryCount: input.stats?.entryCount ?? input.parsed.entries.length
         },
         analysisSource: "agent",
-        ...(degraded ? { degradedReason: "token-budget-exhausted" as const } : {}),
+        ...(degradedReason ? { degradedReason } : {}),
         promptVersion: promptVersionFor(input),
         model: options.modelLabel
       });
@@ -364,7 +364,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         if (!parsedStep) {
           invalidStreak += 1;
           if (invalidStreak >= LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID) {
-            return degradeToFallback(input, "token-budget-exhausted");
+            return degradeToFallback(input, "invalid-model-output");
           }
           messages.push({ role: "assistant", content });
           messages.push({
@@ -389,7 +389,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           if (!outcome.ok) {
             invalidStreak += 1;
             if (invalidStreak >= LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID) {
-              return degradeToFallback(input, "token-budget-exhausted");
+              return degradeToFallback(input, "invalid-model-output");
             }
             messages.push({
               role: "user",
@@ -408,7 +408,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           if (grounded.length === 0) {
             invalidStreak += 1;
             if (invalidStreak >= LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID) {
-              return degradeToFallback(input, "token-budget-exhausted");
+              return degradeToFallback(input, "invalid-model-output");
             }
             messages.push({ role: "assistant", content });
             messages.push({
@@ -418,7 +418,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
             });
             continue;
           }
-          return buildSuccessOutput(parsedStep, grounded, false);
+          return buildSuccessOutput(parsedStep, grounded);
         }
 
         if (usedTokens >= options.tokenBudget) {
@@ -426,10 +426,10 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         }
       }
 
-      // Step exhaustion allows one early-convergence call only while the reported
-      // token budget remains; exhausted tokens use the existing rule fallback.
+      // Keep the reason that triggered convergence, even if the final call fails grounding.
+      const budgetReason = usedTokens >= options.tokenBudget ? "token-budget-exhausted" : "step-budget-exhausted";
       await input.onProgress?.({ step: maxSteps, maxSteps });
-      await emitLogTrace(input, { kind: "early-convergence", reason: "token-budget-exhausted" });
+      await emitLogTrace(input, { kind: "early-convergence", reason: budgetReason });
       messages.push({
         role: "user",
         content:
@@ -437,17 +437,17 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       });
 
       const convergenceContent = await invokeModel();
-      if (convergenceContent === null) return degradeToFallback(input, "token-budget-exhausted");
+      if (convergenceContent === null) return degradeToFallback(input, budgetReason);
       const convergenceStep = parseLoopStep(convergenceContent);
       if (convergenceStep && convergenceStep.action === "final") {
         const grounded = groundLlmEvidence(convergenceStep.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources);
         if (grounded.length > 0) {
-          options.telemetry?.recordDegraded?.({ reason: "token-budget-exhausted", model: options.modelLabel });
-          return buildSuccessOutput(convergenceStep, grounded, true);
+          options.telemetry?.recordDegraded?.({ reason: budgetReason, model: options.modelLabel });
+          return buildSuccessOutput(convergenceStep, grounded, budgetReason);
         }
       }
 
-      return degradeToFallback(input, "token-budget-exhausted");
+      return degradeToFallback(input, budgetReason);
     }
   };
 }

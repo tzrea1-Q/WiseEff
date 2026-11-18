@@ -181,7 +181,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | 单次分析成本上界 | 版本 `tokenBudget` 的默认值与平台上限。单发内核：限定提示词摘录（约 4 字符/token 折算）与响应 `maxTokens`。循环内核：跨步累计输入+输出 token；耗尽触发显式标注的提前收敛。 |
 | `LOG_ANALYSIS_DETERMINISTIC` | `.env.example` 为 `true`，代码默认 `false` | 离线开发/测试/评测 | 使用确定性桩模型（`model` 记 `deterministic`），无需 provider 且就绪检查通过。生产必须配置真实 provider 并保持 `false`。 |
 | `LOG_ANALYSIS_KERNEL` | `loop` | 分析内核选择 | `loop` = 有界多步 agent，按运行组合只读工具（默认）；`single-shot` = P1 单发内核，保留为配置回退。 |
-| `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 版本 `stepBudget` 的默认值与平台上限；耗尽触发标注为 `token-budget-exhausted` 的提前收敛。 |
+| `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 版本 `stepBudget` 的默认值与平台上限。步数耗尽且仍有 token 预算时，触发标记为 `step-budget-exhausted` 的提前收敛。 |
 | `LOG_ANALYSIS_JOB_MAX_MS` | `600000` | worker 尝试时限 | 从任务认领开始，覆盖预处理、分析与持久化的总墙钟时限；续租不会重置截止时间。须为不超过 `2147483647` 的正整数；中央环境校验拒绝无效值，直接独立调用 worker 时回退默认值。 |
 | `LOG_ANALYSIS_PREPROCESS_MAX_MS` | `20000` | 信号与解码共享时限 | 从信号提取开始的固定合计额度，并受本次尝试剩余墙钟时限约束。续租不补充额度；`LOG_SIGNAL_MAX_MS` 和 `LOG_DECODE_MAX_MS` 仍分别约束各阶段。校验与独立调用回退规则同 `LOG_ANALYSIS_JOB_MAX_MS`。 |
 | `LOG_DRY_RUN_MAX_CONCURRENT` | `2` | 技能试运行并发接收 | 整数 1–4，无效值回退为 2。PostgreSQL 原子地执行此跨 API 实例的保守总量上限，每组织最多一个执行。各实例应使用相同值。直到执行实际结束才释放容量，包括超时后仍在退出的工作。容量已满时，在读取样例或调用分析器前返回 `429 RATE_LIMITED`，提示「试运行繁忙，请稍后重试」。 |

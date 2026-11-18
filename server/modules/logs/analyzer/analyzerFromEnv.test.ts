@@ -44,7 +44,7 @@ describe("pinned skill runtime budgets", () => {
       });
       expect(progress.length).toBeGreaterThan(0);
       expect(new Set(progress)).toEqual(new Set([expected]));
-      expect(output.degradedReason).toBe("token-budget-exhausted");
+      expect(output.degradedReason).toBe("step-budget-exhausted");
     }
   });
 

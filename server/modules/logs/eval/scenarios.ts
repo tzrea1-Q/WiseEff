@@ -137,7 +137,7 @@ export const LOG_EVAL_SCENARIOS: LogEvalScenario[] = [
     }),
     expectations: [
       { type: "expectsAnalysisSource", source: "rules-fallback" },
-      { type: "expectsDegradedReason", reason: "token-budget-exhausted" },
+      { type: "expectsDegradedReason", reason: "invalid-model-output" },
       { type: "expectsEvidenceNotCitingLines", lineNumbers: [999, 1234] },
       { type: "expectsGroundedEvidence" }
     ]
@@ -182,18 +182,18 @@ export const LOG_EVAL_SCENARIOS: LogEvalScenario[] = [
     ]
   },
   {
-    name: "budget-exhausted-marked",
+    name: "single-shot-invalid-output-marked",
     category: "degradation",
     fileName: "charging.log",
     logContent: chargingLog,
     model: {
       async invoke() {
-        return { content: "I could not finish the JSON within the budget, sorry" };
+        return { content: "I could not produce a JSON report." };
       }
     },
     expectations: [
       { type: "expectsAnalysisSource", source: "rules-fallback" },
-      { type: "expectsDegradedReason", reason: "token-budget-exhausted" },
+      { type: "expectsDegradedReason", reason: "invalid-model-output" },
       { type: "expectsGroundedEvidence" }
     ]
   },
@@ -597,7 +597,8 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     expectations: [
       { type: "expectsTrace", kinds: ["model-turn", "tool-call", "degradation", "rule-fallback"] },
       { type: "expectsAnalysisSource", source: "rules-fallback" },
-      { type: "expectsDegradedReason", reason: "token-budget-exhausted" },
+      { type: "expectsDegradedReason", reason: "invalid-model-output" },
+      { type: "expectsModelCallCount", count: 3 },
       { type: "expectsGroundedEvidence" }
     ]
   },
@@ -616,7 +617,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
       { type: "expectsTrace", kinds: ["model-turn", "tool-call", "early-convergence"] },
       { type: "expectsTraceArguments", tool: "read_line_range", arguments: { file: "charging.log" } },
       { type: "expectsAnalysisSource", source: "agent" },
-      { type: "expectsDegradedReason", reason: "token-budget-exhausted" },
+      { type: "expectsDegradedReason", reason: "step-budget-exhausted" },
       { type: "expectsConfidenceAtMost", value: 0.5 },
       { type: "expectsGroundedEvidence" },
       { type: "expectsPromptContains", substrings: ["Budget exhausted"] }

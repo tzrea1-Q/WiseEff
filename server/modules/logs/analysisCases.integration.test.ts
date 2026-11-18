@@ -245,7 +245,7 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
       for (const scenario of [
         { analyzer: h.analyzer, content: "INFO WISEEFF_SIMULATE_LLM_PROVIDER_DOWN\n", reason: "provider-unavailable", refused: false, source: "rules-fallback" },
         { analyzer: budgetAnalyzer, content: "INFO device event\n", reason: "token-budget-exhausted", refused: false, source: "rules-fallback" },
-        { analyzer: scripted("Insufficient evidence to determine a root cause.", 1), content: "INFO device event\n", reason: "token-budget-exhausted", refused: false, source: "agent" },
+        { analyzer: scripted("Insufficient evidence to determine a root cause.", 1), content: "INFO device event\n", reason: "step-budget-exhausted", refused: false, source: "agent" },
         { analyzer: scripted("The thermal sensor failed."), content: "INFO device event\n", reason: undefined, refused: false, source: "agent" },
         { analyzer: scripted("Insufficient evidence to determine a root cause."), content: "INFO device event\n", reason: undefined, refused: true, source: "agent" }
       ]) {

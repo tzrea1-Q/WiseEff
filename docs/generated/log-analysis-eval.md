@@ -1,6 +1,6 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-11-18T12:52:27.142Z
+- Generated: 2026-11-18T12:58:14.182Z
 - Single-shot prompt version: `2026-10-19.procedure.signals.source.1`
 - Loop prompt version: `2026-10-19.loop.procedure.signals.source.3`
 - Scenarios: 45 (45 passed)
@@ -11,12 +11,12 @@
 | Scenario | Category | Kernel | Source | Degraded | Trace steps | Result |
 | --- | --- | --- | --- | --- | --- | --- |
 | procedure-benign-single-shot-order | procedure-priority | single-shot | agent | - | 1 | PASS |
-| procedure-fabricated-single-shot-evidence-rejected | procedure-adversarial | single-shot | rules-fallback | token-budget-exhausted | 3 | PASS |
+| procedure-fabricated-single-shot-evidence-rejected | procedure-adversarial | single-shot | rules-fallback | invalid-model-output | 3 | PASS |
 | grounded-normal-conclusion | grounding | single-shot | agent | - | 1 | PASS |
-| hallucinated-citations-rejected | grounding | single-shot | rules-fallback | token-budget-exhausted | 3 | PASS |
+| hallucinated-citations-rejected | grounding | single-shot | rules-fallback | invalid-model-output | 3 | PASS |
 | partially-hallucinated-citations-pruned | grounding | single-shot | agent | - | 1 | PASS |
 | provider-outage-degrades-honestly | degradation | single-shot | rules-fallback | provider-unavailable | 3 | PASS |
-| budget-exhausted-marked | degradation | single-shot | rules-fallback | token-budget-exhausted | 3 | PASS |
+| single-shot-invalid-output-marked | degradation | single-shot | rules-fallback | invalid-model-output | 3 | PASS |
 | analysis-question-injected-and-answered | analysis-question | single-shot | agent | - | 1 | PASS |
 | loop-source-search-timeout-preserves-log-analysis | source-tools | loop | agent | - | 5 | PASS |
 | loop-source-search-literal-legal-and-grounded | source-tools | loop | agent | - | 3 | PASS |
@@ -47,8 +47,8 @@
 | loop-in-budget-convergence | loop-convergence | loop | agent | - | 5 | PASS |
 | loop-illegal-tool-name-rejected-and-corrected | loop-tool-legality | loop | agent | - | 5 | PASS |
 | loop-illegal-tool-args-rejected-and-corrected | loop-tool-legality | loop | agent | - | 5 | PASS |
-| loop-persistent-illegal-calls-degrade-honestly | loop-tool-legality | loop | rules-fallback | token-budget-exhausted | 8 | PASS |
-| loop-step-limit-early-convergence | loop-convergence | loop | agent | token-budget-exhausted | 6 | PASS |
+| loop-persistent-illegal-calls-degrade-honestly | loop-tool-legality | loop | rules-fallback | invalid-model-output | 8 | PASS |
+| loop-step-limit-early-convergence | loop-convergence | loop | agent | step-budget-exhausted | 6 | PASS |
 | trace-redacts-prompts-procedure-and-provider-payloads | trace-privacy | loop | agent | - | 7 | PASS |
 | loop-token-budget-fallback | loop-convergence | loop | rules-fallback | token-budget-exhausted | 5 | PASS |
 | loop-honest-refusal-on-insufficient-evidence | loop-honesty | loop | agent | - | 5 | PASS |

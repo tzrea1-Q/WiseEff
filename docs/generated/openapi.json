@@ -51449,7 +51449,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               }
             },
@@ -52447,7 +52449,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               }
             },
@@ -53307,7 +53311,9 @@
                   "type": "string",
                   "enum": [
                     "provider-unavailable",
-                    "token-budget-exhausted"
+                    "token-budget-exhausted",
+                    "invalid-model-output",
+                    "step-budget-exhausted"
                   ]
                 }
               },
@@ -53545,7 +53551,9 @@
                       "type": "string",
                       "enum": [
                         "provider-unavailable",
-                        "token-budget-exhausted"
+                        "token-budget-exhausted",
+                        "invalid-model-output",
+                        "step-budget-exhausted"
                       ]
                     },
                     "analysisQuestion": {
@@ -54003,7 +54011,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -54358,7 +54368,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -54769,7 +54781,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -55124,7 +55138,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -55275,7 +55291,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               },
               "analysisQuestion": {
@@ -55414,7 +55432,9 @@
                     "type": "string",
                     "enum": [
                       "provider-unavailable",
-                      "token-budget-exhausted"
+                      "token-budget-exhausted",
+                      "invalid-model-output",
+                      "step-budget-exhausted"
                     ]
                   },
                   "analysisQuestion": {
@@ -55604,7 +55624,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               },
               "analysisQuestion": {
@@ -56018,7 +56040,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -56373,7 +56397,9 @@
                               "type": "string",
                               "enum": [
                                 "provider-unavailable",
-                                "token-budget-exhausted"
+                                "token-budget-exhausted",
+                                "invalid-model-output",
+                                "step-budget-exhausted"
                               ]
                             },
                             "promptVersion": {
@@ -56540,7 +56566,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               },
               "analysisQuestion": {
@@ -56648,7 +56676,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               },
               "source": {
@@ -56779,7 +56809,9 @@
                       "type": "string",
                       "enum": [
                         "provider-unavailable",
-                        "token-budget-exhausted"
+                        "token-budget-exhausted",
+                        "invalid-model-output",
+                        "step-budget-exhausted"
                       ]
                     },
                     "analysisQuestion": {
@@ -57226,7 +57258,9 @@
                     "type": "string",
                     "enum": [
                       "provider-unavailable",
-                      "token-budget-exhausted"
+                      "token-budget-exhausted",
+                      "invalid-model-output",
+                      "step-budget-exhausted"
                     ]
                   },
                   "promptVersion": {
@@ -57610,7 +57644,9 @@
                     "type": "string",
                     "enum": [
                       "provider-unavailable",
-                      "token-budget-exhausted"
+                      "token-budget-exhausted",
+                      "invalid-model-output",
+                      "step-budget-exhausted"
                     ]
                   },
                   "promptVersion": {
@@ -59400,7 +59436,9 @@
                 "type": "string",
                 "enum": [
                   "provider-unavailable",
-                  "token-budget-exhausted"
+                  "token-budget-exhausted",
+                  "invalid-model-output",
+                  "step-budget-exhausted"
                 ]
               }
             },
