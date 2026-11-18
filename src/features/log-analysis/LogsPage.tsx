@@ -1043,8 +1043,9 @@ function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavig
   return (
     <div className="analysis-provenance" data-testid="analysis-provenance">
       <div className="analysis-provenance__badges">
-        <span className="analysis-provenance__badge">{log.analysisSource === "rules-fallback" ? "规则回退" : "AI 分析"}</span>
-        {degraded && log.analysisSource !== "rules-fallback" ? <span className="analysis-provenance__badge">提前收敛</span> : null}
+        <span className="analysis-provenance__badge">{degraded?.kind === "rules-fallback" ? "规则回退"
+          : degraded?.kind === "single-shot-fallback" ? degraded.label : "AI 分析"}</span>
+        {degraded?.kind === "early-convergence" ? <span className="analysis-provenance__badge">提前收敛</span> : null}
         {skillName && log.skillSelection?.mode !== "generic" ? <>
           {canViewSkill && log.logDomainId && log.logDomainName ? <a className="analysis-provenance__badge" href={withOrganizationScope(`/log-admin/skills/${encodeURIComponent(log.logDomainId)}`, organizationId)}
             onClick={(event) => { event.preventDefault(); onNavigate(`/log-admin/skills/${encodeURIComponent(log.logDomainId!)}`); }}>

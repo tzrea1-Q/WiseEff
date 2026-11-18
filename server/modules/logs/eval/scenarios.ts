@@ -42,6 +42,7 @@ export type LogLoopEvalScenario = {
   hypothesisLedger?: boolean;
   repairJsonOutput?: boolean;
   maxSteps?: number;
+  singleShotFallback?: boolean;
   tokenBudget?: number;
   sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
   sourceMatches?: Awaited<ReturnType<NonNullable<LogAnalysisToolContext["locateLogStatement"]>>>;
@@ -308,7 +309,53 @@ function sourceFinal(line: number, path = sourceSearchHit.path) {
     inference: "The reviewed code applies thermal protection.", suggestedAction: "Inspect the thermal threshold." }] };
 }
 
+const invalidLoopOutput = { content: "Invalid report" };
+
 export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
+  {
+    name: "loop-invalid-output-recovers-with-grounded-single-shot",
+    category: "degradation-staircase",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    protocol: "tools",
+    singleShotFallback: true,
+    script: [invalidLoopOutput, invalidLoopOutput, invalidLoopOutput, { content: groundedPayload }],
+    expectations: [
+      { type: "expectsModelCallCount", count: 4 },
+      { type: "expectsAnalysisSource", source: "single-shot-fallback" },
+      { type: "expectsDegradedReason", reason: "invalid-model-output" },
+      { type: "expectsGroundedEvidence" },
+      { type: "expectsConfidenceAtMost", value: 0.5 }
+    ]
+  },
+  {
+    name: "loop-and-single-shot-invalid-output-degrade-to-rules",
+    category: "degradation-staircase",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    singleShotFallback: true,
+    script: [invalidLoopOutput],
+    expectations: [
+      { type: "expectsModelCallCount", count: 4 },
+      { type: "expectsAnalysisSource", source: "rules-fallback" },
+      { type: "expectsDegradedReason", reason: "invalid-model-output" },
+      { type: "expectsTrace", kinds: ["model-turn", "degradation", "rule-fallback"] }
+    ]
+  },
+  {
+    name: "loop-token-budget-exhaustion-skips-single-shot",
+    category: "degradation-staircase",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    singleShotFallback: true,
+    tokenBudget: 8000,
+    script: [{ ...invalidLoopOutput, usage: { inputTokens: 8000, outputTokens: 10 } }],
+    expectations: [
+      { type: "expectsModelCallCount", count: 1 },
+      { type: "expectsAnalysisSource", source: "rules-fallback" },
+      { type: "expectsDegradedReason", reason: "token-budget-exhausted" }
+    ]
+  },
   {
     name: "loop-repaired-tool-and-final-grounded",
     category: "json-repair",

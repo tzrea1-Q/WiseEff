@@ -617,7 +617,10 @@ describe("LogsPage · 分析来源与降级标注", () => {
     expect(provenance).not.toHaveTextContent("未找到源码版本");
   });
 
-  it("规则回退结果显著标注降级来源与原因", () => {
+  it.each([
+    { source: "rules-fallback", reason: "provider-unavailable", label: "规则回退", explanation: "AI 分析服务不可用" },
+    { source: "single-shot-fallback", reason: "invalid-model-output", label: "降级分析 · 单次模型回退", explanation: "模型输出无效" }
+  ] as const)("$source 结果显著标注降级来源与原因", ({ source, reason, label, explanation }) => {
     window.history.replaceState(null, "", "/logs");
     const degradedState = {
       ...userState,
@@ -627,8 +630,8 @@ describe("LogsPage · 分析来源与降级标注", () => {
           id: "log-degraded",
           reportId: "RPT-DEGRADED",
           fileName: "degraded_fallback.log",
-          analysisSource: "rules-fallback" as const,
-          degradedReason: "provider-unavailable" as const,
+          analysisSource: source,
+          degradedReason: reason,
           logDomainName: "charging-power",
           skillRevision: { id: "revision-3", number: 3 }
         },
@@ -639,8 +642,9 @@ describe("LogsPage · 分析来源与降级标注", () => {
     render(<App initialAppState={degradedState} />);
 
     const provenance = screen.getByTestId("analysis-provenance");
-    expect(provenance).toHaveTextContent("规则回退");
-    expect(provenance).toHaveTextContent(/AI 分析服务不可用/);
+    expect(provenance).toHaveTextContent(label);
+    expect(provenance).toHaveTextContent(explanation);
+    expect(provenance).not.toHaveTextContent("提前收敛");
     expect(provenance).toHaveTextContent("技能：charging-power v3");
     expect(screen.getByText("置信度")).toBeInTheDocument();
     expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();

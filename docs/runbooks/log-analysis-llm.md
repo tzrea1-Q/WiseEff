@@ -12,6 +12,7 @@ Use this runbook when validating the log-analysis LLM path in staging or pilot. 
 - `LOG_ANALYSIS_API_TIMEOUT_MS`
 - `LOG_ANALYSIS_TOKEN_BUDGET` (loop mode: cumulative tokens across steps)
 - `LOG_ANALYSIS_KERNEL` (`loop` default / `single-shot` fallback)
+- `LOG_ANALYSIS_SINGLE_SHOT_FALLBACK` (default `false`). Set to `true` to let the loop retry invalid model output once using the single-shot JSON kernel.
 - `LOG_ANALYSIS_MAX_STEPS` (loop bound, default 6)
 
 For acceptance or offline drills without a live model, set `LOG_ANALYSIS_DETERMINISTIC=true` instead of filling `LOG_ANALYSIS_API_*`; reports then record `model = deterministic`. The deterministic stub speaks both kernels' protocols.
@@ -35,7 +36,8 @@ In the skill workspace, save the sample and draft before a dry run. Parse tests 
 
 - Transient provider failure → the job retries with the existing backoff (`LOG_ANALYSIS_QUEUE_ATTEMPTS` / `LOG_ANALYSIS_QUEUE_BACKOFF_MS`).
 - Retry-exhausting final attempt → deterministic rule-engine fallback, `analysis_source = 'rules-fallback'`, `degraded_reason = 'provider-unavailable'`, job completes normally (no dead letter).
-- The single-shot kernel falls back with `invalid-model-output` if its answer is invalid or has no grounded evidence. The loop falls back with the same reason after three consecutive invalid outputs, including rejected tools and ungrounded final answers.
+- Three consecutive invalid loop outputs, including rejected tools and ungrounded final answers, produce `invalid-model-output`. With recovery enabled, one JSON retry uses the same pinned revision and model and validates its own evidence. Success returns `single-shot-fallback` with confidence capped at 0.5. Invalid output or a provider error on this retry goes directly to the rules engine. Both paths retain `invalid-model-output`.
+- When configured as the primary kernel, single-shot falls back to rules with `invalid-model-output` if its answer is invalid or lacks grounded evidence.
 - The loop marks exhausted steps as `step-budget-exhausted` and exhausted tokens as `token-budget-exhausted`. When the budget policy permits a convergence call, a grounded answer returns `analysis_source = 'agent'` with confidence capped at 0.5. Otherwise the rules engine generates the report. Both outcomes retain the reason that triggered convergence.
 - Only a failing fallback continues into the existing job failure/dead-letter path.
 
@@ -88,6 +90,7 @@ All three tools are always available and output-capped. Only anchors/lines actua
 - Reports land in `docs/generated/log-analysis-quality.{json,md}` and record the model, kernel, prompt version, and judge. The Chinese summary shows the fraction of cases that passed at least once (pass@k) and every time (pass^k). A diagnosis passes when root-cause score and evidence recall both reach 0.8. An expected refusal passes at confidence 0.5 or lower.
 - Costs use the median and nearest-rank p95 across trials. Steps count model turns. Token totals combine input and output and exclude trials with incomplete usage from the token distribution. Latency covers analysis and any rules fallback. Degradation rates use all completed trials as the denominator, and the early-convergence rate counts trials that emitted an early-convergence event.
 - The baseline gate compares golden scores against `eval-cases/logs/baseline.json`. It stays inactive while real cases are pending. A filter that excludes golden cases skips an active gate.
+- To compare recovery off and on without a live endpoint, run `LOG_ANALYSIS_KERNEL=loop LOG_ANALYSIS_SINGLE_SHOT_FALLBACK=false npm run logs:eval:quality -- --tier realistic --trials 3 --script-invalid-loop-output`, save the JSON, and repeat with the flag set to `true`. The script returns invalid output for native tool calls and uses the deterministic model for the single-shot JSON retry. In each report, divide the number of `caseResults` with `analysisSource: "rules-fallback"` by the total number of completed trials.
 
 Save the JSON from each run before starting the next one, which overwrites the generated files. Use the same cases, tier and tag assignments, and trial count for both runs. The comparison prints a Markdown table suitable for PRs.
 
@@ -254,7 +257,7 @@ Record:
 - request/trace id,
 - latency and token counts,
 - degradation reason when applicable,
-- analysis source (`agent` / `rules-fallback`).
+- analysis source (`agent` / `single-shot-fallback` / `rules-fallback`).
 
 Do not commit API keys, raw prompts, raw provider payloads, Authorization headers, or raw customer log content to repository docs.
 

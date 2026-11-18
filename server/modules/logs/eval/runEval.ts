@@ -180,7 +180,16 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
   const scriptedModel = createScriptedLogAnalysisModel(scenario.script);
   const trace: LogAnalysisTraceStep[] = [];
   const returnedSourceLocations: NonNullable<LogEvalRunResult["returnedSourceLocations"]> = [];
-  const analyzer = createAgentLoopLogAnalyzer({
+  const analyzer = scenario.singleShotFallback ? createLogAnalyzerFromEnv({
+    LOG_ANALYSIS_DETERMINISTIC: true,
+    LOG_ANALYSIS_KERNEL: "loop",
+    LOG_ANALYSIS_REPAIR_JSON: scenario.repairJsonOutput,
+    LOG_ANALYSIS_SINGLE_SHOT_FALLBACK: true,
+    LOG_ANALYSIS_PROTOCOL: scenario.protocol ?? "json",
+    LOG_ANALYSIS_API_TIMEOUT_MS: 1000,
+    LOG_ANALYSIS_TOKEN_BUDGET: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
+    LOG_ANALYSIS_MAX_STEPS: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS
+  }, { model: scriptedModel }) : createAgentLoopLogAnalyzer({
     model: scriptedModel,
     modelLabel: EVAL_MODEL_LABEL,
     protocol: scenario.protocol,

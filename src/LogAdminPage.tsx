@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
 import { formatPercent } from "@/domain/format/formatPercent";
 import type { LogRecord, LogStatus, PrototypeState, TimeWindow } from "@/domain/prototype/types";
-import type { LogDomain, LogFeedbackInsight } from "@/domain/logs/types";
+import type { LogAnalysisSource, LogDomain, LogFeedbackInsight } from "@/domain/logs/types";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
@@ -310,8 +310,9 @@ function LogDomainGovernanceSection({
   );
 }
 
-const feedbackAnalysisSourceLabels: Record<"agent" | "rules-fallback" | "none", string> = {
+const feedbackAnalysisSourceLabels: Record<LogAnalysisSource | "none", string> = {
   agent: "AI 分析",
+  "single-shot-fallback": "降级 · 单次模型回退",
   "rules-fallback": "降级 · 规则回退",
   none: "未标注来源"
 };

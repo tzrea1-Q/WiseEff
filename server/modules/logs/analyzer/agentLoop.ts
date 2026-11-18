@@ -34,8 +34,8 @@ import { logAlternativeHypothesesSchema, logHypothesesSchema, MAX_HYPOTHESIS_BYT
  * the P1 single shot, so it carries its own version string on every report and in
  * both eval layers. Bump on any wording change.
  */
-export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.8";
-export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.8";
+export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.9";
+export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.9";
 
 function promptVersionFor(input: AnalyzeLogInput) {
   return input.relatedParameterSnapshot
@@ -241,6 +241,7 @@ export type CreateAgentLoopAnalyzerOptions = {
   estimateMissingTokenUsage?: boolean;
   maxSteps: number;
   fallback?: LogAnalysisAdapter;
+  recoverInvalidModelOutput?: (input: AnalyzeLogInput) => Promise<AnalyzeLogOutput | undefined>;
   telemetry?: LogAnalysisLlmTelemetry;
   now?: () => number;
   /** Binds the database-backed tool seams (domain knowledge, related parameter) for one run. */
@@ -267,13 +268,14 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
   ): Promise<AnalyzeLogOutput> {
     options.telemetry?.recordDegraded?.({ reason, model: options.modelLabel });
     await emitLogTrace(input, { kind: "degradation", reason, ...trace });
-    const output = await fallback.analyze(input);
+    const recovered = reason === "invalid-model-output" ? await options.recoverInvalidModelOutput?.(input) : undefined;
+    const output = recovered ?? await fallback.analyze(input);
     return {
       ...output,
-      analysisSource: "rules-fallback",
+      analysisSource: recovered?.analysisSource ?? "rules-fallback",
       degradedReason: reason,
       ...(historicalRunIds.size ? { historicalRunIds: [...historicalRunIds] } : {}),
-      promptVersion: promptVersionFor(input),
+      promptVersion: recovered?.promptVersion ?? promptVersionFor(input),
       model: options.modelLabel
     };
   }
@@ -436,6 +438,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
 
       let usedTokens = 0;
       let invalidStreak = 0;
+      const degradeInvalidOutput = () => degrade(usedTokens >= options.tokenBudget ? "token-budget-exhausted" : "invalid-model-output");
 
       const invokeModel = async (finalOnly = false, mayProbe = false): Promise<{ content: string; turn?: LoopTurn }> => {
         if (options.hypothesisLedger) messages[ledgerIndex] = { role: "user",
@@ -540,7 +543,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         if (!turn) {
           invalidStreak += 1;
           if (invalidStreak >= LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID) {
-            return degrade("invalid-model-output");
+            return degradeInvalidOutput();
           }
           if (!options.hypothesisLedger) messages.push({ role: "assistant", content });
           messages.push({
@@ -592,7 +595,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           }
           invalidStreak = invalid ? invalidStreak + 1 : 0;
           if (invalidStreak >= LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID) {
-            return degrade("invalid-model-output");
+            return degradeInvalidOutput();
           }
           if (turn.overLimit) {
             messages.push({ role: "user", content: "Tool limit exceeded: only the first three calls were processed." });
@@ -602,7 +605,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           if (grounded.length === 0) {
             invalidStreak += 1;
             if (invalidStreak >= LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID) {
-              return degrade("invalid-model-output");
+              return degradeInvalidOutput();
             }
             const { notes, alternativeHypotheses, ...report } = turn.report;
             messages.push({ role: "assistant", content: notes !== undefined || alternativeHypotheses !== undefined

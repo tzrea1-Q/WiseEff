@@ -184,6 +184,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_PROTOCOL` | `auto` | 循环内核的模型协议 | `auto` 优先尝试原生工具，通过 `final_report` 提交终答，并在 worker 进程内按端点和模型缓存明确的兼容性拒绝。`tools` 要求使用原生工具，`json` 强制使用文本 JSON。技能可选择 JSON，平台已强制协议时不能改回自动探测。 |
 | `LOG_ANALYSIS_HYPOTHESIS_LEDGER` | `false` | 循环内核的假设账本 | 设为 `true` 后，两种协议都会跨轮次保留有界的假设快照，报告可展示有接地依据的排除原因。 |
 | `LOG_ANALYSIS_REPAIR_JSON` | `false` | 日志分析模型兼容性 | 启用后，两个内核都会从夹带文字的输出中截取首个完整 JSON 对象并删除尾逗号，再进行 schema 校验和接地判定。可用于模型 A/B 评测。 |
+| `LOG_ANALYSIS_SINGLE_SHOT_FALLBACK` | `false` | 日志分析模型兼容性 | 循环内核以 `invalid-model-output` 结束时，通过单次 JSON 内核重试一次。重试得到有依据的证据时返回 `single-shot-fallback`。 |
 | `LOG_ANALYSIS_PAST_CONCLUSIONS` | `false` | 日志分析 Worker | 开启后，仅在同组织同技能存在符合条件的历史结论时开放只读检索。PostgreSQL 全文检索覆盖所有符合条件的历史结论，配置嵌入服务且支持 pgvector 时，对最近最多 32 条候选加做语义排序。 |
 | `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 版本 `stepBudget` 的默认值与平台上限。步数耗尽且仍有 token 预算时，触发标记为 `step-budget-exhausted` 的提前收敛。 |
 | `LOG_ANALYSIS_JOB_MAX_MS` | `600000` | worker 尝试时限 | 从任务认领开始，覆盖预处理、分析与持久化的总墙钟时限；续租不会重置截止时间。须为不超过 `2147483647` 的正整数；中央环境校验拒绝无效值，直接独立调用 worker 时回退默认值。 |

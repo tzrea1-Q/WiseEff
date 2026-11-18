@@ -67,7 +67,8 @@ export function SkillDryRunDrawer({ skillId, run, repository, open, onClose, onR
           {report ? <>
             <section aria-label="试运行结论" className="space-y-2"><h2 className="text-base font-medium">结论</h2>
               <p className="break-words">{report.conclusion}</p><p className="break-words text-sm text-muted-foreground">{report.impact}</p>
-              {report.analysisSource === "rules-fallback" ? <p className="text-sm text-muted-foreground">本次分析已降级为规则回退。</p>
+              {report.analysisSource === "single-shot-fallback" ? <p className="text-sm text-muted-foreground">模型输出无效，本次分析已降级为单次模型回退。</p>
+                : report.analysisSource === "rules-fallback" ? <p className="text-sm text-muted-foreground">本次分析已降级为规则回退。</p>
                 : report.degradedReason ? <p className="text-sm text-muted-foreground">本次分析已提前收敛。</p> : null}
               {report.suggestedActions.length ? <ul className="list-disc space-y-1 pl-5 text-sm">{report.suggestedActions.map((action, index) => <li key={index}>{action}</li>)}</ul> : null}
             </section>

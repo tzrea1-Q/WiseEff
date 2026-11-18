@@ -1,4 +1,4 @@
-import type { LogDegradedReason } from "../../../src/domain/logs/types";
+import type { LogAnalysisSource, LogDegradedReason } from "../../../src/domain/logs/types";
 import type { ParsedLogEntry, ParseResult } from "./parser";
 import { collectRuleEvidence } from "./prefilter";
 import { defaultChargingRuleSet } from "./chargingSignalRules";
@@ -13,8 +13,7 @@ export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
 export type LogAnalysisStageId = "pattern" | "rootcause";
 export type LogRuleHit = string;
 
-/** Analyzer provenance for the additive output contract: degraded analysis never impersonates a full agent analysis. */
-export type LogAnalysisSource = "agent" | "rules-fallback";
+export type { LogAnalysisSource };
 export type LogAnalysisDegradedReason = LogDegradedReason;
 
 export type AnalyzeLogInput = {
@@ -85,7 +84,7 @@ export type AnalyzeLogOutput = {
     lineCount: number;
     entryCount: number;
   };
-  /** Absent on legacy rule-analyzer output; "agent" or "rules-fallback" once the LLM kernel is in play. */
+  /** Absent on legacy rule-analyzer output. */
   analysisSource?: LogAnalysisSource;
   degradedReason?: LogAnalysisDegradedReason;
   promptVersion?: string;

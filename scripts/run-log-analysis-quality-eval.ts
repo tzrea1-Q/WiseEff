@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 
 import { loadServerEnv } from "../server/config/env";
 import { createLogAnalyzerFromEnv, resolveLogAnalysisModelLabel } from "../server/modules/logs/analyzer/analyzerFromEnv";
+import { createDeterministicLogAnalysisModel } from "../server/modules/logs/analyzer/deterministicModel";
 import { defaultGoldenCasesRoot, loadGoldenLogCases, logEvalCaseMetadataSchema } from "../server/modules/logs/eval/goldenCases";
 import {
   defaultHumanReviewsRoot,
@@ -35,7 +36,8 @@ function readQualityReport(path: string): QualityEvalReport {
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { trials: { type: "string" }, tier: { type: "string" }, tags: { type: "string" }, compare: { type: "boolean" } }
+    options: { trials: { type: "string" }, tier: { type: "string" }, tags: { type: "string" }, compare: { type: "boolean" },
+      "script-invalid-loop-output": { type: "boolean" } }
   });
   if (values.compare) {
     if (positionals.length !== 2 || Object.keys(values).length !== 1) {
@@ -54,10 +56,13 @@ async function main() {
   const tags = logEvalCaseMetadataSchema.shape.scenarioTags.parse(values.tags?.split(",").map((tag) => tag.trim())) ?? [];
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const env = loadServerEnv(process.env);
+  const scripted = values["script-invalid-loop-output"] === true;
+  if (scripted && env.LOG_ANALYSIS_KERNEL !== "loop") throw new Error("--script-invalid-loop-output requires LOG_ANALYSIS_KERNEL=loop.");
   const analysisEnv = {
     ...env,
-    LOG_ANALYSIS_DETERMINISTIC: env.LOG_ANALYSIS_DETERMINISTIC
-      || !(env.LOG_ANALYSIS_API_BASE_URL?.trim() && env.LOG_ANALYSIS_API_KEY?.trim())
+    LOG_ANALYSIS_DETERMINISTIC: scripted || env.LOG_ANALYSIS_DETERMINISTIC
+      || !(env.LOG_ANALYSIS_API_BASE_URL?.trim() && env.LOG_ANALYSIS_API_KEY?.trim()),
+    LOG_ANALYSIS_PROTOCOL: scripted ? "tools" as const : env.LOG_ANALYSIS_PROTOCOL
   };
 
   const casesRoot = defaultGoldenCasesRoot(root);
@@ -79,7 +84,11 @@ async function main() {
 
   // No db handle on purpose: read_domain_knowledge / get_related_parameter_context
   // honestly report themselves unavailable in offline quality runs.
-  const analyzer = createLogAnalyzerFromEnv(analysisEnv);
+  const model = scripted ? {
+    ...createDeterministicLogAnalysisModel(),
+    async invokeTools() { return { content: "Invalid output", usage: { inputTokens: 100, outputTokens: 5 } }; }
+  } : undefined;
+  const analyzer = createLogAnalyzerFromEnv(analysisEnv, { model });
   const judge = resolveQualityJudge(analysisEnv);
 
   const report = await runQualityEval({
@@ -92,7 +101,7 @@ async function main() {
     tags: [...new Set(tags)],
     kernel: env.LOG_ANALYSIS_KERNEL,
     deterministic: analysisEnv.LOG_ANALYSIS_DETERMINISTIC,
-    modelLabel: resolveLogAnalysisModelLabel(analysisEnv),
+    modelLabel: scripted ? "scripted-invalid-loop-output" : resolveLogAnalysisModelLabel(analysisEnv),
     baseline,
     judgeSampleRate: env.LOG_ANALYSIS_JUDGE_SAMPLE_RATE,
     humanReviews: reviews

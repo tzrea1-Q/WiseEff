@@ -1,4 +1,5 @@
 import { classifyAnalysisDegradation } from "../../../src/domain/logs/analysisProvenance";
+import { confidenceCaption } from "../../../src/domain/logs/confidenceProvenance";
 import type { LogRecordDto } from "../logs/types";
 
 /**
@@ -47,8 +48,6 @@ export function buildLogDistillationDraft(log: LogRecordDto): LogDistillationDra
   const title = (conclusion || `日志分析:${log.fileName}`).slice(0, MAX_TITLE_CHARS);
   const severityLabel = LOG_SEVERITY_TAGS[log.severity];
   const notice = buildLogAnalysisProvenanceNotice(log);
-  const confidenceCaption = log.analysisSource === "rules-fallback" ? "规则评分"
-    : log.analysisSource === "agent" ? "模型自估" : "置信度";
 
   const lines: string[] = [
     ...(notice ? [notice, ""] : []),
@@ -62,7 +61,7 @@ export function buildLogDistillationDraft(log: LogRecordDto): LogDistillationDra
 
   lines.push("## 结论", "", conclusion || "(分析结论为空)", "");
   lines.push("## 影响", "", log.impact.trim() || "(未记录影响)", "");
-  lines.push("## 严重度", "", `${severityLabel}(${log.severity})· ${confidenceCaption} ${log.confidence}%`, "");
+  lines.push("## 严重度", "", `${severityLabel}(${log.severity})· ${confidenceCaption(log.analysisSource, "置信度")} ${log.confidence}%`, "");
 
   if (log.evidence.length > 0) {
     lines.push("## 证据(行引用)", "");

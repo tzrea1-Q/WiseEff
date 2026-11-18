@@ -51574,6 +51574,7 @@
                 "type": "string",
                 "enum": [
                   "agent",
+                  "single-shot-fallback",
                   "rules-fallback"
                 ]
               },
@@ -52643,6 +52644,7 @@
                 "type": "string",
                 "enum": [
                   "agent",
+                  "single-shot-fallback",
                   "rules-fallback"
                 ]
               },
@@ -53574,6 +53576,7 @@
                   "type": "string",
                   "enum": [
                     "agent",
+                    "single-shot-fallback",
                     "rules-fallback"
                   ]
                 },
@@ -54417,6 +54420,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -54837,6 +54841,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -55313,6 +55318,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -55733,6 +55739,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -56698,6 +56705,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -57118,6 +57126,7 @@
                               "type": "string",
                               "enum": [
                                 "agent",
+                                "single-shot-fallback",
                                 "rules-fallback"
                               ]
                             },
@@ -57413,6 +57422,7 @@
                 "type": "string",
                 "enum": [
                   "agent",
+                  "single-shot-fallback",
                   "rules-fallback"
                 ]
               }
@@ -58042,6 +58052,7 @@
                     "type": "string",
                     "enum": [
                       "agent",
+                      "single-shot-fallback",
                       "rules-fallback"
                     ]
                   },
@@ -58491,6 +58502,7 @@
                     "type": "string",
                     "enum": [
                       "agent",
+                      "single-shot-fallback",
                       "rules-fallback"
                     ]
                   },
@@ -60438,6 +60450,7 @@
                 "type": "string",
                 "enum": [
                   "agent",
+                  "single-shot-fallback",
                   "rules-fallback"
                 ]
               },
@@ -60722,6 +60735,7 @@
                       "type": "string",
                       "enum": [
                         "agent",
+                        "single-shot-fallback",
                         "rules-fallback"
                       ]
                     },

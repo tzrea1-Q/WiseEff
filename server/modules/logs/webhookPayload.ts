@@ -1,4 +1,5 @@
 import type { LogAlternativeHypothesis } from "./hypotheses";
+import type { LogAnalysisSource } from "./analyzer";
 
 export const WEBHOOK_CONCLUSION_SUMMARY_MAX_CHARS = 300;
 
@@ -12,7 +13,7 @@ export type LogAnalysisResultWebhookInput = {
   skillRevisionNumber?: number | null;
   fileName: string;
   status: "complete" | "failed";
-  analysisSource?: string;
+  analysisSource?: LogAnalysisSource;
   degradedReason?: string;
   severity?: string;
   confidence?: number;
@@ -46,7 +47,7 @@ export function buildLogResultWebhookPayload(input: LogAnalysisResultWebhookInpu
       revisionId: input.skillRevisionId ?? null,
       revisionNumber: input.skillRevisionNumber ?? null
     },
-    degraded: input.analysisSource === "rules-fallback" || Boolean(input.degradedReason),
+    degraded: input.analysisSource === "rules-fallback" || input.analysisSource === "single-shot-fallback" || Boolean(input.degradedReason),
     fileName: input.fileName,
     logDomainId: input.logDomainId,
     status: input.status,

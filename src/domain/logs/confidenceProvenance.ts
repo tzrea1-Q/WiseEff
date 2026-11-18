@@ -10,7 +10,7 @@ export function confidenceCaption(
   analysisSource: LogAnalysisSource | null | undefined,
   legacyCaption: string
 ): string {
-  if (analysisSource === "agent") {
+  if (analysisSource === "agent" || analysisSource === "single-shot-fallback") {
     return "模型自估";
   }
   if (analysisSource === "rules-fallback") {

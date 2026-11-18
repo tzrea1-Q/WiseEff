@@ -70,7 +70,7 @@ export type LogRecordDto = {
   analysisQuestion?: string;
   logDomainId?: string;
   logDomainName?: string;
-  analysisSource?: "agent" | "rules-fallback";
+  analysisSource?: LogRecord["analysisSource"];
   degradedReason?: LogRecord["degradedReason"];
 };
 
@@ -217,7 +217,7 @@ export function jobSnapshotFromDto(dto: LogJobDto): LogJobSnapshot {
 export type LogFeedbackInsightDto = {
   logDomainId: string | null;
   logDomainName: string | null;
-  analysisSource: "agent" | "rules-fallback" | null;
+  analysisSource: LogFeedbackInsight["analysisSource"];
   promptVersion: string | null;
   totalCount: number;
   helpfulCount: number;

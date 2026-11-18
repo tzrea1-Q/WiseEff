@@ -27,6 +27,7 @@ const qualitySchema = z.object({
 type Outcome = AnalysisCaseRun["results"][number]["draft"];
 const degradation = ({ report: { analysisSource, degradedReason } }: Outcome) => analysisSource === "rules-fallback"
   ? `已降级：${logDegradedReasonLabels[degradedReason ?? "provider-unavailable"]}，规则回退`
+  : analysisSource === "single-shot-fallback" ? "已降级：模型输出无效，单次模型回退"
   : degradedReason ? `已提前收敛：${logDegradedReasonLabels[degradedReason]}` : "未降级";
 function OutcomeDetails({ outcome, title, fileAnchors, children }: { outcome: Outcome; title: string; fileAnchors: boolean; children: React.ReactNode }) {
   const parsed = qualitySchema.safeParse(outcome.quality);

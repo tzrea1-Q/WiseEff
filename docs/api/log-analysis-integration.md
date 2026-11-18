@@ -140,6 +140,12 @@ Poll `GET /api/v1/logs/{logId}` using the credential that uploaded the record un
 
 `GET /api/v1/logs/{logId}` returns the conclusion, impact, severity, confidence, evidence (with line anchors), suggested actions, and the provenance fields `analysisSource` and `degradedReason`. The record API and result webhook use the same reason values.
 
+| `analysisSource` | Meaning |
+| --- | --- |
+| `agent` | The configured model kernel generated the report. A degradation reason can indicate early convergence. |
+| `single-shot-fallback` | The loop ended with `invalid-model-output`. One JSON retry using the same pinned revision and model produced grounded evidence. Confidence is capped at 0.5, and the original reason is retained. |
+| `rules-fallback` | The rules engine generated the report. |
+
 In user sessions, record and run responses may also carry `historicalRunIds`. These are the run IDs actually returned as untrusted hints from confirmed same-organization, same-skill conclusions. Every evidence anchor still comes from the current analysis. History lookup runs inside the worker for user-submitted records and is disabled by default.
 
 When the hypothesis ledger is enabled, a completed report may include `alternativeHypotheses`, an array of excluded causes with `statement`, `reason`, and `anchors`. Each anchor identifies a previously seen log line (`{ file, line }`) or source line (`{ snapshotId, path, line }`).
@@ -147,7 +153,7 @@ When the hypothesis ledger is enabled, a completed report may include `alternati
 | `degradedReason` | Meaning |
 | --- | --- |
 | `provider-unavailable` | The model service was unavailable through the final job attempt, so the rules engine generated the report. |
-| `invalid-model-output` | The loop received three consecutive invalid outputs, including final answers without grounded evidence, or the single-shot kernel received an invalid or ungrounded answer. The rules engine generated the report. |
+| `invalid-model-output` | The loop received three consecutive invalid outputs, including final answers without grounded evidence, or the configured single-shot kernel received an invalid or ungrounded answer. If the optional loop retry succeeds, the source is `single-shot-fallback`. Otherwise the source is `rules-fallback`. |
 | `step-budget-exhausted` | The loop used all investigation steps. A grounded early-convergence report has `analysisSource: "agent"` and confidence capped at 0.5. If convergence cannot produce a grounded report, `rules-fallback` carries the same reason. |
 | `token-budget-exhausted` | The loop reached its token budget. Earlier reports retain the value recorded at the time. |
 
@@ -233,7 +239,7 @@ Before the first push, an administrator configures a skill's webhook in its work
 
 The completed result includes `alternativeHypotheses` when the report has grounded exclusions and the run has no related-parameter snapshot. The entries contain short summaries and anchor references.
 
-Result events add `skill: { id, key, revisionId, revisionNumber }` and `degraded: boolean` while retaining all previous fields. Revision fields are nullable for legacy unpinned runs. `degraded` is true for rule fallback or an available degradation reason. When present, `degradedReason` uses the same values as the record API, including `invalid-model-output` and `step-budget-exhausted`. The key is captured when the terminal event is enqueued, and retries preserve that snapshot. The synchronous test event retains its existing shape.
+Result events add `skill: { id, key, revisionId, revisionNumber }` and `degraded: boolean` while retaining all previous fields. Revision fields are nullable for legacy unpinned runs. `degraded` is true for `single-shot-fallback`, `rules-fallback`, or an available degradation reason. When present, `degradedReason` uses the same values as the record API. The key is captured when the terminal event is enqueued, and retries preserve that snapshot. The synchronous test event retains its existing shape.
 
 ### Delivery semantics
 
