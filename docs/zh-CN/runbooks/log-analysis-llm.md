@@ -99,6 +99,33 @@ npm run logs:eval:quality -- --trials 3 --tier realistic
 npm run --silent logs:eval:quality -- --compare /tmp/log-quality-before.json docs/generated/log-analysis-quality.json
 ```
 
+### 校准循环预算
+
+使用生产数据库的只读副本或快照，通过运维密钥环境注入 `LOG_ANALYSIS_TRACE_DATABASE_URL`。数据库角色须有权查询 `log_analysis_runs`、`log_analysis_trace_steps` 和 `log_analysis_reports`。安装依赖后从仓库根目录运行命令。选取目标内核和模型上线后有代表性的时间窗口。时间范围按运行完成时间筛选，包含起点，不包含终点。
+
+```bash
+npx tsx scripts/log-analysis-trace-stats.ts \
+  --since 2026-11-18T00:00:00Z --until 2026-11-25T00:00:00Z
+```
+
+命令将数据库角色可见的、已完成并保留 trace 的运行聚合为 JSON。统计不含草稿试运行、失败或进行中的运行及缺少 trace 的运行。各分布给出样本数、中位数和最近秩 p95。输入与输出 token 分别只统计有该用量字段的模型轮，零值也计入。每次运行的步数按模型轮数计，包含收敛调用及用量缺失的轮次。模型服务不支持协议的探测轮计入 `modelTurns`，步数口径与效果层评测一致，排除这些探测轮。两个比例均以有 trace 的运行数为分母。早收敛根据 trace 事件统计，降级根据最终报告的降级原因统计，包含低置信度 Agent 终答和规则兜底。无观测时相应的分位数或比例为 null。查询在只读事务中运行，语句超时为 60 秒。若超时，缩短时间窗口后重试。
+
+通过环境变量注入 `LOG_ANALYSIS_API_BASE_URL`、`LOG_ANALYSIS_API_KEY` 和 `LOG_ANALYSIS_MODEL` 后运行真实模型对比。各组保持同一端点、模型、内核、工具协议（`LOG_ANALYSIS_PROTOCOL`）、评分器配置、用例和试验次数。从已部署上限开始，每次只调整一个上限。以下数值仅为示例。对比前确认各报告的 `deterministic` 为 `false`，且模型符合预期。
+
+```bash
+budget_eval_dir=$(mktemp -d)
+export LOG_ANALYSIS_DETERMINISTIC=false LOG_ANALYSIS_KERNEL=loop
+for setting in 6:8000 6:16000 10:8000; do
+  LOG_ANALYSIS_MAX_STEPS=${setting%:*} LOG_ANALYSIS_TOKEN_BUDGET=${setting#*:} \
+    npm run logs:eval:quality -- --tier realistic --trials 3 || break
+  cp docs/generated/log-analysis-quality.json "$budget_eval_dir/$setting.json"
+done
+npm run --silent logs:eval:quality -- --compare "$budget_eval_dir/6:8000.json" "$budget_eval_dir/6:16000.json"
+npm run --silent logs:eval:quality -- --compare "$budget_eval_dir/6:8000.json" "$budget_eval_dir/10:8000.json"
+```
+
+用生产 trace 的样本数和分位数确定候选范围，同时考虑现有上限和技能覆盖值。比较 pass@k、pass^k、证据召回率、累计输入与输出 token、时延、降级率和早收敛率。循环为终答预留 20% 的 token。每次响应结束后才计量用量，单次调用可能使累计用量超过配置预算。在预发或试点环境，用不超过 10 MB 的代表性日志测量从上传到终态的端到端时延，覆盖排队和预处理。从满足质量目标且 p95 不超过 3 分钟的配置中选出成本最低的一组。在 PR 中记录采样范围、样本数、模型、提示词版本、各组预算和聚合对比结果。收集到真实模型和生产 trace 证据后，再更新默认值、上限及中英文环境变量和 API 预算说明。PR 中只附聚合结果，凭据和原始 trace 留在运维环境。
+
 ## judge 校准（P3b）
 
 - 每次效果评测按用例 ID 的哈希抽样已评分用例的第一次试验，抽样率由 `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` 设置，默认 0.2，至少 1 条。人工复核清单 `docs/generated/log-analysis-judge-sample.md` 包含 Agent 结论、评分和理由，以及可填写的 YAML 模板。

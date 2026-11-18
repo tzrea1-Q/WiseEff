@@ -99,6 +99,33 @@ npm run logs:eval:quality -- --trials 3 --tier realistic
 npm run --silent logs:eval:quality -- --compare /tmp/log-quality-before.json docs/generated/log-analysis-quality.json
 ```
 
+### Calibrate the loop budgets
+
+On a read replica or snapshot of the production database, set `LOG_ANALYSIS_TRACE_DATABASE_URL` through the operator's secret environment. Use a role with SELECT access to `log_analysis_runs`, `log_analysis_trace_steps`, and `log_analysis_reports`. Run the command from the repository root with dependencies installed. Choose a representative window after the target kernel and model were deployed. The bounds use run completion time, with an inclusive start and exclusive end.
+
+```bash
+npx tsx scripts/log-analysis-trace-stats.ts \
+  --since 2026-11-18T00:00:00Z --until 2026-11-25T00:00:00Z
+```
+
+The command returns aggregate JSON across completed runs with persisted traces visible to the database role. It excludes draft dry runs, failed and in-progress runs, and runs without traces. Each distribution shows sample count, median and nearest-rank p95. Input and output each count model turns with that usage field present, including zero. Steps count model turns per run, including a convergence call and turns with missing usage. Unsupported protocol probes count toward `modelTurns` and are excluded from steps, matching the quality eval. Both rates divide by traced runs. Early convergence comes from trace events, and degradation comes from the final report's reason, including low-confidence agent answers and rules fallback. With no observations, the corresponding percentiles or rates are null. The query runs in a read-only transaction with a 60-second statement timeout. Narrow the window if it times out.
+
+For the live comparison, inject `LOG_ANALYSIS_API_BASE_URL`, `LOG_ANALYSIS_API_KEY`, and `LOG_ANALYSIS_MODEL` in the environment. Keep the endpoint, model, kernel, tool protocol (`LOG_ANALYSIS_PROTOCOL`), judge configuration, corpus and trial count fixed across settings. Start with the deployed caps and vary one limit at a time. The following values are an example sweep. Confirm each report shows `deterministic: false` and the intended model before comparing.
+
+```bash
+budget_eval_dir=$(mktemp -d)
+export LOG_ANALYSIS_DETERMINISTIC=false LOG_ANALYSIS_KERNEL=loop
+for setting in 6:8000 6:16000 10:8000; do
+  LOG_ANALYSIS_MAX_STEPS=${setting%:*} LOG_ANALYSIS_TOKEN_BUDGET=${setting#*:} \
+    npm run logs:eval:quality -- --tier realistic --trials 3 || break
+  cp docs/generated/log-analysis-quality.json "$budget_eval_dir/$setting.json"
+done
+npm run --silent logs:eval:quality -- --compare "$budget_eval_dir/6:8000.json" "$budget_eval_dir/6:16000.json"
+npm run --silent logs:eval:quality -- --compare "$budget_eval_dir/6:8000.json" "$budget_eval_dir/10:8000.json"
+```
+
+Use production trace sample counts and percentiles to size the candidate range, accounting for existing caps and skill overrides. Compare pass@k, pass^k, evidence recall, cumulative input plus output tokens, latency, and both rates. The loop reserves 20% of tokens for the final answer. Usage is accounted after each response, so a turn can take cumulative usage above the configured budget. In staging or a pilot, measure end-to-end latency from upload to terminal state for representative logs up to 10 MB, including preprocessing and queue time. Choose the lowest-cost settings that meet the quality target and p95 of three minutes or less. Record the cohort, sample counts, model, prompt version, budgets and aggregate comparisons in the PR. Update the defaults and caps together with the environment and API budget documentation in both languages only after collecting live-model and production-trace evidence. Keep credentials and raw traces out of the PR.
+
 ## Judge Calibration (P3b)
 
 - Every quality run deterministically samples first-trial results from judged cases (id-hash, rate `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`, default 0.2, minimum 1) into the human review checklist `docs/generated/log-analysis-judge-sample.md`. The checklist shows the agent conclusion, the judge's scores and reasoning, and a ready-to-fill YAML template.
