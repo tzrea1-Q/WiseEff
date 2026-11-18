@@ -140,6 +140,12 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 
 `GET /api/v1/logs/{logId}` 返回结论、影响、严重级别、置信度、证据（含行号锚点）、建议动作，以及溯源字段 `analysisSource` 和 `degradedReason`。记录 API 与结果 Webhook 使用相同的原因值。
 
+| `analysisSource` | 含义 |
+| --- | --- |
+| `agent` | 报告由配置的模型内核生成。提前收敛时仍会记录降级原因。 |
+| `single-shot-fallback` | 循环内核因 `invalid-model-output` 结束后，使用同一已固定技能修订和模型做一次 JSON 重试，并得到有证据依据的报告。置信度封顶 0.5，保留原降级原因。 |
+| `rules-fallback` | 报告由规则引擎生成。 |
+
 使用用户会话时，记录与运行响应可能包含 `historicalRunIds`，记录本次检索实际返回的历史运行 ID。历史结论须经过确认，并来自同一组织和技能，仅供类比。证据锚点仍来自当前分析。历史检索只在用户提交记录的分析 Worker 内使用，默认关闭。
 
 启用假设账本后，已完成的报告可返回 `alternativeHypotheses`，列出已排除的可能原因。每项包含陈述 `statement`、理由 `reason` 和 `anchors`，锚点指向此前已见的日志行（`{ file, line }`）或源码行（`{ snapshotId, path, line }`）。
@@ -151,7 +157,7 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 | `degradedReason` | 含义 |
 | --- | --- |
 | `provider-unavailable` | 最后一次任务尝试仍无法调用模型服务，由规则引擎生成报告。 |
-| `invalid-model-output` | 循环内核连续收到三次无效输出，含缺少有效证据的终答，或单次内核收到无效或无证据依据的答复。由规则引擎生成报告。 |
+| `invalid-model-output` | 循环内核连续收到三次无效输出，含缺少有效证据的终答，或直接配置的单次内核收到无效或无证据依据的答复。启用循环重试且重试成功时，来源为 `single-shot-fallback`，其余情况为 `rules-fallback`。 |
 | `step-budget-exhausted` | 循环内核用完调查步数。提前收敛得到有证据依据的报告时，`analysisSource` 为 `agent`，置信度上限为 0.5。收敛失败时由 `rules-fallback` 生成报告，并保留同一原因。 |
 | `token-budget-exhausted` | 循环内核耗尽 token 预算。历史报告保留生成时记录的值。 |
 
@@ -244,7 +250,7 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
 
 完成结果中的 `verification` 与记录一致，仅包含状态、项数和验证模型名称。
 
-结果事件在保留旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }` 和 `degraded: boolean`。旧未钉住运行的版本字段可为 null。规则回退或存在降级原因时 `degraded` 为 true。`degradedReason` 存在时与记录 API 使用相同的值，包括 `invalid-model-output` 和 `step-budget-exhausted`。key 在终态事件入队时快照保存，重试保持相同载荷。同步测试事件维持原格式。
+结果事件在保留旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }` 和 `degraded: boolean`。旧未钉住运行的版本字段可为 null。来源为 `single-shot-fallback` 或 `rules-fallback`，或存在降级原因时，`degraded` 为 true。`degradedReason` 存在时与记录 API 使用相同的值。key 在终态事件入队时快照保存，重试保持相同载荷。同步测试事件维持原格式。
 
 ### 投递语义
 

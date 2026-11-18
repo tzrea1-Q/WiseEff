@@ -66,7 +66,8 @@ export function AnalysisTrace({ steps, analysis, onOpenLine }: {
   const hasTokens = steps.some((step) => step.inputTokens != null || step.outputTokens != null);
   const inputTokens = steps.reduce((sum, step) => sum + (step.inputTokens ?? 0), 0);
   const outputTokens = steps.reduce((sum, step) => sum + (step.outputTokens ?? 0), 0);
-  const degraded = analysis?.analysisSource === "rules-fallback" || steps.some((step) => step.kind === "degradation" || step.kind === "rule-fallback");
+  const degraded = analysis?.analysisSource === "rules-fallback" || analysis?.analysisSource === "single-shot-fallback"
+    || steps.some((step) => step.kind === "degradation" || step.kind === "rule-fallback");
   const earlyConvergence = (analysis?.analysisSource === "agent" && analysis.degradedReason != null) || steps.some((step) => step.kind === "early-convergence");
   return <>
     <p className="mb-3 text-sm text-muted-foreground" aria-label="分析轨迹摘要">{steps.length} 步 · {toolCalls} 次工具调用

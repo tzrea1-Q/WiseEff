@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-11-18T16:07:17.294Z
+- Generated: 2026-11-18T16:10:15.302Z
 - Single-shot prompt version: `2026-10-19.procedure.signals.source.2`
-- Loop prompt version: `2026-10-19.loop.procedure.signals.source.9`
-- Scenarios: 59 (59 passed)
+- Loop prompt version: `2026-10-19.loop.procedure.signals.source.10`
+- Scenarios: 62 (62 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -19,6 +19,9 @@
 | single-shot-repaired-json-grounded | json-repair | single-shot | agent | - | 1 | PASS |
 | single-shot-invalid-output-marked | degradation | single-shot | rules-fallback | invalid-model-output | 3 | PASS |
 | analysis-question-injected-and-answered | analysis-question | single-shot | agent | - | 1 | PASS |
+| loop-invalid-output-recovers-with-grounded-single-shot | degradation-staircase | loop | single-shot-fallback | invalid-model-output | 5 | PASS |
+| loop-and-single-shot-invalid-output-degrade-to-rules | degradation-staircase | loop | rules-fallback | invalid-model-output | 6 | PASS |
+| loop-token-budget-exhaustion-skips-single-shot | degradation-staircase | loop | rules-fallback | token-budget-exhausted | 3 | PASS |
 | loop-repaired-tool-and-final-grounded | json-repair | loop | agent | - | 3 | PASS |
 | loop-unrepairable-json-degrades | json-repair | loop | rules-fallback | invalid-model-output | 5 | PASS |
 | loop-rejects-historical-hints-as-evidence | past-conclusions | loop | agent | - | 6 | PASS |

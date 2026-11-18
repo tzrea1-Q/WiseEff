@@ -12,6 +12,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
 import { logRecordResponseSchema, logTraceResponseSchema } from "../contracts/dtoSchemas/logs";
 import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
+import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
 import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
 import { registerLogRoutes } from "./routes";
 import { processLogAnalysisJobById } from "./worker";
@@ -389,34 +390,56 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     ]);
   });
 
+  const recoveredReport = {
+    conclusion: "热保护触发限流", impact: "充电速度下降", severity: "Warning", confidence: 0.9,
+    suggestedActions: ["检查散热"], evidence: [{ lineNumbers: [2], inference: "热保护触发", suggestedAction: "检查温度" }]
+  };
   it.each([
-    { degradedReason: "invalid-model-output", maxSteps: 6, content: "Malformed output" },
-    { degradedReason: "step-budget-exhausted", maxSteps: 1, content: { action: "tool", tool: "get_prefilter_findings", args: {} } }
-  ])("exposes $degradedReason from upload through the record API and result webhook", async ({ degradedReason, maxSteps, content }) => {
+    { degradedReason: "invalid-model-output", maxSteps: 6, content: "Malformed output", analysisSource: "rules-fallback" },
+    { degradedReason: "step-budget-exhausted", maxSteps: 1, content: { action: "tool", tool: "get_prefilter_findings", args: {} },
+      analysisSource: "rules-fallback" },
+    { degradedReason: "invalid-model-output", maxSteps: 6, content: "Malformed output", analysisSource: "single-shot-fallback" }
+  ])("exposes $analysisSource ($degradedReason) from upload through the record API and result webhook", async ({ degradedReason, maxSteps, content, analysisSource }) => {
     await configureWebhook();
     const objectStore = createMemoryObjectStore();
     const router = createRouter();
     registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => auth });
-    const upload = await requestJson<{ log: { id: string }; job: { id: string } }>(createHttpServer(router), "/api/v1/log-files", {
+    const upload = await requestJson<{ log: { id: string; skillRevision: { id: string; number: number } }; job: { id: string } }>(createHttpServer(router), "/api/v1/log-files", {
       method: "POST",
       body: JSON.stringify({ fileName: "charging.log", contentType: "text/plain", skillId: domainId,
         contentBase64: Buffer.from("INFO charging started\nERROR thermal foldback\n").toString("base64") })
     });
     expect(upload.status).toBe(201);
     const { log, job } = upload.body;
-    const analyzer = createAgentLoopLogAnalyzer({ model: createScriptedLogAnalysisModel([{ content }]),
-      modelLabel: "scripted", tokenBudget: 8000, maxSteps });
+    const recoveryEnabled = analysisSource === "single-shot-fallback";
+    const model = createScriptedLogAnalysisModel(recoveryEnabled
+      ? [{ content }, { content }, { content }, { content: recoveredReport }]
+      : [{ content }]);
+    const analyzer = createLogAnalyzerFromEnv({
+      LOG_ANALYSIS_DETERMINISTIC: true, LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_PROTOCOL: "tools",
+      LOG_ANALYSIS_API_TIMEOUT_MS: 1000, LOG_ANALYSIS_TOKEN_BUDGET: 8000, LOG_ANALYSIS_MAX_STEPS: maxSteps,
+      LOG_ANALYSIS_SINGLE_SHOT_FALLBACK: recoveryEnabled
+    }, { model });
 
     expect(await processLogAnalysisJobById({ db, objectStore, jobId: job.id, analyzer })).toEqual({ status: "processed" });
     const record = await requestJson(createHttpServer(router), `/api/v1/logs/${log.id}`);
     expect(record.status).toBe(200);
-    expect(record.body).toMatchObject({ item: { status: "complete", analysisSource: "rules-fallback", degradedReason } });
+    const provenance = { analysisSource, degradedReason };
+    expect(logRecordResponseSchema.parse(record.body).item).toMatchObject({ status: "complete", ...provenance });
+    if (recoveryEnabled) {
+      expect(record.body).toMatchObject({ item: { confidence: 0.5, conclusion: recoveredReport.conclusion, skillRevision: log.skillRevision,
+        evidence: [{ lineNumbers: [2] }] } });
+    }
 
     expect(await makeDeliverer().processNext()).toMatchObject({ status: "delivered", attempts: 1 });
     expect(received).toHaveLength(1);
-    expect(JSON.parse(received[0].body)).toMatchObject({ event: "log-analysis.completed", recordId: log.id,
-      analysisSource: "rules-fallback", degraded: true, degradedReason });
-    expect(logRecordResponseSchema.parse(record.body).item.degradedReason).toBe(degradedReason);
+    const payload = JSON.parse(received[0].body);
+    expect(payload).toMatchObject({ event: "log-analysis.completed", recordId: log.id, degraded: true, ...provenance });
+    if (recoveryEnabled) {
+      expect(payload).toMatchObject({ conclusionSummary: recoveredReport.conclusion, skillRevisionId: log.skillRevision.id,
+        skillRevisionNumber: log.skillRevision.number });
+      expect(Number(payload.confidence)).toBe(0.5);
+    }
   });
 
   it("delivers grounded alternatives, checks, and verification through the record API and signed webhook", async () => {

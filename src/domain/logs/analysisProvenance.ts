@@ -1,7 +1,7 @@
 import type { LogAnalysisSource, LogDegradedReason } from "./types";
 
 export type AnalysisDegradation = {
-  kind: "rules-fallback" | "early-convergence";
+  kind: "rules-fallback" | "single-shot-fallback" | "early-convergence";
   label: string;
   reason: string;
 };
@@ -36,6 +36,13 @@ export function classifyAnalysisDegradation(analysis: {
       kind: "rules-fallback",
       label: "降级分析 · 规则回退",
       reason: analysis.degradedReason ? fallbackReasonSentences[analysis.degradedReason] : "本结论由规则引擎回退生成"
+    };
+  }
+  if (analysis.analysisSource === "single-shot-fallback") {
+    return {
+      kind: "single-shot-fallback",
+      label: "降级分析 · 单次模型回退",
+      reason: "循环分析的模型输出无效，本结论由单次模型调用生成，置信度上限为 50%"
     };
   }
   if (analysis.analysisSource === "agent" && analysis.degradedReason !== undefined) {

@@ -29,6 +29,7 @@ export type LogAnalyzerEnv = {
   LOG_ANALYSIS_KERNEL: "loop" | "single-shot";
   LOG_ANALYSIS_MAX_STEPS: number;
   LOG_ANALYSIS_REPAIR_JSON?: boolean;
+  LOG_ANALYSIS_SINGLE_SHOT_FALLBACK?: boolean;
   LOG_ANALYSIS_PAST_CONCLUSIONS?: boolean;
   LOG_ANALYSIS_PROTOCOL?: LogAnalysisProtocol;
   LOG_ANALYSIS_HYPOTHESIS_LEDGER?: boolean;
@@ -61,13 +62,16 @@ function contentToText(content: unknown): string {
   return String(content ?? "");
 }
 
-function createChatOpenAiModel(env: LogAnalyzerEnv, modelLabel: string, tokenBudget: number, maxTokens?: number): LogAnalysisChatModel {
+function createChatOpenAiModel(
+  env: LogAnalyzerEnv, modelLabel: string, tokenBudget: number, limits?: { maxTokens?: number; maxRetries?: number }
+): LogAnalysisChatModel {
   const settings = {
     model: modelLabel,
     apiKey: env.LOG_ANALYSIS_API_KEY,
     temperature: 0,
     timeout: env.LOG_ANALYSIS_API_TIMEOUT_MS,
-    maxTokens: maxTokens ?? Math.min(tokenBudget, 2048, Math.max(256, Math.floor(tokenBudget / 4))),
+    maxRetries: limits?.maxRetries,
+    maxTokens: limits?.maxTokens ?? Math.min(tokenBudget, 2048, Math.max(256, Math.floor(tokenBudget / 4))),
     configuration: {
       baseURL: env.LOG_ANALYSIS_API_BASE_URL
     }
@@ -118,6 +122,8 @@ function createUnconfiguredModel(): LogAnalysisChatModel {
 }
 
 export type CreateLogAnalyzerFromEnvOptions = {
+  /** Scripted chat model for offline analyzer and eval runs. */
+  model?: LogAnalysisChatModel;
   telemetry?: LogAnalysisLlmTelemetry;
   /**
    * Database handle for the loop kernel's organization-scoped tool backends
@@ -160,25 +166,26 @@ export function createLogAnalyzerFromEnv(
     let model = verifiersByLabel.get(modelLabel);
     if (!model) {
       model = env.LOG_ANALYSIS_DETERMINISTIC ? deterministicConclusionVerifier
-        : providerConfigured ? createChatOpenAiModel(env, modelLabel, env.LOG_ANALYSIS_TOKEN_BUDGET, VERIFIER_MAX_OUTPUT_TOKENS)
+        : providerConfigured ? createChatOpenAiModel(env, modelLabel, env.LOG_ANALYSIS_TOKEN_BUDGET, { maxTokens: VERIFIER_MAX_OUTPUT_TOKENS })
           : createUnconfiguredModel();
       verifiersByLabel.set(modelLabel, model);
     }
     return { model, modelLabel };
   }
 
-  function resolveModel(modelLabel: string, tokenBudget: number): LogAnalysisChatModel {
-    const cacheKey = JSON.stringify([modelLabel, tokenBudget]);
+  function resolveModel(modelLabel: string, tokenBudget: number, singleShotRetry = false): LogAnalysisChatModel {
+    if (options.model) return options.model;
+    const cacheKey = JSON.stringify([modelLabel, tokenBudget, singleShotRetry]);
     const cached = modelsByLabel.get(cacheKey);
     if (cached) {
       return cached;
     }
     const model = env.LOG_ANALYSIS_DETERMINISTIC
-      ? useLoopKernel
+      ? useLoopKernel && !singleShotRetry
         ? createDeterministicLogAnalysisLoopModel(env.LOG_ANALYSIS_HYPOTHESIS_LEDGER)
         : createDeterministicLogAnalysisModel()
       : providerConfigured
-        ? createChatOpenAiModel(env, modelLabel, tokenBudget)
+        ? createChatOpenAiModel(env, modelLabel, tokenBudget, singleShotRetry ? { maxRetries: 0 } : undefined)
         : createUnconfiguredModel();
     modelsByLabel.set(cacheKey, model);
     return model;
@@ -186,20 +193,18 @@ export function createLogAnalyzerFromEnv(
 
   function createKernel(modelLabel: string, stepBudget: number, tokenBudget: number, hasTokenBudgetOverride: boolean,
     protocol: LogAnalysisProtocol): LogAnalysisAdapter {
-    const model = resolveModel(modelLabel, tokenBudget);
-    if (!useLoopKernel) {
-      return createLlmLogAnalyzer({
-        model,
-        modelLabel,
-        tokenBudget,
-        repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
-        telemetry: options.telemetry
-      });
-    }
+    const singleShot = (retry: boolean) => createLlmLogAnalyzer({
+      model: resolveModel(modelLabel, tokenBudget, retry),
+      modelLabel,
+      tokenBudget,
+      repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
+      telemetry: options.telemetry
+    });
+    if (!useLoopKernel) return singleShot(false);
 
     const db = options.db;
     return createAgentLoopLogAnalyzer({
-      model,
+      model: resolveModel(modelLabel, tokenBudget),
       modelLabel,
       tokenBudget,
       maxSteps: stepBudget,
@@ -211,6 +216,17 @@ export function createLogAnalyzerFromEnv(
       repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
       estimateMissingTokenUsage: !hasTokenBudgetOverride,
       telemetry: options.telemetry,
+      recoverInvalidModelOutput: env.LOG_ANALYSIS_SINGLE_SHOT_FALLBACK ? async (input) => {
+        try {
+          const report = await singleShot(true).tryAnalyze(input);
+          return report && { ...report, analysisSource: "single-shot-fallback", confidence: Math.min(report.confidence, 0.5) };
+        } catch (error) {
+          input.signal?.throwIfAborted();
+          // Provider failure during recovery goes straight to rules, preserving the loop's reason.
+          if (!(error instanceof LogAnalysisProviderError)) throw error;
+          return undefined;
+        }
+      } : undefined,
       bindToolBackends: async (input) => {
         if (!db || !input.organizationId) return {};
         const scope = env.LOG_ANALYSIS_PAST_CONCLUSIONS && input.logDomainId && input.pastConclusionScope

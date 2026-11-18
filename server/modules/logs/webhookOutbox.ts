@@ -32,7 +32,7 @@ export async function enqueueTerminalLogWebhook(db: Queryable, input: { organiza
   const result = await db.query<{
     log_domain_id: string; log_record_id: string; file_name: string; status: "complete" | "failed";
     completed_at: Date | string; error_message: string | null; related_parameter_snapshot: unknown;
-    analysis_source: string | null; degraded_reason: string | null; severity: string | null;
+    analysis_source: LogAnalysisResultWebhookInput["analysisSource"] | null; degraded_reason: string | null; severity: string | null;
     confidence: number | null; conclusion: string | null;
     alternative_hypotheses: LogAnalysisResultWebhookInput["alternativeHypotheses"] | null;
     procedure_checks: LogAnalysisResultWebhookInput["checks"] | null;

@@ -108,7 +108,8 @@ export function evaluateLogEvalExpectation(
           };
     }
     case "expectsNoDegradation": {
-      const pass = result.output.degradedReason === undefined && result.output.analysisSource !== "rules-fallback";
+      const pass = result.output.degradedReason === undefined
+        && result.output.analysisSource !== "rules-fallback" && result.output.analysisSource !== "single-shot-fallback";
       return pass
         ? { pass: true }
         : {

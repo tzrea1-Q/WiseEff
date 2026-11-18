@@ -12,6 +12,7 @@
 - `LOG_ANALYSIS_API_TIMEOUT_MS`
 - `LOG_ANALYSIS_TOKEN_BUDGET`（循环模式：跨步累计 token）
 - `LOG_ANALYSIS_KERNEL`（默认 `loop`；回退 `single-shot`）
+- `LOG_ANALYSIS_SINGLE_SHOT_FALLBACK`（默认 `false`）。设为 `true` 后，循环内核可在模型输出无效时使用单次 JSON 内核重试一次。
 - `LOG_ANALYSIS_MAX_STEPS`（循环步数上界，默认 6）
 
 验收或离线演练可设 `LOG_ANALYSIS_DETERMINISTIC=true`，无需填写 `LOG_ANALYSIS_API_*`；此时报告的 `model` 记为 `deterministic`。确定性桩模型同时支持两种内核的协议。
@@ -35,7 +36,8 @@
 
 - provider 瞬时故障 → job 走既有重试/退避（`LOG_ANALYSIS_QUEUE_ATTEMPTS` / `LOG_ANALYSIS_QUEUE_BACKOFF_MS`）。
 - 重试将耗尽的最后一次尝试 → 确定性规则引擎回退，`analysis_source = 'rules-fallback'`、`degraded_reason = 'provider-unavailable'`，job 正常完成（不进死信）。
-- 单次内核收到无效或缺少有效证据的答复后，回退并标记 `invalid-model-output`。循环内核连续收到三次无效输出后以同一原因回退，被拒绝的工具调用和缺少有效证据的终答也计入次数。
+- 循环内核连续收到三次无效输出后标记 `invalid-model-output`，被拒绝的工具调用和缺少有效证据的终答也计入次数。启用重试时，使用同一已固定技能修订和模型做一次 JSON 调用，并独立校验证据。成功时返回 `single-shot-fallback`，置信度封顶 0.5。重试输出无效或模型服务调用失败时，直接由规则引擎生成报告。两种结果都保留 `invalid-model-output`。
+- 单次内核作为主内核时，答复无效或缺少有效证据会直接回退到规则引擎，并标记 `invalid-model-output`。
 - 循环内核将步数耗尽标记为 `step-budget-exhausted`，将 token 耗尽标记为 `token-budget-exhausted`。预算策略允许尝试提前收敛时，有证据依据的结论返回 `analysis_source = 'agent'`，置信度上限为 0.5。否则由规则引擎生成报告。两种结果都保留触发收敛的原因。
 - 连回退也失败才走既有 job 失败/死信路径。
 
@@ -88,6 +90,7 @@ worker 在预处理、解码、信号提取与分析阶段，每隔租约时长�
 - 报告输出到 `docs/generated/log-analysis-quality.{json,md}`，记录模型、内核、提示词版本和评分器。中文摘要列出至少一次通过的用例比例（pass@k）与每次都通过的比例（pass^k）。诊断通过要求根因得分和证据召回率均达到 0.8。预期拒答的用例在置信度不高于 0.5 时通过。
 - 成本统计采用中位数和最近秩 p95。步数按模型轮数计。token 为输入与输出之和，缺少完整用量的试验不计入 token 分布。时延涵盖分析和规则兜底。降级率以全部完成的试验为分母，早收敛率统计发出早收敛事件的试验比例。
 - 基线门禁依据 `eval-cases/logs/baseline.json` 比较金标准用例得分。真实用例待补充时门禁保持未激活。筛选排除金标准用例时，跳过已激活的门禁。
+- 没有真实模型端点时，可用 `LOG_ANALYSIS_KERNEL=loop LOG_ANALYSIS_SINGLE_SHOT_FALLBACK=false npm run logs:eval:quality -- --tier realistic --trials 3 --script-invalid-loop-output` 对比关闭和开启重试的结果。保存 JSON 后将开关设为 `true` 再运行一次。脚本在原生工具调用路径返回无效输出，单次 JSON 重试使用确定性模型。每份报告用 `caseResults` 中 `analysisSource: "rules-fallback"` 的条数除以已完成试验总数，得到规则兜底率。
 
 下一次评测会覆盖生成文件，运行前先保存上一份 JSON。对比两次报告时使用相同的用例、层级、标签归属和试验次数。对比命令输出可在 PR 中引用的 Markdown 表格。
 
@@ -254,7 +257,7 @@ npx tsx scripts/log-bundle-memory-probe.ts --mode=api-multipart --profile=config
 - request/trace id，
 - latency 与 token 数，
 - 降级原因（如适用），
-- 分析来源（`agent` / `rules-fallback`）。
+- 分析来源（`agent` / `single-shot-fallback` / `rules-fallback`）。
 
 不得向仓库文档提交 API key、原始 prompt、原始 provider payload、Authorization 头或原始客户日志内容。
 

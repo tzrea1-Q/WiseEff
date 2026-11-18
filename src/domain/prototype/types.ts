@@ -18,7 +18,7 @@ import type {
 } from "@/domain/parameters/types";
 import type { ParameterDraftDto } from "@/application/ports/ParameterRepository";
 import type { NotificationItem } from "@/domain/notifications/types";
-import type { LogDegradedReason } from "@/domain/logs/types";
+import type { LogAnalysisSource, LogDegradedReason } from "@/domain/logs/types";
 import type { PlatformRole, UserAccount } from "@/domain/users/types";
 
 export type RiskLevel = "High" | "Medium" | "Low";
@@ -250,7 +250,7 @@ export type LogRecord = {
   archiveState?: LogArchiveState;
   logDomainId?: string;
   logDomainName?: string;
-  analysisSource?: "agent" | "rules-fallback";
+  analysisSource?: LogAnalysisSource;
   degradedReason?: LogDegradedReason;
 };
 

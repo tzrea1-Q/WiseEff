@@ -85,7 +85,7 @@ describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
         expect((await db.query(`select r.skill_revision_id, p.prompt_version, p.analysis_source, p.model
           from log_analysis_runs r join log_analysis_reports p on p.run_id = r.id where r.id = $1`, [upload.job.runId])).rows)
           .toEqual([{ skill_revision_id: revision.id, prompt_version: revision.id === firstRevision.id
-            ? "2026-10-19.loop.procedure.signals.source.10" : LOG_ANALYSIS_LOOP_PROMPT_VERSION, analysis_source: "agent", model: "procedure-scripted" }]);
+            ? "2026-10-19.loop.procedure.signals.source.11" : LOG_ANALYSIS_LOOP_PROMPT_VERSION, analysis_source: "agent", model: "procedure-scripted" }]);
         return prompt;
       }
       const firstPrompt = await process(queued.body, firstRevision);

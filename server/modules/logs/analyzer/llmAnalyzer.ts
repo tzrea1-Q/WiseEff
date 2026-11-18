@@ -350,7 +350,9 @@ export function sourceLocationKey(location: NonNullable<AnalyzeLogEvidence["sour
   return JSON.stringify([location.snapshotId, location.path, location.line]);
 }
 
-export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogAnalysisAdapter {
+export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogAnalysisAdapter & {
+  tryAnalyze(input: AnalyzeLogInput): Promise<AnalyzeLogOutput | undefined>;
+} {
   const fallback = options.fallback ?? createRuleBasedLogAnalyzer();
   const now = options.now ?? (() => Date.now());
 
@@ -370,9 +372,8 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
     };
   }
 
-  return {
-    async analyze(input) {
-      input = withLogTrace(input);
+  const analyzer = {
+    async tryAnalyze(input: AnalyzeLogInput): Promise<AnalyzeLogOutput | undefined> {
       const findings = input.files?.find((file) => file.prefilter)?.prefilter ?? runLogPrefilter(input.files?.find((file) => file.parsed)?.parsed?.entries ?? input.parsed.entries, input.signalRules);
       const excerptCharBudget = Math.max(1_000, Math.floor(options.tokenBudget * CHARS_PER_TOKEN * 0.6));
       const analyzed = input.files?.filter((file) => file.parsed);
@@ -439,7 +440,7 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
       });
 
       if (!usable) {
-        return degradeToFallback(input, "invalid-model-output");
+        return undefined;
       }
 
       return {
@@ -458,6 +459,14 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
         promptVersion: promptVersionFor(input),
         model: options.modelLabel
       };
+    }
+  };
+
+  return {
+    ...analyzer,
+    async analyze(input) {
+      input = withLogTrace(input);
+      return await analyzer.tryAnalyze(input) ?? degradeToFallback(input, "invalid-model-output");
     }
   };
 }
