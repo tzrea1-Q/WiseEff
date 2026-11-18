@@ -38,6 +38,7 @@ export type LogLoopEvalScenario = {
   procedure?: string;
   logDomain?: { name: string; description?: string };
   script: ScriptedModelResponse[];
+  protocol?: "tools" | "json";
   repairJsonOutput?: boolean;
   maxSteps?: number;
   tokenBudget?: number;
@@ -715,6 +716,27 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
       { type: "expectsTraceArguments", tool: "read_domain_knowledge", arguments: { file: "[redacted]", query: "[redacted]" } },
       { type: "expectsAnalysisSource", source: "agent" },
       { type: "expectsGroundedEvidence" }
+    ]
+  },
+  {
+    name: "loop-native-batch-folds-results-and-grounds-final",
+    category: "loop-protocol",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    protocol: "tools",
+    maxSteps: 2,
+    script: [
+      { toolCalls: [3, 4, 1, 2].map((line) => ({ id: `read-${line}`, name: "read_line_range",
+        arguments: JSON.stringify({ startLine: line, endLine: line }) })) },
+      { content: loopFinalPayload }
+    ],
+    expectations: [
+      { type: "expectsTrace", kinds: ["model-turn", "tool-call"] },
+      { type: "expectsGroundedEvidence" },
+      { type: "expectsEvidenceNotCitingLines", lineNumbers: [1, 2, 5, 6] },
+      { type: "expectsModelCallCount", count: 2 },
+      { type: "expectsAnalysisSource", source: "agent" },
+      { type: "expectsNoDegradation" }
     ]
   },
   {

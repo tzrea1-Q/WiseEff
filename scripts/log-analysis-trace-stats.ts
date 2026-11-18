@@ -4,7 +4,7 @@ import { z } from "zod";
 
 const traceStatsSql = `
   with trace as (
-    select step.organization_id, step.run_id, step.step->>'kind' as kind,
+    select step.organization_id, step.run_id, step.step->>'kind' as kind, step.step->>'reason' as reason,
       case when jsonb_typeof(step.step->'inputTokens') = 'number' then (step.step->>'inputTokens')::numeric end as input_tokens,
       case when jsonb_typeof(step.step->'outputTokens') = 'number' then (step.step->>'outputTokens')::numeric end as output_tokens
     from public.log_analysis_trace_steps step
@@ -14,7 +14,7 @@ const traceStatsSql = `
       and ($2::timestamptz is null or run.completed_at < $2)
   ), runs as (
     select organization_id, run_id,
-      count(*) filter (where kind = 'model-turn') as steps,
+      count(*) filter (where kind = 'model-turn' and reason is distinct from 'protocol-unsupported') as steps,
       bool_or(kind = 'early-convergence') as early_converged
     from trace
     group by organization_id, run_id

@@ -6,6 +6,7 @@ import type { SignalRuleSet } from "./signalRules";
 import type { RelatedParameterRunSnapshot } from "./relatedParameter";
 import { extractLogSignals, type LogSignalSummary } from "./genericSignals";
 import { emitLogTrace, withLogTrace, LOG_TRACE_MAX_LINES, type LogAnalysisTraceStep } from "./traceTypes";
+import type { LogAnalysisProtocol } from "./logAnalysisProtocol";
 
 export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
 export type LogAnalysisStageId = "pattern" | "rootcause";
@@ -37,6 +38,7 @@ export type AnalyzeLogInput = {
     description?: string;
     /** Pinned skill revision overrides; endpoint and credentials stay global. */
     modelOverride?: string;
+    protocolOverride?: LogAnalysisProtocol;
     stepBudget?: number;
     tokenBudget?: number;
   };

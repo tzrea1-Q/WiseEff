@@ -1,14 +1,16 @@
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI, ChatOpenAICompletions } from "@langchain/openai";
 
 import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
 import type { Database } from "../../../shared/database/client";
 import type { LogAnalysisAdapter } from "../analyzer";
+import type { LogAnalysisProtocol } from "../logAnalysisProtocol";
 import { createAgentLoopLogAnalyzer } from "./agentLoop";
 import { createDeterministicLogAnalysisLoopModel, createDeterministicLogAnalysisModel } from "./deterministicModel";
 import {
   createLlmLogAnalyzer,
   LogAnalysisProviderError,
   LOG_ANALYSIS_DETERMINISTIC_MODEL,
+  type LogAnalysisNativeCall,
   type LogAnalysisChatModel,
   type LogAnalysisLlmTelemetry
 } from "./llmAnalyzer";
@@ -25,6 +27,7 @@ export type LogAnalyzerEnv = {
   LOG_ANALYSIS_KERNEL: "loop" | "single-shot";
   LOG_ANALYSIS_MAX_STEPS: number;
   LOG_ANALYSIS_REPAIR_JSON?: boolean;
+  LOG_ANALYSIS_PROTOCOL?: LogAnalysisProtocol;
 };
 
 function readNonBlank(value: string | undefined) {
@@ -52,7 +55,7 @@ function contentToText(content: unknown): string {
 }
 
 function createChatOpenAiModel(env: LogAnalyzerEnv, modelLabel: string, tokenBudget: number): LogAnalysisChatModel {
-  const chat = new ChatOpenAI({
+  const settings = {
     model: modelLabel,
     apiKey: env.LOG_ANALYSIS_API_KEY,
     temperature: 0,
@@ -61,18 +64,38 @@ function createChatOpenAiModel(env: LogAnalyzerEnv, modelLabel: string, tokenBud
     configuration: {
       baseURL: env.LOG_ANALYSIS_API_BASE_URL
     }
+  };
+  const chat = new ChatOpenAI(settings);
+  const nativeChat = new ChatOpenAICompletions(settings);
+  const readResponse = (response: Awaited<ReturnType<typeof chat.invoke>>) => ({
+    content: contentToText(response.content),
+    usage: {
+      inputTokens: response.usage_metadata?.input_tokens,
+      outputTokens: response.usage_metadata?.output_tokens
+    }
   });
 
   return {
     async invoke(messages, options) {
       const response = await chat.invoke(messages.map((message) => ({ role: message.role, content: message.content })), options);
-      return {
-        content: contentToText(response.content),
-        usage: {
-          inputTokens: response.usage_metadata?.input_tokens,
-          outputTokens: response.usage_metadata?.output_tokens
+      return readResponse(response);
+    },
+    async invokeTools(messages, { tools, signal }) {
+      const response = await nativeChat.bindTools(tools).invoke(messages.map((message) => {
+        const { role, content } = message;
+        if (role === "assistant" && message.toolCalls) {
+          return { role, content, additional_kwargs: { tool_calls: message.toolCalls.map(({ id, name, arguments: args }) =>
+            ({ id, type: "function" as const, function: { name, arguments: args } })) } };
         }
-      };
+        if (role === "tool") return { role, content, tool_call_id: message.toolCallId };
+        return { role, content };
+      }), { signal });
+      // The raw list preserves provider order, including malformed argument strings.
+      const toolCalls: LogAnalysisNativeCall[] = (response.additional_kwargs.tool_calls ?? []).map((call) =>
+        call?.type === "function"
+          ? { id: call.id, name: call.function?.name, arguments: call.function?.arguments }
+          : { id: "", name: "", arguments: "" });
+      return { ...readResponse(response), toolCalls };
     }
   };
 }
@@ -140,7 +163,8 @@ export function createLogAnalyzerFromEnv(
     return model;
   }
 
-  function createKernel(modelLabel: string, stepBudget: number, tokenBudget: number, hasTokenBudgetOverride: boolean): LogAnalysisAdapter {
+  function createKernel(modelLabel: string, stepBudget: number, tokenBudget: number, hasTokenBudgetOverride: boolean,
+    protocol: LogAnalysisProtocol): LogAnalysisAdapter {
     const model = resolveModel(modelLabel, tokenBudget);
     if (!useLoopKernel) {
       return createLlmLogAnalyzer({
@@ -158,6 +182,8 @@ export function createLogAnalyzerFromEnv(
       modelLabel,
       tokenBudget,
       maxSteps: stepBudget,
+      protocol,
+      endpoint: providerConfigured && !env.LOG_ANALYSIS_DETERMINISTIC ? env.LOG_ANALYSIS_API_BASE_URL : undefined,
       repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
       estimateMissingTokenUsage: !hasTokenBudgetOverride,
       telemetry: options.telemetry,
@@ -183,7 +209,10 @@ export function createLogAnalyzerFromEnv(
       const modelLabel = readNonBlank(input.logDomain?.modelOverride) ?? globalModelLabel;
       const stepBudget = Math.min(input.logDomain?.stepBudget ?? env.LOG_ANALYSIS_MAX_STEPS, env.LOG_ANALYSIS_MAX_STEPS);
       const tokenBudget = Math.min(input.logDomain?.tokenBudget ?? env.LOG_ANALYSIS_TOKEN_BUDGET, env.LOG_ANALYSIS_TOKEN_BUDGET);
-      return createKernel(modelLabel, stepBudget, tokenBudget, input.logDomain?.tokenBudget !== undefined).analyze(input);
+      const platform = env.LOG_ANALYSIS_PROTOCOL ?? "auto";
+      const override = input.logDomain?.protocolOverride;
+      const protocol = platform === "auto" || override === "json" ? override ?? platform : platform;
+      return createKernel(modelLabel, stepBudget, tokenBudget, input.logDomain?.tokenBudget !== undefined, protocol).analyze(input);
     }
   };
 }

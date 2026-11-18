@@ -53432,6 +53432,13 @@
                     "null"
                   ]
                 },
+                "protocol": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "json"
+                  ]
+                },
                 "inputTokens": {
                   "type": "number"
                 },
@@ -57770,6 +57777,13 @@
                     "null"
                   ]
                 },
+                "protocol": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "json"
+                  ]
+                },
                 "inputTokens": {
                   "type": "number"
                 },
@@ -61331,6 +61345,14 @@
                       "modelOverride": {
                         "type": "string"
                       },
+                      "protocolOverride": {
+                        "type": "string",
+                        "enum": [
+                          "auto",
+                          "tools",
+                          "json"
+                        ]
+                      },
                       "stepBudget": {
                         "type": "number"
                       },
@@ -62852,6 +62874,14 @@
                       "modelOverride": {
                         "type": "string"
                       },
+                      "protocolOverride": {
+                        "type": "string",
+                        "enum": [
+                          "auto",
+                          "tools",
+                          "json"
+                        ]
+                      },
                       "stepBudget": {
                         "type": "number"
                       },
@@ -64055,6 +64085,14 @@
                     },
                     "modelOverride": {
                       "type": "string"
+                    },
+                    "protocolOverride": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "tools",
+                        "json"
+                      ]
                     },
                     "stepBudget": {
                       "type": "number"
@@ -65914,6 +65952,14 @@
               },
               "modelOverride": {
                 "type": "string"
+              },
+              "protocolOverride": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "tools",
+                  "json"
+                ]
               },
               "stepBudget": {
                 "type": "number"
@@ -67879,6 +67925,14 @@
               "modelOverride": {
                 "type": "string"
               },
+              "protocolOverride": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "tools",
+                  "json"
+                ]
+              },
               "stepBudget": {
                 "type": "number"
               },
@@ -69372,6 +69426,14 @@
                   },
                   "modelOverride": {
                     "type": "string"
+                  },
+                  "protocolOverride": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "tools",
+                      "json"
+                    ]
                   },
                   "stepBudget": {
                     "type": "number"
@@ -70915,6 +70977,14 @@
                     },
                     "modelOverride": {
                       "type": "string"
+                    },
+                    "protocolOverride": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "tools",
+                        "json"
+                      ]
                     },
                     "stepBudget": {
                       "type": "number"

@@ -223,7 +223,7 @@ async function executeDryRun(db: Database, store: ObjectStore, analyzer: LogAnal
           entryCount: analyzed.reduce((sum, file) => sum + Object.values(file.prefilter!.severityCounts).reduce((a, b) => a + b, 0), 0) },
         procedure: admitted.spec.procedure, signalRules, signalSummary, decoding, sourceSnapshot,
         logDomain: { name: admitted.sample.name, description: admitted.spec.description ?? admitted.sample.description ?? undefined,
-          modelOverride: admitted.spec.modelOverride },
+          modelOverride: admitted.spec.modelOverride, protocolOverride: admitted.spec.protocolOverride },
         onProgress: async ({ step, maxSteps }) => {
           controller.signal.throwIfAborted();
           await db.query(`update log_skill_dry_runs set progress = $3 where organization_id = $1 and id = $2 and status = 'processing'`,

@@ -42,9 +42,10 @@ describe.skipIf(!(await isTestDatabaseAvailable()))("log trace statistics comman
       await db.query(`insert into log_analysis_trace_steps (organization_id, run_id, step_index, step)
         select 'stats-org', run_id, step_index, step::jsonb
         from (values
-          ('healthy', 1, '{"kind":"model-turn","inputTokens":100,"outputTokens":0}'),
-          ('healthy', 2, '{"kind":"tool-call","inputTokens":999}'),
-          ('healthy', 3, '{"kind":"model-turn","inputTokens":200,"outputTokens":20}'),
+          ('healthy', 1, '{"kind":"model-turn","reason":"protocol-unsupported"}'),
+          ('healthy', 2, '{"kind":"model-turn","inputTokens":100,"outputTokens":0}'),
+          ('healthy', 3, '{"kind":"tool-call","inputTokens":999}'),
+          ('healthy', 4, '{"kind":"model-turn","inputTokens":200,"outputTokens":20}'),
           ('converged', 1, '{"kind":"early-convergence","reason":"step-budget-exhausted"}'),
           ('converged', 2, '{"kind":"model-turn","inputTokens":300}'),
           ('fallback', 1, '{"kind":"degradation","reason":"provider-unavailable"}'),
@@ -55,7 +56,7 @@ describe.skipIf(!(await isTestDatabaseAvailable()))("log trace statistics comman
 
       expect(stats("--since", "2026-11-18T00:00:00Z", "--until", "2026-11-19T00:00:00Z")).toEqual({
         tracedRuns: 3,
-        modelTurns: 3,
+        modelTurns: 4,
         inputTokens: { samples: 3, median: 200, p95: 300 },
         outputTokens: { samples: 2, median: 10, p95: 20 },
         steps: { samples: 3, median: 1, p95: 2 },
