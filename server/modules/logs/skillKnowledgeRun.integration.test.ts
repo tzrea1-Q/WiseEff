@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { processNextKnowledgeIndexJob } from "../knowledge/indexing/worker";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
@@ -15,6 +15,7 @@ import { registerLogRoutes } from "./routes";
 import { processLogAnalysisJobById } from "./worker";
 import { createRuleBasedLogAnalyzer } from "./analyzer";
 import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
+import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
 import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
 import { createWorkerLogAnalysisToolBackends } from "./analyzer/tools/workerToolBackends";
 import type { getLogSkill } from "./skillsService";
@@ -141,31 +142,22 @@ describe.skipIf(!available)("skill knowledge runs over PostgreSQL", () => {
       expect(JSON.stringify(page)).not.toContain("private-raw-line-1568");
       await expect(searchPastConclusions(db, scope, { query: "thermal foldback", offset: 2, limit: 5 }))
         .resolves.toMatchObject({ hasMore: false, items: [{ runId: prior.runId }] });
-      const embedding = {
-        model: "fixture-embedding", async embed(texts: string[]) { return texts.map(() => [1, 0]); }
-      };
-      const semantic = await searchPastConclusions(db, scope, { query: "overheating", offset: 0, limit: 5 }, embedding);
-      expect(semantic.retrievalMode).toBe("semantic_fts");
-      expect(semantic.items.map((item) => item.runId)).toEqual([saved.runId, exported.runId, prior.runId]);
-      await expect(searchPastConclusions(db, scope, { query: "thermal foldback", offset: 1, limit: 1 }, embedding))
-        .resolves.toMatchObject({ hasMore: true, items: [{ runId: exported.runId }] });
-
       const rerun = await request<{ job: { id: string; runId: string } }>(`${unreviewed.path}/rerun`, "POST", { revisionPolicy: "pinned" });
       expect(rerun.status).toBe(200);
       const final = { action: "final", conclusion: "Current incident", confidence: 0.9, impact: "Reduced output",
         severity: "Warning", suggestedActions: ["Inspect"], evidence: [{ lineNumbers: [1], inference: "Current error", suggestedAction: "Inspect" }] };
-      const analyzer = createAgentLoopLogAnalyzer({
-        modelLabel: "history-fixture", tokenBudget: 100_000, maxSteps: 4, protocol: "tools",
+      const embed = vi.fn(async (texts: string[]) => texts.map(() => [1, 0]));
+      const analyzer = createLogAnalyzerFromEnv({ LOG_ANALYSIS_MODEL: "history-fixture", LOG_ANALYSIS_TOKEN_BUDGET: 100_000,
+        LOG_ANALYSIS_MAX_STEPS: 4, LOG_ANALYSIS_PROTOCOL: "tools", LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_PAST_CONCLUSIONS: true,
+        LOG_ANALYSIS_API_TIMEOUT_MS: 1000, LOG_ANALYSIS_DETERMINISTIC: false }, {
+        db, embeddingClient: { model: "fixture-embedding", embed },
         model: createScriptedLogAnalysisModel([
           { content: { action: "tool", tool: "search_past_conclusions", args: { query: "thermal foldback", limit: 1 } } },
           { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } } }, { content: final }
-        ]),
-        async bindToolBackends(input) {
-          expect(input.pastConclusionScope).toEqual({ runId: rerun.body.job.runId, projectId: null });
-          return { searchPastConclusions: (params) => searchPastConclusions(db, { ...scope, runId: input.pastConclusionScope!.runId }, params) };
-        }
+        ])
       });
       expect(await processLogAnalysisJobById({ db, objectStore, jobId: rerun.body.job.id, analyzer })).toEqual({ status: "processed" });
+      expect(embed).not.toHaveBeenCalled();
       const report = await request<{ item: LogRecordDto }>(unreviewed.path);
       expect(logRecordDtoSchema.parse(report.body.item)).toMatchObject({ historicalRunIds: [saved.runId] });
       const runs = await request<{ items: LogRunDto[] }>(`${unreviewed.path}/runs`);

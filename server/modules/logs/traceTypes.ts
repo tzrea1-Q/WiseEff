@@ -1,6 +1,6 @@
 import type { AnalyzeLogInput } from "./analyzer";
 import type { LogAnalysisWireProtocol } from "./logAnalysisProtocol";
-import type { LogHypothesis } from "./hypotheses";
+import type { LogTraceHypothesis } from "./hypotheses";
 
 export type LogAnalysisTraceStep = {
   index: number;
@@ -12,7 +12,7 @@ export type LogAnalysisTraceStep = {
   outcome: "ok" | "error" | "truncated";
   reason: string | null;
   protocol?: LogAnalysisWireProtocol;
-  hypotheses?: LogHypothesis[];
+  hypotheses?: LogTraceHypothesis[];
   inputTokens?: number;
   outputTokens?: number;
 };

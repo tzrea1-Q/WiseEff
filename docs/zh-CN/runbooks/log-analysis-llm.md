@@ -36,9 +36,9 @@
 
 - provider 瞬时故障 → job 走既有重试/退避（`LOG_ANALYSIS_QUEUE_ATTEMPTS` / `LOG_ANALYSIS_QUEUE_BACKOFF_MS`）。
 - 重试将耗尽的最后一次尝试 → 确定性规则引擎回退，`analysis_source = 'rules-fallback'`、`degraded_reason = 'provider-unavailable'`，job 正常完成（不进死信）。
-- 循环内核连续收到三次无效输出后标记 `invalid-model-output`，被拒绝的工具调用和缺少有效证据的终答也计入次数。启用重试时，使用同一已固定技能修订和模型做一次 JSON 调用，并独立校验证据。成功时返回 `single-shot-fallback`，置信度封顶 0.5。重试输出无效或模型服务调用失败时，直接由规则引擎生成报告。两种结果都保留 `invalid-model-output`。
+- 循环内核连续收到三次无效输出后标记 `invalid-model-output`，被拒绝的工具调用和缺少有效证据的终答也计入次数。启用重试时，使用同一已固定技能修订和模型做一次 JSON 调用，并独立校验证据。成功时返回 `single-shot-fallback`，置信度封顶 0.5。重试输出无效或模型服务调用失败时，直接由规则引擎生成报告。两种结果都保留 `invalid-model-output`。剩余累计预算无法容纳重试提示和输出额度时，规则报告记为 `token-budget-exhausted`。
 - 单次内核作为主内核时，答复无效或缺少有效证据会直接回退到规则引擎，并标记 `invalid-model-output`。
-- 循环内核将步数耗尽标记为 `step-budget-exhausted`，将 token 耗尽标记为 `token-budget-exhausted`。预算策略允许尝试提前收敛时，有证据依据的结论返回 `analysis_source = 'agent'`，置信度上限为 0.5。否则由规则引擎生成报告。两种结果都保留触发收敛的原因。
+- 循环内核将步数耗尽标记为 `step-budget-exhausted`，将 token 耗尽标记为 `token-budget-exhausted`。预算策略允许尝试提前收敛时，有证据依据的结论返回 `analysis_source = 'agent'`，置信度上限为 0.5。否则由规则引擎生成报告。剩余 token 无法容纳收敛请求时，规则报告记为 `token-budget-exhausted`。内核在每次请求前估算输入 token，按余额限制输出额度，并在服务商提供用量时据实计入。估算与实际用量一致时，调查至少保留 20% 供收敛使用。验证和重试共用本次运行的余额。
 - 连回退也失败才走既有 job 失败/死信路径。
 
 按可见性验证降级路径：关闭或错误配置 provider 后上传日志，确认记录以降级徽标（降级分析 · 规则回退）完成，而不是静默成功；`/logs` 与 `/log-admin` 均应可见。确定性模式下可通过上传含 `WISEEFF_SIMULATE_LLM_PROVIDER_DOWN` 标记行的日志演练同一链路。
@@ -80,13 +80,14 @@ worker 在预处理、解码、信号提取与分析阶段，每隔租约时长�
 
 - 技能作者在工作区的「诊断流程」分区编辑和预览 Markdown。`skill/v1.procedure` 可选，上限 20,000 字符。保存只更新草稿；发布创建不可变版本。Worker 从运行钉住的 `skill_revision_id` 读取流程，因此后续草稿修改不会改变排队中的运行或显式指定版本的重新分析。新上传使用当前已发布版本。
 - 提示词顺序是平台协议 → 分隔、低优先级的技能流程 → 用户任务。流程以 JSON 字符串置于 `<skill_diagnostic_procedure>` 中；换行和分隔符字符经过转义，使结束标签或伪造协议标题保持为数据。提示中明确说明流程不能覆盖接地、拒绝规则或禁止写操作的约束。证据必须来自工具结果；旧单发内核使用平台提供的摘录。工具白名单和既有证据校验仍独立执行。
-- 当前版本：循环 `2026-10-19.loop.procedure.signals.1`、关联参数循环 `2026-10-19.loop.procedure.signals.related-parameter.1`；单发 `2026-10-19.procedure.signals.1`、关联参数单发 `2026-10-19.procedure.signals.related-parameter.1`。报告保留对应的 `prompt_version`。无流程时省略流程段，平台信号工具仍可用。确定性规则回退忽略流程。
+- 当前版本：循环 `2026-10-19.loop.procedure.signals.source.11`、关联参数循环 `2026-10-19.loop.procedure.signals.source.related-parameter.11`；单发 `2026-10-19.procedure.signals.source.2`、关联参数单发 `2026-10-19.procedure.signals.source.related-parameter.2`。报告保留对应的 `prompt_version`。无流程时省略流程段，平台信号工具仍可用。确定性规则回退忽略流程。启用流程检查清单的循环版本为 `2026-10-19.loop.procedure.signals.source.12` 和 `2026-10-19.loop.procedure.signals.source.related-parameter.12`。
 - 运行 `npm run logs:eval` 检查提示词顺序、对抗性流程、分隔符注入、接地和非法写工具场景。PostgreSQL 运行级测试位于 `server/modules/logs/procedure.integration.test.ts`，通过捕获脚本模型收到的提示词验证发布、草稿隔离和显式钉住版本的重新分析。这些检查不能证明真实模型能抵抗所有提示词注入。
 
 ## 效果层评测（`logs:eval:quality`）
 
 - 未配置分析端点或密钥时，命令使用确定性模型和评分器。也可设置 `LOG_ANALYSIS_DETERMINISTIC=true` 强制启用。真实模型运行通过环境变量 `LOG_ANALYSIS_API_*` 配置，可选用 `LOG_ANALYSIS_JUDGE_*` 配置评分器。每次运行使用一组模型配置。确定性结果用于验证评测流程。
 - `--trials <k>` 设置每个选中用例的运行次数，默认 1 次。`--tier <golden|realistic|synthetic|all>` 筛选层级，默认 `all`。`--tags <tag,...>` 保留命中任一标签的用例。报告将每个选中用例计入所属层级和全部场景标签。
+- 配套 `skill.yaml` 声明提取器时，评测向分析器提供解码事件。历史检索通过内存查询读取同一领域内其他已确认且脱敏的生产用例。语料库有符合条件的历史用例后，`LOG_ANALYSIS_PAST_CONCLUSIONS` 才会影响质量评测。
 - 报告输出到 `docs/generated/log-analysis-quality.{json,md}`，记录模型、内核、提示词版本和评分器。中文摘要列出至少一次通过的用例比例（pass@k）与每次都通过的比例（pass^k）。诊断通过要求根因得分和证据召回率均达到 0.8。预期拒答的用例在置信度不高于 0.5 时通过。
 - 成本统计采用中位数和最近秩 p95。步数按模型轮数计。token 为输入与输出之和，缺少完整用量的试验不计入 token 分布。时延涵盖分析和规则兜底。降级率以全部完成的试验为分母，早收敛率统计发出早收敛事件的试验比例。
 - 基线门禁依据 `eval-cases/logs/baseline.json` 比较金标准用例得分。真实用例待补充时门禁保持未激活。筛选排除金标准用例时，跳过已激活的门禁。

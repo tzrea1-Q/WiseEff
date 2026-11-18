@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { createAgentLoopLogAnalyzer } from "../analyzer/agentLoop";
+import { createLogAnalyzerFromEnv } from "../analyzer/analyzerFromEnv";
 import { createDeterministicLogAnalysisLoopModel } from "../analyzer/deterministicModel";
+import { createScriptedLogAnalysisModel } from "../analyzer/scriptedModel";
 import type { AnalyzeLogOutput, LogAnalysisAdapter } from "../analyzer";
 import { emitLogTrace } from "../traceTypes";
 import { defaultGoldenCasesRoot, loadGoldenLogCases, type GoldenLogCase } from "./goldenCases";
 import {
   aggregateQualityResults,
+  bindQualityPastConclusions,
   compareToQualityBaseline,
   createDeterministicQualityJudge,
   evaluateQualityCaseOutput,
@@ -253,6 +256,54 @@ describe("compareToQualityBaseline", () => {
 });
 
 describe("runQualityEval (deterministic end-to-end)", () => {
+  it("lets the history toggle change a trial with a confirmed case in the same domain", async () => {
+    const candidate = makeGoldenCase({ id: "charging-power/current", realLog: true, deIdentified: true, scenarioTags: ["cascade"] });
+    const prior = makeGoldenCase({ id: "charging-power/prior", realLog: true, deIdentified: true });
+    const cases = [candidate, prior, makeGoldenCase({ id: "charging-power/unconfirmed" }),
+      makeGoldenCase({ id: "other/prior", domain: "other", realLog: true, deIdentified: true })];
+    for (const enabled of [false, true]) {
+      const model = createScriptedLogAnalysisModel([
+        { content: { action: "tool", tool: "search_past_conclusions", args: { query: "thermal foldback" } } },
+        { content: { action: "tool", tool: "read_line_range", args: { startLine: 2, endLine: 3 } } },
+        { content: { action: "final", conclusion: "Thermal foldback", impact: "Reduced current", severity: "Warning",
+          confidence: 0.9, suggestedActions: ["Inspect cooling"], evidence: [{ lineNumbers: [2, 3], inference: "Foldback logged", suggestedAction: "Inspect cooling" }] } }
+      ]);
+      const analyzer = createLogAnalyzerFromEnv({ LOG_ANALYSIS_TOKEN_BUDGET: 100_000, LOG_ANALYSIS_API_TIMEOUT_MS: 1000,
+        LOG_ANALYSIS_DETERMINISTIC: true, LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_MAX_STEPS: 4,
+        LOG_ANALYSIS_PROTOCOL: "json", LOG_ANALYSIS_PAST_CONCLUSIONS: enabled }, {
+        model, bindOfflinePastConclusions: bindQualityPastConclusions(cases)
+      });
+      const judge = createDeterministicQualityJudge();
+      let historicalRunIds: string[] | undefined;
+      const report = await runQualityEval({ analyzer, judge: { ...judge, score: (input) => {
+        historicalRunIds = input.output.historicalRunIds;
+        return judge.score(input);
+      } }, cases, tags: ["cascade"], problems: [], kernel: "loop", deterministic: true, modelLabel: "history", baseline: null });
+      expect(report.problems).toEqual([]);
+      expect(report.caseResults).toHaveLength(1);
+      expect(historicalRunIds).toEqual(enabled ? [prior.id] : undefined);
+    }
+  });
+
+  it("uses a register case's companion skill to execute and ground a decoded-event read", async () => {
+    const { cases, problems } = loadGoldenLogCases(defaultGoldenCasesRoot());
+    const goldenCase = cases.find((candidate) => candidate.scenarioTags.includes("register-decoding"))!;
+    const line = goldenCase.rawLines.findIndex((raw) => raw.includes("rd 0x12 = 0x21")) + 1;
+    expect(line).toBeGreaterThan(0);
+    const model = createScriptedLogAnalysisModel([
+      { content: { action: "tool", tool: "query_events", args: { extractor: "rail-status" } } },
+      { content: { action: "final", conclusion: "The rail monitor latched overvoltage.", impact: "Charging stopped.",
+        severity: "Warning", confidence: 0.9, suggestedActions: ["Inspect the rail"],
+        evidence: [{ lineNumbers: [line], inference: "Bit 5 is set", suggestedAction: "Inspect the rail" }] } }
+    ]);
+    const analyzer = createAgentLoopLogAnalyzer({ model, modelLabel: "decoding", protocol: "json", maxSteps: 4, tokenBudget: 100_000 });
+    const report = await runQualityEval({ analyzer, judge: createDeterministicQualityJudge(), cases: [goldenCase], problems,
+      kernel: "loop", deterministic: true, modelLabel: "decoding", baseline: null });
+    expect(report.problems).toEqual([]);
+    expect(report.caseResults[0]).toMatchObject({ analysisSource: "agent", steps: 2, evidence: { hitLines: [line] } });
+    expect(model.calls.at(-1)?.at(-1)?.content).toContain("latched_overvoltage");
+  });
+
   it("filters cases, repeats each selected case, and aggregates quality and costs per tier and tag", async () => {
     const cases = [
       makeGoldenCase({ id: "charging-power/a", tier: "realistic", scenarioTags: ["cascade", "multi-file"] }),

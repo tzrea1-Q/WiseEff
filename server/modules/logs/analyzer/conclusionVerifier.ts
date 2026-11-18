@@ -3,6 +3,7 @@ import type { AnalyzeLogInput, AnalyzeLogOutput } from "../analyzer";
 import { logGroundedAnchorSchema, type LogHypothesisAnchor } from "../hypotheses";
 import { emitLogTrace } from "../traceTypes";
 import { parseLogAnalysisModelJson, type LogAnalysisChatMessage, type LogAnalysisChatModel, type LogAnalysisLlmTelemetry } from "./llmAnalyzer";
+import { estimateLogPromptTokens, estimateLogTokens } from "./modelBudget";
 
 export const VERIFIER_MAX_OUTPUT_TOKENS = 1024;
 const MAX_CONTEXT_BYTES = 16 * 1024;
@@ -65,16 +66,20 @@ export async function verifyLogConclusion(input: {
     }
     const data = JSON.stringify({ claims, lines: [...lines.values()] });
     if (Buffer.byteLength(data) > MAX_CONTEXT_BYTES) return undefined;
-    const promptTokens = Math.ceil((Buffer.byteLength(data) + Buffer.byteLength(systemPrompt)) / 4) + 16;
-    if (promptTokens + VERIFIER_MAX_OUTPUT_TOKENS > input.remainingTokens) return undefined;
     const messages: LogAnalysisChatMessage[] = [{ role: "system", content: systemPrompt }, { role: "user", content: data }];
+    const promptTokens = estimateLogPromptTokens(messages);
+    if (promptTokens + VERIFIER_MAX_OUTPUT_TOKENS > input.remainingTokens) return undefined;
     run.signal?.throwIfAborted();
     attempted = true;
     estimatedInputTokens = promptTokens;
-    const response = await verifier.model.invoke(messages, { signal: run.signal });
+    const response = await verifier.model.invoke(messages, { signal: run.signal, maxOutputTokens: VERIFIER_MAX_OUTPUT_TOKENS });
     inputTokens = response.usage?.inputTokens ?? promptTokens;
     resultBytes = Buffer.byteLength(response.content);
-    outputTokens = response.usage?.outputTokens ?? Math.ceil(resultBytes / 4);
+    outputTokens = response.usage?.outputTokens ?? estimateLogTokens(response.content);
+    if (inputTokens + outputTokens > input.remainingTokens) {
+      reason = "verification-budget-exhausted";
+      return { tokens: inputTokens + outputTokens };
+    }
     const verdict = verdictSchema.safeParse(parseLogAnalysisModelJson(response.content, true));
     if (verdict.success && verdict.data.claims.length === claims.length &&
       new Set(verdict.data.claims.map(({ id }) => id)).size === claims.length &&
@@ -94,7 +99,7 @@ export async function verifyLogConclusion(input: {
   } finally {
     if (attempted && !run.signal?.aborted) {
       input.telemetry?.recordLlmCall?.({ model: verifier.modelLabel, latencyMs: Math.max(0, input.now() - start),
-        outcome: reason === "verification" ? "ok" : reason === "verification-invalid-output" ? "invalid_output" : "provider_error",
+        outcome: reason === "verification" ? "ok" : reason === "verification-provider-error" ? "provider_error" : "invalid_output",
         inputTokens, outputTokens });
       await emitLogTrace(run, { kind: "model-turn", reason, resultBytes, inputTokens, outputTokens,
         outcome: reason === "verification" ? "ok" : "error" });

@@ -5,6 +5,7 @@ import type { LogSkillSpec } from "./skillSpec";
 import type { ParseTestRun } from "./parseTestSpec";
 import type { HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 import { parseProcedureChecks } from "../../../src/domain/logs/procedureChecks";
+import { readStoredProcedureChecks } from "./hypotheses";
 
 export type LogSkillRevisionDto = {
   historicalAttribution?: HistoricalAttribution;
@@ -32,8 +33,12 @@ const selectRevision = `select id, skill_id as "skillId", revision_number as num
 export async function listSkillRevisions(db: Queryable, organizationId: string, skillId: string): Promise<LogSkillRevisionDto[]> {
   const result = await db.query<LogSkillRevisionDto>(`${selectRevision}
     where organization_id = $1 and skill_id = $2 order by revision_number desc`, [organizationId, skillId]);
-  return result.rows.map((row) => ({ ...row, createdAt: new Date(row.createdAt).toISOString(),
-    publishedAt: row.publishedAt ? new Date(row.publishedAt).toISOString() : null }));
+  return result.rows.map((row) => {
+    const { procedureChecks, ...spec } = row.spec;
+    const checks = readStoredProcedureChecks(procedureChecks);
+    return { ...row, spec: checks ? { ...spec, procedureChecks: checks } : spec, createdAt: new Date(row.createdAt).toISOString(),
+      publishedAt: row.publishedAt ? new Date(row.publishedAt).toISOString() : null };
+  });
 }
 
 /** Serializes draft edits and publication against each other and shared run pins. */
@@ -65,7 +70,7 @@ export async function publishSkillRevision(db: Queryable, organizationId: string
   if (!draft.rows.length) throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "技能草稿不存在或已更新，请刷新后重试。");
   const { spec } = draft.rows[0];
   // Drafts that predate the checklist format acquire their frozen list at publication.
-  const checks = spec.procedureChecks === undefined ? parseProcedureChecks(spec.procedure) : [];
+  const checks = readStoredProcedureChecks(spec.procedureChecks) === undefined ? parseProcedureChecks(spec.procedure) : [];
   const frozenSpec = checks.length ? JSON.stringify({ ...spec, procedureChecks: checks }) : null;
   await db.query(`update log_skill_revisions set status = 'superseded'
     where organization_id = $1 and skill_id = $2 and status = 'published'`, [organizationId, skillId]);

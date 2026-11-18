@@ -11,12 +11,15 @@ const anchors = z.array(logGroundedAnchorSchema).max(4);
 const MAX_HYPOTHESES = 8;
 export const MAX_HYPOTHESIS_BYTES = 4096;
 
-export const logHypothesesSchema = z.array(z.object({
+const logHypothesisSchema = z.object({
   id: text.max(48),
   statement: text,
   status: z.enum(["open", "supported", "refuted", "inconclusive"]),
   anchors
-})).max(MAX_HYPOTHESES);
+});
+export const logHypothesesSchema = z.array(logHypothesisSchema).max(MAX_HYPOTHESES);
+export const logTraceHypothesesSchema = z.array(logHypothesisSchema.omit({ statement: true })).max(MAX_HYPOTHESES)
+  .transform((items) => items.map(({ status, anchors }, index) => ({ id: String(index + 1), status, anchors })));
 
 export const logAlternativeHypothesesSchema = z.array(z.object({
   statement: text,
@@ -26,12 +29,18 @@ export const logAlternativeHypothesesSchema = z.array(z.object({
 
 export type LogHypothesisAnchor = z.infer<typeof logGroundedAnchorSchema>;
 export type LogHypothesis = z.infer<typeof logHypothesesSchema>[number];
+export type LogTraceHypothesis = z.infer<typeof logTraceHypothesesSchema>[number];
 export type LogAlternativeHypothesis = z.infer<typeof logAlternativeHypothesesSchema>[number];
 
 const checkId = z.string().regex(PROCEDURE_CHECK_ID);
 const procedureCheckSchema = z.object({ id: checkId,
   description: z.string().min(1).max(MAX_PROCEDURE_CHECK_DESCRIPTION), required: z.boolean() }).strict();
 export const procedureChecksSchema = z.array(procedureCheckSchema).max(MAX_PROCEDURE_CHECKS);
+export function readStoredProcedureChecks(value: unknown) {
+  if (!Array.isArray(value) || value.length > MAX_PROCEDURE_CHECKS) return undefined;
+  const result = procedureChecksSchema.safeParse(value);
+  return result.success && new Set(result.data.map(({ id }) => id)).size === result.data.length ? result.data : undefined;
+}
 const checkUpdateSchema = z.object({ id: checkId, status: z.enum(["done", "skipped"]), reason: text.optional(), anchors });
 export const logCheckUpdatesSchema = z.array(checkUpdateSchema).max(MAX_PROCEDURE_CHECKS);
 export const logReportChecksSchema = z.array(procedureCheckSchema.extend({

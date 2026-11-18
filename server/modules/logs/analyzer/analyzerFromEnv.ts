@@ -2,7 +2,7 @@ import { ChatOpenAI, ChatOpenAICompletions } from "@langchain/openai";
 
 import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
 import type { Database } from "../../../shared/database/client";
-import type { LogAnalysisAdapter } from "../analyzer";
+import type { AnalyzeLogInput, LogAnalysisAdapter } from "../analyzer";
 import type { LogAnalysisProtocol } from "../logAnalysisProtocol";
 import { createAgentLoopLogAnalyzer } from "./agentLoop";
 import { createDeterministicLogAnalysisLoopModel, createDeterministicLogAnalysisModel, deterministicConclusionVerifier } from "./deterministicModel";
@@ -16,7 +16,9 @@ import {
   type LogAnalysisLlmTelemetry
 } from "./llmAnalyzer";
 import { createWorkerLogAnalysisToolBackends } from "./tools/workerToolBackends";
+import type { LogAnalysisToolContext } from "./tools/toolContext";
 import { hasPastConclusions, searchPastConclusions } from "../pastConclusionsRepository";
+import { logCompletionLimit } from "./modelBudget";
 
 export type LogAnalyzerEnv = {
   LOG_ANALYSIS_API_BASE_URL?: string;
@@ -63,15 +65,15 @@ function contentToText(content: unknown): string {
 }
 
 function createChatOpenAiModel(
-  env: LogAnalyzerEnv, modelLabel: string, tokenBudget: number, limits?: { maxTokens?: number; maxRetries?: number }
+  env: LogAnalyzerEnv, modelLabel: string, defaultMaxTokens: number
 ): LogAnalysisChatModel {
   const settings = {
     model: modelLabel,
     apiKey: env.LOG_ANALYSIS_API_KEY,
     temperature: 0,
     timeout: env.LOG_ANALYSIS_API_TIMEOUT_MS,
-    maxRetries: limits?.maxRetries,
-    maxTokens: limits?.maxTokens ?? Math.min(tokenBudget, 2048, Math.max(256, Math.floor(tokenBudget / 4))),
+    maxRetries: 0,
+    maxTokens: defaultMaxTokens,
     configuration: {
       baseURL: env.LOG_ANALYSIS_API_BASE_URL
     }
@@ -88,11 +90,15 @@ function createChatOpenAiModel(
 
   return {
     async invoke(messages, options) {
-      const response = await chat.invoke(messages.map((message) => ({ role: message.role, content: message.content })), options);
+      const maxTokens = Math.min(defaultMaxTokens, options?.maxOutputTokens ?? defaultMaxTokens);
+      const client = maxTokens === defaultMaxTokens ? chat : new ChatOpenAI({ ...settings, maxTokens });
+      const response = await client.invoke(messages.map((message) => ({ role: message.role, content: message.content })), { signal: options?.signal });
       return readResponse(response);
     },
-    async invokeTools(messages, { tools, signal }) {
-      const response = await nativeChat.bindTools(tools).invoke(messages.map((message) => {
+    async invokeTools(messages, { tools, signal, maxOutputTokens }) {
+      const maxTokens = Math.min(defaultMaxTokens, maxOutputTokens ?? defaultMaxTokens);
+      const client = maxTokens === defaultMaxTokens ? nativeChat : new ChatOpenAICompletions({ ...settings, maxTokens });
+      const response = await client.bindTools(tools).invoke(messages.map((message) => {
         const { role, content } = message;
         if (role === "assistant" && message.toolCalls) {
           return { role, content, additional_kwargs: { tool_calls: message.toolCalls.map(({ id, name, arguments: args }) =>
@@ -133,6 +139,8 @@ export type CreateLogAnalyzerFromEnvOptions = {
   db?: Database;
   /** Embedding client for hybrid domain-knowledge retrieval; absent = FTS-only. */
   embeddingClient?: KnowledgeEmbeddingClient;
+  /** Offline eval fixture only. Database-backed runs always use the worker's scoped search. */
+  bindOfflinePastConclusions?: (input: AnalyzeLogInput) => LogAnalysisToolContext["searchPastConclusions"];
 };
 
 /**
@@ -166,7 +174,7 @@ export function createLogAnalyzerFromEnv(
     let model = verifiersByLabel.get(modelLabel);
     if (!model) {
       model = env.LOG_ANALYSIS_DETERMINISTIC ? deterministicConclusionVerifier
-        : providerConfigured ? createChatOpenAiModel(env, modelLabel, env.LOG_ANALYSIS_TOKEN_BUDGET, { maxTokens: VERIFIER_MAX_OUTPUT_TOKENS })
+        : providerConfigured ? createChatOpenAiModel(env, modelLabel, VERIFIER_MAX_OUTPUT_TOKENS)
           : createUnconfiguredModel();
       verifiersByLabel.set(modelLabel, model);
     }
@@ -185,13 +193,13 @@ export function createLogAnalyzerFromEnv(
         ? createDeterministicLogAnalysisLoopModel(env.LOG_ANALYSIS_HYPOTHESIS_LEDGER)
         : createDeterministicLogAnalysisModel()
       : providerConfigured
-        ? createChatOpenAiModel(env, modelLabel, tokenBudget, singleShotRetry ? { maxRetries: 0 } : undefined)
+        ? createChatOpenAiModel(env, modelLabel, logCompletionLimit(tokenBudget))
         : createUnconfiguredModel();
     modelsByLabel.set(cacheKey, model);
     return model;
   }
 
-  function createKernel(modelLabel: string, stepBudget: number, tokenBudget: number, hasTokenBudgetOverride: boolean,
+  function createKernel(modelLabel: string, stepBudget: number, tokenBudget: number,
     protocol: LogAnalysisProtocol): LogAnalysisAdapter {
     const singleShot = (retry: boolean) => createLlmLogAnalyzer({
       model: resolveModel(modelLabel, tokenBudget, retry),
@@ -214,12 +222,11 @@ export function createLogAnalyzerFromEnv(
       verifier: resolveVerifier(modelLabel),
       endpoint: providerConfigured && !env.LOG_ANALYSIS_DETERMINISTIC ? env.LOG_ANALYSIS_API_BASE_URL : undefined,
       repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
-      estimateMissingTokenUsage: !hasTokenBudgetOverride,
       telemetry: options.telemetry,
-      recoverInvalidModelOutput: env.LOG_ANALYSIS_SINGLE_SHOT_FALLBACK ? async (input) => {
+      recoverInvalidModelOutput: env.LOG_ANALYSIS_SINGLE_SHOT_FALLBACK ? async (input, remainingTokens) => {
         try {
-          const report = await singleShot(true).tryAnalyze(input);
-          return report && { ...report, analysisSource: "single-shot-fallback", confidence: Math.min(report.confidence, 0.5) };
+          const report = await singleShot(true).tryAnalyze(input, remainingTokens);
+          return typeof report === "object" ? { ...report, analysisSource: "single-shot-fallback", confidence: Math.min(report.confidence, 0.5) } : report;
         } catch (error) {
           input.signal?.throwIfAborted();
           // Provider failure during recovery goes straight to rules, preserving the loop's reason.
@@ -228,7 +235,8 @@ export function createLogAnalyzerFromEnv(
         }
       } : undefined,
       bindToolBackends: async (input) => {
-        if (!db || !input.organizationId) return {};
+        if (!db) return { searchPastConclusions: env.LOG_ANALYSIS_PAST_CONCLUSIONS ? options.bindOfflinePastConclusions?.(input) : undefined };
+        if (!input.organizationId) return {};
         const scope = env.LOG_ANALYSIS_PAST_CONCLUSIONS && input.logDomainId && input.pastConclusionScope
           ? { ...input.pastConclusionScope, organizationId: input.organizationId, skillId: input.logDomainId } : undefined;
         const available = scope && await hasPastConclusions(db, scope).catch(() => false);
@@ -246,7 +254,7 @@ export function createLogAnalyzerFromEnv(
             embeddingClient: options.embeddingClient
           }),
           ...(scope && available ? {
-            searchPastConclusions: (params) => searchPastConclusions(db, scope, params, options.embeddingClient)
+            searchPastConclusions: (params) => searchPastConclusions(db, scope, params)
           } : {})
         };
       }
@@ -261,7 +269,7 @@ export function createLogAnalyzerFromEnv(
       const platform = env.LOG_ANALYSIS_PROTOCOL ?? "auto";
       const override = input.logDomain?.protocolOverride;
       const protocol = platform === "auto" || override === "json" ? override ?? platform : platform;
-      return createKernel(modelLabel, stepBudget, tokenBudget, input.logDomain?.tokenBudget !== undefined, protocol).analyze(input);
+      return createKernel(modelLabel, stepBudget, tokenBudget, protocol).analyze(input);
     }
   };
 }

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { formatBytes } from "@/domain/format/formatBytes";
-import { logDegradedReasonLabels } from "@/domain/logs/analysisProvenance";
+import { classifyAnalysisDegradation, logDegradedReasonLabels } from "@/domain/logs/analysisProvenance";
 import { LOG_DEGRADED_REASONS, type LogDegradedReason } from "@/domain/logs/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
@@ -36,6 +36,11 @@ export function presentAnalysisCaseError(cause: unknown, fallback: string) {
 }
 
 type EvidenceRow = { file: string; mode: "line" | "pattern"; value: string };
+const degradationMessages = {
+  "early-convergence": "该报告已提前收敛，期望内容请人工核对。",
+  "single-shot-fallback": "该报告由单次模型回退生成，期望内容请人工核对。",
+  "rules-fallback": "该报告由规则回退生成，期望内容请人工核对。"
+};
 const validationMessage = (message: string, path = "") => /[\u4e00-\u9fff]/.test(message) ? message
   : /Non-refusal cases require/.test(message) ? "非拒答用例必须填写期望根因、关键证据和建议动作。"
   : /deIdentified.*true/.test(message) ? "真实日志必须先完成去标识化并确认。"
@@ -63,6 +68,9 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const formId = useId();
+  const degradation = sourceDegradation && classifyAnalysisDegradation({
+    analysisSource: sourceDegradation.source ?? "rules-fallback", degradedReason: sourceDegradation.reason
+  });
   const paths = [...new Set([...availableFiles.map((file) => file.path), ...initialAnchors.map((anchor) => anchor.file),
     ...files.filter((file) => !/\.(zip|gz|tgz|tar)$/i.test(file.name)).map((file) => file.name)])];
   const fieldProps = (field: string) => ({ "aria-invalid": Boolean(fieldErrors[field]), "aria-describedby": fieldErrors[field] ? `${formId}-${field}-error` : undefined });
@@ -132,7 +140,7 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
       {originalUploads?.length || availableFiles.length ? <section aria-label="原始日志文件"><h3>原始日志文件</h3><ul>{originalUploads?.length
         ? originalUploads.map((file) => <li key={file.fileName}>{file.fileName} · {formatBytes(file.sizeBytes)}</li>)
         : availableFiles.map((file) => <li key={file.path}>{file.path} · {formatBytes(file.sizeBytes)}</li>)}</ul></section> : null}
-      {sourceDegradation ? <div className="status-banner" data-tone="warning"><p>{sourceDegradation.source === "agent" ? "该报告已提前收敛，期望内容请人工核对。" : "该报告由规则回退生成，期望内容请人工核对。"}</p>
+      {sourceDegradation && degradation ? <div className="status-banner" data-tone="warning"><p>{degradationMessages[degradation.kind]}</p>
         <p>原因：{logDegradedReasonLabels[sourceDegradation.reason]}。此次降级不会自动设为用例期望。</p></div> : null}
       <label>根因分类<SelectControl value={category} ariaLabel="根因分类" disabled={pending} onValueChange={(value) => setCategory(value as AnalysisCaseExpectations["rootCauseCategory"])}
         options={categories.map((value, index) => ({ value, label: categoryLabels[index] }))} /></label>

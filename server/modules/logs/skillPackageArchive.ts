@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import { stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import { AnalysisCaseArchiveError, analysisCaseArchiveLimits, archiveYamlLimits, parseArchiveYaml, parseAnalysisCaseFiles, readBoundedZipArchive, type ArchivedAnalysisCase } from "./analysisCaseArchive";
-import { logSkillSpecSchema, type LogSkillSpec } from "./skillSpec";
+import { logSkillAuthoringSpecSchema, type LogSkillSpec } from "./skillSpec";
 import { skillKeySchema } from "./schemas";
 import { knowledgeTagsSchema } from "../knowledge/schemas";
 import { parsingSpecSchema } from "./parsing/spec";
@@ -125,7 +125,7 @@ export async function importSkillPackageArchive(bytes: Buffer): Promise<SkillPac
   const signalRules = read("signals.yaml", signalRuleSetSchema, true);
   const parseTests = read("tests.yaml", parseTestsSchema);
   const { name = "", skillKey, procedure, ...metadata } = skill ?? {};
-  const result = logSkillSpecSchema.safeParse({ schemaVersion: "skill/v1", ...metadata, procedure, parsing, signalRules, parseTests });
+  const result = logSkillAuthoringSpecSchema.safeParse({ schemaVersion: "skill/v1", ...metadata, procedure, parsing, signalRules, parseTests });
   if (!result.success) for (const issue of result.error.issues) {
     const [root, ...path] = issue.path;
     const file = root === "signalRules" ? "signals.yaml" : root === "parsing" ? "parsing.yaml" : root === "parseTests" ? "tests.yaml" : "SKILL.md";

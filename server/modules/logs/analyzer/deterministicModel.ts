@@ -351,6 +351,8 @@ export function createDeterministicLogAnalysisLoopModel(hypothesisLedger = false
   };
   return {
     ...model,
+    // The offline stub reads messages directly and never tokenizes the tool schemas.
+    estimateNativeToolTokens: () => 0,
     async invokeTools(messages) {
       const response = await model.invoke(messages);
       return asNativeModelResponse(JSON.parse(response.content), response, `deterministic-${messages.length}`);

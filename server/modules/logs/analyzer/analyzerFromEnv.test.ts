@@ -2,11 +2,23 @@ import { describe, expect, it, vi } from "vitest";
 import { readFile } from "node:fs/promises";
 import { parseLogText } from "../parser";
 import { createLogAnalyzerFromEnv, type LogAnalyzerEnv } from "./analyzerFromEnv";
+import { LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION, LOG_ANALYSIS_LOOP_PROMPT_VERSION } from "./agentLoop";
+import { LOG_ANALYSIS_PARAMETER_PROMPT_VERSION, LOG_ANALYSIS_PROMPT_VERSION } from "./llmAnalyzer";
 
 const env: LogAnalyzerEnv = {
   LOG_ANALYSIS_API_TIMEOUT_MS: 1000, LOG_ANALYSIS_TOKEN_BUDGET: 100_000,
   LOG_ANALYSIS_DETERMINISTIC: true, LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_MAX_STEPS: 6
 };
+
+it.each([
+  "docs/runbooks/log-analysis-llm.md", "docs/zh-CN/runbooks/log-analysis-llm.md",
+  "docs/adr/0047-log-analysis-is-a-skill-platform-over-a-shared-agent-kernel.md",
+  "docs/zh-CN/design-docs/adr-0047-log-analysis-is-a-skill-platform-over-a-shared-agent-kernel.md"
+])("lists the runtime prompt versions in %s", async (path) => {
+  const doc = await readFile(path, "utf8");
+  for (const version of [LOG_ANALYSIS_LOOP_PROMPT_VERSION, LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION,
+    LOG_ANALYSIS_PROMPT_VERSION, LOG_ANALYSIS_PARAMETER_PROMPT_VERSION]) expect(doc).toContain(`\`${version}\``);
+});
 
 describe("single-shot recovery from a loop failure", () => {
   const final = {
@@ -69,6 +81,50 @@ describe("single-shot recovery from a loop failure", () => {
 });
 
 describe("pinned skill runtime budgets", () => {
+  it("caps investigation output before spending the reserve and bounds the convergence call", async () => {
+    const parsed = parseLogText({ fileName: "power.log", content: "ERROR thermal foldback" });
+    if (!parsed.ok) throw new Error("Fixture must parse");
+    const budgets: number[] = [];
+    const used: number[] = [];
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const request = JSON.parse(String(init?.body)) as { max_tokens: number; messages: { content: string }[] };
+      budgets.push(request.max_tokens);
+      const converging = request.messages.some(({ content }) => content.includes("Budget exhausted:"));
+      const message = converging ? { action: "final", conclusion: "Thermal foldback", impact: "Reduced current",
+        severity: "Warning", confidence: 0.9, suggestedActions: ["Inspect cooling"], evidence: [{ lineNumbers: [1], inference: "Foldback logged", suggestedAction: "Inspect cooling" }] }
+        : { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } };
+      const inputTokens = 8 + request.messages.reduce((sum, { content }) => sum + 4 + Math.ceil(Buffer.byteLength(content) / 4), 0);
+      const outputTokens = converging ? 100 : request.max_tokens;
+      used.push(inputTokens + outputTokens);
+      return Response.json({ choices: [{ message: { role: "assistant", content: JSON.stringify(message) }, finish_reason: "stop" }],
+        usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens } });
+    });
+    try {
+      const output = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_DETERMINISTIC: false,
+        LOG_ANALYSIS_API_BASE_URL: "https://budget.example.invalid/v1", LOG_ANALYSIS_API_KEY: "fixture-key",
+        LOG_ANALYSIS_PROTOCOL: "json", LOG_ANALYSIS_TOKEN_BUDGET: 3650 }).analyze({ parsed });
+      expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted", confidence: 0.5 });
+      expect(budgets).toHaveLength(2);
+      expect(budgets[0]).toBeLessThan(Math.floor(3650 / 4));
+      expect(used[1] - 100 + budgets[1] + used[0]).toBeLessThanOrEqual(3650);
+      expect(used[0]).toBeLessThanOrEqual(3650 * 0.8);
+    } finally { fetch.mockRestore(); }
+  });
+
+  it("skips single-shot recovery when the remaining budget cannot fit its prompt", async () => {
+    const parsed = parseLogText({ fileName: "power.log", content: "ERROR thermal foldback" });
+    if (!parsed.ok) throw new Error("Fixture must parse");
+    const invoke = vi.fn().mockResolvedValue({ content: "invalid output", usage: { inputTokens: 300, outputTokens: 20 } })
+      .mockResolvedValueOnce({ content: "invalid output", usage: { inputTokens: 300, outputTokens: 20 } })
+      .mockResolvedValueOnce({ content: "invalid output", usage: { inputTokens: 300, outputTokens: 20 } })
+      .mockResolvedValueOnce({ content: "invalid output", usage: { inputTokens: 3600, outputTokens: 20 } });
+    const output = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_TOKEN_BUDGET: 4500,
+      LOG_ANALYSIS_PROTOCOL: "json", LOG_ANALYSIS_SINGLE_SHOT_FALLBACK: true }, { model: { invoke } })
+      .analyze({ parsed });
+    expect(output).toMatchObject({ analysisSource: "rules-fallback", degradedReason: "token-budget-exhausted" });
+    expect(invoke).toHaveBeenCalledTimes(3);
+  });
+
   it("uses the optional conclusion verifier model and otherwise inherits the run model", async () => {
     const parsed = parseLogText({ fileName: "power.log", content: "INFO operating normally\nINFO cycle complete" });
     if (!parsed.ok) throw new Error("Fixture must parse");
@@ -88,7 +144,7 @@ describe("pinned skill runtime budgets", () => {
     if (!parsed.ok) throw new Error("Fixture must parse");
     for (const logDomain of [undefined, { name: "No budget override" }, { name: "Explicit revision budget", tokenBudget: 8000 }]) {
       const calls: string[] = [];
-      const output = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_TOKEN_BUDGET: 8000 }, {
+      const output = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_TOKEN_BUDGET: 8000, LOG_ANALYSIS_PROTOCOL: "json" }, {
         telemetry: { recordLlmCall: (call) => { calls.push(call.outcome); } }
       }).analyze({ parsed, analysisQuestion: "Why did fast charging fold back?", logDomain });
       expect(output).toMatchObject({ analysisSource: "agent", conclusion: expect.stringMatching(/过热|降额/) });
@@ -96,9 +152,9 @@ describe("pinned skill runtime budgets", () => {
       expect(calls).toEqual(["ok", "ok", "ok"]);
 
       calls.length = 0;
-      const bounded = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_TOKEN_BUDGET: 8000 }, {
+      const bounded = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_TOKEN_BUDGET: 8000, LOG_ANALYSIS_PROTOCOL: "json" }, {
         telemetry: { recordLlmCall: (call) => { calls.push(call.outcome); } }
-      }).analyze({ parsed, procedure: "Review the captured evidence. ".repeat(680), logDomain });
+      }).analyze({ parsed, procedure: "Review the captured evidence. ".repeat(220), logDomain });
       expect(bounded).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted", confidence: 0.3 });
       expect(calls).toEqual(["ok", "ok"]);
     }

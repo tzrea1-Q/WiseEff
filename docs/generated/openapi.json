@@ -54047,9 +54047,6 @@
                       "id": {
                         "type": "string"
                       },
-                      "statement": {
-                        "type": "string"
-                      },
                       "status": {
                         "type": "string",
                         "enum": [
@@ -54105,7 +54102,6 @@
                     },
                     "required": [
                       "id",
-                      "statement",
                       "status",
                       "anchors"
                     ],
@@ -59850,9 +59846,6 @@
                       "id": {
                         "type": "string"
                       },
-                      "statement": {
-                        "type": "string"
-                      },
                       "status": {
                         "type": "string",
                         "enum": [
@@ -59908,7 +59901,6 @@
                     },
                     "required": [
                       "id",
-                      "statement",
                       "status",
                       "anchors"
                     ],

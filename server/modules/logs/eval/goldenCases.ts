@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, realpathSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
@@ -6,6 +6,7 @@ import { z } from "zod";
 import { bundleFileUtf8Bytes, intakeLogBundle } from "../bundleIntake";
 import type { LogFileDto } from "../filesRepository";
 import { validateLogFormatProfile, type LogFormatProfile } from "../formatProfile";
+import { logSkillSpecSchema, type LogSkillSpec } from "../skillSpec";
 
 /**
  * The labelled corpus under `eval-cases/logs/<domain>/<case-id>/` anchors the
@@ -156,6 +157,7 @@ export type GoldenLogCase = Omit<GoldenCaseYaml, "formatProfile"> & {
   logText: string;
   rawLines: string[];
   formatProfile?: LogFormatProfile;
+  skill?: LogSkillSpec;
   bundle?: Array<LogFileDto & { logText: string }>;
 };
 
@@ -272,6 +274,16 @@ export function loadGoldenLogCases(rootDir: string): LoadGoldenCasesResult {
       }
 
       const { formatProfile: _rawProfile, ...caseFields } = parsed.data;
+      const skillPath = path.join(caseDir, "skill.yaml");
+      let skill: LogSkillSpec | undefined;
+      if (existsSync(skillPath)) {
+        try {
+          skill = logSkillSpecSchema.parse(parseYaml(readFileSync(skillPath, "utf8")));
+        } catch (error) {
+          problems.push(`${caseId}: skill.yaml — ${error instanceof Error ? error.message : String(error)}`);
+          continue;
+        }
+      }
       let bundle: GoldenLogCase["bundle"];
       if (caseFields.bundleFiles) {
         try {
@@ -294,6 +306,7 @@ export function loadGoldenLogCases(rootDir: string): LoadGoldenCasesResult {
         logText,
         rawLines,
         ...(formatProfile ? { formatProfile } : {}),
+        ...(skill ? { skill } : {}),
         ...(bundle ? { bundle } : {})
       });
     }

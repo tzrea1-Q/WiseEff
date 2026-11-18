@@ -27,7 +27,6 @@ const deIdentificationChecklist = [
 function ExportAnalysisCaseDraftDialog({ record, onClose, confirmExport }: {
   record: LogRecord; onClose: () => void; confirmExport?: SkillWorkspaceRepository["confirmEvalCaseDraftExport"];
 }) {
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const draft = buildEvalCaseDraft(record);
   const download = (suffix: string, text: string) => {
@@ -41,16 +40,11 @@ function ExportAnalysisCaseDraftDialog({ record, onClose, confirmExport }: {
       URL.revokeObjectURL(url);
     }
   };
-  const downloadCase = async () => {
-    setPending(true);
+  const downloadCase = () => {
+    download("case.yaml", draft.caseYaml);
     setError("");
-    try {
-      if (record.skillRevision) await confirmExport?.(record.id, record.reportId);
-      download("case.yaml", draft.caseYaml);
-    } catch {
-      setError("无法确认草稿导出，请刷新报告后重试。");
-    } finally {
-      setPending(false);
+    if (record.skillRevision && confirmExport) {
+      void confirmExport(record.id, record.reportId).catch(() => setError("草稿已下载，未能登记为历史线索。"));
     }
   };
   return <ModalDialog open describedBy onDismiss={onClose} className="skill-authoring-dialog modal-card--md">
@@ -68,7 +62,7 @@ function ExportAnalysisCaseDraftDialog({ record, onClose, confirmExport }: {
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={onClose}>关闭</Button>
         <Button variant="outline" onClick={() => download("log.txt", draft.logText)}>下载 log.txt</Button>
-        <Button disabled={pending} onClick={() => void downloadCase()}>下载 case.yaml 草稿</Button>
+        <Button onClick={downloadCase}>下载 case.yaml 草稿</Button>
       </div>
     </div>}
   </ModalDialog>;
@@ -117,6 +111,7 @@ export type LogRecordDrawerProps = {
   onArchive: (recordId: string) => void;
   onSubmitHelpfulFeedback?: (recordId: string) => void;
   canAct: boolean;
+  canConfirmEvalCaseDraft?: boolean;
   reanalyzePending?: boolean;
   archivePending?: boolean;
   feedbackPending?: boolean;
@@ -133,6 +128,7 @@ export function LogRecordDrawer({
   onArchive,
   onSubmitHelpfulFeedback,
   canAct,
+  canConfirmEvalCaseDraft = false,
   reanalyzePending = false,
   archivePending = false,
   feedbackPending = false,
@@ -203,7 +199,7 @@ export function LogRecordDrawer({
               <span className="shrink-0 whitespace-nowrap text-muted-foreground">
                 置信度
               </span>
-              {record.analysisSource ? <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-muted-foreground">
+              {record.analysisSource && classifyAnalysisDegradation(record)?.kind !== "single-shot-fallback" ? <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-muted-foreground">
                 {record.analysisSource === "agent" ? "AI 分析" : "规则回退"}
               </span> : null}
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
@@ -334,7 +330,7 @@ export function LogRecordDrawer({
       </SheetContent>
     </Sheet>
     {exportDraftOpen ? <ExportAnalysisCaseDraftDialog record={record} onClose={() => setExportDraftOpen(false)}
-      confirmExport={skillRepository?.confirmEvalCaseDraftExport} /> : null}
+      confirmExport={canConfirmEvalCaseDraft ? skillRepository?.confirmEvalCaseDraftExport : undefined} /> : null}
     {casePrefill ? <AnalysisCaseDialog title="存为分析用例" initial={casePrefill} availableFiles={casePrefill.files}
       originalUploads={casePrefill.originalUploads} sourceDegradation={casePrefill.sourceDegradation} onClose={() => setCasePrefill(null)} onSave={async (input) => {
         await skillRepository!.createAnalysisCase!(casePrefill.skillId, { ...input, sourceRecordId: casePrefill.sourceRecordId });

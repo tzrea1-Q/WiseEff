@@ -295,7 +295,7 @@ export async function getJobSnapshot(db: Queryable, jobId: string) {
 
 export async function updateJobProgress(
   db: Queryable,
-  input: { organizationId: string; jobId: string; progress: number; currentStage: string; leaseOwner: string }
+  input: { organizationId: string; jobId: string; progress: number; currentStage: string; leaseOwner: string; targetId?: string }
 ) {
   const result = await db.query(
     `
@@ -308,8 +308,9 @@ export async function updateJobProgress(
       and id = $2
       and lease_owner = $5
       and lease_expires_at > now()
+      and ($6::text is null or target_id = $6)
     `,
-    [input.organizationId, input.jobId, input.progress, input.currentStage, input.leaseOwner]
+    [input.organizationId, input.jobId, input.progress, input.currentStage, input.leaseOwner, input.targetId ?? null]
   );
 
   return result.rowCount === 1;

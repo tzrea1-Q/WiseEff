@@ -18,6 +18,7 @@ import { resolveQualityJudge } from "../server/modules/logs/eval/judgeFromEnv";
 import { logSkillSpecSchema } from "../server/modules/logs/skillSpec";
 import { parseProcedureChecks } from "../src/domain/logs/procedureChecks";
 import {
+  bindQualityPastConclusions,
   formatQualityComparisonMarkdown,
   formatQualityReportMarkdown,
   qualityBaselineFileSchema,
@@ -90,7 +91,7 @@ async function main() {
     ...createDeterministicLogAnalysisModel(),
     async invokeTools() { return { content: "Invalid output", usage: { inputTokens: 100, outputTokens: 5 } }; }
   } : undefined;
-  const analyzer = createLogAnalyzerFromEnv(analysisEnv, { model });
+  const analyzer = createLogAnalyzerFromEnv(analysisEnv, { model, bindOfflinePastConclusions: bindQualityPastConclusions(cases) });
   const procedure = values.procedure === undefined ? undefined : logSkillSpecSchema.parse({ schemaVersion: "skill/v1",
     procedure: readFileSync(values.procedure, "utf8") }).procedure;
   const procedureChecks = parseProcedureChecks(procedure);

@@ -606,7 +606,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         ) : (
           <span className="inline-flex items-center justify-end gap-1 text-xs">
             <span className="font-mono">{formatPercent(record.confidence)}</span>
-            <span className="rounded border border-border px-1 text-muted-foreground">{record.analysisSource === "agent" ? "AI" : "规则"}</span>
+            <span className="rounded border border-border px-1 text-muted-foreground">{record.analysisSource === "single-shot-fallback" ? "单次模型" : record.analysisSource === "agent" ? "AI" : "规则"}</span>
           </span>
         ),
       sortAccessor: (record) => record.confidence,
@@ -879,6 +879,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
           });
         }}
         canAct={canAct}
+        canConfirmEvalCaseDraft={apiMode && sessionPermissions?.includes("logs:admin-domains") === true}
         reanalyzePending={selectedRecordReanalyzePending}
         archivePending={selectedRecordArchivePending}
         feedbackPending={selectedRecordFeedbackPending}

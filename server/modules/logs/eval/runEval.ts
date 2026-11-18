@@ -58,6 +58,8 @@ export type LogEvalReport = {
 
 const EVAL_MODEL_LABEL = "eval-fake";
 const EVAL_TOKEN_BUDGET = 8000;
+// Scripted behavior fixtures isolate their assertions from token exhaustion unless they opt into a budget.
+const SCRIPTED_LOOP_TOKEN_BUDGET = 60_000;
 const EVAL_MAX_ATTEMPTS = 4;
 const EVAL_LOOP_MAX_STEPS = 6;
 
@@ -188,7 +190,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     LOG_ANALYSIS_SINGLE_SHOT_FALLBACK: true,
     LOG_ANALYSIS_PROTOCOL: scenario.protocol ?? "json",
     LOG_ANALYSIS_API_TIMEOUT_MS: 1000,
-    LOG_ANALYSIS_TOKEN_BUDGET: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
+    LOG_ANALYSIS_TOKEN_BUDGET: scenario.tokenBudget ?? SCRIPTED_LOOP_TOKEN_BUDGET,
     LOG_ANALYSIS_MAX_STEPS: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS
   }, { model: scriptedModel }) : createAgentLoopLogAnalyzer({
     model: scriptedModel,
@@ -200,7 +202,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
       ? { model: createScriptedLogAnalysisModel(scenario.verificationScript), modelLabel: "scripted-verifier" }
       : undefined,
     repairJsonOutput: scenario.repairJsonOutput,
-    tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
+    tokenBudget: scenario.tokenBudget ?? SCRIPTED_LOOP_TOKEN_BUDGET,
     maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
     bindToolBackends: () => ({
       ...(scenario.sourceMatches ? { locateLogStatement: async () => scenario.sourceMatches! } : {}),
@@ -250,7 +252,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     finalPromptMessages: scriptedModel.calls.at(-1),
     platformProtocol: scenario.procedure ? await capturePlatformProtocol(
       (model) => createAgentLoopLogAnalyzer({ model, modelLabel: EVAL_MODEL_LABEL,
-        tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET, maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS }),
+        tokenBudget: scenario.tokenBudget ?? SCRIPTED_LOOP_TOKEN_BUDGET, maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS }),
       { parsed, analysisQuestion: scenario.analysisQuestion, logDomain: scenario.logDomain }
     ) : undefined,
     modelCallCount: scriptedModel.calls.length,

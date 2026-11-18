@@ -1,8 +1,8 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-11-18T16:10:15.302Z
+- Generated: 2026-11-18T17:05:53.177Z
 - Single-shot prompt version: `2026-10-19.procedure.signals.source.2`
-- Loop prompt version: `2026-10-19.loop.procedure.signals.source.10`
+- Loop prompt version: `2026-10-19.loop.procedure.signals.source.11`
 - Scenarios: 62 (62 passed)
 - Meta checks: 4/4 passed
 
@@ -67,7 +67,7 @@
 | loop-hypothesis-ledger-tools-on | loop-context | loop | agent | - | 7 | PASS |
 | loop-verifier-rejects-conclusion-contradicting-cited-line | verification-adversarial | loop | agent | - | 4 | PASS |
 | loop-final-answer-uses-token-reserve | loop-convergence | loop | agent | token-budget-exhausted | 8 | PASS |
-| loop-token-budget-fallback | loop-convergence | loop | rules-fallback | token-budget-exhausted | 4 | PASS |
+| loop-token-budget-fallback | loop-convergence | loop | rules-fallback | token-budget-exhausted | 3 | PASS |
 | loop-honest-refusal-on-insufficient-evidence | loop-honesty | loop | agent | - | 5 | PASS |
 | loop-multi-step-grounding-enforced | loop-grounding | loop | agent | - | 4 | PASS |
 | loop-domain-model-override-applied | model-override | loop | agent | - | - | PASS |

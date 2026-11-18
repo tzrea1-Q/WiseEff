@@ -150,9 +150,9 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 
 启用假设账本后，已完成的报告可返回 `alternativeHypotheses`，列出已排除的可能原因。每项包含陈述 `statement`、理由 `reason` 和 `anchors`，锚点指向此前已见的日志行（`{ file, line }`）或源码行（`{ snapshotId, path, line }`）。
 
-同时启用诊断检查清单和假设账本后，使用含清单的技能修订且已接地的循环报告可返回 `checks`。每项包含 `id`、`description`、`required`、`status`、可选 `reason` 和 `anchors`。`status` 为 `done`（已完成）、`skipped`（已跳过）或 `pending`（未处理），锚点格式与 `alternativeHypotheses` 相同。
+启用诊断检查清单后，使用含清单的技能修订且已接地的循环报告可返回 `checks`。每项包含 `id`、`description`、`required`、`status`、可选 `reason` 和 `anchors`。`status` 为 `done`（已完成）、`skipped`（已跳过）或 `pending`（未处理），锚点格式与 `alternativeHypotheses` 相同。
 
-开启结论验证后，已接地的循环分析报告会返回 `verification: { status, checkedClaims, unsupportedClaims, model }`。`passed` 表示引用支持结论和推断。`revised` 表示内核接受了通过复验的修订，或删除了不被支持的证据并将置信度封顶为 0.5。`failed` 表示存在矛盾，置信度封顶为 0.5，请人工复核。`skipped` 表示无法验证或预算不足，报告保留原有的证据和置信度。项数按原报告结论及各条推断统计，矛盾项计入 `unsupportedClaims`。跳过时两项计数均为零。
+开启结论验证后，已接地的循环分析报告会返回 `verification: { status, checkedClaims, unsupportedClaims, model }`。`passed` 表示引用支持结论和推断。`revised` 表示内核接受了通过复验的修订。存在矛盾或修订后仍无法确认有证据支持时，返回 `failed` 并提示人工复核。内核将置信度封顶为 0.5，删除不被支持的证据，并以不确定性说明替换不被支持的结论。`skipped` 表示无法验证或预算不足，报告保留原有的证据和置信度。项数按原报告结论及各条推断统计，矛盾项计入 `unsupportedClaims`。跳过时两项计数均为零。
 
 | `degradedReason` | 含义 |
 | --- | --- |

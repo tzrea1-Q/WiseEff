@@ -9,7 +9,7 @@ import { createLogPatternCache, MAX_LOG_PATTERN_LENGTH } from "./adminPattern";
 import { compileSourceStatementPattern, MAX_STATEMENT_PATTERNS } from "./sourceStatements";
 import { parseTestsSchema } from "./parseTestSpec";
 import { MAX_PROCEDURE_CHECKS, MAX_PROCEDURE_CHECK_DESCRIPTION, parseProcedureChecks, PROCEDURE_CHECK_ID } from "../../../src/domain/logs/procedureChecks";
-import { procedureChecksSchema } from "./hypotheses";
+import { procedureChecksSchema, readStoredProcedureChecks } from "./hypotheses";
 import { compileFileGlob, MAX_FILE_GLOB_LENGTH, MAX_FILE_ROLE_LENGTH, MAX_SKILL_FILE_GLOBS } from "../../../src/domain/logs/fileApplicability";
 
 const boundedSkillFilesSchema = z.array(z.object({
@@ -42,6 +42,11 @@ export const logSkillSpecSchema = z.preprocess((value, ctx) => {
   // Bound signal graphs before the whole-skill program budget walks any patterns.
   if (value && typeof value === "object" && "signalRules" in value
     && preflightSignalRules(value.signalRules, ctx, ["signalRules"]) === z.NEVER) return z.NEVER;
+  if (value && typeof value === "object" && "procedureChecks" in value) {
+    const { procedureChecks, ...spec } = value;
+    const checks = readStoredProcedureChecks(procedureChecks);
+    return checks ? { ...spec, procedureChecks: checks } : spec;
+  }
   return value;
 }, withLogPatternBudget(z.object({
   schemaVersion: z.literal("skill/v1"),
@@ -66,11 +71,6 @@ export const logSkillSpecSchema = z.preprocess((value, ctx) => {
   }).strict().optional(),
   signalRules: signalRuleSetSchema.optional()
 }).strict().superRefine((spec, ctx) => {
-  const checks = parseProcedureChecks(spec.procedure);
-  if (checks.length > MAX_PROCEDURE_CHECKS || checks.some(({ id, description }) => !PROCEDURE_CHECK_ID.test(id)
-    || !description || description.length > MAX_PROCEDURE_CHECK_DESCRIPTION) || new Set(checks.map(({ id }) => id)).size !== checks.length) {
-    ctx.addIssue({ code: "custom", path: ["procedure"], message: `检查项最多 ${MAX_PROCEDURE_CHECKS} 条，每条需有唯一的 ID（1–48 个英文字母、数字、下划线、连字符或点）及 1–${MAX_PROCEDURE_CHECK_DESCRIPTION} 字符的描述。` });
-  }
   spec.signalRules?.rules.forEach((rule, ruleIndex) => rule.anyOf.forEach((input, conditionIndex) => {
     const condition = input.type === "window" ? input.condition : input;
     if (condition.type !== "field") return;
@@ -86,4 +86,11 @@ export const logSkillSpecSchema = z.preprocess((value, ctx) => {
 }), "skill"));
 
 export type LogSkillSpec = z.infer<typeof logSkillSpecSchema>;
+export const logSkillAuthoringSpecSchema = logSkillSpecSchema.superRefine((spec, ctx) => {
+  const checks = parseProcedureChecks(spec.procedure);
+  if (checks.length > MAX_PROCEDURE_CHECKS || checks.some(({ id, description }) => !PROCEDURE_CHECK_ID.test(id)
+    || !description || description.length > MAX_PROCEDURE_CHECK_DESCRIPTION) || new Set(checks.map(({ id }) => id)).size !== checks.length) {
+    ctx.addIssue({ code: "custom", path: ["procedure"], message: `检查项最多 ${MAX_PROCEDURE_CHECKS} 条，每条需有唯一的 ID（1–48 个英文字母、数字、下划线、连字符或点）及 1–${MAX_PROCEDURE_CHECK_DESCRIPTION} 字符的描述。` });
+  }
+});
 export const parseTestRequestSchema = z.object({ spec: logSkillSpecSchema }).strict();

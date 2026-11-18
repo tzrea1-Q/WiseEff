@@ -299,6 +299,13 @@ describe("LogRecordDrawer", () => {
     expect(screen.getByText("AI 分析")).toBeInTheDocument();
   });
 
+  it("shows single-shot model recovery without a rules badge", () => {
+    render(<LogRecordDrawer record={{ ...record, analysisSource: "single-shot-fallback", degradedReason: "invalid-model-output" }}
+      open {...handlers} canAct />);
+    expect(screen.getByText("降级分析 · 单次模型回退")).toBeVisible();
+    expect(screen.queryByText(/规则回退/)).not.toBeInTheDocument();
+  });
+
   it("counts and lists all six evidence items", () => {
     const evidence = Array.from({ length: 6 }, (_, index) => ({ ...record.evidence[0], id: `evidence-${index}`, inference: `证据内容 ${index + 1}` }));
     render(<LogRecordDrawer record={{ ...record, evidence }} open {...handlers} canAct />);
@@ -392,22 +399,28 @@ describe("LogRecordDrawer", () => {
     expect(await screen.findByRole("button", { name: "打开报告" })).toBeVisible();
   });
 
-  it("confirms the exact skill report when the administrator downloads the case draft", async () => {
+  it.each([false, true])("downloads immediately and checks confirmation permission (admin=%s)", async (admin) => {
     const complete = { ...record, status: "Complete" as const, skillRevision: { id: "revision-1", number: 1 },
       rawLines: ["ERROR fan stopped"] };
-    const confirmEvalCaseDraftExport = vi.fn().mockRejectedValueOnce(new Error("stale")).mockResolvedValueOnce(undefined);
+    let reject!: (error: Error) => void;
+    const confirmEvalCaseDraftExport = vi.fn().mockImplementation(() => new Promise<void>((_, fail) => { reject = fail; }));
     const downloads = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     vi.stubGlobal("URL", Object.assign(Object.create(URL), { createObjectURL: vi.fn(() => "blob:draft"), revokeObjectURL: vi.fn() }));
-    render(<LogRecordDrawer record={complete} open {...handlers} canAct skillRepository={{ confirmEvalCaseDraftExport }} />);
+    render(<LogRecordDrawer record={complete} open {...handlers} canAct={admin} canConfirmEvalCaseDraft={admin} skillRepository={{ confirmEvalCaseDraftExport }} />);
     await userEvent.click(screen.getByRole("button", { name: record.fileName + "：更多" }));
     await userEvent.click(screen.getByRole("menuitem", { name: "导出分析用例草稿" }));
     const button = screen.getByRole("button", { name: "下载 case.yaml 草稿" });
     await userEvent.click(button);
-    expect(await screen.findByRole("alert")).toHaveTextContent("无法确认草稿导出");
-    expect(downloads).not.toHaveBeenCalled();
-    await userEvent.click(button);
-    expect(confirmEvalCaseDraftExport).toHaveBeenLastCalledWith(complete.id, complete.reportId);
     expect(downloads).toHaveBeenCalledTimes(1);
+    if (admin) {
+      expect(confirmEvalCaseDraftExport).toHaveBeenLastCalledWith(complete.id, complete.reportId);
+      await act(async () => reject(new Error("stale")));
+      expect(await screen.findByRole("alert")).toHaveTextContent("未能登记为历史线索");
+      expect(button).toBeEnabled();
+    } else {
+      expect(confirmEvalCaseDraftExport).not.toHaveBeenCalled();
+      expect(screen.queryByText(/作为历史线索/)).not.toBeInTheDocument();
+    }
   });
 
   describe("存为分析用例", () => {
@@ -415,6 +428,16 @@ describe("LogRecordDrawer", () => {
     const prefill = { skillId: "skill-charging", name: "快充分析用例", files: [{ path: "device.log", sizeBytes: 20, lineCount: 1, encoding: "utf-8" as const, lossy: false, status: "analyzed" as const, skipReason: null }],
       expectations: { domain: "charging", summary: "温控", realLog: false, rootCauseCategory: "thermal-protection" as const,
         rootCausePoints: ["温控触发"], keyEvidenceLines: [1], expectedActions: ["检查温度"], expectRefusal: false } };
+
+    it("labels single-shot recovery in the prefilled case dialog", async () => {
+      const repository = { createAnalysisCase: vi.fn(), getAnalysisCasePrefill: vi.fn().mockResolvedValue({ ...prefill,
+        sourceDegradation: { source: "single-shot-fallback", reason: "invalid-model-output" } }) };
+      render(<LogRecordDrawer record={completedRecord} open {...handlers} canAct skillRepository={repository} />);
+      await userEvent.click(screen.getByRole("button", { name: "存为分析用例" }));
+      const dialog = await screen.findByRole("dialog", { name: "存为分析用例" });
+      expect(within(dialog).getByText(/单次模型回退/)).toBeVisible();
+      expect(within(dialog).queryByText(/规则回退/)).not.toBeInTheDocument();
+    });
 
     it("hides saving for general analysis and explains disabled skill-record actions inline", () => {
       const repository = { getAnalysisCasePrefill: vi.fn(), createAnalysisCase: vi.fn() };

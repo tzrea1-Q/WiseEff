@@ -649,6 +649,14 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
     const claimed = await claimJobById(db, { kind: "log-analysis", jobId, leaseOwner: "worker-1" });
     expect(claimed).not.toBeNull();
 
+    const other = await seedUploadedLog("different-target");
+    const wrongRun = await completeLogAnalysisJobWithReport(db, {
+      organizationId: "org-1", logId: other.logId, runId: other.runId, jobId, leaseOwner: "worker-1",
+      report: sampleReport, evidence: sampleEvidence
+    });
+    expect(wrongRun).toBe(false);
+    expect((await getLogDetail(db, auth(), other.logId))?.evidence).toEqual([]);
+
     const withLease = await completeLogAnalysisJobWithReport(db, {
       organizationId: "org-1",
       logId,

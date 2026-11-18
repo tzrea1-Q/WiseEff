@@ -11,7 +11,7 @@ export const logDeletionStatusResponseSchema = itemEnvelopeSchema(logDeletionSta
 export const logDeletionStatusListResponseSchema = itemsEnvelopeSchema(logDeletionStatusSchema);
 import { logSkillSpecSchema } from "../../logs/skillSpec";
 import { logAnalysisWireProtocolSchema } from "../../logs/logAnalysisProtocol";
-import { logAlternativeHypothesesSchema, logHypothesesSchema, logReportChecksSchema } from "../../logs/hypotheses";
+import { logAlternativeHypothesesSchema, logTraceHypothesesSchema, logReportChecksSchema } from "../../logs/hypotheses";
 import { logVerificationSchema } from "../../logs/verification";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 export { parseTestSchema, parseTestSchema as parseTestCaseSchema, parseTestsSchema, parseTestRunSchema, parseTestResultSchema,
@@ -340,7 +340,7 @@ export const logTraceStepSchema = z.object({
   lines: z.array(z.object({ file: z.string().max(1024), line: z.number().int().positive(), snapshotId: z.string().max(200).optional() }).strict()).max(50),
   outcome: z.enum(["ok", "error", "truncated"]), reason: z.string().max(120).nullable(),
   protocol: logAnalysisWireProtocolSchema.optional(),
-  hypotheses: logHypothesesSchema.optional(),
+  hypotheses: logTraceHypothesesSchema.optional(),
   inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().nonnegative().optional()
 }).strict();
 export const logTraceResponseSchema = z.object({ steps: z.array(logTraceStepSchema).max(200) });

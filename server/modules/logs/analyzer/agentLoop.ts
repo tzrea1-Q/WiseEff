@@ -23,33 +23,31 @@ import {
   type LogAnalysisLlmTelemetry
 } from "./llmAnalyzer";
 import { availableLogAnalysisTools, executeLogAnalysisTool, isLogAnalysisToolName, logAnalysisToolCatalog } from "./tools/toolCatalog";
-import { emitLogTrace, summarizeTraceArguments, traceResultLines, withLogTrace } from "../traceTypes";
+import { emitLogTrace, summarizeTraceArguments, traceResultLines, withLogTrace, type LogAnalysisTraceStep } from "../traceTypes";
 import type { LogAnalysisToolContext } from "./tools/toolContext";
 import { appendSkillProcedure } from "./procedurePrompt";
 import type { LogAnalysisProtocol, LogAnalysisWireProtocol } from "../logAnalysisProtocol";
 import { logAlternativeHypothesesSchema, logCheckUpdatesSchema, logHypothesesSchema, MAX_HYPOTHESIS_BYTES,
   type LogCheckUpdate, type LogHypothesis, type LogHypothesisAnchor, type LogReportCheck } from "../hypotheses";
 import { verifyLogConclusion, type LogConclusionVerifier } from "./conclusionVerifier";
+import { estimateLogPromptTokens, estimateLogTokens, estimateLogToolTokens, logCompletionLimit, MIN_LOG_ANALYSIS_OUTPUT_TOKENS } from "./modelBudget";
 
 /**
  * Versioned loop prompt: the P2 multi-step kernel speaks a different protocol than
  * the P1 single shot, so it carries its own version string on every report and in
  * both eval layers. Bump on any wording change.
  */
-export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.10";
-export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.10";
+export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.11";
+export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.11";
 
 function promptVersionFor(input: AnalyzeLogInput, checklist: boolean) {
   if (checklist) return input.relatedParameterSnapshot
-    ? "2026-10-19.loop.procedure.signals.source.related-parameter.11"
-    : "2026-10-19.loop.procedure.signals.source.11";
+    ? "2026-10-19.loop.procedure.signals.source.related-parameter.12"
+    : "2026-10-19.loop.procedure.signals.source.12";
   return input.relatedParameterSnapshot
     ? LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION
     : LOG_ANALYSIS_LOOP_PROMPT_VERSION;
 }
-
-/** Rough OpenAI-compatible heuristic mirroring the P1 single-shot accounting. */
-const CHARS_PER_TOKEN = 4;
 
 /**
  * Consecutive protocol violations (non-JSON output, unknown tool, invalid args,
@@ -61,6 +59,7 @@ export const LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID = 3;
 /** Early-converged conclusions state their reduced trust: confidence is capped here. */
 const EARLY_CONVERGENCE_MAX_CONFIDENCE = 0.5;
 const FINAL_ANSWER_RESERVE_FRACTION = 0.2;
+const CONVERGENCE_CONTEXT_HEADROOM_TOKENS = 128;
 
 const RAW_TOOL_RESULTS_TO_KEEP = 2;
 const FOLDED_TOOL_ANCHOR_LIMIT = 4;
@@ -96,7 +95,8 @@ const toolRequestSchema = z.object({
   args: z.unknown().optional()
 });
 const notesSchema = z.object({ hypotheses: logHypothesesSchema.optional() });
-const checklistNotesSchema = notesSchema.extend({ checks: logCheckUpdatesSchema.optional() });
+const checkNotesSchema = z.object({ checks: logCheckUpdatesSchema.optional() });
+const checklistNotesSchema = notesSchema.merge(checkNotesSchema);
 type LoopNotes = z.infer<typeof checklistNotesSchema>;
 
 function readNotes(notes: unknown): LoopNotes {
@@ -197,7 +197,7 @@ function buildLoopSystemPrompt(maxSteps: number, hasRelatedParameter: boolean, c
       'In the final report you may include alternativeHypotheses: [{statement, reason, anchors}]. Only list refuted hypotheses with a concise reason and at least one log or source anchor you have already seen. Do not treat the ledger as evidence.'
     ] : []),
     ...(checklist ? [
-      'Work through the skill checklist in order, subject to the platform protocol. In the same optional notes object, send checks: [{id, status: "done"|"skipped", reason?, anchors: [{file, line} or {snapshotId, path, line}]}].',
+      'Work through the skill checklist in order, subject to the platform protocol. In optional notes, send checks: [{id, status: "done"|"skipped", reason?, anchors: [{file, line} or {snapshotId, path, line}]}].',
       'Send updates only for declared ids, with a concise reason when skipping a check and up to four previously seen anchors. Omit checks you have not handled. Only previous tool results can ground anchors.'
     ] : []),
     "Available tools:",
@@ -253,11 +253,9 @@ export type CreateAgentLoopAnalyzerOptions = {
   protocol?: LogAnalysisProtocol;
   /** Set only for endpoint-backed models. Capability is independent of per-skill budgets. */
   endpoint?: string;
-  /** Retains estimated usage for runs that inherit the platform token budget. */
-  estimateMissingTokenUsage?: boolean;
   maxSteps: number;
   fallback?: LogAnalysisAdapter;
-  recoverInvalidModelOutput?: (input: AnalyzeLogInput) => Promise<AnalyzeLogOutput | undefined>;
+  recoverInvalidModelOutput?: (input: AnalyzeLogInput, remainingTokens: number) => Promise<AnalyzeLogOutput | "token-budget-exhausted" | undefined>;
   telemetry?: LogAnalysisLlmTelemetry;
   now?: () => number;
   /** Binds the database-backed tool seams (domain knowledge, related parameter) for one run. */
@@ -280,12 +278,14 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
   const investigationBudget = options.tokenBudget - Math.floor(options.tokenBudget * FINAL_ANSWER_RESERVE_FRACTION);
 
   async function degradeToFallback(
-    input: AnalyzeLogInput, reason: LogAnalysisDegradedReason, trace: { hypotheses?: LogHypothesis[] }, historicalRunIds: Set<string>,
-    promptVersion: string
+    input: AnalyzeLogInput, reason: LogAnalysisDegradedReason, trace: Pick<LogAnalysisTraceStep, "hypotheses">,
+    historicalRunIds: Set<string>, promptVersion: string, remainingTokens: number
   ): Promise<AnalyzeLogOutput> {
+    const recovery = reason === "invalid-model-output" ? await options.recoverInvalidModelOutput?.(input, remainingTokens) : undefined;
+    if (recovery === "token-budget-exhausted") reason = recovery;
+    const recovered = typeof recovery === "object" ? recovery : undefined;
     options.telemetry?.recordDegraded?.({ reason, model: options.modelLabel });
     await emitLogTrace(input, { kind: "degradation", reason, ...trace });
-    const recovered = reason === "invalid-model-output" ? await options.recoverInvalidModelOutput?.(input) : undefined;
     const output = recovered ?? await fallback.analyze(input);
     return {
       ...output,
@@ -300,8 +300,9 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
   return {
     async analyze(input) {
       input = withLogTrace(input);
-      const checklist = (options.hypothesisLedger && options.procedureChecklist ? input.procedureChecks : undefined) ?? [];
+      const checklist = (options.procedureChecklist ? input.procedureChecks : undefined) ?? [];
       const hasChecklist = checklist.length > 0;
+      const hasNotes = options.hypothesisLedger || hasChecklist;
       const checkIds = new Set(checklist.map(({ id }) => id));
       const promptVersion = promptVersionFor(input, hasChecklist);
       const historicalRunIds = new Set<string>();
@@ -335,11 +336,8 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       let hypotheses: LogHypothesis[] = [];
       const checkProgress = new Map<string, LogCheckUpdate>();
       const traceHypotheses = () => !options.hypothesisLedger ? {} : {
-        hypotheses: input.relatedParameterSnapshot
-          ? hypotheses.map((item, index) => ({ ...item, id: String(index + 1), statement: "[redacted]" }))
-          : hypotheses
+        hypotheses: hypotheses.map(({ status, anchors }, index) => ({ id: String(index + 1), status, anchors }))
       };
-      const degrade = (reason: LogAnalysisDegradedReason) => degradeToFallback(input, reason, traceHypotheses(), historicalRunIds, promptVersion);
       const remember = (tool: string, value: unknown, anchors: Map<string, LogHypothesisAnchor>) => {
         if (!value || typeof value !== "object") return;
         const result = value as Record<string, unknown>;
@@ -449,20 +447,20 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       ];
       // Reserve a user-message slot outside the tool history so folding never moves or removes it.
       const ledgerIndex = messages.length;
-      if (options.hypothesisLedger) messages.push({ role: "user", content: "" });
-      const nativeNotesSchema = hasChecklist ? checklistNotesSchema : notesSchema;
+      if (hasNotes) messages.push({ role: "user", content: "" });
+      const nativeNotesSchema = hasChecklist ? options.hypothesisLedger ? checklistNotesSchema : checkNotesSchema : notesSchema;
       const finalReportTool: LogAnalysisNativeTool = {
         name: FINAL_REPORT,
         description: "Deliver the final report with citations grounded in log lines or exact source locations seen in tool results.",
-        schema: options.hypothesisLedger ? llmOutputSchema.extend({
-          notes: nativeNotesSchema.optional(), alternativeHypotheses: logAlternativeHypothesesSchema.optional()
+        schema: hasNotes ? llmOutputSchema.extend({
+          notes: nativeNotesSchema.optional(), ...(options.hypothesisLedger ? { alternativeHypotheses: logAlternativeHypothesesSchema.optional() } : {})
         }) : llmOutputSchema
       };
       const nativeTools = [...availableLogAnalysisTools(toolContext).map((name) => {
         const { description, paramsSchema } = logAnalysisToolCatalog[name];
         // Refinements remain enforced by executeLogAnalysisTool on the original schema.
         const shape = paramsSchema instanceof z.ZodEffects ? paramsSchema.sourceType() : paramsSchema;
-        const schema = options.hypothesisLedger && shape instanceof z.ZodObject
+        const schema = hasNotes && shape instanceof z.ZodObject
           ? shape.extend({ notes: nativeNotesSchema.optional() }) : paramsSchema;
         return { name, description, schema };
       }), finalReportTool];
@@ -471,21 +469,51 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       let usedTokens = 0;
       let invalidStreak = 0;
       let checklistReminderSent = false;
+      const finalTools = [finalReportTool];
+      const countToolTokens = options.model.estimateNativeToolTokens ?? estimateLogToolTokens;
+      const nativeToolTokens = protocol === "tools" ? countToolTokens(nativeTools) : 0;
+      const finalToolTokens = protocol === "tools" ? countToolTokens(finalTools) : 0;
+      const degrade = (reason: LogAnalysisDegradedReason) => degradeToFallback(input, reason, traceHypotheses(), historicalRunIds,
+        promptVersion, options.tokenBudget - usedTokens);
       const degradeInvalidOutput = () => degrade(usedTokens >= options.tokenBudget ? "token-budget-exhausted" : "invalid-model-output");
+      const convergenceMessage = () => ({ role: "user" as const,
+        content: `Budget exhausted: you must now ${protocol === "tools" ? "call final_report" : "emit your final report JSON"} based only on what you have already seen. Use low confidence if the evidence is thin. ${protocol === "tools" ? "Do not call any more investigative tools." : "Do not call any more tools."}` });
+      const refreshNotes = () => {
+        if (!hasNotes) return;
+        const checks = [...checkProgress.values()];
+        messages[ledgerIndex] = { role: "user", content: options.hypothesisLedger
+          ? `${HYPOTHESIS_LEDGER_PROMPT}\n${JSON.stringify(hasChecklist ? { hypotheses, checks } : hypotheses)}`
+          : `Checklist progress (untrusted prior notes):\n${JSON.stringify(checks)}` };
+      };
+      const convergenceCost = (history = messages) => estimateLogPromptTokens([...history, convergenceMessage()], protocol === "tools" ? finalToolTokens : 0)
+        + MIN_LOG_ANALYSIS_OUTPUT_TOKENS;
+      // Leave room for the next tool summary or correction to grow the final prompt.
+      const investigationLimit = (history = messages) => Math.min(investigationBudget,
+        options.tokenBudget - convergenceCost(history) - CONVERGENCE_CONTEXT_HEADROOM_TOKENS);
 
-      const invokeModel = async (finalOnly = false, mayProbe = false): Promise<{ content: string; turn?: LoopTurn }> => {
-        if (options.hypothesisLedger) messages[ledgerIndex] = { role: "user",
-          content: `${HYPOTHESIS_LEDGER_PROMPT}\n${JSON.stringify(hasChecklist
-            ? { hypotheses, checks: [...checkProgress.values()] } : hypotheses)}` };
+      const invokeModel = async (finalOnly = false, mayProbe = false): Promise<{ content: string; turn?: LoopTurn; exhausted?: boolean }> => {
+        refreshNotes();
+        const estimatedInputTokens = estimateLogPromptTokens(messages, protocol === "tools"
+          ? finalOnly ? finalToolTokens : nativeToolTokens : 0);
+        const maxOutputTokens = Math.min(logCompletionLimit(options.tokenBudget),
+          (finalOnly ? options.tokenBudget : investigationLimit()) - usedTokens - estimatedInputTokens);
+        if (maxOutputTokens < MIN_LOG_ANALYSIS_OUTPUT_TOKENS) {
+          if (mayProbe && protocol === "tools") {
+            protocol = "json";
+            messages[0] = systemMessage();
+            return invokeModel(finalOnly);
+          }
+          return { content: "", exhausted: true };
+        }
         const startedAtMs = now();
         let response: LogAnalysisChatResponse & { toolCalls?: LogAnalysisNativeCall[] };
         try {
           input.signal?.throwIfAborted();
           if (protocol === "tools") {
             if (!options.model.invokeTools) throw new LogAnalysisProviderError("当前日志分析模型未配置原生工具调用。");
-            response = await options.model.invokeTools(messages, { signal: input.signal, tools: finalOnly ? [finalReportTool] : nativeTools });
+            response = await options.model.invokeTools(messages, { signal: input.signal, maxOutputTokens, tools: finalOnly ? finalTools : nativeTools });
           } else {
-            response = await options.model.invoke(messages, { signal: input.signal });
+            response = await options.model.invoke(messages, { signal: input.signal, maxOutputTokens });
           }
         } catch (error) {
           input.signal?.throwIfAborted();
@@ -514,14 +542,11 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         }
 
         const outputText = response.content + (response.toolCalls ? JSON.stringify(response.toolCalls) : "");
-        const estimateUsage = options.estimateMissingTokenUsage || options.verifier || hasChecklist;
-        const inputTokens = response.usage?.inputTokens ?? (estimateUsage
-          ? Math.ceil(messages.reduce((total, message) => total + message.content.length
-            + (message.role === "assistant" && message.toolCalls ? JSON.stringify(message.toolCalls).length : 0), 0) / CHARS_PER_TOKEN)
-          : undefined);
-        const outputTokens = response.usage?.outputTokens ?? (estimateUsage ? Math.ceil(outputText.length / CHARS_PER_TOKEN) : undefined);
-        usedTokens += (inputTokens ?? 0) + (outputTokens ?? 0);
-        const turn = readLoopTurn(response, protocol, options.repairJsonOutput);
+        const inputTokens = response.usage?.inputTokens ?? estimatedInputTokens;
+        const outputTokens = response.usage?.outputTokens ?? estimateLogTokens(outputText);
+        usedTokens += inputTokens + outputTokens;
+        const exhausted = usedTokens > options.tokenBudget;
+        const turn = exhausted ? undefined : readLoopTurn(response, protocol, options.repairJsonOutput);
         const validOutput = turn !== undefined && (turn.action === "tools"
           ? !finalOnly && !turn.overLimit && !turn.calls.some((call) => call.malformed)
           : groundLlmEvidence(turn.report.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources).length > 0);
@@ -533,7 +558,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           }
         }
         await emitLogTrace(input, { kind: "model-turn", protocol, resultBytes: Buffer.byteLength(outputText),
-          outcome: validOutput ? "ok" : "error", reason: validOutput ? null : "invalid-output",
+          outcome: validOutput ? "ok" : "error", reason: exhausted ? "token-budget-exhausted" : validOutput ? null : "invalid-output",
           ...traceHypotheses(),
           ...(response.usage?.inputTokens !== undefined ? { inputTokens: response.usage.inputTokens } : {}),
           ...(response.usage?.outputTokens !== undefined ? { outputTokens: response.usage.outputTokens } : {}) });
@@ -544,7 +569,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           inputTokens,
           outputTokens
         });
-        return { content: response.content, turn };
+        return { content: response.content, turn, exhausted };
       };
 
       const buildSuccessOutput = (
@@ -605,12 +630,11 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         const unsupported = original.claims.filter(({ status }) => status !== "supported");
         const contradicted = unsupported.some(({ status }) => status === "contradicted");
         const verification = {
-          status: contradicted ? "failed" as const : unsupported.length ? "revised" as const : "passed" as const,
           checkedClaims: original.claims.length,
           unsupportedClaims: unsupported.length,
           model: verifier.modelLabel
         };
-        if (unsupported.length === 0) return { ...report, verification };
+        if (unsupported.length === 0) return { ...report, verification: { ...verification, status: "passed" } };
 
         if (!contradicted && canRevise && step < maxSteps && usedTokens < investigationBudget) {
           const revisionMessage = {
@@ -621,9 +645,9 @@ Use only evidence previously seen, and ${protocol === "tools" ? "call final_repo
 ${JSON.stringify({ conclusion: report.conclusion, evidence: report.evidence,
               unsupportedClaimIds: unsupported.map(({ id }) => id), counterAnchors: original.counterAnchors })}`
           };
-          const estimatedInput = Math.ceil([...messages, revisionMessage].reduce((total, message) =>
-            total + JSON.stringify(message).length, 0) / CHARS_PER_TOKEN);
-          if (usedTokens + estimatedInput + 2048 <= options.tokenBudget) {
+          refreshNotes();
+          if (usedTokens + estimateLogPromptTokens([...messages, revisionMessage], protocol === "tools" ? finalToolTokens : 0)
+            + MIN_LOG_ANALYSIS_OUTPUT_TOKENS <= options.tokenBudget) {
             messages.push(revisionMessage);
             await input.onProgress?.({ step: step + 1, maxSteps });
             const revision = await invokeModel(true).catch((error: unknown) => {
@@ -637,21 +661,31 @@ ${JSON.stringify({ conclusion: report.conclusion, evidence: report.evidence,
                 const candidate = buildSuccessOutput(final, grounded);
                 const checked = await check(candidate);
                 if (checked?.claims.every(({ status }) => status === "supported")) {
-                  return { ...candidate, verification };
+                  return { ...candidate, verification: { ...verification, status: "revised" } };
                 }
               }
             }
           }
         }
 
-        return { ...report, verification, confidence: Math.min(report.confidence, 0.5),
+        return { ...report, verification: { ...verification, status: "failed" }, confidence: Math.min(report.confidence, 0.5),
+          ...(unsupported.some(({ id, status }) => id === 0 && status === "unsupported") ? {
+            conclusion: "现有证据不足以支持结论，请人工复核。",
+            impact: "现有证据不足以判断影响。",
+            suggestedActions: ["人工复核已引用的证据。"]
+          } : {}),
           evidence: report.evidence.filter((_, index) => !unsupported.some(({ id }) => id === index + 1)) };
       };
 
-      for (let step = 1; step <= maxSteps && usedTokens < investigationBudget; step += 1) {
+      let budgetReason: LogAnalysisDegradedReason = "step-budget-exhausted";
+      for (let step = 1; step <= maxSteps; step += 1) {
         await input.onProgress?.({ step, maxSteps });
 
-        const { content, turn } = await invokeModel(false, step === 1 && probe);
+        const { content, turn, exhausted } = await invokeModel(false, step === 1 && probe);
+        if (exhausted) {
+          budgetReason = "token-budget-exhausted";
+          break;
+        }
 
         if (!turn) {
           invalidStreak += 1;
@@ -733,13 +767,15 @@ ${JSON.stringify({ conclusion: report.conclusion, evidence: report.evidence,
           if (hasChecklist && !checklistReminderSent && step < maxSteps && usedTokens < investigationBudget) {
             const missing = checklist.filter(({ id, required }) => required && !checkProgress.has(id)).map(({ id }) => id);
             if (missing.length) {
-              const reminder = `Required checklist items remain unhandled: ${missing.join(", ")}. Investigate them or report a reason for skipping them in notes.checks before submitting another final answer.`;
-              const estimatedInput = Math.ceil((reminder.length + JSON.stringify(messages).length
-                + JSON.stringify([...checkProgress.values()]).length) / CHARS_PER_TOKEN);
-              if (usedTokens + estimatedInput < investigationBudget) {
+              const reminder = { role: "user" as const,
+                content: `Required checklist items remain unhandled: ${missing.join(", ")}. Investigate them or report a reason for skipping them in notes.checks before submitting another final answer.` };
+              refreshNotes();
+              const reminderMessages = [...messages, reminder];
+              const reminderCost = estimateLogPromptTokens(reminderMessages, protocol === "tools" ? nativeToolTokens : 0) + MIN_LOG_ANALYSIS_OUTPUT_TOKENS;
+              if (usedTokens + reminderCost <= investigationLimit(reminderMessages)) {
                 checklistReminderSent = true;
                 invalidStreak = 0;
-                messages.push({ role: "user", content: reminder });
+                messages.push(reminder);
                 continue;
               }
             }
@@ -748,17 +784,21 @@ ${JSON.stringify({ conclusion: report.conclusion, evidence: report.evidence,
         }
       }
 
-      // Usage is known after each response, so a single turn can spend the reserve.
-      const budgetReason = usedTokens >= investigationBudget ? "token-budget-exhausted" : "step-budget-exhausted";
+      if (usedTokens >= investigationBudget) budgetReason = "token-budget-exhausted";
       await input.onProgress?.({ step: maxSteps, maxSteps });
-      if (usedTokens >= options.tokenBudget) return degrade(budgetReason);
+      refreshNotes();
+      for (const { index, folded } of recentToolResults) {
+        if (usedTokens + convergenceCost() <= options.tokenBudget) break;
+        if (estimateLogTokens(folded) < estimateLogTokens(messages[index].content)) {
+          messages[index] = { ...messages[index], content: folded };
+        }
+      }
+      if (usedTokens + convergenceCost() > options.tokenBudget) return degrade("token-budget-exhausted");
       await emitLogTrace(input, { kind: "early-convergence", reason: budgetReason, ...traceHypotheses() });
-      messages.push({
-        role: "user",
-        content: `Budget exhausted: you must now ${protocol === "tools" ? "call final_report" : "emit your final report JSON"} based only on what you have already seen. Use low confidence if the evidence is thin. ${protocol === "tools" ? "Do not call any more investigative tools." : "Do not call any more tools."}`
-      });
+      messages.push(convergenceMessage());
 
-      const { turn: convergenceStep } = await invokeModel(true);
+      const { turn: convergenceStep, exhausted } = await invokeModel(true);
+      if (exhausted) return degrade("token-budget-exhausted");
       if (convergenceStep && convergenceStep.action === "final") {
         const grounded = groundLlmEvidence(convergenceStep.report.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources);
         if (grounded.length > 0) {

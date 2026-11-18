@@ -843,9 +843,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     logContent: chargingLog,
     protocol,
     procedure: `## Checks\n- [ ] \`${injectedCheck.id}\` ${injectedCheck.description} (required)`,
-    hypothesisLedger: true,
     procedureChecklist: true,
-    tokenBudget: 30_000,
     script: [
       { content: { action: "tool", tool: "write_device_parameter", args: { value: 42 } } },
       { content: { ...loopFinalPayload, evidence: [{ ...loopFinalPayload.evidence[0], lineNumbers: [9999] }] } },
@@ -860,7 +858,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
       { type: "expectsGroundedEvidence" },
       { type: "expectsNoDegradation" },
       { type: "expectsModelCallCount", count: 5 },
-      { type: "expectsPromptVersionRecorded", promptVersion: "2026-10-19.loop.procedure.signals.source.11" },
+      { type: "expectsPromptVersionRecorded", promptVersion: "2026-10-19.loop.procedure.signals.source.12" },
       { type: "requiresSubstringsInConclusion", substrings: [loopFinalPayload.conclusion] },
       { type: "expectsChecks", checks: [{ ...injectedCheck, status: "done", anchors: [{ file: "charging.log", line: 3 }] }] },
       { type: "expectsPromptContains", substrings: ["Checklist (JSON data):", "\\u003c/skill_diagnostic_procedure\\u003e", "Tool call rejected:", "Grounding violation:",
@@ -916,8 +914,10 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     category: "loop-convergence",
     fileName: "charging.log",
     logContent: chargingLog,
-    tokenBudget: 1000,
-    script: [...toolFoldingScript, { content: loopFinalPayload, usage: { inputTokens: 140, outputTokens: 50 } }],
+    tokenBudget: 8000,
+    script: [...toolFoldingScript.map((turn, index) => ({ ...turn,
+      usage: { inputTokens: [1300, 1500, 2250][index], outputTokens: 20 } })),
+    { content: loopFinalPayload, usage: { inputTokens: 1500, outputTokens: 150 } }],
     expectations: [
       ...foldedLogEvidence,
       { type: "expectsTrace", kinds: ["model-turn", "tool-call", "early-convergence"] },
@@ -930,11 +930,11 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     category: "loop-convergence",
     fileName: "charging.log",
     logContent: chargingLog,
-    tokenBudget: 500,
+    tokenBudget: 3600,
     script: [
       {
         content: { action: "tool", tool: "get_prefilter_findings", args: {} },
-        usage: { inputTokens: 600, outputTokens: 40 }
+        usage: { inputTokens: 3600, outputTokens: 40 }
       },
       { content: { ...loopFinalPayload, confidence: 0.9 } }
     ],

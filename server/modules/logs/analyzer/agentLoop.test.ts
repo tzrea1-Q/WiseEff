@@ -75,6 +75,16 @@ function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<t
 }
 
 describe("createAgentLoopLogAnalyzer", () => {
+  it("starts in JSON in auto mode when the native tool catalogue cannot fit the budget", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const { adapter } = analyzer([readChargingLines, { content: finalPayload }], {
+      protocol: "auto", hypothesisLedger: true, tokenBudget: 8000
+    });
+    const report = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+    expect(report).toMatchObject({ analysisSource: "agent", evidence: [{ lineNumbers: [3, 4] }] });
+    expect(trace.filter(({ kind }) => kind === "model-turn").map(({ protocol }) => protocol)).toEqual(["json", "json"]);
+  });
+
   it.each(["json", "tools"] as const)("reminds once before verifying and reports grounded checklist progress in %s", async (protocol) => {
     const required = { id: "cooling", description: "Inspect cooling.", required: true };
     const pending = { id: "rail", description: "Check the rail.", required: true };
@@ -87,7 +97,7 @@ describe("createAgentLoopLogAnalyzer", () => {
       { content: { ...finalPayload, notes: { checks: [
         { id: required.id, status: "done", anchors: [anchor, { ...anchor, line: 6 }] }
       ] } } }
-    ], { protocol, hypothesisLedger: true, procedureChecklist: true, verifier: { model: verifier, modelLabel: "verify-test" } });
+    ], { protocol, procedureChecklist: true, verifier: { model: verifier, modelLabel: "verify-test" } });
     const output = await adapter.analyze(buildInput({ filePath: anchor.file, procedureChecks: [required, pending, optional] }));
     expect(output).toMatchObject({ conclusion: finalPayload.conclusion, verification: { status: "passed" }, checks: [
       { ...required, status: "done", anchors: [anchor] }, { ...pending, status: "pending", anchors: [] },
@@ -99,12 +109,12 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(model.calls[2].some(({ content }) => content.includes("Required checklist items remain unhandled: cooling, rail."))).toBe(true);
   });
 
-  it.each(["steps", "tokens", "disabled", "no ledger", "no checklist"] as const)(
+  it.each(["steps", "tokens", "disabled", "no checklist"] as const)(
     "does not send a checklist reminder with %s", async (constraint) => {
       const { adapter, model } = analyzer([readChargingLines, { content: finalPayload,
         usage: { inputTokens: constraint === "tokens" ? 79_000 : 200, outputTokens: 150 } }], {
         maxSteps: constraint === "steps" ? 2 : 4,
-        hypothesisLedger: constraint !== "no ledger", procedureChecklist: constraint !== "disabled"
+        procedureChecklist: constraint !== "disabled"
       });
       const check = { id: "cooling", description: "Inspect cooling.", required: true };
       const report = await adapter.analyze(buildInput({ procedure: "Look up the thermal event.",
@@ -175,10 +185,24 @@ describe("createAgentLoopLogAnalyzer", () => {
       const output = await adapter.analyze(buildInput());
       expect(output).toMatchObject({ conclusion: finalPayload.conclusion, confidence: 0.5,
         evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
-        verification: { status: "revised", checkedClaims: 3, unsupportedClaims: 1 } });
+        verification: { status: "failed", checkedClaims: 3, unsupportedClaims: 1 } });
       expect(model.calls).toHaveLength(limit === "unsupported replacement" ? 3 : 2);
     }
   );
+
+  it("replaces an unsupported conclusion with an uncertainty statement when revision fails", async () => {
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: [
+      { id: 0, status: "unsupported" }, supportedClaims[1], { id: 2, status: "unsupported" }
+    ] } }]);
+    const { adapter } = analyzer([readChargingLines, { content: mixedCandidate }, { content: "unusable revision" }], {
+      verifier: { model: verifier, modelLabel: "verify-test" }
+    });
+    expect(await adapter.analyze(buildInput())).toMatchObject({
+      conclusion: "现有证据不足以支持结论，请人工复核。", confidence: 0.5,
+      evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
+      verification: { status: "failed", checkedClaims: 3, unsupportedClaims: 2 }
+    });
+  });
 
   it.each(["provider failure", "missing verdict", "duplicate verdict", "final-answer reserve"] as const)(
     "delivers the grounded report with verification skipped after %s", async (failure) => {
@@ -186,9 +210,9 @@ describe("createAgentLoopLogAnalyzer", () => {
         : { content: { claims: failure === "duplicate verdict" ? [supportedClaims[0], supportedClaims[0]] : supportedClaims.slice(0, 1) } }]);
       const reserve = failure === "final-answer reserve";
       const { adapter } = analyzer([
-        { ...readChargingLines, ...(reserve ? { usage: { inputTokens: 2370, outputTokens: 30 } } : {}) },
+        { ...readChargingLines, ...(reserve ? { usage: { inputTokens: 6370, outputTokens: 30 } } : {}) },
         { content: finalPayload, ...(reserve ? { usage: { inputTokens: 400, outputTokens: 50 } } : {}) }
-      ], { tokenBudget: reserve ? 3000 : 100_000, verifier: { model: verifier, modelLabel: "verify-test" } });
+      ], { tokenBudget: reserve ? 8000 : 100_000, verifier: { model: verifier, modelLabel: "verify-test" } });
       const output = await adapter.analyze(buildInput());
       expect(output).toMatchObject({ conclusion: finalPayload.conclusion, confidence: reserve ? 0.5 : 0.9,
         analysisSource: "agent", evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
@@ -282,9 +306,13 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(finalInput).toContain(JSON.stringify({ ...hypothesis, anchors: [seen] }));
     expect(finalInput).not.toContain('"id":"old"');
     expect(trace.filter(({ kind }) => kind === "model-turn").map(({ hypotheses }) => hypotheses)).toEqual([
-      [{ ...hypothesis, id: "old", anchors: [] }], [{ ...hypothesis, anchors: [seen] }],
-      [{ ...hypothesis, anchors: [seen] }], [finalHypothesis]
+      [{ id: "1", status: "open", anchors: [] }], [{ id: "1", status: "open", anchors: [seen] }],
+      [{ id: "1", status: "open", anchors: [seen] }], [{ id: "1", status: "refuted", anchors: [seen] }]
     ]);
+    expect(JSON.stringify(trace)).not.toContain(hypothesis.statement);
+    expect(JSON.stringify(trace)).not.toContain(`"id":"${hypothesis.id}"`);
+    expect(logTraceStepSchema.parse({ ...trace[0], hypotheses: [hypothesis] }).hypotheses)
+      .toEqual([{ id: "1", status: "open", anchors: [seen, unseen] }]);
     expect(trace.every((step) => logTraceStepSchema.safeParse(step).success)).toBe(true);
   });
 
@@ -317,7 +345,8 @@ describe("createAgentLoopLogAnalyzer", () => {
     const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
     expect(output.analysisSource).toBe("agent");
     const snapshots = trace.filter(({ kind }) => kind === "model-turn").map((step) => step.hypotheses);
-    expect(snapshots).toEqual(Array.from({ length: 3 }, () => hypotheses.slice(0, 5)));
+    expect(snapshots).toEqual(Array.from({ length: 3 }, () => hypotheses.slice(0, 5)
+      .map(({ status, anchors }, index) => ({ id: String(index + 1), status, anchors }))));
     expect(model.calls.at(-1)?.some(({ content }) => content.endsWith(JSON.stringify(hypotheses.slice(0, 5))))).toBe(true);
     expect(Buffer.byteLength(JSON.stringify(snapshots[0]))).toBeLessThanOrEqual(4096);
   });
@@ -446,7 +475,8 @@ describe("createAgentLoopLogAnalyzer", () => {
       await expect(adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
         .resolves.toMatchObject({ analysisSource: "agent", confidence: 0.9, evidence: [{ lineNumbers: [3, 4] }] });
       expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.protocol)).toEqual(["tools", "tools"]);
-      expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.hypotheses)).toEqual([[open], [open]]);
+      const metadata = { id: "1", status: open.status, anchors: open.anchors };
+      expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.hypotheses)).toEqual([[metadata], [metadata]]);
     } finally {
       fetch.mockRestore();
     }
@@ -871,9 +901,9 @@ describe("createAgentLoopLogAnalyzer", () => {
   it("uses the remaining token budget for a grounded final report after investigation uses 80%", async () => {
     const { adapter, model } = analyzer([
       { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } },
-        usage: { inputTokens: 760, outputTokens: 40 } },
-      { content: finalPayload, usage: { inputTokens: 150, outputTokens: 50 } }
-    ], { tokenBudget: 1000 });
+        usage: { inputTokens: 6250, outputTokens: 150 } },
+      { content: finalPayload, usage: { inputTokens: 1450, outputTokens: 150 } }
+    ], { tokenBudget: 8000 });
     const trace: LogAnalysisTraceStep[] = [];
 
     const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
@@ -887,12 +917,13 @@ describe("createAgentLoopLogAnalyzer", () => {
   });
 
   it.each([
-    { tokenBudget: 1, content: { action: "tool", tool: "get_prefilter_findings", args: {} } },
-    { tokenBudget: 2537, content: { action: "tool", tool: "unknown", args: {} } },
-    { tokenBudget: 1, content: "invalid JSON" },
-    { tokenBudget: 1, content: finalPayload }
-  ])("makes no further call after reported usage exhausts the budget ($tokenBudget, $content)", async ({ tokenBudget, content }) => {
-    const usage = { inputTokens: 2500, outputTokens: 37 };
+    { action: "tool", tool: "get_prefilter_findings", args: {} },
+    { action: "tool", tool: "unknown", args: {} },
+    "invalid JSON",
+    finalPayload
+  ])("makes no further call after reported usage exhausts the budget (%j)", async (content) => {
+    const tokenBudget = 4096;
+    const usage = { inputTokens: 4059, outputTokens: 37 };
     const { model, adapter } = analyzer(
       [
         { content, usage },
@@ -909,16 +940,17 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(output.confidence).toBe((await createRuleBasedLogAnalyzer().analyze(buildInput())).confidence);
   });
 
-  it("counts cumulative reported usage without estimating missing usage", async () => {
+  it("charges estimated usage when a provider omits usage and stops further investigation", async () => {
     const tool = { action: "tool", tool: "get_prefilter_findings", args: {} };
     const { model, adapter } = analyzer([
       { content: tool },
       { content: tool, usage: { inputTokens: 2500, outputTokens: 37 } },
       { content: tool, usage: { inputTokens: 1500, outputTokens: 59 } },
       { content: finalPayload }
-    ], { maxSteps: 4, tokenBudget: 4096 });
+    ], { maxSteps: 4, tokenBudget: 7000 });
     expect(await adapter.analyze(buildInput())).toMatchObject({ analysisSource: "rules-fallback", degradedReason: "token-budget-exhausted" });
     expect(model.calls).toHaveLength(3);
+    expect(model.calls.at(-1)?.at(-1)?.content).toContain("Do not call any more tools.");
   });
 
   it("falls back to rules when even the convergence attempt stays ungrounded", async () => {

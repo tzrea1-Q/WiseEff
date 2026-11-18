@@ -1,12 +1,8 @@
 import type { Queryable } from "../../shared/database/client";
-import { fuseKnowledgeSearchResults } from "../knowledge/hybridSearch";
-import type { KnowledgeEmbeddingClient } from "../knowledge/indexing/embeddingClient";
-import { hasKnowledgeVectorSupport, toVectorLiteral } from "../knowledge/indexing/repository";
-import type { KnowledgeRetrievalMode } from "../knowledge/types";
 
 type Scope = { organizationId: string; skillId: string; runId: string; projectId: string | null };
 
-// Both rankings and tool admission share the same revision-pinned scope and confirmation predicate.
+// Ranking and tool admission share the same revision-pinned scope and confirmation predicate.
 const confirmed = `
   select run.id as "entryId", report.created_at as "createdAt", left(report.conclusion, 800) as summary,
     run.eval_case_root_cause_category as "rootCauseCategory",
@@ -32,54 +28,21 @@ export async function hasPastConclusions(db: Queryable, scope: Scope) {
   return result.rows.length > 0;
 }
 
-type Candidate = { entryId: string; createdAt: Date; summary: string; rootCauseCategory: string | null; search_text: string };
-const SEMANTIC_CANDIDATES = 32;
-const HYBRID_FTS_PREFIX = 64;
+type Candidate = { entryId: string; createdAt: Date; summary: string; rootCauseCategory: string | null };
 
 export async function searchPastConclusions(
-  db: Queryable, scope: Scope, { query, offset, limit }: { query: string; offset: number; limit: number },
-  embeddingClient?: KnowledgeEmbeddingClient
+  db: Queryable, scope: Scope, { query, offset, limit }: { query: string; offset: number; limit: number }
 ) {
   const scopeParams = [scope.organizationId, scope.skillId, scope.runId, scope.projectId];
-  const end = offset + limit;
-  const canUseVector = embeddingClient && await hasKnowledgeVectorSupport(db).catch(() => false);
-  // A fixed fusion prefix gives consecutive pages one ranking. Older FTS hits
-  // still follow the prefix in lexical order.
-  const ftsLimit = canUseVector ? Math.max(HYBRID_FTS_PREFIX, end + SEMANTIC_CANDIDATES + 1) : end + 1;
   const fts = (await db.query<Candidate>(`
-    select candidate.* from (${confirmed}) candidate
+    select "entryId", "createdAt", summary, "rootCauseCategory" from (${confirmed}) candidate
     where to_tsvector('english', search_text) @@ plainto_tsquery('english', $5)
       or strpos(lower(search_text), lower($5)) > 0
     order by ts_rank(to_tsvector('english', search_text), plainto_tsquery('english', $5)) desc,
       "createdAt" desc, "entryId"
-    limit $6`, [...scopeParams, query, ftsLimit])).rows;
-  let ranked = fts;
-  let retrievalMode: KnowledgeRetrievalMode = "fts_only";
-  if (embeddingClient && canUseVector) {
-    try {
-      // ponytail: embed a bounded recent window on read. Persist model-versioned vectors if older semantic-only hits need to compete.
-      const recent = (await db.query<Candidate>(`
-        select candidate.* from (${confirmed}) candidate order by "createdAt" desc, "entryId" limit $5`,
-      [...scopeParams, SEMANTIC_CANDIDATES])).rows;
-      if (recent.length) {
-        const [needle, ...vectors] = await embeddingClient.embed([query, ...recent.map((item) => item.search_text)]);
-        if (vectors.length !== recent.length) throw new Error("Incomplete historical conclusion embeddings.");
-        const vector = (await db.query<Candidate>(`
-          select candidate.* from (${confirmed}) candidate
-          join unnest($5::text[], $6::text[]) scored(id, embedding) on scored.id = candidate."entryId"
-          order by scored.embedding::vector <=> $7::vector, candidate."createdAt" desc, candidate."entryId"
-        `, [...scopeParams, recent.map((item) => item.entryId), vectors.map(toVectorLiteral), toVectorLiteral(needle)])).rows;
-        const prefix = fuseKnowledgeSearchResults({ fts: fts.slice(0, HYBRID_FTS_PREFIX), vector, limit: HYBRID_FTS_PREFIX + vector.length });
-        const fusedIds = new Set(prefix.map((item) => item.entryId));
-        ranked = [...prefix, ...fts.slice(HYBRID_FTS_PREFIX).filter((item) => !fusedIds.has(item.entryId))];
-        retrievalMode = "semantic_fts";
-      }
-    } catch {
-      // An unavailable vector extension/provider leaves the PostgreSQL FTS ranking intact.
-    }
-  }
+    limit $6 offset $7`, [...scopeParams, query, limit + 1, offset])).rows;
 
-  const page = ranked.slice(offset, end);
+  const page = fts.slice(0, limit);
   const templates = page.length ? (await db.query<{ runId: string; evidenceTemplates: string[] }>(`
     select selected.id as "runId", array(
       select concat(stage, ' evidence: ', cardinality(line_numbers), ' log anchors',
@@ -94,5 +57,5 @@ export async function searchPastConclusions(
     ...(candidate.rootCauseCategory ? { rootCauseCategory: candidate.rootCauseCategory } : {}),
     evidenceTemplates: templates.find((row) => row.runId === candidate.entryId)?.evidenceTemplates ?? []
   }));
-  return { retrievalMode, items, hasMore: ranked.length > end };
+  return { retrievalMode: "fts_only" as const, items, hasMore: fts.length > limit };
 }

@@ -1,9 +1,12 @@
 import { z } from "zod";
+import { compileSkillFiles } from "../../../../src/domain/logs/fileApplicability";
 
 import type { AnalyzeLogInput, AnalyzeLogOutput, LogAnalysisAdapter } from "../analyzer";
 import { LOG_ANALYSIS_LOOP_PROMPT_VERSION } from "../analyzer/agentLoop";
 import { LOG_ANALYSIS_PROMPT_VERSION } from "../analyzer/llmAnalyzer";
+import type { CreateLogAnalyzerFromEnvOptions } from "../analyzer/analyzerFromEnv";
 import { parseLogText } from "../parser";
+import { decodeLogFilesCooperatively } from "../parsing/workerDecoding";
 import type { LogAnalysisTraceStep } from "../traceTypes";
 import { analyzeWithDegradation } from "../worker";
 import { resolveLogEvalCaseMetadata, type GoldenLogCase, type LogEvalRootCauseCategory } from "./goldenCases";
@@ -501,16 +504,42 @@ function qualityRunId(generatedAt: string): string {
   return `qe-${generatedAt.replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-")}`;
 }
 
-function prepareQualityCase(goldenCase: GoldenLogCase) {
-  const parse = (fileName: string, content: string) => {
-    const parsed = parseLogText({ fileName, content }, { profile: goldenCase.formatProfile });
+export function bindQualityPastConclusions(cases: GoldenLogCase[]): NonNullable<CreateLogAnalyzerFromEnvOptions["bindOfflinePastConclusions"]> {
+  const confirmed = cases.filter((item) => item.realLog && item.deIdentified && !item.expectRefusal);
+  return (input) => {
+    const scope = input.pastConclusionScope;
+    if (!scope || !input.logDomainId) return undefined;
+    const history = confirmed.filter((item) => item.domain === input.logDomainId && item.id !== scope.runId);
+    if (!history.length) return undefined;
+    return async ({ query, offset, limit }) => {
+      const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [query.toLowerCase()];
+      const matches = history.map((item) => ({ runId: item.id, createdAt: "1970-01-01T00:00:00.000Z",
+        summary: item.rootCausePoints.join(" ").slice(0, 800), rootCauseCategory: item.rootCauseCategory, evidenceTemplates: [] }))
+        .filter(({ summary, rootCauseCategory }) => terms.every((term) => `${summary} ${rootCauseCategory}`.toLowerCase().includes(term)));
+      return { retrievalMode: "fts_only", items: matches.slice(offset, offset + limit), hasMore: matches.length > offset + limit };
+    };
+  };
+}
+
+async function prepareQualityCase(goldenCase: GoldenLogCase) {
+  const { skill } = goldenCase;
+  const profile = goldenCase.formatProfile ?? skill?.formatProfile;
+  const assignFile = compileSkillFiles(skill?.files);
+  const parse = (fileName: string, content: string, skillMatched: boolean) => {
+    const parsed = parseLogText({ fileName, content }, { profile: skillMatched ? profile : undefined });
     if (!parsed.ok) throw new Error(`${fileName} failed to parse (${parsed.reason})`);
     return parsed;
   };
+  const decode = async (files: Parameters<typeof decodeLogFilesCooperatively>[1]) => {
+    if (skill?.parsing?.extractors.length) return { spec: skill.parsing, ...await decodeLogFilesCooperatively(skill.parsing, files) };
+  };
   if (!goldenCase.bundle) {
-    const parsed = parse("log.txt", goldenCase.logText);
+    const filePath = "log.txt";
+    const { skillMatched } = assignFile(filePath);
+    const parsed = parse(filePath, goldenCase.logText, skillMatched);
+    const decoding = await decode(skillMatched ? [{ file: filePath, lines: parsed.rawLines }] : []);
     return {
-      input: { parsed },
+      input: { parsed, ...(decoding ? { decoding, filePath } : {}) },
       scoring: { parsedLineNumbers: new Set(parsed.entries.map((entry) => entry.lineNumber)) }
     };
   }
@@ -518,14 +547,16 @@ function prepareQualityCase(goldenCase: GoldenLogCase) {
   const offsets = new Map<string, { start: number; lines: string[] }>();
   let lineCount = 0;
   const files = goldenCase.bundle.map(({ logText, ...file }) => {
-    const parsed = parse(file.path, logText);
+    const assignment = skill ? assignFile(file.path) : { skillMatched: file.skillMatched ?? true, role: file.role ?? null };
+    const parsed = parse(file.path, logText, assignment.skillMatched);
     offsets.set(file.path, { start: lineCount, lines: parsed.rawLines });
     lineCount += parsed.rawLines.length;
-    return { ...file, parsed };
+    return { ...file, ...assignment, parsed };
   });
   const [first] = files;
-  const input: Pick<AnalyzeLogInput, "parsed" | "files" | "filePath" | "stats"> = {
+  const input: Pick<AnalyzeLogInput, "parsed" | "files" | "filePath" | "stats" | "decoding"> = {
     parsed: first.parsed, files, filePath: first.path,
+    decoding: await decode(files.filter(({ skillMatched }) => skillMatched).map(({ path, parsed }) => ({ file: path, lines: parsed.rawLines }))),
     stats: { lineCount, entryCount: files.reduce((total, file) => total + file.parsed.entries.length, 0) }
   };
   return {
@@ -550,9 +581,9 @@ export async function runQualityEval(options: RunQualityEvalOptions): Promise<Qu
       && (tags.length === 0 || tags.some((tag) => metadata.scenarioTags.includes(tag))));
 
   for (const { goldenCase, metadata } of selectedCases) {
-    let prepared: ReturnType<typeof prepareQualityCase>;
+    let prepared: Awaited<ReturnType<typeof prepareQualityCase>>;
     try {
-      prepared = prepareQualityCase(goldenCase);
+      prepared = await prepareQualityCase(goldenCase);
     } catch (error) {
       problems.push(`${goldenCase.id}: ${error instanceof Error ? error.message : String(error)}`);
       continue;
@@ -614,7 +645,7 @@ export async function runQualityEval(options: RunQualityEvalOptions): Promise<Qu
 async function runQualityTrial(
   { analyzer, judge: rubric }: RunQualityEvalOptions,
   goldenCase: GoldenLogCase,
-  prepared: ReturnType<typeof prepareQualityCase>,
+  prepared: Awaited<ReturnType<typeof prepareQualityCase>>,
   now: () => number
 ) {
   const trace: LogAnalysisTraceStep[] = [];
@@ -626,6 +657,9 @@ async function runQualityTrial(
       ...prepared.input,
       analysisQuestion: goldenCase.analysisQuestion,
       logDomain: goldenCase.domain === "uncategorized" ? undefined : { name: goldenCase.domain },
+      ...(goldenCase.domain !== "uncategorized" ? {
+        logDomainId: goldenCase.domain, pastConclusionScope: { runId: goldenCase.id, projectId: null }
+      } : {}),
       onTrace: (step) => { trace.push(step); }
     },
     job: { attemptCount: Number.MAX_SAFE_INTEGER },

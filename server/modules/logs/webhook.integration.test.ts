@@ -417,7 +417,7 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
       : [{ content }]);
     const analyzer = createLogAnalyzerFromEnv({
       LOG_ANALYSIS_DETERMINISTIC: true, LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_PROTOCOL: "tools",
-      LOG_ANALYSIS_API_TIMEOUT_MS: 1000, LOG_ANALYSIS_TOKEN_BUDGET: 8000, LOG_ANALYSIS_MAX_STEPS: maxSteps,
+      LOG_ANALYSIS_API_TIMEOUT_MS: 1000, LOG_ANALYSIS_TOKEN_BUDGET: 60_000, LOG_ANALYSIS_MAX_STEPS: maxSteps,
       LOG_ANALYSIS_SINGLE_SHOT_FALLBACK: recoveryEnabled
     }, { model });
 
@@ -478,7 +478,7 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     const verification = { status: "passed", checkedClaims: 2, unsupportedClaims: 0, model: "scripted-verifier" };
     const analyzer = createAgentLoopLogAnalyzer({ model, hypothesisLedger: true, procedureChecklist: true, protocol: "tools",
       verifier: { model: verifier, modelLabel: verification.model },
-      modelLabel: "scripted", tokenBudget: 8000, maxSteps: 3 });
+      modelLabel: "scripted", tokenBudget: 60_000, maxSteps: 3 });
     expect(await processLogAnalysisJobById({ db, objectStore, jobId: upload.body.job.id, analyzer })).toEqual({ status: "processed" });
 
     const record = await requestJson(createHttpServer(router), `/api/v1/logs/${upload.body.log.id}`);
@@ -487,8 +487,9 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     const trace = await requestJson(createHttpServer(router), `/api/v1/logs/${upload.body.log.id}/trace`);
     expect(trace.status).toBe(200);
     expect(logTraceResponseSchema.parse(trace.body).steps.filter((step) => step.protocol).at(-1)?.hypotheses).toEqual([
-      { id: "adapter", statement: alternative.statement, status: "refuted", anchors: alternative.anchors }
+      { id: "1", status: "refuted", anchors: alternative.anchors }
     ]);
+    expect(JSON.stringify(trace.body)).not.toContain(alternative.statement);
     expect(await makeDeliverer().processNext()).toMatchObject({ status: "delivered", attempts: 1 });
     expect(received).toHaveLength(1);
     expect(verifyWebhookSignature({ secret: SECRET, timestampSeconds: Number(received[0].timestamp),
