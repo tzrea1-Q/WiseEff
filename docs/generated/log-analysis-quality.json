@@ -1,10 +1,16 @@
 {
-  "generatedAt": "2026-11-18T12:58:14.780Z",
-  "runId": "qe-20261118-125814",
+  "generatedAt": "2026-11-18T13:18:55.387Z",
+  "runId": "qe-20261118-131855",
   "kernel": "loop",
   "deterministic": true,
   "modelLabel": "deterministic",
+  "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
   "judgeLabel": "deterministic-rubric-stub",
+  "selection": {
+    "trials": 1,
+    "tier": "all",
+    "tags": []
+  },
   "caseResults": [
     {
       "id": "charging-power/realistic-thermal-foldback-bundle",
@@ -13,7 +19,7 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
       "latencyMs": 27,
       "confidence": 0.82,
       "conclusionSummary": "控制器通信出现超时或重试。 针对问题“Why did charge current fall even though USB-C remained attached?”，引用的日志提供了相关线索。",
@@ -54,12 +60,17 @@
         "categoryMatch": false,
         "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category missed"
       },
+      "passed": false,
+      "steps": 3,
+      "tokens": 5011,
+      "earlyConverged": false,
       "tier": "realistic",
       "provenance": "authored",
       "scenarioTags": [
         "multi-file",
         "distractor"
-      ]
+      ],
+      "trial": 1
     },
     {
       "id": "charging-power/synthetic-comm-timeout-kernel-format",
@@ -68,7 +79,7 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
       "latencyMs": 3,
       "confidence": 0.82,
       "conclusionSummary": "控制器通信出现超时或重试。",
@@ -110,9 +121,14 @@
         "categoryMatch": true,
         "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
       },
+      "passed": false,
+      "steps": 3,
+      "tokens": 4226,
+      "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
-      "scenarioTags": []
+      "scenarioTags": [],
+      "trial": 1
     },
     {
       "id": "charging-power/synthetic-device-offline-critical",
@@ -121,8 +137,8 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 5,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 4,
       "confidence": 0.82,
       "conclusionSummary": "日志记录期间，设备离线或不可用。",
       "evidence": {
@@ -158,9 +174,14 @@
         "categoryMatch": true,
         "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
       },
+      "passed": false,
+      "steps": 3,
+      "tokens": 4244,
+      "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
-      "scenarioTags": []
+      "scenarioTags": [],
+      "trial": 1
     },
     {
       "id": "charging-power/synthetic-thermal-foldback-basic",
@@ -169,7 +190,7 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
       "latencyMs": 3,
       "confidence": 0.82,
       "conclusionSummary": "充电表现符合过热保护降额特征，充电输出已降低。",
@@ -206,9 +227,14 @@
         "categoryMatch": true,
         "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
       },
+      "passed": false,
+      "steps": 3,
+      "tokens": 4341,
+      "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
-      "scenarioTags": []
+      "scenarioTags": [],
+      "trial": 1
     },
     {
       "id": "charging-power/synthetic-thermal-foldback-question",
@@ -217,8 +243,8 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 2,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 1,
       "confidence": 0.82,
       "conclusionSummary": "充电表现符合过热保护降额特征，充电输出已降低。 针对问题“Why did charging slow down halfway through the session?”，引用的日志提供了相关线索。",
       "evidence": {
@@ -254,9 +280,14 @@
         "categoryMatch": true,
         "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
       },
+      "passed": false,
+      "steps": 3,
+      "tokens": 4448,
+      "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
-      "scenarioTags": []
+      "scenarioTags": [],
+      "trial": 1
     },
     {
       "id": "linux-kernel/realistic-i2c-bus-recovery",
@@ -265,8 +296,8 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 3,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 2,
       "confidence": 0.82,
       "conclusionSummary": "控制器通信出现超时或重试。",
       "evidence": {
@@ -309,11 +340,16 @@
         "categoryMatch": true,
         "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
       },
+      "passed": false,
+      "steps": 3,
+      "tokens": 4105,
+      "earlyConverged": false,
       "tier": "realistic",
       "provenance": "authored",
       "scenarioTags": [
         "cascade"
-      ]
+      ],
+      "trial": 1
     },
     {
       "id": "service-jsonl/realistic-healthy-queue",
@@ -322,7 +358,7 @@
       "expectRefusal": true,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
       "latencyMs": 3,
       "confidence": 0.45,
       "conclusionSummary": "未发现已知异常模式，当前日志未显示明显异常。 针对问题“Does the queue worker show signs that it stopped making progress?”，引用的日志提供了相关线索。",
@@ -337,12 +373,17 @@
         "appropriate": true
       },
       "judge": null,
+      "passed": true,
+      "steps": 3,
+      "tokens": 4154,
+      "earlyConverged": false,
       "tier": "realistic",
       "provenance": "authored",
       "scenarioTags": [
         "no-fault",
         "generic-analysis"
-      ]
+      ],
+      "trial": 1
     },
     {
       "id": "uncategorized/synthetic-json-lines-error-codes",
@@ -351,8 +392,8 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 0,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 1,
       "confidence": 0.82,
       "conclusionSummary": "控制器通信出现超时或重试。",
       "evidence": {
@@ -389,9 +430,14 @@
         "categoryMatch": false,
         "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category missed"
       },
+      "passed": false,
+      "steps": 3,
+      "tokens": 4157,
+      "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
-      "scenarioTags": []
+      "scenarioTags": [],
+      "trial": 1
     },
     {
       "id": "uncategorized/synthetic-nominal-heartbeat-refusal",
@@ -400,7 +446,7 @@
       "expectRefusal": true,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
       "latencyMs": 1,
       "confidence": 0.45,
       "conclusionSummary": "未发现已知异常模式，当前日志未显示明显异常。 针对问题“Is anything failing on this node?”，引用的日志提供了相关线索。",
@@ -415,9 +461,14 @@
         "appropriate": true
       },
       "judge": null,
+      "passed": true,
+      "steps": 3,
+      "tokens": 4068,
+      "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
-      "scenarioTags": []
+      "scenarioTags": [],
+      "trial": 1
     }
   ],
   "aggregates": {
@@ -430,7 +481,28 @@
       "categoryMatchRate": 0.7142857142857143,
       "actionsScoreMean": 0,
       "refusalAppropriateRate": 1,
-      "degradedCount": 0
+      "degradedCount": 0,
+      "trialCount": 9,
+      "passAtK": 0.2222222222222222,
+      "passPowerK": 0.2222222222222222,
+      "steps": {
+        "median": 3,
+        "p95": 3,
+        "samples": 9
+      },
+      "tokens": {
+        "median": 4226,
+        "p95": 5011,
+        "samples": 9
+      },
+      "latencyMs": {
+        "median": 3,
+        "p95": 27,
+        "samples": 9
+      },
+      "degradedRate": 0,
+      "degradedRatesByReason": {},
+      "earlyConvergenceRate": 0
     },
     "realCases": null,
     "realisticCases": {
@@ -442,7 +514,28 @@
       "categoryMatchRate": 0.5,
       "actionsScoreMean": 0,
       "refusalAppropriateRate": 1,
-      "degradedCount": 0
+      "degradedCount": 0,
+      "trialCount": 3,
+      "passAtK": 0.3333333333333333,
+      "passPowerK": 0.3333333333333333,
+      "steps": {
+        "median": 3,
+        "p95": 3,
+        "samples": 3
+      },
+      "tokens": {
+        "median": 4154,
+        "p95": 5011,
+        "samples": 3
+      },
+      "latencyMs": {
+        "median": 3,
+        "p95": 27,
+        "samples": 3
+      },
+      "degradedRate": 0,
+      "degradedRatesByReason": {},
+      "earlyConvergenceRate": 0
     },
     "syntheticCases": {
       "caseCount": 6,
@@ -453,7 +546,190 @@
       "categoryMatchRate": 0.8,
       "actionsScoreMean": 0,
       "refusalAppropriateRate": 1,
-      "degradedCount": 0
+      "degradedCount": 0,
+      "trialCount": 6,
+      "passAtK": 0.16666666666666666,
+      "passPowerK": 0.16666666666666666,
+      "steps": {
+        "median": 3,
+        "p95": 3,
+        "samples": 6
+      },
+      "tokens": {
+        "median": 4235,
+        "p95": 4448,
+        "samples": 6
+      },
+      "latencyMs": {
+        "median": 2,
+        "p95": 4,
+        "samples": 6
+      },
+      "degradedRate": 0,
+      "degradedRatesByReason": {},
+      "earlyConvergenceRate": 0
+    },
+    "byTag": {
+      "cascade": {
+        "caseCount": 1,
+        "evidenceRecallMean": 0.25,
+        "evidencePrecisionMean": 0.5,
+        "hallucinationRate": 0,
+        "rootCauseScoreMean": 0,
+        "categoryMatchRate": 1,
+        "actionsScoreMean": 0,
+        "refusalAppropriateRate": null,
+        "degradedCount": 0,
+        "trialCount": 1,
+        "passAtK": 0,
+        "passPowerK": 0,
+        "steps": {
+          "median": 3,
+          "p95": 3,
+          "samples": 1
+        },
+        "tokens": {
+          "median": 4105,
+          "p95": 4105,
+          "samples": 1
+        },
+        "latencyMs": {
+          "median": 2,
+          "p95": 2,
+          "samples": 1
+        },
+        "degradedRate": 0,
+        "degradedRatesByReason": {},
+        "earlyConvergenceRate": 0
+      },
+      "distractor": {
+        "caseCount": 1,
+        "evidenceRecallMean": 0.25,
+        "evidencePrecisionMean": 1,
+        "hallucinationRate": 0,
+        "rootCauseScoreMean": 0,
+        "categoryMatchRate": 0,
+        "actionsScoreMean": 0,
+        "refusalAppropriateRate": null,
+        "degradedCount": 0,
+        "trialCount": 1,
+        "passAtK": 0,
+        "passPowerK": 0,
+        "steps": {
+          "median": 3,
+          "p95": 3,
+          "samples": 1
+        },
+        "tokens": {
+          "median": 5011,
+          "p95": 5011,
+          "samples": 1
+        },
+        "latencyMs": {
+          "median": 27,
+          "p95": 27,
+          "samples": 1
+        },
+        "degradedRate": 0,
+        "degradedRatesByReason": {},
+        "earlyConvergenceRate": 0
+      },
+      "generic-analysis": {
+        "caseCount": 1,
+        "evidenceRecallMean": null,
+        "evidencePrecisionMean": null,
+        "hallucinationRate": 0,
+        "rootCauseScoreMean": null,
+        "categoryMatchRate": null,
+        "actionsScoreMean": null,
+        "refusalAppropriateRate": 1,
+        "degradedCount": 0,
+        "trialCount": 1,
+        "passAtK": 1,
+        "passPowerK": 1,
+        "steps": {
+          "median": 3,
+          "p95": 3,
+          "samples": 1
+        },
+        "tokens": {
+          "median": 4154,
+          "p95": 4154,
+          "samples": 1
+        },
+        "latencyMs": {
+          "median": 3,
+          "p95": 3,
+          "samples": 1
+        },
+        "degradedRate": 0,
+        "degradedRatesByReason": {},
+        "earlyConvergenceRate": 0
+      },
+      "multi-file": {
+        "caseCount": 1,
+        "evidenceRecallMean": 0.25,
+        "evidencePrecisionMean": 1,
+        "hallucinationRate": 0,
+        "rootCauseScoreMean": 0,
+        "categoryMatchRate": 0,
+        "actionsScoreMean": 0,
+        "refusalAppropriateRate": null,
+        "degradedCount": 0,
+        "trialCount": 1,
+        "passAtK": 0,
+        "passPowerK": 0,
+        "steps": {
+          "median": 3,
+          "p95": 3,
+          "samples": 1
+        },
+        "tokens": {
+          "median": 5011,
+          "p95": 5011,
+          "samples": 1
+        },
+        "latencyMs": {
+          "median": 27,
+          "p95": 27,
+          "samples": 1
+        },
+        "degradedRate": 0,
+        "degradedRatesByReason": {},
+        "earlyConvergenceRate": 0
+      },
+      "no-fault": {
+        "caseCount": 1,
+        "evidenceRecallMean": null,
+        "evidencePrecisionMean": null,
+        "hallucinationRate": 0,
+        "rootCauseScoreMean": null,
+        "categoryMatchRate": null,
+        "actionsScoreMean": null,
+        "refusalAppropriateRate": 1,
+        "degradedCount": 0,
+        "trialCount": 1,
+        "passAtK": 1,
+        "passPowerK": 1,
+        "steps": {
+          "median": 3,
+          "p95": 3,
+          "samples": 1
+        },
+        "tokens": {
+          "median": 4154,
+          "p95": 4154,
+          "samples": 1
+        },
+        "latencyMs": {
+          "median": 3,
+          "p95": 3,
+          "samples": 1
+        },
+        "degradedRate": 0,
+        "degradedRatesByReason": {},
+        "earlyConvergenceRate": 0
+      }
     }
   },
   "baseline": {

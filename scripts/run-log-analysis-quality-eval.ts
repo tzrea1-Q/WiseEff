@@ -2,10 +2,11 @@ import "dotenv/config";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 import { loadServerEnv } from "../server/config/env";
 import { createLogAnalyzerFromEnv, resolveLogAnalysisModelLabel } from "../server/modules/logs/analyzer/analyzerFromEnv";
-import { defaultGoldenCasesRoot, loadGoldenLogCases } from "../server/modules/logs/eval/goldenCases";
+import { defaultGoldenCasesRoot, loadGoldenLogCases, logEvalCaseMetadataSchema } from "../server/modules/logs/eval/goldenCases";
 import {
   defaultHumanReviewsRoot,
   formatJudgeSampleMarkdown,
@@ -14,26 +15,50 @@ import {
 } from "../server/modules/logs/eval/judgeCalibration";
 import { resolveQualityJudge } from "../server/modules/logs/eval/judgeFromEnv";
 import {
+  formatQualityComparisonMarkdown,
   formatQualityReportMarkdown,
   qualityBaselineFileSchema,
   runQualityEval,
-  type QualityBaselineFile
+  type QualityBaselineFile,
+  type QualityEvalReport,
+  type QualityEvalSelection
 } from "../server/modules/logs/eval/qualityEval";
 
-/**
- * Quality-layer eval runner (`npm run logs:eval:quality`): runs the CURRENT
- * analysis kernel over the golden case set and writes gated reports to
- * `docs/generated/log-analysis-quality.{json,md}` plus the deterministic
- * human-review checklist `docs/generated/log-analysis-judge-sample.md`.
- *
- * Modes:
- * - Deterministic demo: LOG_ANALYSIS_DETERMINISTIC=true (fake model + deterministic judge, zero API cost).
- * - Real model: LOG_ANALYSIS_API_* configured; judge uses LOG_ANALYSIS_JUDGE_* when set.
- * The exit code fails on loader problems (golden cases or review files) or a failed baseline gate.
- */
+function readQualityReport(path: string): QualityEvalReport {
+  const report = JSON.parse(readFileSync(path, "utf8")) as QualityEvalReport;
+  if (!report?.selection || !report.aggregates?.byTag || !Array.isArray(report.caseResults) || !Array.isArray(report.problems)) {
+    throw new Error(`${path} is not a multi-trial quality eval report.`);
+  }
+  return report;
+}
+
 async function main() {
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    options: { trials: { type: "string" }, tier: { type: "string" }, tags: { type: "string" }, compare: { type: "boolean" } }
+  });
+  if (values.compare) {
+    if (positionals.length !== 2 || Object.keys(values).length !== 1) {
+      throw new Error("Usage: npm run --silent logs:eval:quality -- --compare <before.json> <after.json>");
+    }
+    console.log(formatQualityComparisonMarkdown(readQualityReport(positionals[0]), readQualityReport(positionals[1])));
+    return;
+  }
+  if (positionals.length) throw new Error("Unexpected positional arguments. Use --trials, --tier, --tags, or --compare.");
+  const trials = Number(values.trials ?? "1");
+  if (values.trials !== undefined && (!/^\d+$/.test(values.trials) || !Number.isSafeInteger(trials) || trials < 1)) {
+    throw new Error("--trials must be a positive integer.");
+  }
+  const tier: QualityEvalSelection["tier"] = values.tier === "all" ? "all"
+    : logEvalCaseMetadataSchema.shape.tier.parse(values.tier) ?? "all";
+  const tags = logEvalCaseMetadataSchema.shape.scenarioTags.parse(values.tags?.split(",").map((tag) => tag.trim())) ?? [];
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const env = loadServerEnv(process.env);
+  const analysisEnv = {
+    ...env,
+    LOG_ANALYSIS_DETERMINISTIC: env.LOG_ANALYSIS_DETERMINISTIC
+      || !(env.LOG_ANALYSIS_API_BASE_URL?.trim() && env.LOG_ANALYSIS_API_KEY?.trim())
+  };
 
   const casesRoot = defaultGoldenCasesRoot(root);
   const { cases, problems } = loadGoldenLogCases(casesRoot);
@@ -54,37 +79,42 @@ async function main() {
 
   // No db handle on purpose: read_domain_knowledge / get_related_parameter_context
   // honestly report themselves unavailable in offline quality runs.
-  const analyzer = createLogAnalyzerFromEnv(env);
-  const judge = resolveQualityJudge(env);
+  const analyzer = createLogAnalyzerFromEnv(analysisEnv);
+  const judge = resolveQualityJudge(analysisEnv);
 
   const report = await runQualityEval({
     analyzer,
     judge,
     cases,
     problems,
+    trials,
+    tier,
+    tags: [...new Set(tags)],
     kernel: env.LOG_ANALYSIS_KERNEL,
-    deterministic: env.LOG_ANALYSIS_DETERMINISTIC,
-    modelLabel: resolveLogAnalysisModelLabel(env),
+    deterministic: analysisEnv.LOG_ANALYSIS_DETERMINISTIC,
+    modelLabel: resolveLogAnalysisModelLabel(analysisEnv),
     baseline,
     judgeSampleRate: env.LOG_ANALYSIS_JUDGE_SAMPLE_RATE,
     humanReviews: reviews
   });
 
+  const calibrationResults = report.caseResults.filter((result) => result.trial === 1);
   const sampleMarkdown = formatJudgeSampleMarkdown({
     runId: report.runId,
     judgeLabel: report.judgeLabel,
     sampleRate: report.judgeSampling.rate,
-    sampled: selectJudgeReviewSample(report.caseResults, report.judgeSampling.rate),
-    totalJudgedCases: report.caseResults.filter((result) => result.judge !== null).length
+    sampled: selectJudgeReviewSample(calibrationResults, report.judgeSampling.rate),
+    totalJudgedCases: calibrationResults.filter((result) => result.judge !== null).length
   });
 
   const generatedDir = join(root, "docs/generated");
   mkdirSync(generatedDir, { recursive: true });
   writeFileSync(join(generatedDir, "log-analysis-quality.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  writeFileSync(join(generatedDir, "log-analysis-quality.md"), `${formatQualityReportMarkdown(report)}\n`, "utf8");
+  const markdown = formatQualityReportMarkdown(report);
+  writeFileSync(join(generatedDir, "log-analysis-quality.md"), `${markdown}\n`, "utf8");
   writeFileSync(join(generatedDir, "log-analysis-judge-sample.md"), `${sampleMarkdown}\n`, "utf8");
 
-  console.log(formatQualityReportMarkdown(report));
+  console.log(markdown);
   console.log("");
   console.log("Wrote docs/generated/log-analysis-quality.{json,md} and docs/generated/log-analysis-judge-sample.md");
 

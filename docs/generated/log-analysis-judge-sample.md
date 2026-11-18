@@ -1,9 +1,9 @@
 # Log Analysis Judge Review Sample
 
-- Run id: `qe-20261118-125814`
+- Run id: `qe-20261118-131855`
 - Judge: `deterministic-rubric-stub`
 - Sampling: deterministic by case-id hash, rate 0.2 (minimum 1) — 1 of 7 judged case(s) selected
-- Review record convention: commit the completed template below as `eval-cases/logs/reviews/qe-20261118-125814.yaml`; the next quality run then reports judge-human agreement.
+- Review record convention: commit the completed template below as `eval-cases/logs/reviews/qe-20261118-131855.yaml`; the next quality run then reports judge-human agreement.
 
 ## Sampled cases
 
@@ -17,7 +17,7 @@ Score each case on the same 0..1 rubric the judge uses (root-cause coverage of t
 expert annotation). `humanCategoryMatch` and `notes` are optional but valuable.
 
 ```yaml
-runId: qe-20261118-125814
+runId: qe-20261118-131855
 reviewer: <your-name>
 reviewedAt: <YYYY-MM-DD>
 cases:
