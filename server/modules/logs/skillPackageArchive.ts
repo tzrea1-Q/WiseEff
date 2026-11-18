@@ -44,7 +44,8 @@ const metadataSchema = z.object({
   name: z.string().trim().min(1).max(120), schemaVersion: z.literal("skill/v1"),
   skillKey: skillKeySchema.optional(), description: z.unknown().optional(),
   stepBudget: z.unknown().optional(), tokenBudget: z.unknown().optional(),
-  formatProfile: z.unknown().optional(), modelOverride: z.unknown().optional(), source: z.unknown().optional()
+  formatProfile: z.unknown().optional(), modelOverride: z.unknown().optional(), protocolOverride: z.unknown().optional(),
+  source: z.unknown().optional()
 }).strict();
 const knowledgeMetadataSchema = z.object({
   title: z.string().trim().min(1).max(200), tags: knowledgeTagsSchema,

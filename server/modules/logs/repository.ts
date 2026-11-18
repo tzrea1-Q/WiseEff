@@ -219,6 +219,7 @@ export type LogWorkerRunSnapshot = {
     formatProfile: LogFormatProfile | null;
     /** Per-domain model-name override (P3b); null = global model. */
     modelOverride: string | null;
+    protocolOverride?: LogSkillSpec["protocolOverride"];
     stepBudget?: number;
     tokenBudget?: number;
   } | null;
@@ -422,6 +423,7 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
           description: row.log_domain_description,
           formatProfile: row.skill_revision_spec?.formatProfile ?? null,
           modelOverride: row.skill_revision_spec?.modelOverride ?? null,
+          protocolOverride: row.skill_revision_spec?.protocolOverride,
           stepBudget: row.skill_revision_spec?.stepBudget,
           tokenBudget: row.skill_revision_spec?.tokenBudget
         }

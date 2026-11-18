@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-11-18T13:37:10.812Z
+- Generated: 2026-11-18T13:58:05.555Z
 - Single-shot prompt version: `2026-10-19.procedure.signals.source.2`
-- Loop prompt version: `2026-10-19.loop.procedure.signals.source.5`
-- Scenarios: 50 (50 passed)
+- Loop prompt version: `2026-10-19.loop.procedure.signals.source.6`
+- Scenarios: 51 (51 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -53,6 +53,7 @@
 | loop-persistent-illegal-calls-degrade-honestly | loop-tool-legality | loop | rules-fallback | invalid-model-output | 8 | PASS |
 | loop-step-limit-early-convergence | loop-convergence | loop | agent | step-budget-exhausted | 6 | PASS |
 | trace-redacts-prompts-procedure-and-provider-payloads | trace-privacy | loop | agent | - | 7 | PASS |
+| loop-native-batch-folds-results-and-grounds-final | loop-protocol | loop | agent | - | 5 | PASS |
 | loop-folded-tool-result-keeps-early-evidence | loop-context | loop | agent | - | 7 | PASS |
 | loop-final-answer-uses-token-reserve | loop-convergence | loop | agent | token-budget-exhausted | 8 | PASS |
 | loop-token-budget-fallback | loop-convergence | loop | rules-fallback | token-budget-exhausted | 4 | PASS |

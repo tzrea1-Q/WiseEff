@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { logAnalysisProtocolSchema } from "./logAnalysisProtocol";
 import { validatedLogFormatProfileSchema } from "./formatProfile";
 import { withLogPatternBudget } from "./patternBudget";
 import { preflightSignalRules, signalRuleSetSchema } from "./signalRules";
@@ -50,6 +51,7 @@ export const logSkillSpecSchema = z.preprocess((value, ctx) => {
   procedure: z.string().trim().max(20000).optional(),
   formatProfile: validatedLogFormatProfileSchema.optional(),
   modelOverride: z.string().trim().min(1).max(200).optional(),
+  protocolOverride: logAnalysisProtocolSchema.optional(),
   stepBudget: z.number().int().positive().optional(),
   tokenBudget: z.number().int().positive().optional(),
   defaultSourceSnapshotId: z.string().min(1).max(200).optional(),

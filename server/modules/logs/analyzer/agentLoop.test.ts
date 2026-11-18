@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AnalyzeLogInput } from "../analyzer";
 import { createRuleBasedLogAnalyzer, genericSignalRuleSet } from "../analyzer";
@@ -18,6 +18,7 @@ import { LogAnalysisProviderError } from "./llmAnalyzer";
 import { createScriptedLogAnalysisModel, type ScriptedModelResponse } from "./scriptedModel";
 import { summarizeTraceArguments, type LogAnalysisTraceStep } from "../traceTypes";
 import { logTraceStepSchema } from "../../contracts/dtoSchemas/logs";
+import { createLogAnalyzerFromEnv } from "./analyzerFromEnv";
 
 const chargingLog = [
   "2026-08-10T08:00:01Z INFO charge session started requested_ma=6000",
@@ -67,6 +68,127 @@ function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<t
 }
 
 describe("createAgentLoopLogAnalyzer", () => {
+  it("grounds a native batch in order, folds its older results and never executes a fourth call", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const read = (line: number) => ({ id: `call-${line}`, name: "read_line_range",
+      arguments: JSON.stringify({ startLine: line, endLine: line }) });
+    const { adapter } = analyzer([
+      { toolCalls: [read(3), read(4), read(5), read(6)] },
+      { content: { ...finalPayload, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [6] }] } },
+      { content: finalPayload }
+    ], { protocol: "tools" });
+
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+    expect(output).toMatchObject({ analysisSource: "agent", evidence: [{ lineNumbers: [3, 4] }] });
+    expect(trace.filter((step) => step.kind === "tool-call").map((step) => step.lines[0].line)).toEqual([3, 4, 5]);
+    expect(trace.filter((step) => step.kind === "model-turn").map(({ protocol, outcome }) => [protocol, outcome]))
+      .toEqual([["tools", "error"], ["tools", "error"], ["tools", "ok"]]);
+  });
+
+  it("accepts a text JSON batch within one investigation step", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const { adapter } = analyzer([
+      { content: { action: "tools", calls: [3, 4].map((line) => ({ tool: "read_line_range", args: { startLine: line, endLine: line } })) } },
+      { content: finalPayload }
+    ], { protocol: "json", maxSteps: 2 });
+    await expect(adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
+      .resolves.toMatchObject({ analysisSource: "agent", confidence: 0.9, evidence: [{ lineNumbers: [3, 4] }] });
+    expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.protocol)).toEqual(["json", "json"]);
+  });
+
+  it("validates each native call, preserves successes beside rejections and reserves only final_report for convergence", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const toolSets: string[][] = [];
+    const model = createScriptedLogAnalysisModel([
+      { toolCalls: [
+        { id: "malformed", name: "list_files", arguments: "{" },
+        { id: "valid", name: "read_line_range", arguments: '{"startLine":3,"endLine":4}' },
+        { id: "write", name: "write_parameter", arguments: "{}" }
+      ] },
+      { content: finalPayload }
+    ]);
+    const adapter = createAgentLoopLogAnalyzer({
+      model: { ...model, invokeTools(messages, options) {
+        toolSets.push(options.tools.map((tool) => tool.name));
+        return model.invokeTools(messages, options);
+      } },
+      modelLabel: "native", protocol: "tools", tokenBudget: 100_000, maxSteps: 1
+    });
+
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+    expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "step-budget-exhausted", confidence: 0.5,
+      evidence: [{ lineNumbers: [3, 4] }] });
+    expect(trace.filter((step) => step.kind === "tool-call").map(({ tool, outcome }) => [tool, outcome]))
+      .toEqual([["list_files", "error"], ["read_line_range", "ok"], [null, "error"]]);
+    expect(toolSets).toEqual([expect.arrayContaining(["read_line_range", "final_report"]), ["final_report"]]);
+  });
+
+  it("falls back on a provider capability rejection, caches by endpoint and model, and honors the platform JSON cap", async () => {
+    const requests: Array<{ url: string; model: string; tools?: { function: { name: string; parameters: unknown } }[] }> = [];
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      const request = { url: String(url), ...JSON.parse(String(init?.body)) } as (typeof requests)[number];
+      requests.push(request);
+      if (request.tools) return Response.json({ error: { message: "This model does not support tools", param: "tools" } }, { status: 400 });
+      const read = { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } };
+      const content = requests.filter((item) => item.model === request.model && item.url === request.url && !item.tools).length % 2
+        ? JSON.stringify(read) : `\`\`\`json\n${JSON.stringify(finalPayload).replace(/}$/, ",}")}\n\`\`\``;
+      return Response.json({ choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }] });
+    });
+    try {
+      const env = { LOG_ANALYSIS_API_BASE_URL: "https://no-tools.example.invalid/v1", LOG_ANALYSIS_API_KEY: "fixture-key",
+        LOG_ANALYSIS_API_TIMEOUT_MS: 500, LOG_ANALYSIS_TOKEN_BUDGET: 100_000, LOG_ANALYSIS_DETERMINISTIC: false,
+        LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_MAX_STEPS: 2, LOG_ANALYSIS_REPAIR_JSON: true } as const;
+      const trace: LogAnalysisTraceStep[] = [];
+      const run = (settings = {}, logDomain?: AnalyzeLogInput["logDomain"]) => createLogAnalyzerFromEnv({ ...env, ...settings })
+        .analyze(buildInput({ logDomain, onTrace: (step) => { trace.push(step); } }));
+      await expect(run()).resolves.toMatchObject({ analysisSource: "agent", confidence: 0.9 });
+      await expect(run()).resolves.toMatchObject({ analysisSource: "agent" });
+      await expect(run({}, { name: "other model", modelOverride: "other" })).resolves.toMatchObject({ analysisSource: "agent" });
+      await expect(run({ LOG_ANALYSIS_API_BASE_URL: "https://other-endpoint.example.invalid/v1" })).resolves.toMatchObject({ analysisSource: "agent" });
+      await expect(run({ LOG_ANALYSIS_PROTOCOL: "json" }, { name: "forced JSON", protocolOverride: "tools" }))
+        .resolves.toMatchObject({ analysisSource: "agent" });
+      expect(requests.map((request) => Boolean(request.tools))).toEqual([true, false, false, false, false, true, false, false, true, false, false, false, false]);
+      expect(requests[0].tools?.find((tool) => tool.function.name === "read_line_range")?.function.parameters)
+        .toMatchObject({ type: "object", required: ["startLine", "endLine"] });
+      expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.protocol))
+        .toEqual(["tools", "json", "json", "json", "json", "tools", "json", "json", "tools", "json", "json", "json", "json"]);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it("carries native call IDs through a folded tool response and a structured final over Chat Completions", async () => {
+    const nativeCall = (id: string, name: string, args: object) => ({
+      id, type: "function", function: { name, arguments: JSON.stringify(args) }
+    });
+    const batch = [3, 4, 5].map((line) => nativeCall(`call-${line}`, "read_line_range", { startLine: line, endLine: line }));
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementationOnce(async () => Response.json({ choices: [
+      { message: { role: "assistant", content: null, tool_calls: batch }, finish_reason: "tool_calls" }
+    ] })).mockImplementationOnce(async (_url, init) => {
+      const request = JSON.parse(String(init?.body));
+      expect(request.messages.filter((message: { role: string }) => message.role === "tool").map((message: { tool_call_id: string }) =>
+        message.tool_call_id)).toEqual(["call-3", "call-4", "call-5"]);
+      expect(request.messages.find((message: { role: string }) => message.role === "assistant").tool_calls).toEqual(batch);
+      expect(request.tools.find((tool: { function: { name: string } }) => tool.function.name === "final_report").function.parameters)
+        .toMatchObject({ type: "object", required: expect.arrayContaining(["conclusion", "evidence"]) });
+      const { action: _action, ...final } = finalPayload;
+      return Response.json({ choices: [
+        { message: { role: "assistant", content: null, tool_calls: [nativeCall("call-final", "final_report", final)] }, finish_reason: "tool_calls" }
+      ] });
+    });
+    try {
+      const adapter = createLogAnalyzerFromEnv({ LOG_ANALYSIS_API_BASE_URL: "https://native-tools.example.invalid/v1", LOG_ANALYSIS_API_KEY: "fixture-key",
+        LOG_ANALYSIS_API_TIMEOUT_MS: 500, LOG_ANALYSIS_TOKEN_BUDGET: 100_000, LOG_ANALYSIS_DETERMINISTIC: false,
+        LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_MAX_STEPS: 2, LOG_ANALYSIS_PROTOCOL: "auto" });
+      const trace: LogAnalysisTraceStep[] = [];
+      await expect(adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
+        .resolves.toMatchObject({ analysisSource: "agent", confidence: 0.9, evidence: [{ lineNumbers: [3, 4] }] });
+      expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.protocol)).toEqual(["tools", "tools"]);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
   it("folds old tool results while keeping log and source evidence grounded", async () => {
     const sourceLocation = { snapshotId: "source", path: "power.c", line: 5 };
     const sourceExcerpt = "charger_limiter_set(thermal_cap);";

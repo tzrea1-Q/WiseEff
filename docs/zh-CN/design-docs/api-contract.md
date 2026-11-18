@@ -521,6 +521,8 @@ Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自�
 
 保存及发布还校验 `stepBudget >= 1`、`tokenBudget >= min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`，错误指向具体字段路径。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含收敛调用，不做 token 估算。单次完成可能超过剩余预算。已报告用量达到预算后，循环不再发起后续调用。没有版本 `tokenBudget` 时，保留既有平台全局预算计量及提前收敛行为。
 
+可选字段 `spec.protocolOverride` 接受 `auto`、`tools` 或 `json`，可在「概览」→「运行设置」中编辑，并随技能包的 `SKILL.md` 前置信息导入导出。日志循环在平台 `LOG_ANALYSIS_PROTOCOL` 的约束内使用钉住修订的覆盖值。`model-turn` 轨迹步骤可通过 `protocol` 记录实际协议 `tools` 或 `json`。自动探测被拒绝时，先记录 `reason: "protocol-unsupported"`，再用 JSON 重试同一步。
+
 结果 Webhook 在保留 `logDomainId`、`skillRevisionId`、`skillRevisionNumber` 及其他旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }`、`degraded: boolean`。旧未钉住运行的版本字段可为 null；规则回退或存在降级原因时 `degraded` 为 true，有原因时保留 `degradedReason`。终态入队快照保存 key 和钉住版本，重试保持相同载荷；同步测试事件维持原格式。参见[集成指南](../api/log-analysis-integration.md)。
 
 上传、创建与 rerun 接受可选 `logDomainId` 作为 `skillId` 的别名，所选技能必须属于本组织且为 `active`，否则返回 `400`。新上传未提供选择字段时使用下述推荐路由，rerun 保持原有版本策略。日志 DTO 提供可选溯源字段 `logDomainId`、`logDomainName`、`analysisSource`（`agent` 或 `rules-fallback`）和 `degradedReason`。记录响应与结果 Webhook 的 `degradedReason` 可取 `provider-unavailable`、`invalid-model-output`、`step-budget-exhausted` 或 `token-budget-exhausted`。步数耗尽时，提前收敛成功的报告来源为 `agent`，否则为 `rules-fallback`。两个新值均为增量扩展，历史报告保留已存储的值。

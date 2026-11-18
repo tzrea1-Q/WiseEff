@@ -41,14 +41,23 @@ export class LogAnalysisProviderError extends Error {
   }
 }
 
-export type LogAnalysisChatMessage = { role: "system" | "user" | "assistant"; content: string };
+export type LogAnalysisNativeCall = { id: string; name: string; arguments: string };
+export type LogAnalysisNativeTool = { name: string; description: string; schema: z.ZodTypeAny };
+export type LogAnalysisChatMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string; toolCalls?: LogAnalysisNativeCall[] }
+  | { role: "tool"; content: string; toolCallId: string };
+
+export type LogAnalysisChatResponse = {
+  content: string;
+  usage?: { inputTokens?: number; outputTokens?: number };
+};
 
 /** Minimal chat-model seam: production binds ChatOpenAI, eval binds deterministic scripted fakes. */
 export type LogAnalysisChatModel = {
-  invoke(messages: LogAnalysisChatMessage[], options?: { signal?: AbortSignal }): Promise<{
-    content: string;
-    usage?: { inputTokens?: number; outputTokens?: number };
-  }>;
+  invoke(messages: LogAnalysisChatMessage[], options?: { signal?: AbortSignal }): Promise<LogAnalysisChatResponse>;
+  invokeTools?(messages: LogAnalysisChatMessage[], options: { signal?: AbortSignal; tools: LogAnalysisNativeTool[] }):
+    Promise<LogAnalysisChatResponse & { toolCalls?: LogAnalysisNativeCall[] }>;
 };
 
 /** Evidence discipline: telemetry carries model/latency/tokens/outcome only — never prompts or provider payloads. */
@@ -392,7 +401,7 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
         response = await options.model.invoke(messages, { signal: input.signal });
       } catch (error) {
         input.signal?.throwIfAborted();
-        await emitLogTrace(input, { kind: "model-turn", outcome: "error", reason: "provider-error" });
+        await emitLogTrace(input, { kind: "model-turn", protocol: "json", outcome: "error", reason: "provider-error" });
         options.telemetry?.recordLlmCall?.({
           model: options.modelLabel,
           outcome: "provider_error",
@@ -414,7 +423,7 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
       const parsedLineNumbers = new Set(input.parsed.entries.map((entry) => entry.lineNumber));
       const groundedEvidence = parsedOutput ? groundLlmEvidence(parsedOutput.evidence, parsedLineNumbers, seenFiles, analyzed?.length === 1 ? analyzed[0].path : input.filePath) : [];
       const usable = parsedOutput !== undefined && groundedEvidence.length > 0;
-      await emitLogTrace(input, { kind: "model-turn", resultBytes: Buffer.byteLength(response.content),
+      await emitLogTrace(input, { kind: "model-turn", protocol: "json", resultBytes: Buffer.byteLength(response.content),
         outcome: usable ? "ok" : "error", reason: usable ? null : "invalid-output",
         ...(response.usage?.inputTokens !== undefined ? { inputTokens: response.usage.inputTokens } : {}),
         ...(response.usage?.outputTokens !== undefined ? { outputTokens: response.usage.outputTokens } : {}) });

@@ -154,9 +154,20 @@ function Overview({ skill, spec, setSpec, disabled, stats, fieldErrors, sample, 
     </dl>
     <label>描述<Textarea maxLength={2000} disabled={disabled} value={spec.description ?? skill.description ?? ""}
       onChange={(event) => setSpec({ ...spec, description: event.target.value })} /></label>
-    <section aria-label="运行设置"><h3>运行设置</h3><p>模型和预算随技能草稿保存并发布；留空使用平台默认值。</p>
+    <section aria-label="运行设置"><h3>运行设置</h3><p>模型、分析协议和预算随技能草稿保存并发布，留空使用平台默认值。</p>
       <label>模型覆盖<Input maxLength={200} disabled={disabled} value={spec.modelOverride ?? ""} placeholder="使用平台默认模型"
         onChange={(event) => { const next = { ...spec }; if (event.target.value) next.modelOverride = event.target.value; else delete next.modelOverride; setSpec(next); }} /></label>
+      <label>协议覆盖<SelectControl<NonNullable<SkillSpec["protocolOverride"]> | "">
+        ariaLabel="协议覆盖" disabled={disabled} value={spec.protocolOverride ?? ""}
+        options={[
+          { value: "", label: "使用平台默认协议" }, { value: "auto", label: "自动探测" },
+          { value: "tools", label: "原生工具调用" }, { value: "json", label: "文本 JSON" }
+        ]}
+        onValueChange={(value) => {
+          const next = { ...spec };
+          if (value) next.protocolOverride = value; else delete next.protocolOverride;
+          setSpec(next);
+        }} /></label>
       {([['stepBudget', '步骤预算'], ['tokenBudget', '令牌预算']] as const).map(([field, label]) => <div key={field}><label>{label}<Input type="number" min={field === "tokenBudget" ? Math.min(4096, skill.budgetCaps?.tokenBudget ?? 4096) : 1} step={1}
         max={skill.budgetCaps?.[field]} disabled={disabled} value={spec[field] ?? ""} placeholder="使用平台默认预算"
         aria-invalid={!!fieldErrors?.[field]} aria-describedby={`skill-${field}-help${fieldErrors?.[field] ? ` skill-${field}-error` : ""}`}

@@ -1,4 +1,5 @@
 import type { AnalyzeLogInput } from "./analyzer";
+import type { LogAnalysisWireProtocol } from "./logAnalysisProtocol";
 
 export type LogAnalysisTraceStep = {
   index: number;
@@ -9,6 +10,7 @@ export type LogAnalysisTraceStep = {
   lines: Array<{ file: string; line: number; snapshotId?: string }>;
   outcome: "ok" | "error" | "truncated";
   reason: string | null;
+  protocol?: LogAnalysisWireProtocol;
   inputTokens?: number;
   outputTokens?: number;
 };

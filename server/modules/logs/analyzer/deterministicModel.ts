@@ -1,5 +1,6 @@
 import type { SourceStatementMatches } from "../sourceStatementRepository";
 import { LogAnalysisProviderError, type LogAnalysisChatMessage, type LogAnalysisChatModel } from "./llmAnalyzer";
+import { asNativeModelResponse } from "./scriptedModel";
 
 /**
  * Deterministic offline stubs for `LOG_ANALYSIS_DETERMINISTIC=true` (local dev, CI, eval).
@@ -151,7 +152,7 @@ type LineRangeToolResult = {
 function parseToolResult<T>(messages: LogAnalysisChatMessage[], toolName: string): T | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message.role !== "user" || !message.content.startsWith(`Tool result for ${toolName}:`)) {
+    if ((message.role !== "user" && message.role !== "tool") || !message.content.startsWith(`Tool result for ${toolName}:`)) {
       continue;
     }
     const payload = message.content.slice(message.content.indexOf("\n") + 1);
@@ -183,7 +184,7 @@ function withUsage(payload: unknown, messages: LogAnalysisChatMessage[]) {
  * on a grounded conclusion citing only tool results it has actually read.
  */
 export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel {
-  return {
+  const model: LogAnalysisChatModel = {
     async invoke(messages) {
       const promptText = messages.map((message) => message.content).join("\n");
       if (promptText.includes(LOG_ANALYSIS_SIMULATED_OUTAGE_MARKER)) {
@@ -277,6 +278,7 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         && /^- locate_log_statement:/m.test(message.content));
       const sourceToolAttempted = messages.some((message) => {
         if (message.role !== "assistant") return false;
+        if (message.toolCalls) return message.toolCalls.some((call) => call.name === "locate_log_statement");
         try { return JSON.parse(message.content).tool === "locate_log_statement"; }
         catch { return false; }
       });
@@ -315,6 +317,13 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         },
         messages
       );
+    }
+  };
+  return {
+    ...model,
+    async invokeTools(messages) {
+      const response = await model.invoke(messages);
+      return asNativeModelResponse(JSON.parse(response.content), response, `deterministic-${messages.length}`);
     }
   };
 }

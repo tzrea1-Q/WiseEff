@@ -102,7 +102,7 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
 
       const draftProfile = { severityMap: { error: ["FAULT"], info: ["INFO"] } };
       const draft = await saveLogSkillDraft(h.db, h.auth, seeded.id, { ...seeded.currentRevision.spec,
-        description: "", modelOverride: "draft-model", formatProfile: draftProfile,
+        description: "", modelOverride: "draft-model", protocolOverride: "auto", formatProfile: draftProfile,
         procedure: spec.procedure, parsing: spec.parsing,
         signalRules: { ...seeded.currentRevision.spec.signalRules!, rules: [...seeded.currentRevision.spec.signalRules!.rules, ...spec.signalRules!.rules] },
         parseTests: spec.parseTests, stepBudget: 4, tokenBudget: 6000, knowledgeEntryIds: [h.entry.id]
@@ -114,6 +114,7 @@ describe.skipIf(!available)("skill packages over PostgreSQL", () => {
       const archived = await importSkillPackageArchive(bytes);
       expect(archived.spec.description).toBe(""); // An explicit empty description overrides the row.
       expect(archived.spec.modelOverride).toBe("draft-model");
+      expect(archived.spec.protocolOverride).toBe("auto");
       expect(archived.spec.formatProfile).toEqual(draftProfile);
       const imported = await importLogSkillPackage(h.db, h.store, h.other, bytes, "draft", h.otherInvocation, h.context, undefined, "Complete charging");
       const knowledgeIds = imported.currentRevision.spec.knowledgeEntryIds!;
