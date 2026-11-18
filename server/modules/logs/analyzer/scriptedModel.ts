@@ -8,7 +8,8 @@ export function asNativeModelResponse(payload: unknown, response: LogAnalysisCha
     return { ...response, content: "", toolCalls: [{ id, name: "final_report", arguments: JSON.stringify(fields) }] };
   }
   if (action === "tool" && typeof fields.tool === "string") {
-    return { ...response, content: "", toolCalls: [{ id, name: fields.tool, arguments: JSON.stringify(fields.args ?? {}) }] };
+    return { ...response, content: "", toolCalls: [{ id, name: fields.tool, arguments: JSON.stringify(fields.notes === undefined
+      ? fields.args ?? {} : { ...(fields.args as object), notes: fields.notes }) }] };
   }
   return response;
 }

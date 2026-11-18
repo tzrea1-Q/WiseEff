@@ -7,6 +7,7 @@ import type { RelatedParameterRunSnapshot } from "./relatedParameter";
 import { extractLogSignals, type LogSignalSummary } from "./genericSignals";
 import { emitLogTrace, withLogTrace, LOG_TRACE_MAX_LINES, type LogAnalysisTraceStep } from "./traceTypes";
 import type { LogAnalysisProtocol } from "./logAnalysisProtocol";
+import type { LogAlternativeHypothesis } from "./hypotheses";
 
 export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
 export type LogAnalysisStageId = "pattern" | "rootcause";
@@ -74,6 +75,7 @@ export type AnalyzeLogOutput = {
   impact: string;
   severity: LogAnalysisSeverity;
   evidence: AnalyzeLogEvidence[];
+  alternativeHypotheses?: LogAlternativeHypothesis[];
   suggestedActions: string[];
   reportContext: {
     analysisQuestion?: string;

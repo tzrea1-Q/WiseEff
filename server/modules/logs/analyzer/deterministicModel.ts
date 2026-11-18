@@ -1,4 +1,5 @@
 import type { SourceStatementMatches } from "../sourceStatementRepository";
+import type { LogHypothesis } from "../hypotheses";
 import { LogAnalysisProviderError, type LogAnalysisChatMessage, type LogAnalysisChatModel } from "./llmAnalyzer";
 import { asNativeModelResponse } from "./scriptedModel";
 
@@ -183,7 +184,7 @@ function withUsage(payload: unknown, messages: LogAnalysisChatMessage[]) {
  * optionally locate its top cited line in a ready source snapshot, then converge
  * on a grounded conclusion citing only tool results it has actually read.
  */
-export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel {
+export function createDeterministicLogAnalysisLoopModel(hypothesisLedger = false): LogAnalysisChatModel {
   const model: LogAnalysisChatModel = {
     async invoke(messages) {
       const promptText = messages.map((message) => message.content).join("\n");
@@ -225,7 +226,11 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
           {
             action: "tool",
             tool: "read_line_range",
-            args: { ...(filePath ? { file: filePath } : {}), startLine: Math.max(1, focusLine - 2), endLine: focusLine + 2 }
+            args: { ...(filePath ? { file: filePath } : {}), startLine: Math.max(1, focusLine - 2), endLine: focusLine + 2 },
+            ...(hypothesisLedger ? { notes: { hypotheses: [{
+              id: "primary", statement: preferredRule?.conclusion ?? "异常信号可能与故障有关。",
+              status: "open", anchors: []
+            }] } } : {})
           },
           messages
         );
@@ -290,6 +295,21 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         } }, messages);
       }
       const source = parseToolResult<SourceStatementMatches>(messages, "locate_log_statement")?.items?.[0];
+      // Exercise the optional report and trace fields offline when a read shows an unchanged PD contract.
+      const stablePd = hypothesisLedger && matched?.ruleHit === "thermal-foldback"
+        ? lineRangeResult?.lines?.find((line) => /PPS contract unchanged|adapter contract stable/i.test(line.content))
+        : undefined;
+      const alternative = stablePd ? {
+        statement: "充电适配器重新协商导致限流",
+        reason: "热保护介入时，充电协议保持稳定。",
+        anchors: [{ file: stablePd.file ?? filePath ?? "", line: stablePd.lineNumber }]
+      } : undefined;
+      const hypotheses: LogHypothesis[] = [{ id: "primary", statement: baseConclusion,
+        status: matched ? "supported" : "inconclusive",
+        anchors: citedLines.map((line) => ({ file: filePath ?? "", line })) }];
+      if (alternative) {
+        hypotheses.push({ id: "pd-contract", statement: alternative.statement, status: "refuted", anchors: alternative.anchors });
+      }
 
       return withUsage(
         {
@@ -298,6 +318,8 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
           impact: matched?.impact ?? "引用的日志尚未显示直接的运行影响。",
           severity: matched?.severity ?? "Info",
           confidence: matched ? 0.82 : 0.45,
+          ...(hypothesisLedger ? { notes: { hypotheses } } : {}),
+          ...(alternative ? { alternativeHypotheses: [alternative] } : {}),
           suggestedActions: matched
             ? ["与负责团队一起核对引用的日志。", "结合近期参数变更核对分析结果。"]
             : ["进一步处理前，请收集设备状态及相邻时段的日志。"],

@@ -28,6 +28,7 @@ export type LogAnalyzerEnv = {
   LOG_ANALYSIS_MAX_STEPS: number;
   LOG_ANALYSIS_REPAIR_JSON?: boolean;
   LOG_ANALYSIS_PROTOCOL?: LogAnalysisProtocol;
+  LOG_ANALYSIS_HYPOTHESIS_LEDGER?: boolean;
 };
 
 function readNonBlank(value: string | undefined) {
@@ -154,7 +155,7 @@ export function createLogAnalyzerFromEnv(
     }
     const model = env.LOG_ANALYSIS_DETERMINISTIC
       ? useLoopKernel
-        ? createDeterministicLogAnalysisLoopModel()
+        ? createDeterministicLogAnalysisLoopModel(env.LOG_ANALYSIS_HYPOTHESIS_LEDGER)
         : createDeterministicLogAnalysisModel()
       : providerConfigured
         ? createChatOpenAiModel(env, modelLabel, tokenBudget)
@@ -183,6 +184,7 @@ export function createLogAnalyzerFromEnv(
       tokenBudget,
       maxSteps: stepBudget,
       protocol,
+      hypothesisLedger: env.LOG_ANALYSIS_HYPOTHESIS_LEDGER,
       endpoint: providerConfigured && !env.LOG_ANALYSIS_DETERMINISTIC ? env.LOG_ANALYSIS_API_BASE_URL : undefined,
       repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
       estimateMissingTokenUsage: !hasTokenBudgetOverride,
