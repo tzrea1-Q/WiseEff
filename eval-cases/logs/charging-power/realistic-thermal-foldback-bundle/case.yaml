@@ -1,0 +1,29 @@
+domain: charging-power
+summary: Charging current halves after the battery enclosure crosses its configured cooling trip.
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [multi-file, distractor]
+rootCauseCategory: thermal-protection
+rootCausePoints:
+  - The battery-pack thermal trip voted the charge limit down from 2800 to 1400 mA.
+  - The PPS contract stayed active through the unrelated cable identity timeout.
+keyEvidenceLines: [6, 8, 40, 72]
+expectedActions:
+  - Check the battery-pack cooling path and verify the 45 C trip setting.
+  - Compare current recovery with the thermal trip clearing while monitoring the PPS contract.
+analysisQuestion: Why did charge current fall even though USB-C remained attached?
+bundleFiles: [fixtures/kernel.log, fixtures/thermal.log, fixtures/charger.log]
+keyEvidence:
+  - { file: kernel.log, line: 6 }
+  - { file: kernel.log, line: 8 }
+  - { file: thermal.log, line: 8 }
+  - { file: charger.log, line: 8 }
+realismChecklist:
+  lineFormat: ISO 8601 millisecond timestamps with a syslog host and kernel or process tag.
+  noiseRatio: 92 of 96 lines are routine measurements or status checks (95.8%).
+  distractors: The optional cable identity request times out in kernel.log line 6 while PPS stays active.
+  rootCauseDiscoverability: The trip, vote and applied limit are distributed across files and require correlation.
+  timeline: All three files use UTC. The trip is at 07.000, the charge-manager limit at 07.040 and the kernel vote confirmation at 07.080.
+  sensitiveData: Host and process details are fictional and there are no serial numbers or credentials.
+  annotationReview: Author cross-checked projection lines 6, 8, 40 and 72 against all three originals and checked the actions against the trip.

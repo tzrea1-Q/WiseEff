@@ -1,0 +1,22 @@
+domain: linux-kernel
+summary: A stuck bus briefly prevents the fuel gauge from supplying battery readings.
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [cascade]
+rootCauseCategory: communication-failure
+rootCausePoints:
+  - SDA was held low on I2C bus 1 before the fuel-gauge reads timed out.
+  - Releasing SDA during bus recovery allowed normal reads to resume.
+keyEvidenceLines: [17, 18, 20, 21]
+expectedActions:
+  - Inspect the shared I2C bus and look for a peripheral holding SDA low during the failing window.
+  - Compare gauge reads before and after bus recovery.
+realismChecklist:
+  lineFormat: dmesg-style monotonic boot seconds with six fractional digits and driver-prefixed messages.
+  noiseRatio: 45 of 50 lines are routine polling or successful status checks (90%).
+  distractors: The USB descriptor warning is on a different bus and its retry succeeds.
+  rootCauseDiscoverability: The stuck line precedes the timeouts and the driver reports recovery separately.
+  timeline: All timestamps share one boot clock. The bus stalls before the reads fail, then polling resumes.
+  sensitiveData: Device addresses are fictional fixture values and no identity or credential appears.
+  annotationReview: Author cross-checked lines 17, 18, 20 and 21 and verified the actions follow the observed bus symptom.

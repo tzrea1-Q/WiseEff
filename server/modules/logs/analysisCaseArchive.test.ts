@@ -106,13 +106,15 @@ describe("analysis case archive", () => {
     } finally { parse.mockRestore(); }
   });
 
-  it("round-trips every real repository annotation and fixture byte identically", async () => {
+  it("round-trips every repository annotation and fixture byte identically", async () => {
     const entries: Record<string, Buffer> = {};
     const root = join(process.cwd(), "eval-cases/logs");
     for (const domain of readdirSync(root, { withFileTypes: true }).filter((item) => item.isDirectory())) {
       for (const item of readdirSync(join(root, domain.name), { withFileTypes: true }).filter((item) => item.isDirectory())) {
-        for (const file of ["case.yaml", "log.txt"]) {
-          entries[`${domain.name}/${item.name}/${file}`] = readFileSync(join(root, domain.name, item.name, file));
+        const caseDir = join(root, domain.name, item.name);
+        for (const file of readdirSync(caseDir, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())) {
+          const path = join(file.parentPath, file.name);
+          entries[path.slice(root.length + 1)] = readFileSync(path);
         }
       }
     }
@@ -122,6 +124,19 @@ describe("analysis case archive", () => {
     expect(Object.keys(exported.files).sort()).toEqual(Object.keys(entries).sort());
     for (const [name, bytes] of Object.entries(entries)) expect(await exported.file(name)!.async("nodebuffer"), name).toEqual(bytes);
     expect(await importAnalysisCaseArchive(await exportAnalysisCaseArchive(imported))).toEqual(imported);
+  });
+
+  it("validates public-dataset metadata and round-trips the original YAML bytes", async () => {
+    const caseYaml = { ...annotation, tier: "realistic", provenance: "public-dataset", scenarioTags: ["public-labelled"],
+      datasetSource: { name: "Example", version: "v1", url: "https://example.org/logs", license: "CC-BY-4.0", file: "device.log", lines: [4, 10] } };
+    const path = "generic/public/case.yaml";
+    const rawYaml = Buffer.from(`# source metadata\r\n${stringifyYaml(caseYaml).replaceAll("\n", "\r\n")}`);
+    const log = { "generic/public/log.txt": "ERROR crash\r\n" };
+    const imported = await importAnalysisCaseArchive(await zip({ [path]: rawYaml, ...log }));
+    const exported = await JSZip.loadAsync(await exportAnalysisCaseArchive(imported));
+    expect(await exported.file(path)!.async("nodebuffer")).toEqual(rawYaml);
+    const invalid = { ...caseYaml, datasetSource: { ...caseYaml.datasetSource, license: undefined } };
+    await expect(importAnalysisCaseArchive(await zip({ [path]: stringifyYaml(invalid), ...log }))).rejects.toThrow("datasetSource.license");
   });
 
   it("retains original archive and binary fixtures without expanding or decoding their bytes", async () => {

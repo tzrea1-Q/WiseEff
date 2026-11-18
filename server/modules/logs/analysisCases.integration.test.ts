@@ -187,7 +187,12 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
       await expect(createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { name: "Bogus selection", expectations: { ...expectations, bundleFiles: ["absent.log"] }, files: [{ fileName: "log.txt", bytes: Buffer.from("ERROR thermal") }] }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
       const fixtures = new JSZip(), expected: Record<string, Buffer> = {}, root = join(process.cwd(), "eval-cases/logs");
       for (const domain of readdirSync(root, { withFileTypes: true }).filter((file) => file.isDirectory())) for (const item of readdirSync(join(root, domain.name), { withFileTypes: true }).filter((file) => file.isDirectory())) {
-        for (const file of ["case.yaml", "log.txt"]) { const path = `${domain.name}/${item.name}/${file}`, bytes = readFileSync(join(root, path)); expected[path] = bytes; fixtures.file(path, bytes, { createFolders: false }); }
+        const caseDir = join(root, domain.name, item.name);
+        for (const file of readdirSync(caseDir, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())) {
+          const path = join(file.parentPath, file.name), relativePath = path.slice(root.length + 1), bytes = readFileSync(path);
+          expected[relativePath] = bytes;
+          fixtures.file(relativePath, bytes, { createFolders: false });
+        }
       }
       const imported = await importSkillAnalysisCases(h.db, h.store, h.auth, h.skill.id, await fixtures.generateAsync({ type: "nodebuffer" }), h.invocation, h.context);
       expect(imported.items.length).toBeGreaterThan(0);

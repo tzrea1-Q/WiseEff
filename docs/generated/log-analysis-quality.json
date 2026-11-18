@@ -1,11 +1,66 @@
 {
-  "generatedAt": "2026-10-19T15:05:33.479Z",
-  "runId": "qe-20261019-150533",
+  "generatedAt": "2026-11-18T12:58:14.780Z",
+  "runId": "qe-20261118-125814",
   "kernel": "loop",
   "deterministic": true,
   "modelLabel": "deterministic",
   "judgeLabel": "deterministic-rubric-stub",
   "caseResults": [
+    {
+      "id": "charging-power/realistic-thermal-foldback-bundle",
+      "domain": "charging-power",
+      "realLog": false,
+      "expectRefusal": false,
+      "analysisSource": "agent",
+      "model": "deterministic",
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+      "latencyMs": 27,
+      "confidence": 0.82,
+      "conclusionSummary": "控制器通信出现超时或重试。 针对问题“Why did charge current fall even though USB-C remained attached?”，引用的日志提供了相关线索。",
+      "evidence": {
+        "expectedLines": [
+          6,
+          8,
+          40,
+          72
+        ],
+        "citedLines": [
+          6
+        ],
+        "hitLines": [
+          6
+        ],
+        "missedLines": [
+          8,
+          40,
+          72
+        ],
+        "extraLines": [],
+        "recall": 0.25,
+        "precision": 1
+      },
+      "hallucination": {
+        "citedNonexistentLines": [],
+        "rate": 0
+      },
+      "refusal": {
+        "expected": false,
+        "refused": false,
+        "appropriate": null
+      },
+      "judge": {
+        "rootCauseScore": 0,
+        "actionsScore": 0,
+        "categoryMatch": false,
+        "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category missed"
+      },
+      "tier": "realistic",
+      "provenance": "authored",
+      "scenarioTags": [
+        "multi-file",
+        "distractor"
+      ]
+    },
     {
       "id": "charging-power/synthetic-comm-timeout-kernel-format",
       "domain": "charging-power",
@@ -14,9 +69,9 @@
       "analysisSource": "agent",
       "model": "deterministic",
       "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 286,
+      "latencyMs": 3,
       "confidence": 0.82,
-      "conclusionSummary": "Controller communication showed timeout and retry behavior.",
+      "conclusionSummary": "控制器通信出现超时或重试。",
       "evidence": {
         "expectedLines": [
           5,
@@ -54,7 +109,10 @@
         "actionsScore": 0,
         "categoryMatch": true,
         "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
-      }
+      },
+      "tier": "synthetic",
+      "provenance": "authored",
+      "scenarioTags": []
     },
     {
       "id": "charging-power/synthetic-device-offline-critical",
@@ -64,9 +122,9 @@
       "analysisSource": "agent",
       "model": "deterministic",
       "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 11,
+      "latencyMs": 5,
       "confidence": 0.82,
-      "conclusionSummary": "The device went offline or became unavailable during the captured window.",
+      "conclusionSummary": "日志记录期间，设备离线或不可用。",
       "evidence": {
         "expectedLines": [
           5,
@@ -99,7 +157,10 @@
         "actionsScore": 0,
         "categoryMatch": true,
         "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
-      }
+      },
+      "tier": "synthetic",
+      "provenance": "authored",
+      "scenarioTags": []
     },
     {
       "id": "charging-power/synthetic-thermal-foldback-basic",
@@ -109,29 +170,26 @@
       "analysisSource": "agent",
       "model": "deterministic",
       "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 94,
+      "latencyMs": 3,
       "confidence": 0.82,
-      "conclusionSummary": "Charging behavior is consistent with thermal foldback protection reducing charge output.",
+      "conclusionSummary": "充电表现符合过热保护降额特征，充电输出已降低。",
       "evidence": {
         "expectedLines": [
           6,
           7
         ],
         "citedLines": [
-          2,
-          4
-        ],
-        "hitLines": [],
-        "missedLines": [
           6,
           7
         ],
-        "extraLines": [
-          2,
-          4
+        "hitLines": [
+          6,
+          7
         ],
-        "recall": 0,
-        "precision": 0
+        "missedLines": [],
+        "extraLines": [],
+        "recall": 1,
+        "precision": 1
       },
       "hallucination": {
         "citedNonexistentLines": [],
@@ -143,11 +201,14 @@
         "appropriate": null
       },
       "judge": {
-        "rootCauseScore": 1,
+        "rootCauseScore": 0,
         "actionsScore": 0,
         "categoryMatch": true,
-        "reasoning": "deterministic rubric: root-cause coverage 1.00, actions coverage 0.00, category matched"
-      }
+        "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
+      },
+      "tier": "synthetic",
+      "provenance": "authored",
+      "scenarioTags": []
     },
     {
       "id": "charging-power/synthetic-thermal-foldback-question",
@@ -157,9 +218,9 @@
       "analysisSource": "agent",
       "model": "deterministic",
       "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 53,
+      "latencyMs": 2,
       "confidence": 0.82,
-      "conclusionSummary": "Charging behavior is consistent with thermal foldback protection reducing charge output. Regarding the question \"Why did charging slow down halfway through the session?\": the cited lines are the directly relevant evidence.",
+      "conclusionSummary": "充电表现符合过热保护降额特征，充电输出已降低。 针对问题“Why did charging slow down halfway through the session?”，引用的日志提供了相关线索。",
       "evidence": {
         "expectedLines": [
           5,
@@ -188,11 +249,100 @@
         "appropriate": null
       },
       "judge": {
-        "rootCauseScore": 0.5,
+        "rootCauseScore": 0,
         "actionsScore": 0,
         "categoryMatch": true,
-        "reasoning": "deterministic rubric: root-cause coverage 0.50, actions coverage 0.00, category matched"
-      }
+        "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
+      },
+      "tier": "synthetic",
+      "provenance": "authored",
+      "scenarioTags": []
+    },
+    {
+      "id": "linux-kernel/realistic-i2c-bus-recovery",
+      "domain": "linux-kernel",
+      "realLog": false,
+      "expectRefusal": false,
+      "analysisSource": "agent",
+      "model": "deterministic",
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+      "latencyMs": 3,
+      "confidence": 0.82,
+      "conclusionSummary": "控制器通信出现超时或重试。",
+      "evidence": {
+        "expectedLines": [
+          17,
+          18,
+          20,
+          21
+        ],
+        "citedLines": [
+          18,
+          19
+        ],
+        "hitLines": [
+          18
+        ],
+        "missedLines": [
+          17,
+          20,
+          21
+        ],
+        "extraLines": [
+          19
+        ],
+        "recall": 0.25,
+        "precision": 0.5
+      },
+      "hallucination": {
+        "citedNonexistentLines": [],
+        "rate": 0
+      },
+      "refusal": {
+        "expected": false,
+        "refused": false,
+        "appropriate": null
+      },
+      "judge": {
+        "rootCauseScore": 0,
+        "actionsScore": 0,
+        "categoryMatch": true,
+        "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
+      },
+      "tier": "realistic",
+      "provenance": "authored",
+      "scenarioTags": [
+        "cascade"
+      ]
+    },
+    {
+      "id": "service-jsonl/realistic-healthy-queue",
+      "domain": "service-jsonl",
+      "realLog": false,
+      "expectRefusal": true,
+      "analysisSource": "agent",
+      "model": "deterministic",
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+      "latencyMs": 3,
+      "confidence": 0.45,
+      "conclusionSummary": "未发现已知异常模式，当前日志未显示明显异常。 针对问题“Does the queue worker show signs that it stopped making progress?”，引用的日志提供了相关线索。",
+      "evidence": null,
+      "hallucination": {
+        "citedNonexistentLines": [],
+        "rate": 0
+      },
+      "refusal": {
+        "expected": true,
+        "refused": true,
+        "appropriate": true
+      },
+      "judge": null,
+      "tier": "realistic",
+      "provenance": "authored",
+      "scenarioTags": [
+        "no-fault",
+        "generic-analysis"
+      ]
     },
     {
       "id": "uncategorized/synthetic-json-lines-error-codes",
@@ -202,9 +352,9 @@
       "analysisSource": "agent",
       "model": "deterministic",
       "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 52,
+      "latencyMs": 0,
       "confidence": 0.82,
-      "conclusionSummary": "Controller communication showed timeout and retry behavior.",
+      "conclusionSummary": "控制器通信出现超时或重试。",
       "evidence": {
         "expectedLines": [
           3,
@@ -238,7 +388,10 @@
         "actionsScore": 0,
         "categoryMatch": false,
         "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category missed"
-      }
+      },
+      "tier": "synthetic",
+      "provenance": "authored",
+      "scenarioTags": []
     },
     {
       "id": "uncategorized/synthetic-nominal-heartbeat-refusal",
@@ -248,9 +401,9 @@
       "analysisSource": "agent",
       "model": "deterministic",
       "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 11,
+      "latencyMs": 1,
       "confidence": 0.45,
-      "conclusionSummary": "No known anomaly pattern was detected; the log looks nominal. Regarding the question \"Is anything failing on this node?\": the cited lines are the directly relevant evidence.",
+      "conclusionSummary": "未发现已知异常模式，当前日志未显示明显异常。 针对问题“Is anything failing on this node?”，引用的日志提供了相关线索。",
       "evidence": null,
       "hallucination": {
         "citedNonexistentLines": [],
@@ -261,28 +414,42 @@
         "refused": true,
         "appropriate": true
       },
-      "judge": null
+      "judge": null,
+      "tier": "synthetic",
+      "provenance": "authored",
+      "scenarioTags": []
     }
   ],
   "aggregates": {
     "all": {
-      "caseCount": 6,
-      "evidenceRecallMean": 0.5,
-      "evidencePrecisionMean": 0.4666666666666666,
+      "caseCount": 9,
+      "evidenceRecallMean": 0.5714285714285714,
+      "evidencePrecisionMean": 0.6904761904761905,
       "hallucinationRate": 0,
-      "rootCauseScoreMean": 0.3,
-      "categoryMatchRate": 0.8,
+      "rootCauseScoreMean": 0,
+      "categoryMatchRate": 0.7142857142857143,
       "actionsScoreMean": 0,
       "refusalAppropriateRate": 1,
       "degradedCount": 0
     },
     "realCases": null,
+    "realisticCases": {
+      "caseCount": 3,
+      "evidenceRecallMean": 0.25,
+      "evidencePrecisionMean": 0.75,
+      "hallucinationRate": 0,
+      "rootCauseScoreMean": 0,
+      "categoryMatchRate": 0.5,
+      "actionsScoreMean": 0,
+      "refusalAppropriateRate": 1,
+      "degradedCount": 0
+    },
     "syntheticCases": {
       "caseCount": 6,
-      "evidenceRecallMean": 0.5,
-      "evidencePrecisionMean": 0.4666666666666666,
+      "evidenceRecallMean": 0.7,
+      "evidencePrecisionMean": 0.6666666666666666,
       "hallucinationRate": 0,
-      "rootCauseScoreMean": 0.3,
+      "rootCauseScoreMean": 0,
       "categoryMatchRate": 0.8,
       "actionsScoreMean": 0,
       "refusalAppropriateRate": 1,
@@ -300,7 +467,7 @@
   "judgeSampling": {
     "rate": 0.2,
     "sampledCaseIds": [
-      "charging-power/synthetic-thermal-foldback-basic"
+      "charging-power/realistic-thermal-foldback-bundle"
     ]
   },
   "humanAgreement": {

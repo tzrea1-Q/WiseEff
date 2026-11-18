@@ -1,0 +1,32 @@
+2026-11-17T16:21:00.080Z lab-host kernel: power_supply usb: online=1 usb_type=PD
+2026-11-17T16:21:01.080Z lab-host kernel: typec port0: partner source caps unchanged
+2026-11-17T16:21:02.080Z lab-host kernel: tcpm port0: PPS status 9000 mV 3000 mA
+2026-11-17T16:21:03.080Z lab-host kernel: power_supply battery: status=Charging
+2026-11-17T16:21:04.080Z lab-host kernel: regmap pmic: cache sync complete
+2026-11-17T16:21:05.080Z lab-host kernel: tcpm port0: WARN optional cable identity request timed out; PPS contract unchanged
+2026-11-17T16:21:06.080Z lab-host kernel: power_supply usb: input_voltage_now=9020000
+2026-11-17T16:21:07.080Z lab-host kernel: qcom-smb5: charge current votable old=2800000 new=1400000 client=THERMAL
+2026-11-17T16:21:08.080Z lab-host kernel: power_supply battery: current_now=1391000
+2026-11-17T16:21:09.080Z lab-host kernel: tcpm port0: PPS status 9000 mV 3000 mA
+2026-11-17T16:21:10.080Z lab-host kernel: power_supply battery: status=Charging current_now=1397000
+2026-11-17T16:21:11.080Z lab-host kernel: power_supply battery: status=Charging current_now=1398000
+2026-11-17T16:21:12.080Z lab-host kernel: power_supply battery: status=Charging current_now=1399000
+2026-11-17T16:21:13.080Z lab-host kernel: power_supply battery: status=Charging current_now=1400000
+2026-11-17T16:21:14.080Z lab-host kernel: power_supply battery: status=Charging current_now=1394000
+2026-11-17T16:21:15.080Z lab-host kernel: power_supply battery: status=Charging current_now=1395000
+2026-11-17T16:21:16.080Z lab-host kernel: power_supply battery: status=Charging current_now=1396000
+2026-11-17T16:21:17.080Z lab-host kernel: power_supply battery: status=Charging current_now=1397000
+2026-11-17T16:21:18.080Z lab-host kernel: power_supply battery: status=Charging current_now=1398000
+2026-11-17T16:21:19.080Z lab-host kernel: power_supply battery: status=Charging current_now=1399000
+2026-11-17T16:21:20.080Z lab-host kernel: power_supply battery: status=Charging current_now=1400000
+2026-11-17T16:21:21.080Z lab-host kernel: power_supply battery: status=Charging current_now=1394000
+2026-11-17T16:21:22.080Z lab-host kernel: power_supply battery: status=Charging current_now=1395000
+2026-11-17T16:21:23.080Z lab-host kernel: power_supply battery: status=Charging current_now=1396000
+2026-11-17T16:21:24.080Z lab-host kernel: power_supply battery: status=Charging current_now=1397000
+2026-11-17T16:21:25.080Z lab-host kernel: power_supply battery: status=Charging current_now=1398000
+2026-11-17T16:21:26.080Z lab-host kernel: power_supply battery: status=Charging current_now=1399000
+2026-11-17T16:21:27.080Z lab-host kernel: power_supply battery: status=Charging current_now=1400000
+2026-11-17T16:21:28.080Z lab-host kernel: power_supply battery: status=Charging current_now=1394000
+2026-11-17T16:21:29.080Z lab-host kernel: power_supply battery: status=Charging current_now=1395000
+2026-11-17T16:21:30.080Z lab-host kernel: power_supply battery: status=Charging current_now=1396000
+2026-11-17T16:21:31.080Z lab-host kernel: power_supply battery: status=Charging current_now=1397000

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createAgentLoopLogAnalyzer } from "../analyzer/agentLoop";
 import { createDeterministicLogAnalysisLoopModel } from "../analyzer/deterministicModel";
-import type { AnalyzeLogOutput } from "../analyzer";
+import type { AnalyzeLogOutput, LogAnalysisAdapter } from "../analyzer";
 import { defaultGoldenCasesRoot, loadGoldenLogCases, type GoldenLogCase } from "./goldenCases";
 import {
   aggregateQualityResults,
@@ -279,12 +279,15 @@ describe("runQualityEval (deterministic end-to-end)", () => {
     });
 
     expect(report.problems).toEqual([]);
-    expect(report.caseResults.length).toBeGreaterThanOrEqual(6);
+    expect(report.caseResults).toHaveLength(cases.length);
+    expect(report.aggregates.syntheticCases?.caseCount).toBeGreaterThanOrEqual(6);
+    expect(report.aggregates.realisticCases?.caseCount).toBeGreaterThanOrEqual(3);
+    expect(report.caseResults.find((item) => item.id === "service-jsonl/realistic-healthy-queue")?.refusal.appropriate).toBe(true);
     // Grounding check keeps hallucinated citations out of the product; the metric must stay 0.
     expect(report.aggregates.all.hallucinationRate).toBe(0);
     // The nominal refusal case must be answered honestly by the deterministic kernel.
-    expect(report.aggregates.all.refusalAppropriateRate).toBe(1);
-    // Seed set is synthetic-only, so the gate stays inactive and states why.
+    expect(report.aggregates.syntheticCases?.refusalAppropriateRate).toBe(1);
+    // The corpus has no golden cases, so the gate stays inactive and states why.
     expect(report.aggregates.realCases).toBeNull();
     expect(report.baseline.status).toBe("inactive-pending-real-cases");
     expect(report.baseline.note).toBe("quality baseline pending real cases");
@@ -322,6 +325,39 @@ describe("runQualityEval (deterministic end-to-end)", () => {
     expect(report.caseResults[0].judge).toMatchObject({ rootCauseScore: 0.42, actionsScore: 0.24 });
     expect(report.aggregates.all.rootCauseScoreMean).toBe(0.42);
     expect(report.baseline.status).toBe("not-configured");
+  });
+
+  it("scores the original files with file-aware citations and gates only golden results", async () => {
+    const loaded = loadGoldenLogCases(defaultGoldenCasesRoot());
+    expect(loaded.problems).toEqual([]);
+    const bundle = loaded.cases.find((item) => item.id === "charging-power/realistic-thermal-foldback-bundle")!;
+    const real = makeGoldenCase({ id: "charging-power/golden-case", realLog: true, deIdentified: true });
+    const synthetic = makeGoldenCase();
+    const analyzer: LogAnalysisAdapter = { async analyze(input) {
+      if (!input.files) return makeOutput();
+      expect(input.files.map((file) => file.path)).toEqual(["kernel.log", "thermal.log", "charger.log"]);
+      const thermal = input.files[1].parsed!;
+      expect(thermal.rawLines[7]).toContain("trip=45000");
+      return makeOutput({ evidence: [
+        { stageId: "rootcause", filePath: "thermal.log", lineNumbers: [8], inference: "Thermal threshold", suggestedAction: "Inspect" },
+        { stageId: "rootcause", filePath: "charger.log", lineNumbers: [8], inference: "Current changed", suggestedAction: "Inspect" },
+        { stageId: "rootcause", filePath: "missing.log", lineNumbers: [8], inference: "Invalid path", suggestedAction: "Inspect" }
+      ] });
+    } };
+    const judge: LogAnalysisQualityJudge = { label: "test", async score({ goldenCase }) {
+      const score = Number(goldenCase.realLog);
+      return { rootCauseScore: score, categoryMatch: Boolean(score), actionsScore: score, reasoning: "test" };
+    } };
+    const report = await runQualityEval({ analyzer, judge, cases: [real, synthetic, bundle], problems: [], kernel: "loop", deterministic: true, modelLabel: "test",
+      baseline: { createdAt: "2026-08-13", kernel: "loop", promptVersion: "test.1", model: "test",
+        realCaseAggregates: { caseCount: 1, rootCauseScoreMean: 1, evidenceRecallMean: 1 },
+        tolerances: { rootCauseScoreMean: 0, evidenceRecallMean: 0 } } });
+    expect(report.problems).toEqual([]);
+    expect(report.aggregates.realCases).toMatchObject({ caseCount: 1, rootCauseScoreMean: 1, evidenceRecallMean: 1 });
+    expect(report.aggregates.realisticCases).toMatchObject({ caseCount: 1, rootCauseScoreMean: 0 });
+    expect(report.aggregates.syntheticCases?.caseCount).toBe(1);
+    expect(report.baseline.status).toBe("passed");
+    expect(report.caseResults[2]).toMatchObject({ tier: "realistic", evidence: { hitLines: [40, 72], recall: 0.5 }, hallucination: { rate: 1 / 3 } });
   });
 
   it("aggregates real and synthetic cases separately", () => {
