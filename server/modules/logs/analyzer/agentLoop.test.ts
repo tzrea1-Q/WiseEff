@@ -190,6 +190,33 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(prompt).not.toMatch(/capped-tail|unreferenced_source_line|battery_temp/);
   });
 
+  it("rejects historical hints as grounding and reports only run IDs actually returned", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const { adapter } = analyzer([
+      { content: { action: "tool", tool: "search_past_conclusions", args: { query: "thermal" } } },
+      { content: finalPayload },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: finalPayload }
+    ], {
+      protocol: "json",
+      hypothesisLedger: true,
+      bindToolBackends: () => ({
+        searchPastConclusions: async () => ({
+          retrievalMode: "fts_only",
+          items: [{ runId: "confirmed-previous", createdAt: "2026-08-09T00:00:00.000Z",
+            summary: "Thermal foldback", evidenceTemplates: ["Log anchors: 2"] }],
+          hasMore: false
+        })
+      })
+    });
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+    expect(output).toMatchObject({ analysisSource: "agent", historicalRunIds: ["confirmed-previous"],
+      evidence: [{ lineNumbers: [3, 4] }] });
+    expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.outcome)).toEqual(["ok", "error", "ok", "ok"]);
+    expect(trace.find((step) => step.kind === "tool-call" && step.tool === "search_past_conclusions"))
+      .toMatchObject({ outcome: "ok", lines: [] });
+  });
+
   it.each(["json", "tools"] as const)("keeps only seen hypothesis anchors after folding in %s", async (protocol) => {
     const trace: LogAnalysisTraceStep[] = [];
     const seen = { file: "charging.log", line: 3 };

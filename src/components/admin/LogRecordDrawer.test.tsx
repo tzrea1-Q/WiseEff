@@ -392,6 +392,24 @@ describe("LogRecordDrawer", () => {
     expect(await screen.findByRole("button", { name: "打开报告" })).toBeVisible();
   });
 
+  it("confirms the exact skill report when the administrator downloads the case draft", async () => {
+    const complete = { ...record, status: "Complete" as const, skillRevision: { id: "revision-1", number: 1 },
+      rawLines: ["ERROR fan stopped"] };
+    const confirmEvalCaseDraftExport = vi.fn().mockRejectedValueOnce(new Error("stale")).mockResolvedValueOnce(undefined);
+    const downloads = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    vi.stubGlobal("URL", Object.assign(Object.create(URL), { createObjectURL: vi.fn(() => "blob:draft"), revokeObjectURL: vi.fn() }));
+    render(<LogRecordDrawer record={complete} open {...handlers} canAct skillRepository={{ confirmEvalCaseDraftExport }} />);
+    await userEvent.click(screen.getByRole("button", { name: record.fileName + "：更多" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "导出分析用例草稿" }));
+    const button = screen.getByRole("button", { name: "下载 case.yaml 草稿" });
+    await userEvent.click(button);
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法确认草稿导出");
+    expect(downloads).not.toHaveBeenCalled();
+    await userEvent.click(button);
+    expect(confirmEvalCaseDraftExport).toHaveBeenLastCalledWith(complete.id, complete.reportId);
+    expect(downloads).toHaveBeenCalledTimes(1);
+  });
+
   describe("存为分析用例", () => {
     const completedRecord = { ...record, status: "Complete" as const, logDomainId: "skill-charging" };
     const prefill = { skillId: "skill-charging", name: "快充分析用例", files: [{ path: "device.log", sizeBytes: 20, lineCount: 1, encoding: "utf-8" as const, lossy: false, status: "analyzed" as const, skipReason: null }],

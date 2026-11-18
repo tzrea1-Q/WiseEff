@@ -1103,6 +1103,10 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.getAnalysisCaseRun": { summary: "Read an analysis-case run", tags: ["logs"], responseBody: "LogAnalysisCaseRunResponse" },
   "logs.getAnalysisCaseTrace": { summary: "Read a case trace for the captured revision", tags: ["logs"], responseBody: "LogTraceResponse", requestParameters: [{ name: "revision", in: "query", schema: { type: "string", enum: ["draft", "published"] } }] },
   "logs.getAnalysisCasePrefill": { summary: "Prefill a case from a completed accessible skill report", tags: ["logs"], responseBody: "LogAnalysisCasePrefillResponse" },
+  "logs.confirmEvalCaseDraftExport": {
+    summary: "Confirm the admin's evaluation draft export for the current skill report", tags: ["logs"], responseBody: "OkResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "logs.importAnalysisCases": { summary: "Import bounded analysis cases from an eval ZIP", tags: ["logs"], requestBody: "LogAnalysisCaseMultipartImport", responseBody: "LogAnalysisCaseImportResponse", successStatus: 201 },
   "logs.exportAnalysisCases": { summary: "Export analysis cases as an eval ZIP", tags: ["logs"], responseBody: "BinaryAttachment", responseMedia: "binary" },
   "logs.startDryRun": { summary: "Run the saved draft on its stored sample (logs:admin-domains)", tags: ["logs"], responseBody: "LogSkillDryRunResponse", successStatus: 202, additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse", "429": "ErrorResponse" } },

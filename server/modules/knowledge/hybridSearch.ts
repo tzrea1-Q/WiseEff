@@ -1,5 +1,3 @@
-import type { KnowledgeSearchResultDto } from "./types";
-
 const RRF_K = 60;
 
 /**
@@ -7,16 +5,16 @@ const RRF_K = 60;
  * ranking, keyed by entry. FTS hits keep their query-highlighting excerpt;
  * vector-only hits carry the best chunk excerpt.
  */
-export function fuseKnowledgeSearchResults(input: {
-  fts: KnowledgeSearchResultDto[];
-  vector: KnowledgeSearchResultDto[];
+export function fuseKnowledgeSearchResults<T extends { entryId: string }>(input: {
+  fts: T[];
+  vector: T[];
   limit: number;
   k?: number;
-}): KnowledgeSearchResultDto[] {
+}): T[] {
   const k = input.k ?? RRF_K;
-  const scores = new Map<string, { score: number; item: KnowledgeSearchResultDto }>();
+  const scores = new Map<string, { score: number; item: T }>();
 
-  const accumulate = (items: KnowledgeSearchResultDto[], preferExistingItem: boolean) => {
+  const accumulate = (items: T[], preferExistingItem: boolean) => {
     items.forEach((item, rank) => {
       const contribution = 1 / (k + rank + 1);
       const existing = scores.get(item.entryId);

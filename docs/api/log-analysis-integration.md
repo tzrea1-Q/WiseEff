@@ -140,6 +140,8 @@ Poll `GET /api/v1/logs/{logId}` using the credential that uploaded the record un
 
 `GET /api/v1/logs/{logId}` returns the conclusion, impact, severity, confidence, evidence (with line anchors), suggested actions, and the provenance fields `analysisSource` and `degradedReason`. The record API and result webhook use the same reason values.
 
+In user sessions, record and run responses may also carry `historicalRunIds`. These are the run IDs actually returned as untrusted hints from confirmed same-organization, same-skill conclusions. Every evidence anchor still comes from the current analysis. History lookup runs inside the worker for user-submitted records and is disabled by default.
+
 When the hypothesis ledger is enabled, a completed report may include `alternativeHypotheses`, an array of excluded causes with `statement`, `reason`, and `anchors`. Each anchor identifies a previously seen log line (`{ file, line }`) or source line (`{ snapshotId, path, line }`).
 
 When conclusion verification is enabled, a grounded loop report includes `verification: { status, checkedClaims, unsupportedClaims, model }`. `passed` means the cited lines support the conclusion and inferences. `revised` means the kernel accepted a checked revision or removed unsupported evidence and capped confidence at 0.5. `failed` marks a contradiction and caps confidence at 0.5. Review those conclusions manually. `skipped` means the check was unavailable or ran out of budget, and the report retains its original confidence and evidence. Counts cover the original conclusion and inferences, with contradictions included in `unsupportedClaims`. A skipped check reports zero counts.

@@ -186,6 +186,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_VERIFY_CONCLUSION` | `false` | 循环内核的结论验证 | 设为 `true` 后，两种协议均使用不带工具的独立调用检查已接地的结论和推断。验证调用的输入与输出计入循环 token 预算。 |
 | `LOG_ANALYSIS_VERIFIER_MODEL` | 留空 | 循环内核的结论验证 | 可选的验证模型名。默认使用本次运行的分析模型，沿用同一端点、密钥与超时。 |
 | `LOG_ANALYSIS_REPAIR_JSON` | `false` | 日志分析模型兼容性 | 启用后，两个内核都会从夹带文字的输出中截取首个完整 JSON 对象并删除尾逗号，再进行 schema 校验和接地判定。可用于模型 A/B 评测。 |
+| `LOG_ANALYSIS_PAST_CONCLUSIONS` | `false` | 日志分析 Worker | 开启后，仅在同组织同技能存在符合条件的历史结论时开放只读检索。PostgreSQL 全文检索覆盖所有符合条件的历史结论，配置嵌入服务且支持 pgvector 时，对最近最多 32 条候选加做语义排序。 |
 | `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 版本 `stepBudget` 的默认值与平台上限。步数耗尽且仍有 token 预算时，触发标记为 `step-budget-exhausted` 的提前收敛。 |
 | `LOG_ANALYSIS_JOB_MAX_MS` | `600000` | worker 尝试时限 | 从任务认领开始，覆盖预处理、分析与持久化的总墙钟时限；续租不会重置截止时间。须为不超过 `2147483647` 的正整数；中央环境校验拒绝无效值，直接独立调用 worker 时回退默认值。 |
 | `LOG_ANALYSIS_PREPROCESS_MAX_MS` | `20000` | 信号与解码共享时限 | 从信号提取开始的固定合计额度，并受本次尝试剩余墙钟时限约束。续租不补充额度；`LOG_SIGNAL_MAX_MS` 和 `LOG_DECODE_MAX_MS` 仍分别约束各阶段。校验与独立调用回退规则同 `LOG_ANALYSIS_JOB_MAX_MS`。 |

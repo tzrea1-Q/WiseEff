@@ -467,6 +467,9 @@ export function createHttpLogAnalysisRepository(
     async submitFeedback(input: LogFeedbackInput) {
       await apiClient.post<OkEnvelope>(`${routeLogPath(input.logId)}/feedback`, feedbackBody(input));
     },
+    async confirmEvalCaseDraftExport(logId, reportId) {
+      await apiClient.post<OkEnvelope>(`${routeLogPath(logId)}/reports/${encodeURIComponent(reportId)}/eval-case-draft`, {});
+    },
     async listLogSkills(query?: LogDomainListQuery) {
       const response = parseContractDto(logSkillListResponseSchema,
         await apiClient.get(buildLogDomainsPath(query).replace("log-domains", "log-skills")), "LogSkillListResponse");

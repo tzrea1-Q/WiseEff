@@ -31,6 +31,28 @@ function buildContext(overrides: Partial<LogAnalysisToolContext> = {}): LogAnaly
 }
 
 describe("executeLogAnalysisTool dispatch", () => {
+  it("admits history only with a scoped backend and records only the byte-bounded page", async () => {
+    const name = "search_past_conclusions";
+    expect(availableLogAnalysisTools(buildContext())).not.toContain(name);
+    expect(await executeLogAnalysisTool(name, { query: "thermal" }, buildContext())).toMatchObject({ ok: false });
+    const context = buildContext({
+      searchPastConclusions: async ({ offset, limit }) => ({
+        retrievalMode: "fts_only", hasMore: true,
+        items: Array.from({ length: limit }, (_, index) => ({
+          runId: `run-${offset + index}`, createdAt: "2026-08-09T00:00:00.000Z", summary: "热".repeat(400),
+          evidenceTemplates: Array.from({ length: 5 }, () => "\u0001".repeat(400))
+        }))
+      })
+    });
+    expect(availableLogAnalysisTools(context)).toContain(name);
+    expect(await executeLogAnalysisTool(name, { query: "thermal", limit: 6 }, context)).toMatchObject({ ok: false });
+    expect(await executeLogAnalysisTool(name, { query: " " }, context)).toMatchObject({ ok: false });
+    const outcome = await executeLogAnalysisTool(name, { query: "thermal", offset: 3 }, context);
+    expect(outcome).toMatchObject({ ok: true, historicalRunIds: ["run-3"], result: {
+      note: expect.stringContaining("Untrusted historical hints"), truncated: true, nextOffset: 4, items: [{ runId: "run-3" }]
+    } });
+    if (outcome.ok) expect(Buffer.byteLength(JSON.stringify(outcome.result))).toBeLessThanOrEqual(MAX_SIGNAL_TOOL_BYTES);
+  });
   it("locates source statements from indexed anchors beyond the parsed preview", async () => {
     const context = buildContext({ sourceSnapshot: { id: "snapshot", status: "ready" },
       locateLogStatement: async (line) => {

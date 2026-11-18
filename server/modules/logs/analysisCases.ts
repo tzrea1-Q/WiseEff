@@ -142,6 +142,10 @@ export async function listAnalysisCases(db: Database, auth: LogAccessContext, sk
       && row.caseFingerprint === fingerprint(items) && row.results.length === items.length) };
 }
 export async function getAnalysisCasePrefill(db: Database, auth: LogAccessContext, logId: string) {
+  const { reportId: _reportId, ...prefill } = await readAnalysisCasePrefill(db, auth, logId);
+  return prefill;
+}
+async function readAnalysisCasePrefill(db: Database, auth: LogAccessContext, logId: string) {
   requireAdmin(auth);
   const report = await getLogRecord(db, auth, logId);
   if (report.status !== "complete" || !report.logDomainId) throw new ApiError("CONFLICT", "只有使用分析技能生成的已完成报告才能保存为用例。");
@@ -149,7 +153,7 @@ export async function getAnalysisCasePrefill(db: Database, auth: LogAccessContex
     from log_original_uploads where organization_id = $1 and record_id = $2 order by position`, [logOrganizationId(auth), logId])).rows;
   const expectRefusal = report.analysisSource === "agent" && !report.degradedReason && report.confidence <= 0.5
     && /insufficient evidence|evidence (?:is |was )?insufficient|not enough evidence|inconclusive|(?:cannot|unable to) (?:determine|diagnose)|证据不足|信息不足|无法(?:判断|确定|诊断)|不足以(?:判断|确定|诊断)/i.test(report.conclusion);
-  return { skillId: report.logDomainId, name: report.fileName.slice(0, 200), originalUploads,
+  return { reportId: report.reportId, skillId: report.logDomainId, name: report.fileName.slice(0, 200), originalUploads,
     files: (report.files ?? []).filter((file) => file.status === "analyzed"),
     ...(report.degradedReason ? { sourceDegradation: { reason: report.degradedReason, source: report.analysisSource } } : {}), expectations: logAnalysisCaseExpectationsSchema.parse({
     domain: "generic", summary: report.conclusion.slice(0, 2000) || report.fileName, realLog: false,
@@ -161,12 +165,14 @@ export async function getAnalysisCasePrefill(db: Database, auth: LogAccessContex
   }) };
 }
 async function sourceUploads(db: Database, store: ObjectStore, auth: LogAccessContext, skillId: string, logId: string) {
-  const prefill = await getAnalysisCasePrefill(db, auth, logId);
+  const prefill = await readAnalysisCasePrefill(db, auth, logId);
   if (prefill.skillId !== skillId) throw new ApiError("VALIDATION_FAILED", "此报告使用了其他分析技能。");
   const rows = (await db.query<Upload>(`select file_name as "fileName", object_key as "objectKey", size_bytes::float8 as "sizeBytes" from log_original_uploads where organization_id = $1 and record_id = $2 order by position`, [logOrganizationId(auth), logId])).rows;
   if (!rows.length) throw new ApiError("CONFLICT", "此历史报告的原始文件不可用，请上传原始日志包以创建用例。");
   if (rows.reduce((sum, row) => sum + row.sizeBytes, 0) > ANALYSIS_CASE_MAX_BYTES) throw new ApiError("PAYLOAD_TOO_LARGE", "用例日志包不能超过 10 MiB。");
-  return Promise.all(rows.map(async (row) => ({ fileName: row.fileName, bytes: await boundedGet(store, row.objectKey) })));
+  return { reportId: prefill.reportId, files: await Promise.all(rows.map(async (row) => ({
+    fileName: row.fileName, bytes: await boundedGet(store, row.objectKey)
+  }))) };
 }
 async function boundedGet(store: ObjectStore, key: string) {
   const bytes = store.getBounded ? await store.getBounded(key, ANALYSIS_CASE_MAX_BYTES) : await store.get(key);
@@ -190,7 +196,8 @@ export async function createAnalysisCase(db: Database, store: ObjectStore, auth:
   if (expectations.bundleFiles !== undefined) throw new ApiError("VALIDATION_FAILED", "原始文件列表仅可通过导入用例压缩包设置。");
   // Reject invisible skills before reading object storage.
   if (!(await listSkillRevisions(db, logOrganizationId(auth), skillId)).length) throw new ApiError("NOT_FOUND", "未找到分析技能。");
-  const files = input.sourceRecordId ? await sourceUploads(db, store, auth, skillId, input.sourceRecordId) : input.files;
+  const source = input.sourceRecordId ? await sourceUploads(db, store, auth, skillId, input.sourceRecordId) : undefined;
+  const files = source?.files ?? input.files;
   if (!files?.length) throw new ApiError("VALIDATION_FAILED", "请上传日志文件或日志包。");
   const intake = intakeLogBundle(files, limits);
   if (!intake.ok) throw new ApiError("VALIDATION_FAILED", intake.reason);
@@ -210,6 +217,12 @@ export async function createAnalysisCase(db: Database, store: ObjectStore, auth:
       await tx.query(`insert into log_skill_analysis_cases (id, organization_id, skill_id, name, expectations, uploads, files, archive_path, source_yaml)
         values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9)`, [id, logOrganizationId(auth), skillId, name, JSON.stringify(expectations), JSON.stringify(uploads),
         JSON.stringify(intake.files.map(({ bytes: _bytes, sha256: _sha256, ...file }) => file)), input.archivePath ?? null, input.sourceYaml?.toString("base64") ?? null]);
+      if (source) await tx.query(`
+        update log_analysis_runs run set eval_case_root_cause_category = $4
+        from log_analysis_reports report join log_skill_revisions revision on revision.organization_id = report.organization_id
+        where run.organization_id = $1 and report.organization_id = run.organization_id and report.run_id = run.id
+          and report.log_record_id = $2 and report.id = $3 and revision.id = run.skill_revision_id and revision.skill_id = $5
+      `, [logOrganizationId(auth), input.sourceRecordId, source.reportId, expectations.rootCauseCategory, skillId]);
       return { result: logAnalysisCaseSchema.parse((await readAnalysisCases(tx, logOrganizationId(auth), skillId)).find((item) => item.id === id)),
         audit: audit(skillId, "log-analysis-case-create", { caseId: id, sourceRecordId: input.sourceRecordId ?? null }) };
     }), { onConfirmedRollback: () => { rollbackConfirmed = true; } });

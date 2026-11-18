@@ -140,6 +140,8 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 
 `GET /api/v1/logs/{logId}` 返回结论、影响、严重级别、置信度、证据（含行号锚点）、建议动作，以及溯源字段 `analysisSource` 和 `degradedReason`。记录 API 与结果 Webhook 使用相同的原因值。
 
+使用用户会话时，记录与运行响应可能包含 `historicalRunIds`，记录本次检索实际返回的历史运行 ID。历史结论须经过确认，并来自同一组织和技能，仅供类比。证据锚点仍来自当前分析。历史检索只在用户提交记录的分析 Worker 内使用，默认关闭。
+
 启用假设账本后，已完成的报告可返回 `alternativeHypotheses`，列出已排除的可能原因。每项包含陈述 `statement`、理由 `reason` 和 `anchors`，锚点指向此前已见的日志行（`{ file, line }`）或源码行（`{ snapshotId, path, line }`）。
 
 开启结论验证后，已接地的循环分析报告会返回 `verification: { status, checkedClaims, unsupportedClaims, model }`。`passed` 表示引用支持结论和推断。`revised` 表示内核接受了通过复验的修订，或删除了不被支持的证据并将置信度封顶为 0.5。`failed` 表示存在矛盾，置信度封顶为 0.5，请人工复核。`skipped` 表示无法验证或预算不足，报告保留原有的证据和置信度。项数按原报告结论及各条推断统计，矛盾项计入 `unsupportedClaims`。跳过时两项计数均为零。

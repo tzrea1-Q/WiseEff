@@ -519,6 +519,7 @@ async function processClaimedLogAnalysisJob(
     // P2: the analysis kernel runs inside the rootcause stage (the agent loop's
     // natural home); loop steps advance the progress bar inside the 65→80 range.
     const knowledgeRevisions = new Map<string, { entryId: string; revisionId: string; pages?: number[] }>();
+    const historicalRunIds = new Set<string>();
     const analysis = await lease.run(() => analyzeWithDegradation({
       analyzer,
       analyzeInput: {
@@ -554,6 +555,10 @@ async function processClaimedLogAnalysisJob(
           : undefined,
         organizationId: snapshot.organizationId,
         logDomainId: snapshot.logDomain?.id,
+        ...(snapshot.submittedByUserId && snapshot.skillRevisionId ? {
+          pastConclusionScope: { runId: snapshot.runId, projectId: snapshot.relatedParameterProjectId },
+          onHistoricalRunsRetrieved: (ids) => { for (const id of ids) historicalRunIds.add(id); }
+        } : {}),
         relatedParameterId: snapshot.relatedParameterId ?? undefined,
         relatedParameterSnapshot,
         onTrace: (step) => lease.run(async () => {
@@ -628,6 +633,7 @@ async function processClaimedLogAnalysisJob(
       files,
       report: {
         knowledgeRevisions: [...knowledgeRevisions.values()],
+        historicalRunIds: [...historicalRunIds],
         signalSummary,
         confidence: analysis.confidence,
         conclusion: analysis.conclusion,

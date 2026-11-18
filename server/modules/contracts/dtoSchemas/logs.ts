@@ -93,6 +93,7 @@ export const logRecordDtoSchema = z.object({
   createdByCredentialId: z.string().optional(),
   createdByCredentialName: z.string().optional(),
   knowledgeRevisions: z.array(knowledgeRevisionSchema).optional(),
+  historicalRunIds: z.array(z.string()).optional(),
   ...sourceProvenanceShape,
   signalSummary: logSignalSummarySchema.optional(),
   files: z.array(logFileDtoSchema).optional(),
@@ -146,6 +147,7 @@ export const logJobDtoSchema = z.object({
 
 export const logRunDtoSchema = z.object({
   knowledgeRevisions: z.array(knowledgeRevisionSchema).optional(),
+  historicalRunIds: z.array(z.string()).optional(),
   ...sourceProvenanceShape,
   skillRevision: skillRevisionPinSchema.nullable().optional(),
   skillNameSnapshot: z.string().optional(),

@@ -48,6 +48,7 @@ export type LogLoopEvalScenario = {
   sourceMatches?: Awaited<ReturnType<NonNullable<LogAnalysisToolContext["locateLogStatement"]>>>;
   sourceSearch?: Awaited<ReturnType<NonNullable<LogAnalysisToolContext["searchSource"]>>>;
   sourceRange?: Awaited<ReturnType<NonNullable<LogAnalysisToolContext["readSourceRange"]>>>;
+  pastConclusions?: Awaited<ReturnType<NonNullable<LogAnalysisToolContext["searchPastConclusions"]>>>;
   expectations: LogEvalExpectation[];
 };
 
@@ -343,6 +344,28 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
       { type: "expectsModelCallCount", count: 3 },
       { type: "expectsAnalysisSource", source: "rules-fallback" },
       { type: "expectsDegradedReason", reason: "invalid-model-output" }
+    ]
+  },
+  {
+    name: "loop-rejects-historical-hints-as-evidence",
+    category: "past-conclusions",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    pastConclusions: { retrievalMode: "fts_only", hasMore: false, items: [
+      { runId: "confirmed-cooling-run", createdAt: "2026-08-09T00:00:00.000Z", summary: "A past pack overheated.",
+        rootCauseCategory: "thermal-protection", evidenceTemplates: ["rootcause evidence: 2 log anchors"] }
+    ] },
+    script: [
+      { content: { action: "tool", tool: "search_past_conclusions", args: { query: "thermal" } } },
+      { content: loopFinalPayload },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: loopFinalPayload }
+    ],
+    expectations: [
+      { type: "expectsModelCallCount", count: 4 },
+      { type: "expectsNoDegradation" },
+      { type: "expectsGroundedEvidence" },
+      { type: "expectsHistoricalRunIds", runIds: ["confirmed-cooling-run"] }
     ]
   },
   {

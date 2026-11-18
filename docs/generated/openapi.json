@@ -17813,6 +17813,69 @@
         }
       }
     },
+    "/api/v1/logs/{logId}/reports/{reportId}/eval-case-draft": {
+      "post": {
+        "operationId": "logs.confirmEvalCaseDraftExport",
+        "summary": "Confirm the admin's evaluation draft export for the current skill report",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-skills/{skillId}/analysis-cases/import": {
       "post": {
         "operationId": "logs.importAnalysisCases",
@@ -50797,6 +50860,12 @@
                   "additionalProperties": false
                 }
               },
+              "historicalRunIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
               "sourceSnapshot": {
                 "type": "object",
                 "properties": {
@@ -51890,6 +51959,12 @@
                   "additionalProperties": false
                 }
               },
+              "historicalRunIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
               "sourceSnapshot": {
                 "type": "object",
                 "properties": {
@@ -52843,6 +52918,12 @@
                       "entryId"
                     ],
                     "additionalProperties": false
+                  }
+                },
+                "historicalRunIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
                   }
                 },
                 "sourceSnapshot": {
@@ -59653,6 +59734,12 @@
                     "additionalProperties": false
                   }
                 },
+                "historicalRunIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "sourceSnapshot": {
                   "type": "object",
                   "properties": {
@@ -59965,6 +60052,12 @@
                     "entryId"
                   ],
                   "additionalProperties": false
+                }
+              },
+              "historicalRunIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
                 }
               },
               "sourceSnapshot": {
@@ -60832,6 +60925,12 @@
                       "entryId"
                     ],
                     "additionalProperties": false
+                  }
+                },
+                "historicalRunIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
                   }
                 },
                 "sourceSnapshot": {

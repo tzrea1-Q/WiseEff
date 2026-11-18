@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-11-18T15:32:28.929Z
+- Generated: 2026-11-18T15:33:22.483Z
 - Single-shot prompt version: `2026-10-19.procedure.signals.source.2`
-- Loop prompt version: `2026-10-19.loop.procedure.signals.source.8`
-- Scenarios: 56 (56 passed)
+- Loop prompt version: `2026-10-19.loop.procedure.signals.source.9`
+- Scenarios: 57 (57 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -21,6 +21,7 @@
 | analysis-question-injected-and-answered | analysis-question | single-shot | agent | - | 1 | PASS |
 | loop-repaired-tool-and-final-grounded | json-repair | loop | agent | - | 3 | PASS |
 | loop-unrepairable-json-degrades | json-repair | loop | rules-fallback | invalid-model-output | 5 | PASS |
+| loop-rejects-historical-hints-as-evidence | past-conclusions | loop | agent | - | 6 | PASS |
 | loop-source-search-timeout-preserves-log-analysis | source-tools | loop | agent | - | 5 | PASS |
 | loop-source-search-literal-legal-and-grounded | source-tools | loop | agent | - | 3 | PASS |
 | loop-source-search-full-text-legal-and-grounded | source-tools | loop | agent | - | 3 | PASS |

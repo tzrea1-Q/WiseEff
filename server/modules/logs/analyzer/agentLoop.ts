@@ -35,8 +35,8 @@ import { verifyLogConclusion, type LogConclusionVerifier } from "./conclusionVer
  * the P1 single shot, so it carries its own version string on every report and in
  * both eval layers. Bump on any wording change.
  */
-export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.8";
-export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.8";
+export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.9";
+export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.9";
 
 function promptVersionFor(input: AnalyzeLogInput) {
   return input.relatedParameterSnapshot
@@ -227,6 +227,8 @@ function buildLoopMissionMessage(input: AnalyzeLogInput, findingsText: string): 
   return sections.join("\n\n");
 }
 
+type BoundToolBackends = Pick<LogAnalysisToolContext, "searchDomainKnowledge" | "loadRelatedParameterContext" | "locateLogStatement" | "searchSource" | "readSourceRange" | "searchPastConclusions">;
+
 export type CreateAgentLoopAnalyzerOptions = {
   model: LogAnalysisChatModel;
   modelLabel: string;
@@ -244,9 +246,7 @@ export type CreateAgentLoopAnalyzerOptions = {
   telemetry?: LogAnalysisLlmTelemetry;
   now?: () => number;
   /** Binds the database-backed tool seams (domain knowledge, related parameter) for one run. */
-  bindToolBackends?: (
-    input: AnalyzeLogInput
-  ) => Pick<LogAnalysisToolContext, "searchDomainKnowledge" | "loadRelatedParameterContext" | "locateLogStatement" | "searchSource" | "readSourceRange">;
+  bindToolBackends?: (input: AnalyzeLogInput) => BoundToolBackends | Promise<BoundToolBackends>;
 };
 
 /**
@@ -264,7 +264,9 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
   const maxSteps = Math.max(1, options.maxSteps);
   const investigationBudget = options.tokenBudget - Math.floor(options.tokenBudget * FINAL_ANSWER_RESERVE_FRACTION);
 
-  async function degradeToFallback(input: AnalyzeLogInput, reason: LogAnalysisDegradedReason, trace: { hypotheses?: LogHypothesis[] }): Promise<AnalyzeLogOutput> {
+  async function degradeToFallback(
+    input: AnalyzeLogInput, reason: LogAnalysisDegradedReason, trace: { hypotheses?: LogHypothesis[] }, historicalRunIds: Set<string>
+  ): Promise<AnalyzeLogOutput> {
     options.telemetry?.recordDegraded?.({ reason, model: options.modelLabel });
     await emitLogTrace(input, { kind: "degradation", reason, ...trace });
     const output = await fallback.analyze(input);
@@ -272,6 +274,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       ...output,
       analysisSource: "rules-fallback",
       degradedReason: reason,
+      ...(historicalRunIds.size ? { historicalRunIds: [...historicalRunIds] } : {}),
       promptVersion: promptVersionFor(input),
       model: options.modelLabel
     };
@@ -280,6 +283,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
   return {
     async analyze(input) {
       input = withLogTrace(input);
+      const historicalRunIds = new Set<string>();
       const findings = input.files?.find((file) => file.prefilter)?.prefilter ?? runLogPrefilter(input.files?.find((file) => file.parsed)?.parsed?.entries ?? input.parsed.entries, input.signalRules);
       const toolContext: LogAnalysisToolContext = {
         decoding: input.decoding,
@@ -290,7 +294,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         signalRules: input.signalRules,
         parsed: input.parsed,
         prefilter: findings,
-        ...options.bindToolBackends?.(input)
+        ...await options.bindToolBackends?.(input)
       };
       const parsedLineNumbers = new Set(input.parsed.entries.map((entry) => entry.lineNumber));
       const analyzed: Array<{ path?: string; parsed?: AnalyzeLogInput["parsed"]; reader?: import("../fileReader").LogFileReader }> = input.files?.filter((file) => file.parsed) ?? [{ path: input.filePath, parsed: input.parsed }];
@@ -313,7 +317,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           ? hypotheses.map((item, index) => ({ ...item, id: String(index + 1), statement: "[redacted]" }))
           : hypotheses
       };
-      const degrade = (reason: LogAnalysisDegradedReason) => degradeToFallback(input, reason, traceHypotheses());
+      const degrade = (reason: LogAnalysisDegradedReason) => degradeToFallback(input, reason, traceHypotheses(), historicalRunIds);
       const remember = (tool: string, value: unknown, anchors: Map<string, LogHypothesisAnchor>) => {
         if (!value || typeof value !== "object") return;
         const result = value as Record<string, unknown>;
@@ -533,6 +537,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
             entryCount: input.stats?.entryCount ?? input.parsed.entries.length
           },
           analysisSource: "agent",
+          ...(historicalRunIds.size ? { historicalRunIds: [...historicalRunIds] } : {}),
           ...(degradedReason ? { degradedReason } : {}),
           promptVersion: promptVersionFor(input),
           model: options.modelLabel
@@ -655,6 +660,8 @@ ${JSON.stringify({ conclusion: report.conclusion, evidence: report.evidence,
             }
             const anchors = new Map<string, LogHypothesisAnchor>();
             remember(tool, outcome.result, anchors);
+            for (const runId of outcome.historicalRunIds ?? []) historicalRunIds.add(runId);
+            if (outcome.historicalRunIds?.length) input.onHistoricalRunsRetrieved?.(outcome.historicalRunIds);
             recentToolResults.push({
               index: messages.length,
               folded: foldToolResult(tool, args, outcome.result, truncated, anchors.values())

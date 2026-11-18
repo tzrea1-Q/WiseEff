@@ -194,7 +194,8 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     bindToolBackends: () => ({
       ...(scenario.sourceMatches ? { locateLogStatement: async () => scenario.sourceMatches! } : {}),
       ...(scenario.sourceSearch ? { searchSource: async () => scenario.sourceSearch! } : {}),
-      ...(scenario.sourceRange ? { readSourceRange: async () => scenario.sourceRange! } : {})
+      ...(scenario.sourceRange ? { readSourceRange: async () => scenario.sourceRange! } : {}),
+      ...(scenario.pastConclusions ? { searchPastConclusions: async () => scenario.pastConclusions! } : {})
     })
   });
 
