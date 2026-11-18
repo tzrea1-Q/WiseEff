@@ -301,6 +301,7 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
         expect(preview.lineCount).toBe(50_000); expect(preview.entryCount).toBeGreaterThan(400);
       }
       expect(run.results[0].draft).toMatchObject({ passed: true, score: 100 });
+      expect(run.results[0].draft.report.degradedReason).toBeUndefined();
       expect(run.results[0].draft.report.evidence.some((evidence) => evidence.lineNumbers.includes(601))).toBe(true);
     } finally { await h.close(); }
   }, 120_000);

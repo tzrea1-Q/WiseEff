@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-11-18T13:15:27.183Z
+- Generated: 2026-11-18T13:18:53.499Z
 - Single-shot prompt version: `2026-10-19.procedure.signals.source.1`
-- Loop prompt version: `2026-10-19.loop.procedure.signals.source.3`
-- Scenarios: 45 (45 passed)
+- Loop prompt version: `2026-10-19.loop.procedure.signals.source.4`
+- Scenarios: 47 (47 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -50,7 +50,9 @@
 | loop-persistent-illegal-calls-degrade-honestly | loop-tool-legality | loop | rules-fallback | invalid-model-output | 8 | PASS |
 | loop-step-limit-early-convergence | loop-convergence | loop | agent | step-budget-exhausted | 6 | PASS |
 | trace-redacts-prompts-procedure-and-provider-payloads | trace-privacy | loop | agent | - | 7 | PASS |
-| loop-token-budget-fallback | loop-convergence | loop | rules-fallback | token-budget-exhausted | 5 | PASS |
+| loop-folded-tool-result-keeps-early-evidence | loop-context | loop | agent | - | 7 | PASS |
+| loop-final-answer-uses-token-reserve | loop-convergence | loop | agent | token-budget-exhausted | 8 | PASS |
+| loop-token-budget-fallback | loop-convergence | loop | rules-fallback | token-budget-exhausted | 4 | PASS |
 | loop-honest-refusal-on-insufficient-evidence | loop-honesty | loop | agent | - | 5 | PASS |
 | loop-multi-step-grounding-enforced | loop-grounding | loop | agent | - | 4 | PASS |
 | loop-domain-model-override-applied | model-override | loop | agent | - | - | PASS |

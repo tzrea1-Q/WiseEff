@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-11-18T13:15:28.975Z",
-  "runId": "qe-20261118-131528",
+  "generatedAt": "2026-11-18T13:18:55.387Z",
+  "runId": "qe-20261118-131855",
   "kernel": "loop",
   "deterministic": true,
   "modelLabel": "deterministic",
-  "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+  "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
   "judgeLabel": "deterministic-rubric-stub",
   "selection": {
     "trials": 1,
@@ -19,8 +19,8 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 28,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 27,
       "confidence": 0.82,
       "conclusionSummary": "控制器通信出现超时或重试。 针对问题“Why did charge current fall even though USB-C remained attached?”，引用的日志提供了相关线索。",
       "evidence": {
@@ -62,7 +62,7 @@
       },
       "passed": false,
       "steps": 3,
-      "tokens": 4847,
+      "tokens": 5011,
       "earlyConverged": false,
       "tier": "realistic",
       "provenance": "authored",
@@ -79,8 +79,8 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 4,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 3,
       "confidence": 0.82,
       "conclusionSummary": "控制器通信出现超时或重试。",
       "evidence": {
@@ -123,7 +123,7 @@
       },
       "passed": false,
       "steps": 3,
-      "tokens": 4063,
+      "tokens": 4226,
       "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
@@ -137,8 +137,8 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 2,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 4,
       "confidence": 0.82,
       "conclusionSummary": "日志记录期间，设备离线或不可用。",
       "evidence": {
@@ -176,7 +176,7 @@
       },
       "passed": false,
       "steps": 3,
-      "tokens": 4080,
+      "tokens": 4244,
       "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
@@ -190,8 +190,8 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 2,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 3,
       "confidence": 0.82,
       "conclusionSummary": "充电表现符合过热保护降额特征，充电输出已降低。",
       "evidence": {
@@ -229,7 +229,7 @@
       },
       "passed": false,
       "steps": 3,
-      "tokens": 4179,
+      "tokens": 4341,
       "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
@@ -243,8 +243,8 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 2,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 1,
       "confidence": 0.82,
       "conclusionSummary": "充电表现符合过热保护降额特征，充电输出已降低。 针对问题“Why did charging slow down halfway through the session?”，引用的日志提供了相关线索。",
       "evidence": {
@@ -282,7 +282,7 @@
       },
       "passed": false,
       "steps": 3,
-      "tokens": 4283,
+      "tokens": 4448,
       "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
@@ -296,8 +296,8 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 3,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 2,
       "confidence": 0.82,
       "conclusionSummary": "控制器通信出现超时或重试。",
       "evidence": {
@@ -342,7 +342,7 @@
       },
       "passed": false,
       "steps": 3,
-      "tokens": 3941,
+      "tokens": 4105,
       "earlyConverged": false,
       "tier": "realistic",
       "provenance": "authored",
@@ -358,8 +358,8 @@
       "expectRefusal": true,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
-      "latencyMs": 4,
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+      "latencyMs": 3,
       "confidence": 0.45,
       "conclusionSummary": "未发现已知异常模式，当前日志未显示明显异常。 针对问题“Does the queue worker show signs that it stopped making progress?”，引用的日志提供了相关线索。",
       "evidence": null,
@@ -375,7 +375,7 @@
       "judge": null,
       "passed": true,
       "steps": 3,
-      "tokens": 3989,
+      "tokens": 4154,
       "earlyConverged": false,
       "tier": "realistic",
       "provenance": "authored",
@@ -392,7 +392,7 @@
       "expectRefusal": false,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
       "latencyMs": 1,
       "confidence": 0.82,
       "conclusionSummary": "控制器通信出现超时或重试。",
@@ -432,7 +432,7 @@
       },
       "passed": false,
       "steps": 3,
-      "tokens": 3995,
+      "tokens": 4157,
       "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
@@ -446,7 +446,7 @@
       "expectRefusal": true,
       "analysisSource": "agent",
       "model": "deterministic",
-      "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
+      "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
       "latencyMs": 1,
       "confidence": 0.45,
       "conclusionSummary": "未发现已知异常模式，当前日志未显示明显异常。 针对问题“Is anything failing on this node?”，引用的日志提供了相关线索。",
@@ -463,7 +463,7 @@
       "judge": null,
       "passed": true,
       "steps": 3,
-      "tokens": 3906,
+      "tokens": 4068,
       "earlyConverged": false,
       "tier": "synthetic",
       "provenance": "authored",
@@ -491,13 +491,13 @@
         "samples": 9
       },
       "tokens": {
-        "median": 4063,
-        "p95": 4847,
+        "median": 4226,
+        "p95": 5011,
         "samples": 9
       },
       "latencyMs": {
-        "median": 2,
-        "p95": 28,
+        "median": 3,
+        "p95": 27,
         "samples": 9
       },
       "degradedRate": 0,
@@ -524,13 +524,13 @@
         "samples": 3
       },
       "tokens": {
-        "median": 3989,
-        "p95": 4847,
+        "median": 4154,
+        "p95": 5011,
         "samples": 3
       },
       "latencyMs": {
-        "median": 4,
-        "p95": 28,
+        "median": 3,
+        "p95": 27,
         "samples": 3
       },
       "degradedRate": 0,
@@ -556,8 +556,8 @@
         "samples": 6
       },
       "tokens": {
-        "median": 4071.5,
-        "p95": 4283,
+        "median": 4235,
+        "p95": 4448,
         "samples": 6
       },
       "latencyMs": {
@@ -589,13 +589,13 @@
           "samples": 1
         },
         "tokens": {
-          "median": 3941,
-          "p95": 3941,
+          "median": 4105,
+          "p95": 4105,
           "samples": 1
         },
         "latencyMs": {
-          "median": 3,
-          "p95": 3,
+          "median": 2,
+          "p95": 2,
           "samples": 1
         },
         "degradedRate": 0,
@@ -621,13 +621,13 @@
           "samples": 1
         },
         "tokens": {
-          "median": 4847,
-          "p95": 4847,
+          "median": 5011,
+          "p95": 5011,
           "samples": 1
         },
         "latencyMs": {
-          "median": 28,
-          "p95": 28,
+          "median": 27,
+          "p95": 27,
           "samples": 1
         },
         "degradedRate": 0,
@@ -653,13 +653,13 @@
           "samples": 1
         },
         "tokens": {
-          "median": 3989,
-          "p95": 3989,
+          "median": 4154,
+          "p95": 4154,
           "samples": 1
         },
         "latencyMs": {
-          "median": 4,
-          "p95": 4,
+          "median": 3,
+          "p95": 3,
           "samples": 1
         },
         "degradedRate": 0,
@@ -685,13 +685,13 @@
           "samples": 1
         },
         "tokens": {
-          "median": 4847,
-          "p95": 4847,
+          "median": 5011,
+          "p95": 5011,
           "samples": 1
         },
         "latencyMs": {
-          "median": 28,
-          "p95": 28,
+          "median": 27,
+          "p95": 27,
           "samples": 1
         },
         "degradedRate": 0,
@@ -717,13 +717,13 @@
           "samples": 1
         },
         "tokens": {
-          "median": 3989,
-          "p95": 3989,
+          "median": 4154,
+          "p95": 4154,
           "samples": 1
         },
         "latencyMs": {
-          "median": 4,
-          "p95": 4,
+          "median": 3,
+          "p95": 3,
           "samples": 1
         },
         "degradedRate": 0,

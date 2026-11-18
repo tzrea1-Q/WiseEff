@@ -177,11 +177,10 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
   }
 
   const scriptedModel = createScriptedLogAnalysisModel(scenario.script);
-  const promptMessages: LogAnalysisChatMessage[] = [];
   const trace: LogAnalysisTraceStep[] = [];
   const returnedSourceLocations: NonNullable<LogEvalRunResult["returnedSourceLocations"]> = [];
   const analyzer = createAgentLoopLogAnalyzer({
-    model: capturePrompts(scriptedModel, promptMessages),
+    model: scriptedModel,
     modelLabel: EVAL_MODEL_LABEL,
     tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
     maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
@@ -210,6 +209,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
   });
 
   // Inspect what the model actually saw, after catalog caps, rather than trusting backend fixtures.
+  const promptMessages = scriptedModel.calls.flat();
   for (const message of promptMessages) {
     const match = /^Tool result for (locate_log_statement|search_source|read_source_range):\n(.*)$/s.exec(message.content);
     if (!match) continue;
@@ -227,6 +227,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     trace,
     parsedLineNumbers: parsed.entries.map((entry) => entry.lineNumber),
     promptMessages,
+    finalPromptMessages: scriptedModel.calls.at(-1),
     platformProtocol: scenario.procedure ? await capturePlatformProtocol(
       (model) => createAgentLoopLogAnalyzer({ model, modelLabel: EVAL_MODEL_LABEL,
         tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET, maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS }),

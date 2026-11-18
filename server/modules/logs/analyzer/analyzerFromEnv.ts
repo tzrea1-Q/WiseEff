@@ -156,8 +156,7 @@ export function createLogAnalyzerFromEnv(
       modelLabel,
       tokenBudget,
       maxSteps: stepBudget,
-      // Unset revision budgets retain the pre-skill global convergence behavior.
-      enforceTokenBudgetBeforeCall: hasTokenBudgetOverride,
+      estimateMissingTokenUsage: !hasTokenBudgetOverride,
       telemetry: options.telemetry,
       bindToolBackends: (input) =>
         db && input.organizationId

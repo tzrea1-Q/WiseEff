@@ -16,7 +16,9 @@ Source-tool scenarios legally call `search_source` with a path glob and literal 
 
 Source-search timeout coverage verifies that the agent can continue with grounded log evidence after a truncated source result. PostgreSQL integration checks candidate admission before scoring, common-query rejection, the database deadline and transaction timeout restoration.
 
-The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline pins `2026-10-19.loop.procedure.signals.source.3`; existing tolerances and its pending-real-cases status stay unchanged.
+Loop history scenarios confirm that the final model input contains summaries for older tool results and the original text of the latest two. Early log anchors still ground the final report after folding. The token budget is cumulative input plus output. After the investigation spends 80%, the kernel can use the remaining budget for one final answer with confidence capped at 0.5 and degradation reason `token-budget-exhausted`.
+
+The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline records loop prompt version `2026-10-19.loop.procedure.signals.source.4` and remains pending expert-annotated real cases.
 
 ## Layout
 

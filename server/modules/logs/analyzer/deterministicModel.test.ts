@@ -86,8 +86,12 @@ describe("deterministic loop source citations", () => {
     const locateLogStatement = vi.fn(async () => ({ items: match ? [sourceMatch] : [], truncated: false }));
     const input = { ...inputFor([{ path: "charging.log", content: chargingLog }]),
       sourceSnapshot: { id: "thermal-source", status: "ready" as const } };
+    const tools: Array<string | null> = [];
     const report = await createAgentLoopLogAnalyzer({ model: createDeterministicLogAnalysisLoopModel(), modelLabel: "deterministic",
-      tokenBudget: 100_000, maxSteps: 6, bindToolBackends: () => ({ locateLogStatement }) }).analyze(input);
+      tokenBudget: 100_000, maxSteps: 6, bindToolBackends: () => ({ locateLogStatement }) }).analyze({ ...input,
+      onTrace: (step) => { if (step.kind === "tool-call") tools.push(step.tool); }
+    });
+    expect(tools).toEqual(["get_prefilter_findings", "read_line_range", "locate_log_statement"]);
     expect(locateLogStatement).toHaveBeenCalledExactlyOnceWith(chargingLog.split("\n")[report.evidence[0].lineNumbers[0] - 1], 1);
     expect(report).toMatchObject({ analysisSource: "agent", confidence: 0.82 });
     expect(report.evidence[0].lineNumbers).toContain(3);
