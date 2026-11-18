@@ -398,6 +398,41 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(output.degradedReason).toBe("invalid-model-output");
   });
 
+  it("accepts repaired tool calls and finals without adding to the invalid streak", async () => {
+    const conclusion = 'Observed the literal value "limit,}" at C:\\logs.';
+    const { adapter, model } = analyzer([
+      { content: "Still thinking." },
+      { content: '{"action":"tool"' },
+      { content: 'Read the relevant lines:\n```json\n{"action":"tool","tool":"read_line_range","args":{"startLine":3,"endLine":4,},}\n```' },
+      { content: "Still thinking." },
+      { content: '{"action":"final"' },
+      { content: `Summary: ${JSON.stringify({ ...finalPayload, conclusion }).slice(0, -1)},} Done.` }
+    ], { maxSteps: 6, repairJsonOutput: true });
+    const trace: LogAnalysisTraceStep[] = [];
+
+    expect(await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
+      .toMatchObject({ analysisSource: "agent", conclusion, evidence: [{ lineNumbers: [3, 4] }] });
+    expect(model.calls).toHaveLength(6);
+    expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.reason))
+      .toEqual(["invalid-output", "invalid-output", null, "invalid-output", "invalid-output", null]);
+    expect(trace.some((step) => step.kind === "degradation")).toBe(false);
+  });
+
+  it("counts broken JSON, invalid repaired arguments, and repaired unseen evidence as violations", async () => {
+    const { adapter, model } = analyzer([
+      { content: '{"wrapper":{"action":"tool","tool":"read_line_range","args":{"startLine":3,"endLine":4}}' },
+      { content: 'Tool: {"action":"tool","tool":"read_line_range","args":{"startLine":"3","endLine":4,},}' },
+      { content: `Report: ${JSON.stringify(finalPayload).slice(0, -1)},}` }
+    ], { repairJsonOutput: true });
+    const trace: LogAnalysisTraceStep[] = [];
+
+    expect(await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
+      .toMatchObject({ analysisSource: "rules-fallback", degradedReason: "invalid-model-output" });
+    expect(model.calls).toHaveLength(3);
+    expect(trace.filter((step) => step.kind === "tool-call"))
+      .toEqual([expect.objectContaining({ tool: "read_line_range", reason: "tool-rejected" })]);
+  });
+
   it("counts an ungrounded final toward the third consecutive invalid output", async () => {
     const { model, adapter } = analyzer([
       { content: "Not JSON" },

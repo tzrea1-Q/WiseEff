@@ -14,8 +14,8 @@ import { appendSkillProcedure } from "./procedurePrompt";
 import { emitLogTrace, withLogTrace } from "../traceTypes";
 
 /** Versioned prompt: recorded on every report so eval baselines can gate prompt changes. */
-export const LOG_ANALYSIS_PROMPT_VERSION = "2026-10-19.procedure.signals.source.1";
-export const LOG_ANALYSIS_PARAMETER_PROMPT_VERSION = "2026-10-19.procedure.signals.source.related-parameter.1";
+export const LOG_ANALYSIS_PROMPT_VERSION = "2026-10-19.procedure.signals.source.2";
+export const LOG_ANALYSIS_PARAMETER_PROMPT_VERSION = "2026-10-19.procedure.signals.source.related-parameter.2";
 
 function promptVersionFor(input: AnalyzeLogInput) {
   return input.relatedParameterSnapshot ? LOG_ANALYSIS_PARAMETER_PROMPT_VERSION : LOG_ANALYSIS_PROMPT_VERSION;
@@ -67,6 +67,7 @@ export type CreateLlmLogAnalyzerOptions = {
   model: LogAnalysisChatModel;
   modelLabel: string;
   tokenBudget: number;
+  repairJsonOutput?: boolean;
   fallback?: LogAnalysisAdapter;
   telemetry?: LogAnalysisLlmTelemetry;
   now?: () => number;
@@ -257,15 +258,48 @@ export function extractJsonPayload(content: string): string {
   return fenced ? fenced[1] : trimmed;
 }
 
-function parseStrictLlmOutput(content: string): LlmLogAnalysisOutput | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(extractJsonPayload(content));
-  } catch {
-    return undefined;
+function repairFirstJsonObject(payload: string): string | undefined {
+  let depth = 0;
+  let start = 0;
+  let repaired = "";
+  // Match complete strings as single tokens so their braces, escapes and commas stay intact.
+  for (const { 0: token, index } of payload.matchAll(/"(?:[^"\\\r\n]|\\.)*"|["{}]|,(?=[ \t\r\n]*[}\]])/g)) {
+    if (token === "{") {
+      if (depth === 0) start = index;
+      depth += 1;
+    }
+    if (depth === 0) continue;
+    if (token === '"') return undefined; // Unterminated string.
+    if (token === ",") {
+      let previous = index - 1;
+      while (/[ \t\r\n]/.test(payload[previous])) previous -= 1;
+      // Removing a comma after an opener, colon, or another comma could hide a missing value.
+      if (!"{[,:".includes(payload[previous])) {
+        repaired += payload.slice(start, index);
+        start = index + 1;
+      }
+    }
+    if (token === "}") {
+      depth -= 1;
+      if (depth === 0) return repaired + payload.slice(start, index + 1);
+    }
   }
-  const result = llmOutputSchema.safeParse(parsed);
-  return result.success ? result.data : undefined;
+}
+
+export function parseLogAnalysisModelJson(content: string, repairJsonOutput?: boolean): unknown {
+  const payload = extractJsonPayload(content);
+  try {
+    return JSON.parse(payload) as unknown;
+  } catch {
+    if (!repairJsonOutput || payload.startsWith("[")) return undefined;
+    const repaired = repairFirstJsonObject(payload);
+    if (repaired === undefined) return undefined;
+    try {
+      return JSON.parse(repaired) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
 }
 
 /**
@@ -375,7 +409,8 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
       }
 
       const latencyMs = Math.max(0, now() - startedAtMs);
-      const parsedOutput = parseStrictLlmOutput(response.content);
+      const parsed = llmOutputSchema.safeParse(parseLogAnalysisModelJson(response.content, options.repairJsonOutput));
+      const parsedOutput = parsed.success ? parsed.data : undefined;
       const parsedLineNumbers = new Set(input.parsed.entries.map((entry) => entry.lineNumber));
       const groundedEvidence = parsedOutput ? groundLlmEvidence(parsedOutput.evidence, parsedLineNumbers, seenFiles, analyzed?.length === 1 ? analyzed[0].path : input.filePath) : [];
       const usable = parsedOutput !== undefined && groundedEvidence.length > 0;

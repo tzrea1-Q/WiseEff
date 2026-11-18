@@ -258,6 +258,48 @@ describe("createLlmLogAnalyzer", () => {
 
     expect(output.analysisSource).toBe("agent");
   });
+
+  it("repairs wrapped JSON with trailing commas only when enabled and preserves string values", async () => {
+    const conclusion = 'Controller reported {limit,} and "temp,]" in C:\\logs.';
+    const payload = JSON.stringify({ ...validPayload, conclusion, suggestedActions: ["Inspect cooling,]"] })
+      .replace('["Inspect cooling,]"]', '["Inspect cooling,]", ]').slice(0, -1);
+    const model = {
+      async invoke() {
+        return { content: 'Report follows.\n```json\n' + payload + ', }\n```\nEnd of report. {}' };
+      }
+    };
+    const options = { model, modelLabel: "test-model", tokenBudget: 8000 };
+    const input = { parsed: parseFixture() };
+
+    expect(await createLlmLogAnalyzer(options).analyze(input))
+      .toMatchObject({ analysisSource: "rules-fallback", degradedReason: "invalid-model-output" });
+    const output = await createLlmLogAnalyzer({ ...options, repairJsonOutput: true }).analyze(input);
+    expect(output).toMatchObject({
+      analysisSource: "agent", conclusion, confidence: 0.9, suggestedActions: ["Inspect cooling,]"],
+      evidence: [{ lineNumbers: [3, 4] }]
+    });
+    expect(output.degradedReason).toBeUndefined();
+  });
+
+  it.each([
+    ["truncated object", JSON.stringify(validPayload).slice(0, -1)],
+    ["repeated comma", `Report: ${JSON.stringify(validPayload).slice(0, -1)},,}`],
+    ["array in place of report", JSON.stringify([validPayload])],
+    ["first object with the wrong schema", `Report: {"confidence":0.9,} ${JSON.stringify(validPayload)}`],
+    ["unseen evidence", `Report: ${JSON.stringify({
+      ...validPayload, evidence: [{ ...validPayload.evidence[0], lineNumbers: [999] }]
+    }).slice(0, -1)},}`]
+  ])("rejects %s with repair enabled", async (_label, content) => {
+    const analyzer = createLlmLogAnalyzer({
+      model: { async invoke() { return { content }; } },
+      modelLabel: "test-model",
+      tokenBudget: 8000,
+      repairJsonOutput: true
+    });
+
+    expect(await analyzer.analyze({ parsed: parseFixture() }))
+      .toMatchObject({ analysisSource: "rules-fallback", degradedReason: "invalid-model-output" });
+  });
 });
 
 describe("buildBudgetedExcerpt", () => {

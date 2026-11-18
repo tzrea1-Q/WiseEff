@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-11-18T13:18:53.499Z",
-  "promptVersion": "2026-10-19.procedure.signals.source.1",
-  "loopPromptVersion": "2026-10-19.loop.procedure.signals.source.4",
-  "total": 51,
-  "passed": 51,
+  "generatedAt": "2026-11-18T13:32:52.231Z",
+  "promptVersion": "2026-10-19.procedure.signals.source.2",
+  "loopPromptVersion": "2026-10-19.loop.procedure.signals.source.5",
+  "total": 54,
+  "passed": 54,
   "failed": 0,
   "scenarios": [
     {
@@ -35,7 +35,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.procedure.signals.source.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -89,7 +89,7 @@
       "runResult": {
         "analysisSource": "rules-fallback",
         "degradedReason": "invalid-model-output",
-        "promptVersion": "2026-10-19.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.procedure.signals.source.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -143,14 +143,14 @@
         {
           "expectation": {
             "type": "expectsPromptVersionRecorded",
-            "promptVersion": "2026-10-19.procedure.signals.source.1"
+            "promptVersion": "2026-10-19.procedure.signals.source.2"
           },
           "pass": true
         }
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.procedure.signals.source.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -205,7 +205,7 @@
       "runResult": {
         "analysisSource": "rules-fallback",
         "degradedReason": "invalid-model-output",
-        "promptVersion": "2026-10-19.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.procedure.signals.source.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -262,7 +262,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.procedure.signals.source.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -305,7 +305,7 @@
         {
           "expectation": {
             "type": "expectsPromptVersionRecorded",
-            "promptVersion": "2026-10-19.procedure.signals.source.1"
+            "promptVersion": "2026-10-19.procedure.signals.source.2"
           },
           "pass": true
         }
@@ -313,7 +313,7 @@
       "runResult": {
         "analysisSource": "rules-fallback",
         "degradedReason": "provider-unavailable",
-        "promptVersion": "2026-10-19.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.procedure.signals.source.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -336,6 +336,58 @@
           "model-turn",
           "degradation",
           "rule-fallback"
+        ]
+      }
+    },
+    {
+      "name": "single-shot-repaired-json-grounded",
+      "category": "json-repair",
+      "kernel": "single-shot",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "requiresSubstringsInConclusion",
+            "substrings": [
+              "Thermal foldback reduced the charge current after the pack overheated."
+            ]
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.procedure.signals.source.2",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 1,
+        "traceKinds": [
+          "model-turn"
         ]
       }
     },
@@ -369,7 +421,7 @@
       "runResult": {
         "analysisSource": "rules-fallback",
         "degradedReason": "invalid-model-output",
-        "promptVersion": "2026-10-19.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.procedure.signals.source.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -436,14 +488,14 @@
         {
           "expectation": {
             "type": "expectsPromptVersionRecorded",
-            "promptVersion": "2026-10-19.procedure.signals.source.1"
+            "promptVersion": "2026-10-19.procedure.signals.source.2"
           },
           "pass": true
         }
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.procedure.signals.source.1",
+        "promptVersion": "2026-10-19.procedure.signals.source.2",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -455,6 +507,133 @@
         "traceStepCount": 1,
         "traceKinds": [
           "model-turn"
+        ]
+      }
+    },
+    {
+      "name": "loop-repaired-tool-and-final-grounded",
+      "category": "json-repair",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsTrace",
+            "kinds": [
+              "model-turn",
+              "tool-call"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 2
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "requiresSubstringsInConclusion",
+            "substrings": [
+              "Thermal foldback reduced the charge current after the pack overheated."
+            ]
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated.",
+        "traceStepCount": 3,
+        "traceKinds": [
+          "model-turn",
+          "tool-call"
+        ]
+      }
+    },
+    {
+      "name": "loop-unrepairable-json-degrades",
+      "category": "json-repair",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 3
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "rules-fallback"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsDegradedReason",
+            "reason": "invalid-model-output"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "rules-fallback",
+        "degradedReason": "invalid-model-output",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ],
+          [
+            4
+          ],
+          [
+            4
+          ],
+          [
+            4
+          ]
+        ],
+        "conclusion": "充电表现符合过热保护降额特征。",
+        "traceStepCount": 5,
+        "traceKinds": [
+          "model-turn",
+          "degradation",
+          "rule-fallback"
         ]
       }
     },
@@ -519,7 +698,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -583,7 +762,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           []
@@ -651,7 +830,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           []
@@ -718,7 +897,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           []
@@ -784,7 +963,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           []
@@ -863,7 +1042,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           []
@@ -951,7 +1130,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           []
@@ -1023,7 +1202,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1091,7 +1270,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1159,7 +1338,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1227,7 +1406,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1295,7 +1474,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1359,7 +1538,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           []
@@ -1430,7 +1609,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1497,7 +1676,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1564,7 +1743,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1631,7 +1810,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1691,7 +1870,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1750,7 +1929,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1809,7 +1988,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1878,7 +2057,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -1928,7 +2107,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2004,7 +2183,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2080,7 +2259,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2156,7 +2335,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2224,7 +2403,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2285,14 +2464,14 @@
         {
           "expectation": {
             "type": "expectsPromptVersionRecorded",
-            "promptVersion": "2026-10-19.loop.procedure.signals.source.4"
+            "promptVersion": "2026-10-19.loop.procedure.signals.source.5"
           },
           "pass": true
         }
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2346,7 +2525,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2393,7 +2572,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2458,7 +2637,7 @@
       "runResult": {
         "analysisSource": "rules-fallback",
         "degradedReason": "invalid-model-output",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2552,7 +2731,7 @@
       "runResult": {
         "analysisSource": "agent",
         "degradedReason": "step-budget-exhausted",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2624,7 +2803,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2705,7 +2884,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2806,7 +2985,7 @@
       "runResult": {
         "analysisSource": "agent",
         "degradedReason": "token-budget-exhausted",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2867,7 +3046,7 @@
       "runResult": {
         "analysisSource": "rules-fallback",
         "degradedReason": "token-budget-exhausted",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2938,7 +3117,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -2995,7 +3174,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "eval-fake",
         "evidenceLineNumbers": [
           [
@@ -3027,7 +3206,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "domain-override-model-x",
         "evidenceLineNumbers": [
           [
@@ -3053,7 +3232,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "promptVersion": "2026-10-19.loop.procedure.signals.source.4",
+        "promptVersion": "2026-10-19.loop.procedure.signals.source.5",
         "model": "deterministic",
         "evidenceLineNumbers": [
           [

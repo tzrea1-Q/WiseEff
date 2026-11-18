@@ -9,7 +9,7 @@ import {
 } from "../analyzer";
 import { runLogPrefilter } from "../prefilter";
 import {
-  extractJsonPayload,
+  parseLogAnalysisModelJson,
   formatPrefilterFindings,
   groundLlmEvidence,
   sourceLocationKey,
@@ -29,8 +29,8 @@ import { appendSkillProcedure } from "./procedurePrompt";
  * the P1 single shot, so it carries its own version string on every report and in
  * both eval layers. Bump on any wording change.
  */
-export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.4";
-export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.4";
+export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.5";
+export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.5";
 
 function promptVersionFor(input: AnalyzeLogInput) {
   return input.relatedParameterSnapshot
@@ -84,17 +84,6 @@ const finalStepSchema = llmOutputSchema.extend({
 const loopStepSchema = z.discriminatedUnion("action", [toolCallStepSchema, finalStepSchema]);
 
 type LoopStep = z.infer<typeof loopStepSchema>;
-
-function parseLoopStep(content: string): LoopStep | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(extractJsonPayload(content));
-  } catch {
-    return undefined;
-  }
-  const result = loopStepSchema.safeParse(parsed);
-  return result.success ? result.data : undefined;
-}
 
 function buildLoopSystemPrompt(maxSteps: number, hasRelatedParameter: boolean, context: LogAnalysisToolContext): string {
   const toolLines = availableLogAnalysisTools(context).map((name) => `- ${name}: ${logAnalysisToolCatalog[name].description}`);
@@ -155,6 +144,7 @@ export type CreateAgentLoopAnalyzerOptions = {
   model: LogAnalysisChatModel;
   modelLabel: string;
   tokenBudget: number;
+  repairJsonOutput?: boolean;
   /** Retains estimated usage for runs that inherit the platform token budget. */
   estimateMissingTokenUsage?: boolean;
   maxSteps: number;
@@ -314,7 +304,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       let usedTokens = 0;
       let invalidStreak = 0;
 
-      const invokeModel = async (): Promise<string> => {
+      const invokeModel = async (): Promise<{ content: string; parsedStep: LoopStep | undefined }> => {
         const startedAtMs = now();
         let response: Awaited<ReturnType<LogAnalysisChatModel["invoke"]>>;
         try {
@@ -342,9 +332,10 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           ? Math.ceil(messages.reduce((total, message) => total + message.content.length, 0) / CHARS_PER_TOKEN) : undefined);
         const outputTokens = response.usage?.outputTokens ?? (options.estimateMissingTokenUsage ? Math.ceil(response.content.length / CHARS_PER_TOKEN) : undefined);
         usedTokens += (inputTokens ?? 0) + (outputTokens ?? 0);
-        const parsedOutput = parseLoopStep(response.content);
-        const validOutput = parsedOutput !== undefined && (parsedOutput.action === "tool"
-          || groundLlmEvidence(parsedOutput.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources).length > 0);
+        const parsed = loopStepSchema.safeParse(parseLogAnalysisModelJson(response.content, options.repairJsonOutput));
+        const parsedStep = parsed.success ? parsed.data : undefined;
+        const validOutput = parsedStep !== undefined && (parsedStep.action === "tool"
+          || groundLlmEvidence(parsedStep.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources).length > 0);
         await emitLogTrace(input, { kind: "model-turn", resultBytes: Buffer.byteLength(response.content),
           outcome: validOutput ? "ok" : "error", reason: validOutput ? null : "invalid-output",
           ...(response.usage?.inputTokens !== undefined ? { inputTokens: response.usage.inputTokens } : {}),
@@ -356,7 +347,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           inputTokens,
           outputTokens
         });
-        return response.content;
+        return { content: response.content, parsedStep };
       };
 
       const buildSuccessOutput = (
@@ -384,8 +375,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       for (let step = 1; step <= maxSteps && usedTokens < investigationBudget; step += 1) {
         await input.onProgress?.({ step, maxSteps });
 
-        const content = await invokeModel();
-        const parsedStep = parseLoopStep(content);
+        const { content, parsedStep } = await invokeModel();
 
         if (!parsedStep) {
           invalidStreak += 1;
@@ -469,7 +459,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           "Budget exhausted: you must now emit your final report JSON based only on what you have already seen. Use low confidence if the evidence is thin. Do not call any more tools."
       });
 
-      const convergenceStep = parseLoopStep(await invokeModel());
+      const { parsedStep: convergenceStep } = await invokeModel();
       if (convergenceStep && convergenceStep.action === "final") {
         const grounded = groundLlmEvidence(convergenceStep.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources);
         if (grounded.length > 0) {

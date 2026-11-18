@@ -19,6 +19,7 @@ export type LogEvalScenario = {
   procedure?: string;
   logDomain?: { name: string; description?: string };
   model: LogAnalysisChatModel;
+  repairJsonOutput?: boolean;
   /** Claimed-job attempt count handed to the degradation chain; maxAttempts simulates the final attempt. */
   attemptCount?: number;
   expectations: LogEvalExpectation[];
@@ -37,6 +38,7 @@ export type LogLoopEvalScenario = {
   procedure?: string;
   logDomain?: { name: string; description?: string };
   script: ScriptedModelResponse[];
+  repairJsonOutput?: boolean;
   maxSteps?: number;
   tokenBudget?: number;
   sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
@@ -182,10 +184,29 @@ export const LOG_EVAL_SCENARIOS: LogEvalScenario[] = [
     ]
   },
   {
+    name: "single-shot-repaired-json-grounded",
+    category: "json-repair",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    repairJsonOutput: true,
+    model: {
+      async invoke() {
+        return { content: `Report:\n\`\`\`json\n${JSON.stringify(groundedPayload).slice(0, -1)},}\n\`\`\`\nDone.` };
+      }
+    },
+    expectations: [
+      { type: "expectsAnalysisSource", source: "agent" },
+      { type: "expectsNoDegradation" },
+      { type: "expectsGroundedEvidence" },
+      { type: "requiresSubstringsInConclusion", substrings: [groundedPayload.conclusion] }
+    ]
+  },
+  {
     name: "single-shot-invalid-output-marked",
     category: "degradation",
     fileName: "charging.log",
     logContent: chargingLog,
+    repairJsonOutput: true,
     model: {
       async invoke() {
         return { content: "I could not produce a JSON report." };
@@ -271,6 +292,42 @@ function sourceFinal(line: number, path = sourceSearchHit.path) {
 }
 
 export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
+  {
+    name: "loop-repaired-tool-and-final-grounded",
+    category: "json-repair",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    repairJsonOutput: true,
+    script: [
+      { content: 'Inspect:\n```json\n{"action":"tool","tool":"read_line_range","args":{"startLine":3,"endLine":4,},}\n```' },
+      { content: `Report: ${JSON.stringify(loopFinalPayload).slice(0, -1)},} Done.` }
+    ],
+    expectations: [
+      { type: "expectsTrace", kinds: ["model-turn", "tool-call"] },
+      { type: "expectsModelCallCount", count: 2 },
+      { type: "expectsAnalysisSource", source: "agent" },
+      { type: "expectsNoDegradation" },
+      { type: "expectsGroundedEvidence" },
+      { type: "requiresSubstringsInConclusion", substrings: [loopFinalPayload.conclusion] }
+    ]
+  },
+  {
+    name: "loop-unrepairable-json-degrades",
+    category: "json-repair",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    repairJsonOutput: true,
+    script: [
+      { content: '{"action":"tool","tool":"read_line_range","args":{"startLine":3,"endLine":4}' },
+      { content: 'Call: {"action":"tool","tool":,"args":{}}' },
+      { content: `Report: ${JSON.stringify(loopFinalPayload).slice(0, -1)},,}` }
+    ],
+    expectations: [
+      { type: "expectsModelCallCount", count: 3 },
+      { type: "expectsAnalysisSource", source: "rules-fallback" },
+      { type: "expectsDegradedReason", reason: "invalid-model-output" }
+    ]
+  },
   {
     name: "loop-source-search-timeout-preserves-log-analysis",
     category: "source-tools",
