@@ -442,7 +442,7 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     }
   });
 
-  it("delivers grounded alternatives from upload through the record API and signed result webhook", async () => {
+  it("delivers grounded alternatives and verification from upload through the record API and signed result webhook", async () => {
     await configureWebhook();
     const objectStore = createMemoryObjectStore();
     const router = createRouter();
@@ -461,23 +461,26 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
         notes: { hypotheses: [{ id: "adapter", statement: alternative.statement, status: "refuted", anchors: alternative.anchors }] },
         alternativeHypotheses: [alternative] } }
     ]);
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: [{ id: 0, status: "supported" }, { id: 1, status: "supported" }] } }]);
+    const verification = { status: "passed", checkedClaims: 2, unsupportedClaims: 0, model: "scripted-verifier" };
     const analyzer = createAgentLoopLogAnalyzer({ model, hypothesisLedger: true, protocol: "tools",
+      verifier: { model: verifier, modelLabel: verification.model },
       modelLabel: "scripted", tokenBudget: 8000, maxSteps: 3 });
     expect(await processLogAnalysisJobById({ db, objectStore, jobId: upload.body.job.id, analyzer })).toEqual({ status: "processed" });
 
     const record = await requestJson(createHttpServer(router), `/api/v1/logs/${upload.body.log.id}`);
     expect(record.status).toBe(200);
-    expect(logRecordResponseSchema.parse(record.body).item).toMatchObject({ alternativeHypotheses: [alternative] });
+    expect(logRecordResponseSchema.parse(record.body).item).toMatchObject({ alternativeHypotheses: [alternative], verification });
     const trace = await requestJson(createHttpServer(router), `/api/v1/logs/${upload.body.log.id}/trace`);
     expect(trace.status).toBe(200);
-    expect(logTraceResponseSchema.parse(trace.body).steps.at(-1)?.hypotheses).toEqual([
+    expect(logTraceResponseSchema.parse(trace.body).steps.filter((step) => step.protocol).at(-1)?.hypotheses).toEqual([
       { id: "adapter", statement: alternative.statement, status: "refuted", anchors: alternative.anchors }
     ]);
     expect(await makeDeliverer().processNext()).toMatchObject({ status: "delivered", attempts: 1 });
     expect(received).toHaveLength(1);
     expect(verifyWebhookSignature({ secret: SECRET, timestampSeconds: Number(received[0].timestamp),
       rawBody: received[0].body, signatureHeader: received[0].signature!, nowSeconds: Number(received[0].timestamp) })).toBe(true);
-    expect(JSON.parse(received[0].body)).toMatchObject({ event: "log-analysis.completed", alternativeHypotheses: [alternative] });
+    expect(JSON.parse(received[0].body)).toMatchObject({ event: "log-analysis.completed", alternativeHypotheses: [alternative], verification });
   });
 
   it("records retrying then failed rows when the receiver keeps erroring", async () => {

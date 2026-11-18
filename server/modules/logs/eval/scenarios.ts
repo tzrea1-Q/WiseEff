@@ -40,6 +40,7 @@ export type LogLoopEvalScenario = {
   script: ScriptedModelResponse[];
   protocol?: "tools" | "json";
   hypothesisLedger?: boolean;
+  verificationScript?: ScriptedModelResponse[];
   repairJsonOutput?: boolean;
   maxSteps?: number;
   singleShotFallback?: boolean;
@@ -855,6 +856,27 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
         excludes: ['"line":9999', ...(!hypothesisLedger ? ["Hypothesis ledger (untrusted prior notes):", refutedHypothesis.statement] : [])] }
     ]
   }))),
+  {
+    name: "loop-verifier-rejects-conclusion-contradicting-cited-line",
+    category: "verification-adversarial",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    script: [
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 2, endLine: 2 } } },
+      { content: { ...loopFinalPayload, evidence: [{ ...loopFinalPayload.evidence[0], lineNumbers: [2] }] } }
+    ],
+    verificationScript: [{ content: { claims: [
+      { id: 0, status: "contradicted", counterAnchors: [{ file: "charging.log", line: 9999 }] },
+      { id: 1, status: "contradicted" }
+    ] } }],
+    expectations: [
+      { type: "expectsAnalysisSource", source: "agent" },
+      { type: "expectsNoDegradation" },
+      { type: "expectsVerification", verification: { status: "failed", checkedClaims: 2, unsupportedClaims: 2, model: "scripted-verifier" } },
+      { type: "expectsConfidenceAtMost", value: 0.5 },
+      { type: "expectsEvidenceNotCitingLines", lineNumbers: [2, 9999] }
+    ]
+  },
   {
     name: "loop-final-answer-uses-token-reserve",
     category: "loop-convergence",

@@ -150,6 +150,8 @@ In user sessions, record and run responses may also carry `historicalRunIds`. Th
 
 When the hypothesis ledger is enabled, a completed report may include `alternativeHypotheses`, an array of excluded causes with `statement`, `reason`, and `anchors`. Each anchor identifies a previously seen log line (`{ file, line }`) or source line (`{ snapshotId, path, line }`).
 
+When conclusion verification is enabled, a grounded loop report includes `verification: { status, checkedClaims, unsupportedClaims, model }`. `passed` means the cited lines support the conclusion and inferences. `revised` means the kernel accepted a checked revision or removed unsupported evidence and capped confidence at 0.5. `failed` marks a contradiction and caps confidence at 0.5. Review those conclusions manually. `skipped` means the check was unavailable or ran out of budget, and the report retains its original confidence and evidence. Counts cover the original conclusion and inferences, with contradictions included in `unsupportedClaims`. A skipped check reports zero counts.
+
 | `degradedReason` | Meaning |
 | --- | --- |
 | `provider-unavailable` | The model service was unavailable through the final job attempt, so the rules engine generated the report. |
@@ -230,6 +232,7 @@ Before the first push, an administrator configures a skill's webhook in its work
   "alternativeHypotheses": [
     { "statement": "适配器重新协商导致限流", "reason": "热保护介入时，充电协议保持稳定。", "anchors": [{ "file": "charging-foldback.log", "line": 3 }] }
   ],
+  "verification": { "status": "passed", "checkedClaims": 2, "unsupportedClaims": 0, "model": "gpt-4o-mini" },
   "occurredAt": "2026-08-13T02:00:00.000Z",
   "productPath": "/logs?id=report-run-...&organizationId=org-..."
 }
@@ -238,6 +241,8 @@ Before the first push, an administrator configures a skill's webhook in its work
 `event` is `log-analysis.completed`, `log-analysis.failed`, or `log-analysis.test` (admin test button).
 
 The completed result includes `alternativeHypotheses` when the report has grounded exclusions and the run has no related-parameter snapshot. The entries contain short summaries and anchor references.
+
+The completed result includes `verification` when present on the record. It carries only the status, counts, and verifier model name.
 
 Result events add `skill: { id, key, revisionId, revisionNumber }` and `degraded: boolean` while retaining all previous fields. Revision fields are nullable for legacy unpinned runs. `degraded` is true for `single-shot-fallback`, `rules-fallback`, or an available degradation reason. When present, `degradedReason` uses the same values as the record API. The key is captured when the terminal event is enqueued, and retries preserve that snapshot. The synchronous test event retains its existing shape.
 

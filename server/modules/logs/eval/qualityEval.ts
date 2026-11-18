@@ -647,7 +647,7 @@ async function runQualityTrial(
     passed: result.expectRefusal ? result.refusal.appropriate === true
       : (result.judge?.rootCauseScore ?? 0) >= QUALITY_CASE_PASS_THRESHOLD
         && (result.evidence?.recall ?? 0) >= QUALITY_CASE_PASS_THRESHOLD,
-    steps: turns.filter((step) => step.reason !== "protocol-unsupported").length,
+    steps: turns.filter((step) => step.reason !== "protocol-unsupported" && !step.reason?.startsWith("verification")).length,
     tokens,
     earlyConverged: trace.some((step) => step.kind === "early-convergence")
   };

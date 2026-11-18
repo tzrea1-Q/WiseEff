@@ -168,6 +168,7 @@ export type LogRecord = {
   confidence: number;
   conclusion: string;
   alternativeHypotheses?: import("zod").z.infer<typeof import("@wiseeff/dto-schemas").logRecordDtoSchema>["alternativeHypotheses"];
+  verification?: import("zod").z.infer<typeof import("@wiseeff/dto-schemas").logRecordDtoSchema>["verification"];
   impact: string;
   evidence: LogEvidence[];
   suggestedActions: string[];

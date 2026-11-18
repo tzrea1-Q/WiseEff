@@ -638,6 +638,7 @@ async function processClaimedLogAnalysisJob(
         confidence: analysis.confidence,
         conclusion: analysis.conclusion,
         alternativeHypotheses: analysis.alternativeHypotheses,
+        verification: analysis.verification,
         impact: analysis.impact,
         severity: analysis.severity,
         suggestedActions: analysis.suggestedActions,

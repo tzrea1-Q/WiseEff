@@ -5,7 +5,8 @@ import type { Database } from "../../../shared/database/client";
 import type { LogAnalysisAdapter } from "../analyzer";
 import type { LogAnalysisProtocol } from "../logAnalysisProtocol";
 import { createAgentLoopLogAnalyzer } from "./agentLoop";
-import { createDeterministicLogAnalysisLoopModel, createDeterministicLogAnalysisModel } from "./deterministicModel";
+import { createDeterministicLogAnalysisLoopModel, createDeterministicLogAnalysisModel, deterministicConclusionVerifier } from "./deterministicModel";
+import { VERIFIER_MAX_OUTPUT_TOKENS } from "./conclusionVerifier";
 import {
   createLlmLogAnalyzer,
   LogAnalysisProviderError,
@@ -32,6 +33,8 @@ export type LogAnalyzerEnv = {
   LOG_ANALYSIS_PAST_CONCLUSIONS?: boolean;
   LOG_ANALYSIS_PROTOCOL?: LogAnalysisProtocol;
   LOG_ANALYSIS_HYPOTHESIS_LEDGER?: boolean;
+  LOG_ANALYSIS_VERIFY_CONCLUSION?: boolean;
+  LOG_ANALYSIS_VERIFIER_MODEL?: string;
 };
 
 function readNonBlank(value: string | undefined) {
@@ -58,14 +61,16 @@ function contentToText(content: unknown): string {
   return String(content ?? "");
 }
 
-function createChatOpenAiModel(env: LogAnalyzerEnv, modelLabel: string, tokenBudget: number, singleShotRetry: boolean): LogAnalysisChatModel {
+function createChatOpenAiModel(
+  env: LogAnalyzerEnv, modelLabel: string, tokenBudget: number, limits?: { maxTokens?: number; maxRetries?: number }
+): LogAnalysisChatModel {
   const settings = {
     model: modelLabel,
     apiKey: env.LOG_ANALYSIS_API_KEY,
     temperature: 0,
     timeout: env.LOG_ANALYSIS_API_TIMEOUT_MS,
-    ...(singleShotRetry ? { maxRetries: 0 } : {}),
-    maxTokens: Math.min(tokenBudget, 2048, Math.max(256, Math.floor(tokenBudget / 4))),
+    maxRetries: limits?.maxRetries,
+    maxTokens: limits?.maxTokens ?? Math.min(tokenBudget, 2048, Math.max(256, Math.floor(tokenBudget / 4))),
     configuration: {
       baseURL: env.LOG_ANALYSIS_API_BASE_URL
     }
@@ -152,6 +157,20 @@ export function createLogAnalyzerFromEnv(
   const useLoopKernel = env.LOG_ANALYSIS_KERNEL === "loop";
   const providerConfigured = Boolean(readNonBlank(env.LOG_ANALYSIS_API_BASE_URL) && readNonBlank(env.LOG_ANALYSIS_API_KEY));
   const modelsByLabel = new Map<string, LogAnalysisChatModel>();
+  const verifiersByLabel = new Map<string, LogAnalysisChatModel>();
+
+  function resolveVerifier(mainModelLabel: string) {
+    if (!env.LOG_ANALYSIS_VERIFY_CONCLUSION) return undefined;
+    const modelLabel = readNonBlank(env.LOG_ANALYSIS_VERIFIER_MODEL) ?? mainModelLabel;
+    let model = verifiersByLabel.get(modelLabel);
+    if (!model) {
+      model = env.LOG_ANALYSIS_DETERMINISTIC ? deterministicConclusionVerifier
+        : providerConfigured ? createChatOpenAiModel(env, modelLabel, env.LOG_ANALYSIS_TOKEN_BUDGET, { maxTokens: VERIFIER_MAX_OUTPUT_TOKENS })
+          : createUnconfiguredModel();
+      verifiersByLabel.set(modelLabel, model);
+    }
+    return { model, modelLabel };
+  }
 
   function resolveModel(modelLabel: string, tokenBudget: number, singleShotRetry = false): LogAnalysisChatModel {
     if (options.model) return options.model;
@@ -165,7 +184,7 @@ export function createLogAnalyzerFromEnv(
         ? createDeterministicLogAnalysisLoopModel(env.LOG_ANALYSIS_HYPOTHESIS_LEDGER)
         : createDeterministicLogAnalysisModel()
       : providerConfigured
-        ? createChatOpenAiModel(env, modelLabel, tokenBudget, singleShotRetry)
+        ? createChatOpenAiModel(env, modelLabel, tokenBudget, singleShotRetry ? { maxRetries: 0 } : undefined)
         : createUnconfiguredModel();
     modelsByLabel.set(cacheKey, model);
     return model;
@@ -190,6 +209,7 @@ export function createLogAnalyzerFromEnv(
       maxSteps: stepBudget,
       protocol,
       hypothesisLedger: env.LOG_ANALYSIS_HYPOTHESIS_LEDGER,
+      verifier: resolveVerifier(modelLabel),
       endpoint: providerConfigured && !env.LOG_ANALYSIS_DETERMINISTIC ? env.LOG_ANALYSIS_API_BASE_URL : undefined,
       repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
       estimateMissingTokenUsage: !hasTokenBudgetOverride,

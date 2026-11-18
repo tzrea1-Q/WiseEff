@@ -47,7 +47,7 @@ describe("single-shot recovery from a loop failure", () => {
       const output = await createLogAnalyzerFromEnv({
         ...env, LOG_ANALYSIS_API_BASE_URL: "https://fallback.example.invalid/v1", LOG_ANALYSIS_API_KEY: "fixture-key",
         LOG_ANALYSIS_MODEL: "platform", LOG_ANALYSIS_DETERMINISTIC: false, LOG_ANALYSIS_PROTOCOL: "tools",
-        LOG_ANALYSIS_SINGLE_SHOT_FALLBACK: retry, LOG_ANALYSIS_MAX_STEPS: maxSteps ?? 6
+        LOG_ANALYSIS_SINGLE_SHOT_FALLBACK: retry, LOG_ANALYSIS_VERIFY_CONCLUSION: true, LOG_ANALYSIS_MAX_STEPS: maxSteps ?? 6
       }).analyze({ parsed, procedure: "Read the foldback event first.", logDomain: { name: "Charging", modelOverride: "pinned" },
         onTrace: (step) => { trace.push(step); } });
       expect(output).toMatchObject({ analysisSource: source, degradedReason: reason, model: "pinned" });
@@ -60,6 +60,7 @@ describe("single-shot recovery from a loop failure", () => {
       }
       if (source === "single-shot-fallback") {
         expect(output).toMatchObject({ confidence: 0.5, conclusion: final.conclusion, evidence: [{ lineNumbers: [1] }] });
+        expect(output.verification).toBeUndefined();
       }
     } finally {
       fetch.mockRestore();
@@ -68,6 +69,19 @@ describe("single-shot recovery from a loop failure", () => {
 });
 
 describe("pinned skill runtime budgets", () => {
+  it("uses the optional conclusion verifier model and otherwise inherits the run model", async () => {
+    const parsed = parseLogText({ fileName: "power.log", content: "INFO operating normally\nINFO cycle complete" });
+    if (!parsed.ok) throw new Error("Fixture must parse");
+    const settings = { ...env, LOG_ANALYSIS_VERIFY_CONCLUSION: true };
+    const logDomain = { name: "Power", modelOverride: "analysis-model" };
+    for (const [configured, expected] of [[undefined, "analysis-model"], ["verify-model", "verify-model"]] as const) {
+      const output = await createLogAnalyzerFromEnv({ ...settings, LOG_ANALYSIS_VERIFIER_MODEL: configured }).analyze({ parsed, logDomain });
+      expect(output).toMatchObject({ model: "analysis-model", verification: {
+        status: "passed", checkedClaims: 2, unsupportedClaims: 0, model: expected
+      } });
+    }
+  });
+
   it("uses the platform token budget when the skill does not override it", async () => {
     const content = await readFile(new URL("../../../../test-fixtures/logs/charging-foldback.log", import.meta.url), "utf8");
     const parsed = parseLogText({ fileName: "charging-foldback.log", content });

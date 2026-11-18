@@ -53,6 +53,13 @@ const finalPayload = {
   ]
 };
 
+const readChargingLines = { content: { action: "tool", tool: "read_line_range", args: { startLine: 2, endLine: 4 } } };
+const supportedClaims = [{ id: 0, status: "supported" }, { id: 1, status: "supported" }];
+const mixedCandidate = {
+  ...finalPayload,
+  evidence: [...finalPayload.evidence, { lineNumbers: [2], inference: "No battery temperature was recorded.", suggestedAction: "Inspect logging." }]
+};
+
 function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<typeof createAgentLoopLogAnalyzer>[0]> = {}) {
   const model = createScriptedLogAnalysisModel(script);
   return {
@@ -68,6 +75,121 @@ function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<t
 }
 
 describe("createAgentLoopLogAnalyzer", () => {
+  it.each(["json", "tools"] as const)("flags a grounded conclusion that contradicts its cited line in %s", async (protocol) => {
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: [
+      { id: 0, status: "contradicted", counterAnchors: [{ file: "charging.log", line: 9999 }] },
+      { id: 1, status: "contradicted" }
+    ] }, usage: { inputTokens: 153, outputTokens: 39 } }]);
+    const nativeVerifier = vi.spyOn(verifier, "invokeTools");
+    const { adapter } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 2, endLine: 2 } } },
+      { content: { ...finalPayload, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [2] }] } }
+    ], { protocol, verifier: { model: verifier, modelLabel: "verify-test" } });
+    const trace: LogAnalysisTraceStep[] = [];
+    const output = await adapter.analyze(buildInput({ filePath: "charging.log", procedure: "untrusted skill text",
+      onTrace: (step) => { trace.push(step); } }));
+
+    expect(output).toMatchObject({ analysisSource: "agent", conclusion: finalPayload.conclusion,
+      confidence: 0.5, evidence: [], verification: { status: "failed", checkedClaims: 2, unsupportedClaims: 2, model: "verify-test" } });
+    expect(verifier.calls).toHaveLength(1);
+    expect(nativeVerifier).not.toHaveBeenCalled();
+    expect(trace).toContainEqual(expect.objectContaining({ kind: "model-turn", inputTokens: 153, outputTokens: 39 }));
+    const prompt = verifier.calls.flat().map(({ content }) => content).join("\n");
+    expect(prompt).toContain("battery_temp=38C pack ok");
+    expect(prompt).not.toContain("code=E_THERMAL_FOLDBACK");
+    expect(prompt).not.toContain("untrusted skill text");
+    expect(JSON.stringify(output)).not.toContain("9999");
+  });
+
+  it.each(["json", "tools"] as const)("revises unsupported evidence once and checks the replacement in %s", async (protocol) => {
+    const verifier = createScriptedLogAnalysisModel([
+      { content: { claims: [...supportedClaims, { id: 2, status: "unsupported",
+        counterAnchors: [{ file: "charging.log", line: 2 }, { file: "charging.log", line: 6 }] }] } },
+      { content: { claims: supportedClaims } }
+    ]);
+    const alternate = { statement: "适配器故障", reason: "日志记录热保护先触发", anchors: [{ file: "charging.log", line: 3 }] };
+    const revised = { ...finalPayload, conclusion: "The logs show battery thermal foldback and reduced current.", alternativeHypotheses: [alternate] };
+    const { adapter, model } = analyzer([readChargingLines, { content: mixedCandidate }, { content: revised }], {
+      protocol, hypothesisLedger: true, verifier: { model: verifier, modelLabel: "verify-test" }
+    });
+    const onProgress = vi.fn();
+    const output = await adapter.analyze(buildInput({ filePath: "charging.log", onProgress }));
+    expect(output).toMatchObject({ conclusion: revised.conclusion, confidence: 0.9, alternativeHypotheses: [alternate],
+      evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
+      verification: { status: "revised", checkedClaims: 3, unsupportedClaims: 1, model: "verify-test" } });
+    expect(onProgress.mock.calls.map(([state]) => state.step)).toEqual([1, 2, 3]);
+    expect(model.calls.at(-1)?.at(-1)?.content).toContain('"counterAnchors":[{"file":"charging.log","line":2}]');
+    expect(verifier.calls).toHaveLength(2);
+  });
+
+  it.each(["step limit", "verification tokens", "unsupported replacement"] as const)(
+    "drops unsupported evidence and caps confidence at the %s", async (limit) => {
+      const claims = [...supportedClaims, { id: 2, status: "unsupported" }];
+      const verifier = createScriptedLogAnalysisModel([{ content: { claims },
+        ...(limit === "verification tokens" ? { usage: { inputTokens: 78_900, outputTokens: 100 } } : {}) }]);
+      const maxSteps = limit === "step limit" ? 2 : 4;
+      const { adapter, model } = analyzer([readChargingLines, { content: mixedCandidate }], {
+        maxSteps, verifier: { model: verifier, modelLabel: "verify-test" }
+      });
+      const output = await adapter.analyze(buildInput());
+      expect(output).toMatchObject({ conclusion: finalPayload.conclusion, confidence: 0.5,
+        evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
+        verification: { status: "revised", checkedClaims: 3, unsupportedClaims: 1 } });
+      expect(model.calls).toHaveLength(limit === "unsupported replacement" ? 3 : 2);
+    }
+  );
+
+  it.each(["provider failure", "missing verdict", "duplicate verdict", "final-answer reserve"] as const)(
+    "delivers the grounded report with verification skipped after %s", async (failure) => {
+      const verifier = createScriptedLogAnalysisModel([failure === "provider failure" ? { error: new Error("offline") }
+        : { content: { claims: failure === "duplicate verdict" ? [supportedClaims[0], supportedClaims[0]] : supportedClaims.slice(0, 1) } }]);
+      const reserve = failure === "final-answer reserve";
+      const { adapter } = analyzer([
+        { ...readChargingLines, ...(reserve ? { usage: { inputTokens: 2370, outputTokens: 30 } } : {}) },
+        { content: finalPayload, ...(reserve ? { usage: { inputTokens: 400, outputTokens: 50 } } : {}) }
+      ], { tokenBudget: reserve ? 3000 : 100_000, verifier: { model: verifier, modelLabel: "verify-test" } });
+      const output = await adapter.analyze(buildInput());
+      expect(output).toMatchObject({ conclusion: finalPayload.conclusion, confidence: reserve ? 0.5 : 0.9,
+        analysisSource: "agent", evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
+        verification: { status: "skipped", checkedClaims: 0, unsupportedClaims: 0, model: "verify-test" } });
+      expect(verifier.calls).toHaveLength(reserve ? 0 : 1);
+    }
+  );
+
+  it.each([false, true])("preserves a supported report and defaults verification off (enabled=%s)", async (enabled) => {
+    const script = [readChargingLines, { content: finalPayload }];
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: supportedClaims } }]);
+    const { adapter } = analyzer(script, enabled ? { verifier: { model: verifier, modelLabel: "verify-test" } } : {});
+    const report = await adapter.analyze(buildInput());
+    expect(report).toMatchObject({ analysisSource: "agent", conclusion: finalPayload.conclusion, confidence: 0.9,
+      evidence: [expect.objectContaining({ lineNumbers: [3, 4], inference: finalPayload.evidence[0].inference })] });
+    expect(report.verification).toEqual(enabled ? { status: "passed", checkedClaims: 2, unsupportedClaims: 0, model: "verify-test" } : undefined);
+    expect(verifier.calls).toHaveLength(enabled ? 1 : 0);
+  });
+
+  it("checks only the bounded raw text for a cited source line after tool results fold", async () => {
+    const sourceLocation = { snapshotId: "source-snapshot", path: "drivers/thermal.c", line: 7 };
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: supportedClaims } }]);
+    const sourceRead = { content: { action: "tool", tool: "read_source_range", args: {
+      snapshotId: sourceLocation.snapshotId, path: sourceLocation.path, startLine: 7, endLine: 8
+    } } };
+    const { adapter } = analyzer([sourceRead, readChargingLines, readChargingLines, { content: {
+      ...finalPayload, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [], sourceLocation }]
+    } }], {
+      verifier: { model: verifier, modelLabel: "verify-test" },
+      bindToolBackends: () => ({ readSourceRange: async () => ({ ...sourceLocation,
+        startLine: 7, endLine: 8, totalLines: 8, truncated: false, lines: [
+          { line: 7, content: "thermal_limit(); " + "x".repeat(650) + "capped-tail" },
+          { line: 8, content: "unreferenced_source_line();" }
+        ] }) })
+    });
+    const output = await adapter.analyze(buildInput({ sourceSnapshot: { id: sourceLocation.snapshotId, status: "ready" } }));
+    expect(output).toMatchObject({ verification: { status: "passed" }, evidence: [expect.objectContaining({ sourceLocation })] });
+    const prompt = verifier.calls.flat().map(({ content }) => content).join("\n");
+    expect(prompt).toContain("thermal_limit();");
+    expect(prompt).not.toMatch(/capped-tail|unreferenced_source_line|battery_temp/);
+  });
+
   it("rejects historical hints as grounding and reports only run IDs actually returned", async () => {
     const trace: LogAnalysisTraceStep[] = [];
     const { adapter } = analyzer([

@@ -1,5 +1,6 @@
 import type { LogAnalysisDegradedReason, LogAnalysisSource } from "./analyzer";
 import type { LogAlternativeHypothesis } from "./hypotheses";
+import type { LogVerification } from "./verification";
 import type { HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 export type LogArchiveState = "active" | "archived";
@@ -54,6 +55,7 @@ export type LogRecordDto = {
   confidence: number;
   conclusion: string;
   alternativeHypotheses?: LogAlternativeHypothesis[];
+  verification?: LogVerification;
   impact: string;
   evidence: LogEvidenceDto[];
   suggestedActions: string[];

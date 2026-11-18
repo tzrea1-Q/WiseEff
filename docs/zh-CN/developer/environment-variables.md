@@ -183,6 +183,8 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_KERNEL` | `loop` | 分析内核选择 | `loop` = 有界多步 agent，按运行组合只读工具（默认）；`single-shot` = P1 单发内核，保留为配置回退。 |
 | `LOG_ANALYSIS_PROTOCOL` | `auto` | 循环内核的模型协议 | `auto` 优先尝试原生工具，通过 `final_report` 提交终答，并在 worker 进程内按端点和模型缓存明确的兼容性拒绝。`tools` 要求使用原生工具，`json` 强制使用文本 JSON。技能可选择 JSON，平台已强制协议时不能改回自动探测。 |
 | `LOG_ANALYSIS_HYPOTHESIS_LEDGER` | `false` | 循环内核的假设账本 | 设为 `true` 后，两种协议都会跨轮次保留有界的假设快照，报告可展示有接地依据的排除原因。 |
+| `LOG_ANALYSIS_VERIFY_CONCLUSION` | `false` | 循环内核的结论验证 | 设为 `true` 后，两种协议均使用不带工具的独立调用检查已接地的结论和推断。验证调用的输入与输出计入循环 token 预算。 |
+| `LOG_ANALYSIS_VERIFIER_MODEL` | 留空 | 循环内核的结论验证 | 可选的验证模型名。默认使用本次运行的分析模型，沿用同一端点、密钥与超时。 |
 | `LOG_ANALYSIS_REPAIR_JSON` | `false` | 日志分析模型兼容性 | 启用后，两个内核都会从夹带文字的输出中截取首个完整 JSON 对象并删除尾逗号，再进行 schema 校验和接地判定。可用于模型 A/B 评测。 |
 | `LOG_ANALYSIS_SINGLE_SHOT_FALLBACK` | `false` | 日志分析模型兼容性 | 循环内核以 `invalid-model-output` 结束时，通过单次 JSON 内核重试一次。重试得到有依据的证据时返回 `single-shot-fallback`。 |
 | `LOG_ANALYSIS_PAST_CONCLUSIONS` | `false` | 日志分析 Worker | 开启后，仅在同组织同技能存在符合条件的历史结论时开放只读检索。PostgreSQL 全文检索覆盖所有符合条件的历史结论，配置嵌入服务且支持 pgvector 时，对最近最多 32 条候选加做语义排序。 |

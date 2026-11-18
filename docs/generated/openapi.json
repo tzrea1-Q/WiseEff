@@ -51260,6 +51260,36 @@
                   "additionalProperties": false
                 }
               },
+              "verification": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "passed",
+                      "revised",
+                      "failed",
+                      "skipped"
+                    ]
+                  },
+                  "checkedClaims": {
+                    "type": "number"
+                  },
+                  "unsupportedClaims": {
+                    "type": "number"
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "checkedClaims",
+                  "unsupportedClaims",
+                  "model"
+                ],
+                "additionalProperties": false
+              },
               "impact": {
                 "type": "string"
               },
@@ -52330,6 +52360,36 @@
                   "additionalProperties": false
                 }
               },
+              "verification": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "passed",
+                      "revised",
+                      "failed",
+                      "skipped"
+                    ]
+                  },
+                  "checkedClaims": {
+                    "type": "number"
+                  },
+                  "unsupportedClaims": {
+                    "type": "number"
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "checkedClaims",
+                  "unsupportedClaims",
+                  "model"
+                ],
+                "additionalProperties": false
+              },
               "impact": {
                 "type": "string"
               },
@@ -53262,6 +53322,36 @@
                     "additionalProperties": false
                   }
                 },
+                "verification": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "passed",
+                        "revised",
+                        "failed",
+                        "skipped"
+                      ]
+                    },
+                    "checkedClaims": {
+                      "type": "number"
+                    },
+                    "unsupportedClaims": {
+                      "type": "number"
+                    },
+                    "model": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "checkedClaims",
+                    "unsupportedClaims",
+                    "model"
+                  ],
+                  "additionalProperties": false
+                },
                 "impact": {
                   "type": "string"
                 },
@@ -54138,6 +54228,36 @@
                                 "additionalProperties": false
                               }
                             },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -54558,6 +54678,36 @@
                                 ],
                                 "additionalProperties": false
                               }
+                            },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
                             },
                             "evidence": {
                               "type": "array",
@@ -55036,6 +55186,36 @@
                                 "additionalProperties": false
                               }
                             },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -55456,6 +55636,36 @@
                                 ],
                                 "additionalProperties": false
                               }
+                            },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
                             },
                             "evidence": {
                               "type": "array",
@@ -56423,6 +56633,36 @@
                                 "additionalProperties": false
                               }
                             },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -56843,6 +57083,36 @@
                                 ],
                                 "additionalProperties": false
                               }
+                            },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "passed",
+                                    "revised",
+                                    "failed",
+                                    "skipped"
+                                  ]
+                                },
+                                "checkedClaims": {
+                                  "type": "number"
+                                },
+                                "unsupportedClaims": {
+                                  "type": "number"
+                                },
+                                "model": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "status",
+                                "checkedClaims",
+                                "unsupportedClaims",
+                                "model"
+                              ],
+                              "additionalProperties": false
                             },
                             "evidence": {
                               "type": "array",
@@ -57770,6 +58040,36 @@
                       "additionalProperties": false
                     }
                   },
+                  "verification": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "passed",
+                          "revised",
+                          "failed",
+                          "skipped"
+                        ]
+                      },
+                      "checkedClaims": {
+                        "type": "number"
+                      },
+                      "unsupportedClaims": {
+                        "type": "number"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "checkedClaims",
+                      "unsupportedClaims",
+                      "model"
+                    ],
+                    "additionalProperties": false
+                  },
                   "evidence": {
                     "type": "array",
                     "items": {
@@ -58219,6 +58519,36 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "verification": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "passed",
+                          "revised",
+                          "failed",
+                          "skipped"
+                        ]
+                      },
+                      "checkedClaims": {
+                        "type": "number"
+                      },
+                      "unsupportedClaims": {
+                        "type": "number"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "checkedClaims",
+                      "unsupportedClaims",
+                      "model"
+                    ],
+                    "additionalProperties": false
                   },
                   "evidence": {
                     "type": "array",
@@ -60135,6 +60465,36 @@
                   ],
                   "additionalProperties": false
                 }
+              },
+              "verification": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "passed",
+                      "revised",
+                      "failed",
+                      "skipped"
+                    ]
+                  },
+                  "checkedClaims": {
+                    "type": "number"
+                  },
+                  "unsupportedClaims": {
+                    "type": "number"
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "checkedClaims",
+                  "unsupportedClaims",
+                  "model"
+                ],
+                "additionalProperties": false
               },
               "impact": {
                 "type": "string"

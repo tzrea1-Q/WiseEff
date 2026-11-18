@@ -1087,6 +1087,13 @@ function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavig
   );
 }
 
+const verificationLabels = {
+  passed: "结论验证通过。",
+  revised: "报告已根据结论验证结果修订。",
+  failed: "结论验证未通过，请人工复核。",
+  skipped: "本次未执行结论验证。"
+};
+
 function LogConclusionCard({
   log, canViewSkill, canOpenKnowledge, onNavigate, onAskAgent, onPrimary, relatedParameterLocated = false, organizationId,
   relatedParameterUnlocated = false, onExport, onCopyLink, onDistil, distilPending = false,
@@ -1116,6 +1123,7 @@ function LogConclusionCard({
 }) {
   if (log.status === "Failed") return <LogErrorAlert log={log} onRetry={onRetry} />;
   const complete = log.status === "Complete";
+  const verification = complete ? log.verification : undefined;
   return <section className="logs-conclusion-card" aria-labelledby="log-conclusion-title">
     <div className="logs-conclusion-head">
       <div>
@@ -1123,6 +1131,12 @@ function LogConclusionCard({
         {complete ? <p>{log.impact}</p> : null}
       </div>
     </div>
+    {verification ? <div className={verification.status === "failed" ? "analysis-provenance__reason" : "text-sm text-muted-foreground break-words"}>
+      <p>{verificationLabels[verification.status]}</p>
+      {verification.status !== "skipped" ? <span>
+        已检查 {verification.checkedClaims} 项，其中 {verification.unsupportedClaims} 项未获证据支持。验证模型：{verification.model}
+      </span> : null}
+    </div> : null}
     {complete && !!log.alternativeHypotheses?.length && <div className="logs-alternative-hypotheses">
       <h3>已排除的可能原因</h3>
       <ul>

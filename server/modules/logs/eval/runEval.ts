@@ -194,6 +194,9 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     modelLabel: EVAL_MODEL_LABEL,
     protocol: scenario.protocol,
     hypothesisLedger: scenario.hypothesisLedger,
+    verifier: scenario.verificationScript
+      ? { model: createScriptedLogAnalysisModel(scenario.verificationScript), modelLabel: "scripted-verifier" }
+      : undefined,
     repairJsonOutput: scenario.repairJsonOutput,
     tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
     maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
