@@ -39,6 +39,7 @@ export type LogLoopEvalScenario = {
   logDomain?: { name: string; description?: string };
   script: ScriptedModelResponse[];
   protocol?: "tools" | "json";
+  hypothesisLedger?: boolean;
   repairJsonOutput?: boolean;
   maxSteps?: number;
   tokenBudget?: number;
@@ -274,6 +275,20 @@ const foldedLogEvidence: LogEvalExpectation[] = [
       "Repeat the tool call to retrieve the original result.", "charge session started", "session heartbeat ok"],
     excludes: ["thermal foldback engaged", "charge current reduced"] }
 ];
+
+const seenHypothesisAnchor = { file: "charging.log", line: 3 };
+const unseenHypothesisAnchor = { file: "charging.log", line: 9999 };
+const refutedHypothesis = {
+  id: "charger",
+  statement: "适配器限流",
+  status: "refuted",
+  anchors: [seenHypothesisAnchor]
+};
+const groundedAlternative = {
+  statement: refutedHypothesis.statement,
+  reason: "电池包温度升高后热保护介入。",
+  anchors: [seenHypothesisAnchor]
+};
 
 const nominalLog = [
   "2026-08-10T09:00:01Z INFO agentd heartbeat ok seq=1",
@@ -770,6 +785,29 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     script: [...toolFoldingScript, { content: loopFinalPayload }],
     expectations: [...foldedLogEvidence, { type: "expectsNoDegradation" }]
   },
+  ...(["json", "tools"] as const).flatMap((protocol): LogLoopEvalScenario[] => [false, true].map((hypothesisLedger) => ({
+    name: `loop-hypothesis-ledger-${protocol}-${hypothesisLedger ? "on" : "off"}`,
+    category: "loop-context",
+    fileName: "charging.log",
+    logContent: chargingLog,
+    protocol,
+    hypothesisLedger,
+    script: [
+      toolFoldingScript[0],
+      { ...toolFoldingScript[1], content: { ...toolFoldingScript[1].content,
+        notes: { hypotheses: [{ ...refutedHypothesis, anchors: [seenHypothesisAnchor, unseenHypothesisAnchor] }] } } },
+      toolFoldingScript[2],
+      { content: { ...loopFinalPayload,
+        alternativeHypotheses: [{ ...groundedAlternative, anchors: [seenHypothesisAnchor, unseenHypothesisAnchor] }] } }
+    ],
+    expectations: [
+      ...foldedLogEvidence,
+      { type: "expectsNoDegradation" },
+      { type: "expectsAlternativeHypotheses", alternatives: hypothesisLedger ? [groundedAlternative] : undefined },
+      { type: "expectsFinalPrompt", contains: hypothesisLedger ? [JSON.stringify(refutedHypothesis)] : [],
+        excludes: ['"line":9999', ...(!hypothesisLedger ? ["Hypothesis ledger (untrusted prior notes):", refutedHypothesis.statement] : [])] }
+    ]
+  }))),
   {
     name: "loop-final-answer-uses-token-reserve",
     category: "loop-convergence",

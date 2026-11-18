@@ -12,6 +12,6 @@ realismChecklist:
   noiseRatio: All 35 lines are routine heartbeats, polls or checkpoint commits (100%).
   distractors: The no-fault scenario contains no WARN or ERROR lines.
   rootCauseDiscoverability: There is no fault marker. Progress is visible in repeated commits and low queue lag.
-  timeline: One UTC clock and monotonically increasing sample times.
+  timeline: One UTC clock and monotonically increasing sample times at exactly one-second intervals across all event types.
   sensitiveData: Queue and component names are fictional and no identifiers or credentials are included.
-  annotationReview: Author checked that the poll, heartbeat and commit history supports refusal and leaves diagnosis fields empty.
+  annotationReview: "Author checked that the poll, heartbeat and commit history supports refusal and leaves diagnosis fields empty. Independent review (2026-11-18): concern. Seven checkpoint commits, 2–5 ms lag and recurring polls support the no-fault verdict. The uniformly spaced polls, heartbeats and commits fall short of the irregular-timing target."

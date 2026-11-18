@@ -10,7 +10,7 @@ import { createPostgresDatabase, type Database, type RootDatabase } from "../../
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
-import { logRecordResponseSchema } from "../contracts/dtoSchemas/logs";
+import { logRecordResponseSchema, logTraceResponseSchema } from "../contracts/dtoSchemas/logs";
 import { createAgentLoopLogAnalyzer } from "./analyzer/agentLoop";
 import { createScriptedLogAnalysisModel } from "./analyzer/scriptedModel";
 import { registerLogRoutes } from "./routes";
@@ -417,6 +417,44 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     expect(JSON.parse(received[0].body)).toMatchObject({ event: "log-analysis.completed", recordId: log.id,
       analysisSource: "rules-fallback", degraded: true, degradedReason });
     expect(logRecordResponseSchema.parse(record.body).item.degradedReason).toBe(degradedReason);
+  });
+
+  it("delivers grounded alternatives from upload through the record API and signed result webhook", async () => {
+    await configureWebhook();
+    const objectStore = createMemoryObjectStore();
+    const router = createRouter();
+    registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => auth });
+    const upload = await requestJson<{ log: { id: string }; job: { id: string } }>(createHttpServer(router), "/api/v1/log-files", {
+      method: "POST",
+      body: JSON.stringify({ fileName: "charging.log", contentType: "text/plain", skillId: domainId,
+        contentBase64: Buffer.from("INFO adapter contract stable\nERROR thermal foldback\n").toString("base64") })
+    });
+    expect(upload.status).toBe(201);
+    const alternative = { statement: "适配器重新协商", reason: "充电协议保持稳定", anchors: [{ file: "charging.log", line: 1 }] };
+    const model = createScriptedLogAnalysisModel([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 2 } } },
+      { content: { action: "final", conclusion: "热保护触发限流", impact: "充电速度下降", severity: "Warning",
+        confidence: 0.9, suggestedActions: ["检查散热"], evidence: [{ lineNumbers: [2], inference: "热保护触发", suggestedAction: "检查温度" }],
+        notes: { hypotheses: [{ id: "adapter", statement: alternative.statement, status: "refuted", anchors: alternative.anchors }] },
+        alternativeHypotheses: [alternative] } }
+    ]);
+    const analyzer = createAgentLoopLogAnalyzer({ model, hypothesisLedger: true, protocol: "tools",
+      modelLabel: "scripted", tokenBudget: 8000, maxSteps: 3 });
+    expect(await processLogAnalysisJobById({ db, objectStore, jobId: upload.body.job.id, analyzer })).toEqual({ status: "processed" });
+
+    const record = await requestJson(createHttpServer(router), `/api/v1/logs/${upload.body.log.id}`);
+    expect(record.status).toBe(200);
+    expect(logRecordResponseSchema.parse(record.body).item).toMatchObject({ alternativeHypotheses: [alternative] });
+    const trace = await requestJson(createHttpServer(router), `/api/v1/logs/${upload.body.log.id}/trace`);
+    expect(trace.status).toBe(200);
+    expect(logTraceResponseSchema.parse(trace.body).steps.at(-1)?.hypotheses).toEqual([
+      { id: "adapter", statement: alternative.statement, status: "refuted", anchors: alternative.anchors }
+    ]);
+    expect(await makeDeliverer().processNext()).toMatchObject({ status: "delivered", attempts: 1 });
+    expect(received).toHaveLength(1);
+    expect(verifyWebhookSignature({ secret: SECRET, timestampSeconds: Number(received[0].timestamp),
+      rawBody: received[0].body, signatureHeader: received[0].signature!, nowSeconds: Number(received[0].timestamp) })).toBe(true);
+    expect(JSON.parse(received[0].body)).toMatchObject({ event: "log-analysis.completed", alternativeHypotheses: [alternative] });
   });
 
   it("records retrying then failed rows when the receiver keeps erroring", async () => {

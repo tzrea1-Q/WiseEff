@@ -77,6 +77,7 @@ describe("createAgentLoopLogAnalyzer", () => {
       { content: finalPayload }
     ], {
       protocol: "json",
+      hypothesisLedger: true,
       bindToolBackends: () => ({
         searchPastConclusions: async () => ({
           retrievalMode: "fts_only",
@@ -93,6 +94,71 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(trace.find((step) => step.kind === "tool-call" && step.tool === "search_past_conclusions"))
       .toMatchObject({ outcome: "ok", lines: [] });
   });
+
+  it.each(["json", "tools"] as const)("keeps only seen hypothesis anchors after folding in %s", async (protocol) => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const seen = { file: "charging.log", line: 3 };
+    const unseen = { file: "charging.log", line: 6 };
+    const hypothesis = { id: "charger", statement: "充电器限流", status: "open", anchors: [seen, unseen] };
+    const finalHypothesis = { ...hypothesis, status: "refuted", anchors: [seen] };
+    const alternative = { statement: hypothesis.statement, reason: "日志记录热保护介入", anchors: [seen, { ...unseen, line: 9999 }] };
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 },
+        notes: { hypotheses: [{ ...hypothesis, id: "old", anchors: [] }] } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 6, endLine: 6 }, notes: { hypotheses: [hypothesis] } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } } },
+      { content: { ...finalPayload, notes: { hypotheses: [finalHypothesis] },
+        alternativeHypotheses: [alternative, { ...alternative, statement: "未接地的猜测", anchors: [{ ...unseen, line: 9999 }] }] } }
+    ], { protocol, hypothesisLedger: true, maxSteps: 3 });
+    const output = await adapter.analyze(buildInput({ filePath: seen.file, onTrace: (step) => { trace.push(step); } }));
+    expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "step-budget-exhausted",
+      alternativeHypotheses: [{ ...alternative, anchors: [seen] }] });
+    const finalInput = model.calls.at(-1)!.map(({ content }) => content).join("\n");
+    expect(finalInput).toContain("Folded tool result");
+    expect(finalInput).not.toContain("thermal foldback engaged");
+    expect(finalInput).toContain(JSON.stringify({ ...hypothesis, anchors: [seen] }));
+    expect(finalInput).not.toContain('"id":"old"');
+    expect(trace.filter(({ kind }) => kind === "model-turn").map(({ hypotheses }) => hypotheses)).toEqual([
+      [{ ...hypothesis, id: "old", anchors: [] }], [{ ...hypothesis, anchors: [seen] }],
+      [{ ...hypothesis, anchors: [seen] }], [finalHypothesis]
+    ]);
+    expect(trace.every((step) => logTraceStepSchema.safeParse(step).success)).toBe(true);
+  });
+
+  it("ignores unsolicited ledger output by default", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const seen = { file: "charging.log", line: 3 };
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 },
+        notes: { hypotheses: [{ id: "unsolicited", statement: "充电器限流", status: "open", anchors: [] }] } } },
+      { content: { ...finalPayload, alternativeHypotheses: [{ statement: "充电器限流", reason: "热保护已触发", anchors: [seen] }] } }
+    ], { protocol: "tools" });
+    const output = await adapter.analyze(buildInput({ filePath: seen.file, onTrace: (step) => { trace.push(step); } }));
+    expect(output).toMatchObject({ analysisSource: "agent" });
+    expect(output).not.toHaveProperty("alternativeHypotheses");
+    expect(trace.some((step) => Object.hasOwn(step, "hypotheses"))).toBe(false);
+    expect(JSON.stringify(model.calls)).not.toContain("unsolicited");
+  });
+
+  it("bounds the injected snapshot by UTF-8 bytes and retains it when an update exceeds the entry limit", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const hypotheses = Array.from({ length: 8 }, (_, id) => ({
+      id: String(id), statement: "限".repeat(240), status: "open", anchors: []
+    }));
+    const read = { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } };
+    const { adapter, model } = analyzer([
+      { content: { ...read, notes: { hypotheses } } },
+      { content: { ...read, notes: { hypotheses: [...hypotheses, { ...hypotheses[0], id: "overflow" }] } } },
+      { content: finalPayload }
+    ], { hypothesisLedger: true });
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+    expect(output.analysisSource).toBe("agent");
+    const snapshots = trace.filter(({ kind }) => kind === "model-turn").map((step) => step.hypotheses);
+    expect(snapshots).toEqual(Array.from({ length: 3 }, () => hypotheses.slice(0, 5)));
+    expect(model.calls.at(-1)?.some(({ content }) => content.endsWith(JSON.stringify(hypotheses.slice(0, 5))))).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(snapshots[0]))).toBeLessThanOrEqual(4096);
+  });
+
   it("grounds a native batch in order, folds its older results and never executes a fourth call", async () => {
     const trace: LogAnalysisTraceStep[] = [];
     const read = (line: number) => ({ id: `call-${line}`, name: "read_line_range",
@@ -187,15 +253,23 @@ describe("createAgentLoopLogAnalyzer", () => {
       id, type: "function", function: { name, arguments: JSON.stringify(args) }
     });
     const batch = [3, 4, 5].map((line) => nativeCall(`call-${line}`, "read_line_range", { startLine: line, endLine: line }));
-    const fetch = vi.spyOn(globalThis, "fetch").mockImplementationOnce(async () => Response.json({ choices: [
-      { message: { role: "assistant", content: null, tool_calls: batch }, finish_reason: "tool_calls" }
-    ] })).mockImplementationOnce(async (_url, init) => {
+    const open = { id: "adapter", statement: "适配器限流", status: "open", anchors: [] };
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (_url, init) => {
+      const request = JSON.parse(String(init?.body));
+      const definitions = request.tools as Array<{ function: { name: string; parameters: unknown } }>;
+      expect(definitions.find((tool) => tool.function.name === "read_line_range")?.function.parameters)
+        .toMatchObject({ properties: { notes: { properties: { hypotheses: { maxItems: 8 } } } } });
+      return Response.json({ choices: [{ message: { role: "assistant", content: null, tool_calls: [
+        ...batch.slice(0, 2), nativeCall("call-5", "read_line_range", { startLine: 5, endLine: 5, notes: { hypotheses: [open] } })
+      ] }, finish_reason: "tool_calls" }] });
+    }).mockImplementationOnce(async (_url, init) => {
       const request = JSON.parse(String(init?.body));
       expect(request.messages.filter((message: { role: string }) => message.role === "tool").map((message: { tool_call_id: string }) =>
         message.tool_call_id)).toEqual(["call-3", "call-4", "call-5"]);
       expect(request.messages.find((message: { role: string }) => message.role === "assistant").tool_calls).toEqual(batch);
       expect(request.tools.find((tool: { function: { name: string } }) => tool.function.name === "final_report").function.parameters)
-        .toMatchObject({ type: "object", required: expect.arrayContaining(["conclusion", "evidence"]) });
+        .toMatchObject({ type: "object", required: expect.arrayContaining(["conclusion", "evidence"]),
+          properties: { notes: expect.anything(), alternativeHypotheses: expect.anything() } });
       const { action: _action, ...final } = finalPayload;
       return Response.json({ choices: [
         { message: { role: "assistant", content: null, tool_calls: [nativeCall("call-final", "final_report", final)] }, finish_reason: "tool_calls" }
@@ -204,11 +278,12 @@ describe("createAgentLoopLogAnalyzer", () => {
     try {
       const adapter = createLogAnalyzerFromEnv({ LOG_ANALYSIS_API_BASE_URL: "https://native-tools.example.invalid/v1", LOG_ANALYSIS_API_KEY: "fixture-key",
         LOG_ANALYSIS_API_TIMEOUT_MS: 500, LOG_ANALYSIS_TOKEN_BUDGET: 100_000, LOG_ANALYSIS_DETERMINISTIC: false,
-        LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_MAX_STEPS: 2, LOG_ANALYSIS_PROTOCOL: "auto" });
+        LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_MAX_STEPS: 2, LOG_ANALYSIS_PROTOCOL: "auto", LOG_ANALYSIS_HYPOTHESIS_LEDGER: true });
       const trace: LogAnalysisTraceStep[] = [];
       await expect(adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
         .resolves.toMatchObject({ analysisSource: "agent", confidence: 0.9, evidence: [{ lineNumbers: [3, 4] }] });
       expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.protocol)).toEqual(["tools", "tools"]);
+      expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.hypotheses)).toEqual([[open], [open]]);
     } finally {
       fetch.mockRestore();
     }

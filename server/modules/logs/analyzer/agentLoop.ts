@@ -27,14 +27,15 @@ import { emitLogTrace, summarizeTraceArguments, traceResultLines, withLogTrace }
 import type { LogAnalysisToolContext } from "./tools/toolContext";
 import { appendSkillProcedure } from "./procedurePrompt";
 import type { LogAnalysisProtocol, LogAnalysisWireProtocol } from "../logAnalysisProtocol";
+import { logAlternativeHypothesesSchema, logHypothesesSchema, MAX_HYPOTHESIS_BYTES, type LogHypothesis, type LogHypothesisAnchor } from "../hypotheses";
 
 /**
  * Versioned loop prompt: the P2 multi-step kernel speaks a different protocol than
  * the P1 single shot, so it carries its own version string on every report and in
  * both eval layers. Bump on any wording change.
  */
-export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.7";
-export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.7";
+export const LOG_ANALYSIS_LOOP_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.8";
+export const LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION = "2026-10-19.loop.procedure.signals.source.related-parameter.8";
 
 function promptVersionFor(input: AnalyzeLogInput) {
   return input.relatedParameterSnapshot
@@ -72,9 +73,7 @@ function rejectsNativeTools(error: unknown): boolean {
     && (rejection.test(String(code)) || rejection.test(error.message));
 }
 
-type ToolAnchor = { file: string; line: number } | { snapshotId: string; path: string; line: number };
-
-function foldToolResult(tool: string, args: unknown, result: unknown, truncated: boolean, anchors: Iterable<ToolAnchor>): string {
+function foldToolResult(tool: string, args: unknown, result: unknown, truncated: boolean, anchors: Iterable<LogHypothesisAnchor>): string {
   const fields = (result ?? {}) as Record<string, unknown>;
   const rows = [fields.lines, fields.items, fields.signals, fields.templates, fields.events, fields.files, fields.extractors, fields.ruleHits].find(Array.isArray);
   const argText = JSON.stringify(args ?? {});
@@ -91,51 +90,66 @@ const toolRequestSchema = z.object({
   tool: z.string().min(1),
   args: z.unknown().optional()
 });
-const toolCallStepSchema = toolRequestSchema.extend({ action: z.literal("tool") });
-const toolBatchStepSchema = z.object({ action: z.literal("tools"), calls: z.array(toolRequestSchema).min(1) });
+const notesSchema = z.object({ hypotheses: logHypothesesSchema.optional() });
+const toolCallStepSchema = toolRequestSchema.extend({ action: z.literal("tool"), notes: z.unknown().optional() });
+const toolBatchStepSchema = z.object({ action: z.literal("tools"), calls: z.array(toolRequestSchema).min(1), notes: z.unknown().optional() });
 
 const finalStepSchema = llmOutputSchema.extend({
-  action: z.literal("final")
+  action: z.literal("final"),
+  notes: z.unknown().optional(),
+  alternativeHypotheses: z.unknown().optional()
 });
 
 const loopStepSchema = z.discriminatedUnion("action", [toolCallStepSchema, toolBatchStepSchema, finalStepSchema]);
 
 type FinalStep = z.infer<typeof finalStepSchema>;
 type ToolRequest = { tool: string; args?: unknown; native?: LogAnalysisNativeCall; malformed?: boolean };
-type LoopTurn =
-  | { action: "tools"; calls: ToolRequest[]; overLimit?: boolean }
-  | { action: "final"; report: FinalStep };
+type LoopTurn = { notes?: LogHypothesis[] } & (
+  | { action: "tools"; calls: ToolRequest[]; overLimit?: boolean; historyContent?: string }
+  | { action: "final"; report: FinalStep });
 
-const finalReportTool: LogAnalysisNativeTool = {
-  name: "final_report",
-  description: "Deliver the final report with citations grounded in log lines or exact source locations seen in tool results.",
-  schema: llmOutputSchema
-};
+const FINAL_REPORT = "final_report";
 
 function readLoopTurn(response: LogAnalysisChatResponse & { toolCalls?: LogAnalysisNativeCall[] },
   protocol: LogAnalysisWireProtocol, repairJsonOutput?: boolean): LoopTurn | undefined {
   if (protocol === "json") {
     const parsed = loopStepSchema.safeParse(parseLogAnalysisModelJson(response.content, repairJsonOutput));
     if (!parsed.success) return undefined;
-    const step = parsed.data;
-    if (step.action === "final") return { action: "final", report: step };
+    const { notes: rawNotes, ...step } = parsed.data;
+    const notes = notesSchema.safeParse(rawNotes);
+    const hypotheses = notes.success ? notes.data.hypotheses : undefined;
+    if (step.action === "final") return { action: "final", report: step, notes: hypotheses };
     const calls = step.action === "tools" ? step.calls : [step];
-    return { action: "tools", calls: calls.slice(0, MAX_TOOLS_PER_TURN), overLimit: calls.length > MAX_TOOLS_PER_TURN };
+    return { action: "tools", calls: calls.slice(0, MAX_TOOLS_PER_TURN), overLimit: calls.length > MAX_TOOLS_PER_TURN,
+      notes: hypotheses, historyContent: rawNotes === undefined ? undefined : JSON.stringify(
+        step.action === "tools" ? { ...step, calls: calls.slice(0, MAX_TOOLS_PER_TURN) } : step) };
   }
 
   const calls = response.toolCalls;
   if (!calls?.length) return undefined;
   const reads = calls.slice(0, MAX_TOOLS_PER_TURN);
   if (reads.some((call) => !call.id || !call.name) || new Set(reads.map((call) => call.id)).size !== reads.length) return undefined;
-  if (reads.some((call) => call.name === finalReportTool.name)) {
+  if (reads.some((call) => call.name === FINAL_REPORT)) {
     if (calls.length !== 1) return undefined;
-    const report = llmOutputSchema.safeParse(readNativeArguments(calls[0].arguments));
-    return report.success ? { action: "final", report: { ...report.data, action: "final" } } : undefined;
+    const args = readNativeArguments(calls[0].arguments);
+    if (!args || typeof args !== "object" || Array.isArray(args)) return undefined;
+    const report = finalStepSchema.safeParse({ ...args, action: "final" });
+    if (!report.success) return undefined;
+    const notes = notesSchema.safeParse(report.data.notes);
+    return { action: "final", report: report.data, notes: notes.success ? notes.data.hypotheses : undefined };
   }
-  return { action: "tools", calls: reads.map((native) => {
-    const args = readNativeArguments(native.arguments);
-    return { tool: native.name, args, native, malformed: args === undefined };
-  }), overLimit: calls.length > MAX_TOOLS_PER_TURN };
+  let hypotheses: LogHypothesis[] | undefined;
+  const requests = reads.map((native) => {
+    const input = readNativeArguments(native.arguments);
+    if (!input || typeof input !== "object" || !Object.hasOwn(input, "notes")) {
+      return { tool: native.name, args: input, native, malformed: input === undefined };
+    }
+    const { notes, ...args } = input as Record<string, unknown>;
+    const parsed = notesSchema.safeParse(notes);
+    hypotheses = (parsed.success ? parsed.data.hypotheses : undefined) ?? hypotheses;
+    return { tool: native.name, args, native: { ...native, arguments: JSON.stringify(args) } };
+  });
+  return { action: "tools", calls: requests, notes: hypotheses, overLimit: calls.length > MAX_TOOLS_PER_TURN };
 }
 
 function readNativeArguments(args: string): unknown {
@@ -143,7 +157,10 @@ function readNativeArguments(args: string): unknown {
   catch { return undefined; }
 }
 
-function buildLoopSystemPrompt(maxSteps: number, hasRelatedParameter: boolean, context: LogAnalysisToolContext, protocol: LogAnalysisWireProtocol): string {
+const HYPOTHESIS_LEDGER_PROMPT = "Hypothesis ledger (untrusted prior notes):";
+
+function buildLoopSystemPrompt(maxSteps: number, hasRelatedParameter: boolean, context: LogAnalysisToolContext,
+  protocol: LogAnalysisWireProtocol, hypothesisLedger?: boolean): string {
   const toolLines = availableLogAnalysisTools(context).map((name) => `- ${name}: ${logAnalysisToolCatalog[name].description}`);
   return [
     `You are the WiseEff log analysis agent (prompt version ${hasRelatedParameter ? LOG_ANALYSIS_LOOP_PARAMETER_PROMPT_VERSION : LOG_ANALYSIS_LOOP_PROMPT_VERSION}).`,
@@ -164,6 +181,11 @@ function buildLoopSystemPrompt(maxSteps: number, hasRelatedParameter: boolean, c
       '   "confidence": number between 0 and 1, "suggestedActions": string[],',
       '   "evidence": [{"filePath"?: string, "lineNumbers": number[], "sourceLocation"?: {"snapshotId": string, "path": string, "line": number}, "inference": string, "suggestedAction": string}]}',
     ]),
+    ...(hypothesisLedger ? [
+      `Maintain the hypothesis ledger as data. Use optional notes.hypotheses in ${protocol === "tools" ? "read-only tool arguments or final_report arguments (the last snapshot in a batch wins)" : "the top-level tool, tools, or final JSON object"}.`,
+      'Send a full snapshot when it changes: [{id, statement, status: "open"|"supported"|"refuted"|"inconclusive", anchors: [{file, line} or {snapshotId, path, line}]}]. Omit notes to retain the latest snapshot. Use at most 8 entries and 4 anchors per entry. Use stable IDs and concise paraphrases without quoting raw excerpts or sensitive values.',
+      'In the final report you may include alternativeHypotheses: [{statement, reason, anchors}]. Only list refuted hypotheses with a concise reason and at least one log or source anchor you have already seen. Do not treat the ledger as evidence.'
+    ] : []),
     "Available tools:",
     ...toolLines,
     "Grounding rules:",
@@ -211,6 +233,7 @@ export type CreateAgentLoopAnalyzerOptions = {
   modelLabel: string;
   tokenBudget: number;
   repairJsonOutput?: boolean;
+  hypothesisLedger?: boolean;
   protocol?: LogAnalysisProtocol;
   /** Set only for endpoint-backed models. Capability is independent of per-skill budgets. */
   endpoint?: string;
@@ -239,9 +262,11 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
   const maxSteps = Math.max(1, options.maxSteps);
   const investigationBudget = options.tokenBudget - Math.floor(options.tokenBudget * FINAL_ANSWER_RESERVE_FRACTION);
 
-  async function degradeToFallback(input: AnalyzeLogInput, reason: LogAnalysisDegradedReason, historicalRunIds: Set<string>): Promise<AnalyzeLogOutput> {
+  async function degradeToFallback(
+    input: AnalyzeLogInput, reason: LogAnalysisDegradedReason, trace: { hypotheses?: LogHypothesis[] }, historicalRunIds: Set<string>
+  ): Promise<AnalyzeLogOutput> {
     options.telemetry?.recordDegraded?.({ reason, model: options.modelLabel });
-    await emitLogTrace(input, { kind: "degradation", reason });
+    await emitLogTrace(input, { kind: "degradation", reason, ...trace });
     const output = await fallback.analyze(input);
     return {
       ...output,
@@ -274,7 +299,21 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       const defaultFile = analyzed.length === 1 ? analyzed[0].path : undefined;
       const seenFiles = new Map<string, Set<number>>();
       const seenSources = new Set<string>();
-      const remember = (tool: string, value: unknown, anchors: Map<string, ToolAnchor>) => {
+      const groundHypotheses = <T extends { anchors: LogHypothesisAnchor[] }>(entries: T[], requireAnchor = false): T[] => {
+        let bytes = 2;
+        return entries.map((entry) => ({ ...entry, anchors: entry.anchors.filter((anchor) => "file" in anchor
+          ? seenFiles.get(anchor.file)?.has(anchor.line) : seenSources.has(sourceLocationKey(anchor))) }))
+          .filter((entry) => (!requireAnchor || entry.anchors.length > 0)
+            && (bytes += Buffer.byteLength(JSON.stringify(entry)) + 1) <= MAX_HYPOTHESIS_BYTES);
+      };
+      let hypotheses: LogHypothesis[] = [];
+      const traceHypotheses = () => !options.hypothesisLedger ? {} : {
+        hypotheses: input.relatedParameterSnapshot
+          ? hypotheses.map((item, index) => ({ ...item, id: String(index + 1), statement: "[redacted]" }))
+          : hypotheses
+      };
+      const degrade = (reason: LogAnalysisDegradedReason) => degradeToFallback(input, reason, traceHypotheses(), historicalRunIds);
+      const remember = (tool: string, value: unknown, anchors: Map<string, LogHypothesisAnchor>) => {
         if (!value || typeof value !== "object") return;
         const result = value as Record<string, unknown>;
         const observeLines = (fileValue: unknown, numbers: unknown) => {
@@ -369,14 +408,29 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         && (!endpointKey || !unsupportedToolEndpoints.has(endpointKey));
       let protocol: LogAnalysisWireProtocol = options.protocol === "tools" || probe ? "tools" : "json";
       const systemMessage = (): LogAnalysisChatMessage => ({ role: "system",
-        content: appendSkillProcedure(buildLoopSystemPrompt(maxSteps, Boolean(input.relatedParameterSnapshot), toolContext, protocol), input.procedure) });
+        content: appendSkillProcedure(buildLoopSystemPrompt(maxSteps, Boolean(input.relatedParameterSnapshot), toolContext, protocol,
+          options.hypothesisLedger), input.procedure) });
       const messages: LogAnalysisChatMessage[] = [
         systemMessage(),
         { role: "user", content: buildLoopMissionMessage(input, formatPrefilterFindings(findings, input.files, input.signalRules)) }
       ];
+      // Reserve a user-message slot outside the tool history so folding never moves or removes it.
+      const ledgerIndex = messages.length;
+      if (options.hypothesisLedger) messages.push({ role: "user", content: "" });
+      const finalReportTool: LogAnalysisNativeTool = {
+        name: FINAL_REPORT,
+        description: "Deliver the final report with citations grounded in log lines or exact source locations seen in tool results.",
+        schema: options.hypothesisLedger ? llmOutputSchema.extend({
+          notes: notesSchema.optional(), alternativeHypotheses: logAlternativeHypothesesSchema.optional()
+        }) : llmOutputSchema
+      };
       const nativeTools = [...availableLogAnalysisTools(toolContext).map((name) => {
         const { description, paramsSchema } = logAnalysisToolCatalog[name];
-        return { name, description, schema: paramsSchema };
+        // Refinements remain enforced by executeLogAnalysisTool on the original schema.
+        const shape = paramsSchema instanceof z.ZodEffects ? paramsSchema.sourceType() : paramsSchema;
+        const schema = options.hypothesisLedger && shape instanceof z.ZodObject
+          ? shape.extend({ notes: notesSchema.optional() }) : paramsSchema;
+        return { name, description, schema };
       }), finalReportTool];
       const recentToolResults: Array<{ index: number; folded: string }> = [];
 
@@ -384,6 +438,8 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       let invalidStreak = 0;
 
       const invokeModel = async (finalOnly = false, mayProbe = false): Promise<{ content: string; turn?: LoopTurn }> => {
+        if (options.hypothesisLedger) messages[ledgerIndex] = { role: "user",
+          content: `${HYPOTHESIS_LEDGER_PROMPT}\n${JSON.stringify(hypotheses)}` };
         const startedAtMs = now();
         let response: LogAnalysisChatResponse & { toolCalls?: LogAnalysisNativeCall[] };
         try {
@@ -398,7 +454,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           input.signal?.throwIfAborted();
           const unsupported = mayProbe && protocol === "tools" && rejectsNativeTools(error);
           await emitLogTrace(input, { kind: "model-turn", protocol, outcome: "error",
-            reason: unsupported ? "protocol-unsupported" : "provider-error" });
+            reason: unsupported ? "protocol-unsupported" : "provider-error", ...traceHypotheses() });
           options.telemetry?.recordLlmCall?.({
             model: options.modelLabel,
             outcome: "provider_error",
@@ -431,8 +487,11 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         const validOutput = turn !== undefined && (turn.action === "tools"
           ? !finalOnly && !turn.overLimit && !turn.calls.some((call) => call.malformed)
           : groundLlmEvidence(turn.report.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources).length > 0);
+        // A turn can only cite results it received before issuing its requests.
+        if (options.hypothesisLedger && validOutput && turn?.notes) hypotheses = groundHypotheses(turn.notes);
         await emitLogTrace(input, { kind: "model-turn", protocol, resultBytes: Buffer.byteLength(outputText),
           outcome: validOutput ? "ok" : "error", reason: validOutput ? null : "invalid-output",
+          ...traceHypotheses(),
           ...(response.usage?.inputTokens !== undefined ? { inputTokens: response.usage.inputTokens } : {}),
           ...(response.usage?.outputTokens !== undefined ? { outputTokens: response.usage.outputTokens } : {}) });
         options.telemetry?.recordLlmCall?.({
@@ -449,24 +508,29 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         final: z.infer<typeof finalStepSchema>,
         grounded: ReturnType<typeof groundLlmEvidence>,
         degradedReason?: LogAnalysisDegradedReason
-      ): AnalyzeLogOutput => ({
-        confidence: degradedReason ? Math.min(final.confidence, EARLY_CONVERGENCE_MAX_CONFIDENCE) : final.confidence,
-        conclusion: final.conclusion,
-        impact: final.impact,
-        severity: final.severity,
-        evidence: grounded,
-        suggestedActions: final.suggestedActions,
-        reportContext: {
-          analysisQuestion: input.analysisQuestion,
-          lineCount: input.stats?.lineCount ?? input.parsed.rawLines.length,
-          entryCount: input.stats?.entryCount ?? input.parsed.entries.length
-        },
-        analysisSource: "agent",
-        ...(historicalRunIds.size ? { historicalRunIds: [...historicalRunIds] } : {}),
-        ...(degradedReason ? { degradedReason } : {}),
-        promptVersion: promptVersionFor(input),
-        model: options.modelLabel
-      });
+      ): AnalyzeLogOutput => {
+        const parsed = options.hypothesisLedger ? logAlternativeHypothesesSchema.safeParse(final.alternativeHypotheses) : undefined;
+        const alternatives = parsed?.success ? groundHypotheses(parsed.data, true) : [];
+        return {
+          confidence: degradedReason ? Math.min(final.confidence, EARLY_CONVERGENCE_MAX_CONFIDENCE) : final.confidence,
+          conclusion: final.conclusion,
+          impact: final.impact,
+          severity: final.severity,
+          evidence: grounded,
+          ...(alternatives.length ? { alternativeHypotheses: alternatives } : {}),
+          suggestedActions: final.suggestedActions,
+          reportContext: {
+            analysisQuestion: input.analysisQuestion,
+            lineCount: input.stats?.lineCount ?? input.parsed.rawLines.length,
+            entryCount: input.stats?.entryCount ?? input.parsed.entries.length
+          },
+          analysisSource: "agent",
+          ...(historicalRunIds.size ? { historicalRunIds: [...historicalRunIds] } : {}),
+          ...(degradedReason ? { degradedReason } : {}),
+          promptVersion: promptVersionFor(input),
+          model: options.modelLabel
+        };
+      };
 
       for (let step = 1; step <= maxSteps && usedTokens < investigationBudget; step += 1) {
         await input.onProgress?.({ step, maxSteps });
@@ -476,9 +540,9 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         if (!turn) {
           invalidStreak += 1;
           if (invalidStreak >= LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID) {
-            return degradeToFallback(input, "invalid-model-output", historicalRunIds);
+            return degrade("invalid-model-output");
           }
-          messages.push({ role: "assistant", content });
+          if (!options.hypothesisLedger) messages.push({ role: "assistant", content });
           messages.push({
             role: "user",
             content: protocol === "tools"
@@ -490,7 +554,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
 
         if (turn.action === "tools") {
           const nativeCalls = turn.calls.flatMap(({ native }) => native ? [native] : []);
-          messages.push({ role: "assistant", content, ...(nativeCalls.length ? { toolCalls: nativeCalls } : {}) });
+          messages.push({ role: "assistant", content: turn.historyContent ?? content, ...(nativeCalls.length ? { toolCalls: nativeCalls } : {}) });
           let invalid = Boolean(turn.overLimit);
           for (const { tool, args, native, malformed } of turn.calls) {
             input.signal?.throwIfAborted();
@@ -502,6 +566,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
             await emitLogTrace(input, { kind: "tool-call", tool: isLogAnalysisToolName(tool) ? tool : null,
               arguments: summarizeTraceArguments(args, input), resultBytes: Buffer.byteLength(resultText),
               lines: outcome.ok ? traceResultLines(tool, outcome.result, input) : [],
+              ...traceHypotheses(),
               outcome: outcome.ok ? truncated ? "truncated" : "ok" : "error",
               reason: outcome.ok ? truncated ? "result-cap" : null : "tool-rejected" });
             const resultMessage = (content: string): LogAnalysisChatMessage => native
@@ -511,7 +576,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
               messages.push(resultMessage(`Tool call rejected: ${outcome.error} Correct the tool name/arguments or emit your final report.`));
               continue;
             }
-            const anchors = new Map<string, ToolAnchor>();
+            const anchors = new Map<string, LogHypothesisAnchor>();
             remember(tool, outcome.result, anchors);
             for (const runId of outcome.historicalRunIds ?? []) historicalRunIds.add(runId);
             if (outcome.historicalRunIds?.length) input.onHistoricalRunsRetrieved?.(outcome.historicalRunIds);
@@ -527,7 +592,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           }
           invalidStreak = invalid ? invalidStreak + 1 : 0;
           if (invalidStreak >= LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID) {
-            return degradeToFallback(input, "invalid-model-output", historicalRunIds);
+            return degrade("invalid-model-output");
           }
           if (turn.overLimit) {
             messages.push({ role: "user", content: "Tool limit exceeded: only the first three calls were processed." });
@@ -537,9 +602,11 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           if (grounded.length === 0) {
             invalidStreak += 1;
             if (invalidStreak >= LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID) {
-              return degradeToFallback(input, "invalid-model-output", historicalRunIds);
+              return degrade("invalid-model-output");
             }
-            messages.push({ role: "assistant", content });
+            const { notes, alternativeHypotheses, ...report } = turn.report;
+            messages.push({ role: "assistant", content: notes !== undefined || alternativeHypotheses !== undefined
+              ? JSON.stringify(report) : content });
             messages.push({
               role: "user",
               content:
@@ -554,8 +621,8 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       // Usage is known after each response, so a single turn can spend the reserve.
       const budgetReason = usedTokens >= investigationBudget ? "token-budget-exhausted" : "step-budget-exhausted";
       await input.onProgress?.({ step: maxSteps, maxSteps });
-      if (usedTokens >= options.tokenBudget) return degradeToFallback(input, budgetReason, historicalRunIds);
-      await emitLogTrace(input, { kind: "early-convergence", reason: budgetReason });
+      if (usedTokens >= options.tokenBudget) return degrade(budgetReason);
+      await emitLogTrace(input, { kind: "early-convergence", reason: budgetReason, ...traceHypotheses() });
       messages.push({
         role: "user",
         content: `Budget exhausted: you must now ${protocol === "tools" ? "call final_report" : "emit your final report JSON"} based only on what you have already seen. Use low confidence if the evidence is thin. ${protocol === "tools" ? "Do not call any more investigative tools." : "Do not call any more tools."}`
@@ -570,7 +637,7 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         }
       }
 
-      return degradeToFallback(input, budgetReason, historicalRunIds);
+      return degrade(budgetReason);
     }
   };
 }

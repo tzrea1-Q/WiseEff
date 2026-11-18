@@ -33,6 +33,30 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it("lists the historical run IDs returned for this report", async () => {
+    const log = { ...initialState.logs[1], historicalRunIds: ["reviewed-run-1", "reviewed-run-2"] };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const report = within(screen.getByRole("region", { name: log.conclusion }));
+    await userEvent.click(report.getByText("参考历史运行（2）"));
+    expect(report.getByText("reviewed-run-1")).toBeVisible();
+    expect(report.getByText("reviewed-run-2")).toBeVisible();
+  });
+
+  it.each([true, false])("在结论下方按报告内容显示已排除原因（%s）", (hasAlternatives) => {
+    const log = { ...initialState.logs[1], alternativeHypotheses: hasAlternatives
+      ? [{ statement: "充电器限流", reason: "日志记录热保护介入", anchors: [{ file: "charging.log", line: 3 }] }]
+      : undefined };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const report = within(screen.getByRole("region", { name: log.conclusion }));
+    if (hasAlternatives) {
+      expect(report.getByRole("heading", { name: "已排除的可能原因" })).toBeVisible();
+      expect(report.getByText("充电器限流")).toBeVisible();
+      expect(report.getByText("日志记录热保护介入")).toBeVisible();
+    } else {
+      expect(report.queryByRole("heading", { name: "已排除的可能原因" })).not.toBeInTheDocument();
+    }
+  });
+
   it.each([true, false])("参数管理未开放时隐藏关联参数和修改请求入口（已关联：%s）", async (linked) => {
     const log = { ...initialState.logs[0], status: "Complete" as const, stage: "report" as const,
       relatedParameterId: linked ? "binding-1" : undefined, relatedParameterProjectId: linked ? "project-1" : undefined };

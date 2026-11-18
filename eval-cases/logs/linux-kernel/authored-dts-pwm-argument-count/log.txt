@@ -156,7 +156,7 @@
 [  884.815000] pwm 20c0000.pwm: registered pwmchip2, npwm=4
 [  884.912485] kernel: thermal thermal_zone0: temperature=43160
 [  885.097000] OF: /soc/pwm@20c0000: #pwm-cells = 3
-[  885.102000] OF: /backlight: pwms[0]: /soc/pwm@20c0000: 2 arguments, expected 3
+[  885.102000] OF: /backlight: pwms[0]: /soc/pwm@20c0000: 2 argument cells
 [  885.118000] pwm-backlight backlight: unable to request PWM: -22
 [  885.694153] kernel: pinctrl: group state default applied
 [  885.836172] kernel: mmc0: cmd=13 status=0x900

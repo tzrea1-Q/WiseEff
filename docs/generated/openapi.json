@@ -51197,6 +51197,69 @@
               "conclusion": {
                 "type": "string"
               },
+              "alternativeHypotheses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "statement": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "statement",
+                    "reason",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "impact": {
                 "type": "string"
               },
@@ -52203,6 +52266,69 @@
               "conclusion": {
                 "type": "string"
               },
+              "alternativeHypotheses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "statement": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "statement",
+                    "reason",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "impact": {
                 "type": "string"
               },
@@ -53071,6 +53197,69 @@
                 "conclusion": {
                   "type": "string"
                 },
+                "alternativeHypotheses": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "statement": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "anchors": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "file": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "file",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "snapshotId": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "snapshotId",
+                                "path",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "statement",
+                      "reason",
+                      "anchors"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "impact": {
                   "type": "string"
                 },
@@ -53520,6 +53709,79 @@
                     "json"
                   ]
                 },
+                "hypotheses": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "statement": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "supported",
+                          "refuted",
+                          "inconclusive"
+                        ]
+                      },
+                      "anchors": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "file": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "file",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "snapshotId": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "snapshotId",
+                                "path",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "statement",
+                      "status",
+                      "anchors"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "inputTokens": {
                   "type": "number"
                 },
@@ -53809,6 +54071,69 @@
                                 "Warning",
                                 "Info"
                               ]
+                            },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
                             },
                             "evidence": {
                               "type": "array",
@@ -54166,6 +54491,69 @@
                                 "Warning",
                                 "Info"
                               ]
+                            },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
                             },
                             "evidence": {
                               "type": "array",
@@ -54580,6 +54968,69 @@
                                 "Info"
                               ]
                             },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -54936,6 +55387,69 @@
                                 "Warning",
                                 "Info"
                               ]
+                            },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
                             },
                             "evidence": {
                               "type": "array",
@@ -55839,6 +56353,69 @@
                                 "Info"
                               ]
                             },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
                             "evidence": {
                               "type": "array",
                               "items": {
@@ -56195,6 +56772,69 @@
                                 "Warning",
                                 "Info"
                               ]
+                            },
+                            "alternativeHypotheses": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "statement": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "statement",
+                                  "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
                             },
                             "evidence": {
                               "type": "array",
@@ -57057,6 +57697,69 @@
                       "Info"
                     ]
                   },
+                  "alternativeHypotheses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "statement": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "file",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "snapshotId": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "snapshotId",
+                                  "path",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "statement",
+                        "reason",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "evidence": {
                     "type": "array",
                     "items": {
@@ -57442,6 +58145,69 @@
                       "Warning",
                       "Info"
                     ]
+                  },
+                  "alternativeHypotheses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "statement": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "file",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "snapshotId": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "snapshotId",
+                                  "path",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "statement",
+                        "reason",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
                   },
                   "evidence": {
                     "type": "array",
@@ -57864,6 +58630,79 @@
                     "tools",
                     "json"
                   ]
+                },
+                "hypotheses": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "statement": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "supported",
+                          "refuted",
+                          "inconclusive"
+                        ]
+                      },
+                      "anchors": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "file": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "file",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "snapshotId": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "snapshotId",
+                                "path",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "statement",
+                      "status",
+                      "anchors"
+                    ],
+                    "additionalProperties": false
+                  }
                 },
                 "inputTokens": {
                   "type": "number"
@@ -59221,6 +60060,69 @@
               },
               "conclusion": {
                 "type": "string"
+              },
+              "alternativeHypotheses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "statement": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "statement",
+                    "reason",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
               },
               "impact": {
                 "type": "string"

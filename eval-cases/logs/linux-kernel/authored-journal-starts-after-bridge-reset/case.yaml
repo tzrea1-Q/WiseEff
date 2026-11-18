@@ -14,4 +14,4 @@ realismChecklist:
   rootCauseDiscoverability: "Only a third attempt and recovery remain. The first failed operation and reset trigger are outside the capture."
   timeline: "Export starts mid-retry. Recovery precedes the routine sample lines on one journal clock."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Confirmed the first three bridge records begin at retry 3, show one generic I/O error and reach recovery. A diagnosis would require the earlier journal."
+  annotationReview: "Confirmed the bridge records begin at retry 3, show one generic I/O error and reach recovery. A diagnosis would require the earlier journal. Independent review (2026-11-18): fixed. Retry and failed frame request are on lines 1–2, while restoration is at line 5. The original reset trigger is outside the excerpt."

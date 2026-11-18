@@ -21,6 +21,7 @@ import { readableKnowledgeEntryIds } from "./skillKnowledge";
 import type { LogArchiveState, LogFeedbackRating, LogRecordDto } from "./types";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 import type { RelatedParameterRunSnapshot } from "./relatedParameter";
+import type { LogAlternativeHypothesis } from "./hypotheses";
 
 type LogFileObjectRow = {
   id: string;
@@ -52,6 +53,7 @@ type LogRecordRow = RevisionRow & {
   historical_attribution?: LogRecordDto["historicalAttribution"];
   skill_selection?: LogRecordDto["skillSelection"] | null;
   signal_summary?: import("./genericSignals").LogSignalSummary | null;
+  alternative_hypotheses?: LogAlternativeHypothesis[] | null;
   id: string;
   current_run_id?: string | null;
   report_id: string | null;
@@ -235,6 +237,7 @@ export type PersistLogAnalysisReportInput = {
     knowledgeRevisions?: Array<{ entryId: string; revisionId: string; pages?: number[] }>;
     historicalRunIds?: string[];
     signalSummary?: import("./genericSignals").LogSignalSummary;
+    alternativeHypotheses?: LogAlternativeHypothesis[];
     confidence: number;
     conclusion: string;
     impact: string;
@@ -319,6 +322,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
     stage: row.stage ?? "parse",
     confidence: row.confidence === null ? 0 : Number(row.confidence),
     conclusion: row.conclusion ?? defaultConclusion(status, row.failure_reason),
+    alternativeHypotheses: row.alternative_hypotheses ?? undefined,
     impact: row.impact ?? defaultImpact(status),
     evidence,
     suggestedActions: row.suggested_actions ?? [],
@@ -449,6 +453,7 @@ const logSelect = `
     coalesce(lar.current_stage, 'parse') as stage,
     report.confidence,
     report.conclusion,
+    report.alternative_hypotheses,
     report.impact,
     report.suggested_actions,
     report.severity,
@@ -993,9 +998,9 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
       `
       insert into log_analysis_reports (
         id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
-        severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary
+        severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary, alternative_hypotheses
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       on conflict (id) do update
       set confidence = excluded.confidence,
         conclusion = excluded.conclusion,
@@ -1007,7 +1012,8 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         degraded_reason = excluded.degraded_reason,
         prompt_version = excluded.prompt_version,
         model = excluded.model,
-        signal_summary = excluded.signal_summary
+        signal_summary = excluded.signal_summary,
+        alternative_hypotheses = excluded.alternative_hypotheses
       `,
       [
         `report-${input.runId}`,
@@ -1024,7 +1030,8 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         input.report.degradedReason ?? null,
         input.report.promptVersion ?? null,
         input.report.model ?? null,
-        input.report.signalSummary ? jsonb(input.report.signalSummary) : null
+        input.report.signalSummary ? jsonb(input.report.signalSummary) : null,
+        input.report.alternativeHypotheses ? jsonb(input.report.alternativeHypotheses) : null
       ]
     );
     await tx.query(
@@ -1088,9 +1095,9 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
         `
         insert into log_analysis_reports (
           id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
-          severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary
+          severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary, alternative_hypotheses
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         on conflict (id) do update
         set confidence = excluded.confidence,
           conclusion = excluded.conclusion,
@@ -1102,7 +1109,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           degraded_reason = excluded.degraded_reason,
           prompt_version = excluded.prompt_version,
           model = excluded.model,
-          signal_summary = excluded.signal_summary
+          signal_summary = excluded.signal_summary,
+          alternative_hypotheses = excluded.alternative_hypotheses
         `,
         [
           `report-${input.runId}`,
@@ -1119,7 +1127,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           input.report.degradedReason ?? null,
           input.report.promptVersion ?? null,
           input.report.model ?? null,
-          input.report.signalSummary ? jsonb(input.report.signalSummary) : null
+          input.report.signalSummary ? jsonb(input.report.signalSummary) : null,
+          input.report.alternativeHypotheses ? jsonb(input.report.alternativeHypotheses) : null
         ]
       );
       await tx.query(

@@ -24,4 +24,4 @@ realismChecklist:
   rootCauseDiscoverability: "The payload length is a distraction. Join the advertised format, actual rejection and zero-row commit by batch ID."
   timeline: "Shared UTC in one stream. Batch start, debug event, validation and abort all precede the next routine sample window."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Read the short records around the long line and verified the rejection for bench-93 occurred before any write."
+  annotationReview: "Read the short records around the long line and verified the rejection for bench-93 occurred before any write. Independent review (2026-11-18): ok. UTF-16LE and CRLF normalize without shifting the 12,544-byte debug record or the adjacent format-rejection and zero-row anchors."

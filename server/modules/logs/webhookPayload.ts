@@ -1,3 +1,5 @@
+import type { LogAlternativeHypothesis } from "./hypotheses";
+
 export const WEBHOOK_CONCLUSION_SUMMARY_MAX_CHARS = 300;
 
 export type LogAnalysisResultWebhookInput = {
@@ -15,6 +17,7 @@ export type LogAnalysisResultWebhookInput = {
   severity?: string;
   confidence?: number;
   conclusion?: string;
+  alternativeHypotheses?: LogAlternativeHypothesis[];
   occurredAt: string;
 };
 
@@ -52,6 +55,7 @@ export function buildLogResultWebhookPayload(input: LogAnalysisResultWebhookInpu
     severity: input.severity,
     confidence: input.confidence,
     conclusionSummary: truncateSummary(input.conclusion),
+    alternativeHypotheses: input.status === "complete" ? input.alternativeHypotheses : undefined,
     occurredAt: input.occurredAt,
     productPath: `${input.status === "complete" ? `/logs?id=${encodeURIComponent(`report-${input.runId}`)}&` : "/logs?"}organizationId=${encodeURIComponent(input.organizationId)}`
   };

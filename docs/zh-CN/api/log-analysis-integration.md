@@ -142,6 +142,8 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 
 使用用户会话时，记录与运行响应可能包含 `historicalRunIds`，记录本次检索实际返回的历史运行 ID。历史结论须经过确认，并来自同一组织和技能，仅供类比。证据锚点仍来自当前分析。历史检索只在用户提交记录的分析 Worker 内使用，默认关闭。
 
+启用假设账本后，已完成的报告可返回 `alternativeHypotheses`，列出已排除的可能原因。每项包含陈述 `statement`、理由 `reason` 和 `anchors`，锚点指向此前已见的日志行（`{ file, line }`）或源码行（`{ snapshotId, path, line }`）。
+
 | `degradedReason` | 含义 |
 | --- | --- |
 | `provider-unavailable` | 最后一次任务尝试仍无法调用模型服务，由规则引擎生成报告。 |
@@ -221,12 +223,17 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
   "severity": "Warning",
   "confidence": 0.82,
   "conclusionSummary": "充电表现符合过热保护降额特征。",
+  "alternativeHypotheses": [
+    { "statement": "适配器重新协商导致限流", "reason": "热保护介入时，充电协议保持稳定。", "anchors": [{ "file": "charging-foldback.log", "line": 3 }] }
+  ],
   "occurredAt": "2026-08-13T02:00:00.000Z",
   "productPath": "/logs?id=report-run-...&organizationId=org-..."
 }
 ```
 
 `event` 取值:`log-analysis.completed`、`log-analysis.failed`、`log-analysis.test`(管理员测试按钮)。
+
+报告含有接地的排除原因且运行未关联参数快照时，完成结果会携带 `alternativeHypotheses`。每项为简要说明和锚点引用。
 
 结果事件在保留旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }` 和 `degraded: boolean`。旧未钉住运行的版本字段可为 null。规则回退或存在降级原因时 `degraded` 为 true。`degradedReason` 存在时与记录 API 使用相同的值，包括 `invalid-model-output` 和 `step-budget-exhausted`。key 在终态事件入队时快照保存，重试保持相同载荷。同步测试事件维持原格式。
 

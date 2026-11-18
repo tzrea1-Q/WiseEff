@@ -1122,6 +1122,14 @@ function LogConclusionCard({
         {complete ? <p>{log.impact}</p> : null}
       </div>
     </div>
+    {complete && !!log.alternativeHypotheses?.length && <div className="logs-alternative-hypotheses">
+      <h3>已排除的可能原因</h3>
+      <ul>
+        {log.alternativeHypotheses.map(({ statement, reason }, index) => <li key={index}>
+          <strong>{statement}</strong><p>{reason}</p>
+        </li>)}
+      </ul>
+    </div>}
     <LogHeaderMeta log={log} />
     {complete ? <div className="logs-conclusion-summary">
       <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} canOpenKnowledge={canOpenKnowledge} onNavigate={onNavigate} organizationId={organizationId} />

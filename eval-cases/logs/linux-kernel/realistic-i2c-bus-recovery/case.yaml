@@ -14,9 +14,9 @@ expectedActions:
   - Compare gauge reads before and after bus recovery.
 realismChecklist:
   lineFormat: dmesg-style monotonic boot seconds with six fractional digits and driver-prefixed messages.
-  noiseRatio: 45 of 50 lines are routine polling or successful status checks (90%).
+  noiseRatio: 44 of 50 lines are routine polling or later successful status checks (88%). Excludes the USB warning and lines 17–21, including both gauge timeouts and the first cache refresh.
   distractors: The USB descriptor warning is on a different bus and its retry succeeds.
   rootCauseDiscoverability: The stuck line precedes the timeouts and the driver reports recovery separately.
-  timeline: All timestamps share one boot clock. The bus stalls before the reads fail, then polling resumes.
+  timeline: All timestamps share one boot clock. The bus stalls before the reads fail, then polling resumes. Every record is exactly one second after the previous record.
   sensitiveData: Device addresses are fictional fixture values and no identity or credential appears.
-  annotationReview: Author cross-checked lines 17, 18, 20 and 21 and verified the actions follow the observed bus symptom.
+  annotationReview: "Author cross-checked lines 17, 18, 20 and 21 and verified the actions follow the observed bus symptom. Independent review (2026-11-18): concern. The SDA assertion, gauge timeout, release and cache refresh support the diagnosis and bus-level checks. The seed is below 90% routine lines and has exact one-second timing."

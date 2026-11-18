@@ -21,8 +21,8 @@ keyEvidence:
 realismChecklist:
   lineFormat: "RFC 5424 syslog with UTC millisecond timestamps and PRI severity. Structured service JSON Lines with ISO 8601 UTC timestamps at millisecond precision."
   noiseRatio: "22900 of 25064 lines are routine traffic (91.4%). Incident, symptom and distraction lines are excluded from the numerator."
-  distractors: "The xHCI reset at host.log:1545 clears minutes before the collector sees write failures."
+  distractors: "The USB descriptor error at host.log:1545 concerns a different device. Its reset completes minutes before the collector sees write failures."
   rootCauseDiscoverability: "Thousands of EROFS lines identify the symptom. The single host transition and the writer boundaries on the same device identify the first observed change."
   timeline: "Both streams share UTC millisecond timestamps. The last good write at .491 precedes the remount at .626 and the first EROFS at .841."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Checked the same mount identifier and EROFS onset. The report intentionally limits the cause to the read-only state and asks for earlier kernel evidence."
+  annotationReview: "Checked the same mount identifier and EROFS onset. The report intentionally limits the cause to the read-only state and asks for earlier kernel evidence. Independent review (2026-11-18): fixed. Replaced the informational USB reset as a warning with a descriptor error and corrected the ext4 remount to critical PRI severity. All 2160 EROFS records follow the one remount between the last success and first failure."
