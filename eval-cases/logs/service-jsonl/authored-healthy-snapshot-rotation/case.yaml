@@ -14,4 +14,4 @@ realismChecklist:
   rootCauseDiscoverability: "Generation changes and checksum-verified commits over the whole span are stronger evidence than one success record."
   timeline: "UTC timestamps and generation IDs both advance throughout the capture."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Checked that generations are consecutive and every commit attests checksum verification. The question is limited to manifest publication."
+  annotationReview: "Checked that generations are consecutive and every commit attests checksum verification. The question is limited to manifest publication. Independent review (2026-11-18): ok. All 329 manifest publishes commit with verified checksums, with consecutive generations 450–778."

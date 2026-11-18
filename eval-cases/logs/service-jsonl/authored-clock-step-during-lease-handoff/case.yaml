@@ -5,7 +5,7 @@ tier: realistic
 provenance: authored
 scenarioTags: [multi-file, clock-skew, distractor]
 rootCauseCategory: configuration-error
-analysisQuestion: "Does the lease expire before or after the holder misses its renewal?"
+analysisQuestion: "In what order did the lease deadline, renewal timeout report and handoff occur?"
 rootCausePoints:
   - "The backward wall-clock step makes the previous renewal look later than the handoff."
   - "Monotonic boot_ms places expiry at 885117, the timed-out renewal result after expiry and the new grant before the old holder completion."
@@ -27,4 +27,4 @@ realismChecklist:
   rootCauseDiscoverability: "Neither the timeout nor wall timestamp gives the sequence. Deadline, clock step and monotonic fields settle the ordering."
   timeline: "Both streams use the stepped UTC wall clock. All decisive boot_ms values share one unaffected monotonic clock."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Recomputed monotonic order including deadline 885117. The logs establish when the renewal timeout was reported, with no assertion about when its request was sent."
+  annotationReview: "Recomputed monotonic order including deadline 885117. The logs establish when the renewal timeout was reported, with no assertion about when its request was sent. Independent review (2026-11-18): fixed. The question now asks for the observable order. The deadline at 885117 precedes the timeout report at 885609, grant at 885847 and stale completion at 886304."

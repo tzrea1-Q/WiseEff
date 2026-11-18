@@ -9,12 +9,13 @@ analysisQuestion: "Where did the input thread stop making progress?"
 rootCausePoints:
   - "The settings main thread waited synchronously for Binder transaction 935."
   - "MediaIndex thread 1924 held catalogLock across the input timeout and the reply followed lock release."
-keyEvidenceLines: [154, 370, 371, 372, 384, 387, 388]
+keyEvidenceLines: [142, 154, 370, 371, 372, 384, 387, 388]
 expectedActions:
   - "Collect app and MediaIndex thread stacks for the same transaction ID."
   - "Move the settings query off the input thread and review how long the rebuild holds catalogLock."
 bundleFiles: [fixtures/system.log, fixtures/binder.log]
 keyEvidence:
+  - { file: system.log, line: 142 }
   - { file: system.log, line: 154 }
   - { file: binder.log, line: 115 }
   - { file: binder.log, line: 116 }
@@ -29,4 +30,4 @@ realismChecklist:
   rootCauseDiscoverability: "ANR text only reports a timeout. Transaction ID, TIDs and lock release/reply identify the blocked chain."
   timeline: "Both logcat buffers use the same clock. Lock claim, request, ANR, release and reply are ordered on it."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Matched transaction 935 and the relevant process and thread IDs across both files. The proposed fixes address the synchronous caller and the lock owner."
+  annotationReview: "Matched transaction 935 and the relevant process and thread IDs across both files. The proposed fixes address the synchronous caller and the lock owner. Independent review (2026-11-18): fixed. Added the originating settings query to connect the caller to transaction 935. The transaction, contention and post-release reply span the five-second input timeout."

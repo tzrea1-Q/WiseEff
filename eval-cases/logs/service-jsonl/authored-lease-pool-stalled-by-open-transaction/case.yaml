@@ -18,4 +18,4 @@ realismChecklist:
   rootCauseDiscoverability: "Acquire timeout alone does not say which request holds capacity. The pool size, connection and transaction tie wait and recovery together."
   timeline: "One UTC clock. Transaction begins and stays idle before append times out. Rollback immediately precedes a successful acquisition."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Checked pool size 1 and c0/x12 across both components. Acquisition resumes on the same connection after rollback."
+  annotationReview: "Checked pool size 1 and c0/x12 across both components. Acquisition resumes on the same connection after rollback. Independent review (2026-11-18): ok. The idle transaction retains the sole writer connection through the 503, and rollback returns that connection before the next append succeeds."

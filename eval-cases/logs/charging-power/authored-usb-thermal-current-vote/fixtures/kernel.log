@@ -33,7 +33,7 @@
 <134>1 2026-10-14T09:14:28.216Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
 <134>1 2026-10-14T09:14:28.926Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=16
 <134>1 2026-10-14T09:14:29.845Z bench-node kernel - - - mmc0: req done bytes=4096
-<132>1 2026-10-14T09:14:31.021Z bench-node kernel - - - usb 1-2: device descriptor read/64, error -71
+<131>1 2026-10-14T09:14:31.021Z bench-node kernel - - - usb 1-2: device descriptor read/64, error -71
 <134>1 2026-10-14T09:14:31.194Z bench-node kernel - - - usb 1-2: new full-speed USB device number 7
 <135>1 2026-10-14T09:14:32.889Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
 <134>1 2026-10-14T09:14:35.620Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=12

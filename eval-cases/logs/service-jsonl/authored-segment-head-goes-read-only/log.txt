@@ -1542,7 +1542,7 @@
 <134>1 2026-10-14T09:15:42.343Z bench-node systemd - - - control-plane.slice: CPU time accounted.
 <134>1 2026-10-14T09:15:42.468Z bench-node systemd - - - metrics-sample.service: Deactivated successfully.
 <134>1 2026-10-14T09:15:42.479Z bench-node systemd - - - Started link monitor check.
-<132>1 2026-10-14T09:15:42.521Z bench-node kernel - - - usb 2-2: reset full-speed USB device number 4 using xhci_hcd
+<131>1 2026-10-14T09:15:42.521Z bench-node kernel - - - usb 2-2: device descriptor read/64, error -71
 <134>1 2026-10-14T09:15:42.597Z bench-node systemd - - - log-index.timer: Got new trigger.
 <134>1 2026-10-14T09:15:42.714Z bench-node systemd - - - Started rotating scratch diagnostics.
 <134>1 2026-10-14T09:15:42.718Z bench-node systemd - - - scratch-trim.service: Deactivated successfully.
@@ -5833,7 +5833,7 @@
 <134>1 2026-10-14T09:20:32.499Z bench-node systemd - - - scratch-trim.service: Deactivated successfully.
 <135>1 2026-10-14T09:20:32.549Z bench-node systemd - - - control-plane.slice: CPU time accounted.
 <134>1 2026-10-14T09:20:32.595Z bench-node systemd - - - metrics-sample.service: Deactivated successfully.
-<134>1 2026-10-14T09:20:32.626Z bench-node kernel - - - EXT4-fs (nvme0n1p2): Remounting filesystem read-only
+<130>1 2026-10-14T09:20:32.626Z bench-node kernel - - - EXT4-fs (nvme0n1p2): Remounting filesystem read-only
 <134>1 2026-10-14T09:20:32.643Z bench-node systemd - - - Started link monitor check.
 <134>1 2026-10-14T09:20:32.647Z bench-node systemd - - - log-index.timer: Got new trigger.
 <134>1 2026-10-14T09:20:32.857Z bench-node systemd - - - Started rotating scratch diagnostics.

@@ -20,4 +20,4 @@ realismChecklist:
   rootCauseDiscoverability: "The OOM victim, cgroup constraint and restart chain establish why this particular unit was restarted."
   timeline: "Same journal clock. Memory limit, kernel victim and unit exit share one timestamp second and appear in order."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Checked the PID, slice path and 262144 KiB = 256 MiB. The annotation scopes exhaustion to the cgroup."
+  annotationReview: "Checked the PID, slice path and 262144 KiB = 256 MiB. The annotation scopes exhaustion to the cgroup. Independent review (2026-11-18): ok. The usage equals the local limit and the matching victim PID precedes exit and restart. The proposed checks investigate memory growth and the service budget."

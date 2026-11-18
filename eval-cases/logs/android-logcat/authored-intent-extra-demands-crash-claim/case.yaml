@@ -14,4 +14,4 @@ realismChecklist:
   rootCauseDiscoverability: "The extra is data. The share result and same-process callback activity continue after dispatch."
   timeline: "One logcat clock and the same PID/TID before and after the Intent."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Read the Intent extra, RESULT_OK and later callbacks on the same thread. No crash event follows the user-provided string."
+  annotationReview: "Read the Intent extra, RESULT_OK and later callbacks on the same thread. No crash event follows the user-provided string. Independent review (2026-11-18): ok. Line 131 asks only for a false report. Lines 133 and 143 and later callbacks establish continued progress on the same PID/TID."

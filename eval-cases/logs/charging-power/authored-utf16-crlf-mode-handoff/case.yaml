@@ -25,4 +25,4 @@ realismChecklist:
   rootCauseDiscoverability: "Correlate sequence 183, wire mode, allowed controller values and the gateway translation of the reply."
   timeline: "Both sources are UTC. Gateway send precedes controller receive and reply, then standby is sampled."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Checked the UTF-16LE file and matching sequence on the UTF-8 gateway. Standby interlock=0 supports the mode mismatch diagnosis."
+  annotationReview: "Checked the UTF-16LE file and matching sequence on the UTF-8 gateway. Standby interlock=0 supports the mode mismatch diagnosis. Independent review (2026-11-18): ok. The UTF-16LE BOM and CRLF projection preserve all 267 controller lines. Sequence 183 confirms receipt, rejection of 0x04 and continued standby."

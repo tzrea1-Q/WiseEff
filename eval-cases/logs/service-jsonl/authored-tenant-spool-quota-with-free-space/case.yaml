@@ -18,4 +18,4 @@ realismChecklist:
   rootCauseDiscoverability: "Free filesystem space and EDQUOT are compatible once project accounting and the successful neighbouring write are correlated."
   timeline: "One UTC stream samples free capacity and the project quota just before the scoped failure and successful neighbour write."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Verified both writes use the same mount but distinct projects. The constrained quota value equals 1 GiB and there is evidence of free blocks and inodes."
+  annotationReview: "Verified both writes use the same mount but distinct projects. The constrained quota value equals 1 GiB and there is evidence of free blocks and inodes. Independent review (2026-11-18): ok. Project 31 is at its hard limit and returns EDQUOT. Free blocks and inodes and a successful write by project 32 establish the scope of the failure."

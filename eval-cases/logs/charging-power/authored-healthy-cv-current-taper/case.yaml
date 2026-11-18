@@ -14,4 +14,4 @@ realismChecklist:
   rootCauseDiscoverability: "The phase, bounded battery voltage, gradual current taper, input presence and steady temperature together support normal CV behavior."
   timeline: "One boot clock with a continuous gradual taper over the observation window."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Checked early, middle and late samples. The trace stays in CV with input online and similar temperatures throughout."
+  annotationReview: "Checked early, middle and late samples. The trace stays in CV with input online and similar temperatures throughout. Independent review (2026-11-18): ok. All 302 records report CV with input online, 4347–4353 mV battery voltage and a 32.5–33.0 C temperature range during the taper."

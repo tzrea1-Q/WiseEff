@@ -5,7 +5,7 @@ tier: realistic
 provenance: authored
 scenarioTags: [truncated, distractor, generic-analysis]
 rootCauseCategory: insufficient-evidence
-analysisQuestion: "Did the sender lose data or recover on the final retry?"
+analysisQuestion: "Was sequence 226 acknowledged or dropped after the scheduled retry?"
 expectRefusal: true
 realismChecklist:
   lineFormat: "Structured service JSON Lines with ISO 8601 UTC timestamps at millisecond precision."
@@ -14,4 +14,4 @@ realismChecklist:
   rootCauseDiscoverability: "A scheduled retry is not a delivery result. No acknowledgement, drop or final failure for sequence 226 is in the capture."
   timeline: "The export ends after retry scheduling and before the next earliest attempt, on the same UTC clock."
   sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
-  annotationReview: "Checked the last committed sequence and the last line of the capture. Neither supports a conclusion about sequence 226."
+  annotationReview: "Checked the last committed sequence and the last line of the capture. Neither supports a conclusion about sequence 226. Independent review (2026-11-18): fixed. Removed the assumption that the scheduled retry is final. The capture ends with the retry queued and its outcome is unknown."
