@@ -7,6 +7,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { RowActionMenu } from "@/components/common/RowActionMenu";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
+import { logDegradedReasonLabels } from "@/domain/logs/analysisProvenance";
 import { AnalysisTrace } from "@/features/log-analysis/AnalysisTrace";
 import { presentError } from "@/infrastructure/http/presentError";
 import { AnalysisCaseDialog, emptyCaseExpectations, presentAnalysisCaseError } from "./AnalysisCaseDialog";
@@ -24,9 +25,9 @@ const qualitySchema = z.object({
     hallucinatedLines: z.array(z.object({ file: z.string(), line: z.number() })).optional(), hallucinationRate: z.number().optional() }).optional()
 });
 type Outcome = AnalysisCaseRun["results"][number]["draft"];
-const degradation = (outcome: Outcome) => outcome.report.analysisSource === "rules-fallback"
-  ? `已降级：${outcome.report.degradedReason === "token-budget-exhausted" ? "Token 预算耗尽，规则回退" : "模型服务不可用，规则回退"}`
-  : outcome.report.degradedReason ? "已提前收敛：Token 预算耗尽" : "未降级";
+const degradation = ({ report: { analysisSource, degradedReason } }: Outcome) => analysisSource === "rules-fallback"
+  ? `已降级：${logDegradedReasonLabels[degradedReason ?? "provider-unavailable"]}，规则回退`
+  : degradedReason ? `已提前收敛：${logDegradedReasonLabels[degradedReason]}` : "未降级";
 function OutcomeDetails({ outcome, title, fileAnchors, children }: { outcome: Outcome; title: string; fileAnchors: boolean; children: React.ReactNode }) {
   const parsed = qualitySchema.safeParse(outcome.quality);
   const quality = parsed.success ? parsed.data : null;

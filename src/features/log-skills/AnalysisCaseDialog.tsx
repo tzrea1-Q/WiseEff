@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ViewSwitch } from "@/components/ui/view-switch";
 import { formatBytes } from "@/domain/format/formatBytes";
+import { logDegradedReasonLabels } from "@/domain/logs/analysisProvenance";
+import { LOG_DEGRADED_REASONS, type LogDegradedReason } from "@/domain/logs/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { AnalysisCase, AnalysisCaseExpectations, AnalysisCaseInput, AnalysisCasePrefill } from "./types";
@@ -55,7 +57,7 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
   const [evidence, setEvidence] = useState<EvidenceRow[]>(initialAnchors.map((anchor) => ({ file: anchor.file,
     mode: anchor.pattern ? "pattern" : "line", value: anchor.pattern ?? String(anchor.line ?? "") })));
   const [refusal, setRefusal] = useState(initial.expectations.expectRefusal);
-  const [degraded, setDegraded] = useState(initial.expectations.expectedDegradedReason ?? "");
+  const [degraded, setDegraded] = useState<LogDegradedReason | "">(initial.expectations.expectedDegradedReason ?? "");
   const [files, setFiles] = useState<File[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -90,7 +92,7 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
           const expectations: AnalysisCaseExpectations = { ...initial.expectations, summary: name.trim(), rootCauseCategory: category,
             rootCausePoints: lines(rootCause), expectedActions: lines(actions), keyEvidence: keyEvidence as AnalysisCaseExpectations["keyEvidence"],
             keyEvidenceLines: [], expectRefusal: refusal };
-          if (degraded === "provider-unavailable" || degraded === "token-budget-exhausted") expectations.expectedDegradedReason = degraded;
+          if (degraded) expectations.expectedDegradedReason = degraded;
           else delete expectations.expectedDegradedReason;
           setPending(true);
           await onSave({ name: name.trim(), expectations, ...(uploadRequired ? { files } : {}) });
@@ -131,7 +133,7 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
         ? originalUploads.map((file) => <li key={file.fileName}>{file.fileName} · {formatBytes(file.sizeBytes)}</li>)
         : availableFiles.map((file) => <li key={file.path}>{file.path} · {formatBytes(file.sizeBytes)}</li>)}</ul></section> : null}
       {sourceDegradation ? <div className="status-banner" data-tone="warning"><p>{sourceDegradation.source === "agent" ? "该报告已提前收敛，期望内容请人工核对。" : "该报告由规则回退生成，期望内容请人工核对。"}</p>
-        <p>原因：{sourceDegradation.reason === "provider-unavailable" ? "模型服务不可用" : "Token 预算耗尽"}。此次降级不会自动设为用例期望。</p></div> : null}
+        <p>原因：{logDegradedReasonLabels[sourceDegradation.reason]}。此次降级不会自动设为用例期望。</p></div> : null}
       <label>根因分类<SelectControl value={category} ariaLabel="根因分类" disabled={pending} onValueChange={(value) => setCategory(value as AnalysisCaseExpectations["rootCauseCategory"])}
         options={categories.map((value, index) => ({ value, label: categoryLabels[index] }))} /></label>
       <label>期望根因或结论{!refusal ? "（必填）" : "（可选）"}<Textarea aria-label="期望根因或结论" required={!refusal} rows={3} maxLength={20000} disabled={pending} value={rootCause} {...fieldProps("rootCause")} onChange={(event) => setRootCause(event.target.value)} /></label>{fieldError("rootCause")}
@@ -154,7 +156,7 @@ export function AnalysisCaseDialog({ initial, availableFiles = [], originalUploa
       <label>期望建议动作{!refusal ? "（必填）" : "（可选）"}<Textarea aria-label="期望建议动作" required={!refusal} rows={3} maxLength={20000} disabled={pending} value={actions} {...fieldProps("actions")} onChange={(event) => setActions(event.target.value)} /></label>{fieldError("actions")}
       <label className="flex items-center gap-2"><input type="checkbox" disabled={pending} checked={refusal} onChange={(event) => setRefusal(event.target.checked)} />期望拒答或证据不足</label>
       <label>期望降级原因（可选）<SelectControl ariaLabel="期望降级原因" disabled={pending} value={degraded} onValueChange={setDegraded}
-        options={[{ value: "", label: "不限定" }, { value: "provider-unavailable", label: "模型服务不可用" }, { value: "token-budget-exhausted", label: "Token 预算耗尽" }]} /></label>
+        options={[{ value: "", label: "不限定" }, ...LOG_DEGRADED_REASONS.map((value) => ({ value, label: logDegradedReasonLabels[value] }))]} /></label>
       {error ? <p role="alert">{error}</p> : null}
       <div className="dialog-actions"><Button type="button" variant="outline" disabled={pending} onClick={onClose}>取消</Button>
         <Button type="submit" disabled={pending} aria-busy={pending}>{pending ? "保存中…" : "保存用例"}</Button></div>

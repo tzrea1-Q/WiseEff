@@ -6,6 +6,7 @@ import { formatBytes } from "@/domain/format/formatBytes";
 import { formatLogDateTime } from "@/domain/format/formatDateTime";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { AnalysisTraceStep } from "@/features/log-skills/types";
+import { logDegradedReasonLabels } from "@/domain/logs/analysisProvenance";
 import type { LogRecord } from "@/domain/logs/types";
 
 const kinds = {
@@ -17,7 +18,8 @@ const kinds = {
 };
 const outcomes = { ok: "成功", error: "错误", truncated: "已截断" };
 const reasons: Record<string, string> = {
-  "provider-error": "模型调用失败", "provider-unavailable": "模型服务不可用",
+  ...logDegradedReasonLabels,
+  "provider-error": "模型调用失败",
   "invalid-output": "模型返回结果无效", "token-budget-exhausted": "已达到模型用量上限",
   "tool-rejected": "工具调用被拒绝", "result-cap": "结果已达到显示上限",
   "trace-line-cap": "引用行数已达到上限", "line-cap": "引用行数已达到上限"

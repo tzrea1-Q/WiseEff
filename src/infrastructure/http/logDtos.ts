@@ -69,7 +69,7 @@ export type LogRecordDto = {
   logDomainId?: string;
   logDomainName?: string;
   analysisSource?: "agent" | "rules-fallback";
-  degradedReason?: "provider-unavailable" | "token-budget-exhausted";
+  degradedReason?: LogRecord["degradedReason"];
 };
 
 export type LogDomainDto = {

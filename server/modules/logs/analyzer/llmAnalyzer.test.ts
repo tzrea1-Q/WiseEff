@@ -187,10 +187,10 @@ describe("createLlmLogAnalyzer", () => {
     const output = await analyzer.analyze({ parsed: parseFixture() });
 
     expect(output.analysisSource).toBe("rules-fallback");
-    expect(output.degradedReason).toBe("token-budget-exhausted");
+    expect(output.degradedReason).toBe("invalid-model-output");
     expect(output.model).toBe("test-model");
     expect(output.evidence.length).toBeGreaterThan(0);
-    expect(degraded).toEqual([{ reason: "token-budget-exhausted", model: "test-model" }]);
+    expect(degraded).toEqual([{ reason: "invalid-model-output", model: "test-model" }]);
   });
 
   it("degrades when every cited line is nonexistent", async () => {
@@ -206,7 +206,7 @@ describe("createLlmLogAnalyzer", () => {
     const output = await analyzer.analyze({ parsed: parseFixture() });
 
     expect(output.analysisSource).toBe("rules-fallback");
-    expect(output.degradedReason).toBe("token-budget-exhausted");
+    expect(output.degradedReason).toBe("invalid-model-output");
     expect(output.evidence.flatMap((item) => item.lineNumbers)).not.toContain(999);
   });
 

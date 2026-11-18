@@ -35,8 +35,8 @@ In the skill workspace, save the sample and draft before a dry run. Parse tests 
 
 - Transient provider failure → the job retries with the existing backoff (`LOG_ANALYSIS_QUEUE_ATTEMPTS` / `LOG_ANALYSIS_QUEUE_BACKOFF_MS`).
 - Retry-exhausting final attempt → deterministic rule-engine fallback, `analysis_source = 'rules-fallback'`, `degraded_reason = 'provider-unavailable'`, job completes normally (no dead letter).
-- Budgeted output that cannot be grounded (invalid JSON, or every cited line rejected by the grounding check) → immediate fallback with `degraded_reason = 'token-budget-exhausted'`.
-- Loop kernel additionally: steps or token budget exhausted before a grounded final → ONE early-convergence attempt; a grounded convergence returns `analysis_source = 'agent'` with `degraded_reason = 'token-budget-exhausted'` and confidence capped at 0.5; anything less lands on the rule fallback with the same reason. Repeated protocol violations (illegal tool names/arguments, non-JSON output — 3 consecutive) degrade the same way instead of burning budget.
+- The single-shot kernel falls back with `invalid-model-output` if its answer is invalid or has no grounded evidence. The loop falls back with the same reason after three consecutive invalid outputs, including rejected tools and ungrounded final answers.
+- The loop marks exhausted steps as `step-budget-exhausted` and exhausted tokens as `token-budget-exhausted`. When the budget policy permits a convergence call, a grounded answer returns `analysis_source = 'agent'` with confidence capped at 0.5. Otherwise the rules engine generates the report. Both outcomes retain the reason that triggered convergence.
 - Only a failing fallback continues into the existing job failure/dead-letter path.
 
 Verify the degraded path visibly: kill or misconfigure the provider, upload a log, and confirm the record completes with the prominent degraded rules-fallback badge in `/logs` and `/log-admin` instead of a silent success. In deterministic mode the same chain can be exercised by uploading a log containing the marker line `WISEEFF_SIMULATE_LLM_PROVIDER_DOWN`.

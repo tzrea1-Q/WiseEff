@@ -315,8 +315,8 @@ stateDiagram-v2
 
 - LLM 内核给出接地结论 → `analysis_source = 'agent'`，无降级原因。
 - provider 瞬时故障走既有 job 重试/退避；重试将耗尽的最后一次尝试回退到确定性规则引擎 → `analysis_source = 'rules-fallback'`、`degraded_reason = 'provider-unavailable'`，job 正常完成（不进死信）。
-- 预算内单次调用无法给出有效接地输出（JSON 非法或引用全部被接地校验剔除）→ 立即回退并记 `degraded_reason = 'token-budget-exhausted'`。
-- 循环内核：步数/token 耗尽或连续协议违规触发一次提前收敛尝试；收敛成功返回 `analysis_source = 'agent'` + `degraded_reason = 'token-budget-exhausted'`、置信度封顶 0.5（词汇表所述「提前收敛的低置信 agent 结论」）；仍失败则同因走规则回退。
+- 单次内核收到无效或缺少有效证据的答复后立即回退，标记 `invalid-model-output`。循环内核连续收到三次无效输出后以同一原因回退。
+- 循环内核将步数耗尽标记为 `step-budget-exhausted`，将 token 耗尽标记为 `token-budget-exhausted`。预算允许收敛且终答有证据依据时，报告来源为 `agent`，置信度上限为 0.5。否则走规则回退，并保留触发收敛的原因。
 - 连回退也失败才走既有失败/死信路径。降级结果绝不冒充完整分析；UI 显示来源徽标与原因，报告同时记录 `prompt_version` 与 `model`（生效模型——业务域设置了 `model_override` 时即覆盖名）。
 
 M2 implementation notes:

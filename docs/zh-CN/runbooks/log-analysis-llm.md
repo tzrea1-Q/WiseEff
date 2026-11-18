@@ -35,8 +35,8 @@
 
 - provider 瞬时故障 → job 走既有重试/退避（`LOG_ANALYSIS_QUEUE_ATTEMPTS` / `LOG_ANALYSIS_QUEUE_BACKOFF_MS`）。
 - 重试将耗尽的最后一次尝试 → 确定性规则引擎回退，`analysis_source = 'rules-fallback'`、`degraded_reason = 'provider-unavailable'`，job 正常完成（不进死信）。
-- 预算内输出无法接地（JSON 非法或引用行全部被接地校验剔除）→ 立即回退并记 `degraded_reason = 'token-budget-exhausted'`。
-- 循环内核额外规则：步数或 token 预算耗尽仍无接地结论 → 进行一次提前收敛尝试；收敛成功返回 `analysis_source = 'agent'` + `degraded_reason = 'token-budget-exhausted'`，置信度封顶 0.5；仍失败则同因走规则回退。连续协议违规（非法工具名/参数、非 JSON 输出，连续 3 次）同样按此降级，不再烧预算。
+- 单次内核收到无效或缺少有效证据的答复后，回退并标记 `invalid-model-output`。循环内核连续收到三次无效输出后以同一原因回退，被拒绝的工具调用和缺少有效证据的终答也计入次数。
+- 循环内核将步数耗尽标记为 `step-budget-exhausted`，将 token 耗尽标记为 `token-budget-exhausted`。预算策略允许尝试提前收敛时，有证据依据的结论返回 `analysis_source = 'agent'`，置信度上限为 0.5。否则由规则引擎生成报告。两种结果都保留触发收敛的原因。
 - 连回退也失败才走既有 job 失败/死信路径。
 
 按可见性验证降级路径：关闭或错误配置 provider 后上传日志，确认记录以降级徽标（降级分析 · 规则回退）完成，而不是静默成功；`/logs` 与 `/log-admin` 均应可见。确定性模式下可通过上传含 `WISEEFF_SIMULATE_LLM_PROVIDER_DOWN` 标记行的日志演练同一链路。

@@ -91,7 +91,7 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 
 模型覆盖及可选步数/token 预算保存在草稿，发布后影响新运行；省略预算使用平台默认值。超过 `LOG_ANALYSIS_MAX_STEPS` / `LOG_ANALYSIS_TOKEN_BUDGET` 的值以字段错误拒绝。Webhook 配置和 key 仍为即时生效的身份设置，不依赖发布。
 
-步骤预算须为至少 1 的整数；版本 token 预算须为至少 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)` 的整数。保存和发布均校验上下限，并返回对应字段错误。显式版本 token 预算约束模型服务报告的累计用量，每次模型调用前检查，包含提前收敛调用；不做 token 估算，也不承诺单次调用的严格限额。单次完成可能使累计用量超过预算，但耗尽后不再发起调用。没有得到已接地最终报告时，耗尽运行沿用 `rules-fallback` 结果及 `degradedReason: "token-budget-exhausted"`。省略 `tokenBudget` 时，保留既有平台全局预算计量及提前收敛行为。
+步骤预算须为至少 1 的整数，版本 token 预算须为至少 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)` 的整数。保存和发布均校验上下限，并返回对应字段错误。显式版本 token 预算按模型服务报告的累计用量计量，每次模型调用前检查，包含提前收敛调用。单次完成可能使累计用量超过预算，但耗尽后不再发起调用。省略 `tokenBudget` 时，保留既有平台全局预算计量及提前收敛行为。
 
 `POST /api/v1/log-files`，内容 base64 编码。JSON 上传的解码文件最多 32 MiB；更大的日志包使用 multipart，遵循配置的上传限制（默认 100 MiB）。传输请求体过大时在解析前返回 `413`。用 `skillKey`、`skillId` 或兼容别名 `logDomainId` 指定已发布技能（用户可通过 `GET /api/v1/log-skills` 列举）。任何显式选择字段及凭据绑定技能都优先于推荐。不传技能选择字段且凭据未绑定技能时，服务端根据已存储日志包，仅对本组织有效、已发布的技能评分。最高分唯一且至少为 8 时使用该技能；并列、低分或推荐预算耗尽时走通用分析。要固定使用通用分析，请使用用户会话或未绑定凭据，不传技能选择字段，并发送 `skillSelection: "generic"`。绑定凭据不能请求通用分析：发送 `skillSelection: "generic"` 返回 `403`，即使同时传入匹配的技能选择字段；与凭据绑定技能冲突的选择也返回 `403`。multipart 上传和从已有文件创建记录的 `POST /api/v1/logs` 遵循相同规则。
 
@@ -136,7 +136,14 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 
 ### 获取报告
 
-`GET /api/v1/logs/{logId}` 返回结论、影响、严重级别、置信度、证据(含行号锚点)、建议动作,以及溯源字段 `analysisSource` / `degradedReason`——`rules-fallback` 是降级分析,绝不冒充完整 Agent 分析。
+`GET /api/v1/logs/{logId}` 返回结论、影响、严重级别、置信度、证据（含行号锚点）、建议动作，以及溯源字段 `analysisSource` 和 `degradedReason`。记录 API 与结果 Webhook 使用相同的原因值。
+
+| `degradedReason` | 含义 |
+| --- | --- |
+| `provider-unavailable` | 最后一次任务尝试仍无法调用模型服务，由规则引擎生成报告。 |
+| `invalid-model-output` | 循环内核连续收到三次无效输出，含缺少有效证据的终答，或单次内核收到无效或无证据依据的答复。由规则引擎生成报告。 |
+| `step-budget-exhausted` | 循环内核用完调查步数。提前收敛得到有证据依据的报告时，`analysisSource` 为 `agent`，置信度上限为 0.5。收敛失败时由 `rules-fallback` 生成报告，并保留同一原因。 |
+| `token-budget-exhausted` | 循环内核耗尽 token 预算。历史报告保留生成时记录的值。 |
 
 新记录的报告元数据还包含 `skillSelection: { mode: "recommended" | "explicit" | "generic", reasons: [{ kind, file, detail }] }`。推荐选择保存获胜技能的评分理由；手动指定与通用选择没有匹配理由。旧记录可能省略该字段。所选发布版本另由 `skillRevision` 记录。
 
@@ -217,7 +224,7 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
 
 `event` 取值:`log-analysis.completed`、`log-analysis.failed`、`log-analysis.test`(管理员测试按钮)。
 
-结果事件在保留旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }` 和 `degraded: boolean`。旧未钉住运行的版本字段可为 null。规则回退或存在降级原因时 `degraded` 为 true；有原因时保留 `degradedReason`。key 在终态事件入队时快照保存，重试保持相同载荷。同步测试事件维持原格式。
+结果事件在保留旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }` 和 `degraded: boolean`。旧未钉住运行的版本字段可为 null。规则回退或存在降级原因时 `degraded` 为 true。`degradedReason` 存在时与记录 API 使用相同的值，包括 `invalid-model-output` 和 `step-budget-exhausted`。key 在终态事件入队时快照保存，重试保持相同载荷。同步测试事件维持原格式。
 
 ### 投递语义
 

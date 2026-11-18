@@ -530,7 +530,8 @@ stateDiagram-v2
 | --- | --- |
 | 模型返回有依据的结论 | analysis_source 为 agent，并记录模型与提示词版本 |
 | 供应方暂时不可用 | 按任务策略重试；最终可回退规则并标记 provider-unavailable |
-| 预算不足或输出无法接地 | 提前收敛或规则回退，记录 token-budget-exhausted |
+| 步数或 token 预算耗尽 | 提前收敛或规则回退，记录 `step-budget-exhausted` 或 `token-budget-exhausted` |
+| 模型输出无效或缺少有效证据 | 循环内核连续三次或单次内核一次无效答复后回退，记录 `invalid-model-output` |
 | 有界循环提前收敛成功 | 可以仍是 agent 来源，但明确低置信度与降级原因 |
 | 回退也失败 | 保留真实失败或死信结果 |
 
@@ -558,7 +559,7 @@ flowchart TD
   Retry --> Report
 ```
 
-图12省略具体最大次数数值，运行值来自配置和分析器常量。无效结构、非法工具和不存在的行引用都不能变成可靠结论。当前源码把预算内无法产生可用接地输出的一部分情况也标为 `token-budget-exhausted`；排障时还要读取调用 outcome，不能仅凭该标签断言供应方实际耗尽配额。
+图12省略具体最大次数，运行值来自配置和分析器常量。无效结构、非法工具调用和缺少有效证据的终答都计入连续无效次数。历史报告保留已记录的 `token-budget-exhausted`，其中可能包含新运行会单独标记的情况。
 
 `analysisSource`、`degradedReason`、模型名称与提示词版本在服务层和 API DTO 之间有映射。消费报告时以端点实际 DTO 为准，不把数据库字段的下划线命名直接复制进 TypeScript 接口。
 

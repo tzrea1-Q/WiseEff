@@ -500,11 +500,12 @@ These are not Xiaoze's mutation tools or approval chain. Structured output valid
 | --- | --- |
 | Supported model conclusion | Agent source with model/prompt provenance |
 | Provider unavailable | Task-policy retry; possible rules fallback with `provider-unavailable` |
-| Budget or grounding/output failure | Bounded convergence or fallback with the implementation's `token-budget-exhausted` reason |
+| Step or token budget exhausted | Bounded convergence or fallback with `step-budget-exhausted` or `token-budget-exhausted` |
+| Invalid or ungrounded model output | Rules fallback with `invalid-model-output` after three consecutive invalid loop responses or one invalid single-shot answer |
 | Early bounded convergence succeeds | Can remain agent-sourced with capped confidence and explicit degradation |
 | Fallback also fails | Preserve failure/dead-letter evidence |
 
-Service code uses `analysisSource`; persistence/DTO surfaces can use `analysis_source`. Preserve the adapter mapping. The existing `token-budget-exhausted` branch also covers some invalid or ungrounded output; its name alone does not establish the exact internal cause. UI and exports must expose provenance honestly.
+The service and API DTO use `analysisSource` and `degradedReason`. Persistence uses `analysis_source` and `degraded_reason`. UI and exports show the recorded provenance. Historical `token-budget-exhausted` reports may include failures that new runs classify separately.
 
 ### 5.3.1 Bounded Analysis Loop
 

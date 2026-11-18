@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-20T04:36:47.623Z",
+  "generatedAt": "2026-11-18T12:48:24.542Z",
   "promptVersion": "2026-10-19.procedure.signals.source.1",
   "loopPromptVersion": "2026-10-19.loop.procedure.signals.source.3",
   "total": 49,
@@ -88,7 +88,7 @@
       ],
       "runResult": {
         "analysisSource": "rules-fallback",
-        "degradedReason": "token-budget-exhausted",
+        "degradedReason": "invalid-model-output",
         "promptVersion": "2026-10-19.procedure.signals.source.1",
         "model": "eval-fake",
         "evidenceLineNumbers": [
@@ -181,7 +181,7 @@
         {
           "expectation": {
             "type": "expectsDegradedReason",
-            "reason": "token-budget-exhausted"
+            "reason": "invalid-model-output"
           },
           "pass": true
         },
@@ -204,7 +204,7 @@
       ],
       "runResult": {
         "analysisSource": "rules-fallback",
-        "degradedReason": "token-budget-exhausted",
+        "degradedReason": "invalid-model-output",
         "promptVersion": "2026-10-19.procedure.signals.source.1",
         "model": "eval-fake",
         "evidenceLineNumbers": [
@@ -340,7 +340,7 @@
       }
     },
     {
-      "name": "budget-exhausted-marked",
+      "name": "single-shot-invalid-output-marked",
       "category": "degradation",
       "kernel": "single-shot",
       "pass": true,
@@ -355,7 +355,7 @@
         {
           "expectation": {
             "type": "expectsDegradedReason",
-            "reason": "token-budget-exhausted"
+            "reason": "invalid-model-output"
           },
           "pass": true
         },
@@ -368,7 +368,7 @@
       ],
       "runResult": {
         "analysisSource": "rules-fallback",
-        "degradedReason": "token-budget-exhausted",
+        "degradedReason": "invalid-model-output",
         "promptVersion": "2026-10-19.procedure.signals.source.1",
         "model": "eval-fake",
         "evidenceLineNumbers": [
@@ -2437,7 +2437,14 @@
         {
           "expectation": {
             "type": "expectsDegradedReason",
-            "reason": "token-budget-exhausted"
+            "reason": "invalid-model-output"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 3
           },
           "pass": true
         },
@@ -2450,7 +2457,7 @@
       ],
       "runResult": {
         "analysisSource": "rules-fallback",
-        "degradedReason": "token-budget-exhausted",
+        "degradedReason": "invalid-model-output",
         "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [
@@ -2515,7 +2522,7 @@
         {
           "expectation": {
             "type": "expectsDegradedReason",
-            "reason": "token-budget-exhausted"
+            "reason": "step-budget-exhausted"
           },
           "pass": true
         },
@@ -2544,7 +2551,7 @@
       ],
       "runResult": {
         "analysisSource": "agent",
-        "degradedReason": "token-budget-exhausted",
+        "degradedReason": "step-budget-exhausted",
         "promptVersion": "2026-10-19.loop.procedure.signals.source.3",
         "model": "eval-fake",
         "evidenceLineNumbers": [

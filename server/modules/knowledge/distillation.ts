@@ -1,3 +1,4 @@
+import { classifyAnalysisDegradation } from "../../../src/domain/logs/analysisProvenance";
 import type { LogRecordDto } from "../logs/types";
 
 /**
@@ -18,11 +19,6 @@ export const LOG_SEVERITY_TAGS: Record<LogRecordDto["severity"], string> = {
 
 const MAX_TITLE_CHARS = 200;
 
-const degradedReasonLabels: Record<NonNullable<LogRecordDto["degradedReason"]>, string> = {
-  "provider-unavailable": "AI 分析服务不可用，本结论由规则引擎回退生成",
-  "token-budget-exhausted": "预算内未能得到有效接地结论，本结论由规则引擎回退生成"
-};
-
 export type LogDistillationDraft = {
   title: string;
   tags: string[];
@@ -39,16 +35,11 @@ function evidenceLineQuotes(log: LogRecordDto, lineNumbers: number[]): string[] 
 export function buildLogAnalysisProvenanceNotice(
   log: Pick<LogRecordDto, "analysisSource" | "degradedReason">
 ): string {
-  const isFallback = log.analysisSource === "rules-fallback";
-  const isEarlyConverged = log.analysisSource === "agent" && log.degradedReason !== undefined;
-  if (!isFallback && !isEarlyConverged) {
+  const degradation = classifyAnalysisDegradation(log);
+  if (!degradation) {
     return "";
   }
-  const label = isFallback ? "降级分析 · 规则回退" : "降级分析 · 提前收敛";
-  const reason = isFallback
-    ? log.degradedReason ? degradedReasonLabels[log.degradedReason] : "本结论由规则引擎回退生成"
-    : "分析步数或 token 预算耗尽，Agent 基于已读证据提前收敛为低置信结论";
-  return `> ${label}\n> ${reason}\n> 依赖结论前请复核证据。`;
+  return `> ${degradation.label}\n> ${degradation.reason}\n> 依赖结论前请复核证据。`;
 }
 
 export function buildLogDistillationDraft(log: LogRecordDto): LogDistillationDraft {

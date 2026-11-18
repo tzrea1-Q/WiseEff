@@ -669,7 +669,10 @@ describe("LogsPage · 分析来源与降级标注", () => {
     expect(screen.queryByText("规则评分")).not.toBeInTheDocument();
   });
 
-  it("提前收敛的 Agent 结论显著标注降级而不冒充完整分析", () => {
+  it.each([
+    ["token-budget-exhausted", "分析步数或 token 预算耗尽"],
+    ["step-budget-exhausted", "日志分析步数达到上限"]
+  ] as const)("提前收敛的报告显示 %s 对应的降级原因", (degradedReason, reasonText) => {
     window.history.replaceState(null, "", "/logs");
     const earlyConvergedState = {
       ...userState,
@@ -680,7 +683,7 @@ describe("LogsPage · 分析来源与降级标注", () => {
           reportId: "RPT-EARLY",
           fileName: "early_converged.log",
           analysisSource: "agent" as const,
-          degradedReason: "token-budget-exhausted" as const
+          degradedReason
         },
         ...userState.logs
       ]
@@ -690,8 +693,23 @@ describe("LogsPage · 分析来源与降级标注", () => {
 
     const provenance = screen.getByTestId("analysis-provenance");
     expect(provenance).toHaveTextContent("提前收敛");
+    expect(provenance).toHaveTextContent(reasonText);
     expect(provenance).toHaveTextContent(/提前收敛为低置信结论/);
     expect(provenance).not.toHaveTextContent("降级分析 · 规则回退");
     expect(screen.getByText("置信度")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["invalid-model-output", "模型输出无效"],
+    ["step-budget-exhausted", "日志分析步数达到上限"]
+  ] as const)("规则回退报告显示 %s 对应的降级原因", (degradedReason, reasonText) => {
+    window.history.replaceState(null, "", "/logs");
+    render(<App initialAppState={{ ...userState, logs: [
+      { ...completedTemplate, id: "log-rules-fallback", analysisSource: "rules-fallback", degradedReason },
+      ...userState.logs
+    ] }} />);
+
+    expect(screen.getByTestId("analysis-provenance")).toHaveTextContent("规则回退");
+    expect(screen.getByTestId("analysis-provenance")).toHaveTextContent(reasonText);
   });
 });
