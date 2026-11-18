@@ -1,0 +1,436 @@
+<135>1 2026-10-14T09:14:00.358Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=0
+<134>1 2026-10-14T09:14:00.602Z bench-node modebridge - - - 输入采样 bus_mv=23915 board_mc=34000
+<134>1 2026-10-14T09:14:00.943Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=28.0
+<134>1 2026-10-14T09:14:00.962Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=3
+<134>1 2026-10-14T09:14:01.147Z bench-node modebridge - - - 输入采样 bus_mv=2391 board_mc=34700
+<134>1 2026-10-14T09:14:01.786Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=15.2
+<134>1 2026-10-14T09:14:02.941Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=6
+<135>1 2026-10-14T09:14:03.499Z bench-node modebridge - - - 输入采样 bus_mv=23916 board_mc=34800
+<134>1 2026-10-14T09:14:03.763Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=20.3
+<134>1 2026-10-14T09:14:03.915Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=9
+<134>1 2026-10-14T09:14:04.955Z bench-node modebridge - - - 输入采样 bus_mv=2396 board_mc=34100
+<134>1 2026-10-14T09:14:06.250Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=18.5
+<134>1 2026-10-14T09:14:06.272Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=12
+<134>1 2026-10-14T09:14:06.812Z bench-node modebridge - - - 输入采样 bus_mv=23916 board_mc=34000
+<135>1 2026-10-14T09:14:07.143Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=23.1
+<134>1 2026-10-14T09:14:07.319Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=15
+<134>1 2026-10-14T09:14:08.592Z bench-node modebridge - - - 输入采样 bus_mv=2394 board_mc=34500
+<134>1 2026-10-14T09:14:08.665Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=26.5
+<134>1 2026-10-14T09:14:08.682Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=18
+<134>1 2026-10-14T09:14:08.761Z bench-node modebridge - - - 输入采样 bus_mv=23910 board_mc=34200
+<134>1 2026-10-14T09:14:08.946Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=11.9
+<135>1 2026-10-14T09:14:09.007Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=21
+<134>1 2026-10-14T09:14:09.280Z bench-node modebridge - - - 输入采样 bus_mv=23911 board_mc=34100
+<134>1 2026-10-14T09:14:09.363Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=41.4
+<134>1 2026-10-14T09:14:09.424Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=24
+<134>1 2026-10-14T09:14:09.602Z bench-node modebridge - - - 输入采样 bus_mv=2390 board_mc=34700
+<134>1 2026-10-14T09:14:09.833Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=32.9
+<134>1 2026-10-14T09:14:10.863Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=27
+<135>1 2026-10-14T09:14:11.088Z bench-node modebridge - - - 输入采样 bus_mv=2392 board_mc=34500
+<134>1 2026-10-14T09:14:12.151Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=26.2
+<134>1 2026-10-14T09:14:12.230Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=30
+<134>1 2026-10-14T09:14:12.507Z bench-node modebridge - - - 输入采样 bus_mv=2397 board_mc=34300
+<134>1 2026-10-14T09:14:13.589Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=10.1
+<134>1 2026-10-14T09:14:13.610Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=33
+<134>1 2026-10-14T09:14:13.834Z bench-node modebridge - - - 输入采样 bus_mv=2398 board_mc=34100
+<135>1 2026-10-14T09:14:13.894Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=20.9
+<134>1 2026-10-14T09:14:15.142Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=36
+<134>1 2026-10-14T09:14:15.206Z bench-node modebridge - - - 输入采样 bus_mv=23911 board_mc=34800
+<134>1 2026-10-14T09:14:15.450Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=11.8
+<134>1 2026-10-14T09:14:15.609Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=39
+<134>1 2026-10-14T09:14:15.958Z bench-node modebridge - - - 输入采样 bus_mv=23916 board_mc=34300
+<134>1 2026-10-14T09:14:16.155Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=36.3
+<135>1 2026-10-14T09:14:16.175Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=42
+<134>1 2026-10-14T09:14:16.362Z bench-node modebridge - - - 输入采样 bus_mv=2392 board_mc=34300
+<134>1 2026-10-14T09:14:16.423Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=26.8
+<134>1 2026-10-14T09:14:16.708Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=45
+<134>1 2026-10-14T09:14:16.771Z bench-node modebridge - - - 输入采样 bus_mv=23914 board_mc=34100
+<134>1 2026-10-14T09:14:17.396Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=16.2
+<134>1 2026-10-14T09:14:17.908Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=48
+<135>1 2026-10-14T09:14:17.925Z bench-node modebridge - - - 输入采样 bus_mv=23911 board_mc=34500
+<134>1 2026-10-14T09:14:18.596Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=13.7
+<134>1 2026-10-14T09:14:18.616Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=51
+<134>1 2026-10-14T09:14:18.880Z bench-node modebridge - - - 输入采样 bus_mv=23910 board_mc=34500
+<134>1 2026-10-14T09:14:20.112Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=33.9
+<134>1 2026-10-14T09:14:20.274Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=54
+<134>1 2026-10-14T09:14:20.459Z bench-node modebridge - - - 输入采样 bus_mv=2397 board_mc=34100
+<135>1 2026-10-14T09:14:20.476Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=46.5
+<134>1 2026-10-14T09:14:20.542Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=57
+<134>1 2026-10-14T09:14:20.605Z bench-node modebridge - - - 输入采样 bus_mv=23919 board_mc=34600
+<134>1 2026-10-14T09:14:20.669Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=19.7
+<134>1 2026-10-14T09:14:20.855Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=60
+<134>1 2026-10-14T09:14:21.415Z bench-node modebridge - - - 输入采样 bus_mv=2396 board_mc=34000
+<134>1 2026-10-14T09:14:21.492Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=34.9
+<135>1 2026-10-14T09:14:21.555Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=63
+<134>1 2026-10-14T09:14:21.614Z bench-node modebridge - - - 输入采样 bus_mv=23912 board_mc=34800
+<134>1 2026-10-14T09:14:21.887Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=33.8
+<134>1 2026-10-14T09:14:22.152Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=66
+<134>1 2026-10-14T09:14:22.291Z bench-node modebridge - - - 输入采样 bus_mv=23919 board_mc=34500
+<134>1 2026-10-14T09:14:22.531Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=40.5
+<134>1 2026-10-14T09:14:22.696Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=69
+<135>1 2026-10-14T09:14:22.870Z bench-node modebridge - - - 输入采样 bus_mv=23919 board_mc=34000
+<134>1 2026-10-14T09:14:22.891Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=25.1
+<134>1 2026-10-14T09:14:22.965Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=72
+<132>1 2026-10-14T09:14:23.117Z bench-node modebridge - - - 日志告警 optional export label absent
+<134>1 2026-10-14T09:14:23.234Z bench-node modebridge - - - 输入采样 bus_mv=23915 board_mc=34100
+<134>1 2026-10-14T09:14:23.405Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=11.3
+<134>1 2026-10-14T09:14:23.425Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=75
+<134>1 2026-10-14T09:14:23.492Z bench-node modebridge - - - 输入采样 bus_mv=2390 board_mc=34400
+<135>1 2026-10-14T09:14:24.155Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=23.0
+<134>1 2026-10-14T09:14:24.508Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=78
+<134>1 2026-10-14T09:14:25.671Z bench-node modebridge - - - 输入采样 bus_mv=2393 board_mc=34100
+<134>1 2026-10-14T09:14:26.804Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=15.0
+<134>1 2026-10-14T09:14:27.062Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=81
+<134>1 2026-10-14T09:14:27.081Z bench-node modebridge - - - 输入采样 bus_mv=23918 board_mc=34700
+<134>1 2026-10-14T09:14:27.317Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=19.1
+<135>1 2026-10-14T09:14:28.425Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=84
+<134>1 2026-10-14T09:14:29.666Z bench-node modebridge - - - 输入采样 bus_mv=23913 board_mc=34100
+<134>1 2026-10-14T09:14:30.233Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=43.7
+<134>1 2026-10-14T09:14:30.503Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=87
+<134>1 2026-10-14T09:14:30.520Z bench-node modebridge - - - 输入采样 bus_mv=2392 board_mc=34400
+<134>1 2026-10-14T09:14:30.542Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=13.9
+<134>1 2026-10-14T09:14:30.619Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=90
+<135>1 2026-10-14T09:14:30.637Z bench-node modebridge - - - 输入采样 bus_mv=23913 board_mc=34300
+<134>1 2026-10-14T09:14:30.697Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=10.6
+<134>1 2026-10-14T09:14:30.717Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=93
+<134>1 2026-10-14T09:14:30.895Z bench-node modebridge - - - 输入采样 bus_mv=23911 board_mc=34400
+<134>1 2026-10-14T09:14:31.234Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=40.8
+<134>1 2026-10-14T09:14:31.250Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=96
+<134>1 2026-10-14T09:14:32.262Z bench-node modebridge - - - 输入采样 bus_mv=2393 board_mc=34500
+<135>1 2026-10-14T09:14:32.489Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=21.0
+<134>1 2026-10-14T09:14:32.509Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=99
+<134>1 2026-10-14T09:14:33.187Z bench-node modebridge - - - 输入采样 bus_mv=23913 board_mc=34300
+<134>1 2026-10-14T09:14:33.258Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=19.0
+<134>1 2026-10-14T09:14:33.532Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=102
+<134>1 2026-10-14T09:14:33.789Z bench-node modebridge - - - 输入采样 bus_mv=2395 board_mc=34600
+<134>1 2026-10-14T09:14:33.809Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=29.5
+<135>1 2026-10-14T09:14:35.123Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=105
+<134>1 2026-10-14T09:14:35.196Z bench-node modebridge - - - 输入采样 bus_mv=23915 board_mc=34800
+<134>1 2026-10-14T09:14:35.214Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=12.4
+<134>1 2026-10-14T09:14:36.243Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=108
+<134>1 2026-10-14T09:14:36.316Z bench-node modebridge - - - 输入采样 bus_mv=23917 board_mc=34800
+<134>1 2026-10-14T09:14:36.515Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=36.3
+<134>1 2026-10-14T09:14:36.531Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=111
+<135>1 2026-10-14T09:14:37.126Z bench-node modebridge - - - 输入采样 bus_mv=23916 board_mc=34200
+<134>1 2026-10-14T09:14:37.142Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=39.3
+<134>1 2026-10-14T09:14:37.775Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=114
+<134>1 2026-10-14T09:14:38.938Z bench-node modebridge - - - 输入采样 bus_mv=23914 board_mc=34300
+<134>1 2026-10-14T09:14:38.959Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=18.0
+<134>1 2026-10-14T09:14:39.138Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=117
+<134>1 2026-10-14T09:14:40.434Z bench-node modebridge - - - 输入采样 bus_mv=2395 board_mc=34100
+<135>1 2026-10-14T09:14:41.095Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=26.7
+<134>1 2026-10-14T09:14:41.778Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=120
+<134>1 2026-10-14T09:14:42.010Z bench-node modebridge - - - 输入采样 bus_mv=2390 board_mc=34500
+<134>1 2026-10-14T09:14:42.240Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=25.1
+<134>1 2026-10-14T09:14:42.418Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=123
+<134>1 2026-10-14T09:14:42.437Z bench-node modebridge - - - 输入采样 bus_mv=2394 board_mc=34000
+<134>1 2026-10-14T09:14:42.506Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=47.4
+<135>1 2026-10-14T09:14:42.822Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=126
+<134>1 2026-10-14T09:14:42.973Z bench-node modebridge - - - 输入采样 bus_mv=2390 board_mc=34000
+<134>1 2026-10-14T09:14:44.302Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=35.2
+<134>1 2026-10-14T09:14:44.319Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=129
+<134>1 2026-10-14T09:14:44.337Z bench-node modebridge - - - 输入采样 bus_mv=2399 board_mc=34300
+<134>1 2026-10-14T09:14:44.661Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=38.2
+<134>1 2026-10-14T09:14:44.725Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=132
+<135>1 2026-10-14T09:14:45.356Z bench-node modebridge - - - 输入采样 bus_mv=23911 board_mc=34100
+<134>1 2026-10-14T09:14:45.615Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=23.4
+<134>1 2026-10-14T09:14:45.832Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=135
+<134>1 2026-10-14T09:14:46.186Z bench-node modebridge - - - 输入采样 bus_mv=23917 board_mc=34500
+<134>1 2026-10-14T09:14:46.547Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=46.0
+<134>1 2026-10-14T09:14:46.625Z bench-node modebridge - - - 收到命令 seq=183 op=0x09 mode_raw=0x04
+<134>1 2026-10-14T09:14:46.629Z bench-node modebridge - - - 应答 seq=183 code=0x03 supported_modes=0x00,0x01
+<134>1 2026-10-14T09:14:46.813Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=138
+<134>1 2026-10-14T09:14:46.975Z bench-node modebridge - - - 输入采样 bus_mv=23916 board_mc=34800
+<135>1 2026-10-14T09:14:47.148Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=47.4
+<134>1 2026-10-14T09:14:47.169Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=141
+<134>1 2026-10-14T09:14:47.182Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=902
+<134>1 2026-10-14T09:14:47.310Z bench-node modebridge - - - 输入采样 bus_mv=23917 board_mc=34600
+<134>1 2026-10-14T09:14:47.385Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=31.3
+<134>1 2026-10-14T09:14:48.029Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=144
+<134>1 2026-10-14T09:14:49.039Z bench-node modebridge - - - 输入采样 bus_mv=2395 board_mc=34500
+<134>1 2026-10-14T09:14:49.392Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=10.3
+<135>1 2026-10-14T09:14:49.659Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=147
+<134>1 2026-10-14T09:14:49.675Z bench-node modebridge - - - 输入采样 bus_mv=23911 board_mc=34500
+<134>1 2026-10-14T09:14:50.756Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=43.9
+<134>1 2026-10-14T09:14:51.342Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=150
+<134>1 2026-10-14T09:14:51.485Z bench-node modebridge - - - 输入采样 bus_mv=2394 board_mc=34100
+<134>1 2026-10-14T09:14:51.557Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=13.3
+<134>1 2026-10-14T09:14:51.859Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=153
+<135>1 2026-10-14T09:14:51.938Z bench-node modebridge - - - 输入采样 bus_mv=2395 board_mc=34200
+<134>1 2026-10-14T09:14:52.019Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=27.4
+<134>1 2026-10-14T09:14:52.255Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=156
+<134>1 2026-10-14T09:14:52.598Z bench-node modebridge - - - 输入采样 bus_mv=23913 board_mc=34700
+<134>1 2026-10-14T09:14:52.616Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=30.6
+<134>1 2026-10-14T09:14:52.942Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=159
+<134>1 2026-10-14T09:14:54.160Z bench-node modebridge - - - 输入采样 bus_mv=23919 board_mc=34000
+<135>1 2026-10-14T09:14:55.492Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=27.9
+<134>1 2026-10-14T09:14:55.755Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=162
+<134>1 2026-10-14T09:14:55.775Z bench-node modebridge - - - 输入采样 bus_mv=2397 board_mc=34400
+<134>1 2026-10-14T09:14:55.796Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=32.0
+<134>1 2026-10-14T09:14:55.856Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=165
+<134>1 2026-10-14T09:14:56.160Z bench-node modebridge - - - 输入采样 bus_mv=23917 board_mc=34100
+<134>1 2026-10-14T09:14:56.221Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=14.7
+<135>1 2026-10-14T09:14:56.499Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=168
+<134>1 2026-10-14T09:14:56.561Z bench-node modebridge - - - 输入采样 bus_mv=23919 board_mc=34800
+<134>1 2026-10-14T09:14:56.582Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=46.8
+<134>1 2026-10-14T09:14:57.845Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=171
+<134>1 2026-10-14T09:14:58.538Z bench-node modebridge - - - 输入采样 bus_mv=2391 board_mc=34700
+<134>1 2026-10-14T09:14:58.729Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=39.3
+<134>1 2026-10-14T09:14:59.084Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=174
+<135>1 2026-10-14T09:14:59.689Z bench-node modebridge - - - 输入采样 bus_mv=23917 board_mc=34800
+<134>1 2026-10-14T09:14:59.961Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=36.6
+<134>1 2026-10-14T09:15:00.979Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=177
+<134>1 2026-10-14T09:15:01.138Z bench-node modebridge - - - 输入采样 bus_mv=23916 board_mc=34100
+<134>1 2026-10-14T09:15:01.451Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=36.4
+<134>1 2026-10-14T09:15:01.766Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=180
+<134>1 2026-10-14T09:15:02.872Z bench-node modebridge - - - 输入采样 bus_mv=2396 board_mc=34500
+<135>1 2026-10-14T09:15:03.559Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=47.9
+<134>1 2026-10-14T09:15:03.781Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=183
+<134>1 2026-10-14T09:15:04.132Z bench-node modebridge - - - 输入采样 bus_mv=2392 board_mc=34200
+<134>1 2026-10-14T09:15:04.212Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=46.6
+<134>1 2026-10-14T09:15:04.844Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=186
+<134>1 2026-10-14T09:15:04.925Z bench-node modebridge - - - 输入采样 bus_mv=23918 board_mc=34300
+<134>1 2026-10-14T09:15:05.105Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=19.9
+<135>1 2026-10-14T09:15:06.368Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=189
+<134>1 2026-10-14T09:15:07.656Z bench-node modebridge - - - 输入采样 bus_mv=2394 board_mc=34500
+<134>1 2026-10-14T09:15:07.674Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=14.1
+<134>1 2026-10-14T09:15:07.695Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=192
+<134>1 2026-10-14T09:15:07.717Z bench-node modebridge - - - 输入采样 bus_mv=2398 board_mc=34800
+<134>1 2026-10-14T09:15:07.947Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=14.4
+<134>1 2026-10-14T09:15:08.304Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=195
+<135>1 2026-10-14T09:15:08.512Z bench-node modebridge - - - 输入采样 bus_mv=2399 board_mc=34600
+<134>1 2026-10-14T09:15:08.588Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=38.4
+<134>1 2026-10-14T09:15:08.650Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=198
+<134>1 2026-10-14T09:15:09.761Z bench-node modebridge - - - 输入采样 bus_mv=2393 board_mc=34400
+<134>1 2026-10-14T09:15:09.908Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=16.6
+<134>1 2026-10-14T09:15:10.593Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=201
+<134>1 2026-10-14T09:15:11.585Z bench-node modebridge - - - 输入采样 bus_mv=23918 board_mc=34500
+<135>1 2026-10-14T09:15:11.651Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=43.8
+<134>1 2026-10-14T09:15:12.657Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=204
+<134>1 2026-10-14T09:15:12.886Z bench-node modebridge - - - 输入采样 bus_mv=2390 board_mc=34700
+<134>1 2026-10-14T09:15:13.086Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=39.9
+<134>1 2026-10-14T09:15:13.169Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=207
+<134>1 2026-10-14T09:15:13.476Z bench-node modebridge - - - 输入采样 bus_mv=2392 board_mc=34000
+<134>1 2026-10-14T09:15:13.493Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=45.6
+<135>1 2026-10-14T09:15:13.761Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=210
+<134>1 2026-10-14T09:15:13.782Z bench-node modebridge - - - 输入采样 bus_mv=23919 board_mc=34300
+<134>1 2026-10-14T09:15:14.007Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=37.3
+<134>1 2026-10-14T09:15:14.173Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=213
+<134>1 2026-10-14T09:15:14.436Z bench-node modebridge - - - 输入采样 bus_mv=23915 board_mc=34600
+<134>1 2026-10-14T09:15:14.458Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=34.5
+<134>1 2026-10-14T09:15:14.523Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=216
+<135>1 2026-10-14T09:15:14.763Z bench-node modebridge - - - 输入采样 bus_mv=23918 board_mc=34800
+<134>1 2026-10-14T09:15:14.780Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=16.0
+<134>1 2026-10-14T09:15:15.907Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=219
+<134>1 2026-10-14T09:15:16.184Z bench-node modebridge - - - 输入采样 bus_mv=23912 board_mc=34300
+<134>1 2026-10-14T09:15:16.450Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=19.4
+<134>1 2026-10-14T09:15:17.125Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=222
+<134>1 2026-10-14T09:15:18.134Z bench-node modebridge - - - 输入采样 bus_mv=2397 board_mc=34300
+<135>1 2026-10-14T09:15:18.361Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=38.0
+<134>1 2026-10-14T09:15:18.949Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=225
+<134>1 2026-10-14T09:15:19.569Z bench-node modebridge - - - 输入采样 bus_mv=2394 board_mc=34400
+<134>1 2026-10-14T09:15:19.802Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=39.4
+<134>1 2026-10-14T09:15:20.159Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=228
+<134>1 2026-10-14T09:15:20.180Z bench-node modebridge - - - 输入采样 bus_mv=2397 board_mc=34200
+<134>1 2026-10-14T09:15:20.535Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=23.6
+<135>1 2026-10-14T09:15:21.116Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=231
+<134>1 2026-10-14T09:15:21.257Z bench-node modebridge - - - 输入采样 bus_mv=2396 board_mc=34700
+<134>1 2026-10-14T09:15:21.336Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=15.4
+<134>1 2026-10-14T09:15:21.687Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=234
+<134>1 2026-10-14T09:15:21.707Z bench-node modebridge - - - 输入采样 bus_mv=23919 board_mc=34600
+<134>1 2026-10-14T09:15:21.768Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=23.4
+<134>1 2026-10-14T09:15:23.077Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=237
+<135>1 2026-10-14T09:15:23.095Z bench-node modebridge - - - 输入采样 bus_mv=23910 board_mc=34400
+<134>1 2026-10-14T09:15:24.184Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=34.6
+<134>1 2026-10-14T09:15:25.390Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=240
+<134>1 2026-10-14T09:15:25.913Z bench-node modebridge - - - 输入采样 bus_mv=23918 board_mc=34700
+<134>1 2026-10-14T09:15:26.138Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=35.4
+<134>1 2026-10-14T09:15:26.156Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=243
+<134>1 2026-10-14T09:15:27.246Z bench-node modebridge - - - 输入采样 bus_mv=23918 board_mc=34700
+<135>1 2026-10-14T09:15:27.434Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=12.5
+<134>1 2026-10-14T09:15:27.775Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=246
+<134>1 2026-10-14T09:15:27.792Z bench-node modebridge - - - 输入采样 bus_mv=23916 board_mc=34400
+<134>1 2026-10-14T09:15:28.947Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=41.1
+<134>1 2026-10-14T09:15:29.181Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=249
+<134>1 2026-10-14T09:15:29.481Z bench-node modebridge - - - 输入采样 bus_mv=23919 board_mc=34600
+<134>1 2026-10-14T09:15:29.497Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=22.5
+<135>1 2026-10-14T09:15:29.764Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=252
+<134>1 2026-10-14T09:15:30.111Z bench-node modebridge - - - 输入采样 bus_mv=2390 board_mc=34800
+<134>1 2026-10-14T09:15:31.082Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=20.1
+<134>1 2026-10-14T09:15:31.227Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=255
+<134>1 2026-10-14T09:15:31.449Z bench-node modebridge - - - 输入采样 bus_mv=23917 board_mc=34600
+<134>1 2026-10-14T09:15:31.803Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=30.2
+<134>1 2026-10-14T09:15:32.120Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=258
+<135>1 2026-10-14T09:15:33.341Z bench-node modebridge - - - 输入采样 bus_mv=23910 board_mc=34600
+<134>1 2026-10-14T09:15:33.647Z bench-node modebridge - - - 交换计数 rx_crc_errors=0 poll_latency_ms=34.1
+<134>1 2026-10-14T09:15:34.820Z bench-node modebridge - - - 状态采样 mode=standby interlock=0 heartbeat=261
+<134>1 2026-10-14T09:15:35.821Z bench-node modebridge - - - 输入采样 bus_mv=23911 board_mc=34500
+{"ts":"2026-10-14T09:14:00.223Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=11.0"}
+{"ts":"2026-10-14T09:14:00.256Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=1"}
+{"ts":"2026-10-14T09:14:00.290Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=39.2"}
+{"ts":"2026-10-14T09:14:00.323Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=3"}
+{"ts":"2026-10-14T09:14:00.576Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.1"}
+{"ts":"2026-10-14T09:14:00.943Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=5"}
+{"ts":"2026-10-14T09:14:01.189Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=36.1"}
+{"ts":"2026-10-14T09:14:01.432Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=7"}
+{"ts":"2026-10-14T09:14:01.976Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.7"}
+{"ts":"2026-10-14T09:14:02.325Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=9"}
+{"ts":"2026-10-14T09:14:02.757Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=24.3"}
+{"ts":"2026-10-14T09:14:03.150Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=11"}
+{"ts":"2026-10-14T09:14:03.515Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=15.0"}
+{"ts":"2026-10-14T09:14:03.763Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=13"}
+{"ts":"2026-10-14T09:14:03.985Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=40.2"}
+{"ts":"2026-10-14T09:14:05.036Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=15"}
+{"ts":"2026-10-14T09:14:06.810Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=36.5"}
+{"ts":"2026-10-14T09:14:07.585Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=17"}
+{"ts":"2026-10-14T09:14:09.522Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=25.5"}
+{"ts":"2026-10-14T09:14:09.552Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=19"}
+{"ts":"2026-10-14T09:14:10.600Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=10.8"}
+{"ts":"2026-10-14T09:14:11.007Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=21"}
+{"ts":"2026-10-14T09:14:11.438Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=26.5"}
+{"ts":"2026-10-14T09:14:11.744Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=23"}
+{"ts":"2026-10-14T09:14:11.835Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=30.6"}
+{"ts":"2026-10-14T09:14:12.147Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=25"}
+{"ts":"2026-10-14T09:14:12.260Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=9.7"}
+{"ts":"2026-10-14T09:14:12.289Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=27"}
+{"ts":"2026-10-14T09:14:12.815Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=13.4"}
+{"ts":"2026-10-14T09:14:12.844Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=29"}
+{"ts":"2026-10-14T09:14:13.102Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=24.4"}
+{"ts":"2026-10-14T09:14:13.559Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=31"}
+{"ts":"2026-10-14T09:14:14.475Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=10.7"}
+{"ts":"2026-10-14T09:14:14.567Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=33"}
+{"ts":"2026-10-14T09:14:14.683Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.0"}
+{"ts":"2026-10-14T09:14:14.784Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=35"}
+{"ts":"2026-10-14T09:14:14.889Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.7"}
+{"ts":"2026-10-14T09:14:15.374Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=37"}
+{"ts":"2026-10-14T09:14:15.648Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=22.9"}
+{"ts":"2026-10-14T09:14:17.397Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=39"}
+{"ts":"2026-10-14T09:14:18.259Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=40.4"}
+{"ts":"2026-10-14T09:14:19.718Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=41"}
+{"ts":"2026-10-14T09:14:20.470Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.9"}
+{"ts":"2026-10-14T09:14:22.061Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=43"}
+{"ts":"2026-10-14T09:14:23.517Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=13.7"}
+{"ts":"2026-10-14T09:14:23.615Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=45"}
+{"ts":"2026-10-14T09:14:24.064Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=19.1"}
+{"ts":"2026-10-14T09:14:25.083Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=47"}
+{"ts":"2026-10-14T09:14:25.628Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=11.6"}
+{"ts":"2026-10-14T09:14:26.012Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=49"}
+{"ts":"2026-10-14T09:14:26.963Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=39.3"}
+{"ts":"2026-10-14T09:14:27.330Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=51"}
+{"ts":"2026-10-14T09:14:28.912Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=23.7"}
+{"ts":"2026-10-14T09:14:29.374Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=53"}
+{"ts":"2026-10-14T09:14:30.365Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.3"}
+{"ts":"2026-10-14T09:14:30.483Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=55"}
+{"ts":"2026-10-14T09:14:30.509Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=41.6"}
+{"ts":"2026-10-14T09:14:31.046Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=57"}
+{"ts":"2026-10-14T09:14:33.015Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=45.7"}
+{"ts":"2026-10-14T09:14:33.773Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=59"}
+{"ts":"2026-10-14T09:14:33.800Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=36.1"}
+{"ts":"2026-10-14T09:14:33.830Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=61"}
+{"ts":"2026-10-14T09:14:34.643Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.1"}
+{"ts":"2026-10-14T09:14:35.530Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=63"}
+{"ts":"2026-10-14T09:14:35.637Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=34.3"}
+{"ts":"2026-10-14T09:14:36.072Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=65"}
+{"ts":"2026-10-14T09:14:36.292Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.8"}
+{"ts":"2026-10-14T09:14:36.565Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=67"}
+{"ts":"2026-10-14T09:14:36.836Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=26.4"}
+{"ts":"2026-10-14T09:14:37.289Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=69"}
+{"ts":"2026-10-14T09:14:37.316Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=24.1"}
+{"ts":"2026-10-14T09:14:38.178Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=71"}
+{"ts":"2026-10-14T09:14:38.206Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=43.5"}
+{"ts":"2026-10-14T09:14:38.447Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=73"}
+{"ts":"2026-10-14T09:14:38.571Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=16.4"}
+{"ts":"2026-10-14T09:14:39.575Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=75"}
+{"ts":"2026-10-14T09:14:41.047Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=26.5"}
+{"ts":"2026-10-14T09:14:41.591Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=77"}
+{"ts":"2026-10-14T09:14:41.900Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=11.8"}
+{"ts":"2026-10-14T09:14:42.797Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=79"}
+{"ts":"2026-10-14T09:14:43.550Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.0"}
+{"ts":"2026-10-14T09:14:44.582Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=81"}
+{"ts":"2026-10-14T09:14:44.615Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=26.9"}
+{"ts":"2026-10-14T09:14:44.945Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=83"}
+{"ts":"2026-10-14T09:14:45.368Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=46.3"}
+{"ts":"2026-10-14T09:14:45.758Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=85"}
+{"ts":"2026-10-14T09:14:46.082Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=44.6"}
+{"ts":"2026-10-14T09:14:46.202Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=87"}
+{"ts":"2026-10-14T09:14:46.452Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=20.1"}
+{"ts":"2026-10-14T09:14:46.611Z","level":"info","component":"mode-gateway","op":"write_mode","mode":"run","mode_wire":"0x04","seq":183,"profile":"rev2"}
+{"ts":"2026-10-14T09:14:46.639Z","level":"error","component":"mode-gateway","op":"write_mode","seq":183,"status":"illegal_value","peer_rev":"rev1"}
+{"ts":"2026-10-14T09:14:48.159Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=89"}
+{"ts":"2026-10-14T09:14:48.187Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=29.6"}
+{"ts":"2026-10-14T09:14:48.217Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=91"}
+{"ts":"2026-10-14T09:14:48.609Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=35.3"}
+{"ts":"2026-10-14T09:14:50.411Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=93"}
+{"ts":"2026-10-14T09:14:50.531Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=44.0"}
+{"ts":"2026-10-14T09:14:50.912Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=95"}
+{"ts":"2026-10-14T09:14:52.511Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=11.2"}
+{"ts":"2026-10-14T09:14:54.296Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=97"}
+{"ts":"2026-10-14T09:14:54.601Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=27.4"}
+{"ts":"2026-10-14T09:14:54.632Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=99"}
+{"ts":"2026-10-14T09:14:56.338Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=30.0"}
+{"ts":"2026-10-14T09:14:56.886Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=101"}
+{"ts":"2026-10-14T09:14:56.990Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=15.5"}
+{"ts":"2026-10-14T09:14:57.018Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=103"}
+{"ts":"2026-10-14T09:14:58.688Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=36.5"}
+{"ts":"2026-10-14T09:15:00.496Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=105"}
+{"ts":"2026-10-14T09:15:01.469Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=38.8"}
+{"ts":"2026-10-14T09:15:01.779Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=107"}
+{"ts":"2026-10-14T09:15:01.803Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=34.5"}
+{"ts":"2026-10-14T09:15:03.320Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=109"}
+{"ts":"2026-10-14T09:15:03.564Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=44.1"}
+{"ts":"2026-10-14T09:15:03.842Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=111"}
+{"ts":"2026-10-14T09:15:04.120Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=40.7"}
+{"ts":"2026-10-14T09:15:04.358Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=113"}
+{"ts":"2026-10-14T09:15:04.886Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=13.4"}
+{"ts":"2026-10-14T09:15:05.223Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=115"}
+{"ts":"2026-10-14T09:15:05.457Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=45.2"}
+{"ts":"2026-10-14T09:15:05.686Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=117"}
+{"ts":"2026-10-14T09:15:05.947Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=36.5"}
+{"ts":"2026-10-14T09:15:06.068Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=119"}
+{"ts":"2026-10-14T09:15:06.186Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=13.5"}
+{"ts":"2026-10-14T09:15:06.983Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=121"}
+{"ts":"2026-10-14T09:15:07.300Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=10.5"}
+{"ts":"2026-10-14T09:15:08.154Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=123"}
+{"ts":"2026-10-14T09:15:08.450Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=15.7"}
+{"ts":"2026-10-14T09:15:08.673Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=125"}
+{"ts":"2026-10-14T09:15:10.452Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=18.4"}
+{"ts":"2026-10-14T09:15:12.214Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=127"}
+{"ts":"2026-10-14T09:15:12.622Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=10.7"}
+{"ts":"2026-10-14T09:15:12.933Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=129"}
+{"ts":"2026-10-14T09:15:14.695Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=31.3"}
+{"ts":"2026-10-14T09:15:14.816Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=131"}
+{"ts":"2026-10-14T09:15:15.870Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.2"}
+{"ts":"2026-10-14T09:15:17.830Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=133"}
+{"ts":"2026-10-14T09:15:17.922Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=13.4"}
+{"ts":"2026-10-14T09:15:18.448Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=135"}
+{"ts":"2026-10-14T09:15:19.223Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=37.7"}
+{"ts":"2026-10-14T09:15:20.733Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=137"}
+{"ts":"2026-10-14T09:15:21.569Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=35.6"}
+{"ts":"2026-10-14T09:15:22.049Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=139"}
+{"ts":"2026-10-14T09:15:22.141Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=32.3"}
+{"ts":"2026-10-14T09:15:22.978Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=141"}
+{"ts":"2026-10-14T09:15:23.393Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.1"}
+{"ts":"2026-10-14T09:15:24.920Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=143"}
+{"ts":"2026-10-14T09:15:25.789Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=37.3"}
+{"ts":"2026-10-14T09:15:26.130Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=145"}
+{"ts":"2026-10-14T09:15:26.566Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=44.0"}
+{"ts":"2026-10-14T09:15:26.786Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=147"}
+{"ts":"2026-10-14T09:15:26.816Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=35.5"}
+{"ts":"2026-10-14T09:15:27.303Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=149"}
+{"ts":"2026-10-14T09:15:27.671Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=34.4"}
+{"ts":"2026-10-14T09:15:28.028Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=151"}
+{"ts":"2026-10-14T09:15:28.052Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=39.9"}
+{"ts":"2026-10-14T09:15:28.157Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=153"}
+{"ts":"2026-10-14T09:15:28.588Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=46.2"}
+{"ts":"2026-10-14T09:15:28.858Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=155"}
+{"ts":"2026-10-14T09:15:29.624Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=39.0"}
+{"ts":"2026-10-14T09:15:29.750Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=157"}
+{"ts":"2026-10-14T09:15:29.843Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=38.8"}
+{"ts":"2026-10-14T09:15:29.871Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=159"}
+{"ts":"2026-10-14T09:15:30.243Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.7"}
+{"ts":"2026-10-14T09:15:30.514Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=161"}
+{"ts":"2026-10-14T09:15:30.859Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=28.4"}
+{"ts":"2026-10-14T09:15:31.073Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=163"}
+{"ts":"2026-10-14T09:15:33.047Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=40.3"}
+{"ts":"2026-10-14T09:15:33.489Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=165"}
+{"ts":"2026-10-14T09:15:35.517Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=34.6"}

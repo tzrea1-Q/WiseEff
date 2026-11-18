@@ -1,0 +1,30 @@
+domain: service-jsonl
+summary: "A deployment loses ingest readiness and independently drops metrics exports."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [multi-file, multi-issue, distractor]
+rootCauseCategory: configuration-error
+analysisQuestion: "Which problem explains the ingest failures, and which only affects metrics?"
+rootCausePoints:
+  - "The recreated ingest socket allows only UID 990 and the gateway runs as UID 991, consistent with the ingest-only EACCES."
+  - "The later metrics-agent queue drop affects observability independently."
+keyEvidenceLines: [172, 192, 413, 414, 438]
+expectedActions:
+  - "Correct the socket ownership or group mode for the gateway and verify the ingest route."
+  - "Investigate metrics export backpressure independently."
+bundleFiles: [fixtures/proxy.log, fixtures/ingest.log]
+keyEvidence:
+  - { file: proxy.log, line: 172 }
+  - { file: proxy.log, line: 192 }
+  - { file: ingest.log, line: 101 }
+  - { file: ingest.log, line: 102 }
+  - { file: ingest.log, line: 126 }
+realismChecklist:
+  lineFormat: "Structured service JSON Lines with ISO 8601 UTC timestamps at millisecond precision. journalctl short-iso style with second-resolution ISO timestamps, a hostname and process tags."
+  noiseRatio: "506 of 512 lines are routine traffic (98.8%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "An empty logrotate candidate at ingest.log:37 belongs to the cache log and never touches the ingest socket."
+  rootCauseDiscoverability: "Socket access mode, process identity and the route must agree. The later metrics alert cannot explain the earlier ingest errors."
+  timeline: "Both files use UTC. The socket and affected gateway identity appear before ingest fails, and the metrics drop follows."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Matched the socket path across files and checked owner-only mode against the gateway UID. The healthy read route and later metrics alert support separate actions."

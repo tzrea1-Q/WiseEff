@@ -1,0 +1,293 @@
+2026-10-14T09:14:00+0000 bench-node sensor-bridge[714]: retry cycle=3 state=RECOVERING
+2026-10-14T09:14:00+0000 bench-node sensor-bridge[714]: frame request failed: status=-5 retry=3
+2026-10-14T09:14:00+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=0 elapsed_ms=22.8
+2026-10-14T09:14:00+0000 bench-node sensor-bridge[714]: subscribed topics=10
+2026-10-14T09:14:01+0000 bench-node sensor-bridge[714]: connection restored stream=adc-0
+2026-10-14T09:14:01+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:02+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=3 elapsed_ms=14.2
+2026-10-14T09:14:03+0000 bench-node sensor-bridge[714]: subscribed topics=4
+2026-10-14T09:14:04+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:04+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=6 elapsed_ms=41.3
+2026-10-14T09:14:04+0000 bench-node sensor-bridge[714]: subscribed topics=17
+2026-10-14T09:14:04+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:04+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=9 elapsed_ms=18.0
+2026-10-14T09:14:05+0000 bench-node sensor-bridge[714]: subscribed topics=1
+2026-10-14T09:14:05+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:06+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=12 elapsed_ms=20.2
+2026-10-14T09:14:06+0000 bench-node sensor-bridge[714]: subscribed topics=4
+2026-10-14T09:14:06+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:06+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=15 elapsed_ms=9.3
+2026-10-14T09:14:07+0000 bench-node sensor-bridge[714]: subscribed topics=4
+2026-10-14T09:14:07+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:08+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=18 elapsed_ms=40.1
+2026-10-14T09:14:08+0000 bench-node sensor-bridge[714]: subscribed topics=15
+2026-10-14T09:14:08+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:08+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=21 elapsed_ms=34.9
+2026-10-14T09:14:09+0000 bench-node sensor-bridge[714]: subscribed topics=10
+2026-10-14T09:14:09+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:09+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=24 elapsed_ms=43.6
+2026-10-14T09:14:09+0000 bench-node sensor-bridge[714]: subscribed topics=1
+2026-10-14T09:14:09+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:09+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=27 elapsed_ms=43.0
+2026-10-14T09:14:09+0000 bench-node sensor-bridge[714]: subscribed topics=11
+2026-10-14T09:14:10+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:10+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=30 elapsed_ms=40.3
+2026-10-14T09:14:10+0000 bench-node sensor-bridge[714]: subscribed topics=3
+2026-10-14T09:14:10+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:10+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=33 elapsed_ms=26.1
+2026-10-14T09:14:11+0000 bench-node sensor-bridge[714]: subscribed topics=18
+2026-10-14T09:14:11+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:11+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=36 elapsed_ms=23.1
+2026-10-14T09:14:12+0000 bench-node sensor-bridge[714]: subscribed topics=11
+2026-10-14T09:14:12+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:13+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=39 elapsed_ms=29.1
+2026-10-14T09:14:13+0000 bench-node sensor-bridge[714]: subscribed topics=7
+2026-10-14T09:14:13+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:13+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=42 elapsed_ms=41.7
+2026-10-14T09:14:14+0000 bench-node sensor-bridge[714]: subscribed topics=17
+2026-10-14T09:14:14+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:15+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=45 elapsed_ms=16.8
+2026-10-14T09:14:16+0000 bench-node sensor-bridge[714]: subscribed topics=8
+2026-10-14T09:14:16+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:17+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=48 elapsed_ms=14.9
+2026-10-14T09:14:17+0000 bench-node sensor-bridge[714]: subscribed topics=5
+2026-10-14T09:14:18+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:18+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=51 elapsed_ms=41.1
+2026-10-14T09:14:18+0000 bench-node sensor-bridge[714]: subscribed topics=18
+2026-10-14T09:14:18+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:19+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=54 elapsed_ms=14.6
+2026-10-14T09:14:20+0000 bench-node sensor-bridge[714]: subscribed topics=3
+2026-10-14T09:14:20+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:21+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=57 elapsed_ms=45.9
+2026-10-14T09:14:22+0000 bench-node sensor-bridge[714]: subscribed topics=13
+2026-10-14T09:14:22+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:22+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=60 elapsed_ms=9.6
+2026-10-14T09:14:22+0000 bench-node sensor-bridge[714]: subscribed topics=15
+2026-10-14T09:14:23+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:24+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=63 elapsed_ms=47.3
+2026-10-14T09:14:24+0000 bench-node sensor-bridge[714]: subscribed topics=12
+2026-10-14T09:14:25+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:25+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=66 elapsed_ms=15.4
+2026-10-14T09:14:25+0000 bench-node sensor-bridge[714]: subscribed topics=17
+2026-10-14T09:14:25+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:26+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=69 elapsed_ms=10.5
+2026-10-14T09:14:26+0000 bench-node sensor-bridge[714]: subscribed topics=4
+2026-10-14T09:14:27+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:27+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=72 elapsed_ms=36.1
+2026-10-14T09:14:28+0000 bench-node sensor-bridge[714]: subscribed topics=1
+2026-10-14T09:14:28+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:29+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=75 elapsed_ms=32.7
+2026-10-14T09:14:29+0000 bench-node sensor-bridge[714]: subscribed topics=18
+2026-10-14T09:14:30+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:30+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=78 elapsed_ms=31.2
+2026-10-14T09:14:30+0000 bench-node sensor-bridge[714]: subscribed topics=19
+2026-10-14T09:14:30+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:31+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=81 elapsed_ms=44.3
+2026-10-14T09:14:31+0000 bench-node sensor-bridge[714]: subscribed topics=7
+2026-10-14T09:14:31+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:32+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=84 elapsed_ms=37.4
+2026-10-14T09:14:32+0000 bench-node sensor-bridge[714]: subscribed topics=11
+2026-10-14T09:14:32+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:32+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=87 elapsed_ms=39.8
+2026-10-14T09:14:33+0000 bench-node sensor-bridge[714]: subscribed topics=6
+2026-10-14T09:14:33+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:34+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=90 elapsed_ms=36.6
+2026-10-14T09:14:34+0000 bench-node sensor-bridge[714]: subscribed topics=3
+2026-10-14T09:14:35+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:35+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=93 elapsed_ms=14.1
+2026-10-14T09:14:35+0000 bench-node sensor-bridge[714]: subscribed topics=3
+2026-10-14T09:14:35+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:36+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=96 elapsed_ms=27.4
+2026-10-14T09:14:36+0000 bench-node sensor-bridge[714]: subscribed topics=1
+2026-10-14T09:14:36+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:37+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=99 elapsed_ms=32.0
+2026-10-14T09:14:37+0000 bench-node sensor-bridge[714]: subscribed topics=17
+2026-10-14T09:14:37+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:37+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=102 elapsed_ms=33.6
+2026-10-14T09:14:37+0000 bench-node sensor-bridge[714]: subscribed topics=6
+2026-10-14T09:14:38+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:38+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=105 elapsed_ms=9.7
+2026-10-14T09:14:38+0000 bench-node sensor-bridge[714]: subscribed topics=8
+2026-10-14T09:14:39+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:40+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=108 elapsed_ms=44.4
+2026-10-14T09:14:40+0000 bench-node sensor-bridge[714]: subscribed topics=15
+2026-10-14T09:14:41+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:41+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=111 elapsed_ms=27.9
+2026-10-14T09:14:41+0000 bench-node sensor-bridge[714]: subscribed topics=5
+2026-10-14T09:14:41+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:41+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=114 elapsed_ms=11.6
+2026-10-14T09:14:41+0000 bench-node sensor-bridge[714]: subscribed topics=17
+2026-10-14T09:14:42+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:42+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=117 elapsed_ms=29.9
+2026-10-14T09:14:42+0000 bench-node sensor-bridge[714]: subscribed topics=15
+2026-10-14T09:14:42+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:42+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=120 elapsed_ms=13.2
+2026-10-14T09:14:43+0000 bench-node sensor-bridge[714]: subscribed topics=18
+2026-10-14T09:14:44+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:44+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=123 elapsed_ms=35.0
+2026-10-14T09:14:45+0000 bench-node sensor-bridge[714]: subscribed topics=10
+2026-10-14T09:14:45+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:45+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=126 elapsed_ms=14.1
+2026-10-14T09:14:46+0000 bench-node sensor-bridge[714]: subscribed topics=14
+2026-10-14T09:14:46+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:46+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=129 elapsed_ms=16.0
+2026-10-14T09:14:47+0000 bench-node sensor-bridge[714]: subscribed topics=7
+2026-10-14T09:14:48+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:48+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=132 elapsed_ms=34.0
+2026-10-14T09:14:48+0000 bench-node sensor-bridge[714]: subscribed topics=9
+2026-10-14T09:14:48+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:48+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=135 elapsed_ms=42.8
+2026-10-14T09:14:48+0000 bench-node sensor-bridge[714]: subscribed topics=7
+2026-10-14T09:14:49+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:49+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=138 elapsed_ms=24.0
+2026-10-14T09:14:49+0000 bench-node sensor-bridge[714]: subscribed topics=2
+2026-10-14T09:14:50+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:51+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=141 elapsed_ms=35.2
+2026-10-14T09:14:52+0000 bench-node systemd[1]: net-sample.service: Failed to read optional drop-in.
+2026-10-14T09:14:52+0000 bench-node sensor-bridge[714]: subscribed topics=8
+2026-10-14T09:14:52+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:52+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=144 elapsed_ms=36.1
+2026-10-14T09:14:52+0000 bench-node sensor-bridge[714]: subscribed topics=12
+2026-10-14T09:14:52+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:53+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=147 elapsed_ms=26.8
+2026-10-14T09:14:54+0000 bench-node sensor-bridge[714]: subscribed topics=7
+2026-10-14T09:14:54+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:54+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=150 elapsed_ms=20.6
+2026-10-14T09:14:54+0000 bench-node sensor-bridge[714]: subscribed topics=2
+2026-10-14T09:14:54+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:55+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=153 elapsed_ms=43.6
+2026-10-14T09:14:56+0000 bench-node sensor-bridge[714]: subscribed topics=17
+2026-10-14T09:14:56+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:56+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=156 elapsed_ms=22.3
+2026-10-14T09:14:57+0000 bench-node sensor-bridge[714]: subscribed topics=7
+2026-10-14T09:14:57+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:58+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=159 elapsed_ms=37.6
+2026-10-14T09:14:58+0000 bench-node sensor-bridge[714]: subscribed topics=14
+2026-10-14T09:14:58+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:14:59+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=162 elapsed_ms=45.2
+2026-10-14T09:15:00+0000 bench-node sensor-bridge[714]: subscribed topics=14
+2026-10-14T09:15:00+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:00+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=165 elapsed_ms=43.8
+2026-10-14T09:15:00+0000 bench-node sensor-bridge[714]: subscribed topics=16
+2026-10-14T09:15:00+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:01+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=168 elapsed_ms=20.8
+2026-10-14T09:15:01+0000 bench-node sensor-bridge[714]: subscribed topics=4
+2026-10-14T09:15:01+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:01+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=171 elapsed_ms=10.1
+2026-10-14T09:15:01+0000 bench-node sensor-bridge[714]: subscribed topics=6
+2026-10-14T09:15:01+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:03+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=174 elapsed_ms=44.8
+2026-10-14T09:15:03+0000 bench-node sensor-bridge[714]: subscribed topics=1
+2026-10-14T09:15:03+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:04+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=177 elapsed_ms=25.3
+2026-10-14T09:15:05+0000 bench-node sensor-bridge[714]: subscribed topics=1
+2026-10-14T09:15:05+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:05+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=180 elapsed_ms=33.3
+2026-10-14T09:15:05+0000 bench-node sensor-bridge[714]: subscribed topics=15
+2026-10-14T09:15:05+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:05+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=183 elapsed_ms=43.7
+2026-10-14T09:15:05+0000 bench-node sensor-bridge[714]: subscribed topics=13
+2026-10-14T09:15:06+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:06+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=186 elapsed_ms=20.4
+2026-10-14T09:15:06+0000 bench-node sensor-bridge[714]: subscribed topics=9
+2026-10-14T09:15:06+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:06+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=189 elapsed_ms=20.2
+2026-10-14T09:15:07+0000 bench-node sensor-bridge[714]: subscribed topics=13
+2026-10-14T09:15:07+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:08+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=192 elapsed_ms=36.0
+2026-10-14T09:15:08+0000 bench-node sensor-bridge[714]: subscribed topics=19
+2026-10-14T09:15:08+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:08+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=195 elapsed_ms=30.9
+2026-10-14T09:15:08+0000 bench-node sensor-bridge[714]: subscribed topics=10
+2026-10-14T09:15:08+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:08+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=198 elapsed_ms=43.9
+2026-10-14T09:15:09+0000 bench-node sensor-bridge[714]: subscribed topics=11
+2026-10-14T09:15:10+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:10+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=201 elapsed_ms=28.5
+2026-10-14T09:15:11+0000 bench-node sensor-bridge[714]: subscribed topics=4
+2026-10-14T09:15:11+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:11+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=204 elapsed_ms=47.3
+2026-10-14T09:15:11+0000 bench-node sensor-bridge[714]: subscribed topics=10
+2026-10-14T09:15:12+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:12+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=207 elapsed_ms=21.4
+2026-10-14T09:15:12+0000 bench-node sensor-bridge[714]: subscribed topics=7
+2026-10-14T09:15:12+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:12+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=210 elapsed_ms=46.9
+2026-10-14T09:15:13+0000 bench-node sensor-bridge[714]: subscribed topics=6
+2026-10-14T09:15:14+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:14+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=213 elapsed_ms=22.2
+2026-10-14T09:15:14+0000 bench-node sensor-bridge[714]: subscribed topics=3
+2026-10-14T09:15:14+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:14+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=216 elapsed_ms=14.7
+2026-10-14T09:15:15+0000 bench-node sensor-bridge[714]: subscribed topics=7
+2026-10-14T09:15:15+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:16+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=219 elapsed_ms=18.1
+2026-10-14T09:15:17+0000 bench-node sensor-bridge[714]: subscribed topics=5
+2026-10-14T09:15:17+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:18+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=222 elapsed_ms=11.7
+2026-10-14T09:15:18+0000 bench-node sensor-bridge[714]: subscribed topics=0
+2026-10-14T09:15:18+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:18+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=225 elapsed_ms=46.6
+2026-10-14T09:15:19+0000 bench-node sensor-bridge[714]: subscribed topics=4
+2026-10-14T09:15:19+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:19+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=228 elapsed_ms=47.4
+2026-10-14T09:15:20+0000 bench-node sensor-bridge[714]: subscribed topics=17
+2026-10-14T09:15:20+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:20+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=231 elapsed_ms=33.4
+2026-10-14T09:15:20+0000 bench-node sensor-bridge[714]: subscribed topics=10
+2026-10-14T09:15:21+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:21+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=234 elapsed_ms=26.7
+2026-10-14T09:15:21+0000 bench-node sensor-bridge[714]: subscribed topics=2
+2026-10-14T09:15:21+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:22+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=237 elapsed_ms=36.4
+2026-10-14T09:15:22+0000 bench-node sensor-bridge[714]: subscribed topics=17
+2026-10-14T09:15:23+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:23+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=240 elapsed_ms=36.1
+2026-10-14T09:15:23+0000 bench-node sensor-bridge[714]: subscribed topics=10
+2026-10-14T09:15:23+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:23+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=243 elapsed_ms=40.8
+2026-10-14T09:15:23+0000 bench-node sensor-bridge[714]: subscribed topics=8
+2026-10-14T09:15:24+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:24+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=246 elapsed_ms=26.7
+2026-10-14T09:15:24+0000 bench-node sensor-bridge[714]: subscribed topics=3
+2026-10-14T09:15:24+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:25+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=249 elapsed_ms=26.7
+2026-10-14T09:15:25+0000 bench-node sensor-bridge[714]: subscribed topics=7
+2026-10-14T09:15:25+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:25+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=252 elapsed_ms=39.0
+2026-10-14T09:15:25+0000 bench-node sensor-bridge[714]: subscribed topics=16
+2026-10-14T09:15:26+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:26+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=255 elapsed_ms=37.3
+2026-10-14T09:15:26+0000 bench-node sensor-bridge[714]: subscribed topics=5
+2026-10-14T09:15:26+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:26+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=258 elapsed_ms=32.1
+2026-10-14T09:15:26+0000 bench-node sensor-bridge[714]: subscribed topics=1
+2026-10-14T09:15:27+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:27+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=261 elapsed_ms=45.4
+2026-10-14T09:15:27+0000 bench-node sensor-bridge[714]: subscribed topics=11
+2026-10-14T09:15:27+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:27+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=264 elapsed_ms=16.8
+2026-10-14T09:15:27+0000 bench-node sensor-bridge[714]: subscribed topics=12
+2026-10-14T09:15:28+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:29+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=267 elapsed_ms=40.3
+2026-10-14T09:15:30+0000 bench-node sensor-bridge[714]: subscribed topics=16
+2026-10-14T09:15:30+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:31+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=270 elapsed_ms=21.8
+2026-10-14T09:15:31+0000 bench-node sensor-bridge[714]: subscribed topics=10
+2026-10-14T09:15:31+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:31+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=273 elapsed_ms=31.3
+2026-10-14T09:15:31+0000 bench-node sensor-bridge[714]: subscribed topics=2
+2026-10-14T09:15:32+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:32+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=276 elapsed_ms=9.0
+2026-10-14T09:15:32+0000 bench-node sensor-bridge[714]: subscribed topics=2
+2026-10-14T09:15:32+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:32+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=279 elapsed_ms=15.2
+2026-10-14T09:15:32+0000 bench-node sensor-bridge[714]: subscribed topics=5
+2026-10-14T09:15:32+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:32+0000 bench-node sensor-bridge[714]: sample delivered source=adc-0 count=282 elapsed_ms=24.4
+2026-10-14T09:15:33+0000 bench-node sensor-bridge[714]: subscribed topics=0
+2026-10-14T09:15:33+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:34+0000 bench-node sensor-bridge[714]: sample delivered source=adc-2 count=285 elapsed_ms=30.3
+2026-10-14T09:15:34+0000 bench-node sensor-bridge[714]: subscribed topics=14
+2026-10-14T09:15:34+0000 bench-node sensor-bridge[714]: watchdog notify result=0
+2026-10-14T09:15:34+0000 bench-node sensor-bridge[714]: sample delivered source=adc-1 count=288 elapsed_ms=20.0

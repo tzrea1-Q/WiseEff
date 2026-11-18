@@ -1,0 +1,262 @@
+{"ts":"2026-10-14T09:14:00.288Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:00.476Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:00.495Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=15.8"}
+{"ts":"2026-10-14T09:14:00.788Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:00.993Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=5"}
+{"ts":"2026-10-14T09:14:01.062Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=11.7"}
+{"ts":"2026-10-14T09:14:01.376Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:01.396Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=7"}
+{"ts":"2026-10-14T09:14:01.582Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=40.6"}
+{"ts":"2026-10-14T09:14:01.959Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:02.253Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=5"}
+{"ts":"2026-10-14T09:14:02.558Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=47.4"}
+{"ts":"2026-10-14T09:14:02.796Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:02.813Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:14:02.984Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=19.1"}
+{"ts":"2026-10-14T09:14:03.007Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:03.699Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:14:04.075Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=24.9"}
+{"ts":"2026-10-14T09:14:04.390Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:04.410Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=7"}
+{"ts":"2026-10-14T09:14:05.458Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=40.8"}
+{"ts":"2026-10-14T09:14:05.542Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:05.788Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=8"}
+{"ts":"2026-10-14T09:14:05.857Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=39.2"}
+{"ts":"2026-10-14T09:14:06.044Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:06.305Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:14:06.623Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=16.7"}
+{"ts":"2026-10-14T09:14:07.258Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:07.494Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:07.851Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=20.2"}
+{"ts":"2026-10-14T09:14:07.869Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:08.605Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:08.774Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=27.0"}
+{"ts":"2026-10-14T09:14:09.116Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:09.391Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=8"}
+{"ts":"2026-10-14T09:14:09.668Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=41.8"}
+{"ts":"2026-10-14T09:14:11.084Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:11.108Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=6"}
+{"ts":"2026-10-14T09:14:11.300Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=27.1"}
+{"ts":"2026-10-14T09:14:11.507Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:11.582Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=7"}
+{"ts":"2026-10-14T09:14:11.650Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=13.0"}
+{"ts":"2026-10-14T09:14:11.728Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:12.266Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:12.463Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=43.2"}
+{"ts":"2026-10-14T09:14:12.540Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:12.614Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=7"}
+{"ts":"2026-10-14T09:14:13.981Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=30.1"}
+{"ts":"2026-10-14T09:14:14.208Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:14.778Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=2"}
+{"ts":"2026-10-14T09:14:15.955Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=12.7"}
+{"ts":"2026-10-14T09:14:15.976Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:16.202Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=6"}
+{"ts":"2026-10-14T09:14:16.496Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=38.9"}
+{"ts":"2026-10-14T09:14:16.804Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:16.868Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=8"}
+{"ts":"2026-10-14T09:14:16.890Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=42.3"}
+{"ts":"2026-10-14T09:14:17.208Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:18.506Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:14:18.528Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=33.9"}
+{"ts":"2026-10-14T09:14:19.741Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:20.375Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:14:21.472Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=19.3"}
+{"ts":"2026-10-14T09:14:21.490Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:21.730Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:21.819Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=35.2"}
+{"ts":"2026-10-14T09:14:22.078Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:22.414Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=2"}
+{"ts":"2026-10-14T09:14:22.432Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=35.4"}
+{"ts":"2026-10-14T09:14:23.784Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:23.861Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:24.129Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=43.1"}
+{"ts":"2026-10-14T09:14:24.321Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:24.343Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:14:24.977Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=37.4"}
+{"ts":"2026-10-14T09:14:24.994Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:25.666Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:14:25.689Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=16.9"}
+{"ts":"2026-10-14T09:14:27.021Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:27.098Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=7"}
+{"ts":"2026-10-14T09:14:27.303Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=29.1"}
+{"ts":"2026-10-14T09:14:27.324Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:27.347Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:27.570Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=40.1"}
+{"ts":"2026-10-14T09:14:28.589Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:28.611Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=5"}
+{"ts":"2026-10-14T09:14:28.683Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=12.7"}
+{"ts":"2026-10-14T09:14:29.033Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:29.651Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:14:29.739Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=35.1"}
+{"ts":"2026-10-14T09:14:29.828Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:29.899Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=2"}
+{"ts":"2026-10-14T09:14:30.048Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=9.0"}
+{"ts":"2026-10-14T09:14:30.767Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:32.157Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:14:32.496Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=19.7"}
+{"ts":"2026-10-14T09:14:32.693Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:32.712Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:32.731Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=43.1"}
+{"ts":"2026-10-14T09:14:32.798Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:33.105Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=2"}
+{"ts":"2026-10-14T09:14:33.829Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=18.1"}
+{"ts":"2026-10-14T09:14:35.052Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:35.072Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:14:36.492Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=27.3"}
+{"ts":"2026-10-14T09:14:37.733Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:38.021Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:14:38.174Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=18.9"}
+{"ts":"2026-10-14T09:14:38.376Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:38.397Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:38.470Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=11.3"}
+{"ts":"2026-10-14T09:14:38.763Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:38.840Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:14:40.132Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=32.4"}
+{"ts":"2026-10-14T09:14:40.152Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:40.339Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=6"}
+{"ts":"2026-10-14T09:14:40.662Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=47.4"}
+{"ts":"2026-10-14T09:14:41.392Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:41.691Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=5"}
+{"ts":"2026-10-14T09:14:43.097Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=28.6"}
+{"ts":"2026-10-14T09:14:43.418Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:43.596Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:43.620Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=11.9"}
+{"ts":"2026-10-14T09:14:43.931Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:44.485Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=1"}
+{"ts":"2026-10-14T09:14:44.674Z","level":"info","component":"import-worker","op":"load","job":"demo-48","schema":"catalog-v2","bytes":623}
+{"ts":"2026-10-14T09:14:44.678Z","level":"error","component":"import-worker","op":"validate","job":"demo-48","path":"/items/0/quantity","expected":"integer","actual":"string","code":"TYPE_MISMATCH"}
+{"ts":"2026-10-14T09:14:45.826Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=20.2"}
+{"ts":"2026-10-14T09:14:46.025Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:46.121Z","level":"info","component":"import-worker","op":"ack","job":"demo-48","state":"rejected","committed_items":0}
+{"ts":"2026-10-14T09:14:46.195Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=8"}
+{"ts":"2026-10-14T09:14:46.277Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=19.9"}
+{"ts":"2026-10-14T09:14:46.529Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:47.253Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:47.898Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=26.2"}
+{"ts":"2026-10-14T09:14:47.918Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:48.448Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=2"}
+{"ts":"2026-10-14T09:14:48.772Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=15.2"}
+{"ts":"2026-10-14T09:14:49.078Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:49.155Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=6"}
+{"ts":"2026-10-14T09:14:49.859Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=14.8"}
+{"ts":"2026-10-14T09:14:50.535Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:50.884Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:14:52.113Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=9.4"}
+{"ts":"2026-10-14T09:14:52.831Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:52.855Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:52.920Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=44.2"}
+{"ts":"2026-10-14T09:14:53.110Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:53.409Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:14:54.698Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=15.2"}
+{"ts":"2026-10-14T09:14:54.764Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:54.786Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=6"}
+{"ts":"2026-10-14T09:14:55.081Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=12.9"}
+{"ts":"2026-10-14T09:14:55.102Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:55.740Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=1"}
+{"ts":"2026-10-14T09:14:55.820Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=42.9"}
+{"ts":"2026-10-14T09:14:55.904Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:56.168Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:14:56.192Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=16.7"}
+{"ts":"2026-10-14T09:14:57.220Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:57.490Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:14:57.561Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=34.7"}
+{"ts":"2026-10-14T09:14:57.633Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:14:58.266Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=6"}
+{"ts":"2026-10-14T09:14:58.338Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=29.1"}
+{"ts":"2026-10-14T09:14:58.578Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:14:59.148Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=7"}
+{"ts":"2026-10-14T09:14:59.237Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=13.1"}
+{"ts":"2026-10-14T09:14:59.414Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:14:59.482Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=8"}
+{"ts":"2026-10-14T09:14:59.658Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=14.2"}
+{"ts":"2026-10-14T09:15:00.019Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:15:00.294Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:15:00.606Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=25.9"}
+{"ts":"2026-10-14T09:15:01.147Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:01.805Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:15:01.973Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=46.3"}
+{"ts":"2026-10-14T09:15:02.054Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:02.428Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=2"}
+{"ts":"2026-10-14T09:15:02.582Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=11.3"}
+{"ts":"2026-10-14T09:15:02.603Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:15:02.895Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=5"}
+{"ts":"2026-10-14T09:15:03.083Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=33.6"}
+{"ts":"2026-10-14T09:15:03.715Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:03.929Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=7"}
+{"ts":"2026-10-14T09:15:04.247Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=15.5"}
+{"ts":"2026-10-14T09:15:04.496Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:15:05.166Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=7"}
+{"ts":"2026-10-14T09:15:05.853Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=27.1"}
+{"ts":"2026-10-14T09:15:06.080Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:06.099Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=7"}
+{"ts":"2026-10-14T09:15:06.388Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=30.4"}
+{"ts":"2026-10-14T09:15:07.038Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:07.206Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=8"}
+{"ts":"2026-10-14T09:15:07.293Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=24.0"}
+{"ts":"2026-10-14T09:15:07.360Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:15:07.734Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=1"}
+{"ts":"2026-10-14T09:15:07.989Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=32.5"}
+{"ts":"2026-10-14T09:15:08.665Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:15:08.841Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:15:08.863Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=9.8"}
+{"ts":"2026-10-14T09:15:09.237Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:10.440Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=5"}
+{"ts":"2026-10-14T09:15:10.674Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=21.4"}
+{"ts":"2026-10-14T09:15:10.942Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:11.493Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=6"}
+{"ts":"2026-10-14T09:15:11.511Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=22.4"}
+{"ts":"2026-10-14T09:15:12.752Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:15:12.987Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=6"}
+{"ts":"2026-10-14T09:15:13.067Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=19.5"}
+{"ts":"2026-10-14T09:15:13.784Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:15:13.803Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=6"}
+{"ts":"2026-10-14T09:15:13.876Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=41.9"}
+{"ts":"2026-10-14T09:15:14.616Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:15.912Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=5"}
+{"ts":"2026-10-14T09:15:16.186Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=38.1"}
+{"ts":"2026-10-14T09:15:16.846Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:16.934Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:15:17.021Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=35.9"}
+{"ts":"2026-10-14T09:15:17.101Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:17.119Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=1"}
+{"ts":"2026-10-14T09:15:17.377Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=30.2"}
+{"ts":"2026-10-14T09:15:18.003Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:15:18.702Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=8"}
+{"ts":"2026-10-14T09:15:18.768Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=17.0"}
+{"ts":"2026-10-14T09:15:19.043Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:15:19.065Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:15:20.305Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=33.5"}
+{"ts":"2026-10-14T09:15:21.629Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:15:22.964Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=0"}
+{"ts":"2026-10-14T09:15:23.245Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=18.8"}
+{"ts":"2026-10-14T09:15:23.321Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:24.556Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=8"}
+{"ts":"2026-10-14T09:15:25.979Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=15.3"}
+{"ts":"2026-10-14T09:15:26.185Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:15:26.473Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=7"}
+{"ts":"2026-10-14T09:15:26.728Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=47.4"}
+{"ts":"2026-10-14T09:15:27.027Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:27.183Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=2"}
+{"ts":"2026-10-14T09:15:27.201Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=39.7"}
+{"ts":"2026-10-14T09:15:27.760Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:15:29.151Z","level":"debug","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:15:29.413Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=30.5"}
+{"ts":"2026-10-14T09:15:29.690Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:29.757Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:15:29.827Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=19.9"}
+{"ts":"2026-10-14T09:15:30.911Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:31.103Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:15:32.120Z","level":"debug","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=29.1"}
+{"ts":"2026-10-14T09:15:32.673Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:15:32.693Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=8"}
+{"ts":"2026-10-14T09:15:32.779Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=46.7"}
+{"ts":"2026-10-14T09:15:33.868Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=1"}
+{"ts":"2026-10-14T09:15:34.059Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=4"}
+{"ts":"2026-10-14T09:15:34.147Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=12.9"}
+{"ts":"2026-10-14T09:15:34.225Z","level":"debug","component":"import-worker","msg":"queue heartbeat lane=batch waiters=2"}
+{"ts":"2026-10-14T09:15:34.602Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:15:34.683Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=47.3"}
+{"ts":"2026-10-14T09:15:35.291Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}
+{"ts":"2026-10-14T09:15:35.646Z","level":"info","component":"import-worker","msg":"cache hit compiled_schemas=3"}
+{"ts":"2026-10-14T09:15:35.728Z","level":"info","component":"import-worker","msg":"db cycle retries=0 elapsed_ms=17.3"}
+{"ts":"2026-10-14T09:15:35.746Z","level":"info","component":"import-worker","msg":"queue heartbeat lane=batch waiters=0"}

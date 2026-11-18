@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import JSZip from "jszip";
 import { stringify as stringifyYaml } from "yaml";
 import { describe, expect, it, vi } from "vitest";
@@ -107,9 +108,11 @@ describe("analysis case archive", () => {
   });
 
   it("round-trips every repository annotation and fixture byte identically", async () => {
-    const entries: Record<string, Buffer> = {};
     const root = join(process.cwd(), "eval-cases/logs");
-    for (const domain of readdirSync(root, { withFileTypes: true }).filter((item) => item.isDirectory())) {
+    const domains = readdirSync(root, { withFileTypes: true }).filter((item) => item.isDirectory());
+    expect(domains.length).toBeGreaterThan(0);
+    for (const domain of domains) {
+      const entries: Record<string, Buffer> = {};
       for (const item of readdirSync(join(root, domain.name), { withFileTypes: true }).filter((item) => item.isDirectory())) {
         const caseDir = join(root, domain.name, item.name);
         for (const file of readdirSync(caseDir, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())) {
@@ -117,13 +120,14 @@ describe("analysis case archive", () => {
           entries[path.slice(root.length + 1)] = readFileSync(path);
         }
       }
+      expect(Object.keys(entries).length).toBeGreaterThan(0);
+      const imported = await importAnalysisCaseArchive(await zip(entries));
+      const output = await exportAnalysisCaseArchive(imported);
+      const exported = await JSZip.loadAsync(output);
+      expect(Object.keys(exported.files).sort()).toEqual(Object.keys(entries).sort());
+      for (const [name, bytes] of Object.entries(entries)) expect((await exported.file(name)!.async("nodebuffer")).equals(bytes), name).toBe(true);
+      expect(isDeepStrictEqual(await importAnalysisCaseArchive(output), imported), domain.name).toBe(true);
     }
-    expect(Object.keys(entries).length).toBeGreaterThan(0);
-    const imported = await importAnalysisCaseArchive(await zip(entries));
-    const exported = await JSZip.loadAsync(await exportAnalysisCaseArchive(imported));
-    expect(Object.keys(exported.files).sort()).toEqual(Object.keys(entries).sort());
-    for (const [name, bytes] of Object.entries(entries)) expect(await exported.file(name)!.async("nodebuffer"), name).toEqual(bytes);
-    expect(await importAnalysisCaseArchive(await exportAnalysisCaseArchive(imported))).toEqual(imported);
   });
 
   it("validates public-dataset metadata and round-trips the original YAML bytes", async () => {

@@ -1,0 +1,17 @@
+domain: linux-kernel
+summary: "The exported boot journal begins with recovery already in progress."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [truncated, distractor]
+rootCauseCategory: insufficient-evidence
+analysisQuestion: "What originally caused sensor-bridge to reset?"
+expectRefusal: true
+realismChecklist:
+  lineFormat: "journalctl short-iso style with second-resolution ISO timestamps, a hostname and process tags."
+  noiseRatio: "289 of 293 lines are routine traffic (98.6%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "An optional drop-in warning at line 146 belongs to the network sampler and is long after bridge recovery."
+  rootCauseDiscoverability: "Only a third attempt and recovery remain. The first failed operation and reset trigger are outside the capture."
+  timeline: "Export starts mid-retry. Recovery precedes the routine sample lines on one journal clock."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Confirmed the first three bridge records begin at retry 3, show one generic I/O error and reach recovery. A diagnosis would require the earlier journal."

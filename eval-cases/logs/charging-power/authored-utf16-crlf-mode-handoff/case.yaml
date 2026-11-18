@@ -1,0 +1,28 @@
+domain: charging-power
+summary: "A controller stays in standby after the gateway reports that it requested run mode."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [encoding, multi-file, distractor]
+rootCauseCategory: configuration-error
+analysisQuestion: "Did the controller receive a valid mode change?"
+rootCausePoints:
+  - "The gateway encoded run mode as rev2 value 0x04. The rev1 controller allows 0x00 and 0x01 and rejected sequence 183, staying in standby."
+keyEvidenceLines: [140, 141, 146, 357, 358]
+expectedActions:
+  - "Select the gateway profile compatible with rev1 and check its run encoding against the controller before retrying."
+bundleFiles: [fixtures/controller.log, fixtures/gateway.log]
+keyEvidence:
+  - { file: controller.log, line: 140 }
+  - { file: controller.log, line: 141 }
+  - { file: controller.log, line: 146 }
+  - { file: gateway.log, line: 90 }
+  - { file: gateway.log, line: 91 }
+realismChecklist:
+  lineFormat: "RFC 5424 syslog with UTC millisecond timestamps and PRI severity. Structured service JSON Lines with ISO 8601 UTC timestamps at millisecond precision. The original controller log uses a UTF-16LE BOM and CRLF; the matching projection is UTF-8 with LF."
+  noiseRatio: "430 of 436 lines are routine traffic (98.6%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "An optional export label warning at controller.log:74 is confined to logging."
+  rootCauseDiscoverability: "Correlate sequence 183, wire mode, allowed controller values and the gateway translation of the reply."
+  timeline: "Both sources are UTC. Gateway send precedes controller receive and reply, then standby is sampled."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Checked the UTF-16LE file and matching sequence on the UTF-8 gateway. Standby interlock=0 supports the mode mismatch diagnosis."

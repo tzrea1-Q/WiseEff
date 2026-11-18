@@ -1,0 +1,23 @@
+domain: linux-kernel
+summary: "A render worker is killed and the supervisor queues restart attempts."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [cascade, resource-exhaustion, distractor]
+rootCauseCategory: software-fault
+analysisQuestion: "What initiates the restart loop?"
+rootCausePoints:
+  - "The render service hit its 256 MiB cgroup memory limit and the kernel killed PID 4128."
+  - "Systemd restarts are a consequence of the kill rather than evidence of an independent supervisor failure."
+keyEvidenceLines: [237, 238, 239, 240, 246]
+expectedActions:
+  - "Inspect render.service MemoryMax and memory.current/peak around PID 4128."
+  - "Profile memory growth and compare the peak against the service budget before adjusting limits."
+realismChecklist:
+  lineFormat: "journalctl short-iso style with second-resolution ISO timestamps, a hostname and process tags."
+  noiseRatio: "571 of 584 lines are routine traffic (97.8%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "The absent optional color map at line 100 belongs to a separate cache unit that starts successfully."
+  rootCauseDiscoverability: "The OOM victim, cgroup constraint and restart chain establish why this particular unit was restarted."
+  timeline: "Same journal clock. Memory limit, kernel victim and unit exit share one timestamp second and appear in order."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Checked the PID, slice path and 262144 KiB = 256 MiB. The annotation scopes exhaustion to the cgroup."

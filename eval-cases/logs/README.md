@@ -145,4 +145,4 @@ The next `logs:eval:quality` run loads every file under `reviews/`, validates th
 
 ## Current status
 
-The corpus contains six synthetic format-coverage seeds and three authored realistic demonstrations covering three-file thermal foldback, I²C bus recovery, and a healthy queue that warrants refusal. Expert-annotated production cases and human judge-calibration records are pending.
+The corpus includes synthetic format-coverage seeds and authored realistic cases across charging, Linux, Android, and JSON Lines services. Use domain-sized ZIPs when importing into a workspace skill, subject to its 20-case limit. The charge-rail register case includes a companion `skill.yaml` with its `parsing/v1` rules. Expert-annotated production cases and human judge-calibration records are pending.
