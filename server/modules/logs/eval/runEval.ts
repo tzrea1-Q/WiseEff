@@ -138,6 +138,7 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
   const analyzer = createLlmLogAnalyzer({
     model: capturePrompts(scenario.model, promptMessages),
     modelLabel: EVAL_MODEL_LABEL,
+    repairJsonOutput: scenario.repairJsonOutput,
     tokenBudget: EVAL_TOKEN_BUDGET
   });
 
@@ -182,6 +183,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
   const analyzer = createAgentLoopLogAnalyzer({
     model: scriptedModel,
     modelLabel: EVAL_MODEL_LABEL,
+    repairJsonOutput: scenario.repairJsonOutput,
     tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
     maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
     bindToolBackends: () => ({

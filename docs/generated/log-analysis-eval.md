@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-11-18T13:33:49.126Z
-- Single-shot prompt version: `2026-10-19.procedure.signals.source.1`
-- Loop prompt version: `2026-10-19.loop.procedure.signals.source.4`
-- Scenarios: 47 (47 passed)
+- Generated: 2026-11-18T13:37:10.812Z
+- Single-shot prompt version: `2026-10-19.procedure.signals.source.2`
+- Loop prompt version: `2026-10-19.loop.procedure.signals.source.5`
+- Scenarios: 50 (50 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -16,8 +16,11 @@
 | hallucinated-citations-rejected | grounding | single-shot | rules-fallback | invalid-model-output | 3 | PASS |
 | partially-hallucinated-citations-pruned | grounding | single-shot | agent | - | 1 | PASS |
 | provider-outage-degrades-honestly | degradation | single-shot | rules-fallback | provider-unavailable | 3 | PASS |
+| single-shot-repaired-json-grounded | json-repair | single-shot | agent | - | 1 | PASS |
 | single-shot-invalid-output-marked | degradation | single-shot | rules-fallback | invalid-model-output | 3 | PASS |
 | analysis-question-injected-and-answered | analysis-question | single-shot | agent | - | 1 | PASS |
+| loop-repaired-tool-and-final-grounded | json-repair | loop | agent | - | 3 | PASS |
+| loop-unrepairable-json-degrades | json-repair | loop | rules-fallback | invalid-model-output | 5 | PASS |
 | loop-source-search-timeout-preserves-log-analysis | source-tools | loop | agent | - | 5 | PASS |
 | loop-source-search-literal-legal-and-grounded | source-tools | loop | agent | - | 3 | PASS |
 | loop-source-search-full-text-legal-and-grounded | source-tools | loop | agent | - | 3 | PASS |

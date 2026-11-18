@@ -69,6 +69,7 @@ const rawEnvSchema = z.object({
     .default("false")
     .transform((value) => value === "true"),
   LOG_ANALYSIS_KERNEL: z.enum(["loop", "single-shot"]).default("loop"),
+  LOG_ANALYSIS_REPAIR_JSON: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   LOG_ANALYSIS_MAX_STEPS: z.coerce.number().int().positive().default(6),
   LOG_ANALYSIS_JUDGE_API_BASE_URL: z.string().optional(),
   LOG_ANALYSIS_JUDGE_MODEL: z.string().optional(),

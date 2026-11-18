@@ -24,6 +24,7 @@ export type LogAnalyzerEnv = {
   /** P2: "loop" (default, multi-step agent) or "single-shot" (P1 kernel kept as a config fallback). */
   LOG_ANALYSIS_KERNEL: "loop" | "single-shot";
   LOG_ANALYSIS_MAX_STEPS: number;
+  LOG_ANALYSIS_REPAIR_JSON?: boolean;
 };
 
 function readNonBlank(value: string | undefined) {
@@ -146,6 +147,7 @@ export function createLogAnalyzerFromEnv(
         model,
         modelLabel,
         tokenBudget,
+        repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
         telemetry: options.telemetry
       });
     }
@@ -156,6 +158,7 @@ export function createLogAnalyzerFromEnv(
       modelLabel,
       tokenBudget,
       maxSteps: stepBudget,
+      repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
       estimateMissingTokenUsage: !hasTokenBudgetOverride,
       telemetry: options.telemetry,
       bindToolBackends: (input) =>
