@@ -1,0 +1,21 @@
+domain: service-jsonl
+summary: "A spool writer fails despite free blocks on its filesystem."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [generic-analysis, resource-exhaustion, distractor]
+rootCauseCategory: configuration-error
+analysisQuestion: "Should the operator free space on the whole filesystem or inspect a narrower limit?"
+rootCausePoints:
+  - "Project 31 reached its 1 GiB hard quota. EDQUOT is scoped to that project while the mount has free blocks and project 32 still writes."
+keyEvidenceLines: [216, 217, 218, 220]
+expectedActions:
+  - "Inspect space owned by project 31 and its configured hard limit before applying any scoped cleanup or quota adjustment."
+realismChecklist:
+  lineFormat: "Structured service JSON Lines with ISO 8601 UTC timestamps at millisecond precision."
+  noiseRatio: "462 of 467 lines are routine traffic (98.9%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "The optional metrics index warning at line 67 is outside the spool write path."
+  rootCauseDiscoverability: "Free filesystem space and EDQUOT are compatible once project accounting and the successful neighbouring write are correlated."
+  timeline: "One UTC stream samples free capacity and the project quota just before the scoped failure and successful neighbour write."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Verified both writes use the same mount but distinct projects. The constrained quota value equals 1 GiB and there is evidence of free blocks and inodes."

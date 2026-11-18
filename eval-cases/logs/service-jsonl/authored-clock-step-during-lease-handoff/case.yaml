@@ -1,0 +1,30 @@
+domain: service-jsonl
+summary: "The host steps wall time backward while a lease handoff is in flight."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [multi-file, clock-skew, distractor]
+rootCauseCategory: configuration-error
+analysisQuestion: "Does the lease expire before or after the holder misses its renewal?"
+rootCausePoints:
+  - "The backward wall-clock step makes the previous renewal look later than the handoff."
+  - "Monotonic boot_ms places expiry at 885117, the timed-out renewal result after expiry and the new grant before the old holder completion."
+keyEvidenceLines: [84, 270, 287, 291, 293]
+expectedActions:
+  - "Join records by lease and boot_ms to determine order across the wall-clock step."
+  - "Inspect the time source for the 45-second step and trace the renewal dispatch before the deadline."
+bundleFiles: [fixtures/clock.log, fixtures/leases.log]
+keyEvidence:
+  - { file: clock.log, line: 84 }
+  - { file: leases.log, line: 106 }
+  - { file: leases.log, line: 123 }
+  - { file: leases.log, line: 127 }
+  - { file: leases.log, line: 129 }
+realismChecklist:
+  lineFormat: "Structured service JSON Lines with ISO 8601 UTC timestamps at millisecond precision."
+  noiseRatio: "439 of 445 lines are routine traffic (98.7%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "A rejected backup-peer probe at clock.log:67 is earlier and never establishes how lease ownership changed."
+  rootCauseDiscoverability: "Neither the timeout nor wall timestamp gives the sequence. Deadline, clock step and monotonic fields settle the ordering."
+  timeline: "Both streams use the stepped UTC wall clock. All decisive boot_ms values share one unaffected monotonic clock."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Recomputed monotonic order including deadline 885117. The logs establish when the renewal timeout was reported, with no assertion about when its request was sent."

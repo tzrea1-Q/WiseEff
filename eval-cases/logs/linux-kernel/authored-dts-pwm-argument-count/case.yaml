@@ -1,0 +1,22 @@
+domain: linux-kernel
+summary: "A backlight consumer fails to bind on boot."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [configuration, distractor]
+rootCauseCategory: configuration-error
+analysisQuestion: "Which Device Tree property should be corrected?"
+rootCausePoints:
+  - "The backlight pwms tuple supplies two argument cells after the phandle while the bound controller expects three."
+keyEvidenceLines: [156, 158, 159, 160]
+expectedActions:
+  - "Inspect the running DTS/overlay for /backlight and use the three-cell PWM provider binding."
+  - "Verify the PWM consumer binds after rebuilding and loading the corrected DTB."
+realismChecklist:
+  lineFormat: "dmesg monotonic boot seconds with six fractional digits and driver-prefixed messages."
+  noiseRatio: "338 of 344 lines are routine traffic (98.3%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "The USB enumeration warning at line 44 resolves independently."
+  rootCauseDiscoverability: "The -22 probe failure is generic. The provider cell count and the consumer tuple identify the property to inspect."
+  timeline: "Single boot clock. The controller registers before the OF lookup and the backlight probe fails immediately after."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Checked the provider and consumer refer to the same PWM controller and that the error narrows to tuple length without guessing polarity."

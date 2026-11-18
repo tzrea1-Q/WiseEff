@@ -1,0 +1,24 @@
+# LogChunks by Carolin Brandt, Annibale Panichella and Moritz Beller, CC BY 4.0.
+# License terms at https://creativecommons.org/licenses/by/4.0/
+# The slice removes terminal control sequences and trailing whitespace and normalizes line endings to LF.
+# The XML label for build 547502360 in LogChunks/build-failure-reason/Go/getlantern@lantern.xml
+# marks source lines 499–501. Evidence lines 212 and 213 map to source lines 499 and 500.
+domain: build-ci
+summary: The Go compiler rejects an identifier collision in Lantern's appdir package tests.
+realLog: false
+tier: realistic
+provenance: public-dataset
+scenarioTags: [public-labelled]
+datasetSource:
+  name: LogChunks
+  version: "1.0.0"
+  url: https://zenodo.org/records/3632351
+  license: CC-BY-4.0
+  file: LogChunks.zip/LogChunks/logs/Go/getlantern@lantern/failed/547502360.log
+  lines: [288, 507]
+rootCauseCategory: software-fault
+rootCausePoints:
+  - The appdir test's use of log collides with a package declaration named log, so the Go compiler cannot build the package's tests.
+keyEvidenceLines: [212, 213]
+expectedActions:
+  - Inspect the test import and the package's log declaration, resolve the name collision and rerun the appdir tests.

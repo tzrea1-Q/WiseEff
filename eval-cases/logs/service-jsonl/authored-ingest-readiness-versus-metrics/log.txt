@@ -1,0 +1,512 @@
+{"ts":"2026-10-14T09:14:00.145Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=23.4"}
+{"ts":"2026-10-14T09:14:00.668Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-1"}
+{"ts":"2026-10-14T09:14:00.685Z","level":"info","component":"gateway","msg":"worker active_conns=13 local_queued=1"}
+{"ts":"2026-10-14T09:14:00.832Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=38.2"}
+{"ts":"2026-10-14T09:14:00.946Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-4"}
+{"ts":"2026-10-14T09:14:01.397Z","level":"info","component":"gateway","msg":"worker active_conns=3 local_queued=2"}
+{"ts":"2026-10-14T09:14:01.531Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=9.7"}
+{"ts":"2026-10-14T09:14:01.705Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-7"}
+{"ts":"2026-10-14T09:14:01.769Z","level":"info","component":"gateway","msg":"worker active_conns=3 local_queued=1"}
+{"ts":"2026-10-14T09:14:02.035Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=25.0"}
+{"ts":"2026-10-14T09:14:02.090Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-10"}
+{"ts":"2026-10-14T09:14:02.210Z","level":"info","component":"gateway","msg":"worker active_conns=10 local_queued=0"}
+{"ts":"2026-10-14T09:14:02.482Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=45.2"}
+{"ts":"2026-10-14T09:14:02.624Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-13"}
+{"ts":"2026-10-14T09:14:02.851Z","level":"debug","component":"gateway","msg":"worker active_conns=6 local_queued=2"}
+{"ts":"2026-10-14T09:14:02.972Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=14.4"}
+{"ts":"2026-10-14T09:14:03.798Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-16"}
+{"ts":"2026-10-14T09:14:03.812Z","level":"info","component":"gateway","msg":"worker active_conns=3 local_queued=1"}
+{"ts":"2026-10-14T09:14:04.095Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=35.8"}
+{"ts":"2026-10-14T09:14:04.363Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-19"}
+{"ts":"2026-10-14T09:14:04.514Z","level":"info","component":"gateway","msg":"worker active_conns=6 local_queued=1"}
+{"ts":"2026-10-14T09:14:05.566Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=43.8"}
+{"ts":"2026-10-14T09:14:05.581Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-22"}
+{"ts":"2026-10-14T09:14:05.817Z","level":"info","component":"gateway","msg":"worker active_conns=14 local_queued=1"}
+{"ts":"2026-10-14T09:14:05.834Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=46.3"}
+{"ts":"2026-10-14T09:14:06.717Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-25"}
+{"ts":"2026-10-14T09:14:06.965Z","level":"info","component":"gateway","msg":"worker active_conns=2 local_queued=0"}
+{"ts":"2026-10-14T09:14:07.120Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=29.1"}
+{"ts":"2026-10-14T09:14:07.253Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-28"}
+{"ts":"2026-10-14T09:14:07.269Z","level":"info","component":"gateway","msg":"worker active_conns=12 local_queued=1"}
+{"ts":"2026-10-14T09:14:07.564Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=26.6"}
+{"ts":"2026-10-14T09:14:07.624Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-31"}
+{"ts":"2026-10-14T09:14:07.834Z","level":"info","component":"gateway","msg":"worker active_conns=13 local_queued=1"}
+{"ts":"2026-10-14T09:14:07.889Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=37.9"}
+{"ts":"2026-10-14T09:14:08.366Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-34"}
+{"ts":"2026-10-14T09:14:08.650Z","level":"debug","component":"gateway","msg":"worker active_conns=5 local_queued=1"}
+{"ts":"2026-10-14T09:14:08.700Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=27.0"}
+{"ts":"2026-10-14T09:14:08.766Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-37"}
+{"ts":"2026-10-14T09:14:08.884Z","level":"info","component":"gateway","msg":"worker active_conns=12 local_queued=2"}
+{"ts":"2026-10-14T09:14:09.083Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=34.7"}
+{"ts":"2026-10-14T09:14:09.613Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-40"}
+{"ts":"2026-10-14T09:14:09.854Z","level":"info","component":"gateway","msg":"worker active_conns=11 local_queued=2"}
+{"ts":"2026-10-14T09:14:10.696Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=25.1"}
+{"ts":"2026-10-14T09:14:11.631Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-43"}
+{"ts":"2026-10-14T09:14:11.785Z","level":"info","component":"gateway","msg":"worker active_conns=14 local_queued=0"}
+{"ts":"2026-10-14T09:14:12.025Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=35.2"}
+{"ts":"2026-10-14T09:14:12.170Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-46"}
+{"ts":"2026-10-14T09:14:12.405Z","level":"info","component":"gateway","msg":"worker active_conns=18 local_queued=1"}
+{"ts":"2026-10-14T09:14:13.424Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=21.4"}
+{"ts":"2026-10-14T09:14:13.438Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-49"}
+{"ts":"2026-10-14T09:14:13.587Z","level":"info","component":"gateway","msg":"worker active_conns=18 local_queued=2"}
+{"ts":"2026-10-14T09:14:13.645Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=11.4"}
+{"ts":"2026-10-14T09:14:13.785Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-52"}
+{"ts":"2026-10-14T09:14:14.044Z","level":"info","component":"gateway","msg":"worker active_conns=4 local_queued=0"}
+{"ts":"2026-10-14T09:14:14.062Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=44.7"}
+{"ts":"2026-10-14T09:14:14.076Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-55"}
+{"ts":"2026-10-14T09:14:15.108Z","level":"debug","component":"gateway","msg":"worker active_conns=6 local_queued=1"}
+{"ts":"2026-10-14T09:14:15.123Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=27.8"}
+{"ts":"2026-10-14T09:14:15.308Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-58"}
+{"ts":"2026-10-14T09:14:16.082Z","level":"info","component":"gateway","msg":"worker active_conns=17 local_queued=2"}
+{"ts":"2026-10-14T09:14:16.325Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=43.2"}
+{"ts":"2026-10-14T09:14:16.473Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-61"}
+{"ts":"2026-10-14T09:14:16.699Z","level":"info","component":"gateway","msg":"worker active_conns=13 local_queued=0"}
+{"ts":"2026-10-14T09:14:16.872Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=35.2"}
+{"ts":"2026-10-14T09:14:16.886Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-64"}
+{"ts":"2026-10-14T09:14:17.032Z","level":"info","component":"gateway","msg":"worker active_conns=1 local_queued=0"}
+{"ts":"2026-10-14T09:14:17.049Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=41.5"}
+{"ts":"2026-10-14T09:14:17.265Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-67"}
+{"ts":"2026-10-14T09:14:17.776Z","level":"info","component":"gateway","msg":"worker active_conns=8 local_queued=1"}
+{"ts":"2026-10-14T09:14:18.189Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=40.1"}
+{"ts":"2026-10-14T09:14:18.239Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-70"}
+{"ts":"2026-10-14T09:14:18.255Z","level":"info","component":"gateway","msg":"worker active_conns=10 local_queued=2"}
+{"ts":"2026-10-14T09:14:18.483Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=38.2"}
+{"ts":"2026-10-14T09:14:18.696Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-73"}
+{"ts":"2026-10-14T09:14:18.755Z","level":"info","component":"gateway","msg":"worker active_conns=17 local_queued=2"}
+{"ts":"2026-10-14T09:14:19.292Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=14.3"}
+{"ts":"2026-10-14T09:14:19.714Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-76"}
+{"ts":"2026-10-14T09:14:19.775Z","level":"debug","component":"gateway","msg":"worker active_conns=18 local_queued=0"}
+{"ts":"2026-10-14T09:14:19.790Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=14.0"}
+{"ts":"2026-10-14T09:14:20.304Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-79"}
+{"ts":"2026-10-14T09:14:20.419Z","level":"info","component":"gateway","msg":"worker active_conns=13 local_queued=2"}
+{"ts":"2026-10-14T09:14:21.275Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=37.8"}
+{"ts":"2026-10-14T09:14:21.426Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-82"}
+{"ts":"2026-10-14T09:14:21.440Z","level":"info","component":"gateway","msg":"worker active_conns=13 local_queued=1"}
+{"ts":"2026-10-14T09:14:21.612Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=40.3"}
+{"ts":"2026-10-14T09:14:21.823Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-85"}
+{"ts":"2026-10-14T09:14:22.057Z","level":"info","component":"gateway","msg":"worker active_conns=19 local_queued=1"}
+{"ts":"2026-10-14T09:14:22.602Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=34.6"}
+{"ts":"2026-10-14T09:14:23.408Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-88"}
+{"ts":"2026-10-14T09:14:23.473Z","level":"info","component":"gateway","msg":"worker active_conns=7 local_queued=1"}
+{"ts":"2026-10-14T09:14:23.527Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=41.6"}
+{"ts":"2026-10-14T09:14:23.665Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-91"}
+{"ts":"2026-10-14T09:14:24.093Z","level":"info","component":"gateway","msg":"worker active_conns=13 local_queued=0"}
+{"ts":"2026-10-14T09:14:24.229Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=36.2"}
+{"ts":"2026-10-14T09:14:25.191Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-94"}
+{"ts":"2026-10-14T09:14:26.125Z","level":"info","component":"gateway","msg":"worker active_conns=15 local_queued=2"}
+{"ts":"2026-10-14T09:14:27.193Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=13.8"}
+{"ts":"2026-10-14T09:14:28.118Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-97"}
+{"ts":"2026-10-14T09:14:29.003Z","level":"debug","component":"gateway","msg":"worker active_conns=11 local_queued=1"}
+{"ts":"2026-10-14T09:14:29.185Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=18.7"}
+{"ts":"2026-10-14T09:14:29.644Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-100"}
+{"ts":"2026-10-14T09:14:29.703Z","level":"info","component":"gateway","msg":"worker active_conns=19 local_queued=1"}
+{"ts":"2026-10-14T09:14:29.763Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=44.6"}
+{"ts":"2026-10-14T09:14:30.048Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-103"}
+{"ts":"2026-10-14T09:14:30.553Z","level":"info","component":"gateway","msg":"worker active_conns=15 local_queued=0"}
+{"ts":"2026-10-14T09:14:30.619Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=47.5"}
+{"ts":"2026-10-14T09:14:30.633Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-106"}
+{"ts":"2026-10-14T09:14:30.912Z","level":"info","component":"gateway","msg":"worker active_conns=13 local_queued=0"}
+{"ts":"2026-10-14T09:14:31.055Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=41.0"}
+{"ts":"2026-10-14T09:14:31.593Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-109"}
+{"ts":"2026-10-14T09:14:31.611Z","level":"info","component":"gateway","msg":"worker active_conns=9 local_queued=2"}
+{"ts":"2026-10-14T09:14:32.519Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=12.3"}
+{"ts":"2026-10-14T09:14:32.729Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-112"}
+{"ts":"2026-10-14T09:14:32.891Z","level":"info","component":"gateway","msg":"worker active_conns=3 local_queued=2"}
+{"ts":"2026-10-14T09:14:33.181Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=22.7"}
+{"ts":"2026-10-14T09:14:33.420Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-115"}
+{"ts":"2026-10-14T09:14:33.436Z","level":"info","component":"gateway","msg":"worker active_conns=3 local_queued=2"}
+{"ts":"2026-10-14T09:14:33.708Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=24.4"}
+{"ts":"2026-10-14T09:14:33.943Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-118"}
+{"ts":"2026-10-14T09:14:34.796Z","level":"debug","component":"gateway","msg":"worker active_conns=17 local_queued=0"}
+{"ts":"2026-10-14T09:14:35.647Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=40.7"}
+{"ts":"2026-10-14T09:14:35.665Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-121"}
+{"ts":"2026-10-14T09:14:35.723Z","level":"info","component":"gateway","msg":"worker active_conns=18 local_queued=0"}
+{"ts":"2026-10-14T09:14:36.225Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=39.1"}
+{"ts":"2026-10-14T09:14:36.415Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-124"}
+{"ts":"2026-10-14T09:14:36.705Z","level":"info","component":"gateway","msg":"worker active_conns=7 local_queued=0"}
+{"ts":"2026-10-14T09:14:36.943Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=11.9"}
+{"ts":"2026-10-14T09:14:37.738Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-127"}
+{"ts":"2026-10-14T09:14:38.758Z","level":"info","component":"gateway","msg":"worker active_conns=17 local_queued=1"}
+{"ts":"2026-10-14T09:14:38.970Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=41.7"}
+{"ts":"2026-10-14T09:14:38.985Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-130"}
+{"ts":"2026-10-14T09:14:38.998Z","level":"info","component":"gateway","msg":"worker active_conns=14 local_queued=2"}
+{"ts":"2026-10-14T09:14:39.244Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=44.5"}
+{"ts":"2026-10-14T09:14:39.500Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-133"}
+{"ts":"2026-10-14T09:14:39.720Z","level":"info","component":"gateway","msg":"worker active_conns=8 local_queued=2"}
+{"ts":"2026-10-14T09:14:39.733Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=23.6"}
+{"ts":"2026-10-14T09:14:39.890Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-136"}
+{"ts":"2026-10-14T09:14:39.954Z","level":"info","component":"gateway","msg":"worker active_conns=19 local_queued=2"}
+{"ts":"2026-10-14T09:14:40.107Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=27.4"}
+{"ts":"2026-10-14T09:14:40.124Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-139"}
+{"ts":"2026-10-14T09:14:40.993Z","level":"debug","component":"gateway","msg":"worker active_conns=11 local_queued=0"}
+{"ts":"2026-10-14T09:14:41.533Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=21.9"}
+{"ts":"2026-10-14T09:14:42.586Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-142"}
+{"ts":"2026-10-14T09:14:43.032Z","level":"info","component":"gateway","msg":"worker active_conns=12 local_queued=0"}
+{"ts":"2026-10-14T09:14:43.163Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=34.7"}
+{"ts":"2026-10-14T09:14:43.222Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-145"}
+{"ts":"2026-10-14T09:14:43.678Z","level":"info","component":"gateway","msg":"worker active_conns=15 local_queued=2"}
+{"ts":"2026-10-14T09:14:43.693Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=24.6"}
+{"ts":"2026-10-14T09:14:43.811Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-148"}
+{"ts":"2026-10-14T09:14:43.824Z","level":"info","component":"gateway","msg":"worker active_conns=19 local_queued=2"}
+{"ts":"2026-10-14T09:14:43.886Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=25.0"}
+{"ts":"2026-10-14T09:14:44.924Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-151"}
+{"ts":"2026-10-14T09:14:44.975Z","level":"info","component":"gateway","msg":"worker active_conns=16 local_queued=0"}
+{"ts":"2026-10-14T09:14:44.989Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=20.0"}
+{"ts":"2026-10-14T09:14:45.142Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-154"}
+{"ts":"2026-10-14T09:14:45.159Z","level":"info","component":"gateway","msg":"worker active_conns=12 local_queued=1"}
+{"ts":"2026-10-14T09:14:45.221Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=14.2"}
+{"ts":"2026-10-14T09:14:45.348Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-157"}
+{"ts":"2026-10-14T09:14:46.316Z","level":"info","component":"gateway","msg":"worker active_conns=13 local_queued=2"}
+{"ts":"2026-10-14T09:14:46.370Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=46.1"}
+{"ts":"2026-10-14T09:14:46.488Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-160"}
+{"ts":"2026-10-14T09:14:47.046Z","level":"debug","component":"gateway","msg":"worker active_conns=11 local_queued=1"}
+{"ts":"2026-10-14T09:14:47.096Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=9.5"}
+{"ts":"2026-10-14T09:14:47.113Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-163"}
+{"ts":"2026-10-14T09:14:47.271Z","level":"info","component":"gateway","msg":"worker active_conns=15 local_queued=1"}
+{"ts":"2026-10-14T09:14:47.522Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=43.0"}
+{"ts":"2026-10-14T09:14:47.742Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-166"}
+{"ts":"2026-10-14T09:14:47.801Z","level":"info","component":"gateway","msg":"worker active_conns=8 local_queued=1"}
+{"ts":"2026-10-14T09:14:48.309Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=26.7"}
+{"ts":"2026-10-14T09:14:48.322Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-169"}
+{"ts":"2026-10-14T09:14:48.375Z","level":"info","component":"gateway","msg":"worker active_conns=6 local_queued=1"}
+{"ts":"2026-10-14T09:14:48.414Z","level":"error","component":"gateway","route":"/v1/ingest","upstream":"unix:/run/bench/ingest.sock","status":502,"errno":"EACCES"}
+{"ts":"2026-10-14T09:14:48.503Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=23.1"}
+{"ts":"2026-10-14T09:14:48.519Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-172"}
+{"ts":"2026-10-14T09:14:48.536Z","level":"info","component":"gateway","msg":"worker active_conns=13 local_queued=1"}
+{"ts":"2026-10-14T09:14:48.550Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=28.9"}
+{"ts":"2026-10-14T09:14:48.841Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-175"}
+{"ts":"2026-10-14T09:14:48.895Z","level":"info","component":"gateway","msg":"worker active_conns=19 local_queued=1"}
+{"ts":"2026-10-14T09:14:48.908Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=21.3"}
+{"ts":"2026-10-14T09:14:49.875Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-178"}
+{"ts":"2026-10-14T09:14:50.395Z","level":"info","component":"gateway","msg":"worker active_conns=4 local_queued=1"}
+{"ts":"2026-10-14T09:14:50.570Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=26.6"}
+{"ts":"2026-10-14T09:14:51.380Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-181"}
+{"ts":"2026-10-14T09:14:52.257Z","level":"debug","component":"gateway","msg":"worker active_conns=15 local_queued=2"}
+{"ts":"2026-10-14T09:14:52.274Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=35.6"}
+{"ts":"2026-10-14T09:14:52.327Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-184"}
+{"ts":"2026-10-14T09:14:52.458Z","level":"info","component":"gateway","msg":"worker active_conns=18 local_queued=2"}
+{"ts":"2026-10-14T09:14:52.473Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=18.5"}
+{"ts":"2026-10-14T09:14:52.667Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-187"}
+{"ts":"2026-10-14T09:14:52.681Z","level":"info","component":"gateway","msg":"worker active_conns=1 local_queued=1"}
+{"ts":"2026-10-14T09:14:52.821Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=13.9"}
+{"ts":"2026-10-14T09:14:52.845Z","level":"info","component":"gateway","route":"/v1/read","status":200,"backend":"index"}
+{"ts":"2026-10-14T09:14:53.648Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-190"}
+{"ts":"2026-10-14T09:14:53.897Z","level":"info","component":"gateway","msg":"worker active_conns=17 local_queued=0"}
+{"ts":"2026-10-14T09:14:53.952Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=39.7"}
+{"ts":"2026-10-14T09:14:54.202Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-193"}
+{"ts":"2026-10-14T09:14:54.497Z","level":"info","component":"gateway","msg":"worker active_conns=2 local_queued=1"}
+{"ts":"2026-10-14T09:14:54.655Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=47.3"}
+{"ts":"2026-10-14T09:14:55.088Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-196"}
+{"ts":"2026-10-14T09:14:55.620Z","level":"info","component":"gateway","msg":"worker active_conns=10 local_queued=1"}
+{"ts":"2026-10-14T09:14:55.892Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=38.8"}
+{"ts":"2026-10-14T09:14:56.410Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-199"}
+{"ts":"2026-10-14T09:14:57.190Z","level":"info","component":"gateway","msg":"worker active_conns=19 local_queued=0"}
+{"ts":"2026-10-14T09:14:57.249Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=34.1"}
+{"ts":"2026-10-14T09:14:58.298Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-202"}
+{"ts":"2026-10-14T09:14:58.560Z","level":"debug","component":"gateway","msg":"worker active_conns=3 local_queued=0"}
+{"ts":"2026-10-14T09:14:59.617Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=23.7"}
+{"ts":"2026-10-14T09:14:59.674Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-205"}
+{"ts":"2026-10-14T09:14:59.967Z","level":"info","component":"gateway","msg":"worker active_conns=4 local_queued=1"}
+{"ts":"2026-10-14T09:14:59.980Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=41.5"}
+{"ts":"2026-10-14T09:15:00.514Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-208"}
+{"ts":"2026-10-14T09:15:00.981Z","level":"info","component":"gateway","msg":"worker active_conns=18 local_queued=0"}
+{"ts":"2026-10-14T09:15:01.971Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=16.1"}
+{"ts":"2026-10-14T09:15:01.988Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-211"}
+{"ts":"2026-10-14T09:15:02.050Z","level":"info","component":"gateway","msg":"worker active_conns=8 local_queued=0"}
+{"ts":"2026-10-14T09:15:02.215Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=22.8"}
+{"ts":"2026-10-14T09:15:02.419Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-214"}
+{"ts":"2026-10-14T09:15:02.433Z","level":"info","component":"gateway","msg":"worker active_conns=14 local_queued=1"}
+{"ts":"2026-10-14T09:15:03.254Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=20.5"}
+{"ts":"2026-10-14T09:15:03.321Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-217"}
+{"ts":"2026-10-14T09:15:03.560Z","level":"info","component":"gateway","msg":"worker active_conns=18 local_queued=0"}
+{"ts":"2026-10-14T09:15:03.769Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=45.9"}
+{"ts":"2026-10-14T09:15:04.251Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-220"}
+{"ts":"2026-10-14T09:15:04.402Z","level":"info","component":"gateway","msg":"worker active_conns=9 local_queued=0"}
+{"ts":"2026-10-14T09:15:04.870Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=11.3"}
+{"ts":"2026-10-14T09:15:05.083Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-223"}
+{"ts":"2026-10-14T09:15:05.098Z","level":"debug","component":"gateway","msg":"worker active_conns=17 local_queued=2"}
+{"ts":"2026-10-14T09:15:06.157Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=37.3"}
+{"ts":"2026-10-14T09:15:06.375Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-226"}
+{"ts":"2026-10-14T09:15:07.148Z","level":"info","component":"gateway","msg":"worker active_conns=18 local_queued=1"}
+{"ts":"2026-10-14T09:15:07.400Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=12.3"}
+{"ts":"2026-10-14T09:15:07.416Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-229"}
+{"ts":"2026-10-14T09:15:07.472Z","level":"info","component":"gateway","msg":"worker active_conns=6 local_queued=0"}
+{"ts":"2026-10-14T09:15:07.645Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=43.7"}
+{"ts":"2026-10-14T09:15:08.597Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-232"}
+{"ts":"2026-10-14T09:15:09.096Z","level":"info","component":"gateway","msg":"worker active_conns=10 local_queued=2"}
+{"ts":"2026-10-14T09:15:09.151Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=9.6"}
+{"ts":"2026-10-14T09:15:09.694Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-235"}
+{"ts":"2026-10-14T09:15:09.825Z","level":"info","component":"gateway","msg":"worker active_conns=17 local_queued=1"}
+{"ts":"2026-10-14T09:15:09.841Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=39.0"}
+{"ts":"2026-10-14T09:15:10.065Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-238"}
+{"ts":"2026-10-14T09:15:10.315Z","level":"info","component":"gateway","msg":"worker active_conns=7 local_queued=1"}
+{"ts":"2026-10-14T09:15:10.329Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=43.0"}
+{"ts":"2026-10-14T09:15:11.294Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-241"}
+{"ts":"2026-10-14T09:15:11.806Z","level":"info","component":"gateway","msg":"worker active_conns=5 local_queued=2"}
+{"ts":"2026-10-14T09:15:11.921Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=40.0"}
+{"ts":"2026-10-14T09:15:12.144Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-244"}
+{"ts":"2026-10-14T09:15:12.567Z","level":"debug","component":"gateway","msg":"worker active_conns=17 local_queued=0"}
+{"ts":"2026-10-14T09:15:12.861Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=9.8"}
+{"ts":"2026-10-14T09:15:13.658Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-247"}
+{"ts":"2026-10-14T09:15:13.920Z","level":"info","component":"gateway","msg":"worker active_conns=16 local_queued=2"}
+{"ts":"2026-10-14T09:15:14.173Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=39.5"}
+{"ts":"2026-10-14T09:15:14.318Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-250"}
+{"ts":"2026-10-14T09:15:14.554Z","level":"info","component":"gateway","msg":"worker active_conns=9 local_queued=0"}
+{"ts":"2026-10-14T09:15:14.967Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=9.0"}
+{"ts":"2026-10-14T09:15:15.191Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-253"}
+{"ts":"2026-10-14T09:15:15.342Z","level":"info","component":"gateway","msg":"worker active_conns=14 local_queued=0"}
+{"ts":"2026-10-14T09:15:15.825Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=16.3"}
+{"ts":"2026-10-14T09:15:16.865Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-256"}
+{"ts":"2026-10-14T09:15:17.109Z","level":"info","component":"gateway","msg":"worker active_conns=14 local_queued=0"}
+{"ts":"2026-10-14T09:15:17.122Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=40.6"}
+{"ts":"2026-10-14T09:15:17.680Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-259"}
+{"ts":"2026-10-14T09:15:18.179Z","level":"info","component":"gateway","msg":"worker active_conns=4 local_queued=0"}
+{"ts":"2026-10-14T09:15:18.245Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=43.3"}
+{"ts":"2026-10-14T09:15:18.262Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-262"}
+{"ts":"2026-10-14T09:15:18.484Z","level":"info","component":"gateway","msg":"worker active_conns=17 local_queued=0"}
+{"ts":"2026-10-14T09:15:18.677Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=24.4"}
+{"ts":"2026-10-14T09:15:18.692Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-265"}
+{"ts":"2026-10-14T09:15:19.215Z","level":"debug","component":"gateway","msg":"worker active_conns=5 local_queued=1"}
+{"ts":"2026-10-14T09:15:19.734Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=9.6"}
+{"ts":"2026-10-14T09:15:20.017Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-268"}
+{"ts":"2026-10-14T09:15:20.065Z","level":"info","component":"gateway","msg":"worker active_conns=1 local_queued=2"}
+{"ts":"2026-10-14T09:15:20.124Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=22.3"}
+{"ts":"2026-10-14T09:15:20.140Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-271"}
+{"ts":"2026-10-14T09:15:20.156Z","level":"info","component":"gateway","msg":"worker active_conns=16 local_queued=2"}
+{"ts":"2026-10-14T09:15:21.186Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=16.8"}
+{"ts":"2026-10-14T09:15:21.254Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-274"}
+{"ts":"2026-10-14T09:15:21.271Z","level":"info","component":"gateway","msg":"worker active_conns=5 local_queued=1"}
+{"ts":"2026-10-14T09:15:21.561Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=36.9"}
+{"ts":"2026-10-14T09:15:21.845Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-277"}
+{"ts":"2026-10-14T09:15:22.741Z","level":"info","component":"gateway","msg":"worker active_conns=11 local_queued=1"}
+{"ts":"2026-10-14T09:15:22.860Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=42.3"}
+{"ts":"2026-10-14T09:15:23.004Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-280"}
+{"ts":"2026-10-14T09:15:23.285Z","level":"info","component":"gateway","msg":"worker active_conns=17 local_queued=0"}
+{"ts":"2026-10-14T09:15:23.301Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=30.4"}
+{"ts":"2026-10-14T09:15:24.313Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-283"}
+{"ts":"2026-10-14T09:15:24.439Z","level":"info","component":"gateway","msg":"worker active_conns=16 local_queued=2"}
+{"ts":"2026-10-14T09:15:25.480Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=24.2"}
+{"ts":"2026-10-14T09:15:26.529Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-286"}
+{"ts":"2026-10-14T09:15:26.584Z","level":"debug","component":"gateway","msg":"worker active_conns=6 local_queued=2"}
+{"ts":"2026-10-14T09:15:26.710Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=40.7"}
+{"ts":"2026-10-14T09:15:26.841Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-289"}
+{"ts":"2026-10-14T09:15:27.371Z","level":"info","component":"gateway","msg":"worker active_conns=9 local_queued=0"}
+{"ts":"2026-10-14T09:15:27.522Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=42.4"}
+{"ts":"2026-10-14T09:15:28.549Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-292"}
+{"ts":"2026-10-14T09:15:28.564Z","level":"info","component":"gateway","msg":"worker active_conns=14 local_queued=0"}
+{"ts":"2026-10-14T09:15:29.071Z","level":"debug","component":"gateway","msg":"route=/health status=200 rt_ms=35.6"}
+{"ts":"2026-10-14T09:15:29.610Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-295"}
+{"ts":"2026-10-14T09:15:29.626Z","level":"info","component":"gateway","msg":"worker active_conns=9 local_queued=1"}
+{"ts":"2026-10-14T09:15:29.681Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=15.7"}
+{"ts":"2026-10-14T09:15:29.697Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-298"}
+{"ts":"2026-10-14T09:15:30.476Z","level":"info","component":"gateway","msg":"worker active_conns=6 local_queued=2"}
+{"ts":"2026-10-14T09:15:30.534Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=39.7"}
+{"ts":"2026-10-14T09:15:31.049Z","level":"debug","component":"gateway","msg":"route=/v1/read status=200 id=q-301"}
+{"ts":"2026-10-14T09:15:32.065Z","level":"info","component":"gateway","msg":"worker active_conns=19 local_queued=1"}
+{"ts":"2026-10-14T09:15:32.591Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=33.2"}
+{"ts":"2026-10-14T09:15:32.834Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-304"}
+{"ts":"2026-10-14T09:15:33.789Z","level":"info","component":"gateway","msg":"worker active_conns=13 local_queued=0"}
+{"ts":"2026-10-14T09:15:34.040Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=19.6"}
+{"ts":"2026-10-14T09:15:34.291Z","level":"info","component":"gateway","msg":"route=/v1/read status=200 id=q-307"}
+{"ts":"2026-10-14T09:15:34.346Z","level":"debug","component":"gateway","msg":"worker active_conns=16 local_queued=0"}
+{"ts":"2026-10-14T09:15:35.189Z","level":"info","component":"gateway","msg":"route=/health status=200 rt_ms=24.4"}
+2026-10-14T09:14:00+0000 bench-node deployd[872]: reconciled settings revision 0
+2026-10-14T09:14:00+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:00+0000 bench-node deployd[872]: checked artifact cache entries=1
+2026-10-14T09:14:01+0000 bench-node deployd[872]: reconciled settings revision 3
+2026-10-14T09:14:01+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:02+0000 bench-node deployd[872]: checked artifact cache entries=8
+2026-10-14T09:14:02+0000 bench-node deployd[872]: reconciled settings revision 6
+2026-10-14T09:14:03+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:04+0000 bench-node deployd[872]: checked artifact cache entries=1
+2026-10-14T09:14:04+0000 bench-node deployd[872]: reconciled settings revision 9
+2026-10-14T09:14:04+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:04+0000 bench-node deployd[872]: checked artifact cache entries=1
+2026-10-14T09:14:05+0000 bench-node deployd[872]: reconciled settings revision 12
+2026-10-14T09:14:05+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:05+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:14:05+0000 bench-node deployd[872]: reconciled settings revision 15
+2026-10-14T09:14:05+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:06+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:14:06+0000 bench-node deployd[872]: reconciled settings revision 18
+2026-10-14T09:14:06+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:06+0000 bench-node deployd[872]: checked artifact cache entries=3
+2026-10-14T09:14:07+0000 bench-node deployd[872]: reconciled settings revision 21
+2026-10-14T09:14:09+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:09+0000 bench-node deployd[872]: checked artifact cache entries=7
+2026-10-14T09:14:10+0000 bench-node deployd[872]: reconciled settings revision 24
+2026-10-14T09:14:11+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:11+0000 bench-node deployd[872]: checked artifact cache entries=3
+2026-10-14T09:14:11+0000 bench-node deployd[872]: reconciled settings revision 27
+2026-10-14T09:14:12+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:12+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:14:14+0000 bench-node deployd[872]: reconciled settings revision 30
+2026-10-14T09:14:14+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:14+0000 bench-node deployd[872]: checked artifact cache entries=4
+2026-10-14T09:14:15+0000 bench-node deployd[872]: reconciled settings revision 33
+2026-10-14T09:14:15+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:16+0000 bench-node deployd[872]: checked artifact cache entries=1
+2026-10-14T09:14:17+0000 bench-node logrotate[1900]: warning: skip empty rotation candidate /var/log/bench/cache
+2026-10-14T09:14:17+0000 bench-node deployd[872]: reconciled settings revision 36
+2026-10-14T09:14:18+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:19+0000 bench-node deployd[872]: checked artifact cache entries=1
+2026-10-14T09:14:19+0000 bench-node deployd[872]: reconciled settings revision 39
+2026-10-14T09:14:21+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:21+0000 bench-node deployd[872]: checked artifact cache entries=0
+2026-10-14T09:14:21+0000 bench-node deployd[872]: reconciled settings revision 42
+2026-10-14T09:14:23+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:24+0000 bench-node deployd[872]: checked artifact cache entries=4
+2026-10-14T09:14:25+0000 bench-node deployd[872]: reconciled settings revision 45
+2026-10-14T09:14:26+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:26+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:14:26+0000 bench-node deployd[872]: reconciled settings revision 48
+2026-10-14T09:14:28+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:28+0000 bench-node deployd[872]: checked artifact cache entries=4
+2026-10-14T09:14:29+0000 bench-node deployd[872]: reconciled settings revision 51
+2026-10-14T09:14:29+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:30+0000 bench-node deployd[872]: checked artifact cache entries=7
+2026-10-14T09:14:31+0000 bench-node deployd[872]: reconciled settings revision 54
+2026-10-14T09:14:31+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:31+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:14:31+0000 bench-node deployd[872]: reconciled settings revision 57
+2026-10-14T09:14:32+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:32+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:14:34+0000 bench-node deployd[872]: reconciled settings revision 60
+2026-10-14T09:14:34+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:35+0000 bench-node deployd[872]: checked artifact cache entries=1
+2026-10-14T09:14:35+0000 bench-node deployd[872]: reconciled settings revision 63
+2026-10-14T09:14:35+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:36+0000 bench-node deployd[872]: checked artifact cache entries=6
+2026-10-14T09:14:36+0000 bench-node deployd[872]: reconciled settings revision 66
+2026-10-14T09:14:37+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:37+0000 bench-node deployd[872]: checked artifact cache entries=7
+2026-10-14T09:14:37+0000 bench-node deployd[872]: reconciled settings revision 69
+2026-10-14T09:14:38+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:38+0000 bench-node deployd[872]: checked artifact cache entries=7
+2026-10-14T09:14:39+0000 bench-node deployd[872]: reconciled settings revision 72
+2026-10-14T09:14:39+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:39+0000 bench-node deployd[872]: checked artifact cache entries=4
+2026-10-14T09:14:39+0000 bench-node deployd[872]: reconciled settings revision 75
+2026-10-14T09:14:40+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:41+0000 bench-node deployd[872]: checked artifact cache entries=0
+2026-10-14T09:14:42+0000 bench-node deployd[872]: reconciled settings revision 78
+2026-10-14T09:14:42+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:42+0000 bench-node deployd[872]: checked artifact cache entries=2
+2026-10-14T09:14:42+0000 bench-node deployd[872]: reconciled settings revision 81
+2026-10-14T09:14:42+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:43+0000 bench-node deployd[872]: checked artifact cache entries=6
+2026-10-14T09:14:43+0000 bench-node deployd[872]: reconciled settings revision 84
+2026-10-14T09:14:43+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:44+0000 bench-node deployd[872]: checked artifact cache entries=7
+2026-10-14T09:14:44+0000 bench-node deployd[872]: reconciled settings revision 87
+2026-10-14T09:14:44+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:44+0000 bench-node deployd[872]: checked artifact cache entries=3
+2026-10-14T09:14:45+0000 bench-node deployd[872]: reconciled settings revision 90
+2026-10-14T09:14:45+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:45+0000 bench-node deployd[872]: checked artifact cache entries=3
+2026-10-14T09:14:45+0000 bench-node deployd[872]: reconciled settings revision 93
+2026-10-14T09:14:45+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:45+0000 bench-node deployd[872]: checked artifact cache entries=7
+2026-10-14T09:14:47+0000 bench-node deployd[872]: reconciled settings revision 96
+2026-10-14T09:14:47+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:47+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:14:47+0000 bench-node ingest[811]: listen unix:/run/bench/ingest.sock mode=0600 uid=990 gid=990
+2026-10-14T09:14:47+0000 bench-node gateway[831]: reexec complete euid=991 egid=991
+2026-10-14T09:14:49+0000 bench-node deployd[872]: reconciled settings revision 99
+2026-10-14T09:14:49+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:50+0000 bench-node deployd[872]: checked artifact cache entries=8
+2026-10-14T09:14:50+0000 bench-node deployd[872]: reconciled settings revision 102
+2026-10-14T09:14:51+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:52+0000 bench-node deployd[872]: checked artifact cache entries=0
+2026-10-14T09:14:53+0000 bench-node deployd[872]: reconciled settings revision 105
+2026-10-14T09:14:53+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:55+0000 bench-node deployd[872]: checked artifact cache entries=4
+2026-10-14T09:14:55+0000 bench-node deployd[872]: reconciled settings revision 108
+2026-10-14T09:14:55+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:57+0000 bench-node deployd[872]: checked artifact cache entries=3
+2026-10-14T09:14:57+0000 bench-node deployd[872]: reconciled settings revision 111
+2026-10-14T09:14:57+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:57+0000 bench-node deployd[872]: checked artifact cache entries=1
+2026-10-14T09:14:59+0000 bench-node deployd[872]: reconciled settings revision 114
+2026-10-14T09:14:59+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:59+0000 bench-node deployd[872]: checked artifact cache entries=7
+2026-10-14T09:14:59+0000 bench-node deployd[872]: reconciled settings revision 117
+2026-10-14T09:14:59+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:14:59+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:15:00+0000 bench-node deployd[872]: reconciled settings revision 120
+2026-10-14T09:15:00+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:00+0000 bench-node metrics-agent[901]: write batch exceeded export queue capacity; dropped=42
+2026-10-14T09:15:00+0000 bench-node deployd[872]: checked artifact cache entries=6
+2026-10-14T09:15:00+0000 bench-node deployd[872]: reconciled settings revision 123
+2026-10-14T09:15:01+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:01+0000 bench-node deployd[872]: checked artifact cache entries=3
+2026-10-14T09:15:03+0000 bench-node deployd[872]: reconciled settings revision 126
+2026-10-14T09:15:03+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:03+0000 bench-node deployd[872]: checked artifact cache entries=4
+2026-10-14T09:15:03+0000 bench-node deployd[872]: reconciled settings revision 129
+2026-10-14T09:15:03+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:04+0000 bench-node deployd[872]: checked artifact cache entries=7
+2026-10-14T09:15:04+0000 bench-node deployd[872]: reconciled settings revision 132
+2026-10-14T09:15:05+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:05+0000 bench-node deployd[872]: checked artifact cache entries=8
+2026-10-14T09:15:05+0000 bench-node deployd[872]: reconciled settings revision 135
+2026-10-14T09:15:05+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:07+0000 bench-node deployd[872]: checked artifact cache entries=0
+2026-10-14T09:15:07+0000 bench-node deployd[872]: reconciled settings revision 138
+2026-10-14T09:15:07+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:08+0000 bench-node deployd[872]: checked artifact cache entries=0
+2026-10-14T09:15:08+0000 bench-node deployd[872]: reconciled settings revision 141
+2026-10-14T09:15:08+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:09+0000 bench-node deployd[872]: checked artifact cache entries=4
+2026-10-14T09:15:10+0000 bench-node deployd[872]: reconciled settings revision 144
+2026-10-14T09:15:11+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:13+0000 bench-node deployd[872]: checked artifact cache entries=6
+2026-10-14T09:15:13+0000 bench-node deployd[872]: reconciled settings revision 147
+2026-10-14T09:15:14+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:14+0000 bench-node deployd[872]: checked artifact cache entries=2
+2026-10-14T09:15:14+0000 bench-node deployd[872]: reconciled settings revision 150
+2026-10-14T09:15:15+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:15+0000 bench-node deployd[872]: checked artifact cache entries=0
+2026-10-14T09:15:15+0000 bench-node deployd[872]: reconciled settings revision 153
+2026-10-14T09:15:16+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:17+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:15:17+0000 bench-node deployd[872]: reconciled settings revision 156
+2026-10-14T09:15:18+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:20+0000 bench-node deployd[872]: checked artifact cache entries=4
+2026-10-14T09:15:20+0000 bench-node deployd[872]: reconciled settings revision 159
+2026-10-14T09:15:20+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:20+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:15:20+0000 bench-node deployd[872]: reconciled settings revision 162
+2026-10-14T09:15:20+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:21+0000 bench-node deployd[872]: checked artifact cache entries=1
+2026-10-14T09:15:22+0000 bench-node deployd[872]: reconciled settings revision 165
+2026-10-14T09:15:23+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:23+0000 bench-node deployd[872]: checked artifact cache entries=2
+2026-10-14T09:15:24+0000 bench-node deployd[872]: reconciled settings revision 168
+2026-10-14T09:15:24+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:24+0000 bench-node deployd[872]: checked artifact cache entries=3
+2026-10-14T09:15:24+0000 bench-node deployd[872]: reconciled settings revision 171
+2026-10-14T09:15:24+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:24+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:15:25+0000 bench-node deployd[872]: reconciled settings revision 174
+2026-10-14T09:15:25+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:25+0000 bench-node deployd[872]: checked artifact cache entries=8
+2026-10-14T09:15:25+0000 bench-node deployd[872]: reconciled settings revision 177
+2026-10-14T09:15:26+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:26+0000 bench-node deployd[872]: checked artifact cache entries=4
+2026-10-14T09:15:27+0000 bench-node deployd[872]: reconciled settings revision 180
+2026-10-14T09:15:27+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:28+0000 bench-node deployd[872]: checked artifact cache entries=7
+2026-10-14T09:15:28+0000 bench-node deployd[872]: reconciled settings revision 183
+2026-10-14T09:15:29+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:29+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:15:31+0000 bench-node deployd[872]: reconciled settings revision 186
+2026-10-14T09:15:31+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:32+0000 bench-node deployd[872]: checked artifact cache entries=6
+2026-10-14T09:15:33+0000 bench-node deployd[872]: reconciled settings revision 189
+2026-10-14T09:15:34+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:34+0000 bench-node deployd[872]: checked artifact cache entries=2
+2026-10-14T09:15:35+0000 bench-node deployd[872]: reconciled settings revision 192
+2026-10-14T09:15:35+0000 bench-node deployd[872]: unit status worker.slice active
+2026-10-14T09:15:35+0000 bench-node deployd[872]: checked artifact cache entries=5
+2026-10-14T09:15:35+0000 bench-node deployd[872]: reconciled settings revision 195

@@ -1,0 +1,169 @@
+{"ts":"2026-10-14T09:14:00.223Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=11.0"}
+{"ts":"2026-10-14T09:14:00.256Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=1"}
+{"ts":"2026-10-14T09:14:00.290Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=39.2"}
+{"ts":"2026-10-14T09:14:00.323Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=3"}
+{"ts":"2026-10-14T09:14:00.576Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.1"}
+{"ts":"2026-10-14T09:14:00.943Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=5"}
+{"ts":"2026-10-14T09:14:01.189Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=36.1"}
+{"ts":"2026-10-14T09:14:01.432Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=7"}
+{"ts":"2026-10-14T09:14:01.976Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.7"}
+{"ts":"2026-10-14T09:14:02.325Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=9"}
+{"ts":"2026-10-14T09:14:02.757Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=24.3"}
+{"ts":"2026-10-14T09:14:03.150Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=11"}
+{"ts":"2026-10-14T09:14:03.515Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=15.0"}
+{"ts":"2026-10-14T09:14:03.763Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=13"}
+{"ts":"2026-10-14T09:14:03.985Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=40.2"}
+{"ts":"2026-10-14T09:14:05.036Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=15"}
+{"ts":"2026-10-14T09:14:06.810Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=36.5"}
+{"ts":"2026-10-14T09:14:07.585Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=17"}
+{"ts":"2026-10-14T09:14:09.522Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=25.5"}
+{"ts":"2026-10-14T09:14:09.552Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=19"}
+{"ts":"2026-10-14T09:14:10.600Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=10.8"}
+{"ts":"2026-10-14T09:14:11.007Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=21"}
+{"ts":"2026-10-14T09:14:11.438Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=26.5"}
+{"ts":"2026-10-14T09:14:11.744Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=23"}
+{"ts":"2026-10-14T09:14:11.835Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=30.6"}
+{"ts":"2026-10-14T09:14:12.147Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=25"}
+{"ts":"2026-10-14T09:14:12.260Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=9.7"}
+{"ts":"2026-10-14T09:14:12.289Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=27"}
+{"ts":"2026-10-14T09:14:12.815Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=13.4"}
+{"ts":"2026-10-14T09:14:12.844Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=29"}
+{"ts":"2026-10-14T09:14:13.102Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=24.4"}
+{"ts":"2026-10-14T09:14:13.559Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=31"}
+{"ts":"2026-10-14T09:14:14.475Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=10.7"}
+{"ts":"2026-10-14T09:14:14.567Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=33"}
+{"ts":"2026-10-14T09:14:14.683Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.0"}
+{"ts":"2026-10-14T09:14:14.784Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=35"}
+{"ts":"2026-10-14T09:14:14.889Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.7"}
+{"ts":"2026-10-14T09:14:15.374Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=37"}
+{"ts":"2026-10-14T09:14:15.648Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=22.9"}
+{"ts":"2026-10-14T09:14:17.397Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=39"}
+{"ts":"2026-10-14T09:14:18.259Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=40.4"}
+{"ts":"2026-10-14T09:14:19.718Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=41"}
+{"ts":"2026-10-14T09:14:20.470Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.9"}
+{"ts":"2026-10-14T09:14:22.061Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=43"}
+{"ts":"2026-10-14T09:14:23.517Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=13.7"}
+{"ts":"2026-10-14T09:14:23.615Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=45"}
+{"ts":"2026-10-14T09:14:24.064Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=19.1"}
+{"ts":"2026-10-14T09:14:25.083Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=47"}
+{"ts":"2026-10-14T09:14:25.628Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=11.6"}
+{"ts":"2026-10-14T09:14:26.012Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=49"}
+{"ts":"2026-10-14T09:14:26.963Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=39.3"}
+{"ts":"2026-10-14T09:14:27.330Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=51"}
+{"ts":"2026-10-14T09:14:28.912Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=23.7"}
+{"ts":"2026-10-14T09:14:29.374Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=53"}
+{"ts":"2026-10-14T09:14:30.365Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.3"}
+{"ts":"2026-10-14T09:14:30.483Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=55"}
+{"ts":"2026-10-14T09:14:30.509Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=41.6"}
+{"ts":"2026-10-14T09:14:31.046Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=57"}
+{"ts":"2026-10-14T09:14:33.015Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=45.7"}
+{"ts":"2026-10-14T09:14:33.773Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=59"}
+{"ts":"2026-10-14T09:14:33.800Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=36.1"}
+{"ts":"2026-10-14T09:14:33.830Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=61"}
+{"ts":"2026-10-14T09:14:34.643Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.1"}
+{"ts":"2026-10-14T09:14:35.530Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=63"}
+{"ts":"2026-10-14T09:14:35.637Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=34.3"}
+{"ts":"2026-10-14T09:14:36.072Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=65"}
+{"ts":"2026-10-14T09:14:36.292Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.8"}
+{"ts":"2026-10-14T09:14:36.565Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=67"}
+{"ts":"2026-10-14T09:14:36.836Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=26.4"}
+{"ts":"2026-10-14T09:14:37.289Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=69"}
+{"ts":"2026-10-14T09:14:37.316Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=24.1"}
+{"ts":"2026-10-14T09:14:38.178Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=71"}
+{"ts":"2026-10-14T09:14:38.206Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=43.5"}
+{"ts":"2026-10-14T09:14:38.447Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=73"}
+{"ts":"2026-10-14T09:14:38.571Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=16.4"}
+{"ts":"2026-10-14T09:14:39.575Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=75"}
+{"ts":"2026-10-14T09:14:41.047Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=26.5"}
+{"ts":"2026-10-14T09:14:41.591Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=77"}
+{"ts":"2026-10-14T09:14:41.900Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=11.8"}
+{"ts":"2026-10-14T09:14:42.797Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=79"}
+{"ts":"2026-10-14T09:14:43.550Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.0"}
+{"ts":"2026-10-14T09:14:44.582Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=81"}
+{"ts":"2026-10-14T09:14:44.615Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=26.9"}
+{"ts":"2026-10-14T09:14:44.945Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=83"}
+{"ts":"2026-10-14T09:14:45.368Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=46.3"}
+{"ts":"2026-10-14T09:14:45.758Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=85"}
+{"ts":"2026-10-14T09:14:46.082Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=44.6"}
+{"ts":"2026-10-14T09:14:46.202Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=87"}
+{"ts":"2026-10-14T09:14:46.452Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=20.1"}
+{"ts":"2026-10-14T09:14:46.611Z","level":"info","component":"mode-gateway","op":"write_mode","mode":"run","mode_wire":"0x04","seq":183,"profile":"rev2"}
+{"ts":"2026-10-14T09:14:46.639Z","level":"error","component":"mode-gateway","op":"write_mode","seq":183,"status":"illegal_value","peer_rev":"rev1"}
+{"ts":"2026-10-14T09:14:48.159Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=89"}
+{"ts":"2026-10-14T09:14:48.187Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=29.6"}
+{"ts":"2026-10-14T09:14:48.217Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=91"}
+{"ts":"2026-10-14T09:14:48.609Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=35.3"}
+{"ts":"2026-10-14T09:14:50.411Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=93"}
+{"ts":"2026-10-14T09:14:50.531Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=44.0"}
+{"ts":"2026-10-14T09:14:50.912Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=95"}
+{"ts":"2026-10-14T09:14:52.511Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=11.2"}
+{"ts":"2026-10-14T09:14:54.296Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=97"}
+{"ts":"2026-10-14T09:14:54.601Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=27.4"}
+{"ts":"2026-10-14T09:14:54.632Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=99"}
+{"ts":"2026-10-14T09:14:56.338Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=30.0"}
+{"ts":"2026-10-14T09:14:56.886Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=101"}
+{"ts":"2026-10-14T09:14:56.990Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=15.5"}
+{"ts":"2026-10-14T09:14:57.018Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=103"}
+{"ts":"2026-10-14T09:14:58.688Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=36.5"}
+{"ts":"2026-10-14T09:15:00.496Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=105"}
+{"ts":"2026-10-14T09:15:01.469Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=38.8"}
+{"ts":"2026-10-14T09:15:01.779Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=107"}
+{"ts":"2026-10-14T09:15:01.803Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=34.5"}
+{"ts":"2026-10-14T09:15:03.320Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=109"}
+{"ts":"2026-10-14T09:15:03.564Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=44.1"}
+{"ts":"2026-10-14T09:15:03.842Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=111"}
+{"ts":"2026-10-14T09:15:04.120Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=40.7"}
+{"ts":"2026-10-14T09:15:04.358Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=113"}
+{"ts":"2026-10-14T09:15:04.886Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=13.4"}
+{"ts":"2026-10-14T09:15:05.223Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=115"}
+{"ts":"2026-10-14T09:15:05.457Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=45.2"}
+{"ts":"2026-10-14T09:15:05.686Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=117"}
+{"ts":"2026-10-14T09:15:05.947Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=36.5"}
+{"ts":"2026-10-14T09:15:06.068Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=119"}
+{"ts":"2026-10-14T09:15:06.186Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=13.5"}
+{"ts":"2026-10-14T09:15:06.983Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=121"}
+{"ts":"2026-10-14T09:15:07.300Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=10.5"}
+{"ts":"2026-10-14T09:15:08.154Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=123"}
+{"ts":"2026-10-14T09:15:08.450Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=15.7"}
+{"ts":"2026-10-14T09:15:08.673Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=125"}
+{"ts":"2026-10-14T09:15:10.452Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=18.4"}
+{"ts":"2026-10-14T09:15:12.214Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=127"}
+{"ts":"2026-10-14T09:15:12.622Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=10.7"}
+{"ts":"2026-10-14T09:15:12.933Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=129"}
+{"ts":"2026-10-14T09:15:14.695Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=31.3"}
+{"ts":"2026-10-14T09:15:14.816Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=131"}
+{"ts":"2026-10-14T09:15:15.870Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.2"}
+{"ts":"2026-10-14T09:15:17.830Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=133"}
+{"ts":"2026-10-14T09:15:17.922Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=13.4"}
+{"ts":"2026-10-14T09:15:18.448Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=135"}
+{"ts":"2026-10-14T09:15:19.223Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=37.7"}
+{"ts":"2026-10-14T09:15:20.733Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=137"}
+{"ts":"2026-10-14T09:15:21.569Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=35.6"}
+{"ts":"2026-10-14T09:15:22.049Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=139"}
+{"ts":"2026-10-14T09:15:22.141Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=32.3"}
+{"ts":"2026-10-14T09:15:22.978Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=141"}
+{"ts":"2026-10-14T09:15:23.393Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=33.1"}
+{"ts":"2026-10-14T09:15:24.920Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=143"}
+{"ts":"2026-10-14T09:15:25.789Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=37.3"}
+{"ts":"2026-10-14T09:15:26.130Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=145"}
+{"ts":"2026-10-14T09:15:26.566Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=44.0"}
+{"ts":"2026-10-14T09:15:26.786Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=147"}
+{"ts":"2026-10-14T09:15:26.816Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=35.5"}
+{"ts":"2026-10-14T09:15:27.303Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=149"}
+{"ts":"2026-10-14T09:15:27.671Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=34.4"}
+{"ts":"2026-10-14T09:15:28.028Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=151"}
+{"ts":"2026-10-14T09:15:28.052Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=39.9"}
+{"ts":"2026-10-14T09:15:28.157Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=153"}
+{"ts":"2026-10-14T09:15:28.588Z","level":"debug","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=46.2"}
+{"ts":"2026-10-14T09:15:28.858Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=155"}
+{"ts":"2026-10-14T09:15:29.624Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=39.0"}
+{"ts":"2026-10-14T09:15:29.750Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=157"}
+{"ts":"2026-10-14T09:15:29.843Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=38.8"}
+{"ts":"2026-10-14T09:15:29.871Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=159"}
+{"ts":"2026-10-14T09:15:30.243Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=14.7"}
+{"ts":"2026-10-14T09:15:30.514Z","level":"debug","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=161"}
+{"ts":"2026-10-14T09:15:30.859Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=28.4"}
+{"ts":"2026-10-14T09:15:31.073Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=163"}
+{"ts":"2026-10-14T09:15:33.047Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=40.3"}
+{"ts":"2026-10-14T09:15:33.489Z","level":"info","component":"mode-gateway","msg":"read status coil=0 interlock=0 sample=165"}
+{"ts":"2026-10-14T09:15:35.517Z","level":"info","component":"mode-gateway","msg":"poll protocol=rev1 peers=1 elapsed_ms=34.6"}
