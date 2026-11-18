@@ -1,0 +1,27 @@
+# RCAEval by Luan Pham (RMIT University), CC BY 4.0.
+# License terms at https://creativecommons.org/licenses/by/4.0/
+# Endpoint and identity fields are redacted in place. CSV line endings and trailing whitespace are normalized.
+# RE3-OB/adservice_f5/1 labels adservice with F5 (missing exception handlers).
+# The run's inject_time.txt gives 1731907048. Evidence lines 169, 173 and 175 map to source
+# lines 35980, 35984 and 35986, from the uncaught startup exception through its bind cause.
+domain: microservice-logs
+summary: Online Boutique's ad service exits during startup after a listener conflict.
+realLog: false
+tier: realistic
+provenance: public-dataset
+scenarioTags: [public-labelled, cascade]
+datasetSource:
+  name: RCAEval RE3-OB (Online Boutique)
+  version: zenodo.14590730
+  url: https://zenodo.org/records/14590730
+  license: CC-BY-4.0
+  file: RE3-OB.zip/RE3-OB/adservice_f5/1/logs.csv
+  lines: [35812, 36191]
+rootCauseCategory: software-fault
+rootCausePoints:
+  - AdService startup lets the listener bind exception escape the main thread.
+  - The listener fails because address 0.0.0.0 port 15000 is already in use.
+keyEvidenceLines: [169, 173, 175]
+expectedActions:
+  - Identify the process already holding port 15000 and correct the listener configuration.
+  - Handle startup bind failures explicitly and verify the ad service can start and serve requests.

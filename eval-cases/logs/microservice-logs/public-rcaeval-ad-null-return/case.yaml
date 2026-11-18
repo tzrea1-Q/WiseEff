@@ -1,0 +1,26 @@
+# RCAEval by Luan Pham (RMIT University), CC BY 4.0.
+# License terms at https://creativecommons.org/licenses/by/4.0/
+# Endpoint and identity fields are redacted in place. CSV line endings and trailing whitespace are normalized.
+# RE3-OB/adservice_f4/1 labels adservice with F4 (incorrect return values).
+# The run's inject_time.txt gives 1731905504. Evidence lines 183 and 185 map to
+# source lines 35742 and 35744 in the failing request's first NullPointerException stack.
+domain: microservice-logs
+summary: Online Boutique's ad handler fails while assembling an ad response.
+realLog: false
+tier: realistic
+provenance: public-dataset
+scenarioTags: [public-labelled, distractor]
+datasetSource:
+  name: RCAEval RE3-OB (Online Boutique)
+  version: zenodo.14590730
+  url: https://zenodo.org/records/14590730
+  license: CC-BY-4.0
+  file: RE3-OB.zip/RE3-OB/adservice_f4/1/logs.csv
+  lines: [35560, 35942]
+rootCauseCategory: software-fault
+rootCausePoints:
+  - The injected incorrect return value reaches AdService.getAds as a null collection passed to ArrayList.addAll.
+  - The resulting NullPointerException is anchored to AdService.java line 102.
+keyEvidenceLines: [183, 185]
+expectedActions:
+  - Trace the collection producer called from getAds and enforce its non-null return contract before retrying ad requests.

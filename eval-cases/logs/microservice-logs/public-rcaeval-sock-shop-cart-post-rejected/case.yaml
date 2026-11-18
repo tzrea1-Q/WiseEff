@@ -1,0 +1,27 @@
+# RCAEval by Luan Pham (RMIT University), CC BY 4.0.
+# License terms at https://creativecommons.org/licenses/by/4.0/
+# Endpoint, identity and payment fields are redacted in place. CSV line endings and trailing whitespace are normalized.
+# RE3-SS/carts_f1/1 labels carts with F1 (incorrect parameter values). Its root_cause.txt
+# matches source line 91109, local line 180, by timestamp 1732243919404637792.
+# Local line 181 is the following front-end POST /cart 500 at source line 91110.
+domain: microservice-logs
+summary: Sock Shop's carts service rejects a POST in the cart update path.
+realLog: false
+tier: realistic
+provenance: public-dataset
+scenarioTags: [public-labelled, cascade]
+datasetSource:
+  name: RCAEval RE3-SS (Sock Shop)
+  version: zenodo.14590730
+  url: https://zenodo.org/records/14590730
+  license: CC-BY-4.0
+  file: RE3-SS.zip/RE3-SS/carts_f1/1/logs.csv
+  lines: [90930, 91230]
+rootCauseCategory: software-fault
+rootCausePoints:
+  - The labelled incorrect-parameter fault is in carts. Spring rejects the POST as an unsupported method.
+  - The downstream symptom is a front-end 500 on POST /cart.
+keyEvidenceLines: [180, 181]
+expectedActions:
+  - Compare the failing request method and route parameters with the handler mappings in the carts service.
+  - Trace a failing add-to-cart request across the front-end and carts to isolate the mismatched value.
