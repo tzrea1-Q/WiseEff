@@ -527,6 +527,8 @@ Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自�
 
 上传、创建与 rerun 接受可选 `logDomainId` 作为 `skillId` 的别名，所选技能必须属于本组织且为 `active`，否则返回 `400`。新上传未提供选择字段时使用下述推荐路由，rerun 保持原有版本策略。日志 DTO 提供可选溯源字段 `logDomainId`、`logDomainName`、`analysisSource`（`agent` 或 `rules-fallback`）和 `degradedReason`。记录响应与结果 Webhook 的 `degradedReason` 可取 `provider-unavailable`、`invalid-model-output`、`step-budget-exhausted` 或 `token-budget-exhausted`。步数耗尽时，提前收敛成功的报告来源为 `agent`，否则为 `rules-fallback`。两个新值均为增量扩展，历史报告保留已存储的值。
 
+设置 `LOG_ANALYSIS_HYPOTHESIS_LEDGER=true` 后，已完成的循环分析可通过记录 API 和完成结果 Webhook 返回 `alternativeHypotheses: [{ statement, reason, anchors }]`。日志锚点为 `{ file, line }`，源码锚点为 `{ snapshotId, path, line }`。行号从 1 开始，每个排除原因至少引用一个此前由工具返回的锚点。该字段最多包含 8 个排除原因，每项最多 4 个锚点，陈述与理由各最多 240 个字符。关联参数快照的运行会在结果 Webhook 中省略此字段。循环轨迹步骤可带 `hypotheses: [{ id, statement, status, anchors }]`，状态为 `open`、`supported`、`refuted` 或 `inconclusive`。内核将每个快照的 JSON 序列化大小限制为 4 KiB。关联参数快照的运行在轨迹中使用序号作为 ID，并隐藏陈述。
+
 ### 技能推荐与上传路由（#1247）
 
 已存储日志包按路径顺序采样，最多使用前 200 个文件。采样以外的文件仍按现有接收限制参与分析。

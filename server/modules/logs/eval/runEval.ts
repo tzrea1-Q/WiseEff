@@ -184,6 +184,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     model: scriptedModel,
     modelLabel: EVAL_MODEL_LABEL,
     protocol: scenario.protocol,
+    hypothesisLedger: scenario.hypothesisLedger,
     repairJsonOutput: scenario.repairJsonOutput,
     tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
     maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,

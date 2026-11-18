@@ -11,6 +11,7 @@ export const logDeletionStatusResponseSchema = itemEnvelopeSchema(logDeletionSta
 export const logDeletionStatusListResponseSchema = itemsEnvelopeSchema(logDeletionStatusSchema);
 import { logSkillSpecSchema } from "../../logs/skillSpec";
 import { logAnalysisWireProtocolSchema } from "../../logs/logAnalysisProtocol";
+import { logAlternativeHypothesesSchema, logHypothesesSchema } from "../../logs/hypotheses";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 export { parseTestSchema, parseTestSchema as parseTestCaseSchema, parseTestsSchema, parseTestRunSchema, parseTestResultSchema,
   MAX_PARSE_TESTS, MAX_PARSE_TEST_LINES, MAX_PARSE_TEST_CHARS, MAX_PARSE_TEST_RUN_LINES } from "../../logs/parseTestSpec";
@@ -108,6 +109,7 @@ export const logRecordDtoSchema = z.object({
   stage: logStageSchema,
   confidence: z.number(),
   conclusion: z.string(),
+  alternativeHypotheses: logAlternativeHypothesesSchema.optional(),
   impact: z.string(),
   evidence: z.array(logEvidenceDtoSchema),
   suggestedActions: z.array(z.string()),
@@ -333,11 +335,13 @@ export const logTraceStepSchema = z.object({
   lines: z.array(z.object({ file: z.string().max(1024), line: z.number().int().positive(), snapshotId: z.string().max(200).optional() }).strict()).max(50),
   outcome: z.enum(["ok", "error", "truncated"]), reason: z.string().max(120).nullable(),
   protocol: logAnalysisWireProtocolSchema.optional(),
+  hypotheses: logHypothesesSchema.optional(),
   inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().nonnegative().optional()
 }).strict();
 export const logTraceResponseSchema = z.object({ steps: z.array(logTraceStepSchema).max(200) });
 export const logDryRunReportSchema = z.object({
   confidence: z.number(), conclusion: z.string(), impact: z.string(), severity: logSeveritySchema,
+  alternativeHypotheses: logAlternativeHypothesesSchema.optional(),
   evidence: z.array(logEvidenceDtoSchema.omit({ id: true })), suggestedActions: z.array(z.string()),
   reportContext: z.object({ analysisQuestion: z.string().optional(), lineCount: z.number(), entryCount: z.number() }),
   analysisSource: logAnalysisSourceSchema.optional(), degradedReason: logDegradedReasonSchema.optional(),

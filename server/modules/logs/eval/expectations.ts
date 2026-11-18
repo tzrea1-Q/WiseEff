@@ -28,6 +28,7 @@ export type LogEvalExpectation =
   | { type: "expectsAnalysisSource"; source: LogAnalysisSource }
   | { type: "expectsDegradedReason"; reason: LogAnalysisDegradedReason }
   | { type: "expectsNoDegradation" }
+  | { type: "expectsAlternativeHypotheses"; alternatives?: AnalyzeLogOutput["alternativeHypotheses"] }
   | { type: "expectsGroundedEvidence" }
   | { type: "expectsSourceLocations"; locations: SourceLocation[] }
   | { type: "expectsSourceToolBounds"; tool: "search_source" | "read_source_range"; maxBytes: number;
@@ -52,6 +53,9 @@ export function evaluateLogEvalExpectation(
   result: LogEvalRunResult
 ): LogEvalExpectationResult {
   switch (expectation.type) {
+    case "expectsAlternativeHypotheses":
+      return JSON.stringify(result.output.alternativeHypotheses) === JSON.stringify(expectation.alternatives)
+        ? { pass: true } : { pass: false, message: "Expected only the scripted, grounded alternative hypotheses" };
     case "expectsTrace": {
       const trace = result.trace ?? [];
       const pass = trace.length > 0 && trace.length <= 200 && trace.every((step, index) => step.index === index + 1)
