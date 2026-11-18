@@ -33,6 +33,19 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it.each([
+    ["passed", "结论验证通过。"],
+    ["revised", "报告已根据结论验证结果修订。"],
+    ["failed", "结论验证未通过，请人工复核。"],
+    ["skipped", "本次未执行结论验证。"]
+  ] as const)("显示已完成报告的验证状态 %s", (status, label) => {
+    const log = { ...initialState.logs[1], verification: { status, checkedClaims: 2, unsupportedClaims: 0, model: "fixture-verifier" } };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const report = within(screen.getByRole("region", { name: log.conclusion }));
+    expect(report.getByText(label)).toBeVisible();
+    expect(report.queryByText(/验证模型/) !== null).toBe(status !== "skipped");
+  });
+
   it.each([true, false])("在结论下方按报告内容显示已排除原因（%s）", (hasAlternatives) => {
     const log = { ...initialState.logs[1], alternativeHypotheses: hasAlternatives
       ? [{ statement: "充电器限流", reason: "日志记录热保护介入", anchors: [{ file: "charging.log", line: 3 }] }]
@@ -293,6 +306,7 @@ describe("LogsPage · Header", () => {
       const path = new URL(String(url)).pathname;
       if (path === "/api/v1/logs") return new Response(JSON.stringify({ items: [other, summary] }));
       if (path === "/api/v1/logs/kernel-report") return new Response(JSON.stringify({ item: { ...summary, evidence,
+        verification: { status: "failed", checkedClaims: 2, unsupportedClaims: 1, model: "fixture-verifier" },
         signalSummary: { signals: [{ kind: "crash", severity: "Critical", source: "generic", title: "Hydrated signal", signature: "watchdog", count: 1,
           anchors: [{ file: "kernel.log", line: 1, content: "ibus=1450 temp=71 vbus=9012" }] }], templates: [], truncatedSignals: false, truncatedTemplates: false },
         rawLines: ["ibus=1450 temp=71 vbus=9012", "INFO waiting", "WARN thermal", "INFO reduced"] } }));
@@ -305,6 +319,7 @@ describe("LogsPage · Header", () => {
       initialAppState: { ...userState, logs: [] }, ports: { logAnalysisRepository: repository } });
     const button = await screen.findByRole("button", { name: /kernel\.log/ });
     if (entry === "selection") await userEvent.click(button);
+    expect(await screen.findByText("结论验证未通过，请人工复核。")).toBeVisible();
     const chain = screen.getByRole("region", { name: "日志分析证据链" });
     expect(await within(chain).findByText("kernel.log:1")).toBeInTheDocument();
     const fields = within(chain).getByRole("group", { name: "解码字段" });

@@ -9,6 +9,19 @@ const env: LogAnalyzerEnv = {
 };
 
 describe("pinned skill runtime budgets", () => {
+  it("uses the optional conclusion verifier model and otherwise inherits the run model", async () => {
+    const parsed = parseLogText({ fileName: "power.log", content: "INFO operating normally\nINFO cycle complete" });
+    if (!parsed.ok) throw new Error("Fixture must parse");
+    const settings = { ...env, LOG_ANALYSIS_VERIFY_CONCLUSION: true };
+    const logDomain = { name: "Power", modelOverride: "analysis-model" };
+    for (const [configured, expected] of [[undefined, "analysis-model"], ["verify-model", "verify-model"]] as const) {
+      const output = await createLogAnalyzerFromEnv({ ...settings, LOG_ANALYSIS_VERIFIER_MODEL: configured }).analyze({ parsed, logDomain });
+      expect(output).toMatchObject({ model: "analysis-model", verification: {
+        status: "passed", checkedClaims: 2, unsupportedClaims: 0, model: expected
+      } });
+    }
+  });
+
   it("uses the platform token budget when the skill does not override it", async () => {
     const content = await readFile(new URL("../../../../test-fixtures/logs/charging-foldback.log", import.meta.url), "utf8");
     const parsed = parseLogText({ fileName: "charging-foldback.log", content });

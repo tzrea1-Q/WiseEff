@@ -18,6 +18,8 @@ Source-search timeout coverage verifies that the agent can continue with grounde
 
 Loop history scenarios confirm that the final model input contains summaries for older tool results and the original text of the latest two. Early log anchors still ground the final report after folding. The token budget is cumulative input plus output. After the investigation spends 80%, the kernel can use the remaining budget for one final answer with confidence capped at 0.5 and degradation reason `token-budget-exhausted`.
 
+The conclusion-verification scenario cites a real normal-temperature line to claim overheating. The independent scripted check marks the contradiction, removes the unsupported citation, and caps confidence. A nonexistent counter-anchor cannot become evidence. The realistic-tier quality run can compare the verifier off and on with `LOG_ANALYSIS_VERIFY_CONCLUSION` and `--tier realistic`. Offline mode exercises the call and token accounting with scripted verdicts. The quality metric for hallucination counts nonexistent citations.
+
 The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline records loop prompt version `2026-10-19.loop.procedure.signals.source.4` and remains pending expert-annotated real cases.
 
 ## Layout

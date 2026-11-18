@@ -529,6 +529,8 @@ Worker 仅对匹配文件应用技能信号、抽取器及解码；抽取器自�
 
 设置 `LOG_ANALYSIS_HYPOTHESIS_LEDGER=true` 后，已完成的循环分析可通过记录 API 和完成结果 Webhook 返回 `alternativeHypotheses: [{ statement, reason, anchors }]`。日志锚点为 `{ file, line }`，源码锚点为 `{ snapshotId, path, line }`。行号从 1 开始，每个排除原因至少引用一个此前由工具返回的锚点。该字段最多包含 8 个排除原因，每项最多 4 个锚点，陈述与理由各最多 240 个字符。关联参数快照的运行会在结果 Webhook 中省略此字段。循环轨迹步骤可带 `hypotheses: [{ id, statement, status, anchors }]`，状态为 `open`、`supported`、`refuted` 或 `inconclusive`。内核将每个快照的 JSON 序列化大小限制为 4 KiB。关联参数快照的运行在轨迹中使用序号作为 ID，并隐藏陈述。
 
+设置 `LOG_ANALYSIS_VERIFY_CONCLUSION=true` 后，已接地的循环分析可通过记录 API 和完成结果 Webhook 返回 `verification: { status, checkedClaims, unsupportedClaims, model }`。验证器独立检查结论和每项已接地推断，调用不带工具。内核最多尝试一次修订，修订报告通过接地与复验后才交付。`passed` 表示保留原报告，`revised` 表示接受复验后的修订或删除不被支持的证据，`failed` 表示结论或推断与证据矛盾，需要人工复核。计数基于原报告，矛盾项计入 `unsupportedClaims`。删减证据或发现矛盾时，置信度封顶为 0.5。预算不足或验证失败时返回 `skipped`，两项计数均为零，并保留原报告。旧记录和未启用结论验证的运行省略此字段。
+
 ### 技能推荐与上传路由（#1247）
 
 已存储日志包按路径顺序采样，最多使用前 200 个文件。采样以外的文件仍按现有接收限制参与分析。

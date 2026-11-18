@@ -142,6 +142,8 @@ curl --fail-with-body "$WISEEFF_API/api/v1/log-files" \
 
 启用假设账本后，已完成的报告可返回 `alternativeHypotheses`，列出已排除的可能原因。每项包含陈述 `statement`、理由 `reason` 和 `anchors`，锚点指向此前已见的日志行（`{ file, line }`）或源码行（`{ snapshotId, path, line }`）。
 
+开启结论验证后，已接地的循环分析报告会返回 `verification: { status, checkedClaims, unsupportedClaims, model }`。`passed` 表示引用支持结论和推断。`revised` 表示内核接受了通过复验的修订，或删除了不被支持的证据并将置信度封顶为 0.5。`failed` 表示存在矛盾，置信度封顶为 0.5，请人工复核。`skipped` 表示无法验证或预算不足，报告保留原有的证据和置信度。项数按原报告结论及各条推断统计，矛盾项计入 `unsupportedClaims`。跳过时两项计数均为零。
+
 | `degradedReason` | 含义 |
 | --- | --- |
 | `provider-unavailable` | 最后一次任务尝试仍无法调用模型服务，由规则引擎生成报告。 |
@@ -224,6 +226,7 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
   "alternativeHypotheses": [
     { "statement": "适配器重新协商导致限流", "reason": "热保护介入时，充电协议保持稳定。", "anchors": [{ "file": "charging-foldback.log", "line": 3 }] }
   ],
+  "verification": { "status": "passed", "checkedClaims": 2, "unsupportedClaims": 0, "model": "gpt-4o-mini" },
   "occurredAt": "2026-08-13T02:00:00.000Z",
   "productPath": "/logs?id=report-run-...&organizationId=org-..."
 }
@@ -232,6 +235,8 @@ curl --fail-with-body --get "$WISEEFF_API/api/v1/logs/$LOG_ID/lines" \
 `event` 取值:`log-analysis.completed`、`log-analysis.failed`、`log-analysis.test`(管理员测试按钮)。
 
 报告含有接地的排除原因且运行未关联参数快照时，完成结果会携带 `alternativeHypotheses`。每项为简要说明和锚点引用。
+
+完成结果中的 `verification` 与记录一致，仅包含状态、项数和验证模型名称。
 
 结果事件在保留旧字段的基础上增加 `skill: { id, key, revisionId, revisionNumber }` 和 `degraded: boolean`。旧未钉住运行的版本字段可为 null。规则回退或存在降级原因时 `degraded` 为 true。`degradedReason` 存在时与记录 API 使用相同的值，包括 `invalid-model-output` 和 `step-budget-exhausted`。key 在终态事件入队时快照保存，重试保持相同载荷。同步测试事件维持原格式。
 

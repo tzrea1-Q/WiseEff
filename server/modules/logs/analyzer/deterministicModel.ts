@@ -178,6 +178,14 @@ function withUsage(payload: unknown, messages: LogAnalysisChatMessage[]) {
   };
 }
 
+/** Exercises the independent call and measures its cost in offline quality evals. Semantic verdicts are scripted in behavior evals. */
+export const deterministicConclusionVerifier: LogAnalysisChatModel = {
+  async invoke(messages) {
+    const { claims } = JSON.parse(messages.at(-1)!.content) as { claims: Array<{ id: number }> };
+    return withUsage({ claims: claims.map(({ id }) => ({ id, status: "supported" })) }, messages);
+  }
+};
+
 /**
  * Loop-protocol deterministic stub: investigates like the real kernel would —
  * pull the prefilter findings, read the neighborhood of the strongest signal,

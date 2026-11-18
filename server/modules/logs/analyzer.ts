@@ -8,6 +8,7 @@ import { extractLogSignals, type LogSignalSummary } from "./genericSignals";
 import { emitLogTrace, withLogTrace, LOG_TRACE_MAX_LINES, type LogAnalysisTraceStep } from "./traceTypes";
 import type { LogAnalysisProtocol } from "./logAnalysisProtocol";
 import type { LogAlternativeHypothesis } from "./hypotheses";
+import type { LogVerification } from "./verification";
 
 export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
 export type LogAnalysisStageId = "pattern" | "rootcause";
@@ -76,6 +77,7 @@ export type AnalyzeLogOutput = {
   severity: LogAnalysisSeverity;
   evidence: AnalyzeLogEvidence[];
   alternativeHypotheses?: LogAlternativeHypothesis[];
+  verification?: LogVerification;
   suggestedActions: string[];
   reportContext: {
     analysisQuestion?: string;

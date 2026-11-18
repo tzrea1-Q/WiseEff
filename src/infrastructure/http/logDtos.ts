@@ -48,6 +48,7 @@ export type LogRecordDto = {
   confidence: number;
   conclusion: string;
   alternativeHypotheses?: LogRecord["alternativeHypotheses"];
+  verification?: LogRecord["verification"];
   impact: string;
   evidence: LogEvidenceDto[];
   suggestedActions: string[];
@@ -142,6 +143,7 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     confidence: confidencePercentFromDto(dto.confidence),
     conclusion: dto.conclusion,
     alternativeHypotheses: dto.alternativeHypotheses,
+    verification: dto.verification,
     impact: dto.impact,
     evidence: dto.evidence.map((item) => ({ ...item, lineNumbers: [...item.lineNumbers] })),
     suggestedActions: [...dto.suggestedActions],
