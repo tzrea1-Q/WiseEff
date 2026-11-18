@@ -29,6 +29,7 @@ export type LogEvalExpectation =
   | { type: "expectsDegradedReason"; reason: LogAnalysisDegradedReason }
   | { type: "expectsNoDegradation" }
   | { type: "expectsAlternativeHypotheses"; alternatives?: AnalyzeLogOutput["alternativeHypotheses"] }
+  | { type: "expectsChecks"; checks: AnalyzeLogOutput["checks"] }
   | { type: "expectsVerification"; verification: AnalyzeLogOutput["verification"] }
   | { type: "expectsGroundedEvidence" }
   | { type: "expectsHistoricalRunIds"; runIds: string[] }
@@ -66,6 +67,9 @@ export function evaluateLogEvalExpectation(
     case "expectsAlternativeHypotheses":
       return JSON.stringify(result.output.alternativeHypotheses) === JSON.stringify(expectation.alternatives)
         ? { pass: true } : { pass: false, message: "Expected only the scripted, grounded alternative hypotheses" };
+    case "expectsChecks":
+      return JSON.stringify(result.output.checks) === JSON.stringify(expectation.checks)
+        ? { pass: true } : { pass: false, message: "Expected the scripted checklist status with only seen anchors" };
     case "expectsTrace": {
       const trace = result.trace ?? [];
       const pass = trace.length > 0 && trace.length <= 200 && trace.every((step, index) => step.index === index + 1)

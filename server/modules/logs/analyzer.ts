@@ -7,7 +7,8 @@ import type { RelatedParameterRunSnapshot } from "./relatedParameter";
 import { extractLogSignals, type LogSignalSummary } from "./genericSignals";
 import { emitLogTrace, withLogTrace, LOG_TRACE_MAX_LINES, type LogAnalysisTraceStep } from "./traceTypes";
 import type { LogAnalysisProtocol } from "./logAnalysisProtocol";
-import type { LogAlternativeHypothesis } from "./hypotheses";
+import type { LogAlternativeHypothesis, LogReportCheck } from "./hypotheses";
+import type { ProcedureCheck } from "../../../src/domain/logs/procedureChecks";
 import type { LogVerification } from "./verification";
 
 export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
@@ -26,6 +27,7 @@ export type AnalyzeLogInput = {
   signalSummary?: LogSignalSummary;
   /** Untrusted diagnostic guidance from this run's immutable skill revision. */
   procedure?: string;
+  procedureChecks?: ProcedureCheck[];
   decoding?: { spec: import("./parsing/spec").ParsingSpec; events: import("./parsing/spec").DecodedEvent[]; counts: import("./parsing/spec").DecodeCounts };
   /** Pinned revision's source availability at worker execution; source tools bind this scope later. */
   sourceSnapshot?: { id: string; versionLabel?: string; status: "queued" | "indexing" | "ready" | "failed" | "archived" } | null;
@@ -80,6 +82,7 @@ export type AnalyzeLogOutput = {
   severity: LogAnalysisSeverity;
   evidence: AnalyzeLogEvidence[];
   alternativeHypotheses?: LogAlternativeHypothesis[];
+  checks?: LogReportCheck[];
   verification?: LogVerification;
   suggestedActions: string[];
   reportContext: {

@@ -231,6 +231,7 @@ export type LogRecord = {
   confidence: number;
   conclusion: string;
   alternativeHypotheses?: import("../logs/types").LogRecord["alternativeHypotheses"];
+  checks?: import("../logs/types").LogRecord["checks"];
   verification?: import("../logs/types").LogRecord["verification"];
   impact: string;
   evidence: LogEvidence[];

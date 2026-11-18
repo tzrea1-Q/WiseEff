@@ -51260,6 +51260,85 @@
                   "additionalProperties": false
                 }
               },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "done",
+                        "skipped",
+                        "pending"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "required",
+                    "status",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "verification": {
                 "type": "object",
                 "properties": {
@@ -52359,6 +52438,85 @@
                   "additionalProperties": false
                 }
               },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "done",
+                        "skipped",
+                        "pending"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "required",
+                    "status",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "verification": {
                 "type": "object",
                 "properties": {
@@ -53320,6 +53478,85 @@
                     "additionalProperties": false
                   }
                 },
+                "checks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "required": {
+                        "type": "boolean"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "done",
+                          "skipped",
+                          "pending"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "anchors": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "file": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "file",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "snapshotId": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "line": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "snapshotId",
+                                "path",
+                                "line"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "description",
+                      "required",
+                      "status",
+                      "anchors"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "verification": {
                   "type": "object",
                   "properties": {
@@ -54225,6 +54462,85 @@
                                 "additionalProperties": false
                               }
                             },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
                             "verification": {
                               "type": "object",
                               "properties": {
@@ -54670,6 +54986,85 @@
                                 "required": [
                                   "statement",
                                   "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
                                   "anchors"
                                 ],
                                 "additionalProperties": false
@@ -55181,6 +55576,85 @@
                                 "additionalProperties": false
                               }
                             },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
                             "verification": {
                               "type": "object",
                               "properties": {
@@ -55626,6 +56100,85 @@
                                 "required": [
                                   "statement",
                                   "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
                                   "anchors"
                                 ],
                                 "additionalProperties": false
@@ -56626,6 +57179,85 @@
                                 "additionalProperties": false
                               }
                             },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
                             "verification": {
                               "type": "object",
                               "properties": {
@@ -57071,6 +57703,85 @@
                                 "required": [
                                   "statement",
                                   "reason",
+                                  "anchors"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "checks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "required": {
+                                    "type": "boolean"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "done",
+                                      "skipped",
+                                      "pending"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "file": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "file",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "snapshotId": {
+                                              "type": "string"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "line": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "snapshotId",
+                                            "path",
+                                            "line"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "description",
+                                  "required",
+                                  "status",
                                   "anchors"
                                 ],
                                 "additionalProperties": false
@@ -58030,6 +58741,85 @@
                       "additionalProperties": false
                     }
                   },
+                  "checks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "required": {
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "done",
+                            "skipped",
+                            "pending"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "file",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "snapshotId": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "snapshotId",
+                                  "path",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "description",
+                        "required",
+                        "status",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "verification": {
                     "type": "object",
                     "properties": {
@@ -58504,6 +59294,85 @@
                       "required": [
                         "statement",
                         "reason",
+                        "anchors"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "checks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "required": {
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "done",
+                            "skipped",
+                            "pending"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "anchors": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "file",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "snapshotId": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "snapshotId",
+                                  "path",
+                                  "line"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "description",
+                        "required",
+                        "status",
                         "anchors"
                       ],
                       "additionalProperties": false
@@ -60449,6 +61318,85 @@
                   "required": [
                     "statement",
                     "reason",
+                    "anchors"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "done",
+                        "skipped",
+                        "pending"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "anchors": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "file",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "snapshotId": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "line": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "snapshotId",
+                              "path",
+                              "line"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "required",
+                    "status",
                     "anchors"
                   ],
                   "additionalProperties": false
@@ -62651,6 +63599,29 @@
                       "procedure": {
                         "type": "string"
                       },
+                      "procedureChecks": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "description",
+                            "required"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
                       "formatProfile": {
                         "type": "object",
                         "properties": {
@@ -64180,6 +65151,29 @@
                       "procedure": {
                         "type": "string"
                       },
+                      "procedureChecks": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "description",
+                            "required"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
                       "formatProfile": {
                         "type": "object",
                         "properties": {
@@ -65391,6 +66385,29 @@
                     },
                     "procedure": {
                       "type": "string"
+                    },
+                    "procedureChecks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "required": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "description",
+                          "required"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "formatProfile": {
                       "type": "object",
@@ -67258,6 +68275,29 @@
               },
               "procedure": {
                 "type": "string"
+              },
+              "procedureChecks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "required"
+                  ],
+                  "additionalProperties": false
+                }
               },
               "formatProfile": {
                 "type": "object",
@@ -69231,6 +70271,29 @@
               "procedure": {
                 "type": "string"
               },
+              "procedureChecks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "required"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "formatProfile": {
                 "type": "object",
                 "properties": {
@@ -70732,6 +71795,29 @@
                   },
                   "procedure": {
                     "type": "string"
+                  },
+                  "procedureChecks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "required": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "description",
+                        "required"
+                      ],
+                      "additionalProperties": false
+                    }
                   },
                   "formatProfile": {
                     "type": "object",
@@ -72283,6 +73369,29 @@
                     },
                     "procedure": {
                       "type": "string"
+                    },
+                    "procedureChecks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "required": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "description",
+                          "required"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "formatProfile": {
                       "type": "object",

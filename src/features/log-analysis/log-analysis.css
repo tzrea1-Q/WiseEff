@@ -206,17 +206,17 @@
   overflow-wrap: anywhere;
 }
 
-.logs-alternative-hypotheses {
+.logs-conclusion-list {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.logs-alternative-hypotheses ul {
+.logs-conclusion-list ul {
   list-style: disc;
   padding-inline-start: var(--space-5);
 }
 
-.logs-alternative-hypotheses li + li {
+.logs-conclusion-list li + li {
   margin-block-start: var(--space-2);
 }
 

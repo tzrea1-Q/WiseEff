@@ -26,7 +26,8 @@ describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
     const objectStore = createMemoryObjectStore();
     const auth = makeTestAuthContext({ organizationId: "procedure-org", userId: "procedure-admin",
       roles: [{ roleId: "admin", projectId: null }], permissions: ["logs:view", "logs:upload", "logs:analyze", "logs:admin-domains"] });
-    const firstProcedure = "## Scope\nInspect the cooling path before judging thermal foldback.";
+    const firstProcedure = "## Scope\nInspect the cooling path before judging thermal foldback.\n\n## 检查项\n- [ ] `cooling` 核对散热路径（必查）";
+    const firstChecks = [{ id: "cooling", description: "核对散热路径", required: true }];
     const nextProcedure = "## Scope\nCompare the fan speed with the thermal foldback window.";
     const unpublishedProcedure = "## Scope\nUnpublished draft: inspect the ambient temperature.";
     try {
@@ -43,9 +44,11 @@ describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
         spec: { ...skill.currentRevision.spec, procedure: firstProcedure }, baseDraftRevisionId: null, basePublishedRevisionId: skill.currentRevision.id
       });
       expect(draft.status).toBe(200);
+      expect(draft.body.item.spec.procedureChecks).toEqual(firstChecks);
       const published = await request<{ item: Skill }>(`${base}/publish`, "POST", { draftRevisionId: draft.body.item.id });
       expect(published.status).toBe(200);
       const firstRevision = published.body.item.currentRevision;
+      expect(firstRevision.spec.procedureChecks).toEqual(firstChecks);
       const uploadBody = { fileName: "device.log", contentType: "text/plain", skillId: skill.id,
         contentBase64: Buffer.from("INFO boot\nERROR code=E_THERMAL_FOLDBACK charge_current_ma=2000\n").toString("base64") };
       const queued = await request<Upload>("/api/v1/log-files", "POST", uploadBody);
@@ -61,9 +64,11 @@ describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
         const model = createScriptedLogAnalysisModel([
           { content: { action: "tool", tool: "read_line_range", args: { file: "device.log", startLine: 1, endLine: 2 } } },
           { content: { action: "final", conclusion: "Thermal foldback reduced charging current.", impact: "Charging is slower.", severity: "Warning", confidence: 0.9,
+            notes: { checks: [{ id: "cooling", status: "done", anchors: [{ file: "device.log", line: 2 }] }] },
             suggestedActions: ["Inspect cooling."], evidence: [{ filePath: "device.log", lineNumbers: [2], inference: "The log reports thermal foldback.", suggestedAction: "Inspect cooling." }] } }
         ]);
-        const analyzer = createAgentLoopLogAnalyzer({ model, modelLabel: "procedure-scripted", maxSteps: 3, tokenBudget: 100_000 });
+        const analyzer = createAgentLoopLogAnalyzer({ model, modelLabel: "procedure-scripted", maxSteps: 3, tokenBudget: 100_000,
+          hypothesisLedger: true, procedureChecklist: true });
         expect(await processLogAnalysisJobById({ db, objectStore, jobId: upload.job.id, analyzer })).toEqual({ status: "processed" });
         const prompt = model.calls[0].find((message) => message.role === "system")?.content;
         expect(prompt).toContain(JSON.stringify(revision.spec.procedure));
@@ -75,9 +80,12 @@ describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
         expect(report.body.item).toMatchObject({ status: "complete", analysisSource: "agent",
           skillRevision: { id: revision.id, number: revision.number },
           evidence: [{ filePath: "device.log", lineNumbers: [2] }] });
+        expect(report.body.item.checks).toEqual(revision.id === firstRevision.id
+          ? [{ ...firstChecks[0], status: "done", anchors: [{ file: "device.log", line: 2 }] }] : undefined);
         expect((await db.query(`select r.skill_revision_id, p.prompt_version, p.analysis_source, p.model
           from log_analysis_runs r join log_analysis_reports p on p.run_id = r.id where r.id = $1`, [upload.job.runId])).rows)
-          .toEqual([{ skill_revision_id: revision.id, prompt_version: LOG_ANALYSIS_LOOP_PROMPT_VERSION, analysis_source: "agent", model: "procedure-scripted" }]);
+          .toEqual([{ skill_revision_id: revision.id, prompt_version: revision.id === firstRevision.id
+            ? "2026-10-19.loop.procedure.signals.source.10" : LOG_ANALYSIS_LOOP_PROMPT_VERSION, analysis_source: "agent", model: "procedure-scripted" }]);
         return prompt;
       }
       const firstPrompt = await process(queued.body, firstRevision);
@@ -86,6 +94,7 @@ describe.skipIf(!available)("diagnostic procedures over PostgreSQL", () => {
       expect(nextPublished.status).toBe(200);
       const nextRevision = nextPublished.body.item.currentRevision;
       expect(nextRevision).toMatchObject({ id: nextDraft.body.item.id, number: firstRevision.number + 1, spec: { procedure: nextProcedure } });
+      expect(nextRevision.spec).not.toHaveProperty("procedureChecks");
       expect((await request<{ item: LogSkillRevisionDto }>(`${base}/draft`, "PUT", {
         spec: { ...nextRevision.spec, procedure: unpublishedProcedure }, baseDraftRevisionId: null, basePublishedRevisionId: nextRevision.id
       })).status).toBe(200);

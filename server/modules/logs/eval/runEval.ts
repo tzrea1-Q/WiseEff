@@ -12,6 +12,7 @@ import {
 import { createScriptedLogAnalysisModel } from "../analyzer/scriptedModel";
 import { analyzeWithDegradation } from "../worker";
 import type { LogAnalysisTraceStep } from "../traceTypes";
+import { parseProcedureChecks } from "../../../../src/domain/logs/procedureChecks";
 import { evaluateAllLogEvalExpectations, evaluateLogEvalExpectation, type LogEvalExpectation, type LogEvalRunResult } from "./expectations";
 import {
   LOG_EVAL_SCENARIOS,
@@ -185,6 +186,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     modelLabel: EVAL_MODEL_LABEL,
     protocol: scenario.protocol,
     hypothesisLedger: scenario.hypothesisLedger,
+    procedureChecklist: scenario.procedureChecklist,
     verifier: scenario.verificationScript
       ? { model: createScriptedLogAnalysisModel(scenario.verificationScript), modelLabel: "scripted-verifier" }
       : undefined,
@@ -206,6 +208,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
       onTrace: (step) => { trace.push(step); },
       filePath: scenario.fileName,
       procedure: scenario.procedure,
+      procedureChecks: scenario.procedureChecklist ? parseProcedureChecks(scenario.procedure) : undefined,
       analysisQuestion: scenario.analysisQuestion,
       logDomain: scenario.logDomain,
       sourceSnapshot: scenario.sourceSnapshot

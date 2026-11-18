@@ -20,6 +20,8 @@ Loop history scenarios confirm that the final model input contains summaries for
 
 The conclusion-verification scenario cites a real normal-temperature line to claim overheating. The independent scripted check marks the contradiction, removes the unsupported citation, and caps confidence. A nonexistent counter-anchor cannot become evidence. The realistic-tier quality run can compare the verifier off and on with `LOG_ANALYSIS_VERIFY_CONCLUSION` and `--tier realistic`. Offline mode exercises the call and token accounting with scripted verdicts. The quality metric for hallucination counts nonexistent citations.
 
+The checklist scenarios exercise a required-check reminder and grounded check anchors in both protocols. For a realistic-tier A/B, pass the same checklist Markdown file with `--tier realistic --procedure <file.md>` on both runs and set `LOG_ANALYSIS_HYPOTHESIS_LEDGER=true`. Toggle `LOG_ANALYSIS_PROCEDURE_CHECKLIST` and use `--compare` on the two saved JSON reports. With `LOG_ANALYSIS_DETERMINISTIC=true`, the fixed model responses isolate reminder and prompt costs.
+
 The command regenerates `docs/generated/log-analysis-eval.{json,md}` and fails on any behavioral expectation. The quality baseline records loop prompt version `2026-10-19.loop.procedure.signals.source.4` and remains pending expert-annotated real cases.
 
 ## Layout

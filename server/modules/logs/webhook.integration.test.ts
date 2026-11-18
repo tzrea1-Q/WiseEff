@@ -419,11 +419,22 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     expect(logRecordResponseSchema.parse(record.body).item.degradedReason).toBe(degradedReason);
   });
 
-  it("delivers grounded alternatives and verification from upload through the record API and signed result webhook", async () => {
+  it("delivers grounded alternatives, checks, and verification through the record API and signed webhook", async () => {
     await configureWebhook();
     const objectStore = createMemoryObjectStore();
     const router = createRouter();
     registerLogRoutes(router, { db, objectStore, getCurrentAuthContext: () => auth });
+    const skillPath = `/api/v1/log-skills/${domainId}`;
+    const skill = await requestJson<{ item: { currentRevision: { id: string } } }>(createHttpServer(router), skillPath);
+    const draft = await requestJson<{ item: { id: string } }>(createHttpServer(router), `${skillPath}/draft`, {
+      method: "PUT", body: JSON.stringify({ baseDraftRevisionId: null, basePublishedRevisionId: skill.body.item.currentRevision.id,
+        spec: { schemaVersion: "skill/v1", procedure: "## 检查项\n- [ ] `adapter` 核对充电协议（必查）" } })
+    });
+    expect(draft.status).toBe(200);
+    const published = await requestJson(createHttpServer(router), `${skillPath}/publish`, {
+      method: "POST", body: JSON.stringify({ draftRevisionId: draft.body.item.id })
+    });
+    expect(published.status).toBe(200);
     const upload = await requestJson<{ log: { id: string }; job: { id: string } }>(createHttpServer(router), "/api/v1/log-files", {
       method: "POST",
       body: JSON.stringify({ fileName: "charging.log", contentType: "text/plain", skillId: domainId,
@@ -431,23 +442,25 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     });
     expect(upload.status).toBe(201);
     const alternative = { statement: "适配器重新协商", reason: "充电协议保持稳定", anchors: [{ file: "charging.log", line: 1 }] };
+    const check = { id: "adapter", status: "done", anchors: alternative.anchors };
+    const checks = [{ ...check, description: "核对充电协议", required: true }];
     const model = createScriptedLogAnalysisModel([
       { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 2 } } },
       { content: { action: "final", conclusion: "热保护触发限流", impact: "充电速度下降", severity: "Warning",
         confidence: 0.9, suggestedActions: ["检查散热"], evidence: [{ lineNumbers: [2], inference: "热保护触发", suggestedAction: "检查温度" }],
-        notes: { hypotheses: [{ id: "adapter", statement: alternative.statement, status: "refuted", anchors: alternative.anchors }] },
+        notes: { checks: [check], hypotheses: [{ id: "adapter", statement: alternative.statement, status: "refuted", anchors: alternative.anchors }] },
         alternativeHypotheses: [alternative] } }
     ]);
     const verifier = createScriptedLogAnalysisModel([{ content: { claims: [{ id: 0, status: "supported" }, { id: 1, status: "supported" }] } }]);
     const verification = { status: "passed", checkedClaims: 2, unsupportedClaims: 0, model: "scripted-verifier" };
-    const analyzer = createAgentLoopLogAnalyzer({ model, hypothesisLedger: true, protocol: "tools",
+    const analyzer = createAgentLoopLogAnalyzer({ model, hypothesisLedger: true, procedureChecklist: true, protocol: "tools",
       verifier: { model: verifier, modelLabel: verification.model },
       modelLabel: "scripted", tokenBudget: 8000, maxSteps: 3 });
     expect(await processLogAnalysisJobById({ db, objectStore, jobId: upload.body.job.id, analyzer })).toEqual({ status: "processed" });
 
     const record = await requestJson(createHttpServer(router), `/api/v1/logs/${upload.body.log.id}`);
     expect(record.status).toBe(200);
-    expect(logRecordResponseSchema.parse(record.body).item).toMatchObject({ alternativeHypotheses: [alternative], verification });
+    expect(logRecordResponseSchema.parse(record.body).item).toMatchObject({ alternativeHypotheses: [alternative], checks, verification });
     const trace = await requestJson(createHttpServer(router), `/api/v1/logs/${upload.body.log.id}/trace`);
     expect(trace.status).toBe(200);
     expect(logTraceResponseSchema.parse(trace.body).steps.filter((step) => step.protocol).at(-1)?.hypotheses).toEqual([
@@ -457,7 +470,7 @@ describe.skipIf(!databaseAvailable)("log domain result webhooks (integration)", 
     expect(received).toHaveLength(1);
     expect(verifyWebhookSignature({ secret: SECRET, timestampSeconds: Number(received[0].timestamp),
       rawBody: received[0].body, signatureHeader: received[0].signature!, nowSeconds: Number(received[0].timestamp) })).toBe(true);
-    expect(JSON.parse(received[0].body)).toMatchObject({ event: "log-analysis.completed", alternativeHypotheses: [alternative], verification });
+    expect(JSON.parse(received[0].body)).toMatchObject({ event: "log-analysis.completed", alternativeHypotheses: [alternative], checks, verification });
   });
 
   it("records retrying then failed rows when the receiver keeps erroring", async () => {

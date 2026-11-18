@@ -146,7 +146,8 @@ export function packageMarkdown(metadata: unknown, body: string) { return `---\n
 
 /** Sorted paths and a fixed ZIP date make repeat exports byte-for-byte stable. */
 export async function exportSkillPackageArchive(name: string, skillKey: string, spec: LogSkillSpec, knowledge: PackagedKnowledge[], cases: Map<string, Buffer>) {
-  const { procedure = "", parsing, signalRules, parseTests = [], knowledgeEntryIds: _ids, defaultSourceSnapshotId: _snapshot, ...metadata } = spec;
+  const { procedure = "", procedureChecks: _derived, parsing, signalRules, parseTests = [], knowledgeEntryIds: _ids,
+    defaultSourceSnapshotId: _snapshot, ...metadata } = spec;
   const files = new Map<string, Buffer>([
     ["SKILL.md", Buffer.from(packageMarkdown({ name, skillKey, ...metadata }, procedure))],
     ["parsing.yaml", Buffer.from(stringifyYaml(parsing ?? null, { aliasDuplicateObjects: false }))],

@@ -54,6 +54,7 @@ type LogRecordRow = RevisionRow & {
   skill_selection?: LogRecordDto["skillSelection"] | null;
   signal_summary?: import("./genericSignals").LogSignalSummary | null;
   alternative_hypotheses?: LogAlternativeHypothesis[] | null;
+  procedure_checks?: LogRecordDto["checks"] | null;
   verification?: LogRecordDto["verification"] | null;
   id: string;
   current_run_id?: string | null;
@@ -196,6 +197,7 @@ export type LogWorkerRunSnapshot = {
   sourceSnapshotSelection: "matched_version" | "default" | "none";
   requestedSourceVersion?: string;
   procedure?: LogSkillSpec["procedure"];
+  procedureChecks?: LogSkillSpec["procedureChecks"];
   parsing?: LogSkillSpec["parsing"];
   sourceSnapshot: AnalyzeLogInput["sourceSnapshot"];
   jobId: string;
@@ -239,6 +241,7 @@ export type PersistLogAnalysisReportInput = {
     historicalRunIds?: string[];
     signalSummary?: import("./genericSignals").LogSignalSummary;
     alternativeHypotheses?: LogAlternativeHypothesis[];
+    checks?: LogRecordDto["checks"];
     verification?: LogRecordDto["verification"];
     confidence: number;
     conclusion: string;
@@ -325,6 +328,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"], 
     confidence: row.confidence === null ? 0 : Number(row.confidence),
     conclusion: row.conclusion ?? defaultConclusion(status, row.failure_reason),
     alternativeHypotheses: row.alternative_hypotheses ?? undefined,
+    ...(row.procedure_checks ? { checks: row.procedure_checks } : {}),
     verification: row.verification ?? undefined,
     impact: row.impact ?? defaultImpact(status),
     evidence,
@@ -411,6 +415,7 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
     jobId: row.job_id,
     skillRevisionId: row.skill_revision_id,
     procedure: row.skill_revision_spec?.procedure,
+    procedureChecks: row.skill_revision_spec?.procedureChecks,
     signalRules: row.skill_revision_spec?.signalRules,
     files: row.skill_revision_spec?.files,
     parsing: row.skill_revision_spec?.parsing,
@@ -457,6 +462,7 @@ const logSelect = `
     report.confidence,
     report.conclusion,
     report.alternative_hypotheses,
+    report.procedure_checks,
     report.verification,
     report.impact,
     report.suggested_actions,
@@ -1002,9 +1008,9 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
       `
       insert into log_analysis_reports (
         id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
-        severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary, alternative_hypotheses, verification
+        severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary, alternative_hypotheses, verification, procedure_checks
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       on conflict (id) do update
       set confidence = excluded.confidence,
         conclusion = excluded.conclusion,
@@ -1018,7 +1024,8 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         model = excluded.model,
         signal_summary = excluded.signal_summary,
         alternative_hypotheses = excluded.alternative_hypotheses,
-        verification = excluded.verification
+        verification = excluded.verification,
+        procedure_checks = excluded.procedure_checks
       `,
       [
         `report-${input.runId}`,
@@ -1037,7 +1044,8 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         input.report.model ?? null,
         input.report.signalSummary ? jsonb(input.report.signalSummary) : null,
         input.report.alternativeHypotheses ? jsonb(input.report.alternativeHypotheses) : null,
-        input.report.verification ? jsonb(input.report.verification) : null
+        input.report.verification ? jsonb(input.report.verification) : null,
+        input.report.checks ? jsonb(input.report.checks) : null
       ]
     );
     await tx.query(
@@ -1101,9 +1109,9 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
         `
         insert into log_analysis_reports (
           id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
-          severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary, alternative_hypotheses, verification
+          severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model, signal_summary, alternative_hypotheses, verification, procedure_checks
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
         on conflict (id) do update
         set confidence = excluded.confidence,
           conclusion = excluded.conclusion,
@@ -1117,7 +1125,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           model = excluded.model,
           signal_summary = excluded.signal_summary,
           alternative_hypotheses = excluded.alternative_hypotheses,
-          verification = excluded.verification
+          verification = excluded.verification,
+          procedure_checks = excluded.procedure_checks
         `,
         [
           `report-${input.runId}`,
@@ -1136,7 +1145,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           input.report.model ?? null,
           input.report.signalSummary ? jsonb(input.report.signalSummary) : null,
           input.report.alternativeHypotheses ? jsonb(input.report.alternativeHypotheses) : null,
-          input.report.verification ? jsonb(input.report.verification) : null
+          input.report.verification ? jsonb(input.report.verification) : null,
+          input.report.checks ? jsonb(input.report.checks) : null
         ]
       );
       await tx.query(

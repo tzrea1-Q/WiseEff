@@ -21,6 +21,7 @@ import { mockLogSkills, mockSkillWorkspace } from "@/infrastructure/mock/logSkil
 import { formatPercent } from "@/domain/format/formatPercent";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
+import { parseProcedureChecks } from "@/domain/logs/procedureChecks";
 import type { AnalysisSkill, SkillRevision, SkillSpec, SkillSample, ParseTestRun, ParsePreview, SkillDryRun, AnalysisCaseList } from "./types";
 import { specJson } from "./diffSkillSpecs";
 import { SkillSpecDiff } from "./SkillSpecDiff";
@@ -112,6 +113,7 @@ function Procedure({ spec, setSpec, disabled, procedureEdited }: SectionProps) {
   const id = useId();
   const procedure = spec.procedure === procedureOutline && !procedureEdited ? "" : spec.procedure ?? "";
   const preview = useMemo(() => renderMarkdownPreview(procedure), [procedure]);
+  const checks = useMemo(() => parseProcedureChecks(procedure), [procedure]);
   return <section className="skill-section" aria-label="诊断流程"><h2>诊断流程</h2>
     <div className="skill-section-toolbar"><ViewSwitch variant="tabs" ariaLabel="诊断流程视图" value={view} onValueChange={setView} items={[
       { value: "edit", label: "编辑", id: `${id}-edit`, panelId: `${id}-edit-panel` },
@@ -122,6 +124,12 @@ function Procedure({ spec, setSpec, disabled, procedureEdited }: SectionProps) {
         aria-describedby={`${id}-count`} onChange={(event) => setSpec({ ...spec, procedure: event.target.value })} /></label>
     </TabPanel>
     <TabPanel id={`${id}-preview-panel`} aria-labelledby={`${id}-preview`} hidden={view !== "preview"}>
+      {checks.length ? <section aria-label="识别出的检查项" className="knowledge-markdown-preview">
+        <h3>识别出的检查项</h3>
+        <ul>{checks.map(({ id: checkId, description, required }, index) => <li key={`${index}-${checkId}`}>
+          <code>{checkId}</code> <span className="break-words">{description}</span>{required ? <>（<strong>必查</strong>）</> : null}
+        </li>)}</ul>
+      </section> : null}
       <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: preview }} />
     </TabPanel>
     <p id={`${id}-count`}>{procedure.length} / 20000 字符</p>

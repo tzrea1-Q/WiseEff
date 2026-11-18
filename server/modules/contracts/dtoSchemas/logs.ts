@@ -11,7 +11,7 @@ export const logDeletionStatusResponseSchema = itemEnvelopeSchema(logDeletionSta
 export const logDeletionStatusListResponseSchema = itemsEnvelopeSchema(logDeletionStatusSchema);
 import { logSkillSpecSchema } from "../../logs/skillSpec";
 import { logAnalysisWireProtocolSchema } from "../../logs/logAnalysisProtocol";
-import { logAlternativeHypothesesSchema, logHypothesesSchema } from "../../logs/hypotheses";
+import { logAlternativeHypothesesSchema, logHypothesesSchema, logReportChecksSchema } from "../../logs/hypotheses";
 import { logVerificationSchema } from "../../logs/verification";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 export { parseTestSchema, parseTestSchema as parseTestCaseSchema, parseTestsSchema, parseTestRunSchema, parseTestResultSchema,
@@ -112,6 +112,7 @@ export const logRecordDtoSchema = z.object({
   confidence: z.number(),
   conclusion: z.string(),
   alternativeHypotheses: logAlternativeHypothesesSchema.optional(),
+  checks: logReportChecksSchema.optional(),
   verification: logVerificationSchema.optional(),
   impact: z.string(),
   evidence: z.array(logEvidenceDtoSchema),
@@ -346,6 +347,7 @@ export const logTraceResponseSchema = z.object({ steps: z.array(logTraceStepSche
 export const logDryRunReportSchema = z.object({
   confidence: z.number(), conclusion: z.string(), impact: z.string(), severity: logSeveritySchema,
   alternativeHypotheses: logAlternativeHypothesesSchema.optional(),
+  checks: logReportChecksSchema.optional(),
   verification: logVerificationSchema.optional(),
   evidence: z.array(logEvidenceDtoSchema.omit({ id: true })), suggestedActions: z.array(z.string()),
   reportContext: z.object({ analysisQuestion: z.string().optional(), lineCount: z.number(), entryCount: z.number() }),

@@ -14,6 +14,8 @@ import {
   selectJudgeReviewSample
 } from "../server/modules/logs/eval/judgeCalibration";
 import { resolveQualityJudge } from "../server/modules/logs/eval/judgeFromEnv";
+import { logSkillSpecSchema } from "../server/modules/logs/skillSpec";
+import { parseProcedureChecks } from "../src/domain/logs/procedureChecks";
 import {
   formatQualityComparisonMarkdown,
   formatQualityReportMarkdown,
@@ -35,7 +37,8 @@ function readQualityReport(path: string): QualityEvalReport {
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { trials: { type: "string" }, tier: { type: "string" }, tags: { type: "string" }, compare: { type: "boolean" } }
+    options: { trials: { type: "string" }, tier: { type: "string" }, tags: { type: "string" },
+      procedure: { type: "string" }, compare: { type: "boolean" } }
   });
   if (values.compare) {
     if (positionals.length !== 2 || Object.keys(values).length !== 1) {
@@ -44,7 +47,7 @@ async function main() {
     console.log(formatQualityComparisonMarkdown(readQualityReport(positionals[0]), readQualityReport(positionals[1])));
     return;
   }
-  if (positionals.length) throw new Error("Unexpected positional arguments. Use --trials, --tier, --tags, or --compare.");
+  if (positionals.length) throw new Error("Unexpected positional arguments. Use --trials, --tier, --tags, --procedure, or --compare.");
   const trials = Number(values.trials ?? "1");
   if (values.trials !== undefined && (!/^\d+$/.test(values.trials) || !Number.isSafeInteger(trials) || trials < 1)) {
     throw new Error("--trials must be a positive integer.");
@@ -80,10 +83,13 @@ async function main() {
   // No db handle on purpose: read_domain_knowledge / get_related_parameter_context
   // honestly report themselves unavailable in offline quality runs.
   const analyzer = createLogAnalyzerFromEnv(analysisEnv);
+  const procedure = values.procedure === undefined ? undefined : logSkillSpecSchema.parse({ schemaVersion: "skill/v1",
+    procedure: readFileSync(values.procedure, "utf8") }).procedure;
+  const procedureChecks = parseProcedureChecks(procedure);
   const judge = resolveQualityJudge(analysisEnv);
 
   const report = await runQualityEval({
-    analyzer,
+    analyzer: procedure === undefined ? analyzer : { analyze: (input) => analyzer.analyze({ ...input, procedure, procedureChecks }) },
     judge,
     cases,
     problems,

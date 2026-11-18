@@ -144,6 +144,8 @@ In user sessions, record and run responses may also carry `historicalRunIds`. Th
 
 When the hypothesis ledger is enabled, a completed report may include `alternativeHypotheses`, an array of excluded causes with `statement`, `reason`, and `anchors`. Each anchor identifies a previously seen log line (`{ file, line }`) or source line (`{ snapshotId, path, line }`).
 
+When the diagnostic checklist and hypothesis ledger are enabled, a grounded loop report for a skill revision with a checklist may include `checks`. Entries contain `id`, `description`, `required`, `status`, optional `reason`, and `anchors`. `status` is `done`, `skipped`, or `pending`. The anchors have the same shapes as for `alternativeHypotheses`.
+
 When conclusion verification is enabled, a grounded loop report includes `verification: { status, checkedClaims, unsupportedClaims, model }`. `passed` means the cited lines support the conclusion and inferences. `revised` means the kernel accepted a checked revision or removed unsupported evidence and capped confidence at 0.5. `failed` marks a contradiction and caps confidence at 0.5. Review those conclusions manually. `skipped` means the check was unavailable or ran out of budget, and the report retains its original confidence and evidence. Counts cover the original conclusion and inferences, with contradictions included in `unsupportedClaims`. A skipped check reports zero counts.
 
 | `degradedReason` | Meaning |
@@ -235,6 +237,8 @@ Before the first push, an administrator configures a skill's webhook in its work
 `event` is `log-analysis.completed`, `log-analysis.failed`, or `log-analysis.test` (admin test button).
 
 The completed result includes `alternativeHypotheses` when the report has grounded exclusions and the run has no related-parameter snapshot. The entries contain short summaries and anchor references.
+
+The completed result includes `checks` when present on the report and the run has no related-parameter snapshot.
 
 The completed result includes `verification` when present on the record. It carries only the status, counts, and verifier model name.
 

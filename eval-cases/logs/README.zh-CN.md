@@ -20,6 +20,8 @@
 
 结论验证场景引用真实的正常温度日志来推断过热。独立的脚本验证会标记矛盾、删除不受支持的引用并限制置信度。不存在的反证锚点无法成为证据。效果层可通过 `LOG_ANALYSIS_VERIFY_CONCLUSION` 与 `--tier realistic` 对比验证开关。离线模式用预设判定验证调用流程与 token 计数。效果层的幻觉率衡量引用不存在行的比例。
 
+检查清单场景覆盖两种协议的必查项提醒和锚点接地。做仿真层 A/B 时，两组用 `--tier realistic --procedure <file.md>` 加载同一个清单文件，同时设置 `LOG_ANALYSIS_HYPOTHESIS_LEDGER=true`，单独切换 `LOG_ANALYSIS_PROCEDURE_CHECKLIST`，再用 `--compare` 对比两份保存的 JSON 报告。设置 `LOG_ANALYSIS_DETERMINISTIC=true` 可用固定模型响应比较提醒和提示词的开销。
+
 该命令重新生成 `docs/generated/log-analysis-eval.{json,md}`，任何行为预期失败都会使命令失败。质量基线记录循环提示词版本 `2026-10-19.loop.procedure.signals.source.4`，仍在等待专家标注的真实案例。
 
 ## 目录结构

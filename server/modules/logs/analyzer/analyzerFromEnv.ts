@@ -32,6 +32,7 @@ export type LogAnalyzerEnv = {
   LOG_ANALYSIS_PAST_CONCLUSIONS?: boolean;
   LOG_ANALYSIS_PROTOCOL?: LogAnalysisProtocol;
   LOG_ANALYSIS_HYPOTHESIS_LEDGER?: boolean;
+  LOG_ANALYSIS_PROCEDURE_CHECKLIST?: boolean;
   LOG_ANALYSIS_VERIFY_CONCLUSION?: boolean;
   LOG_ANALYSIS_VERIFIER_MODEL?: string;
 };
@@ -204,6 +205,7 @@ export function createLogAnalyzerFromEnv(
       maxSteps: stepBudget,
       protocol,
       hypothesisLedger: env.LOG_ANALYSIS_HYPOTHESIS_LEDGER,
+      procedureChecklist: env.LOG_ANALYSIS_PROCEDURE_CHECKLIST,
       verifier: resolveVerifier(modelLabel),
       endpoint: providerConfigured && !env.LOG_ANALYSIS_DETERMINISTIC ? env.LOG_ANALYSIS_API_BASE_URL : undefined,
       repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,

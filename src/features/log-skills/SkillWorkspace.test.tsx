@@ -200,6 +200,21 @@ describe("skill workspace", () => {
     await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ procedure: outline }), null, "current"));
   });
 
+  it("previews the checks recognized in the current Markdown draft", async () => {
+    setup({ section: "procedure" });
+    fireEvent.change(await screen.findByRole("textbox", { name: "诊断流程内容" }), { target: { value: [
+      "## 检查项", "- [ ] `cooling` 核对散热（必查）", "```md", "- [ ] `example` 围栏示例", "```",
+      "## Checks", "- [ ] `power` Check power (required)", "- [ ] `ambient` Check ambient", "## Notes", "- [ ] `other` Outside checklist"
+    ].join("\n") } });
+    await userEvent.click(screen.getByRole("tab", { name: "预览" }));
+    const checklist = within(screen.getByRole("region", { name: "识别出的检查项" }));
+    expect(checklist.getAllByRole("listitem")).toHaveLength(3);
+    expect(checklist.getByText("核对散热")).toBeVisible();
+    expect(checklist.getByText("Check power")).toBeVisible();
+    expect(checklist.getAllByText("必查")).toHaveLength(2);
+    expect(checklist.getByText("Check ambient")).toBeVisible();
+  });
+
   it("links each prepublication check to its section and invalidates stale results", async () => {
     const { repository, onNavigate } = setup({ draft: true, spec: { parseTests: [parseTest] }, runParseTests: async () => failedParseRun });
     repository.listAnalysisCases.mockResolvedValue({ items: [analysisCase], latestRun: completeCaseRun, current: true });

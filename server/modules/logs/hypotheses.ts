@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_PROCEDURE_CHECKS, MAX_PROCEDURE_CHECK_DESCRIPTION, PROCEDURE_CHECK_ID } from "../../../src/domain/logs/procedureChecks";
 
 const line = z.number().int().safe().positive();
 export const logGroundedAnchorSchema = z.union([
@@ -26,3 +27,15 @@ export const logAlternativeHypothesesSchema = z.array(z.object({
 export type LogHypothesisAnchor = z.infer<typeof logGroundedAnchorSchema>;
 export type LogHypothesis = z.infer<typeof logHypothesesSchema>[number];
 export type LogAlternativeHypothesis = z.infer<typeof logAlternativeHypothesesSchema>[number];
+
+const checkId = z.string().regex(PROCEDURE_CHECK_ID);
+const procedureCheckSchema = z.object({ id: checkId,
+  description: z.string().min(1).max(MAX_PROCEDURE_CHECK_DESCRIPTION), required: z.boolean() }).strict();
+export const procedureChecksSchema = z.array(procedureCheckSchema).max(MAX_PROCEDURE_CHECKS);
+const checkUpdateSchema = z.object({ id: checkId, status: z.enum(["done", "skipped"]), reason: text.optional(), anchors });
+export const logCheckUpdatesSchema = z.array(checkUpdateSchema).max(MAX_PROCEDURE_CHECKS);
+export const logReportChecksSchema = z.array(procedureCheckSchema.extend({
+  status: z.enum(["done", "skipped", "pending"]), reason: text.optional(), anchors
+})).min(1).max(MAX_PROCEDURE_CHECKS);
+export type LogCheckUpdate = z.infer<typeof checkUpdateSchema>;
+export type LogReportCheck = z.infer<typeof logReportChecksSchema>[number];

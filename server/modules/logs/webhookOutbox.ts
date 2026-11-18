@@ -35,11 +35,13 @@ export async function enqueueTerminalLogWebhook(db: Queryable, input: { organiza
     analysis_source: string | null; degraded_reason: string | null; severity: string | null;
     confidence: number | null; conclusion: string | null;
     alternative_hypotheses: LogAnalysisResultWebhookInput["alternativeHypotheses"] | null;
+    procedure_checks: LogAnalysisResultWebhookInput["checks"] | null;
     verification: LogAnalysisResultWebhookInput["verification"] | null;
     skill_revision_id: string | null; skill_revision_number: number | null; skill_key: string;
   }>(
     `select r.log_domain_id, a.log_record_id, r.file_name, a.status, a.completed_at,
-       a.error_message, a.related_parameter_snapshot, p.analysis_source, p.degraded_reason, p.severity, p.confidence, p.conclusion, p.alternative_hypotheses, p.verification,
+       a.error_message, a.related_parameter_snapshot, p.analysis_source, p.degraded_reason, p.severity, p.confidence, p.conclusion,
+       p.alternative_hypotheses, p.verification, p.procedure_checks,
        a.skill_revision_id, s.revision_number as skill_revision_number, d.skill_key
      from log_analysis_runs a
      join log_records r on r.id = a.log_record_id and r.organization_id = a.organization_id
@@ -62,6 +64,7 @@ export async function enqueueTerminalLogWebhook(db: Queryable, input: { organiza
     severity: row.severity ?? undefined, confidence: row.confidence ?? undefined,
     conclusion: row.related_parameter_snapshot ? undefined : (row.status === "failed" ? row.error_message : row.conclusion) ?? undefined,
     alternativeHypotheses: row.related_parameter_snapshot ? undefined : row.alternative_hypotheses ?? undefined,
+    checks: row.related_parameter_snapshot ? undefined : row.procedure_checks ?? undefined,
     verification: row.verification ?? undefined
   });
 }

@@ -74,6 +74,7 @@ const rawEnvSchema = z.object({
   LOG_ANALYSIS_PAST_CONCLUSIONS: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   LOG_ANALYSIS_PROTOCOL: logAnalysisProtocolSchema.default("auto"),
   LOG_ANALYSIS_HYPOTHESIS_LEDGER: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  LOG_ANALYSIS_PROCEDURE_CHECKLIST: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   LOG_ANALYSIS_VERIFY_CONCLUSION: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   LOG_ANALYSIS_VERIFIER_MODEL: z.string().optional(),
   LOG_ANALYSIS_MAX_STEPS: z.coerce.number().int().positive().default(6),

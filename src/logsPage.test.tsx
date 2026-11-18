@@ -33,6 +33,25 @@ afterEach(() => {
 });
 
 describe("LogsPage · Header", () => {
+  it.each([true, false])("displays check status and skip reason when the report has a checklist (%s)", (hasChecks) => {
+    const log = { ...initialState.logs[1], checks: hasChecks ? [
+      { id: "cooling", description: "核对散热", required: true, status: "done" as const, anchors: [{ file: "charging.log", line: 3 }] },
+      { id: "ambient", description: "核对环境温度", required: false, status: "skipped" as const, reason: "设备无环境温度传感器", anchors: [] },
+      { id: "rail", description: "检查电源轨", required: true, status: "pending" as const, anchors: [] }
+    ] : undefined };
+    render(<LogsPage search="" state={{ ...userState, logs: [log] }} dispatch={() => undefined} onNavigate={() => undefined} />);
+    const report = within(screen.getByRole("region", { name: log.conclusion }));
+    if (!hasChecks) {
+      expect(report.queryByRole("heading", { name: "诊断检查项" })).not.toBeInTheDocument();
+      return;
+    }
+    expect(report.getByRole("heading", { name: "诊断检查项" })).toBeVisible();
+    expect(report.getByText("已完成")).toBeVisible();
+    expect(report.getByText("已跳过")).toBeVisible();
+    expect(report.getByText("未处理")).toBeVisible();
+    expect(report.getByText("设备无环境温度传感器")).toBeVisible();
+    expect(report.getByText("charging.log:3")).toBeVisible();
+  });
   it.each([
     ["passed", "结论验证通过。"],
     ["revised", "报告已根据结论验证结果修订。"],

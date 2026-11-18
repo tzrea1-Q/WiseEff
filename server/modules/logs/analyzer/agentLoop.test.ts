@@ -75,6 +75,47 @@ function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<t
 }
 
 describe("createAgentLoopLogAnalyzer", () => {
+  it.each(["json", "tools"] as const)("reminds once before verifying and reports grounded checklist progress in %s", async (protocol) => {
+    const required = { id: "cooling", description: "Inspect cooling.", required: true };
+    const pending = { id: "rail", description: "Check the rail.", required: true };
+    const optional = { id: "ambient", description: "Check ambient temperature.", required: false };
+    const anchor = { file: "charging.log", line: 3 };
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: supportedClaims } }]);
+    const { adapter, model } = analyzer([
+      { content: { ...readChargingLines.content, notes: { checks: [{ id: optional.id, status: "skipped", reason: "无环境温度传感器", anchors: [] }] } } },
+      { content: { ...finalPayload, conclusion: "Premature conclusion", notes: { checks: [{ id: "unknown", status: "done", anchors: [] }] } } },
+      { content: { ...finalPayload, notes: { checks: [
+        { id: required.id, status: "done", anchors: [anchor, { ...anchor, line: 6 }] }
+      ] } } }
+    ], { protocol, hypothesisLedger: true, procedureChecklist: true, verifier: { model: verifier, modelLabel: "verify-test" } });
+    const output = await adapter.analyze(buildInput({ filePath: anchor.file, procedureChecks: [required, pending, optional] }));
+    expect(output).toMatchObject({ conclusion: finalPayload.conclusion, verification: { status: "passed" }, checks: [
+      { ...required, status: "done", anchors: [anchor] }, { ...pending, status: "pending", anchors: [] },
+      { ...optional, status: "skipped", reason: "无环境温度传感器", anchors: [] }
+    ] });
+    expect(verifier.calls).toHaveLength(1);
+    expect(JSON.stringify(verifier.calls)).not.toContain("Premature conclusion");
+    expect(model.calls).toHaveLength(3);
+    expect(model.calls[2].some(({ content }) => content.includes("Required checklist items remain unhandled: cooling, rail."))).toBe(true);
+  });
+
+  it.each(["steps", "tokens", "disabled", "no ledger", "no checklist"] as const)(
+    "does not send a checklist reminder with %s", async (constraint) => {
+      const { adapter, model } = analyzer([readChargingLines, { content: finalPayload,
+        usage: { inputTokens: constraint === "tokens" ? 79_000 : 200, outputTokens: 150 } }], {
+        maxSteps: constraint === "steps" ? 2 : 4,
+        hypothesisLedger: constraint !== "no ledger", procedureChecklist: constraint !== "disabled"
+      });
+      const check = { id: "cooling", description: "Inspect cooling.", required: true };
+      const report = await adapter.analyze(buildInput({ procedure: "Look up the thermal event.",
+        procedureChecks: constraint === "no checklist" ? undefined : [check] }));
+      expect(report.conclusion).toBe(finalPayload.conclusion);
+      const pending = constraint === "steps" || constraint === "tokens";
+      expect(report.checks).toEqual(pending ? [{ ...check, status: "pending", anchors: [] }] : undefined);
+      expect(model.calls).toHaveLength(2);
+      if (!pending) expect(report.promptVersion).toBe(LOG_ANALYSIS_LOOP_PROMPT_VERSION);
+    });
+
   it.each(["json", "tools"] as const)("flags a grounded conclusion that contradicts its cited line in %s", async (protocol) => {
     const verifier = createScriptedLogAnalysisModel([{ content: { claims: [
       { id: 0, status: "contradicted", counterAnchors: [{ file: "charging.log", line: 9999 }] },

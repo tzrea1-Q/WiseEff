@@ -1093,6 +1093,8 @@ const verificationLabels = {
   skipped: "本次未执行结论验证。"
 };
 
+const checkStatusLabels = { done: "已完成", skipped: "已跳过", pending: "未处理" } as const;
+
 function LogConclusionCard({
   log, canViewSkill, canOpenKnowledge, onNavigate, onAskAgent, onPrimary, relatedParameterLocated = false, organizationId,
   relatedParameterUnlocated = false, onExport, onCopyLink, onDistil, distilPending = false,
@@ -1136,13 +1138,24 @@ function LogConclusionCard({
         已检查 {verification.checkedClaims} 项，其中 {verification.unsupportedClaims} 项未获证据支持。验证模型：{verification.model}
       </span> : null}
     </div> : null}
-    {complete && !!log.alternativeHypotheses?.length && <div className="logs-alternative-hypotheses">
+    {complete && !!log.alternativeHypotheses?.length && <div className="logs-conclusion-list">
       <h3>已排除的可能原因</h3>
       <ul>
         {log.alternativeHypotheses.map(({ statement, reason }, index) => <li key={index}>
           <strong>{statement}</strong><p>{reason}</p>
         </li>)}
       </ul>
+    </div>}
+    {complete && !!log.checks?.length && <div className="logs-conclusion-list">
+      <h3>诊断检查项</h3>
+      <ul>{log.checks.map(({ id, description, required, status, reason, anchors }) => <li key={id}>
+        <strong>{description}</strong>{required ? "（必查）" : null}
+        <span> · </span><span>{checkStatusLabels[status]}</span>
+        {reason ? <p>{reason}</p> : null}
+        {anchors.length ? <p className="text-sm text-muted-foreground">{anchors.map((anchor) => (
+          `${"file" in anchor ? anchor.file || log.fileName : anchor.path}:${anchor.line}`
+        )).join("、")}</p> : null}
+      </li>)}</ul>
     </div>}
     <LogHeaderMeta log={log} />
     {complete ? <div className="logs-conclusion-summary">

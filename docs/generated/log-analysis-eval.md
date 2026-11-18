@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-11-18T15:33:22.483Z
+- Generated: 2026-11-18T16:07:17.294Z
 - Single-shot prompt version: `2026-10-19.procedure.signals.source.2`
 - Loop prompt version: `2026-10-19.loop.procedure.signals.source.9`
-- Scenarios: 57 (57 passed)
+- Scenarios: 59 (59 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -56,6 +56,8 @@
 | trace-redacts-prompts-procedure-and-provider-payloads | trace-privacy | loop | agent | - | 7 | PASS |
 | loop-native-batch-folds-results-and-grounds-final | loop-protocol | loop | agent | - | 5 | PASS |
 | loop-folded-tool-result-keeps-early-evidence | loop-context | loop | agent | - | 7 | PASS |
+| loop-procedure-checklist-json | procedure-adversarial | loop | agent | - | 7 | PASS |
+| loop-procedure-checklist-tools | procedure-adversarial | loop | agent | - | 7 | PASS |
 | loop-hypothesis-ledger-json-off | loop-context | loop | agent | - | 7 | PASS |
 | loop-hypothesis-ledger-json-on | loop-context | loop | agent | - | 7 | PASS |
 | loop-hypothesis-ledger-tools-off | loop-context | loop | agent | - | 7 | PASS |

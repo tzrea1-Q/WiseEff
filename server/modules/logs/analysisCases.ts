@@ -483,7 +483,8 @@ async function analyzeCase(db: Database, store: ObjectStore, analyzer: LogAnalys
   const report = await analyzeWithDegradation({ analyzer, job: { attemptCount: 1 }, maxAttempts: 1, retryBaseDelayMs: 0, now: () => new Date(), analyzeInput: {
     signal, organizationId, logDomainId: skillId, parsed: first.parsed, files, filePath: first.path,
     stats: { lineCount: files.reduce((sum, file) => sum + file.reader!.lineCount, 0), entryCount: files.reduce((sum, file) => sum + Object.values(file.prefilter!.severityCounts).reduce((count, value) => count + value, 0), 0) },
-    procedure: spec.procedure, signalRules, signalSummary, decoding, sourceSnapshot, knowledgeEntryIds: spec.knowledgeEntryIds ?? [], analysisQuestion: item.expectations.analysisQuestion,
+    procedure: spec.procedure, procedureChecks: spec.procedureChecks, signalRules, signalSummary, decoding, sourceSnapshot,
+    knowledgeEntryIds: spec.knowledgeEntryIds ?? [], analysisQuestion: item.expectations.analysisQuestion,
     logDomain: { name: item.expectations.domain, description: spec.description, modelOverride: spec.modelOverride,
       protocolOverride: spec.protocolOverride },
     onTrace: async (value) => { signal.throwIfAborted(); const step = logTraceStepSchema.parse(value); traceBytes += Buffer.byteLength(JSON.stringify(step)); if (traceBytes <= 2 * 1024 * 1024 && steps.length < 200) steps.push(step); }
