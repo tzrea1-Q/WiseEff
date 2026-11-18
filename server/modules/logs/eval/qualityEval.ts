@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-import type { AnalyzeLogOutput, LogAnalysisAdapter } from "../analyzer";
+import type { AnalyzeLogInput, AnalyzeLogOutput, LogAnalysisAdapter } from "../analyzer";
 import { parseLogText } from "../parser";
 import { analyzeWithDegradation } from "../worker";
-import type { GoldenLogCase, LogEvalRootCauseCategory } from "./goldenCases";
+import { resolveLogEvalCaseMetadata, type GoldenLogCase, type LogEvalRootCauseCategory } from "./goldenCases";
 import {
   computeJudgeHumanAgreement,
   selectJudgeReviewSample,
@@ -16,8 +16,7 @@ import {
  * the CURRENT kernel. Deterministic metrics (evidence-line overlap, hallucination
  * rate, refusal appropriateness) are computed in-process; root-cause correctness
  * goes through a rubric-guided judge seam — an LLM in real mode, a deterministic
- * scriptable stub in offline mode. Only `realLog: true` cases count toward the
- * baseline gate; synthetic cases document format coverage.
+ * scriptable stub in offline mode. Only golden cases count toward the baseline gate.
  */
 
 /** A conclusion at or below this confidence counts as an honest refusal / low-confidence answer. */
@@ -250,10 +249,11 @@ export type QualityEvalReport = {
   deterministic: boolean;
   modelLabel: string;
   judgeLabel: string;
-  caseResults: QualityCaseResult[];
+  caseResults: Array<QualityCaseResult & ReturnType<typeof resolveLogEvalCaseMetadata>>;
   aggregates: {
     all: QualityAggregates;
     realCases: QualityAggregates | null;
+    realisticCases: QualityAggregates | null;
     syntheticCases: QualityAggregates | null;
   };
   baseline: QualityBaselineComparison;
@@ -296,7 +296,7 @@ export function aggregateQualityResults(results: QualityCaseResult[]): QualityAg
 
 /**
  * Baseline gate: with a committed baseline AND real cases in both runs, the
- * current realLog aggregates must not fall below baseline minus the stated
+ * current golden aggregates must not fall below baseline minus the stated
  * tolerance. With no real cases yet, the gate stays inactive and says so.
  */
 export function compareToQualityBaseline(
@@ -341,11 +341,24 @@ export function compareToQualityBaseline(
 export function evaluateQualityCaseOutput(
   goldenCase: GoldenLogCase,
   output: AnalyzeLogOutput,
-  extras: { latencyMs: number; judge: QualityJudgeScore | null; parsedLineNumbers: Set<number> }
+  extras: { latencyMs: number; judge: QualityJudgeScore | null } & (
+    { parsedLineNumbers: Set<number>; projectCitation?: never }
+    | { projectCitation: (filePath: string | null | undefined, line: number) => number | undefined }
+  )
 ): QualityCaseResult {
-  const citedAll = [...new Set(output.evidence.flatMap((item) => item.lineNumbers))].sort((left, right) => left - right);
-  const citedNonexistentLines = citedAll.filter((lineNumber) => !extras.parsedLineNumbers.has(lineNumber));
-  const citedExisting = citedAll.filter((lineNumber) => extras.parsedLineNumbers.has(lineNumber));
+  const existing = new Set<number>();
+  const nonexistent = new Map<string, number>();
+  for (const item of output.evidence) {
+    for (const line of item.lineNumbers) {
+      const projected = extras.projectCitation ? extras.projectCitation(item.filePath, line)
+        : extras.parsedLineNumbers.has(line) ? line : undefined;
+      if (projected !== undefined) existing.add(projected);
+      else nonexistent.set(JSON.stringify([extras.projectCitation ? item.filePath : null, line]), line);
+    }
+  }
+  const citedExisting = [...existing].sort((left, right) => left - right);
+  const citedNonexistentLines = [...nonexistent.values()].sort((left, right) => left - right);
+  const citationCount = existing.size + nonexistent.size;
 
   let evidence: QualityEvidenceMetrics | null = null;
   if (!goldenCase.expectRefusal) {
@@ -381,7 +394,7 @@ export function evaluateQualityCaseOutput(
     evidence,
     hallucination: {
       citedNonexistentLines,
-      rate: citedAll.length === 0 ? 0 : citedNonexistentLines.length / citedAll.length
+      rate: citationCount === 0 ? 0 : nonexistent.size / citationCount
     },
     refusal: {
       expected: goldenCase.expectRefusal,
@@ -412,18 +425,55 @@ function qualityRunId(generatedAt: string): string {
   return `qe-${generatedAt.replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-")}`;
 }
 
+function prepareQualityCase(goldenCase: GoldenLogCase) {
+  const parse = (fileName: string, content: string) => {
+    const parsed = parseLogText({ fileName, content }, { profile: goldenCase.formatProfile });
+    if (!parsed.ok) throw new Error(`${fileName} failed to parse (${parsed.reason})`);
+    return parsed;
+  };
+  if (!goldenCase.bundle) {
+    const parsed = parse("log.txt", goldenCase.logText);
+    return {
+      input: { parsed },
+      scoring: { parsedLineNumbers: new Set(parsed.entries.map((entry) => entry.lineNumber)) }
+    };
+  }
+
+  const offsets = new Map<string, { start: number; lines: string[] }>();
+  let lineCount = 0;
+  const files = goldenCase.bundle.map(({ logText, ...file }) => {
+    const parsed = parse(file.path, logText);
+    offsets.set(file.path, { start: lineCount, lines: parsed.rawLines });
+    lineCount += parsed.rawLines.length;
+    return { ...file, parsed };
+  });
+  const [first] = files;
+  const input: Pick<AnalyzeLogInput, "parsed" | "files" | "filePath" | "stats"> = {
+    parsed: first.parsed, files, filePath: first.path,
+    stats: { lineCount, entryCount: files.reduce((total, file) => total + file.parsed.entries.length, 0) }
+  };
+  return {
+    input,
+    scoring: {
+      projectCitation(filePath: string | null | undefined, line: number) {
+        const file = offsets.get(filePath ?? first.path);
+        return file?.lines[line - 1]?.trim() ? file.start + line : undefined;
+      }
+    }
+  };
+}
+
 export async function runQualityEval(options: RunQualityEvalOptions): Promise<QualityEvalReport> {
   const now = options.now ?? (() => Date.now());
-  const caseResults: QualityCaseResult[] = [];
+  const caseResults: QualityEvalReport["caseResults"] = [];
   const problems = [...options.problems];
 
   for (const goldenCase of options.cases) {
-    const parsed = parseLogText(
-      { fileName: "log.txt", content: goldenCase.logText },
-      goldenCase.formatProfile ? { profile: goldenCase.formatProfile } : {}
-    );
-    if (!parsed.ok) {
-      problems.push(`${goldenCase.id}: log.txt failed to parse (${parsed.reason})`);
+    let prepared: ReturnType<typeof prepareQualityCase>;
+    try {
+      prepared = prepareQualityCase(goldenCase);
+    } catch (error) {
+      problems.push(`${goldenCase.id}: ${error instanceof Error ? error.message : String(error)}`);
       continue;
     }
 
@@ -435,7 +485,7 @@ export async function runQualityEval(options: RunQualityEvalOptions): Promise<Qu
       output = await analyzeWithDegradation({
         analyzer: options.analyzer,
         analyzeInput: {
-          parsed,
+          ...prepared.input,
           analysisQuestion: goldenCase.analysisQuestion,
           logDomain: goldenCase.domain === "uncategorized" ? undefined : { name: goldenCase.domain }
         },
@@ -451,17 +501,15 @@ export async function runQualityEval(options: RunQualityEvalOptions): Promise<Qu
     const latencyMs = Math.max(0, now() - startedAtMs);
 
     const judge = goldenCase.expectRefusal ? null : await options.judge.score({ goldenCase, output });
-    caseResults.push(
-      evaluateQualityCaseOutput(goldenCase, output, {
-        latencyMs,
-        judge,
-        parsedLineNumbers: new Set(parsed.entries.map((entry) => entry.lineNumber))
-      })
-    );
+    caseResults.push({
+      ...evaluateQualityCaseOutput(goldenCase, output, { latencyMs, judge, ...prepared.scoring }),
+      ...resolveLogEvalCaseMetadata(goldenCase)
+    });
   }
 
-  const realResults = caseResults.filter((result) => result.realLog);
-  const syntheticResults = caseResults.filter((result) => !result.realLog);
+  const realResults = caseResults.filter((result) => result.tier === "golden");
+  const realisticResults = caseResults.filter((result) => result.tier === "realistic");
+  const syntheticResults = caseResults.filter((result) => result.tier === "synthetic");
   const realAggregates = realResults.length > 0 ? aggregateQualityResults(realResults) : null;
   const generatedAt = new Date().toISOString();
   const judgeSampleRate = options.judgeSampleRate ?? 0.2;
@@ -477,6 +525,7 @@ export async function runQualityEval(options: RunQualityEvalOptions): Promise<Qu
     aggregates: {
       all: aggregateQualityResults(caseResults),
       realCases: realAggregates,
+      realisticCases: realisticResults.length > 0 ? aggregateQualityResults(realisticResults) : null,
       syntheticCases: syntheticResults.length > 0 ? aggregateQualityResults(syntheticResults) : null
     },
     baseline: compareToQualityBaseline(options.baseline, realAggregates),
@@ -502,7 +551,7 @@ export function formatQualityReportMarkdown(report: QualityEvalReport): string {
     `- Kernel: \`${report.kernel}\`${report.deterministic ? " (deterministic mode)" : ""}`,
     `- Model: \`${report.modelLabel}\``,
     `- Judge: \`${report.judgeLabel}\``,
-    `- Cases: ${report.caseResults.length} (${report.caseResults.filter((result) => result.realLog).length} real, ${report.caseResults.filter((result) => !result.realLog).length} synthetic)`,
+    `- Cases: ${report.caseResults.length} (${report.aggregates.realCases?.caseCount ?? 0} golden, ${report.aggregates.realisticCases?.caseCount ?? 0} realistic, ${report.aggregates.syntheticCases?.caseCount ?? 0} synthetic)`,
     "",
     "## Aggregates",
     "",
@@ -512,8 +561,9 @@ export function formatQualityReportMarkdown(report: QualityEvalReport): string {
 
   const scopes: Array<[string, QualityAggregates | null]> = [
     ["all", report.aggregates.all],
-    ["realLog: true", report.aggregates.realCases],
-    ["realLog: false (format coverage)", report.aggregates.syntheticCases]
+    ["golden", report.aggregates.realCases],
+    ["realistic", report.aggregates.realisticCases],
+    ["synthetic (format coverage)", report.aggregates.syntheticCases]
   ];
   for (const [label, aggregates] of scopes) {
     if (!aggregates) {
@@ -574,12 +624,12 @@ export function formatQualityReportMarkdown(report: QualityEvalReport): string {
     "",
     "## Case results",
     "",
-    "| Case | Real | Source | Degraded | Latency (ms) | Evidence recall | Hallucination | Root-cause | Category | Refusal |",
+    "| Case | Tier | Source | Degraded | Latency (ms) | Evidence recall | Hallucination | Root-cause | Category | Refusal |",
     "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
   );
   for (const result of report.caseResults) {
     lines.push(
-      `| ${result.id} | ${result.realLog ? "yes" : "no"} | ${result.analysisSource ?? "-"} | ${result.degradedReason ?? "-"} | ${result.latencyMs} | ${result.evidence ? result.evidence.recall.toFixed(2) : "n/a"} | ${result.hallucination.rate.toFixed(2)} | ${result.judge ? result.judge.rootCauseScore.toFixed(2) : "n/a"} | ${result.judge ? (result.judge.categoryMatch ? "match" : "miss") : "n/a"} | ${result.refusal.expected ? (result.refusal.appropriate ? "appropriate" : "MISSED") : "-"} |`
+      `| ${result.id} | ${result.tier} | ${result.analysisSource ?? "-"} | ${result.degradedReason ?? "-"} | ${result.latencyMs} | ${result.evidence ? result.evidence.recall.toFixed(2) : "n/a"} | ${result.hallucination.rate.toFixed(2)} | ${result.judge ? result.judge.rootCauseScore.toFixed(2) : "n/a"} | ${result.judge ? (result.judge.categoryMatch ? "match" : "miss") : "n/a"} | ${result.refusal.expected ? (result.refusal.appropriate ? "appropriate" : "MISSED") : "-"} |`
     );
   }
 

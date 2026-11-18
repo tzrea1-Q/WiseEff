@@ -1,0 +1,50 @@
+[  218.001000] power_supply battery: status=Charging present=1
+[  219.001000] qcom-spmi-adc 400f3100.adc: channel=vbatt value=3822000
+[  220.001000] thermal thermal_zone2: polling interval 1000 ms
+[  221.001000] mmc0: clock 52000000Hz bus-width 4
+[  222.001000] usb 1-1: WARN descriptor read/64, error -71; retry succeeded
+[  223.001000] qcom-spmi-adc 400f3100.adc: channel=vbatt value=3826000
+[  224.001000] thermal thermal_zone2: polling interval 1000 ms
+[  225.001000] mmc0: clock 52000000Hz bus-width 4
+[  226.001000] power_supply battery: status=Charging present=1
+[  227.001000] qcom-spmi-adc 400f3100.adc: channel=vbatt value=3821000
+[  228.001000] thermal thermal_zone2: polling interval 1000 ms
+[  229.001000] mmc0: clock 52000000Hz bus-width 4
+[  230.001000] power_supply battery: status=Charging present=1
+[  231.001000] qcom-spmi-adc 400f3100.adc: channel=vbatt value=3825000
+[  232.001000] thermal thermal_zone2: polling interval 1000 ms
+[  233.001000] mmc0: clock 52000000Hz bus-width 4
+[  234.001000] i2c i2c-1: SDA held low for 26 ms, recovering bus
+[  235.001000] bq27xxx-battery 1-0055: charge read timed out (-110)
+[  236.001000] bq27xxx-battery 1-0055: current read timed out (-110)
+[  237.001000] i2c i2c-1: recovery complete, SDA released
+[  238.001000] bq27xxx-battery 1-0055: cache refresh complete
+[  239.001000] qcom-spmi-adc 400f3100.adc: channel=vbatt value=3824000
+[  240.001000] thermal thermal_zone2: polling interval 1000 ms
+[  241.001000] mmc0: clock 52000000Hz bus-width 4
+[  242.001000] bq27xxx-battery 1-0055: cache refresh complete
+[  243.001000] qcom-spmi-adc 400f3100.adc: channel=vbatt value=3828000
+[  244.001000] thermal thermal_zone2: polling interval 1000 ms
+[  245.001000] mmc0: clock 52000000Hz bus-width 4
+[  246.001000] bq27xxx-battery 1-0055: cache refresh complete
+[  247.001000] qcom-spmi-adc 400f3100.adc: channel=vbatt value=3823000
+[  248.001000] thermal thermal_zone2: polling interval 1000 ms
+[  249.001000] mmc0: clock 52000000Hz bus-width 4
+[  250.001000] bq27xxx-battery 1-0055: cache refresh complete
+[  251.001000] qcom-spmi-adc 400f3100.adc: channel=vbatt value=3827000
+[  252.001000] thermal thermal_zone2: polling interval 1000 ms
+[  253.001000] mmc0: clock 52000000Hz bus-width 4
+[  254.001000] bq27xxx-battery 1-0055: cache refresh complete
+[  255.001000] qcom-spmi-adc 400f3100.adc: channel=vbatt value=3822000
+[  256.001000] thermal thermal_zone2: polling interval 1000 ms
+[  257.001000] mmc0: clock 52000000Hz bus-width 4
+[  258.001000] bq27xxx-battery 1-0055: sample voltage_now=3820000 current_now=1382000
+[  259.001000] bq27xxx-battery 1-0055: sample voltage_now=3821000 current_now=1382000
+[  260.001000] bq27xxx-battery 1-0055: sample voltage_now=3822000 current_now=1382000
+[  261.001000] bq27xxx-battery 1-0055: sample voltage_now=3823000 current_now=1382000
+[  262.001000] bq27xxx-battery 1-0055: sample voltage_now=3824000 current_now=1382000
+[  263.001000] bq27xxx-battery 1-0055: sample voltage_now=3825000 current_now=1382000
+[  264.001000] bq27xxx-battery 1-0055: sample voltage_now=3826000 current_now=1382000
+[  265.001000] bq27xxx-battery 1-0055: sample voltage_now=3827000 current_now=1382000
+[  266.001000] bq27xxx-battery 1-0055: sample voltage_now=3828000 current_now=1382000
+[  267.001000] bq27xxx-battery 1-0055: sample voltage_now=3829000 current_now=1382000
