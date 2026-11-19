@@ -1,13 +1,43 @@
 import { createRequire } from "node:module";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isValidJsonSchema202012 } from "./schemaValidation";
+import { validCatalogReleaseBundle } from "./__fixtures__/catalogReleaseBundle";
+import { isCatalogReleaseBundle, isValidJsonSchema202012 } from "./schemaValidation";
 
 const Ajv2020 = (createRequire(import.meta.url)("ajv/dist/2020") as {
   default: { prototype: { compile(schema: unknown): unknown } };
 }).default;
 
 afterEach(() => vi.restoreAllMocks());
+
+function bundleWithSourceBytes(bytes: string) {
+  const bundle = validCatalogReleaseBundle();
+  const [release, ...rest] = bundle.releases;
+  const [source, ...otherSources] = release!.sources;
+  return {
+    ...bundle,
+    releases: [{ ...release, sources: [{ ...source, bytes }, ...otherSources] }, ...rest],
+  };
+}
+
+describe("Catalog bundle source encoding", () => {
+  it("accepts large padded sources and rejects an invalid character near the end", () => {
+    const prefix = "YWJj".repeat(2_097_152);
+    expect(isCatalogReleaseBundle(bundleWithSourceBytes(`${prefix}ZA==`))).toBe(true);
+    expect(isCatalogReleaseBundle(bundleWithSourceBytes(`${prefix}Z_==`))).toBe(false);
+  });
+
+  it.each(["AAAA", "aA+/", "YWI=", "YQ=="])("accepts %s as padded Base64 syntax", (bytes) => {
+    expect(isCatalogReleaseBundle(bundleWithSourceBytes(bytes))).toBe(true);
+  });
+
+  it.each(["", "YQ", "AAAAA", "A===", "AA=A", "AA==AAAA", "AA__", "A AA", "AAAA\n"])(
+    "rejects %j as source bytes",
+    (bytes) => {
+      expect(isCatalogReleaseBundle(bundleWithSourceBytes(bytes))).toBe(false);
+    },
+  );
+});
 
 describe("Catalog value schema validation cache", () => {
   it("compiles equivalent schemas only once, including reordered isolated copies", () => {
