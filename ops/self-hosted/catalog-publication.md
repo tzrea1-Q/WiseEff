@@ -95,6 +95,24 @@ an older `--max-old-space-size` in that variable. Keep the heap below the RAM
 ceiling. `FATAL ERROR: ... JavaScript heap out of memory` is a V8 failure even when
 Docker reports `OOMKilled=false`.
 
+For a large dedicated host (for example, 125 GiB RAM with about 120 GiB
+available), replace the six settings in `.env` with this higher-capacity profile:
+
+```dotenv
+WISEEFF_API_MEMORY_LIMIT=16g
+WISEEFF_API_MEMORY_SWAP_LIMIT=16g
+WISEEFF_API_MAX_OLD_SPACE_SIZE_MB=12288
+WISEEFF_PUBLICATION_MANAGER_MEMORY_LIMIT=16g
+WISEEFF_PUBLICATION_MANAGER_MEMORY_SWAP_LIMIT=16g
+WISEEFF_PUBLICATION_MANAGER_MAX_OLD_SPACE_SIZE_MB=12288
+```
+
+The two services can use up to 32 GiB of RAM combined. Each has 4 GiB between
+the V8 old-space limit and the container ceiling. Matching the RAM and
+RAM-plus-swap ceilings keeps these services from using swap. These ceilings do
+not reserve RAM up front. Keep the deployment's existing database settings
+unless database measurements indicate a separate bottleneck.
+
 Use the normal [upgrade procedure](upgrade.md) to deploy application code changes.
 For a configuration-only recovery using the already running image, first update
 the Compose configuration, then run the following during a short API interruption.
@@ -124,7 +142,7 @@ Verify the actual recreated containers and their main-process arguments:
 ```bash
 ./scripts/compose --env-file .env ps -a -q api publication-manager |
   xargs -r docker inspect --format \
-  '{{.Name}} memory={{.HostConfig.Memory}} memorySwap={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}} restarts={{.RestartCount}}'
+  '{{.Name}} memory={{.HostConfig.Memory}} memorySwap={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}'
 ./scripts/compose --env-file .env exec -T api \
   curl -fsS http://127.0.0.1:8787/health/live
 ./scripts/compose --env-file .env exec -T publication-manager \
@@ -137,6 +155,13 @@ At defaults, inspect shows `memory=2147483648`, `memorySwap=3221225472` and
 that CLI flag reports the new probe's default heap, not the running service's heap.
 Retry one import preview, then confirm it completes and restart counts remain
 unchanged. Health alone does not establish import or publication acceptance.
+With the 16 GiB profile, both ceilings should read `17179869184` and the Node
+argument should be `--max-old-space-size=12288`. If the error returns, record the
+failed request path, status, duration, and response request ID. The preview POST
+to `/api/v2/catalog/publication-candidates` is handled by the API. If that POST
+succeeds and the publication job fails after confirmation, inspect the separate
+manager logs for that job ID. Check container restart counts and OOM state before
+attributing a gateway response to insufficient memory.
 
 ## 2. Inspect a preexisting Catalog
 

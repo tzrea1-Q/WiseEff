@@ -13,6 +13,7 @@ import type {
   CatalogReleaseBundle,
   CatalogReleaseDocument,
   CatalogReleaseNode,
+  CompiledCatalogRelease,
   CompileCatalogReleaseResult,
   CompiledCatalogReleaseModel,
 } from "./types";
@@ -84,9 +85,13 @@ const targetCounts = (documents: readonly CatalogReleaseDocument[]) => {
   };
 };
 
-export const compileCatalogRelease = (
+const validateCompilationInput = (
   bundle: CatalogReleaseBundle,
-): CompileCatalogReleaseResult => {
+): Extract<CompileCatalogReleaseResult, { ok: false }> | {
+  readonly ok: true;
+  readonly bundle: CatalogReleaseBundle;
+  readonly target: CatalogReleaseNode;
+} => {
   let prepared: ReturnType<typeof prepareForCompilation> | null = null;
   try {
     prepared = prepareForCompilation(bundle);
@@ -127,7 +132,32 @@ export const compileCatalogRelease = (
     };
   }
 
-  const authoritativeBundle = prepared.bundle;
+  const target = prepared.bundle.releases.find(
+    (node) => node.manifest.release.id === prepared.bundle.targetReleaseId,
+  );
+  if (!target) throw new Error("validated target release disappeared");
+  return { ok: true, bundle: prepared.bundle, target };
+};
+
+/** Fully validate a bundle when the caller only needs its aggregate digest. */
+export const validateCatalogReleaseDigest = (
+  bundle: CatalogReleaseBundle,
+): Extract<CompileCatalogReleaseResult, { ok: false }> | {
+  readonly ok: true;
+  readonly value: { readonly aggregateDigest: CompiledCatalogRelease["aggregateDigest"] };
+} => {
+  const validated = validateCompilationInput(bundle);
+  if (!validated.ok) return validated;
+  return { ok: true, value: { aggregateDigest: CatalogReleaseDigest(validated.target.manifest.release.digest) } };
+};
+
+export const compileCatalogRelease = (
+  bundle: CatalogReleaseBundle,
+): CompileCatalogReleaseResult => {
+  const validated = validateCompilationInput(bundle);
+  if (!validated.ok) return validated;
+
+  const authoritativeBundle = validated.bundle;
   const releases = sorted(authoritativeBundle.releases, (node) => [
     node.manifest.release.sequence,
     node.manifest.release.id,

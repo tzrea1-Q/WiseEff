@@ -73,6 +73,22 @@ API 预览和管理进程激活都会编译 Catalog 数据。两个服务各自�
 RAM 上限。日志出现 `FATAL ERROR: ... JavaScript heap out of memory` 就属于 V8
 内存耗尽，即使 Docker 显示 `OOMKilled=false`。
 
+对于内存充足的专用主机（例如总内存 125 GiB、可用约 120 GiB），可将主 `.env`
+中的六项配置替换为：
+
+```dotenv
+WISEEFF_API_MEMORY_LIMIT=16g
+WISEEFF_API_MEMORY_SWAP_LIMIT=16g
+WISEEFF_API_MAX_OLD_SPACE_SIZE_MB=12288
+WISEEFF_PUBLICATION_MANAGER_MEMORY_LIMIT=16g
+WISEEFF_PUBLICATION_MANAGER_MEMORY_SWAP_LIMIT=16g
+WISEEFF_PUBLICATION_MANAGER_MAX_OLD_SPACE_SIZE_MB=12288
+```
+
+两个服务的 RAM 上限合计 32 GiB，各自给 V8 老生代以外的分配留出 4 GiB。
+RAM 和 RAM 加交换空间的上限相等，两个服务不使用交换空间。上限不会预先分配内存。
+数据库沿用现有配置，根据数据库的观测结果单独调优。
+
 应用代码修改按正常[升级流程](upgrade.zh-CN.md)部署。如果只是用当前运行镜像恢复
 资源配置，先更新 Compose 配置，然后在允许 API 短暂中断时执行以下命令。示例适用于
 API 和管理进程共用带标签镜像的标准部署；从当前 Compose 项目的 API 固定镜像，避免
@@ -100,7 +116,7 @@ WISEEFF_APP_TAG="${wiseeff_app_image##*:}" \
 ```bash
 ./scripts/compose --env-file .env ps -a -q api publication-manager |
   xargs -r docker inspect --format \
-  '{{.Name}} memory={{.HostConfig.Memory}} memorySwap={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}} restarts={{.RestartCount}}'
+  '{{.Name}} memory={{.HostConfig.Memory}} memorySwap={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}'
 ./scripts/compose --env-file .env exec -T api \
   curl -fsS http://127.0.0.1:8787/health/live
 ./scripts/compose --env-file .env exec -T publication-manager \
@@ -112,6 +128,11 @@ WISEEFF_APP_TAG="${wiseeff_app_image##*:}" \
 `--max-old-space-size=1536`。单独执行未携带该命令行参数的 `exec ... node -e`，得到的
 是新探针进程默认堆上限，而非运行中服务的堆上限。重试一次导入预览，确认成功且重启
 计数没有增加。健康检查通过不能代替导入与发布验收。
+使用 16 GiB 配置时，两个上限均应显示 `17179869184`，Node 参数应为
+`--max-old-space-size=12288`。若仍报错，记录失败请求的路径、状态码、耗时和响应
+请求 ID。预览请求 `POST /api/v2/catalog/publication-candidates` 由 API 处理。
+如果预览通过、确认发布后任务失败，按任务 ID 查看发布管理进程日志。结合容器的重启
+计数和 OOM 状态判断网关错误是否由内存不足引起。
 
 ## 2. 预检已有目录
 

@@ -1,4 +1,4 @@
-export { compileCatalogRelease } from "./compileCatalogRelease";
+export { compileCatalogRelease, validateCatalogReleaseDigest } from "./compileCatalogRelease";
 export { isCatalogReleaseBundle } from "./validation";
 export {
   catalogCompilerContract,
