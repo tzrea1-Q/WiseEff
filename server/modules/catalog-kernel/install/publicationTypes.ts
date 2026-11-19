@@ -69,6 +69,7 @@ export type CatalogInstallOutcome =
   | AlreadyRecordedResult;
 
 export type PublicationActivationError =
+  | { readonly kind: "activation-timeout" }
   | {
       readonly kind: "needs-rebase";
       readonly installed: CatalogReleaseIdentity | null;

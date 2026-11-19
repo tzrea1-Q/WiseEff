@@ -75,6 +75,14 @@ curl -fsS http://127.0.0.1:8791/health/live   # from inside the manager containe
 
 API and log worker set `WISEEFF_API_PROCESS=1` / `LOG_WORKER_ENABLED=true` and never load `.env.publication-manager`. The manager entry requires `WISEEFF_PUBLICATION_MANAGER=1`.
 
+### Activation deadline and retry
+
+`WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS` defaults to 60 seconds. At that threshold the manager logs `activation-timeout` and checks for a committed activation Receipt. The current attempt has an additional grace period equal to the configured timeout, capped at 60 seconds. The effective lease covers the timeout, grace period, and a five-second settlement margin. A longer configured lease still applies.
+
+Artifact parsing and compilation finish before the manager acquires the Catalog pointer lock. The activation transaction rechecks the Receipt, base release, authorization, fence, and artifact identity. After the watchdog fires, the manager waits for the existing attempt to commit or roll back if no Receipt confirms success. A deadline failure records `activation-timeout` and follows `WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET`, which defaults to five attempts.
+
+For a long-running job, correlate `claimed`, `activation-timeout`, `settled`, and `activated` events by job ID. The activation Receipt confirms publication. Administrators can read `catalog_publication.publication_jobs.last_error_reason` to distinguish a deadline failure from another execution problem.
+
 ### Memory budgets for preview and publication
 
 Both API preview and manager activation compile Catalog data. Each service defaults

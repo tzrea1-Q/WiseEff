@@ -43,7 +43,11 @@ import {
 import {
   activateOnlinePublication,
   adoptPreexistingCurrent,
+  applyPublicationTimeouts,
+  isPublicationTimeoutError,
+  prepareOnlinePublication,
   publicationRegimeActive,
+  remainingPublicationTime,
   refuseUnsupportedConsumerCapability,
   setSynchronizerRole,
   type PublicationActivationOptions,
@@ -647,26 +651,31 @@ const withCatalogWriteTransaction = async <T>(
   pool: pg.Pool,
   operation: "installPublishedRelease" | "switchBackBeforeTraffic",
   work: (client: pg.PoolClient) => Promise<T>,
-  session?: { readonly synchronizer?: boolean },
+  session?: { readonly synchronizer?: boolean; readonly activationDeadlineMs?: number },
 ): Promise<Result<T, CatalogInstallError>> => {
   const client = await pool.connect();
+  let discard = false;
   try {
     await client.query("begin");
-    try {
-      await client.query("set constraints all deferred");
-      if (session?.synchronizer) {
-        await setSynchronizerRole(client);
-      }
-      await acquireCurrentPointerLockExclusive(client);
-      const value = await work(client);
-      await client.query("commit");
-      return ok(value);
-    } catch (error) {
-      await client.query("rollback").catch(() => undefined);
-      return fail(mapWriteError(error, operation));
+    await client.query("set constraints all deferred");
+    if (session?.synchronizer) {
+      await setSynchronizerRole(client);
     }
+    await applyPublicationTimeouts(client, session?.activationDeadlineMs);
+    await acquireCurrentPointerLockExclusive(client);
+    const value = await work(client);
+    await applyPublicationTimeouts(client, session?.activationDeadlineMs);
+    remainingPublicationTime(session?.activationDeadlineMs);
+    await client.query("commit");
+    return ok(value);
+  } catch (error) {
+    await client.query("rollback").catch(() => { discard = true; });
+    if (session?.activationDeadlineMs !== undefined && isPublicationTimeoutError(error)) {
+      return fail({ kind: "activation-timeout" });
+    }
+    return fail(mapWriteError(error, operation));
   } finally {
-    client.release();
+    client.release(discard || undefined);
   }
 };
 
@@ -697,11 +706,17 @@ const installPublishedReleaseInternal = async (
   options?: CatalogInstallerTestOptions,
 ): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> => {
   if (command.mode === "online-publication") {
+    const preparation = await prepareOnlinePublication(pool, command, options);
+    try {
+      remainingPublicationTime(command.activationDeadlineMs);
+    } catch (error) {
+      return fail(mapWriteError(error, "installPublishedRelease"));
+    }
     return withCatalogWriteTransaction(
       pool,
       "installPublishedRelease",
-      (client) => activateOnlinePublication(client, command, options),
-      { synchronizer: true },
+      (client) => activateOnlinePublication(client, command, preparation, options),
+      { synchronizer: true, activationDeadlineMs: command.activationDeadlineMs },
     );
   }
   if (command.mode === "adopted-preexisting") {

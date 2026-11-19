@@ -480,7 +480,9 @@ export type InstallPublishedReleaseCommand =
       readonly authorizationId: PublicationAuthorizationId;
       readonly expectedCurrent: CatalogReleasePin;
       readonly fencingToken: number;
+      readonly activationDeadlineMs?: number;
       readonly trustedActor: TrustedInvocationContext;
+      readonly refreshTrustedActor?: () => Promise<TrustedInvocationContext | null>;
       readonly impactFacts?: ImpactFacts;
     }
   | {

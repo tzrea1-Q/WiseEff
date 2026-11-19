@@ -884,6 +884,10 @@ export async function updateJobExecution(
     values.push(patch.expectedFencingToken);
     where += ` and fencing_token = $${values.length}`;
   }
+  if (patch.expectedStatus !== undefined) {
+    values.push(patch.expectedStatus);
+    where += ` and status = $${values.length}`;
+  }
   try {
     const updated = await db.query<JobRow>(
       `update catalog_publication.publication_jobs
@@ -897,10 +901,11 @@ export async function updateJobExecution(
     );
     const row = updated.rows[0];
     if (!row) {
-      if (patch.expectedFencingToken !== undefined) {
+      if (patch.expectedFencingToken !== undefined || patch.expectedStatus !== undefined) {
         const existing = await getJob(db, jobId);
         if (existing.ok) {
-          return fail({ kind: "conflict", reason: "fencing-token-mismatch" });
+          return fail({ kind: "conflict", reason: patch.expectedStatus !== undefined && existing.value.status !== patch.expectedStatus
+            ? "job-status-mismatch" : "fencing-token-mismatch" });
         }
         return existing;
       }

@@ -55,6 +55,14 @@ setup preflight 与 doctor 解析 `DATABASE_URL`：bootstrap 用户 `wiseeff` �
 
 API 设置 `WISEEFF_API_PROCESS=1`，日志 worker 设置 `LOG_WORKER_ENABLED=true`，两者都不加载 `.env.publication-manager`。管理入口要求 `WISEEFF_PUBLICATION_MANAGER=1`。
 
+### 激活超时与重试
+
+`WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS` 的默认值为 60 秒。到达此时间会记录 `activation-timeout`，并检查是否已有提交的激活回执。当前尝试可继续执行，宽限期等于配置的超时时间且最多 60 秒。有效租约至少覆盖超时、宽限期和 5 秒收尾余量。部署中已配置更长租约时，继续使用该值。
+
+目录包解析和编译在获取目录指针锁前完成。激活事务重新核对回执、发布基线、授权、执行令牌和产物身份。超时后，如果旧尝试还没有结束，管理进程等它提交或回滚。达到执行截止时间且未生效的尝试记录 `activation-timeout` 失败原因，并按 `WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET`（默认 5）进入重试或终态。
+
+处理长时间 `running` 时，按 Job ID 对照管理进程的 `claimed`、`activation-timeout`、`settled` 和 `activated` 事件。用该任务的激活回执确认是否已生效。管理员可以通过只读查询 `catalog_publication.publication_jobs.last_error_reason` 区分激活超时和其他执行故障。
+
 ### 预览和发布的内存预算
 
 API 预览和管理进程激活都会编译 Catalog 数据。两个服务各自默认使用 2 GiB RAM

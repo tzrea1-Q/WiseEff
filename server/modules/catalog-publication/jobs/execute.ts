@@ -212,15 +212,16 @@ const settleFailure = async (
     lastErrorClass: errorClass,
     lastErrorReason: reason,
     expectedFencingToken: job.fencingToken,
+    expectedStatus: "running",
   });
   if (updated.ok) {
     return updated.value;
   }
   if (updated.error.kind === "conflict") {
     const latest = await getJob(coordinator, job.id);
-    return latest.ok ? latest.value : job;
+    if (latest.ok) return latest.value;
   }
-  return job;
+  throw new Error("publication job failure could not be persisted");
 };
 
 const classifyInstallError = (
@@ -238,6 +239,9 @@ const classifyInstallError = (
   }
   if (error.kind === "fencing-token-mismatch") {
     return { status: "failed-retryable", errorClass: "fence", reason: "fencing-token-mismatch" };
+  }
+  if (error.kind === "activation-timeout") {
+    return { status: "failed-retryable", errorClass: "timeout", reason: "activation-timeout" };
   }
   if (error.kind === "activation-receipt-mismatch") {
     return { status: "blocked", errorClass: "receipt", reason: "activation-receipt-mismatch" };
@@ -304,10 +308,11 @@ export async function recoverPublicationJobFromReceipt(
   coordinator: Queryable,
   pool: pg.Pool,
   job: PublicationJobRecord,
+  options?: { readonly committedOnly: true },
 ): Promise<ExecutePublicationJobResult | null> {
   const receipt = await getReceiptByJobId(coordinator, job.id);
   if (!receipt.ok) {
-    if (receipt.error.kind === "not-found") {
+    if (options?.committedOnly || receipt.error.kind === "not-found") {
       return null;
     }
     return {
@@ -323,6 +328,7 @@ export async function recoverPublicationJobFromReceipt(
     };
   }
   if (!receiptMatchesJob(receipt.value, job)) {
+    if (options?.committedOnly) return null;
     return {
       kind: "settled",
       job: await settleFailure(
@@ -344,6 +350,23 @@ export async function recoverPublicationJobFromReceipt(
   };
 }
 
+/** Reconcile first. The caller waits for any in-flight activation before settling failure. */
+export async function settleUnexpectedPublicationFailure(
+  db: Database,
+  pool: pg.Pool,
+  job: PublicationJobRecord,
+  retryBudget: number,
+): Promise<ExecutePublicationJobResult> {
+  return withPublicationCoordinator(db, async (tx) => {
+    const recovered = await recoverPublicationJobFromReceipt(tx, pool, job);
+    if (recovered) return recovered;
+    return {
+      kind: "settled",
+      job: await settleFailure(tx, job, "failed-retryable", "execution", "activation-execution-error", retryBudget),
+    };
+  });
+}
+
 export async function executeClaimedPublicationJob(input: {
   readonly db: Database;
   readonly pool: pg.Pool;
@@ -351,6 +374,7 @@ export async function executeClaimedPublicationJob(input: {
   readonly claimed: PublicationJobRecord;
   readonly resolvePublisherActor: ResolvePublisherActor;
   readonly retryBudget: number;
+  readonly activationDeadlineMs?: number;
 }): Promise<ExecutePublicationJobResult> {
   const recovered = await withPublicationCoordinator(input.db, (tx) =>
     recoverPublicationJobFromReceipt(tx, input.pool, input.claimed),
@@ -434,7 +458,9 @@ export async function executeClaimedPublicationJob(input: {
         digest: prepared.candidate.expectedBaseReleaseDigest,
       },
       fencingToken: prepared.job.fencingToken,
+      activationDeadlineMs: input.activationDeadlineMs,
       trustedActor: actor,
+      refreshTrustedActor: () => input.resolvePublisherActor(prepared.authorization.actorPrincipalId),
       impactFacts: prepared.facts,
     });
   } catch {
@@ -506,20 +532,26 @@ export async function executeClaimedPublicationJob(input: {
   }
 
   const classified = classifyInstallError(outcome.error);
-  const settled = await withPublicationCoordinator(input.db, (tx) =>
-    settleFailure(
+  const finished = await withPublicationCoordinator(input.db, async (tx) => {
+    // A driver can report an error while returning the result of COMMIT.
+    const recovered = await recoverPublicationJobFromReceipt(tx, input.pool, prepared.job);
+    if (recovered) return recovered;
+    const settled = await settleFailure(
       tx,
       prepared.job,
       classified.status,
       classified.errorClass,
       classified.reason,
       input.retryBudget,
-    ),
-  );
-  if (!RETRYABLE_ERROR_CLASSES.has(classified.errorClass)) {
+    );
+    return { kind: "settled" as const, job: settled };
+  });
+  if (finished.kind === "settled" && finished.job.fencingToken === prepared.job.fencingToken &&
+      finished.job.lastErrorClass === classified.errorClass && finished.job.lastErrorReason === classified.reason &&
+      !RETRYABLE_ERROR_CLASSES.has(classified.errorClass)) {
     await withPublicationCoordinator(input.db, (tx) =>
-      appendFailureAudit(tx, settled.id, classified.reason, classified.errorClass),
+      appendFailureAudit(tx, finished.job.id, classified.reason, classified.errorClass),
     );
   }
-  return { kind: "settled", job: settled };
+  return finished;
 }
