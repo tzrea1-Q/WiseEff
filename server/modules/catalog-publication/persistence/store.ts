@@ -42,6 +42,12 @@ import {
   PublicationPolicyRevision,
 } from "../../parameter-catalog-contract/index";
 import type { Queryable } from "../../../shared/database/client";
+import {
+  artifactByteChunkJoin,
+  artifactByteColumns,
+  assembleArtifactBytes,
+  type ArtifactByteChunkRow,
+} from "./artifactByteTransport";
 import type {
   ActivationReceiptKind,
   AppendAuthorizationInput,
@@ -150,14 +156,13 @@ const bytesEqual = (left: Uint8Array, right: Uint8Array): boolean => {
   if (left.byteLength !== right.byteLength) {
     return false;
   }
-  return Buffer.compare(Buffer.from(left), Buffer.from(right)) === 0;
+  return Buffer.compare(left, right) === 0;
 };
 
 type ArtifactRow = {
   id: string;
   artifact_digest: string;
   bytes_checksum: string;
-  artifact_bytes: Buffer;
   source_kind: ArtifactSourceKind;
   target_release_id: string;
   target_release_digest: string;
@@ -167,11 +172,11 @@ type ArtifactRow = {
   created_at: Date | string;
 };
 
-const toArtifact = (row: ArtifactRow): ReleaseArtifactRecord => ({
+const toArtifact = (row: ArtifactRow, artifactBytes: Uint8Array): ReleaseArtifactRecord => ({
   id: CatalogArtifactId(row.id),
   artifactDigest: row.artifact_digest,
   bytesChecksum: row.bytes_checksum,
-  artifactBytes: new Uint8Array(row.artifact_bytes),
+  artifactBytes,
   sourceKind: row.source_kind,
   targetReleaseId: CatalogReleaseId(row.target_release_id),
   targetReleaseDigest: CatalogReleaseDigest(row.target_release_digest),
@@ -353,20 +358,22 @@ export async function getArtifactByDigest(
     return fail(digestError);
   }
   try {
-    const result = await db.query<ArtifactRow>(
+    const result = await db.query<ArtifactRow & ArtifactByteChunkRow>(
       `select
-         id, artifact_digest, bytes_checksum, artifact_bytes, source_kind,
+         id, artifact_digest, bytes_checksum, source_kind,
          target_release_id, target_release_digest, predecessor_release_id,
-         predecessor_release_digest, toolchain, created_at
-       from catalog_publication.release_artifacts
-       where artifact_digest = $1`,
+         predecessor_release_digest, toolchain, created_at, ${artifactByteColumns}
+       from catalog_publication.release_artifacts as artifact
+       ${artifactByteChunkJoin}
+       where artifact_digest = $1
+       order by chunk.byte_start`,
       [artifactDigest],
     );
     const row = result.rows[0];
     if (!row) {
       return fail({ kind: "not-found", entity: "artifact" });
     }
-    return ok(toArtifact(row));
+    return ok(toArtifact(row, assembleArtifactBytes(result.rows)));
   } catch (error) {
     return fail(mapWriteError(error));
   }
@@ -386,12 +393,15 @@ export async function persistArtifact(
   if (input.artifactBytes.byteLength === 0) {
     return fail({ kind: "invalid-input", reason: "artifactBytes must be non-empty" });
   }
-  const bytesChecksum = sha256DigestOfBytes(input.artifactBytes);
+  // Own the bytes before awaiting the lookup: the checksum, insert, and
+  // returned record must refer to the same snapshot.
+  const bytes = Buffer.from(input.artifactBytes);
+  const bytesChecksum = sha256DigestOfBytes(bytes);
   const existing = await getArtifactByDigest(db, input.artifactDigest);
   if (existing.ok) {
     if (
       existing.value.bytesChecksum === bytesChecksum &&
-      bytesEqual(existing.value.artifactBytes, input.artifactBytes)
+      bytesEqual(existing.value.artifactBytes, bytes)
     ) {
       return existing;
     }
@@ -409,14 +419,14 @@ export async function persistArtifact(
          predecessor_release_digest, toolchain
        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
        returning
-         id, artifact_digest, bytes_checksum, artifact_bytes, source_kind,
+         id, artifact_digest, bytes_checksum, source_kind,
          target_release_id, target_release_digest, predecessor_release_id,
          predecessor_release_digest, toolchain, created_at`,
       [
         input.id,
         input.artifactDigest,
         bytesChecksum,
-        Buffer.from(input.artifactBytes),
+        bytes,
         input.sourceKind,
         input.targetReleaseId,
         input.targetReleaseDigest,
@@ -429,12 +439,12 @@ export async function persistArtifact(
     if (!row) {
       return fail({ kind: "not-found", entity: "artifact" });
     }
-    return ok(toArtifact(row));
+    return ok(toArtifact(row, new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)));
   } catch (error) {
     const mapped = mapWriteError(error);
     if (mapped.kind === "conflict" && mapped.reason === "artifact-digest-bytes-mismatch") {
       const raced = await getArtifactByDigest(db, input.artifactDigest);
-      if (raced.ok && bytesEqual(raced.value.artifactBytes, input.artifactBytes)) {
+      if (raced.ok && bytesEqual(raced.value.artifactBytes, bytes)) {
         return raced;
       }
     }
