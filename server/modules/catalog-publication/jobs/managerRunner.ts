@@ -4,6 +4,7 @@ import { createUserInvocation } from "../../auth/trustedInvocation";
 import { getAuthContext } from "../../auth/repository";
 import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
+import { ApiError } from "../../../shared/http/errors";
 import { resolvePublicationManagerDatabaseUrl } from "../runtime/managerDatabaseUrl";
 import {
   assertPublicationManagerEntry,
@@ -59,7 +60,11 @@ if (!resolvedUrl.ok) {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 } else {
-  const db = createPostgresDatabase(resolvedUrl.url);
+  const resolved = resolvePublicationManagerOptions(process.env);
+  const db = createPostgresDatabase(resolvedUrl.url, { pool: {
+    connectionTimeoutMillis: Math.min(resolved.activationTimeoutMs, 5_000),
+    statement_timeout: resolved.activationTimeoutMs,
+  } });
   const pool = getRootPostgresPool(db);
   if (!pool) {
     throw new Error("publication manager requires a root PostgreSQL pool");
@@ -70,7 +75,6 @@ if (!resolvedUrl.ok) {
   if (superuser.rows[0]?.rolsuper === true) {
     throw new Error("publication manager LOGIN must not be a superuser");
   }
-  const resolved = resolvePublicationManagerOptions(process.env);
   const installer = createCatalogInstaller(pool);
   const stop = startPublicationManagerLoop({
     db,
@@ -79,8 +83,9 @@ if (!resolvedUrl.ok) {
     resolvePublisherActor: async (principalId) => {
       try {
         return createUserInvocation(await getAuthContext(db, principalId));
-      } catch {
-        return null;
+      } catch (error) {
+        if (error instanceof ApiError && (error.code === "UNAUTHENTICATED" || error.code === "FORBIDDEN")) return null;
+        throw error;
       }
     },
     ...resolved,
