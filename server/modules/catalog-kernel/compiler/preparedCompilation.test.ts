@@ -17,7 +17,7 @@ afterEach(() => vi.restoreAllMocks());
 vi.mock("yaml", { spy: true });
 
 describe("request-local compiler preparation", () => {
-  it("does not parse validated YAML a third time when producing the compiled projection", () => {
+  it("parses each YAML source once for syntax, authority and compiled output", () => {
     const bundle = validCatalogReleaseBundle();
     const sourceCount = bundle.releases.reduce((count, release) => count + release.sources.length, 0);
     const parse = vi.mocked(yaml.parseAllDocuments);
@@ -28,9 +28,7 @@ describe("request-local compiler preparation", () => {
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) throw new Error("valid bundle did not compile");
     expect(compiled.value.compiledReleaseDigest).toBe(compiledReleaseGolden.compiledReleaseDigest);
-    // Keep the independent syntax and authoritative-content checks. Preparation
-    // must reuse their result instead of creating a third YAML/object graph.
-    expect(parse).toHaveBeenCalledTimes(sourceCount * 2);
+    expect(parse).toHaveBeenCalledTimes(sourceCount);
   });
 
   it("revalidates changed bytes on a later call with the same bundle object", () => {

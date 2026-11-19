@@ -1,8 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
-import { parseAllDocuments } from "yaml";
-
 import {
   CatalogSubjectId,
   catalogReleaseViolationCodes,
@@ -25,7 +23,7 @@ import {
   isCatalogReleaseBundle,
   isValidJsonSchema202012,
 } from "./schemaValidation";
-import { deriveSourceDocuments } from "./sourceAuthority";
+import { deriveSourceDocuments, inspectSource, type CatalogSource, type SourceInspection } from "./sourceAuthority";
 import type { StableCatalogRules } from "./stableRules";
 
 export { isCatalogReleaseBundle } from "./schemaValidation";
@@ -85,6 +83,7 @@ const countBy = <Value>(
 
 const validateSources = (
   releases: readonly CatalogReleaseNode[],
+  inspections: WeakMap<CatalogSource, SourceInspection>,
   rules: StableCatalogRules["manifestRules"] = stableCatalogRules.manifestRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
@@ -241,16 +240,9 @@ const validateSources = (
           }),
         );
       }
-      try {
-        const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-        const parsed = parseAllDocuments(text, { prettyErrors: false });
-        if (
-          parsed.length === 0 ||
-          parsed.some((document) => document.errors.length > 0)
-        ) {
-          throw new TypeError("YAML parse failed");
-        }
-      } catch {
+      const inspected = inspections.get(source) ?? inspectSource(source, bytes, actualDigest);
+      inspections.set(source, inspected);
+      if (!inspected.syntaxValid) {
         violations.push(
           violation({
             code: "manifest-unreadable",
@@ -1638,7 +1630,10 @@ export const prepareForCompilation = (
     ...bundle,
     releases,
   };
-  const sourceViolations = validateSources(releases, rules.manifestRules);
+  // Share one parse between syntax and authority validation. Keep their
+  // diagnostics in the original order: inventory and syntax errors come first.
+  const inspectedSources = new WeakMap<CatalogSource, SourceInspection>();
+  const sourceViolations = validateSources(releases, inspectedSources, rules.manifestRules);
   if (sourceViolations.length > 0) {
     return {
       bundle,
@@ -1651,7 +1646,7 @@ export const prepareForCompilation = (
   }
 
   const derivedReleases = releases.map((release) => {
-    const derived = deriveSourceDocuments(release);
+    const derived = deriveSourceDocuments(release, inspectedSources);
     if (derived.failures.length > 0) {
       sourceViolations.push(
         ...derived.failures.map((failure) =>
@@ -1664,17 +1659,17 @@ export const prepareForCompilation = (
       );
       return release;
     }
-    const declared = sortContractArray(release.documents, (document) => [
-      document.kind,
-      document.content.id,
-    ]);
+    const declared = release.documents;
     const authoritative = sortContractArray(derived.documents, (document) => [
       document.kind,
       document.content.id,
     ]);
     if (
-      serializeContract(declared as unknown as ContractJsonValue) !==
-      serializeContract(authoritative as unknown as ContractJsonValue)
+      declared.length !== authoritative.length ||
+      declared.some((document, index) =>
+        serializeContract(document as unknown as ContractJsonValue) !==
+        serializeContract(authoritative[index] as unknown as ContractJsonValue),
+      )
     ) {
       sourceViolations.push(
         violation({

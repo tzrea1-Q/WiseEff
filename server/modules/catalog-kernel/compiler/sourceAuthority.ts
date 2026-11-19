@@ -21,6 +21,12 @@ export interface SourceAuthorityResult {
   readonly failures: readonly SourceAuthorityFailure[];
 }
 
+export type CatalogSource = CatalogReleaseNode["sources"][number];
+
+export interface SourceInspection extends SourceAuthorityResult {
+  readonly syntaxValid: boolean;
+}
+
 const digest = (value: string | Uint8Array): string =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
@@ -39,15 +45,23 @@ const exactKeys = (
   );
 };
 
-const parseSource = (
-  source: CatalogReleaseNode["sources"][number],
-): SourceAuthorityResult => {
-  const bytes = Buffer.from(source.bytes, "base64");
+export const inspectSource = (
+  source: CatalogSource,
+  bytes: Uint8Array = Buffer.from(source.bytes, "base64"),
+  sourceDigest: string = digest(bytes),
+): SourceInspection => {
+  const failure = (detail: SourceAuthorityFailure["detail"], syntaxValid: boolean): SourceInspection => ({
+    syntaxValid,
+    documents: [],
+    failures: [{ path: source.path, detail }],
+  });
+  let syntaxValid = false;
   try {
     const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     const yamlDocuments = parseAllDocuments(text, { prettyErrors: false });
-    if (yamlDocuments.length !== 1 || yamlDocuments[0]?.errors.length !== 0) {
-      throw new TypeError("YAML parse failed");
+    syntaxValid = yamlDocuments.length > 0 && yamlDocuments.every((document) => document.errors.length === 0);
+    if (!syntaxValid || yamlDocuments.length !== 1) {
+      return failure("source-yaml-unreadable", syntaxValid);
     }
     const envelope: unknown = yamlDocuments[0]?.toJS({ maxAliasCount: 0 });
     if (
@@ -57,14 +71,8 @@ const parseSource = (
       !Array.isArray(envelope.documents) ||
       envelope.documents.length === 0
     ) {
-      return {
-        documents: [],
-        failures: [
-          { path: source.path, detail: "source-document-envelope-invalid" },
-        ],
-      };
+      return failure("source-document-envelope-invalid", syntaxValid);
     }
-    const sourceDigest = digest(bytes);
     const documents: CatalogReleaseDocument[] = [];
     for (const entry of envelope.documents) {
       if (
@@ -73,12 +81,7 @@ const parseSource = (
         !["subject", "alias", "definition"].includes(String(entry.kind)) ||
         !isRecord(entry.content)
       ) {
-        return {
-          documents: [],
-          failures: [
-            { path: source.path, detail: "source-document-envelope-invalid" },
-          ],
-        };
+        return failure("source-document-envelope-invalid", syntaxValid);
       }
       documents.push({
         source: {
@@ -93,25 +96,23 @@ const parseSource = (
         content: entry.content,
       } as CatalogReleaseDocument);
     }
-    return { documents, failures: [] };
+    return { syntaxValid, documents, failures: [] };
   } catch {
-    return {
-      documents: [],
-      failures: [{ path: source.path, detail: "source-yaml-unreadable" }],
-    };
+    return failure("source-yaml-unreadable", syntaxValid);
   }
 };
 
 export const deriveSourceDocuments = (
   release: CatalogReleaseNode,
+  inspections: WeakMap<CatalogSource, SourceInspection>,
 ): SourceAuthorityResult => {
   const documents: CatalogReleaseDocument[] = [];
   const failures: SourceAuthorityFailure[] = [];
   for (const source of [...release.sources].sort((left, right) =>
     left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
   )) {
-    const parsed = parseSource(source);
-    documents.push(...parsed.documents);
+    const parsed = inspections.get(source) ?? inspectSource(source);
+    for (const document of parsed.documents) documents.push(document);
     failures.push(...parsed.failures);
   }
   return { documents, failures };
