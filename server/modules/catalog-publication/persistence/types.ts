@@ -45,7 +45,8 @@ export type CatalogPublicationStoreError =
       readonly reason:
         | "artifact-digest-bytes-mismatch"
         | "idempotency-key-conflict"
-        | "fencing-token-mismatch";
+        | "fencing-token-mismatch"
+        | "job-status-mismatch";
     }
   | {
       readonly kind: "not-found";
@@ -189,6 +190,7 @@ export interface JobExecutionPatch {
   readonly leaseUntil?: string | null;
   readonly fencingToken?: number;
   readonly expectedFencingToken?: number;
+  readonly expectedStatus?: PublicationJobStatus;
   readonly attemptCount?: number;
   readonly lastErrorClass?: string | null;
   readonly lastErrorReason?: string | null;

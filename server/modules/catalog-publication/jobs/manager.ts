@@ -8,6 +8,7 @@ import { claimPublicationJob } from "./claim";
 import {
   executeClaimedPublicationJob,
   recoverPublicationJobFromReceipt,
+  settleUnexpectedPublicationFailure,
   type ResolvePublisherActor,
 } from "./execute";
 
@@ -65,6 +66,8 @@ const DEFAULT_LEASE_MS = 30_000;
 const DEFAULT_RETRY_BUDGET = 5;
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_ACTIVATION_TIMEOUT_MS = 60_000;
+const MAX_ACTIVATION_GRACE_MS = 60_000;
+const LEASE_SETTLEMENT_MARGIN_MS = 5_000;
 
 const parsePositiveInt = (raw: string | undefined, fallback: number): number => {
   if (raw === undefined || raw.trim() === "") {
@@ -133,9 +136,12 @@ export async function readPublicationManagerHealth(db: Database): Promise<Public
 export async function runPublicationManagerOnce(options: PublicationManagerOptions): Promise<"claimed" | "idle"> {
   const leaseMs = options.leaseMs ?? DEFAULT_LEASE_MS;
   const retryBudget = options.retryBudget ?? DEFAULT_RETRY_BUDGET;
+  const activationTimeoutMs = options.activationTimeoutMs ?? DEFAULT_ACTIVATION_TIMEOUT_MS;
+  const executionBudgetMs = activationTimeoutMs + Math.min(activationTimeoutMs, MAX_ACTIVATION_GRACE_MS);
   const ownerId = options.ownerId ?? `mgr_${randomUUID().slice(0, 8)}`;
-  const leaseSeconds = Math.max(1, Math.ceil(leaseMs / 1000));
+  const leaseSeconds = Math.ceil(Math.max(leaseMs, executionBudgetMs + LEASE_SETTLEMENT_MARGIN_MS) / 1000);
   const log = options.log ?? (() => undefined);
+  const activationDeadlineMs = (options.now ?? Date.now)() + executionBudgetMs;
 
   const claimed = await withPublicationCoordinator(options.db, (tx) =>
     claimPublicationJob(tx, { leaseOwner: ownerId, leaseSeconds }),
@@ -151,7 +157,6 @@ export async function runPublicationManagerOnce(options: PublicationManagerOptio
     event: "claimed",
   });
 
-  const activationTimeoutMs = options.activationTimeoutMs ?? DEFAULT_ACTIVATION_TIMEOUT_MS;
   const work = executeClaimedPublicationJob({
     db: options.db,
     pool: options.pool,
@@ -159,55 +164,47 @@ export async function runPublicationManagerOnce(options: PublicationManagerOptio
     claimed: claimed.value,
     resolvePublisherActor: options.resolvePublisherActor,
     retryBudget,
-  });
-  void work.catch(() => undefined);
+    activationDeadlineMs,
+  }).then(
+    (result) => ({ kind: "completed" as const, result }),
+    (error: unknown) => ({ kind: "rejected" as const, reasonClass: error instanceof Error ? error.name : "unknown" }),
+  );
 
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let timeoutWon = false;
   const timeout = new Promise<"activation-timeout">((resolve) => {
-    timer = setTimeout(() => {
-      timeoutWon = true;
-      resolve("activation-timeout");
-    }, activationTimeoutMs);
+    timer = setTimeout(() => resolve("activation-timeout"), activationTimeoutMs);
   });
-  void timeout.catch(() => undefined);
+
+  let completed = await Promise.race([work, timeout]);
+  clearTimeout(timer);
+  if (completed === "activation-timeout") {
+    log({
+      jobId: claimed.value.id,
+      fence: claimed.value.fencingToken,
+      attempt: claimed.value.attemptCount,
+      event: "activation-timeout",
+      reasonClass: "timeout",
+    });
+    // A confirmed receipt proves that activation already committed. Otherwise keep
+    // this worker on the same attempt until the installer commits or rolls back.
+    const recovered = await withPublicationCoordinator(options.db, (tx) =>
+      recoverPublicationJobFromReceipt(tx, options.pool, claimed.value, { committedOnly: true }),
+    ).catch(() => null);
+    completed = recovered ? { kind: "completed", result: recovered } : await work;
+  }
 
   let executed: Awaited<ReturnType<typeof executeClaimedPublicationJob>>;
-  try {
-    const winner = await Promise.race([work, timeout]);
-    if (timer !== undefined && !timeoutWon) {
-      clearTimeout(timer);
-    }
-    if (winner === "activation-timeout") {
-      const recovered = await withPublicationCoordinator(options.db, (tx) =>
-        recoverPublicationJobFromReceipt(tx, options.pool, claimed.value),
-      );
-      executed = recovered ?? { kind: "settled", job: claimed.value };
-      log({
-        jobId: claimed.value.id,
-        fence: claimed.value.fencingToken,
-        attempt: claimed.value.attemptCount,
-        event: "activation-timeout",
-        reasonClass: "timeout",
-      });
-    } else {
-      executed = winner;
-    }
-  } catch (error) {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-    }
-    const recovered = await withPublicationCoordinator(options.db, (tx) =>
-      recoverPublicationJobFromReceipt(tx, options.pool, claimed.value),
-    );
-    executed = recovered ?? { kind: "settled", job: claimed.value };
+  if (completed.kind === "completed" && completed.result.kind !== "empty") {
+    executed = completed.result;
+  } else {
     log({
       jobId: claimed.value.id,
       fence: claimed.value.fencingToken,
       attempt: claimed.value.attemptCount,
       event: "execute-error",
-      reasonClass: error instanceof Error ? error.name : "unknown",
+      reasonClass: completed.kind === "rejected" ? completed.reasonClass : "job-unavailable",
     });
+    executed = await settleUnexpectedPublicationFailure(options.db, options.pool, claimed.value, retryBudget);
   }
 
   if (executed.kind === "activated") {
@@ -235,6 +232,7 @@ export async function runPublicationManagerOnce(options: PublicationManagerOptio
       event: "settled",
       status: executed.job.status,
       reasonClass: executed.job.lastErrorClass,
+      reason: executed.job.lastErrorReason,
     });
   }
   return "claimed";
