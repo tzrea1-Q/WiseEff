@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as yaml from "yaml";
 
-import { compileCatalogRelease } from "./compileCatalogRelease";
+import { compileCatalogRelease, validateCatalogReleaseDigest } from "./compileCatalogRelease";
 import { prepareForCompilation } from "./validation";
 import {
+  invalidCanonicalPropertyBundle,
+  lineageGapBundle,
   malformedYamlSourceBundle,
+  staleAggregateDigestBundle,
   staleSourceDigestBundle,
   validCatalogReleaseBundle,
 } from "./__fixtures__/catalogReleaseBundle";
@@ -56,5 +59,26 @@ describe("request-local compiler preparation", () => {
     );
     expect(prepared.validation.compile).toEqual([]);
     expect(prepared.validation.lineage).toEqual([]);
+  });
+
+  it("returns the same validated digest without a compiled projection", () => {
+    const bundle = validCatalogReleaseBundle();
+    expect(validateCatalogReleaseDigest(bundle)).toEqual({
+      ok: true,
+      value: { aggregateDigest: bundle.releases.at(-1)!.manifest.release.digest },
+    });
+  });
+
+  it.each([
+    ["malformed YAML", malformedYamlSourceBundle],
+    ["source digest mismatch", staleSourceDigestBundle],
+    ["aggregate digest mismatch", staleAggregateDigestBundle],
+    ["invalid property", invalidCanonicalPropertyBundle],
+    ["lineage gap", lineageGapBundle],
+  ])("rejects %s exactly as full compilation does", (_name, fixture) => {
+    const bundle = fixture();
+    const compiled = compileCatalogRelease(bundle);
+    expect(compiled.ok).toBe(false);
+    expect(validateCatalogReleaseDigest(bundle)).toEqual(compiled);
   });
 });

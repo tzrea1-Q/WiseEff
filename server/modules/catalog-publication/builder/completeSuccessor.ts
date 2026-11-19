@@ -10,7 +10,7 @@ import {
   serializeContract,
   type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
-import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
+import { validateCatalogReleaseDigest } from "../../catalog-kernel/compiler/index";
 import type {
   CatalogReleaseBundle,
   CatalogReleaseDefinitionDocument,
@@ -185,17 +185,17 @@ const loadPredecessor = async (
     bundle = parsed.bundle;
   }
   // Reusing JSON never skips source, lineage or aggregate-digest validation.
-  const compiled = compileCatalogRelease(bundle);
-  if (!compiled.ok) {
-    return { ok: false, error: { kind: "predecessor-incomplete", cause: compiled.error } };
+  const validated = validateCatalogReleaseDigest(bundle);
+  if (!validated.ok) {
+    return { ok: false, error: { kind: "predecessor-incomplete", cause: validated.error } };
   }
-  if (compiled.value.aggregateDigest !== digest) {
+  if (validated.value.aggregateDigest !== digest) {
     return {
       ok: false,
       error: {
         kind: "artifact-digest-mismatch",
         expected: digest,
-        actual: compiled.value.aggregateDigest,
+        actual: validated.value.aggregateDigest,
       },
     };
   }
@@ -1136,12 +1136,12 @@ export async function buildCompleteSuccessor(
     targetReleaseId: successor.manifest.release.id,
     releases: [...predecessor.bundle.releases, successor],
   };
-  const compiled = compileCatalogRelease(bundle);
-  if (!compiled.ok) {
+  const validated = validateCatalogReleaseDigest(bundle);
+  if (!validated.ok) {
     return fail({
       kind: "invalid-release",
-      phase: compiled.error.phase,
-      violations: compiled.error.violations,
+      phase: validated.error.phase,
+      violations: validated.error.violations,
     });
   }
 
@@ -1177,12 +1177,12 @@ export async function buildCompleteSuccessor(
   const proposal = input.proposal ?? null;
   const artifact = {
     id: frozen.artifactId,
-    artifactDigest: compiled.value.aggregateDigest,
+    artifactDigest: validated.value.aggregateDigest,
     artifactBytes,
     bytesChecksum: sha256DigestOfBytes(artifactBytes),
     sourceKind: "typed-changeset" as const,
     targetReleaseId: CatalogReleaseId(successor.manifest.release.id),
-    targetReleaseDigest: CatalogReleaseDigest(compiled.value.aggregateDigest),
+    targetReleaseDigest: validated.value.aggregateDigest,
     predecessorReleaseId: CatalogReleaseId(predecessorTarget.manifest.release.id),
     predecessorReleaseDigest: CatalogReleaseDigest(predecessor.digest),
     toolchain,
@@ -1191,7 +1191,7 @@ export async function buildCompleteSuccessor(
   const candidate = {
     id: frozen.candidateId,
     artifactId: frozen.artifactId,
-    artifactDigest: compiled.value.aggregateDigest,
+    artifactDigest: validated.value.aggregateDigest,
     expectedBaseReleaseId: CatalogReleaseId(predecessorTarget.manifest.release.id),
     expectedBaseReleaseDigest: CatalogReleaseDigest(predecessor.digest),
     proposalId: proposal?.proposalId ?? null,
