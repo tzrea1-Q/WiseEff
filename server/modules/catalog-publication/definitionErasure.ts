@@ -16,6 +16,12 @@ import {
   refreshSuccessorSource,
   sha256Digest,
 } from "./builder/bundleCodec";
+import {
+  artifactByteChunkJoin,
+  artifactByteColumns,
+  assembleArtifactBytes,
+  type ArtifactByteChunkRow,
+} from "./persistence/artifactByteTransport";
 
 export type CatalogDefinitionErasurePlan = {
   readonly definitionId: string;
@@ -55,6 +61,28 @@ type StoredArtifact = {
 };
 
 type InstalledRelease = { readonly id: string; readonly release_digest: string };
+
+async function readStoredArtifacts(db: Queryable): Promise<StoredArtifact[]> {
+  const { rows } = await db.query<Pick<StoredArtifact, "id" | "artifact_digest"> & ArtifactByteChunkRow>(
+    `select id, artifact_digest, ${artifactByteColumns}
+     from catalog_publication.release_artifacts as artifact
+     ${artifactByteChunkJoin}
+     order by created_at, id, chunk.byte_start`,
+  );
+  const artifacts: StoredArtifact[] = [];
+  for (let start = 0; start < rows.length;) {
+    const first = rows[start]!;
+    let end = start + 1;
+    while (rows[end]?.id === first.id) end += 1;
+    artifacts.push({
+      id: first.id,
+      artifact_digest: first.artifact_digest,
+      artifact_bytes: assembleArtifactBytes(rows.slice(start, end)),
+    });
+    start = end;
+  }
+  return artifacts;
+}
 
 const compile = (bundle: CatalogReleaseBundle): CompiledCatalogRelease => {
   const compiled = compileCatalogRelease(bundle);
@@ -236,12 +264,11 @@ export const prepareCatalogDefinitionErasure = async (
   definitionId: string,
 ): Promise<CatalogDefinitionErasurePlan> => {
   const [artifacts, releases] = await Promise.all([
-    db.query<StoredArtifact>(`select id, artifact_digest, artifact_bytes
-      from catalog_publication.release_artifacts order by created_at, id`),
+    readStoredArtifacts(db),
     db.query<InstalledRelease>(`select id, release_digest
       from parameter_catalog.catalog_releases order by release_sequence, id`),
   ]);
-  const sourced = new Set(artifacts.rows.flatMap((artifact) => {
+  const sourced = new Set(artifacts.flatMap((artifact) => {
     const parsed = parseBundleBytes(artifact.artifact_bytes);
     if (!parsed.ok) throw new Error(`Catalog artifact ${artifact.id} is unreadable.`);
     return parsed.bundle.releases.map((node) => node.manifest.release.id);
@@ -262,13 +289,13 @@ export const prepareCatalogDefinitionErasure = async (
       if (!recovered || bundle.releases.length > recovered.releases.length) recovered = bundle;
     }
     const compiled = compile(recovered!);
-    artifacts.rows.push({
+    artifacts.push({
       id: `cart_erasure_bootstrap_${sha256Digest(recovered!.targetReleaseId).slice(7, 31)}`,
       artifact_digest: compiled.aggregateDigest,
       artifact_bytes: encodeBundleBytes(recovered!),
       create: true,
     });
   }
-  await verifyArtifactProjections(db, artifacts.rows, releases.rows);
-  return rebuildCatalogForDefinitionErasure(artifacts.rows, releases.rows, definitionId);
+  await verifyArtifactProjections(db, artifacts, releases.rows);
+  return rebuildCatalogForDefinitionErasure(artifacts, releases.rows, definitionId);
 };

@@ -1,6 +1,7 @@
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import type { Queryable } from "../../../shared/database/client";
 import {
   CATALOG_PUBLICATION_COORDINATOR_ROLE,
   CATALOG_SYNCHRONIZER_ROLE,
@@ -27,6 +28,7 @@ import {
   uniqueToken,
   withLocalRole,
 } from "./integrationHarness";
+import { ARTIFACT_BYTE_CHUNK_SIZE } from "./artifactByteTransport";
 import {
   appendAuthorization,
   createJob,
@@ -187,6 +189,62 @@ describe("catalog publication store seam", () => {
       await client.query("rollback").catch(() => undefined);
       await client.query("reset role").catch(() => undefined);
     }
+  });
+
+  it("transports large artifact bytes in ordered fields and does not echo bytes on insert", async () => {
+    const token = uniqueToken("chunks");
+    const chunkSize = ARTIFACT_BYTE_CHUNK_SIZE;
+    const bytes = Buffer.alloc(chunkSize * 2 + 3, 0xa5);
+    bytes[chunkSize] = 0xff;
+    bytes[chunkSize * 2] = 0;
+    const checksum = sha256DigestOfBytes(bytes);
+    const artifactDigest = sha256Digest(token);
+    const readFieldSizes: number[] = [];
+    const returnedFields: string[] = [];
+    const db: Queryable = {
+      async query<Row>(sql: string, values?: unknown[]) {
+        const result = await client.query(sql, values);
+        if (result.command === "INSERT") {
+          returnedFields.push(...result.fields.map((field) => field.name));
+        } else {
+          for (const row of result.rows) {
+            for (const field of Object.values(row)) {
+              if (Buffer.isBuffer(field)) readFieldSizes.push(field.byteLength);
+            }
+          }
+        }
+        return { rows: result.rows as Row[], rowCount: result.rowCount };
+      },
+    };
+
+    await withLocalRole(client, CATALOG_PUBLICATION_COORDINATOR_ROLE, async () => {
+      const saving = persistArtifact(db, {
+        id: CatalogArtifactId(`cart_${token}`),
+        artifactDigest,
+        artifactBytes: bytes,
+        sourceKind: "typed-changeset",
+        targetReleaseId: CatalogReleaseId(`crel_${token}`),
+        targetReleaseDigest: CatalogReleaseDigest(artifactDigest),
+        predecessorReleaseId: null,
+        predecessorReleaseDigest: null,
+        toolchain: {},
+      });
+      bytes.fill(0);
+      const saved = await saving;
+      expect(saved.ok).toBe(true);
+      if (!saved.ok) throw new Error(JSON.stringify(saved.error));
+      expect(saved.value.bytesChecksum).toBe(checksum);
+      expect(sha256DigestOfBytes(saved.value.artifactBytes)).toBe(checksum);
+      expect(returnedFields).toContain("bytes_checksum");
+      expect(returnedFields).not.toContain("artifact_bytes");
+
+      const loaded = await getArtifactByDigest(db, artifactDigest);
+      expect(loaded.ok).toBe(true);
+      if (!loaded.ok) throw new Error(JSON.stringify(loaded.error));
+      expect(loaded.value.artifactBytes.byteLength).toBe(chunkSize * 2 + 3);
+      expect(sha256DigestOfBytes(loaded.value.artifactBytes)).toBe(checksum);
+      expect(readFieldSizes).toEqual([chunkSize, chunkSize, 3]);
+    });
   });
 
   it("createJob returns the existing row for the same scope/key/digest and conflicts on digest mismatch", async () => {
