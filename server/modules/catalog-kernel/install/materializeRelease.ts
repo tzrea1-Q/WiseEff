@@ -117,8 +117,8 @@ const selectorSnapshot = (subject: CatalogReleaseSubjectDocument): string => {
   }
 };
 
-const selectorProvenance = (source: string): string =>
-  JSON.stringify({ source });
+const selectorProvenance = ({ source, reviewReference }: CatalogReleaseSubjectDocument["content"]["selector"]["provenance"]): string =>
+  JSON.stringify({ source, ...(source === "catalog-subject-identity-correction" ? { reviewReference } : {}) });
 
 const tombstoneProvenance = (
   tombstone: CatalogReleaseSubjectDocument["content"]["tombstone"],
@@ -286,7 +286,7 @@ const stageSubjects = async (
         subject.content.id,
         subject.content.lifecycle,
         selectorSnapshot(subject),
-        selectorProvenance(subject.content.selector.provenance.source),
+        selectorProvenance(subject.content.selector.provenance),
         tombstoneProvenance(subject.content.tombstone),
       ],
     );
@@ -327,7 +327,7 @@ const stageAliases = async (
         alias.content.subjectId,
         alias.content.id,
         alias.content.lifecycle,
-        selectorProvenance(alias.content.selectorProvenance.source),
+        selectorProvenance(alias.content.selectorProvenance),
         tombstoneProvenance(alias.content.tombstone),
       ],
     );

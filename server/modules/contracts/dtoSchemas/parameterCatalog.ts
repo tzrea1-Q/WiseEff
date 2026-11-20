@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { subjectIdentityChangeSchema, subjectIdentityImpactSchema } from "./catalogSubjectIdentity";
 import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema, moduleStructurePreviewResponseSchema, moduleStructureApplyRequestSchema, moduleStructureReceiptSchema } from "./moduleStructure";
 import { dtsBuildInputsSchema, dtsPreprocessingReceiptSchema } from "./dtsPreprocessing";
 
@@ -40,6 +41,7 @@ export const catalogApiFailureReasons = [
   "release-drift",
   "subject-not-published",
   "subject-retired",
+  "subject-selector-occupied",
   "definition-not-found",
   "definition-already-exists",
   "definition-retired",
@@ -83,6 +85,7 @@ export const catalogFailureClientBehaviors = {
   "release-drift": "refresh-and-reconfirm",
   "subject-not-published": "show-not-found-no-create",
   "subject-retired": "show-lifecycle-no-restore",
+  "subject-selector-occupied": "edit-selector-keep-input",
   "definition-not-found": "show-not-found",
   "definition-already-exists": "edit-existing-definition-keep-input",
   "definition-retired": "historical-read-block-mutation",
@@ -323,6 +326,7 @@ export const catalogSubjectDtoSchema = catalogObject({
   canonicalType: catalogSubjectTypeSchema.optional(),
   canonicalName: z.string(),
   aliases: z.array(z.string()),
+  formalAliases: z.array(catalogObject({ selector: z.string(), status: catalogSubjectLifecycleSchema })).optional(),
   membership: catalogObject({
     status: catalogSubjectLifecycleSchema,
     catalogReleaseId: z.string()
@@ -902,6 +906,7 @@ export const catalogRestoreDefinitionChangeSchema = catalogObject({
 });
 
 export const catalogChangeSchema = z.union([
+  subjectIdentityChangeSchema,
   catalogCreateSubjectChangeSchema,
   catalogCreateDefinitionChangeSchema,
   catalogCreateSubjectWithDefinitionsChangeSchema,
@@ -918,7 +923,9 @@ export const catalogTypedPublicationCandidateRequestSchema = catalogObject({
 export const catalogMarkdownImportRequestSchema = catalogObject({
   markdownImport: catalogObject({ document: z.string().max(1_048_576), fileName: z.string().min(1).max(255),
     additionalDocuments: z.array(catalogObject({ document: z.string().max(1_048_576),
-      fileName: z.string().min(1).max(255) })).max(19).optional()
+      fileName: z.string().min(1).max(255) })).max(19).optional(),
+    organizationSubjectSelections: z.array(catalogObject({ selector: z.string().min(1).max(255), subjectId: z.string().min(1).max(255) }))
+      .max(1024).refine(items => new Set(items.map(item => item.selector)).size === items.length).optional()
   }).refine(input => [input, ...(input.additionalDocuments ?? [])].reduce((size, item) => size + new TextEncoder().encode(item.document).byteLength, 0) <= 1_048_576,
     "整批 Markdown 内容不能超过 1 MiB。")
 });
@@ -955,6 +962,7 @@ export const catalogPublicationImpactSummaryDtoSchema = catalogObject({
   addedSubjectIds: z.array(z.string()).optional(),
   ownerDeclarations: z.array(catalogOwnerDeclarationSchema).optional(),
   ownerPublicationOnly: z.boolean().optional(),
+  subjectIdentity: subjectIdentityImpactSchema.optional(),
   definitionSuccessorChange: catalogDefinitionSuccessorChangeSummarySchema.optional(),
   definitionReplacement: catalogDefinitionReplacementSummarySchema.optional()
 });
@@ -1596,6 +1604,10 @@ export const catalogProposalResponseSchema = itemEnvelopeSchema(catalogProposalD
 export const catalogPublicationCandidateResponseSchema = itemEnvelopeSchema(
   catalogPublicationCandidateDtoSchema
 ).superRefine(rejectLegacySpecKeys);
+const catalogMarkdownSubjectMatchSchema = catalogObject({
+  subjectId: z.string(), canonicalName: z.string(),
+  source: z.enum(["catalog-primary", "catalog-alias", "organization-compatible"]),
+});
 export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObject({
   candidate: catalogPublicationCandidateDtoSchema.nullable(),
   noChange: z.boolean(),
@@ -1606,6 +1618,8 @@ export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObj
     fileName: z.string().optional(),
     subjectHeading: z.string(), definitionHeading: z.string(),
     selector: z.string(), propertyKey: z.string(), displayName: z.string(),
+    match: catalogMarkdownSubjectMatchSchema.optional(),
+    matchCandidates: z.array(catalogMarkdownSubjectMatchSchema).optional(),
     outcome: z.enum(["create", "revise", "skip", "conflict", "error"]),
     revisionClass: z.enum(["documentation", "semantic"]).optional(),
     riskClass: z.enum(["low", "high"]).optional(),

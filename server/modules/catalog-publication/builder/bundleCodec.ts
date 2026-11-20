@@ -12,8 +12,8 @@ import type {
   CatalogReleaseNode,
 } from "../../catalog-kernel/compiler/types";
 
-export const TYPED_CHANGESET_SOURCE_PATH =
-  "schemas/dts/catalog-release/typed-changeset.yaml";
+import { TYPED_CHANGESET_SOURCE_PATH } from "../../catalog-kernel/compiler/subjectIdentity";
+export { TYPED_CHANGESET_SOURCE_PATH } from "../../catalog-kernel/compiler/subjectIdentity";
 
 export const sha256Digest = (value: string | Uint8Array): string =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;

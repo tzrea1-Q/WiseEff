@@ -47,7 +47,9 @@ export async function inspectNewDrivers(client: pg.PoolClient, organizationId: s
     union select rs.subject_id, offered.compatible from unnest($1::text[]) offered(compatible)
       join parameter_catalog.catalog_release_subjects rs on rs.selector_snapshot->'values' ? offered.compatible
       join parameter_catalog.catalog_state cs on cs.current_catalog_release_id=rs.release_id
-    union select a.subject_id, a.normalized_selector from parameter_catalog.catalog_subject_aliases a
+    union select ra.subject_id, a.normalized_selector from parameter_catalog.catalog_subject_aliases a
+      join parameter_catalog.catalog_release_subject_aliases ra on ra.alias_id=a.id
+      join parameter_catalog.catalog_state cs on cs.current_catalog_release_id=ra.release_id
       where a.selector_kind='driver-compatible' and a.normalized_selector=any($1::text[])
     union select r.subject_id, offered.compatible from unnest($1::text[]) offered(compatible)
       join public.registration_recognition_rules rr on offered.compatible=any(rr.compatibles) and rr.organization_id=$2

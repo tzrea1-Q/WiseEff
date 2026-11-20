@@ -839,7 +839,7 @@ Failed-attempt operational evidence 可以通过 pool-owned refusal/milestone pa
 | 后继 release | 先 compile；锁内比较 `expectedCurrent`、declared predecessor 与 installed pin | 新 root/membership/revision、全部 changed head 与一次 pointer switch 一起提交 | Stale current 或 lineage gap 返回 `unsupported-lineage`；旧 pointer/head 不变 |
 | Active -> retired | 后继 release 提供 explicit retired membership 和 tombstone | Membership 与 pointer switch 一起提交；stable subject/definition/history 保留 | Omission、missing tombstone 或原地修改 root lifecycle 都是 `invalid-release` |
 | Retired -> restored | 后继 release 为同一 stable subject/alias owner 提供 active membership | 仅通过 pointer switch 使相同 ID 恢复 current-active | 新建 ID/key 或 alias reassignment 中止 |
-| Alias 引入/退休 | Stable selector ownership key 加 release digest；安装锁内检查 permanent owner uniqueness | 新 alias root（如需要）与完整 release alias membership 随 release 提交 | Alias chain、collision、reassignment、omission 或 tombstone mismatch 中止 |
+| 共享标识纠正与别名生命周期 | 精确基准与已审核的类型化候选。按主体种类和所属驱动检查选择器占用 | 不可变的主体、别名根记录保留首次发布事实。发布成员记录当时的规范选择器和别名归属 | 缺少纠正标记、占用冲突、成员遗漏或退役记录无效时中止 |
 | Definition head 前移 | Changed normalized content digest 产生且只产生一个新 revision；unchanged content 不产生 revision | Immutable revision 与所有 affected `current_revision_id` 在 release 事务内前移 | 任一 head 失败则全部 head/pointer 不变；documentation-only change 不触碰 Binding/Project Value |
 | Current pointer switch | 锁 singleton row；更新前验证 target projection 与 exact release-head map | Release pointer 与 Definition head 的唯一原子可见点 | 锚定 captured pin 的并发 reader 只看到完整旧或完整新 snapshot |
 | Same digest replay | 取得 catalog lock，重新读取并独立验证 installed fingerprint | Read-only verified no-op；不产生新 row、重复 success audit、revision 或 head change | 同一 ID/version/digest 背后若 normalized content 不同，返回 `digest-conflict` 或 `drift` |
