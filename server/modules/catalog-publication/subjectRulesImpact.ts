@@ -148,7 +148,8 @@ export async function inspectSubjectRulesImpact(db: Queryable, input: {
     (input.projectScope?.kind === "only" && input.projectScope.ids.includes(id));
   const totals = new Map<Conflict["reason"], number>();
   for (const conflict of conflicts) totals.set(conflict.reason, (totals.get(conflict.reason) ?? 0) + 1);
-  const projectsWithCounts = [...projects.values()].map(({ nodes, ...entry }) => ({ ...entry, instanceCount: nodes.size }));
+  const orderedProjects = [...projects.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, project]) => project);
+  const projectsWithCounts = orderedProjects.map(({ nodes, ...entry }) => ({ ...entry, instanceCount: nodes.size }));
   const impact: SubjectRulesImpact = {
     before: state(previous), after: state(current), ...(successor ? { successor: { id: successor.id, ...state(successor) } } : {}),
     children,
@@ -174,7 +175,8 @@ export async function inspectSubjectRulesImpact(db: Queryable, input: {
       .map(({ organizationId: _org, ...conflict }) => conflict),
   };
   return { impact, fingerprint: sha256Digest(JSON.stringify({
-    affected, conflicts, bindings, projects: [...projects.values()].map(({ nodes, ...project }) => ({
+    affected, conflicts: conflicts.map(conflict => JSON.stringify(conflict)).sort(), bindings,
+    projects: orderedProjects.map(({ nodes, ...project }) => ({
       ...project, nodes: [...nodes].sort(),
     })),
   })) };
