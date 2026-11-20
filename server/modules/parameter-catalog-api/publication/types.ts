@@ -1,4 +1,5 @@
 import type { CatalogReleasePin } from "../../parameter-catalog-contract/index";
+import type { SubjectIdentityImpact } from "../../contracts/dtoSchemas/catalogSubjectIdentity";
 import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
 import type { BackendPermission } from "../../auth/types";
 import type { catalogPublicationCommandByRouteId } from "./mapping";
@@ -58,6 +59,7 @@ export type PublicationCandidateView = {
     readonly addedSubjectIds?: readonly string[];
     readonly ownerDeclarations?: readonly OwnerDeclaration[];
     readonly ownerPublicationOnly?: boolean;
+    readonly subjectIdentity?: SubjectIdentityImpact;
   };
   readonly capabilityContract: {
     readonly revision: string;
@@ -104,7 +106,8 @@ export type PreviewPublicationCommand = {
   readonly changeSet?: unknown;
   readonly claimedOwners?: true;
   readonly markdownImport?: { readonly document: string; readonly fileName: string;
-    readonly additionalDocuments?: { document: string; fileName: string }[] };
+    readonly additionalDocuments?: { document: string; fileName: string }[];
+    readonly organizationSubjectSelections?: { selector: string; subjectId: string }[] };
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
 };

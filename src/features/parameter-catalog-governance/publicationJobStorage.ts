@@ -12,6 +12,7 @@ export type StoredPublicationJob = {
   addedSubjectIds?: readonly string[];
   markdownImport?: boolean;
   claimedOwners?: boolean;
+  subjectIdentityId?: string;
   idempotencyKey: string;
 };
 

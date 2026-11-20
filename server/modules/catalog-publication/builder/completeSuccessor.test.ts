@@ -26,6 +26,33 @@ import {
 } from "./predecessorHarness";
 
 describe("buildCompleteSuccessor", () => {
+  it("replays the old release and retains the previous compatible as an alias after a rename", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await buildCompleteSuccessor({
+      productPath: "m2-core",
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      changeSet: [{
+        op: "rename-subject", subjectId: "csub_acme_power",
+        selector: "acme,power-corrected", keepOldAlias: true,
+      }],
+      frozenIdentity: frozenPageIdentity([], "renamed"),
+    });
+    expect(result.ok, result.ok ? undefined : JSON.stringify(result.error)).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    const [previous, successor] = result.value.artifact.bundle.releases;
+    expect(previous).toEqual(predecessor.first);
+    expect(successor?.documents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "subject", content: expect.objectContaining({
+        id: "csub_acme_power", canonicalKey: "driver:acme,power-corrected",
+        selector: expect.objectContaining({ value: "acme,power-corrected" }),
+      }) }),
+      expect.objectContaining({ kind: "alias", content: expect.objectContaining({
+        subjectId: "csub_acme_power", normalizedSelector: "acme,power", lifecycle: "active",
+      }) }),
+    ]));
+    expect(result.value.impact.definitions.changed).toEqual([]);
+  });
+
   it("publishes equal node names under distinct drivers while retaining legacy artifacts", async () => {
     const predecessor = firstAcmePredecessor();
     const result = await buildCompleteSuccessor({ productPath: "m2-core",

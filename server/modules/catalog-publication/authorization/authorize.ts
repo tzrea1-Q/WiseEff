@@ -204,6 +204,7 @@ const evaluateApprovalGate = (input: {
   authorPrincipalId: string;
   publicationEnabled: boolean;
   lowRiskSingleActorPublish: boolean;
+  requiresPlatformAdmin: boolean;
 }): PublicationAuthorizationFailure | null => {
   if (!input.publicationEnabled) {
     return { reason: "publication-policy-disabled" };
@@ -218,6 +219,11 @@ const evaluateApprovalGate = (input: {
       };
     }
     return { reason: "publication-capability-missing", detail: "actor is inactive" };
+  }
+  const actor = assertTrustedInvocationContext(input.actor);
+  if (input.requiresPlatformAdmin && (actor.initiator !== "user" ||
+    !actor.principal.roles.some(role => role.roleId === "platform-admin"))) {
+    return { reason: "publication-capability-missing", detail: "shared identity corrections require a platform administrator" };
   }
 
   if (input.riskClass === "high") {
@@ -305,6 +311,7 @@ export async function authorizePublish(
     authorPrincipalId: allocatedAuthor,
     publicationEnabled: policy.value.publicationEnabled,
     lowRiskSingleActorPublish: policy.value.lowRiskSingleActorPublish,
+    requiresPlatformAdmin: input.impactFacts.operations.some(operation => operation.op === "correct-subject-identity"),
   });
   if (gate) {
     return { ok: false, error: gate };
@@ -490,6 +497,7 @@ export async function verifyAuthorizationForActivation(
     authorPrincipalId,
     publicationEnabled: policy.value.publicationEnabled,
     lowRiskSingleActorPublish: policy.value.lowRiskSingleActorPublish,
+    requiresPlatformAdmin: input.impactFacts.operations.some(operation => operation.op === "correct-subject-identity"),
   });
   if (gate) {
     return { ok: false, error: gate };

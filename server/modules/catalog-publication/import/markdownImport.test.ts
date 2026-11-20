@@ -6,6 +6,7 @@ import { parseBundleBytes, targetReleaseOf } from "../builder/bundleCodec";
 import { planMarkdownImport, serializeMarkdownRevision } from "./markdownImport";
 import { DEFINITION_IMPORT_GUIDE, DEFINITION_IMPORT_TEMPLATE } from "../../../../src/domain/parameter-catalog/definitionImportTemplate";
 import { buildCreateDefinitionChangeSet, emptyPublicationDraft } from "../../../../src/features/parameter-catalog-governance/publicationState";
+import { compileLocalizedVendorCatalogSuccessor } from "../../../../scripts/compile-vendor-catalog-release";
 
 const document = `# Driver \`acme,power\`
 
@@ -27,6 +28,28 @@ const document = `# Driver \`acme,power\`
 `;
 
 describe("Definition import planner", () => {
+  it("requires explicit confirmation for the Huawei short name in the selected organization", () => {
+    const snapshot = targetReleaseOf(compileLocalizedVendorCatalogSuccessor().bundle)!;
+    const shortName = "# Driver `direct_charger`\n## `support_series_bat_mode` 串联电池模式\n| 字段 | 值 |\n| --- | --- |\n| 类型 | boolean |";
+    const subjectId = "csub_drv_huawei_direct_charger";
+    const rules = new Map([["direct_charger", [subjectId]]]);
+    const unconfirmed = planMarkdownImport(shortName, "charger.md", snapshot, [], { rules });
+    expect(unconfirmed.changeSet).toBeNull();
+    expect(unconfirmed.entries[0]?.matchCandidates).toMatchObject([{ subjectId, source: "organization-compatible" }]);
+    const confirmed = planMarkdownImport(shortName, "charger.md", snapshot, [], {
+      rules, selections: [{ selector: "direct_charger", subjectId }],
+    });
+    expect(confirmed.changeSet).toMatchObject([{ op: "create-definition", subjectId, propertyKey: "support_series_bat_mode" }]);
+    expect(confirmed.entries[0]?.match).toMatchObject({ subjectId, source: "organization-compatible" });
+    const foreign = planMarkdownImport(shortName, "charger.md", snapshot);
+    expect(foreign.entries[0]?.diagnostics[0]?.message).toContain("nature 和 cardinality");
+    const ambiguous = planMarkdownImport(shortName, "charger.md", snapshot, [], {
+      rules: new Map([["direct_charger", [subjectId, "csub_acme_power"]]]),
+    });
+    expect(ambiguous.changeSet).toBeNull();
+    expect(ambiguous.entries[0]?.matchCandidates?.map(candidate => candidate.subjectId).sort()).toEqual(["csub_acme_power", subjectId]);
+  });
+
   it("does not invent format errors for valid revision clears when the target is missing", () => {
     const input = "# Driver `acme,power`\n## `missing` 缺失\n| 字段 | 值 |\n| --- | --- |\n| 操作 | 修订 |\n| 最小值 | - |\n| 最多项数 | - |\n| 示例 | - |";
     for (const document of [input, input + "\n| 类型 | integer |"]) {

@@ -14,6 +14,7 @@ import type {
   Result,
 } from "../../parameter-catalog-contract/index";
 import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
+import type { SubjectIdentityChange } from "../../contracts/dtoSchemas/catalogSubjectIdentity";
 import type { Database, Queryable } from "../../../shared/database/client";
 import type {
   CatalogPublicationStoreError,
@@ -198,6 +199,7 @@ export const isDefinitionLifecycleChange = (
   change.op === "retire-definition" || change.op === "restore-definition";
 
 export type CatalogChange =
+  | SubjectIdentityChange
   | CreateDefinitionChange
   | CreateSubjectWithDefinitionsChange
   | CreateSubjectChange

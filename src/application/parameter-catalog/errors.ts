@@ -7,6 +7,7 @@ const FAILURE_CODE: Record<CatalogApiFailureReason, string> = {
   "release-drift": "CONFLICT",
   "subject-not-published": "NOT_FOUND",
   "subject-retired": "CONFLICT",
+  "subject-selector-occupied": "CONFLICT",
   "definition-not-found": "NOT_FOUND",
   "definition-already-exists": "CONFLICT",
   "definition-retired": "CONFLICT",

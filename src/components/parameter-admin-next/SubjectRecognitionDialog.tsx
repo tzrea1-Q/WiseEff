@@ -74,7 +74,7 @@ export function SubjectRecognitionDialog({ editor, governance, organizationId, r
         : <div className="submission-dialog-head"><h2 id={titleId}>识别规则：{name}</h2></div>}
       <div className={editor ? "confirm-dialog__scroll governance-confirm-dialog__body" : "param-admin-module-edit-body"}
         id={editor ? "subject-editor-panel" : undefined} role={editor ? "tabpanel" : undefined} aria-label={editor ? "识别规则" : undefined}>
-      <p id={descriptionId}>规则作用于当前组织中此主体的所有实例。保存后生成组织覆盖规则。</p>
+      <p id={descriptionId}>保存的识别规则作用于当前组织中此主体的所有实例。共享规范标识和正式目录别名由目录发布管理。</p>
       {error ? <div role="alert"><p>{error}</p>{!settings || !etag ? <button type="button" className="button subtle" onClick={() => setAttempt(current => current + 1)}>重新加载</button> : null}</div> : null}
       {!settings && !error ? <p>正在加载识别规则…</p> : null}
       {settings ? <p className="muted">{settings.overridden ? "当前使用组织覆盖规则" : "当前继承目录规则"}</p> : null}

@@ -67,6 +67,7 @@ import type {
   SupportedDefinitionContent,
 } from "./types";
 import { preparedPredecessorBundle } from "./preparedPredecessor";
+import { applySubjectIdentityChange } from "./subjectIdentity";
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CREATE_DEFINITION_KEYS = new Set(["op", "subjectId", "propertyKey", "content"]);
@@ -104,6 +105,7 @@ const changeSortKey = (change: CatalogChange): string => {
     return `revise\0${change.definitionId}`;
   }
   if (change.op === "declare-subject-owner") return `zz-owner\0${change.subjectId}`;
+  if (change.op === "rename-subject" || change.op === "set-subject-alias") return `identity\0${change.subjectId}`;
   return `subject\0${change.canonicalKey}`;
 };
 
@@ -372,13 +374,20 @@ const buildImpact = (
   };
 
   const subjects = delta(collectIds(predecessor, "subject"), collectIds(successor, "subject"));
-  const changedSubjectOwners = subjects.unchanged.filter((id) => {
+  const changedSubjects = subjects.unchanged.filter((id) => {
     const before = predecessor.documents.find((document) => document.kind === "subject" && document.content.id === id);
     const after = successor.documents.find((document) => document.kind === "subject" && document.content.id === id);
     return before?.kind === "subject" && after?.kind === "subject"
-      && before.content.ownerSubjectId !== after.content.ownerSubjectId;
+      && (before.content.ownerSubjectId !== after.content.ownerSubjectId ||
+        before.content.selector.value !== after.content.selector.value);
   });
   const aliases = delta(collectIds(predecessor, "alias"), collectIds(successor, "alias"));
+  const previousAliases = new Map(predecessor.documents.flatMap(doc => doc.kind === "alias" ? [[doc.content.id, doc.content] as const] : []));
+  const changedAliases = successor.documents.flatMap(doc => {
+    if (doc.kind !== "alias") return [];
+    const previous = previousAliases.get(doc.content.id);
+    return previous && (previous.subjectId !== doc.content.subjectId || previous.lifecycle !== doc.content.lifecycle) ? [doc.content.id] : [];
+  }).sort();
   const predSelectors = predecessor.documents.flatMap((document) => {
     if (document.kind === "subject") return [document.content.selector.value];
     if (document.kind === "alias") return [document.content.normalizedSelector];
@@ -412,13 +421,13 @@ const buildImpact = (
     definitions: { added, changed, unchanged },
     subjects: {
       added: subjects.added,
-      changed: changedSubjectOwners,
-      unchanged: subjects.unchanged.filter((id) => !changedSubjectOwners.includes(id)),
+      changed: changedSubjects,
+      unchanged: subjects.unchanged.filter((id) => !changedSubjects.includes(id)),
     },
     aliases: {
       added: aliases.added,
-      changed: [],
-      unchanged: aliases.unchanged,
+      changed: changedAliases,
+      unchanged: aliases.unchanged.filter(id => !changedAliases.includes(id)),
     },
     selectors: {
       added: selectorDelta.added,
@@ -427,7 +436,7 @@ const buildImpact = (
     },
     matcher: {
       existingMatchRulesChanged,
-      fallbackImpact: newNodeType || changedSubjectOwners.length > 0 || selectorDelta.added.length > 0 || selectorDelta.removed.length > 0,
+      fallbackImpact: newNodeType || changedSubjects.length > 0 || changedAliases.length > 0 || selectorDelta.added.length > 0 || selectorDelta.removed.length > 0,
       newMatchableProperties,
     },
     existingContractsTighten,
@@ -817,6 +826,14 @@ export async function buildCompleteSuccessor(
     }
     if (productPath !== "m2-core" && change.op !== "create-definition") {
       return fail({ kind: "unsupported-change-op", op: change.op });
+    }
+    if (change.op === "rename-subject" || change.op === "set-subject-alias") {
+      if (input.changeSet.length !== 1) {
+        return fail({ kind: "invalid-input", reason: "subject identity corrections are published individually" });
+      }
+      const error = applySubjectIdentityChange(change, documents, frozen.releaseId);
+      if (error) return fail(error);
+      continue;
     }
     if (change.op === "declare-subject-owner") {
       if (extraKeys(change as unknown as Record<string, unknown>, DECLARE_OWNER_KEYS).length

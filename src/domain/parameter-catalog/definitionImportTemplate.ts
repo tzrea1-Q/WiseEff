@@ -11,6 +11,7 @@ export const DEFINITION_IMPORT_GUIDE = `# WiseEff 定义导入填写说明
 ## 先取得这些信息
 - 用户要新建定义，还是修订已有定义；新建定义可以属于已有主体，也可以随新主体一起创建。
 - 主体种类、准确标识及是否已存在。Driver 用驱动的 compatible 标识（如 example,charger）；NodeType 用不含 @地址 的节点类型名（如 battery）；ConfigurationSchema 用已约定的配置规范标识（如 example/charging-policy），不是文件名、文件路径或项目名称。已有标识从目录复制，不能凭名称猜测。
+- 主体标题可使用当前规范标识或已启用的正式目录别名。只在当前组织的 compatible 规则中有效的驱动短名，需要人在预览中选择并确认实际主体；组织展示别名不能匹配。
 - 每个参数的真实属性键、显示名，以及有来源依据的类型、单位、约束和说明。修订还需要当前定义内容（优先由用户导出修订文档），并明确哪些字段要改。
 - 新建 Driver 还需确认性质和实例基数。physical-device 表示物理设备，logical-service 表示逻辑服务；multiple 表示项目中可有多个实例，singleton-per-project 表示每项目最多一个实例。已有 Driver 可省略这行；填写时必须与目录一致。其他主体不填这行。
 - 所属驱动的子节点在 NodeType 标题下填写 \`parent: 驱动的 compatible\`，该 Driver 必须已在当前 Catalog 中生效；同一文件中新建的 Driver 不能立即作为 parent，应先发布驱动，再导入子节点。只有 Catalog 中的独立 NodeType 才省略 parent。

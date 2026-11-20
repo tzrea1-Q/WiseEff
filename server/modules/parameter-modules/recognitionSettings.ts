@@ -213,7 +213,7 @@ export async function loadOrganizationCatalogSnapshot<T extends CatalogSnapshot>
       : { kind: "node-type-name" as const, value: NormalizedNodeTypeName(override.node_type_name ?? "") };
     const canonicalKind = subject.canonicalKind ?? subject.kind;
     return { ...subject, kind, ...(kind !== canonicalKind ? { canonicalKind } : {}),
-      aliases: [], membership: { ...subject.membership, selector } };
+      publishedAliases: subject.aliases, aliases: [], membership: { ...subject.membership, selector } };
   };
   const subjects = listed.page.items.map(item => {
     const detail = snapshot.getSubject(item.id);

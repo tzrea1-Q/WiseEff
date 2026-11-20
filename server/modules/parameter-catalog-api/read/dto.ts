@@ -74,6 +74,7 @@ export function mapCatalogSubject(
   options: { readonly reviewCount?: number; readonly availableActions?: ReadonlyArray<"register">; readonly organizationOwnership?: boolean } = {},
 ): ReturnType<typeof catalogSubjectDtoSchema.parse> {
   const ownerSubjectId = (options.organizationOwnership && registration.status !== "unregistered" ? registration.placement?.ownerSubjectId : undefined) ?? subject.owner;
+  const aliases = "aliases" in subject ? subject.publishedAliases ?? subject.aliases : [];
   return catalogSubjectDtoSchema.parse({
     id: subject.id,
     ...(ownerSubjectId ? { ownerSubjectId } : {}),
@@ -81,6 +82,7 @@ export function mapCatalogSubject(
     ...(subject.canonicalKind && subject.canonicalKind !== subject.kind ? { canonicalType: subject.canonicalKind } : {}),
     canonicalName: subject.canonicalKey,
     aliases: subjectAliases(subject),
+    ...(aliases.length ? { formalAliases: aliases.map(alias => ({ selector: aliasValue(alias), status: alias.membership.lifecycle })) } : {}),
     membership: {
       status: subject.membership.lifecycle,
       catalogReleaseId: subject.membership.release.id,

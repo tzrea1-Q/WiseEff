@@ -27,6 +27,7 @@ export function usePublicationFlow(input: {
   currentPersonId: string;
   organizationId: string;
   claimedOwners?: boolean;
+  subjectIdentityId?: string;
   createIdempotencyKey?: () => string;
   onCompleted?: () => void;
   onRefreshEvidence?: () => void | Promise<void>;
@@ -90,7 +91,8 @@ export function usePublicationFlow(input: {
     reset();
     const stored = readStoredPublicationJob({ userId: currentPersonId, organizationId });
     if (!stored || Boolean(stored.markdownImport) !== markdownImport
-      || Boolean(stored.claimedOwners) !== Boolean(input.claimedOwners)) return null;
+      || Boolean(stored.claimedOwners) !== Boolean(input.claimedOwners)
+      || stored.subjectIdentityId !== input.subjectIdentityId) return null;
     setCandidate({
       id: stored.candidateId, expectedBaseReleaseId: stored.catalogReleaseId,
       expectedBaseReleaseDigest: "", riskClass: "low",
@@ -164,6 +166,7 @@ export function usePublicationFlow(input: {
         ...(candidate.impactSummary.addedSubjectIds ? { addedSubjectIds: candidate.impactSummary.addedSubjectIds } : {}),
         ...(markdownImport ? { markdownImport: true } : {}), idempotencyKey: key,
         ...(input.claimedOwners ? { claimedOwners: true } : {}),
+        ...(input.subjectIdentityId ? { subjectIdentityId: input.subjectIdentityId } : {}),
       });
       applyJob(published.item);
       if (publicationJobIsPending(published.item.status)) startPolling(published.item.id);

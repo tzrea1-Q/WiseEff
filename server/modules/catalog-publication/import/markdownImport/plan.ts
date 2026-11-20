@@ -8,7 +8,7 @@ import { classifyEntry } from "./classify";
 import { buildContent, isRevisionEntry } from "./content";
 import { parseMarkdown } from "./parse";
 import { resolveSubject, subjectChanges } from "./resolve";
-import { diagnostic, type ImportDiagnostic, type ImportEntry, type SyntaxDiagnostic } from "./types";
+import { diagnostic, type ImportDiagnostic, type ImportEntry, type OrganizationImportMatches, type SyntaxDiagnostic } from "./types";
 
 const publicDiagnostic = ({ subjectHeading, definitionHeading, field, message, line }: SyntaxDiagnostic)
   : ImportDiagnostic => ({ subjectHeading, definitionHeading, field, message, line });
@@ -20,7 +20,7 @@ const documentError = (issue: ImportDiagnostic): ImportEntry => ({
 
 /** Parse files separately and plan one atomic batch against an immutable Catalog snapshot. */
 export function planMarkdownImport(document: string, fileName: string, snapshot: CatalogReleaseNode,
-  additionalDocuments: { document: string; fileName: string }[] = []) {
+  additionalDocuments: { document: string; fileName: string }[] = [], organization?: OrganizationImportMatches) {
   const documents = [{ document, fileName }, ...additionalDocuments];
   const sources = documents.map(item => ({ fileName: item.fileName,
     sha256: `sha256:${createHash("sha256").update(item.document, "utf8").digest("hex")}` }));
@@ -50,7 +50,7 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
       entries.push(documentError(publicDiagnostic(issue)));
     }
     for (const section of syntax.subjects) {
-      const resolved = resolveSubject(section, snapshot);
+      const resolved = resolveSubject(section, snapshot, organization);
       if (section.kind && resolved.hintLine !== undefined) placementHints.push({ kind: section.kind, selector: section.selector,
         ...(resolved.subject ? { subjectId: resolved.subject.content.id } : {}),
         ...(resolved.categoryPath ? { categoryPath: resolved.categoryPath } : {}),
@@ -100,6 +100,8 @@ export function planMarkdownImport(document: string, fileName: string, snapshot:
         });
         const entry: ImportEntry = { subjectHeading: section.heading, definitionHeading: definition.heading,
           selector: section.selector, propertyKey: definition.propertyKey, displayName: definition.displayName,
+          ...(resolved.match ? { match: resolved.match } : {}),
+          ...(resolved.matchCandidates ? { matchCandidates: resolved.matchCandidates } : {}),
           ...(existing?.kind === "definition" ? { definitionId: existing.content.id } : {}), ...classified };
         entries.push(entry);
         if (classified.outcome === "create" && content.content) {

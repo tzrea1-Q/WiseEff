@@ -227,9 +227,6 @@ const targetDocuments = (
   return target.documents;
 };
 
-const canonicalSubjectKey = (subject: CatalogReleaseSubjectDocument): string =>
-  subject.content.selector.value;
-
 const expectedSelectorSnapshot = (
   subject: CatalogReleaseSubjectDocument,
 ): unknown => {
@@ -287,6 +284,7 @@ type SubjectRow = {
   id: string;
   kind: string;
   canonical_key: string;
+  introduced_selector: string | null;
   lifecycle: string;
   selector_snapshot: unknown;
   tombstone_provenance: unknown;
@@ -295,6 +293,7 @@ type SubjectRow = {
 type AliasRow = {
   id: string;
   root_subject_id: string;
+  introduced_subject_id: string | null;
   membership_subject_id: string;
   selector_kind: string;
   normalized_selector: string;
@@ -435,11 +434,14 @@ export const compareCompiledProjection = async (
        subject.id,
        subject.kind,
        subject.canonical_key,
+       coalesce(introduction.selector_snapshot->'values'->>0, introduction.selector_snapshot->>'value') as introduced_selector,
        membership.lifecycle,
        membership.selector_snapshot,
        membership.tombstone_provenance
      from parameter_catalog.catalog_release_subjects membership
      join parameter_catalog.catalog_subjects subject on subject.id = membership.subject_id
+     left join parameter_catalog.catalog_release_subjects introduction
+       on introduction.release_id = subject.introduced_release_id and introduction.subject_id = subject.id
      where membership.release_id = $1`,
     [releaseId],
   );
@@ -458,7 +460,7 @@ export const compareCompiledProjection = async (
       );
       continue;
     }
-    if (row.kind !== subject.content.kind || row.canonical_key !== canonicalSubjectKey(subject)
+    if (row.kind !== subject.content.kind || row.canonical_key !== row.introduced_selector
       || (subject.content.ownerSubjectId !== undefined && subjectOwners.get(subject.content.id) !== subject.content.ownerSubjectId)) {
       violations.push(
         violation(
@@ -507,6 +509,7 @@ export const compareCompiledProjection = async (
     `select
        alias.id,
        alias.subject_id as root_subject_id,
+       introduction.subject_id as introduced_subject_id,
        membership.subject_id as membership_subject_id,
        alias.selector_kind,
        alias.normalized_selector,
@@ -514,6 +517,8 @@ export const compareCompiledProjection = async (
        membership.tombstone_provenance
      from parameter_catalog.catalog_release_subject_aliases membership
      join parameter_catalog.catalog_subject_aliases alias on alias.id = membership.alias_id
+     left join parameter_catalog.catalog_release_subject_aliases introduction
+       on introduction.release_id = alias.introduced_release_id and introduction.alias_id = alias.id
      where membership.release_id = $1`,
     [releaseId],
   );
@@ -532,7 +537,7 @@ export const compareCompiledProjection = async (
       continue;
     }
     if (
-      row.root_subject_id !== alias.content.subjectId ||
+      row.root_subject_id !== row.introduced_subject_id ||
       row.membership_subject_id !== alias.content.subjectId
     ) {
       violations.push(
