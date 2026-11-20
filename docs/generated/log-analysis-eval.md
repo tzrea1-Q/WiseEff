@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-10-20T04:36:47.623Z
-- Single-shot prompt version: `2026-10-19.procedure.signals.source.1`
-- Loop prompt version: `2026-10-19.loop.procedure.signals.source.3`
-- Scenarios: 45 (45 passed)
+- Generated: 2026-11-20T02:23:30.230Z
+- Single-shot prompt version: `2026-10-19.procedure.signals.source.2`
+- Loop prompt version: `2026-10-19.loop.procedure.signals.source.11`
+- Scenarios: 62 (62 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -11,13 +11,20 @@
 | Scenario | Category | Kernel | Source | Degraded | Trace steps | Result |
 | --- | --- | --- | --- | --- | --- | --- |
 | procedure-benign-single-shot-order | procedure-priority | single-shot | agent | - | 1 | PASS |
-| procedure-fabricated-single-shot-evidence-rejected | procedure-adversarial | single-shot | rules-fallback | token-budget-exhausted | 3 | PASS |
+| procedure-fabricated-single-shot-evidence-rejected | procedure-adversarial | single-shot | rules-fallback | invalid-model-output | 3 | PASS |
 | grounded-normal-conclusion | grounding | single-shot | agent | - | 1 | PASS |
-| hallucinated-citations-rejected | grounding | single-shot | rules-fallback | token-budget-exhausted | 3 | PASS |
+| hallucinated-citations-rejected | grounding | single-shot | rules-fallback | invalid-model-output | 3 | PASS |
 | partially-hallucinated-citations-pruned | grounding | single-shot | agent | - | 1 | PASS |
 | provider-outage-degrades-honestly | degradation | single-shot | rules-fallback | provider-unavailable | 3 | PASS |
-| budget-exhausted-marked | degradation | single-shot | rules-fallback | token-budget-exhausted | 3 | PASS |
+| single-shot-repaired-json-grounded | json-repair | single-shot | agent | - | 1 | PASS |
+| single-shot-invalid-output-marked | degradation | single-shot | rules-fallback | invalid-model-output | 3 | PASS |
 | analysis-question-injected-and-answered | analysis-question | single-shot | agent | - | 1 | PASS |
+| loop-invalid-output-recovers-with-grounded-single-shot | degradation-staircase | loop | single-shot-fallback | invalid-model-output | 5 | PASS |
+| loop-and-single-shot-invalid-output-degrade-to-rules | degradation-staircase | loop | rules-fallback | invalid-model-output | 6 | PASS |
+| loop-token-budget-exhaustion-skips-single-shot | degradation-staircase | loop | rules-fallback | token-budget-exhausted | 3 | PASS |
+| loop-repaired-tool-and-final-grounded | json-repair | loop | agent | - | 3 | PASS |
+| loop-unrepairable-json-degrades | json-repair | loop | rules-fallback | invalid-model-output | 5 | PASS |
+| loop-rejects-historical-hints-as-evidence | past-conclusions | loop | agent | - | 6 | PASS |
 | loop-source-search-timeout-preserves-log-analysis | source-tools | loop | agent | - | 5 | PASS |
 | loop-source-search-literal-legal-and-grounded | source-tools | loop | agent | - | 3 | PASS |
 | loop-source-search-full-text-legal-and-grounded | source-tools | loop | agent | - | 3 | PASS |
@@ -47,10 +54,20 @@
 | loop-in-budget-convergence | loop-convergence | loop | agent | - | 5 | PASS |
 | loop-illegal-tool-name-rejected-and-corrected | loop-tool-legality | loop | agent | - | 5 | PASS |
 | loop-illegal-tool-args-rejected-and-corrected | loop-tool-legality | loop | agent | - | 5 | PASS |
-| loop-persistent-illegal-calls-degrade-honestly | loop-tool-legality | loop | rules-fallback | token-budget-exhausted | 8 | PASS |
-| loop-step-limit-early-convergence | loop-convergence | loop | agent | token-budget-exhausted | 6 | PASS |
+| loop-persistent-illegal-calls-degrade-honestly | loop-tool-legality | loop | rules-fallback | invalid-model-output | 8 | PASS |
+| loop-step-limit-early-convergence | loop-convergence | loop | agent | step-budget-exhausted | 6 | PASS |
 | trace-redacts-prompts-procedure-and-provider-payloads | trace-privacy | loop | agent | - | 7 | PASS |
-| loop-token-budget-fallback | loop-convergence | loop | rules-fallback | token-budget-exhausted | 5 | PASS |
+| loop-native-batch-folds-results-and-grounds-final | loop-protocol | loop | agent | - | 5 | PASS |
+| loop-folded-tool-result-keeps-early-evidence | loop-context | loop | agent | - | 7 | PASS |
+| loop-procedure-checklist-json | procedure-adversarial | loop | agent | - | 7 | PASS |
+| loop-procedure-checklist-tools | procedure-adversarial | loop | agent | - | 7 | PASS |
+| loop-hypothesis-ledger-json-off | loop-context | loop | agent | - | 7 | PASS |
+| loop-hypothesis-ledger-json-on | loop-context | loop | agent | - | 7 | PASS |
+| loop-hypothesis-ledger-tools-off | loop-context | loop | agent | - | 7 | PASS |
+| loop-hypothesis-ledger-tools-on | loop-context | loop | agent | - | 7 | PASS |
+| loop-verifier-rejects-conclusion-contradicting-cited-line | verification-adversarial | loop | agent | - | 4 | PASS |
+| loop-final-answer-uses-token-reserve | loop-convergence | loop | agent | token-budget-exhausted | 8 | PASS |
+| loop-token-budget-fallback | loop-convergence | loop | rules-fallback | token-budget-exhausted | 4 | PASS |
 | loop-honest-refusal-on-insufficient-evidence | loop-honesty | loop | agent | - | 5 | PASS |
 | loop-multi-step-grounding-enforced | loop-grounding | loop | agent | - | 4 | PASS |
 | loop-domain-model-override-applied | model-override | loop | agent | - | - | PASS |

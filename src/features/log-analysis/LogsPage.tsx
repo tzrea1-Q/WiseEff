@@ -1043,8 +1043,9 @@ function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavig
   return (
     <div className="analysis-provenance" data-testid="analysis-provenance">
       <div className="analysis-provenance__badges">
-        <span className="analysis-provenance__badge">{log.analysisSource === "rules-fallback" ? "规则回退" : "AI 分析"}</span>
-        {degraded && log.analysisSource !== "rules-fallback" ? <span className="analysis-provenance__badge">提前收敛</span> : null}
+        <span className="analysis-provenance__badge">{degraded?.kind === "rules-fallback" ? "规则回退"
+          : degraded?.kind === "single-shot-fallback" ? degraded.label : "AI 分析"}</span>
+        {degraded?.kind === "early-convergence" ? <span className="analysis-provenance__badge">提前收敛</span> : null}
         {skillName && log.skillSelection?.mode !== "generic" ? <>
           {canViewSkill && log.logDomainId && log.logDomainName ? <a className="analysis-provenance__badge" href={withOrganizationScope(`/log-admin/skills/${encodeURIComponent(log.logDomainId)}`, organizationId)}
             onClick={(event) => { event.preventDefault(); onNavigate(`/log-admin/skills/${encodeURIComponent(log.logDomainId!)}`); }}>
@@ -1086,6 +1087,15 @@ function AnalysisProvenanceBadges({ log, canViewSkill, canOpenKnowledge, onNavig
   );
 }
 
+const verificationLabels = {
+  passed: "结论验证通过。",
+  revised: "报告已根据结论验证结果修订。",
+  failed: "结论验证未通过，请人工复核。",
+  skipped: "本次未执行结论验证。"
+};
+
+const checkStatusLabels = { done: "已完成", skipped: "已跳过", pending: "未处理" } as const;
+
 function LogConclusionCard({
   log, canViewSkill, canOpenKnowledge, onNavigate, onAskAgent, onPrimary, relatedParameterLocated = false, organizationId,
   relatedParameterUnlocated = false, onExport, onCopyLink, onDistil, distilPending = false,
@@ -1115,6 +1125,7 @@ function LogConclusionCard({
 }) {
   if (log.status === "Failed") return <LogErrorAlert log={log} onRetry={onRetry} />;
   const complete = log.status === "Complete";
+  const verification = complete ? log.verification : undefined;
   return <section className="logs-conclusion-card" aria-labelledby="log-conclusion-title">
     <div className="logs-conclusion-head">
       <div>
@@ -1122,12 +1133,41 @@ function LogConclusionCard({
         {complete ? <p>{log.impact}</p> : null}
       </div>
     </div>
+    {verification ? <div className={verification.status === "failed" ? "analysis-provenance__reason" : "text-sm text-muted-foreground break-words"}>
+      <p>{verificationLabels[verification.status]}</p>
+      {verification.status !== "skipped" ? <span>
+        已检查 {verification.checkedClaims} 项，其中 {verification.unsupportedClaims} 项未获证据支持。验证模型：{verification.model}
+      </span> : null}
+    </div> : null}
+    {complete && !!log.alternativeHypotheses?.length && <div className="logs-conclusion-list">
+      <h3>已排除的可能原因</h3>
+      <ul>
+        {log.alternativeHypotheses.map(({ statement, reason }, index) => <li key={index}>
+          <strong>{statement}</strong><p>{reason}</p>
+        </li>)}
+      </ul>
+    </div>}
+    {complete && !!log.checks?.length && <div className="logs-conclusion-list">
+      <h3>诊断检查项</h3>
+      <ul>{log.checks.map(({ id, description, required, status, reason, anchors }) => <li key={id}>
+        <strong>{description}</strong>{required ? "（必查）" : null}
+        <span> · </span><span>{checkStatusLabels[status]}</span>
+        {reason ? <p>{reason}</p> : null}
+        {anchors.length ? <p className="text-sm text-muted-foreground">{anchors.map((anchor) => (
+          `${"file" in anchor ? anchor.file || log.fileName : anchor.path}:${anchor.line}`
+        )).join("、")}</p> : null}
+      </li>)}</ul>
+    </div>}
     <LogHeaderMeta log={log} />
     {complete ? <div className="logs-conclusion-summary">
       <AnalysisProvenanceBadges log={log} canViewSkill={canViewSkill} canOpenKnowledge={canOpenKnowledge} onNavigate={onNavigate} organizationId={organizationId} />
       <ConfidenceBar value={log.confidence} status={log.status} />
     </div> : null}
     {log.analysisQuestion ? <div className="logs-analysis-question"><strong>用户问题</strong><span>{log.analysisQuestion}</span></div> : null}
+    {complete && log.historicalRunIds?.length ? <details className="text-sm text-muted-foreground">
+      <summary>参考历史运行（{log.historicalRunIds.length}）</summary>
+      <ul className="list-disc break-all pl-5">{log.historicalRunIds.map((id) => <li key={id}>{id}</li>)}</ul>
+    </details> : null}
     {complete ? <>
       <div className="logs-conclusion-actions">
         {relatedParameterLocated && onPrimary ? <Button onClick={onPrimary}>查看关联参数</Button> : null}

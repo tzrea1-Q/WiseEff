@@ -1,0 +1,17 @@
+domain: service-jsonl
+summary: A worker keeps draining its telemetry queue without evidence of a stall.
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [no-fault, generic-analysis]
+rootCauseCategory: no-fault
+expectRefusal: true
+analysisQuestion: Does the queue worker show signs that it stopped making progress?
+realismChecklist:
+  lineFormat: Service JSON Lines with ISO 8601 UTC millisecond timestamps and structured fields.
+  noiseRatio: All 35 lines are routine heartbeats, polls or checkpoint commits (100%).
+  distractors: The no-fault scenario contains no WARN or ERROR lines.
+  rootCauseDiscoverability: There is no fault marker. Progress is visible in repeated commits and low queue lag.
+  timeline: One UTC clock and monotonically increasing sample times at exactly one-second intervals across all event types.
+  sensitiveData: Queue and component names are fictional and no identifiers or credentials are included.
+  annotationReview: "Author checked that the poll, heartbeat and commit history supports refusal and leaves diagnosis fields empty. Independent review (2026-11-18): concern. Seven checkpoint commits, 2–5 ms lag and recurring polls support the no-fault verdict. The uniformly spaced polls, heartbeats and commits fall short of the irregular-timing target."

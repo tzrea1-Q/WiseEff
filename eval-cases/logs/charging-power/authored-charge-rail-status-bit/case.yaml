@@ -1,0 +1,22 @@
+domain: charging-power
+summary: "The output gate turns off during an otherwise normal input session."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [register-decoding, distractor]
+rootCauseCategory: power-delivery-degradation
+analysisQuestion: "Which protection latched when the output gate turned off?"
+rootCausePoints:
+  - "Register 0x12 bit 5 goes from clear to latched overvoltage after the 4518 mV output sample. The gate reads off and the output subsequently reads 0 mV."
+keyEvidenceLines: [177, 181, 182, 183, 186]
+expectedActions:
+  - "Decode both status reads with skill.yaml and compare them with the output-gate readback."
+  - "Check rail overshoot and the sense path around the transition before attempting to clear the latch."
+realismChecklist:
+  lineFormat: "dmesg monotonic boot seconds with six fractional digits and driver-prefixed messages."
+  noiseRatio: "339 of 345 lines are routine traffic (98.3%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "The unrelated auxiliary ADC channel timeout at line 82 includes a successful retry."
+  rootCauseDiscoverability: "The register prints raw bytes only. Its bit mapping and the preceding output measurement explain the following gate transition."
+  timeline: "One boot clock. The 4518 mV sample precedes the latched bit and gate readback."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Checked 0x01 and 0x21 against the fixture bit map and the adjacent ADC and gate lines. The two status reads differ by bit 5. Independent review (2026-11-18): fixed. The skill decodes clear to latched_overvoltage. The log reports one output-voltage sample before the latch and leaves the trigger in the rail or sense path open."

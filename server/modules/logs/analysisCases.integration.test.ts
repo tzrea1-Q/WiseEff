@@ -185,18 +185,32 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
       expect(await namedExport.file(`generic/${namedLog.id}/log.txt`)!.async("string")).toBe("ERROR thermal foldback");
       await deleteAnalysisCase(h.db, h.auth, h.skill.id, namedLog.id, h.invocation, h.context);
       await expect(createAnalysisCase(h.db, h.store, h.auth, h.skill.id, { name: "Bogus selection", expectations: { ...expectations, bundleFiles: ["absent.log"] }, files: [{ fileName: "log.txt", bytes: Buffer.from("ERROR thermal") }] }, h.invocation, h.context)).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
-      const fixtures = new JSZip(), expected: Record<string, Buffer> = {}, root = join(process.cwd(), "eval-cases/logs");
-      for (const domain of readdirSync(root, { withFileTypes: true }).filter((file) => file.isDirectory())) for (const item of readdirSync(join(root, domain.name), { withFileTypes: true }).filter((file) => file.isDirectory())) {
-        for (const file of ["case.yaml", "log.txt"]) { const path = `${domain.name}/${item.name}/${file}`, bytes = readFileSync(join(root, path)); expected[path] = bytes; fixtures.file(path, bytes, { createFolders: false }); }
+      const root = join(process.cwd(), "eval-cases/logs");
+      const domains = readdirSync(root, { withFileTypes: true }).filter((file) => file.isDirectory());
+      expect(domains.length).toBeGreaterThan(0);
+      for (const domain of domains) {
+        const fixtures = new JSZip(), expected: Record<string, Buffer> = {};
+        const cases = readdirSync(join(root, domain.name), { withFileTypes: true }).filter((file) => file.isDirectory());
+        for (const item of cases) {
+          const caseDir = join(root, domain.name, item.name);
+          for (const file of readdirSync(caseDir, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())) {
+            const path = join(file.parentPath, file.name), relativePath = path.slice(root.length + 1), bytes = readFileSync(path);
+            expected[relativePath] = bytes;
+            fixtures.file(relativePath, bytes, { createFolders: false });
+          }
+        }
+        // Import each domain into its own skill to stay within the per-skill limit.
+        const skill = await createLogSkill(h.db, h.auth, { name: domain.name }, h.invocation, h.context);
+        const bytes = await fixtures.generateAsync({ type: "nodebuffer" });
+        const imported = await importSkillAnalysisCases(h.db, h.store, h.auth, skill.id, bytes, h.invocation, h.context);
+        expect(imported.items).toHaveLength(cases.length);
+        const keysBeforeDuplicate = [...h.store.entries.keys()].sort();
+        await expect(importSkillAnalysisCases(h.db, h.store, h.auth, skill.id, bytes, h.invocation, h.context)).rejects.toMatchObject({ code: "CONFLICT" });
+        expect([...h.store.entries.keys()].sort()).toEqual(keysBeforeDuplicate);
+        const exported = await JSZip.loadAsync(await exportSkillAnalysisCases(h.db, h.store, h.auth, skill.id));
+        expect(Object.keys(exported.files).sort()).toEqual(Object.keys(expected).sort());
+        for (const [path, bytes] of Object.entries(expected)) expect((await exported.file(path)!.async("nodebuffer")).equals(bytes), path).toBe(true);
       }
-      const imported = await importSkillAnalysisCases(h.db, h.store, h.auth, h.skill.id, await fixtures.generateAsync({ type: "nodebuffer" }), h.invocation, h.context);
-      expect(imported.items.length).toBeGreaterThan(0);
-      const keysBeforeDuplicate = [...h.store.entries.keys()].sort();
-      await expect(importSkillAnalysisCases(h.db, h.store, h.auth, h.skill.id, await fixtures.generateAsync({ type: "nodebuffer" }), h.invocation, h.context)).rejects.toMatchObject({ code: "CONFLICT" });
-      expect([...h.store.entries.keys()].sort()).toEqual(keysBeforeDuplicate);
-      const exported = await JSZip.loadAsync(await exportSkillAnalysisCases(h.db, h.store, h.auth, h.skill.id));
-      expect(Object.keys(exported.files).sort()).toEqual(Object.keys(expected).sort());
-      for (const [path, bytes] of Object.entries(expected)) expect(await exported.file(path)!.async("nodebuffer"), path).toEqual(bytes);
     } finally { await h.close(); }
   }, 120_000);
 
@@ -240,7 +254,7 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
       for (const scenario of [
         { analyzer: h.analyzer, content: "INFO WISEEFF_SIMULATE_LLM_PROVIDER_DOWN\n", reason: "provider-unavailable", refused: false, source: "rules-fallback" },
         { analyzer: budgetAnalyzer, content: "INFO device event\n", reason: "token-budget-exhausted", refused: false, source: "rules-fallback" },
-        { analyzer: scripted("Insufficient evidence to determine a root cause.", 1), content: "INFO device event\n", reason: "token-budget-exhausted", refused: false, source: "agent" },
+        { analyzer: scripted("Insufficient evidence to determine a root cause.", 1), content: "INFO device event\n", reason: "step-budget-exhausted", refused: false, source: "agent" },
         { analyzer: scripted("The thermal sensor failed."), content: "INFO device event\n", reason: undefined, refused: false, source: "agent" },
         { analyzer: scripted("Insufficient evidence to determine a root cause."), content: "INFO device event\n", reason: undefined, refused: true, source: "agent" }
       ]) {
@@ -296,6 +310,7 @@ describe.skipIf(!available)("analysis cases over PostgreSQL", () => {
         expect(preview.lineCount).toBe(50_000); expect(preview.entryCount).toBeGreaterThan(400);
       }
       expect(run.results[0].draft).toMatchObject({ passed: true, score: 100 });
+      expect(run.results[0].draft.report.degradedReason).toBeUndefined();
       expect(run.results[0].draft.report.evidence.some((evidence) => evidence.lineNumbers.includes(601))).toBe(true);
     } finally { await h.close(); }
   }, 120_000);

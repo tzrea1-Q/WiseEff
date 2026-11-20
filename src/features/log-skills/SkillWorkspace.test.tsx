@@ -200,6 +200,31 @@ describe("skill workspace", () => {
     await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith("skill-charging", expect.objectContaining({ procedure: outline }), null, "current"));
   });
 
+  it("previews the checks recognized in the current Markdown draft", async () => {
+    setup({ section: "procedure" });
+    fireEvent.change(await screen.findByRole("textbox", { name: "诊断流程内容" }), { target: { value: [
+      "## 检查项", "- [ ] `cooling` 核对散热（必查）", "```md", "- [ ] `example` 围栏示例", "```",
+      "## Checks", "- [ ] `power` Check power (required)", "- [ ] `ambient` Check ambient", "## Notes", "1. [x] `other` Outside checklist"
+    ].join("\n") } });
+    await userEvent.click(screen.getByRole("tab", { name: "预览" }));
+    const summary = screen.getByRole("region", { name: "识别出的检查项" });
+    const checklist = within(summary);
+    expect(checklist.getAllByRole("listitem")).toHaveLength(3);
+    expect(checklist.getByText("核对散热")).toBeVisible();
+    expect(checklist.getByText("Check power")).toBeVisible();
+    expect(checklist.getAllByText("必查")).toHaveLength(2);
+    expect(checklist.getByText("Check ambient")).toBeVisible();
+
+    const preview = within(screen.getByRole("tabpanel", { name: "预览" }));
+    const items = preview.getAllByRole("listitem").filter((item) => !summary.contains(item));
+    expect(items.map((item) => item.textContent)).toEqual([
+      "cooling 核对散热（必查）", "power Check power (required)", "ambient Check ambient", "other Outside checklist"
+    ]);
+    expect(within(items[0]).getByText("cooling", { selector: "code" })).toBeVisible();
+    expect(preview.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(preview.getByText("- [ ] `example` 围栏示例", { selector: "pre > code" })).toBeVisible();
+  });
+
   it("links each prepublication check to its section and invalidates stale results", async () => {
     const { repository, onNavigate } = setup({ draft: true, spec: { parseTests: [parseTest] }, runParseTests: async () => failedParseRun });
     repository.listAnalysisCases.mockResolvedValue({ items: [analysisCase], latestRun: completeCaseRun, current: true });
@@ -517,6 +542,22 @@ describe("skill workspace", () => {
     fireEvent.click(within(screen.getByRole("dialog", { name: "发布技能" })).getByRole("button", { name: "发布" }));
     await waitFor(() => expect(repository.publishSkill).toHaveBeenCalledWith(skill.id, "model-draft"));
     expect(repository.saveSkillDraft).toHaveBeenCalledWith(skill.id, expect.objectContaining({ modelOverride: "acceptance-domain-model-x" }), null, expect.any(String));
+  });
+
+  it("saves a protocol override and can restore the platform default", async () => {
+    const { repository } = setup({ section: "overview" });
+    const protocol = await screen.findByRole("combobox", { name: "协议覆盖" });
+    expect(protocol).toHaveTextContent("使用平台默认协议");
+    await userEvent.click(protocol);
+    await userEvent.click(await screen.findByRole("option", { name: "原生工具调用" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledWith(expect.any(String),
+      expect.objectContaining({ protocolOverride: "tools" }), null, "current"));
+    await userEvent.click(protocol);
+    await userEvent.click(await screen.findByRole("option", { name: "使用平台默认协议" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(repository.saveSkillDraft).toHaveBeenCalledTimes(2));
+    expect(repository.saveSkillDraft.mock.calls[1][1]).not.toHaveProperty("protocolOverride");
   });
 
   it("keeps signal edits across sections, blocks invalid fields and saves the exact skill representation", async () => {

@@ -7,7 +7,7 @@ import { z } from "zod";
 import { logAnalysisCaseExpectationsSchema } from "../contracts/dtoSchemas/logs";
 import { compileLogPattern } from "./adminPattern";
 import { bundleFileUtf8Bytes, intakeLogBundle } from "./bundleIntake";
-import { goldenCaseYamlSchema } from "./eval/goldenCases";
+import { goldenCaseYamlSchema, logEvalCaseMetadataSchema } from "./eval/goldenCases";
 import { validateLogFormatProfile } from "./formatProfile";
 
 export type AnalysisCaseAnnotation = z.infer<typeof logAnalysisCaseExpectationsSchema>;
@@ -91,7 +91,7 @@ export function parseArchiveYaml(value: string): unknown {
   return document.toJS({ maxAliasCount: archiveYamlLimits.maxAliasCount });
 }
 
-export const analysisCaseAnnotationSchema = logAnalysisCaseExpectationsSchema.superRefine((annotation, context) => {
+const analysisCaseAnnotationSchema = logAnalysisCaseExpectationsSchema.extend(logEvalCaseMetadataSchema.shape).superRefine((annotation, context) => {
   const golden = goldenCaseYamlSchema.safeParse(annotation);
   if (!golden.success) for (const issue of logValidationIssues(golden.error.issues)) context.addIssue(issue);
   for (const [index, evidence] of (annotation.keyEvidence ?? []).entries()) {
@@ -259,7 +259,8 @@ export function parseAnalysisCaseFiles(entries: Map<string, Buffer>, limits = an
       problems.push(...logValidationIssues(parsed.error.issues).map((issue) => `${yamlPath}:${issue.path.join(".") || "(root)"}: ${issue.message}`));
       continue;
     }
-    const annotation = parsed.data;
+    // Eval metadata travels in sourceYaml without becoming a product expectations field.
+    const annotation = logAnalysisCaseExpectationsSchema.parse(parsed.data);
     if (annotation.domain !== archivePath.split("/")[0]) problems.push(`${yamlPath}:domain: 须与上级目录一致`);
     if (annotation.formatProfile !== undefined) {
       const profile = validateLogFormatProfile(annotation.formatProfile);

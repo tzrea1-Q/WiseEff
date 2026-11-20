@@ -1,0 +1,31 @@
+domain: charging-power
+summary: "USB input current drops during an enclosure heating test."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [multi-file, distractor]
+rootCauseCategory: thermal-protection
+analysisQuestion: "What cut the input current while USB-PD stayed online?"
+rootCausePoints:
+  - "The USB shell temperature crossed trip 3 and moved cdev2 to state 1."
+  - "The cdev2 vote lowered input current from 3000 to 1500 mA while the 9 V contract stayed active."
+keyEvidenceLines: [52, 54, 183, 184, 344, 345]
+expectedActions:
+  - "Check connector heating and the USB shell sensor around the 47.5 C threshold."
+  - "Record cdev2, the current limit and the PD contract as the enclosure cools."
+bundleFiles: [fixtures/kernel.log, fixtures/charger.log, fixtures/thermal.log]
+keyEvidence:
+  - { file: kernel.log, line: 52 }
+  - { file: kernel.log, line: 54 }
+  - { file: charger.log, line: 66 }
+  - { file: charger.log, line: 67 }
+  - { file: thermal.log, line: 68 }
+  - { file: thermal.log, line: 69 }
+realismChecklist:
+  lineFormat: "RFC 5424 syslog with UTC millisecond timestamps and PRI severity."
+  noiseRatio: "402 of 410 lines are routine traffic (98.0%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "A retried descriptor error on USB 1-2 at kernel.log:36 is unrelated to the port0 power contract."
+  rootCauseDiscoverability: "Trip, cooling-device vote, current sample and retained PD contract are in separate streams."
+  timeline: "Shared UTC. The thermal trip precedes the current vote and the low current sample."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Checked trip -> cdev2 -> vote -> current against the original three files. The PD line confirms the contract after the lower current sample and supports comparing cooling against current. Independent review (2026-11-18): fixed. Corrected the descriptor message to error PRI severity. The trip, cdev2 state, current-limit vote, hardware selector and 1489 mA sample line up, with port0 still reporting the 9 V contract."

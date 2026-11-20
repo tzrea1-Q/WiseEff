@@ -1,0 +1,345 @@
+[  842.048438] railmon 2-006c: adc vin_mv=9001 die_mc=41520
+[  842.178344] railmon 2-006c: rd 0x13 = 0x04
+[  842.611730] railmon 2-006c: watchdog service interval_ms=801 retry=0
+[  842.801670] railmon 2-006c: adc vin_mv=9006 die_mc=41500
+[  843.261293] railmon 2-006c: rd 0x13 = 0x04
+[  844.088175] railmon 2-006c: watchdog service interval_ms=8017 retry=0
+[  844.192504] railmon 2-006c: adc vin_mv=9007 die_mc=41510
+[  844.391005] railmon 2-006c: rd 0x13 = 0x04
+[  844.509136] railmon 2-006c: watchdog service interval_ms=800 retry=0
+[  845.245907] railmon 2-006c: adc vin_mv=9008 die_mc=415170
+[  845.355351] railmon 2-006c: rd 0x13 = 0x04
+[  846.286256] railmon 2-006c: watchdog service interval_ms=800 retry=0
+[  846.481428] railmon 2-006c: adc vin_mv=9003 die_mc=41580
+[  846.497522] railmon 2-006c: rd 0x13 = 0x04
+[  846.645149] railmon 2-006c: watchdog service interval_ms=804 retry=0
+[  846.762257] railmon 2-006c: adc vin_mv=9001 die_mc=415160
+[  847.164628] railmon 2-006c: rd 0x13 = 0x04
+[  847.223437] railmon 2-006c: watchdog service interval_ms=8015 retry=0
+[  847.397914] railmon 2-006c: adc vin_mv=9005 die_mc=41590
+[  847.582248] railmon 2-006c: rd 0x13 = 0x04
+[  847.998073] railmon 2-006c: watchdog service interval_ms=809 retry=0
+[  848.058675] railmon 2-006c: adc vin_mv=9004 die_mc=41500
+[  848.074791] railmon 2-006c: rd 0x13 = 0x04
+[  848.200431] railmon 2-006c: watchdog service interval_ms=806 retry=0
+[  848.255446] railmon 2-006c: adc vin_mv=9006 die_mc=415120
+[  848.391589] railmon 2-006c: rd 0x13 = 0x04
+[  848.892557] railmon 2-006c: watchdog service interval_ms=8015 retry=0
+[  848.947298] railmon 2-006c: adc vin_mv=9000 die_mc=41590
+[  849.459580] railmon 2-006c: rd 0x13 = 0x04
+[  849.660489] railmon 2-006c: watchdog service interval_ms=8019 retry=0
+[  850.167333] railmon 2-006c: adc vin_mv=9002 die_mc=41550
+[  850.288222] railmon 2-006c: rd 0x13 = 0x04
+[  850.392043] railmon 2-006c: watchdog service interval_ms=8013 retry=0
+[  851.237536] railmon 2-006c: adc vin_mv=9002 die_mc=415170
+[  851.252690] railmon 2-006c: rd 0x13 = 0x04
+[  851.491284] railmon 2-006c: watchdog service interval_ms=8010 retry=0
+[  851.595906] railmon 2-006c: adc vin_mv=9003 die_mc=415180
+[  852.080943] railmon 2-006c: rd 0x13 = 0x04
+[  852.138548] railmon 2-006c: watchdog service interval_ms=8014 retry=0
+[  852.615961] railmon 2-006c: adc vin_mv=9001 die_mc=41540
+[  852.791731] railmon 2-006c: rd 0x13 = 0x04
+[  853.017787] railmon 2-006c: watchdog service interval_ms=809 retry=0
+[  853.033761] railmon 2-006c: adc vin_mv=9008 die_mc=41550
+[  853.047769] railmon 2-006c: rd 0x13 = 0x04
+[  853.853523] railmon 2-006c: watchdog service interval_ms=8017 retry=0
+[  853.866472] railmon 2-006c: adc vin_mv=9001 die_mc=41520
+[  853.879680] railmon 2-006c: rd 0x13 = 0x04
+[  853.936470] railmon 2-006c: watchdog service interval_ms=8017 retry=0
+[  853.986763] railmon 2-006c: adc vin_mv=9007 die_mc=41510
+[  854.032343] railmon 2-006c: rd 0x13 = 0x04
+[  854.181872] railmon 2-006c: watchdog service interval_ms=8018 retry=0
+[  854.349483] railmon 2-006c: adc vin_mv=9001 die_mc=415180
+[  854.363408] railmon 2-006c: rd 0x13 = 0x04
+[  854.421967] railmon 2-006c: watchdog service interval_ms=806 retry=0
+[  854.663870] railmon 2-006c: adc vin_mv=9007 die_mc=41550
+[  854.711120] railmon 2-006c: rd 0x13 = 0x04
+[  854.906995] railmon 2-006c: watchdog service interval_ms=8019 retry=0
+[  855.401921] railmon 2-006c: adc vin_mv=9000 die_mc=41590
+[  855.598599] railmon 2-006c: rd 0x13 = 0x04
+[  855.755679] railmon 2-006c: watchdog service interval_ms=8010 retry=0
+[  855.813364] railmon 2-006c: adc vin_mv=9006 die_mc=415140
+[  855.825348] railmon 2-006c: rd 0x13 = 0x04
+[  855.837724] railmon 2-006c: watchdog service interval_ms=808 retry=0
+[  855.852362] railmon 2-006c: adc vin_mv=9008 die_mc=415180
+[  855.867382] railmon 2-006c: rd 0x13 = 0x04
+[  855.981045] railmon 2-006c: watchdog service interval_ms=805 retry=0
+[  856.027107] railmon 2-006c: adc vin_mv=9003 die_mc=415120
+[  856.775950] railmon 2-006c: rd 0x13 = 0x04
+[  856.933373] railmon 2-006c: watchdog service interval_ms=804 retry=0
+[  857.351780] railmon 2-006c: adc vin_mv=9004 die_mc=41530
+[  857.761256] railmon 2-006c: rd 0x13 = 0x04
+[  858.194410] railmon 2-006c: watchdog service interval_ms=809 retry=0
+[  858.458017] railmon 2-006c: adc vin_mv=9004 die_mc=41510
+[  858.517001] railmon 2-006c: rd 0x13 = 0x04
+[  858.936979] railmon 2-006c: watchdog service interval_ms=800 retry=0
+[  859.137566] railmon 2-006c: adc vin_mv=9005 die_mc=41570
+[  859.864864] railmon 2-006c: rd 0x13 = 0x04
+[  860.031227] railmon 2-006c: watchdog service interval_ms=8015 retry=0
+[  860.092560] railmon 2-006c: adc vin_mv=9006 die_mc=41550
+[  860.201469] railmon 2-006c: rd 0x13 = 0x04
+[  860.439330] railmon 2-006c: watchdog service interval_ms=8012 retry=0
+[  860.852000] adc_aux 0-0048: sample timeout on channel 2; retry ok
+[  861.349472] railmon 2-006c: adc vin_mv=9006 die_mc=415130
+[  862.244141] railmon 2-006c: rd 0x13 = 0x04
+[  862.300078] railmon 2-006c: watchdog service interval_ms=8018 retry=0
+[  863.172801] railmon 2-006c: adc vin_mv=9002 die_mc=415190
+[  863.300324] railmon 2-006c: rd 0x13 = 0x04
+[  863.519785] railmon 2-006c: watchdog service interval_ms=8010 retry=0
+[  863.652091] railmon 2-006c: adc vin_mv=9000 die_mc=415170
+[  863.697222] railmon 2-006c: rd 0x13 = 0x04
+[  863.709057] railmon 2-006c: watchdog service interval_ms=800 retry=0
+[  863.721815] railmon 2-006c: adc vin_mv=9008 die_mc=415190
+[  863.734391] railmon 2-006c: rd 0x13 = 0x04
+[  863.989713] railmon 2-006c: watchdog service interval_ms=802 retry=0
+[  864.034258] railmon 2-006c: adc vin_mv=9008 die_mc=415160
+[  864.784742] railmon 2-006c: rd 0x13 = 0x04
+[  864.799982] railmon 2-006c: watchdog service interval_ms=8017 retry=0
+[  864.815592] railmon 2-006c: adc vin_mv=9002 die_mc=41590
+[  865.593043] railmon 2-006c: rd 0x13 = 0x04
+[  865.772750] railmon 2-006c: watchdog service interval_ms=8019 retry=0
+[  866.035917] railmon 2-006c: adc vin_mv=9001 die_mc=415160
+[  866.048213] railmon 2-006c: rd 0x13 = 0x04
+[  866.242498] railmon 2-006c: watchdog service interval_ms=800 retry=0
+[  866.364190] railmon 2-006c: adc vin_mv=9001 die_mc=41580
+[  866.756734] railmon 2-006c: rd 0x13 = 0x04
+[  867.182968] railmon 2-006c: watchdog service interval_ms=802 retry=0
+[  867.337961] railmon 2-006c: adc vin_mv=9005 die_mc=41510
+[  867.589623] railmon 2-006c: rd 0x13 = 0x04
+[  868.071289] railmon 2-006c: watchdog service interval_ms=8016 retry=0
+[  868.084023] railmon 2-006c: adc vin_mv=9005 die_mc=41500
+[  868.488668] railmon 2-006c: rd 0x13 = 0x04
+[  868.624898] railmon 2-006c: watchdog service interval_ms=8011 retry=0
+[  869.122511] railmon 2-006c: adc vin_mv=9005 die_mc=415190
+[  869.135967] railmon 2-006c: rd 0x13 = 0x04
+[  869.576730] railmon 2-006c: watchdog service interval_ms=8010 retry=0
+[  869.685436] railmon 2-006c: adc vin_mv=9006 die_mc=415110
+[  869.892691] railmon 2-006c: rd 0x13 = 0x04
+[  869.905311] railmon 2-006c: watchdog service interval_ms=806 retry=0
+[  870.419840] railmon 2-006c: adc vin_mv=9008 die_mc=415110
+[  870.840761] railmon 2-006c: rd 0x13 = 0x04
+[  871.648217] railmon 2-006c: watchdog service interval_ms=8012 retry=0
+[  871.702763] railmon 2-006c: adc vin_mv=9004 die_mc=41530
+[  872.102559] railmon 2-006c: rd 0x13 = 0x04
+[  872.115482] railmon 2-006c: watchdog service interval_ms=803 retry=0
+[  872.130930] railmon 2-006c: adc vin_mv=9002 die_mc=41560
+[  872.333563] railmon 2-006c: rd 0x13 = 0x04
+[  872.535129] railmon 2-006c: watchdog service interval_ms=809 retry=0
+[  872.796117] railmon 2-006c: adc vin_mv=9006 die_mc=415100
+[  872.848412] railmon 2-006c: rd 0x13 = 0x04
+[  873.020251] railmon 2-006c: watchdog service interval_ms=804 retry=0
+[  873.273995] railmon 2-006c: adc vin_mv=9004 die_mc=41510
+[  873.729507] railmon 2-006c: rd 0x13 = 0x04
+[  874.575408] railmon 2-006c: watchdog service interval_ms=801 retry=0
+[  874.622220] railmon 2-006c: adc vin_mv=9004 die_mc=415150
+[  875.504646] railmon 2-006c: rd 0x13 = 0x04
+[  875.769018] railmon 2-006c: watchdog service interval_ms=8011 retry=0
+[  875.993078] railmon 2-006c: adc vin_mv=9004 die_mc=415120
+[  876.481898] railmon 2-006c: rd 0x13 = 0x04
+[  876.733056] railmon 2-006c: watchdog service interval_ms=8015 retry=0
+[  876.908677] railmon 2-006c: adc vin_mv=9008 die_mc=415160
+[  877.327176] railmon 2-006c: rd 0x13 = 0x04
+[  877.343575] railmon 2-006c: watchdog service interval_ms=803 retry=0
+[  878.247812] railmon 2-006c: adc vin_mv=9002 die_mc=415110
+[  879.150098] railmon 2-006c: rd 0x13 = 0x04
+[  879.636771] railmon 2-006c: watchdog service interval_ms=803 retry=0
+[  879.773717] railmon 2-006c: adc vin_mv=9005 die_mc=415160
+[  880.172288] railmon 2-006c: rd 0x13 = 0x04
+[  880.294837] railmon 2-006c: watchdog service interval_ms=8016 retry=0
+[  880.665976] railmon 2-006c: adc vin_mv=9004 die_mc=41560
+[  880.862215] railmon 2-006c: rd 0x13 = 0x04
+[  880.875454] railmon 2-006c: watchdog service interval_ms=8010 retry=0
+[  880.891186] railmon 2-006c: adc vin_mv=9003 die_mc=415140
+[  881.621420] railmon 2-006c: rd 0x13 = 0x04
+[  882.069767] railmon 2-006c: watchdog service interval_ms=8013 retry=0
+[  882.511842] railmon 2-006c: adc vin_mv=9006 die_mc=41560
+[  882.660723] railmon 2-006c: rd 0x13 = 0x04
+[  883.427282] railmon 2-006c: watchdog service interval_ms=8015 retry=0
+[  883.858290] railmon 2-006c: adc vin_mv=9004 die_mc=415190
+[  884.020392] railmon 2-006c: rd 0x13 = 0x04
+[  884.245139] railmon 2-006c: watchdog service interval_ms=8017 retry=0
+[  884.430909] railmon 2-006c: adc vin_mv=9002 die_mc=415140
+[  884.632687] railmon 2-006c: rd 0x13 = 0x04
+[  884.648572] railmon 2-006c: watchdog service interval_ms=8010 retry=0
+[  885.075152] railmon 2-006c: adc vin_mv=9005 die_mc=415110
+[  886.024947] railmon 2-006c: rd 0x13 = 0x04
+[  886.774458] railmon 2-006c: watchdog service interval_ms=808 retry=0
+[  886.907419] railmon 2-006c: adc vin_mv=9004 die_mc=41520
+[  887.014780] railmon 2-006c: rd 0x13 = 0x04
+[  887.030043] railmon 2-006c: watchdog service interval_ms=8013 retry=0
+[  887.160221] railmon 2-006c: adc vin_mv=9005 die_mc=415110
+[  887.905450] railmon 2-006c: rd 0x13 = 0x04
+[  887.918012] railmon 2-006c: watchdog service interval_ms=805 retry=0
+[  887.962860] railmon 2-006c: adc vin_mv=9008 die_mc=41590
+[  888.106522] railmon 2-006c: rd 0x13 = 0x04
+[  889.098359] railmon 2-006c: watchdog service interval_ms=8011 retry=0
+[  889.574156] railmon 2-006c: adc vin_mv=9006 die_mc=415120
+[  890.102000] railmon 2-006c: rd 0x12 = 0x01
+[  890.316092] railmon 2-006c: rd 0x13 = 0x04
+[  890.523515] railmon 2-006c: watchdog service interval_ms=8018 retry=0
+[  890.713629] railmon 2-006c: adc vin_mv=9003 die_mc=41580
+[  890.773000] railmon 2-006c: adc vin_mv=9001 vout_mv=4518 die_mc=42100
+[  890.783000] railmon 2-006c: rd 0x12 = 0x21
+[  890.792000] railmon 2-006c: gate readback=0 setpoint=1 irq=1
+[  890.973071] railmon 2-006c: rd 0x13 = 0x04
+[  891.018946] railmon 2-006c: watchdog service interval_ms=8012 retry=0
+[  891.104000] railmon 2-006c: adc vin_mv=9001 vout_mv=0 die_mc=42020
+[  891.266075] railmon 2-006c: adc vin_mv=9002 die_mc=41530
+[  891.278039] railmon 2-006c: rd 0x13 = 0x04
+[  892.028407] railmon 2-006c: watchdog service interval_ms=806 retry=0
+[  892.285598] railmon 2-006c: adc vin_mv=9003 die_mc=41550
+[  893.106144] railmon 2-006c: rd 0x13 = 0x04
+[  893.119939] railmon 2-006c: watchdog service interval_ms=8015 retry=0
+[  893.614269] railmon 2-006c: adc vin_mv=9001 die_mc=41530
+[  893.628579] railmon 2-006c: rd 0x13 = 0x04
+[  893.641910] railmon 2-006c: watchdog service interval_ms=8014 retry=0
+[  893.910255] railmon 2-006c: adc vin_mv=9000 die_mc=41590
+[  894.901671] railmon 2-006c: rd 0x13 = 0x04
+[  895.026448] railmon 2-006c: watchdog service interval_ms=8011 retry=0
+[  895.039315] railmon 2-006c: adc vin_mv=9003 die_mc=415160
+[  895.099604] railmon 2-006c: rd 0x13 = 0x04
+[  895.115086] railmon 2-006c: watchdog service interval_ms=801 retry=0
+[  895.917670] railmon 2-006c: adc vin_mv=9005 die_mc=415130
+[  896.641608] railmon 2-006c: rd 0x13 = 0x04
+[  896.657705] railmon 2-006c: watchdog service interval_ms=800 retry=0
+[  897.156952] railmon 2-006c: adc vin_mv=9003 die_mc=415100
+[  897.966107] railmon 2-006c: rd 0x13 = 0x04
+[  898.354806] railmon 2-006c: watchdog service interval_ms=804 retry=0
+[  898.559656] railmon 2-006c: adc vin_mv=9003 die_mc=41510
+[  898.755120] railmon 2-006c: rd 0x13 = 0x04
+[  898.770341] railmon 2-006c: watchdog service interval_ms=8018 retry=0
+[  899.502619] railmon 2-006c: adc vin_mv=9005 die_mc=41510
+[  899.637231] railmon 2-006c: rd 0x13 = 0x04
+[  900.538826] railmon 2-006c: watchdog service interval_ms=8019 retry=0
+[  901.533633] railmon 2-006c: adc vin_mv=9007 die_mc=415140
+[  901.936845] railmon 2-006c: rd 0x13 = 0x04
+[  902.071738] railmon 2-006c: watchdog service interval_ms=805 retry=0
+[  902.132195] railmon 2-006c: adc vin_mv=9006 die_mc=41590
+[  902.601795] railmon 2-006c: rd 0x13 = 0x04
+[  902.793199] railmon 2-006c: watchdog service interval_ms=806 retry=0
+[  902.839412] railmon 2-006c: adc vin_mv=9001 die_mc=415120
+[  902.949250] railmon 2-006c: rd 0x13 = 0x04
+[  903.099444] railmon 2-006c: watchdog service interval_ms=806 retry=0
+[  903.113089] railmon 2-006c: adc vin_mv=9000 die_mc=415120
+[  903.157411] railmon 2-006c: rd 0x13 = 0x04
+[  903.202448] railmon 2-006c: watchdog service interval_ms=801 retry=0
+[  903.577411] railmon 2-006c: adc vin_mv=9006 die_mc=41530
+[  903.774084] railmon 2-006c: rd 0x13 = 0x04
+[  903.787625] railmon 2-006c: watchdog service interval_ms=807 retry=0
+[  904.758095] railmon 2-006c: adc vin_mv=9008 die_mc=41530
+[  905.600408] railmon 2-006c: rd 0x13 = 0x04
+[  906.307225] railmon 2-006c: watchdog service interval_ms=8011 retry=0
+[  906.458350] railmon 2-006c: adc vin_mv=9005 die_mc=415100
+[  906.857977] railmon 2-006c: rd 0x13 = 0x04
+[  906.870849] railmon 2-006c: watchdog service interval_ms=8019 retry=0
+[  907.106730] railmon 2-006c: adc vin_mv=9000 die_mc=415180
+[  907.120673] railmon 2-006c: rd 0x13 = 0x04
+[  907.294203] railmon 2-006c: watchdog service interval_ms=801 retry=0
+[  907.710658] railmon 2-006c: adc vin_mv=9008 die_mc=41560
+[  907.900645] railmon 2-006c: rd 0x13 = 0x04
+[  908.019113] railmon 2-006c: watchdog service interval_ms=809 retry=0
+[  908.184585] railmon 2-006c: adc vin_mv=9005 die_mc=415120
+[  908.410350] railmon 2-006c: rd 0x13 = 0x04
+[  909.288108] railmon 2-006c: watchdog service interval_ms=806 retry=0
+[  909.762895] railmon 2-006c: adc vin_mv=9001 die_mc=41500
+[  909.813580] railmon 2-006c: rd 0x13 = 0x04
+[  910.658799] railmon 2-006c: watchdog service interval_ms=8019 retry=0
+[  910.798735] railmon 2-006c: adc vin_mv=9004 die_mc=415190
+[  911.003193] railmon 2-006c: rd 0x13 = 0x04
+[  911.827817] railmon 2-006c: watchdog service interval_ms=801 retry=0
+[  912.745800] railmon 2-006c: adc vin_mv=9004 die_mc=41500
+[  912.884754] railmon 2-006c: rd 0x13 = 0x04
+[  913.085258] railmon 2-006c: watchdog service interval_ms=8016 retry=0
+[  913.201013] railmon 2-006c: adc vin_mv=9006 die_mc=41580
+[  913.360031] railmon 2-006c: rd 0x13 = 0x04
+[  914.079635] railmon 2-006c: watchdog service interval_ms=800 retry=0
+[  914.472403] railmon 2-006c: adc vin_mv=9005 die_mc=415140
+[  914.488772] railmon 2-006c: rd 0x13 = 0x04
+[  914.680501] railmon 2-006c: watchdog service interval_ms=801 retry=0
+[  914.886644] railmon 2-006c: adc vin_mv=9004 die_mc=41510
+[  915.134212] railmon 2-006c: rd 0x13 = 0x04
+[  915.146111] railmon 2-006c: watchdog service interval_ms=8011 retry=0
+[  915.338831] railmon 2-006c: adc vin_mv=9007 die_mc=41520
+[  915.390094] railmon 2-006c: rd 0x13 = 0x04
+[  916.133628] railmon 2-006c: watchdog service interval_ms=809 retry=0
+[  916.194561] railmon 2-006c: adc vin_mv=9000 die_mc=415180
+[  916.207168] railmon 2-006c: rd 0x13 = 0x04
+[  916.462783] railmon 2-006c: watchdog service interval_ms=8010 retry=0
+[  916.524669] railmon 2-006c: adc vin_mv=9000 die_mc=41580
+[  916.571518] railmon 2-006c: rd 0x13 = 0x04
+[  916.817204] railmon 2-006c: watchdog service interval_ms=805 retry=0
+[  916.861809] railmon 2-006c: adc vin_mv=9006 die_mc=415160
+[  916.912221] railmon 2-006c: rd 0x13 = 0x04
+[  917.124154] railmon 2-006c: watchdog service interval_ms=8018 retry=0
+[  917.317562] railmon 2-006c: adc vin_mv=9006 die_mc=415130
+[  917.333783] railmon 2-006c: rd 0x13 = 0x04
+[  917.513826] railmon 2-006c: watchdog service interval_ms=806 retry=0
+[  917.973210] railmon 2-006c: adc vin_mv=9008 die_mc=41570
+[  918.025718] railmon 2-006c: rd 0x13 = 0x04
+[  918.185244] railmon 2-006c: watchdog service interval_ms=804 retry=0
+[  918.293730] railmon 2-006c: adc vin_mv=9006 die_mc=415160
+[  918.309135] railmon 2-006c: rd 0x13 = 0x04
+[  918.574326] railmon 2-006c: watchdog service interval_ms=809 retry=0
+[  919.291767] railmon 2-006c: adc vin_mv=9008 die_mc=41590
+[  919.506221] railmon 2-006c: rd 0x13 = 0x04
+[  919.614499] railmon 2-006c: watchdog service interval_ms=8017 retry=0
+[  919.741704] railmon 2-006c: adc vin_mv=9003 die_mc=415110
+[  919.756477] railmon 2-006c: rd 0x13 = 0x04
+[  920.546924] railmon 2-006c: watchdog service interval_ms=804 retry=0
+[  920.679631] railmon 2-006c: adc vin_mv=9001 die_mc=415110
+[  920.694540] railmon 2-006c: rd 0x13 = 0x04
+[  920.710394] railmon 2-006c: watchdog service interval_ms=800 retry=0
+[  920.848525] railmon 2-006c: adc vin_mv=9004 die_mc=41500
+[  920.992294] railmon 2-006c: rd 0x13 = 0x04
+[  921.239637] railmon 2-006c: watchdog service interval_ms=802 retry=0
+[  921.630460] railmon 2-006c: adc vin_mv=9007 die_mc=41590
+[  922.569388] railmon 2-006c: rd 0x13 = 0x04
+[  922.581763] railmon 2-006c: watchdog service interval_ms=8018 retry=0
+[  923.497503] railmon 2-006c: adc vin_mv=9000 die_mc=41500
+[  923.882290] railmon 2-006c: rd 0x13 = 0x04
+[  924.128258] railmon 2-006c: watchdog service interval_ms=802 retry=0
+[  924.281010] railmon 2-006c: adc vin_mv=9004 die_mc=415190
+[  924.293181] railmon 2-006c: rd 0x13 = 0x04
+[  924.728409] railmon 2-006c: watchdog service interval_ms=8014 retry=0
+[  924.855382] railmon 2-006c: adc vin_mv=9005 die_mc=415100
+[  924.871654] railmon 2-006c: rd 0x13 = 0x04
+[  925.097542] railmon 2-006c: watchdog service interval_ms=804 retry=0
+[  925.113688] railmon 2-006c: adc vin_mv=9008 die_mc=415180
+[  925.171965] railmon 2-006c: rd 0x13 = 0x04
+[  925.371210] railmon 2-006c: watchdog service interval_ms=809 retry=0
+[  925.814628] railmon 2-006c: adc vin_mv=9007 die_mc=41510
+[  925.956251] railmon 2-006c: rd 0x13 = 0x04
+[  926.450083] railmon 2-006c: watchdog service interval_ms=8014 retry=0
+[  926.579634] railmon 2-006c: adc vin_mv=9000 die_mc=415110
+[  927.541288] railmon 2-006c: rd 0x13 = 0x04
+[  928.493909] railmon 2-006c: watchdog service interval_ms=8015 retry=0
+[  928.672325] railmon 2-006c: adc vin_mv=9001 die_mc=415100
+[  928.723923] railmon 2-006c: rd 0x13 = 0x04
+[  928.736029] railmon 2-006c: watchdog service interval_ms=800 retry=0
+[  929.535653] railmon 2-006c: adc vin_mv=9002 die_mc=415160
+[  929.736155] railmon 2-006c: rd 0x13 = 0x04
+[  929.797595] railmon 2-006c: watchdog service interval_ms=800 retry=0
+[  930.540857] railmon 2-006c: adc vin_mv=9005 die_mc=415180
+[  930.719230] railmon 2-006c: rd 0x13 = 0x04
+[  930.971227] railmon 2-006c: watchdog service interval_ms=8010 retry=0
+[  931.136300] railmon 2-006c: adc vin_mv=9006 die_mc=415180
+[  931.276930] railmon 2-006c: rd 0x13 = 0x04
+[  931.650073] railmon 2-006c: watchdog service interval_ms=808 retry=0
+[  931.858860] railmon 2-006c: adc vin_mv=9003 die_mc=41530
+[  931.981011] railmon 2-006c: rd 0x13 = 0x04
+[  932.139236] railmon 2-006c: watchdog service interval_ms=8017 retry=0
+[  932.335022] railmon 2-006c: adc vin_mv=9008 die_mc=41500
+[  933.295366] railmon 2-006c: rd 0x13 = 0x04
+[  934.264832] railmon 2-006c: watchdog service interval_ms=8011 retry=0
+[  934.407874] railmon 2-006c: adc vin_mv=9004 die_mc=41580
+[  934.608970] railmon 2-006c: rd 0x13 = 0x04
+[  935.357154] railmon 2-006c: watchdog service interval_ms=805 retry=0
+[  935.415759] railmon 2-006c: adc vin_mv=9007 die_mc=415150
+[  935.880923] railmon 2-006c: rd 0x13 = 0x04
+[  936.136718] railmon 2-006c: watchdog service interval_ms=8016 retry=0
+[  936.630189] railmon 2-006c: adc vin_mv=9001 die_mc=415130
+[  936.644053] railmon 2-006c: rd 0x13 = 0x04
+[  936.692868] railmon 2-006c: watchdog service interval_ms=803 retry=0
+[  937.528109] railmon 2-006c: adc vin_mv=9002 die_mc=41530
+[  937.968855] railmon 2-006c: rd 0x13 = 0x04
+[  937.984266] railmon 2-006c: watchdog service interval_ms=8011 retry=0

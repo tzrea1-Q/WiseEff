@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AnalyzeLogInput } from "../analyzer";
 import { createRuleBasedLogAnalyzer, genericSignalRuleSet } from "../analyzer";
@@ -16,8 +16,10 @@ import {
 import { createDeterministicLogAnalysisLoopModel } from "./deterministicModel";
 import { LogAnalysisProviderError } from "./llmAnalyzer";
 import { createScriptedLogAnalysisModel, type ScriptedModelResponse } from "./scriptedModel";
+import { estimateLogPromptTokens } from "./modelBudget";
 import { summarizeTraceArguments, type LogAnalysisTraceStep } from "../traceTypes";
 import { logTraceStepSchema } from "../../contracts/dtoSchemas/logs";
+import { createLogAnalyzerFromEnv } from "./analyzerFromEnv";
 
 const chargingLog = [
   "2026-08-10T08:00:01Z INFO charge session started requested_ma=6000",
@@ -52,6 +54,13 @@ const finalPayload = {
   ]
 };
 
+const readChargingLines = { content: { action: "tool", tool: "read_line_range", args: { startLine: 2, endLine: 4 } } };
+const supportedClaims = [{ id: 0, status: "supported" }, { id: 1, status: "supported" }];
+const mixedCandidate = {
+  ...finalPayload,
+  evidence: [...finalPayload.evidence, { lineNumbers: [2], inference: "No battery temperature was recorded.", suggestedAction: "Inspect logging." }]
+};
+
 function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<typeof createAgentLoopLogAnalyzer>[0]> = {}) {
   const model = createScriptedLogAnalysisModel(script);
   return {
@@ -67,6 +76,459 @@ function analyzer(script: ScriptedModelResponse[], options: Partial<Parameters<t
 }
 
 describe("createAgentLoopLogAnalyzer", () => {
+  it("starts in JSON in auto mode when the native tool catalogue cannot fit the budget", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const { adapter } = analyzer([readChargingLines, { content: finalPayload }], {
+      protocol: "auto", hypothesisLedger: true, tokenBudget: 8000
+    });
+    const report = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+    expect(report).toMatchObject({ analysisSource: "agent", evidence: [{ lineNumbers: [3, 4] }] });
+    expect(trace.filter(({ kind }) => kind === "model-turn").map(({ protocol }) => protocol)).toEqual(["json", "json"]);
+  });
+
+  it.each(["json", "tools"] as const)("reminds once before verifying and reports grounded checklist progress in %s", async (protocol) => {
+    const required = { id: "cooling", description: "Inspect cooling.", required: true };
+    const pending = { id: "rail", description: "Check the rail.", required: true };
+    const optional = { id: "ambient", description: "Check ambient temperature.", required: false };
+    const anchor = { file: "charging.log", line: 3 };
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: supportedClaims } }]);
+    const { adapter, model } = analyzer([
+      { content: { ...readChargingLines.content, notes: { checks: [{ id: optional.id, status: "skipped", reason: "无环境温度传感器", anchors: [] }] } } },
+      { content: { ...finalPayload, conclusion: "Premature conclusion", notes: { checks: [{ id: "unknown", status: "done", anchors: [] }] } } },
+      { content: { ...finalPayload, notes: { checks: [
+        { id: required.id, status: "done", anchors: [anchor, { ...anchor, line: 6 }] }
+      ] } } }
+    ], { protocol, procedureChecklist: true, verifier: { model: verifier, modelLabel: "verify-test" } });
+    const output = await adapter.analyze(buildInput({ filePath: anchor.file, procedureChecks: [required, pending, optional] }));
+    expect(output).toMatchObject({ conclusion: finalPayload.conclusion, verification: { status: "passed" }, checks: [
+      { ...required, status: "done", anchors: [anchor] }, { ...pending, status: "pending", anchors: [] },
+      { ...optional, status: "skipped", reason: "无环境温度传感器", anchors: [] }
+    ] });
+    expect(verifier.calls).toHaveLength(1);
+    expect(JSON.stringify(verifier.calls)).not.toContain("Premature conclusion");
+    expect(model.calls).toHaveLength(3);
+    expect(model.calls[2].some(({ content }) => content.includes("Required checklist items remain unhandled: cooling, rail."))).toBe(true);
+  });
+
+  it.each(["steps", "tokens", "disabled", "no checklist"] as const)(
+    "does not send a checklist reminder with %s", async (constraint) => {
+      const { adapter, model } = analyzer([readChargingLines, { content: finalPayload,
+        usage: { inputTokens: constraint === "tokens" ? 79_000 : 200, outputTokens: 150 } }], {
+        maxSteps: constraint === "steps" ? 2 : 4,
+        procedureChecklist: constraint !== "disabled"
+      });
+      const check = { id: "cooling", description: "Inspect cooling.", required: true };
+      const report = await adapter.analyze(buildInput({ procedure: "Look up the thermal event.",
+        procedureChecks: constraint === "no checklist" ? undefined : [check] }));
+      expect(report.conclusion).toBe(finalPayload.conclusion);
+      const pending = constraint === "steps" || constraint === "tokens";
+      expect(report.checks).toEqual(pending ? [{ ...check, status: "pending", anchors: [] }] : undefined);
+      expect(model.calls).toHaveLength(2);
+      if (!pending) expect(report.promptVersion).toBe(LOG_ANALYSIS_LOOP_PROMPT_VERSION);
+    });
+
+  it.each(["json", "tools"] as const)("flags a grounded conclusion that contradicts its cited line in %s", async (protocol) => {
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: [
+      { id: 0, status: "contradicted", counterAnchors: [{ file: "charging.log", line: 9999 }] },
+      { id: 1, status: "contradicted" }
+    ] }, usage: { inputTokens: 153, outputTokens: 39 } }]);
+    const nativeVerifier = vi.spyOn(verifier, "invokeTools");
+    const { adapter } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 2, endLine: 2 } } },
+      { content: { ...finalPayload, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [2] }] } }
+    ], { protocol, verifier: { model: verifier, modelLabel: "verify-test" } });
+    const trace: LogAnalysisTraceStep[] = [];
+    const output = await adapter.analyze(buildInput({ filePath: "charging.log", procedure: "untrusted skill text",
+      onTrace: (step) => { trace.push(step); } }));
+
+    expect(output).toMatchObject({ analysisSource: "agent", conclusion: finalPayload.conclusion,
+      confidence: 0.5, evidence: [], verification: { status: "failed", checkedClaims: 2, unsupportedClaims: 2, model: "verify-test" } });
+    expect(verifier.calls).toHaveLength(1);
+    expect(nativeVerifier).not.toHaveBeenCalled();
+    expect(trace).toContainEqual(expect.objectContaining({ kind: "model-turn", inputTokens: 153, outputTokens: 39 }));
+    const prompt = verifier.calls.flat().map(({ content }) => content).join("\n");
+    expect(prompt).toContain("battery_temp=38C pack ok");
+    expect(prompt).not.toContain("code=E_THERMAL_FOLDBACK");
+    expect(prompt).not.toContain("untrusted skill text");
+    expect(JSON.stringify(output)).not.toContain("9999");
+  });
+
+  it.each(["json", "tools"] as const)("revises unsupported evidence once and checks the replacement in %s", async (protocol) => {
+    const verifier = createScriptedLogAnalysisModel([
+      { content: { claims: [...supportedClaims, { id: 2, status: "unsupported",
+        counterAnchors: [{ file: "charging.log", line: 2 }, { file: "charging.log", line: 6 }] }] } },
+      { content: { claims: supportedClaims } }
+    ]);
+    const alternate = { statement: "适配器故障", reason: "日志记录热保护先触发", anchors: [{ file: "charging.log", line: 3 }] };
+    const revised = { ...finalPayload, conclusion: "The logs show battery thermal foldback and reduced current.", alternativeHypotheses: [alternate] };
+    const { adapter, model } = analyzer([readChargingLines, { content: mixedCandidate }, { content: revised }], {
+      protocol, hypothesisLedger: true, verifier: { model: verifier, modelLabel: "verify-test" }
+    });
+    const onProgress = vi.fn();
+    const output = await adapter.analyze(buildInput({ filePath: "charging.log", onProgress }));
+    expect(output).toMatchObject({ conclusion: revised.conclusion, confidence: 0.9, alternativeHypotheses: [alternate],
+      evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
+      verification: { status: "revised", checkedClaims: 3, unsupportedClaims: 1, model: "verify-test" } });
+    expect(onProgress.mock.calls.map(([state]) => state.step)).toEqual([1, 2, 3]);
+    expect(model.calls.at(-1)?.at(-1)?.content).toContain('"counterAnchors":[{"file":"charging.log","line":2}]');
+    expect(verifier.calls).toHaveLength(2);
+  });
+
+  it.each(["step limit", "verification tokens", "unsupported replacement"] as const)(
+    "drops unsupported evidence and caps confidence at the %s", async (limit) => {
+      const claims = [...supportedClaims, { id: 2, status: "unsupported" }];
+      const verifier = createScriptedLogAnalysisModel([{ content: { claims },
+        ...(limit === "verification tokens" ? { usage: { inputTokens: 78_900, outputTokens: 100 } } : {}) }]);
+      const maxSteps = limit === "step limit" ? 2 : 4;
+      const { adapter, model } = analyzer([readChargingLines, { content: mixedCandidate }], {
+        maxSteps, verifier: { model: verifier, modelLabel: "verify-test" }
+      });
+      const output = await adapter.analyze(buildInput());
+      expect(output).toMatchObject({ conclusion: finalPayload.conclusion, confidence: 0.5,
+        evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
+        verification: { status: "failed", checkedClaims: 3, unsupportedClaims: 1 } });
+      expect(model.calls).toHaveLength(limit === "unsupported replacement" ? 3 : 2);
+    }
+  );
+
+  it("replaces an unsupported conclusion with an uncertainty statement when revision fails", async () => {
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: [
+      { id: 0, status: "unsupported" }, supportedClaims[1], { id: 2, status: "unsupported" }
+    ] } }]);
+    const { adapter } = analyzer([readChargingLines, { content: mixedCandidate }, { content: "unusable revision" }], {
+      verifier: { model: verifier, modelLabel: "verify-test" }
+    });
+    expect(await adapter.analyze(buildInput())).toMatchObject({
+      conclusion: "现有证据不足以支持结论，请人工复核。", confidence: 0.5,
+      evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
+      verification: { status: "failed", checkedClaims: 3, unsupportedClaims: 2 }
+    });
+  });
+
+  it.each(["provider failure", "missing verdict", "duplicate verdict", "final-answer reserve"] as const)(
+    "delivers the grounded report with verification skipped after %s", async (failure) => {
+      const verifier = createScriptedLogAnalysisModel([failure === "provider failure" ? { error: new Error("offline") }
+        : { content: { claims: failure === "duplicate verdict" ? [supportedClaims[0], supportedClaims[0]] : supportedClaims.slice(0, 1) } }]);
+      const reserve = failure === "final-answer reserve";
+      const { adapter } = analyzer([
+        { ...readChargingLines, ...(reserve ? { usage: { inputTokens: 6370, outputTokens: 30 } } : {}) },
+        { content: finalPayload, ...(reserve ? { usage: { inputTokens: 400, outputTokens: 50 } } : {}) }
+      ], { tokenBudget: reserve ? 8000 : 100_000, verifier: { model: verifier, modelLabel: "verify-test" } });
+      const output = await adapter.analyze(buildInput());
+      expect(output).toMatchObject({ conclusion: finalPayload.conclusion, confidence: reserve ? 0.5 : 0.9,
+        analysisSource: "agent", evidence: [expect.objectContaining({ lineNumbers: [3, 4] })],
+        verification: { status: "skipped", checkedClaims: 0, unsupportedClaims: 0, model: "verify-test" } });
+      expect(verifier.calls).toHaveLength(reserve ? 0 : 1);
+    }
+  );
+
+  it.each([false, true])("preserves a supported report and defaults verification off (enabled=%s)", async (enabled) => {
+    const script = [readChargingLines, { content: finalPayload }];
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: supportedClaims } }]);
+    const { adapter } = analyzer(script, enabled ? { verifier: { model: verifier, modelLabel: "verify-test" } } : {});
+    const report = await adapter.analyze(buildInput());
+    expect(report).toMatchObject({ analysisSource: "agent", conclusion: finalPayload.conclusion, confidence: 0.9,
+      evidence: [expect.objectContaining({ lineNumbers: [3, 4], inference: finalPayload.evidence[0].inference })] });
+    expect(report.verification).toEqual(enabled ? { status: "passed", checkedClaims: 2, unsupportedClaims: 0, model: "verify-test" } : undefined);
+    expect(verifier.calls).toHaveLength(enabled ? 1 : 0);
+  });
+
+  it("checks only the bounded raw text for a cited source line after tool results fold", async () => {
+    const sourceLocation = { snapshotId: "source-snapshot", path: "drivers/thermal.c", line: 7 };
+    const verifier = createScriptedLogAnalysisModel([{ content: { claims: supportedClaims } }]);
+    const sourceRead = { content: { action: "tool", tool: "read_source_range", args: {
+      snapshotId: sourceLocation.snapshotId, path: sourceLocation.path, startLine: 7, endLine: 8
+    } } };
+    const { adapter } = analyzer([sourceRead, readChargingLines, readChargingLines, { content: {
+      ...finalPayload, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [], sourceLocation }]
+    } }], {
+      verifier: { model: verifier, modelLabel: "verify-test" },
+      bindToolBackends: () => ({ readSourceRange: async () => ({ ...sourceLocation,
+        startLine: 7, endLine: 8, totalLines: 8, truncated: false, lines: [
+          { line: 7, content: "thermal_limit(); " + "x".repeat(650) + "capped-tail" },
+          { line: 8, content: "unreferenced_source_line();" }
+        ] }) })
+    });
+    const output = await adapter.analyze(buildInput({ sourceSnapshot: { id: sourceLocation.snapshotId, status: "ready" } }));
+    expect(output).toMatchObject({ verification: { status: "passed" }, evidence: [expect.objectContaining({ sourceLocation })] });
+    const prompt = verifier.calls.flat().map(({ content }) => content).join("\n");
+    expect(prompt).toContain("thermal_limit();");
+    expect(prompt).not.toMatch(/capped-tail|unreferenced_source_line|battery_temp/);
+  });
+
+  it("rejects historical hints as grounding and reports only run IDs actually returned", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const { adapter } = analyzer([
+      { content: { action: "tool", tool: "search_past_conclusions", args: { query: "thermal" } } },
+      { content: finalPayload },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: finalPayload }
+    ], {
+      protocol: "json",
+      hypothesisLedger: true,
+      bindToolBackends: () => ({
+        searchPastConclusions: async () => ({
+          retrievalMode: "fts_only",
+          items: [{ runId: "confirmed-previous", createdAt: "2026-08-09T00:00:00.000Z",
+            summary: "Thermal foldback", evidenceTemplates: ["Log anchors: 2"] }],
+          hasMore: false
+        })
+      })
+    });
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+    expect(output).toMatchObject({ analysisSource: "agent", historicalRunIds: ["confirmed-previous"],
+      evidence: [{ lineNumbers: [3, 4] }] });
+    expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.outcome)).toEqual(["ok", "error", "ok", "ok"]);
+    expect(trace.find((step) => step.kind === "tool-call" && step.tool === "search_past_conclusions"))
+      .toMatchObject({ outcome: "ok", lines: [] });
+  });
+
+  it.each(["json", "tools"] as const)("keeps only seen hypothesis anchors after folding in %s", async (protocol) => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const seen = { file: "charging.log", line: 3 };
+    const unseen = { file: "charging.log", line: 6 };
+    const hypothesis = { id: "charger", statement: "充电器限流", status: "open", anchors: [seen, unseen] };
+    const finalHypothesis = { ...hypothesis, status: "refuted", anchors: [seen] };
+    const alternative = { statement: hypothesis.statement, reason: "日志记录热保护介入", anchors: [seen, { ...unseen, line: 9999 }] };
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 },
+        notes: { hypotheses: [{ ...hypothesis, id: "old", anchors: [] }] } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 6, endLine: 6 }, notes: { hypotheses: [hypothesis] } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } } },
+      { content: { ...finalPayload, notes: { hypotheses: [finalHypothesis] },
+        alternativeHypotheses: [alternative, { ...alternative, statement: "未接地的猜测", anchors: [{ ...unseen, line: 9999 }] }] } }
+    ], { protocol, hypothesisLedger: true, maxSteps: 3,
+      // Small enough that the final prompt (plus its 4,096-token output reserve) must fold the first reads.
+      contextTokens: protocol === "json" ? 5_900 : 7_000 });
+    const output = await adapter.analyze(buildInput({ filePath: seen.file, onTrace: (step) => { trace.push(step); } }));
+    expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "step-budget-exhausted",
+      alternativeHypotheses: [{ ...alternative, anchors: [seen] }] });
+    const finalInput = model.calls.at(-1)!.map(({ content }) => content).join("\n");
+    expect(finalInput).toContain("Folded tool result");
+    expect(finalInput).not.toContain("thermal foldback engaged");
+    expect(finalInput).toContain(JSON.stringify({ ...hypothesis, anchors: [seen] }));
+    expect(finalInput).not.toContain('"id":"old"');
+    expect(trace.filter(({ kind }) => kind === "model-turn").map(({ hypotheses }) => hypotheses)).toEqual([
+      [{ id: "1", status: "open", anchors: [] }], [{ id: "1", status: "open", anchors: [seen] }],
+      [{ id: "1", status: "open", anchors: [seen] }], [{ id: "1", status: "refuted", anchors: [seen] }]
+    ]);
+    expect(JSON.stringify(trace)).not.toContain(hypothesis.statement);
+    expect(JSON.stringify(trace)).not.toContain(`"id":"${hypothesis.id}"`);
+    expect(logTraceStepSchema.parse({ ...trace[0], hypotheses: [hypothesis] }).hypotheses)
+      .toEqual([{ id: "1", status: "open", anchors: [seen, unseen] }]);
+    expect(trace.every((step) => logTraceStepSchema.safeParse(step).success)).toBe(true);
+  });
+
+  it("ignores unsolicited ledger output by default", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const seen = { file: "charging.log", line: 3 };
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 },
+        notes: { hypotheses: [{ id: "unsolicited", statement: "充电器限流", status: "open", anchors: [] }] } } },
+      { content: { ...finalPayload, alternativeHypotheses: [{ statement: "充电器限流", reason: "热保护已触发", anchors: [seen] }] } }
+    ], { protocol: "tools" });
+    const output = await adapter.analyze(buildInput({ filePath: seen.file, onTrace: (step) => { trace.push(step); } }));
+    expect(output).toMatchObject({ analysisSource: "agent" });
+    expect(output).not.toHaveProperty("alternativeHypotheses");
+    expect(trace.some((step) => Object.hasOwn(step, "hypotheses"))).toBe(false);
+    expect(JSON.stringify(model.calls)).not.toContain("unsolicited");
+  });
+
+  it("bounds the injected snapshot by UTF-8 bytes and retains it when an update exceeds the entry limit", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const hypotheses = Array.from({ length: 8 }, (_, id) => ({
+      id: String(id), statement: "限".repeat(240), status: "open", anchors: []
+    }));
+    const read = { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } };
+    const { adapter, model } = analyzer([
+      { content: { ...read, notes: { hypotheses } } },
+      { content: { ...read, notes: { hypotheses: [...hypotheses, { ...hypotheses[0], id: "overflow" }] } } },
+      { content: finalPayload }
+    ], { hypothesisLedger: true });
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+    expect(output.analysisSource).toBe("agent");
+    const snapshots = trace.filter(({ kind }) => kind === "model-turn").map((step) => step.hypotheses);
+    expect(snapshots).toEqual(Array.from({ length: 3 }, () => hypotheses.slice(0, 5)
+      .map(({ status, anchors }, index) => ({ id: String(index + 1), status, anchors }))));
+    expect(model.calls.at(-1)?.some(({ content }) => content.endsWith(JSON.stringify(hypotheses.slice(0, 5))))).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(snapshots[0]))).toBeLessThanOrEqual(4096);
+  });
+
+  it("grounds a native batch in order, folds its older results and never executes a fourth call", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const read = (line: number) => ({ id: `call-${line}`, name: "read_line_range",
+      arguments: JSON.stringify({ startLine: line, endLine: line }) });
+    const { adapter } = analyzer([
+      { toolCalls: [read(3), read(4), read(5), read(6)] },
+      { content: { ...finalPayload, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [6] }] } },
+      { content: finalPayload }
+    ], { protocol: "tools" });
+
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+    expect(output).toMatchObject({ analysisSource: "agent", evidence: [{ lineNumbers: [3, 4] }] });
+    expect(trace.filter((step) => step.kind === "tool-call").map((step) => step.lines[0].line)).toEqual([3, 4, 5]);
+    expect(trace.filter((step) => step.kind === "model-turn").map(({ protocol, outcome }) => [protocol, outcome]))
+      .toEqual([["tools", "error"], ["tools", "error"], ["tools", "ok"]]);
+  });
+
+  it("accepts a text JSON batch within one investigation step", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const { adapter } = analyzer([
+      { content: { action: "tools", calls: [3, 4].map((line) => ({ tool: "read_line_range", args: { startLine: line, endLine: line } })) } },
+      { content: finalPayload }
+    ], { protocol: "json", maxSteps: 2 });
+    await expect(adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
+      .resolves.toMatchObject({ analysisSource: "agent", confidence: 0.9, evidence: [{ lineNumbers: [3, 4] }] });
+    expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.protocol)).toEqual(["json", "json"]);
+  });
+
+  it("validates each native call, preserves successes beside rejections and reserves only final_report for convergence", async () => {
+    const trace: LogAnalysisTraceStep[] = [];
+    const toolSets: string[][] = [];
+    const model = createScriptedLogAnalysisModel([
+      { toolCalls: [
+        { id: "malformed", name: "list_files", arguments: "{" },
+        { id: "valid", name: "read_line_range", arguments: '{"startLine":3,"endLine":4}' },
+        { id: "write", name: "write_parameter", arguments: "{}" }
+      ] },
+      { content: finalPayload }
+    ]);
+    const adapter = createAgentLoopLogAnalyzer({
+      model: { ...model, invokeTools(messages, options) {
+        toolSets.push(options.tools.map((tool) => tool.name));
+        return model.invokeTools(messages, options);
+      } },
+      modelLabel: "native", protocol: "tools", tokenBudget: 100_000, maxSteps: 1
+    });
+
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+    expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "step-budget-exhausted", confidence: 0.5,
+      evidence: [{ lineNumbers: [3, 4] }] });
+    expect(trace.filter((step) => step.kind === "tool-call").map(({ tool, outcome }) => [tool, outcome]))
+      .toEqual([["list_files", "error"], ["read_line_range", "ok"], [null, "error"]]);
+    expect(toolSets).toEqual([expect.arrayContaining(["read_line_range", "final_report"]), ["final_report"]]);
+  });
+
+  it("falls back on a provider capability rejection, caches by endpoint and model, and honors the platform JSON cap", async () => {
+    const requests: Array<{ url: string; model: string; tools?: { function: { name: string; parameters: unknown } }[] }> = [];
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      const request = { url: String(url), ...JSON.parse(String(init?.body)) } as (typeof requests)[number];
+      requests.push(request);
+      if (request.tools) return Response.json({ error: { message: "This model does not support tools", param: "tools" } }, { status: 400 });
+      const read = { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } };
+      const content = requests.filter((item) => item.model === request.model && item.url === request.url && !item.tools).length % 2
+        ? JSON.stringify(read) : `\`\`\`json\n${JSON.stringify(finalPayload).replace(/}$/, ",}")}\n\`\`\``;
+      return Response.json({ choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }] });
+    });
+    try {
+      const env = { LOG_ANALYSIS_API_BASE_URL: "https://no-tools.example.invalid/v1", LOG_ANALYSIS_API_KEY: "fixture-key",
+        LOG_ANALYSIS_API_TIMEOUT_MS: 500, LOG_ANALYSIS_TOKEN_BUDGET: 100_000, LOG_ANALYSIS_DETERMINISTIC: false,
+        LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_MAX_STEPS: 2, LOG_ANALYSIS_REPAIR_JSON: true } as const;
+      const trace: LogAnalysisTraceStep[] = [];
+      const run = (settings = {}, logDomain?: AnalyzeLogInput["logDomain"]) => createLogAnalyzerFromEnv({ ...env, ...settings })
+        .analyze(buildInput({ logDomain, onTrace: (step) => { trace.push(step); } }));
+      await expect(run()).resolves.toMatchObject({ analysisSource: "agent", confidence: 0.9 });
+      await expect(run()).resolves.toMatchObject({ analysisSource: "agent" });
+      await expect(run({}, { name: "other model", modelOverride: "other" })).resolves.toMatchObject({ analysisSource: "agent" });
+      await expect(run({ LOG_ANALYSIS_API_BASE_URL: "https://other-endpoint.example.invalid/v1" })).resolves.toMatchObject({ analysisSource: "agent" });
+      await expect(run({ LOG_ANALYSIS_PROTOCOL: "json" }, { name: "forced JSON", protocolOverride: "tools" }))
+        .resolves.toMatchObject({ analysisSource: "agent" });
+      expect(requests.map((request) => Boolean(request.tools))).toEqual([true, false, false, false, false, true, false, false, true, false, false, false, false]);
+      expect(requests[0].tools?.find((tool) => tool.function.name === "read_line_range")?.function.parameters)
+        .toMatchObject({ type: "object", required: ["startLine", "endLine"] });
+      expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.protocol))
+        .toEqual(["tools", "json", "json", "json", "json", "tools", "json", "json", "tools", "json", "json", "json", "json"]);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it("carries native call IDs through a folded tool response and a structured final over Chat Completions", async () => {
+    const nativeCall = (id: string, name: string, args: object) => ({
+      id, type: "function", function: { name, arguments: JSON.stringify(args) }
+    });
+    const batch = [3, 4, 5].map((line) => nativeCall(`call-${line}`, "read_line_range", { startLine: line, endLine: line }));
+    const open = { id: "adapter", statement: "适配器限流", status: "open", anchors: [] };
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (_url, init) => {
+      const request = JSON.parse(String(init?.body));
+      const definitions = request.tools as Array<{ function: { name: string; parameters: unknown } }>;
+      expect(definitions.find((tool) => tool.function.name === "read_line_range")?.function.parameters)
+        .toMatchObject({ properties: { notes: { properties: { hypotheses: { maxItems: 8 } } } } });
+      return Response.json({ choices: [{ message: { role: "assistant", content: null, tool_calls: [
+        ...batch.slice(0, 2), nativeCall("call-5", "read_line_range", { startLine: 5, endLine: 5, notes: { hypotheses: [open] } })
+      ] }, finish_reason: "tool_calls" }] });
+    }).mockImplementationOnce(async (_url, init) => {
+      const request = JSON.parse(String(init?.body));
+      expect(request.messages.filter((message: { role: string }) => message.role === "tool").map((message: { tool_call_id: string }) =>
+        message.tool_call_id)).toEqual(["call-3", "call-4", "call-5"]);
+      expect(request.messages.find((message: { role: string }) => message.role === "assistant").tool_calls).toEqual(batch);
+      expect(request.tools.find((tool: { function: { name: string } }) => tool.function.name === "final_report").function.parameters)
+        .toMatchObject({ type: "object", required: expect.arrayContaining(["conclusion", "evidence"]),
+          properties: { notes: expect.anything(), alternativeHypotheses: expect.anything() } });
+      const { action: _action, ...final } = finalPayload;
+      return Response.json({ choices: [
+        { message: { role: "assistant", content: null, tool_calls: [nativeCall("call-final", "final_report", final)] }, finish_reason: "tool_calls" }
+      ] });
+    });
+    try {
+      const adapter = createLogAnalyzerFromEnv({ LOG_ANALYSIS_API_BASE_URL: "https://native-tools.example.invalid/v1", LOG_ANALYSIS_API_KEY: "fixture-key",
+        LOG_ANALYSIS_API_TIMEOUT_MS: 500, LOG_ANALYSIS_TOKEN_BUDGET: 100_000, LOG_ANALYSIS_DETERMINISTIC: false,
+        LOG_ANALYSIS_KERNEL: "loop", LOG_ANALYSIS_MAX_STEPS: 2, LOG_ANALYSIS_PROTOCOL: "auto", LOG_ANALYSIS_HYPOTHESIS_LEDGER: true });
+      const trace: LogAnalysisTraceStep[] = [];
+      await expect(adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
+        .resolves.toMatchObject({ analysisSource: "agent", confidence: 0.9, evidence: [{ lineNumbers: [3, 4] }] });
+      expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.protocol)).toEqual(["tools", "tools"]);
+      const metadata = { id: "1", status: open.status, anchors: open.anchors };
+      expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.hypotheses)).toEqual([[metadata], [metadata]]);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it("folds old tool results while keeping log and source evidence grounded", async () => {
+    const sourceLocation = { snapshotId: "source", path: "power.c", line: 5 };
+    const sourceExcerpt = "charger_limiter_set(thermal_cap);";
+    const report = {
+      ...finalPayload,
+      evidence: [{ ...finalPayload.evidence[0], sourceLocation }]
+    };
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: { action: "tool", tool: "search_source", args: { pathGlob: "*.c", query: "thermal_cap" } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 6, endLine: 6 } } },
+      { content: { ...report, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [2] }] } },
+      { content: report }
+    ], {
+      maxSteps: 6,
+      // Fits the first two results verbatim; the fifth call must fold them and keep the latest two.
+      contextTokens: 6_000,
+      bindToolBackends: () => ({
+        searchSource: async () => ({ items: Array.from({ length: 5 }, (_, index) => ({
+          ...sourceLocation, line: index + 1, excerpt: sourceExcerpt, rank: 1, versionLabel: "v1"
+        })), truncated: true })
+      })
+    });
+
+    const output = await adapter.analyze(buildInput({ filePath: "charging.log", sourceSnapshot: { id: "source", status: "ready" } }));
+
+    expect(output).toMatchObject({ analysisSource: "agent", confidence: 0.9, evidence: [{ lineNumbers: [3, 4], sourceLocation }] });
+    expect(model.calls[5].at(-1)?.content).toContain("Grounding violation");
+    expect(model.calls[4].slice(0, 2)).toEqual(model.calls[0]);
+    const beforeFold = model.calls[2].map(({ content }) => content).join("\n");
+    expect(beforeFold).toContain("thermal foldback engaged");
+    expect(beforeFold).toContain(sourceExcerpt);
+    const afterFold = model.calls[4].map(({ content }) => content).join("\n");
+    expect(afterFold).not.toContain("thermal foldback engaged");
+    expect(afterFold).not.toContain(sourceExcerpt);
+    expect(afterFold).toContain("requested_ma=6000");
+    expect(afterFold).toContain("session heartbeat ok");
+    expect(afterFold).toContain('Folded tool result for read_line_range:\n{"args":{"startLine":3,"endLine":4},"count":2,"truncated":false,"anchors":[{"file":"charging.log","line":3}');
+    expect(afterFold).toContain('Folded tool result for search_source:\n{"args":{"pathGlob":"*.c","query":"thermal_cap"},"count":5,"truncated":true,"anchors":[{"snapshotId":"source","path":"power.c","line":1}');
+    expect(afterFold).not.toContain('"path":"power.c","line":5');
+    expect(afterFold).toContain("Repeat the tool call to retrieve the original result.");
+  });
+
   it("grounds exact source search hits and numbered range lines, rejecting unread source lines", async () => {
     const input = buildInput({ sourceSnapshot: { id: "source", status: "ready" } });
     for (const tool of ["search_source", "read_source_range"] as const) {
@@ -192,7 +654,7 @@ describe("createAgentLoopLogAnalyzer", () => {
     ], { bindToolBackends: () => ({ loadRelatedParameterContext: async () => ({ parameterId: "binding-1", name: "threshold", projectId: "project-1",
       snapshot: { payload: { file: "b.log", lineNumbers: [2] } } as unknown as RelatedParameterRunSnapshot }) }) });
 
-    expect(await adapter.analyze(input)).toMatchObject({ analysisSource: "rules-fallback", degradedReason: "token-budget-exhausted" });
+    expect(await adapter.analyze(input)).toMatchObject({ analysisSource: "rules-fallback", degradedReason: "invalid-model-output" });
     expect(model.calls.flat().some((message) => message.content.startsWith("Tool result for get_related_parameter_context:")
       && message.content.includes('"file":"b.log","lineNumbers":[2]'))).toBe(true);
     expect(model.calls.at(-1)?.at(-1)?.content).toContain("Grounding violation");
@@ -339,9 +801,9 @@ describe("createAgentLoopLogAnalyzer", () => {
     const output = await adapter.analyze(buildInput());
 
     expect(output.analysisSource).toBe("rules-fallback");
-    expect(output.degradedReason).toBe("token-budget-exhausted");
+    expect(output.degradedReason).toBe("invalid-model-output");
     expect(output.promptVersion).toBe(LOG_ANALYSIS_LOOP_PROMPT_VERSION);
-    expect(degradations).toEqual([{ reason: "token-budget-exhausted", model: "loop-test" }]);
+    expect(degradations).toEqual([{ reason: "invalid-model-output", model: "loop-test" }]);
   });
 
   it("corrects non-JSON output and degrades when it never recovers", async () => {
@@ -353,7 +815,56 @@ describe("createAgentLoopLogAnalyzer", () => {
 
     const output = await adapter.analyze(buildInput());
     expect(output.analysisSource).toBe("rules-fallback");
-    expect(output.degradedReason).toBe("token-budget-exhausted");
+    expect(output.degradedReason).toBe("invalid-model-output");
+  });
+
+  it("accepts repaired tool calls and finals without adding to the invalid streak", async () => {
+    const conclusion = 'Observed the literal value "limit,}" at C:\\logs.';
+    const { adapter, model } = analyzer([
+      { content: "Still thinking." },
+      { content: '{"action":"tool"' },
+      { content: 'Read the relevant lines:\n```json\n{"action":"tool","tool":"read_line_range","args":{"startLine":3,"endLine":4,},}\n```' },
+      { content: "Still thinking." },
+      { content: '{"action":"final"' },
+      { content: `Summary: ${JSON.stringify({ ...finalPayload, conclusion }).slice(0, -1)},} Done.` }
+    ], { maxSteps: 6, repairJsonOutput: true });
+    const trace: LogAnalysisTraceStep[] = [];
+
+    expect(await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
+      .toMatchObject({ analysisSource: "agent", conclusion, evidence: [{ lineNumbers: [3, 4] }] });
+    expect(model.calls).toHaveLength(6);
+    expect(trace.filter((step) => step.kind === "model-turn").map((step) => step.reason))
+      .toEqual(["invalid-output", "invalid-output", null, "invalid-output", "invalid-output", null]);
+    expect(trace.some((step) => step.kind === "degradation")).toBe(false);
+  });
+
+  it("counts broken JSON, invalid repaired arguments, and repaired unseen evidence as violations", async () => {
+    const { adapter, model } = analyzer([
+      { content: '{"wrapper":{"action":"tool","tool":"read_line_range","args":{"startLine":3,"endLine":4}}' },
+      { content: 'Tool: {"action":"tool","tool":"read_line_range","args":{"startLine":"3","endLine":4,},}' },
+      { content: `Report: ${JSON.stringify(finalPayload).slice(0, -1)},}` }
+    ], { repairJsonOutput: true });
+    const trace: LogAnalysisTraceStep[] = [];
+
+    expect(await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
+      .toMatchObject({ analysisSource: "rules-fallback", degradedReason: "invalid-model-output" });
+    expect(model.calls).toHaveLength(3);
+    expect(trace.filter((step) => step.kind === "tool-call"))
+      .toEqual([expect.objectContaining({ tool: "read_line_range", reason: "tool-rejected" })]);
+  });
+
+  it("counts an ungrounded final toward the third consecutive invalid output", async () => {
+    const { model, adapter } = analyzer([
+      { content: "Not JSON" },
+      { content: { action: "tool", tool: "nonexistent_tool", args: {} } },
+      { content: { ...finalPayload, evidence: [{ ...finalPayload.evidence[0], lineNumbers: [999] }] } }
+    ], { maxSteps: 3 });
+    const trace: LogAnalysisTraceStep[] = [];
+
+    expect(await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } })))
+      .toMatchObject({ analysisSource: "rules-fallback", degradedReason: "invalid-model-output" });
+    expect(model.calls).toHaveLength(3);
+    expect(trace).toContainEqual(expect.objectContaining({ kind: "degradation", reason: "invalid-model-output" }));
   });
 
   it("rejects an ungrounded final, lets the model correct, and prunes fabricated lines", async () => {
@@ -382,21 +893,89 @@ describe("createAgentLoopLogAnalyzer", () => {
       { maxSteps: 2 }
     );
 
-    const output = await adapter.analyze(buildInput());
+    const trace: LogAnalysisTraceStep[] = [];
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
 
     expect(output.analysisSource).toBe("agent");
-    expect(output.degradedReason).toBe("token-budget-exhausted");
+    expect(output.degradedReason).toBe("step-budget-exhausted");
     expect(output.confidence).toBeLessThanOrEqual(0.5);
     expect(output.evidence.length).toBeGreaterThan(0);
+    expect(trace).toContainEqual(expect.objectContaining({ kind: "early-convergence", reason: "step-budget-exhausted" }));
+  });
+
+  it("keeps earlier tool results verbatim while the prompt fits the context window", async () => {
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 6, endLine: 6 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } } },
+      { content: finalPayload }
+    ], { maxSteps: 6, contextTokens: 128_000 });
+
+    const output = await adapter.analyze(buildInput());
+
+    expect(output).toMatchObject({ analysisSource: "agent", confidence: 0.9 });
+    const finalInput = model.calls.at(-1)!.map(({ content }) => content).join("\n");
+    expect(finalInput).toContain("thermal foldback engaged");
+    expect(finalInput).not.toContain("Folded tool result");
+  });
+
+  it("folds the oldest tool results so every prompt fits a small context window", async () => {
+    const contextTokens = 2_600;
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 12 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 12 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 12 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: finalPayload }
+    ], { maxSteps: 6, contextTokens });
+
+    const output = await adapter.analyze(buildInput());
+
+    expect(output).toMatchObject({ analysisSource: "agent", evidence: [{ lineNumbers: [3, 4] }] });
+    expect(model.calls.at(-1)!.map(({ content }) => content).join("\n")).toContain("Folded tool result for read_line_range");
+    for (const call of model.calls) expect(estimateLogPromptTokens(call)).toBeLessThanOrEqual(contextTokens);
+  });
+
+  it("keeps a grounded final report whose reported usage overshoots the budget", async () => {
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } },
+        usage: { inputTokens: 6250, outputTokens: 150 } },
+      { content: finalPayload, usage: { inputTokens: 1600, outputTokens: 400 } }
+    ], { tokenBudget: 8000 });
+
+    const output = await adapter.analyze(buildInput());
+
+    expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted", confidence: 0.5,
+      evidence: [{ lineNumbers: [3, 4] }] });
+    expect(model.calls).toHaveLength(2);
+  });
+
+  it("uses the remaining token budget for a grounded final report after investigation uses 80%", async () => {
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } },
+        usage: { inputTokens: 6250, outputTokens: 150 } },
+      { content: finalPayload, usage: { inputTokens: 1450, outputTokens: 150 } }
+    ], { tokenBudget: 8000 });
+    const trace: LogAnalysisTraceStep[] = [];
+
+    const output = await adapter.analyze(buildInput({ onTrace: (step) => { trace.push(step); } }));
+
+    expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted", confidence: 0.5,
+      evidence: [{ lineNumbers: [3, 4] }] });
+    expect(model.calls).toHaveLength(2);
+    expect(model.calls[1].at(-1)?.content).toContain("Do not call any more tools.");
+    expect(trace.map(({ kind }) => kind)).toEqual(["model-turn", "tool-call", "early-convergence", "model-turn"]);
+    expect(trace[2].reason).toBe("token-budget-exhausted");
   });
 
   it.each([
-    { tokenBudget: 1, content: { action: "tool", tool: "get_prefilter_findings", args: {} } },
-    { tokenBudget: 2537, content: { action: "tool", tool: "unknown", args: {} } },
-    { tokenBudget: 1, content: "invalid JSON" },
-    { tokenBudget: 1, content: finalPayload }
-  ])("makes no further call after reported usage exhausts the budget ($tokenBudget, $content)", async ({ tokenBudget, content }) => {
-    const usage = { inputTokens: 2500, outputTokens: 37 };
+    { action: "tool", tool: "get_prefilter_findings", args: {} },
+    { action: "tool", tool: "unknown", args: {} },
+    "invalid JSON",
+    finalPayload
+  ])("makes no further call after reported usage exhausts the budget (%j)", async (content) => {
+    const tokenBudget = 4096;
+    const usage = { inputTokens: 4059, outputTokens: 37 };
     const { model, adapter } = analyzer(
       [
         { content, usage },
@@ -413,16 +992,17 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(output.confidence).toBe((await createRuleBasedLogAnalyzer().analyze(buildInput())).confidence);
   });
 
-  it("counts cumulative reported usage without estimating missing usage", async () => {
+  it("charges estimated usage when a provider omits usage and stops further investigation", async () => {
     const tool = { action: "tool", tool: "get_prefilter_findings", args: {} };
     const { model, adapter } = analyzer([
       { content: tool },
       { content: tool, usage: { inputTokens: 2500, outputTokens: 37 } },
       { content: tool, usage: { inputTokens: 1500, outputTokens: 59 } },
       { content: finalPayload }
-    ], { maxSteps: 4, tokenBudget: 4096 });
+    ], { maxSteps: 4, tokenBudget: 7000 });
     expect(await adapter.analyze(buildInput())).toMatchObject({ analysisSource: "rules-fallback", degradedReason: "token-budget-exhausted" });
     expect(model.calls).toHaveLength(3);
+    expect(model.calls.at(-1)?.at(-1)?.content).toContain("Do not call any more tools.");
   });
 
   it("falls back to rules when even the convergence attempt stays ungrounded", async () => {
@@ -434,7 +1014,7 @@ describe("createAgentLoopLogAnalyzer", () => {
 
     const output = await adapter.analyze(buildInput());
     expect(output.analysisSource).toBe("rules-fallback");
-    expect(output.degradedReason).toBe("token-budget-exhausted");
+    expect(output.degradedReason).toBe("step-budget-exhausted");
   });
 
   it("propagates provider failures for the worker retry chain", async () => {

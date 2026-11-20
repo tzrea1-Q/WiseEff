@@ -12,6 +12,7 @@ import {
 import { createScriptedLogAnalysisModel } from "../analyzer/scriptedModel";
 import { analyzeWithDegradation } from "../worker";
 import type { LogAnalysisTraceStep } from "../traceTypes";
+import { parseProcedureChecks } from "../../../../src/domain/logs/procedureChecks";
 import { evaluateAllLogEvalExpectations, evaluateLogEvalExpectation, type LogEvalExpectation, type LogEvalRunResult } from "./expectations";
 import {
   LOG_EVAL_SCENARIOS,
@@ -57,6 +58,8 @@ export type LogEvalReport = {
 
 const EVAL_MODEL_LABEL = "eval-fake";
 const EVAL_TOKEN_BUDGET = 8000;
+// Scripted behavior fixtures isolate their assertions from token exhaustion unless they opt into a budget.
+const SCRIPTED_LOOP_TOKEN_BUDGET = 60_000;
 const EVAL_MAX_ATTEMPTS = 4;
 const EVAL_LOOP_MAX_STEPS = 6;
 
@@ -138,6 +141,7 @@ export async function runLogEvalScenario(scenario: LogEvalScenario): Promise<Log
   const analyzer = createLlmLogAnalyzer({
     model: capturePrompts(scenario.model, promptMessages),
     modelLabel: EVAL_MODEL_LABEL,
+    repairJsonOutput: scenario.repairJsonOutput,
     tokenBudget: EVAL_TOKEN_BUDGET
   });
 
@@ -177,18 +181,36 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
   }
 
   const scriptedModel = createScriptedLogAnalysisModel(scenario.script);
-  const promptMessages: LogAnalysisChatMessage[] = [];
   const trace: LogAnalysisTraceStep[] = [];
   const returnedSourceLocations: NonNullable<LogEvalRunResult["returnedSourceLocations"]> = [];
-  const analyzer = createAgentLoopLogAnalyzer({
-    model: capturePrompts(scriptedModel, promptMessages),
+  const analyzer = scenario.singleShotFallback ? createLogAnalyzerFromEnv({
+    LOG_ANALYSIS_DETERMINISTIC: true,
+    LOG_ANALYSIS_KERNEL: "loop",
+    LOG_ANALYSIS_REPAIR_JSON: scenario.repairJsonOutput,
+    LOG_ANALYSIS_SINGLE_SHOT_FALLBACK: true,
+    LOG_ANALYSIS_PROTOCOL: scenario.protocol ?? "json",
+    LOG_ANALYSIS_API_TIMEOUT_MS: 1000,
+    LOG_ANALYSIS_TOKEN_BUDGET: scenario.tokenBudget ?? SCRIPTED_LOOP_TOKEN_BUDGET,
+    LOG_ANALYSIS_MAX_STEPS: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
+    LOG_ANALYSIS_CONTEXT_TOKENS: scenario.contextTokens
+  }, { model: scriptedModel }) : createAgentLoopLogAnalyzer({
+    model: scriptedModel,
     modelLabel: EVAL_MODEL_LABEL,
-    tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET,
+    protocol: scenario.protocol,
+    hypothesisLedger: scenario.hypothesisLedger,
+    procedureChecklist: scenario.procedureChecklist,
+    verifier: scenario.verificationScript
+      ? { model: createScriptedLogAnalysisModel(scenario.verificationScript), modelLabel: "scripted-verifier" }
+      : undefined,
+    repairJsonOutput: scenario.repairJsonOutput,
+    tokenBudget: scenario.tokenBudget ?? SCRIPTED_LOOP_TOKEN_BUDGET,
     maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
+    contextTokens: scenario.contextTokens,
     bindToolBackends: () => ({
       ...(scenario.sourceMatches ? { locateLogStatement: async () => scenario.sourceMatches! } : {}),
       ...(scenario.sourceSearch ? { searchSource: async () => scenario.sourceSearch! } : {}),
-      ...(scenario.sourceRange ? { readSourceRange: async () => scenario.sourceRange! } : {})
+      ...(scenario.sourceRange ? { readSourceRange: async () => scenario.sourceRange! } : {}),
+      ...(scenario.pastConclusions ? { searchPastConclusions: async () => scenario.pastConclusions! } : {})
     })
   });
 
@@ -199,6 +221,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
       onTrace: (step) => { trace.push(step); },
       filePath: scenario.fileName,
       procedure: scenario.procedure,
+      procedureChecks: scenario.procedureChecklist ? parseProcedureChecks(scenario.procedure) : undefined,
       analysisQuestion: scenario.analysisQuestion,
       logDomain: scenario.logDomain,
       sourceSnapshot: scenario.sourceSnapshot
@@ -210,6 +233,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
   });
 
   // Inspect what the model actually saw, after catalog caps, rather than trusting backend fixtures.
+  const promptMessages = scriptedModel.calls.flat();
   for (const message of promptMessages) {
     const match = /^Tool result for (locate_log_statement|search_source|read_source_range):\n(.*)$/s.exec(message.content);
     if (!match) continue;
@@ -227,9 +251,10 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     trace,
     parsedLineNumbers: parsed.entries.map((entry) => entry.lineNumber),
     promptMessages,
+    finalPromptMessages: scriptedModel.calls.at(-1),
     platformProtocol: scenario.procedure ? await capturePlatformProtocol(
       (model) => createAgentLoopLogAnalyzer({ model, modelLabel: EVAL_MODEL_LABEL,
-        tokenBudget: scenario.tokenBudget ?? EVAL_TOKEN_BUDGET, maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS }),
+        tokenBudget: scenario.tokenBudget ?? SCRIPTED_LOOP_TOKEN_BUDGET, maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS }),
       { parsed, analysisQuestion: scenario.analysisQuestion, logDomain: scenario.logDomain }
     ) : undefined,
     modelCallCount: scriptedModel.calls.length,

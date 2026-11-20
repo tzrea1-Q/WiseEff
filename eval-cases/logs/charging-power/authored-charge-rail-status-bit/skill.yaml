@@ -1,0 +1,20 @@
+schemaVersion: skill/v1
+description: Decode the fictional rail monitor status register used by this case.
+parsing:
+  schemaVersion: parsing/v1
+  registers:
+    rail-status:
+      width: 8
+      fields:
+        - name: ovp
+          bits: [5, 5]
+          enum:
+            "0": clear
+            "1": latched_overvoltage
+  extractors:
+    - id: rail-status
+      pattern: 'railmon 2-006c: rd 0x12 = (?P<status>0x[0-9a-f]{2})$'
+      fields:
+        status:
+          type: hex
+          decode: { register: rail-status }

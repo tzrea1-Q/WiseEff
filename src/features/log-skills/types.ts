@@ -63,6 +63,7 @@ export interface SkillWorkspaceRepository {
   getAnalysisCaseRun?(id: string, runId: string): Promise<AnalysisCaseRun>;
   getAnalysisCaseTrace?(id: string, runId: string, caseId: string, revision: "draft" | "published"): Promise<AnalysisTraceStep[]>;
   getAnalysisCasePrefill?(logId: string): Promise<AnalysisCasePrefill>;
+  confirmEvalCaseDraftExport?(logId: string, reportId: string): Promise<void>;
   importAnalysisCases?(id: string, file: File): Promise<void>;
   exportAnalysisCases?(id: string): Promise<Blob>;
   startSkillDryRun?(id: string): Promise<SkillDryRun>;

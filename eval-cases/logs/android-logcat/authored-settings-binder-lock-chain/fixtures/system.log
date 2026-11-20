@@ -1,0 +1,255 @@
+10-14 09:14:00.352  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=0
+10-14 09:14:00.427  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:00.991  1025  1129 I ActivityManager: Profile load complete items=7
+10-14 09:14:01.259  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=3
+10-14 09:14:01.283  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:01.496  1025  1129 I ActivityManager: Profile load complete items=13
+10-14 09:14:01.582  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=6
+10-14 09:14:01.764  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:02.046  1025  1129 I ActivityManager: Profile load complete items=7
+10-14 09:14:02.348  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=9
+10-14 09:14:03.032  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:04.217  1025  1129 I ActivityManager: Profile load complete items=1
+10-14 09:14:04.469  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=12
+10-14 09:14:04.552  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:04.729  1025  1129 D ActivityManager: Profile load complete items=17
+10-14 09:14:04.927  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=15
+10-14 09:14:05.479  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:05.572  1025  1129 I ActivityManager: Profile load complete items=8
+10-14 09:14:05.596  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=18
+10-14 09:14:05.974  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:06.171  1025  1129 I ActivityManager: Profile load complete items=19
+10-14 09:14:07.284  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=21
+10-14 09:14:08.496  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:08.811  1025  1129 I ActivityManager: Profile load complete items=6
+10-14 09:14:08.830  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=24
+10-14 09:14:08.987  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:09.614  1025  1129 I ActivityManager: Profile load complete items=3
+10-14 09:14:09.636  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=27
+10-14 09:14:09.658  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:10.350  1025  1129 I ActivityManager: Profile load complete items=13
+10-14 09:14:10.427  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=30
+10-14 09:14:11.609  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:11.629  1025  1129 I ActivityManager: Profile load complete items=12
+10-14 09:14:11.888  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=33
+10-14 09:14:12.192  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:12.260  1025  1129 D ActivityManager: Profile load complete items=15
+10-14 09:14:12.456  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=36
+10-14 09:14:12.538  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:13.792  1025  1129 I ActivityManager: Profile load complete items=19
+10-14 09:14:14.930  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=39
+10-14 09:14:15.010  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:15.609  1025  1129 I ActivityManager: Profile load complete items=8
+10-14 09:14:15.678  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=42
+10-14 09:14:16.851  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:16.869  1025  1129 I ActivityManager: Profile load complete items=18
+10-14 09:14:16.955  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=45
+10-14 09:14:17.035  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:18.459  1025  1129 I ActivityManager: Profile load complete items=7
+10-14 09:14:18.481  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=48
+10-14 09:14:18.550  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:18.568  1025  1129 I ActivityManager: Profile load complete items=4
+10-14 09:14:18.829  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=51
+10-14 09:14:18.849  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:18.926  1025  1129 I ActivityManager: Profile load complete items=7
+10-14 09:14:18.999  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=54
+10-14 09:14:19.173   618   734 W SurfaceFlinger: Duplicate release fence for offscreen layer, dropping fence
+10-14 09:14:19.286  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:19.305  1025  1129 D ActivityManager: Profile load complete items=2
+10-14 09:14:20.401  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=57
+10-14 09:14:21.765  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:22.398  1025  1129 I ActivityManager: Profile load complete items=6
+10-14 09:14:22.469  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=60
+10-14 09:14:22.488  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:23.044  1025  1129 I ActivityManager: Profile load complete items=19
+10-14 09:14:23.066  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=63
+10-14 09:14:23.267  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:23.430  1025  1129 I ActivityManager: Profile load complete items=19
+10-14 09:14:23.453  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=66
+10-14 09:14:23.699  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:24.930  1025  1129 I ActivityManager: Profile load complete items=11
+10-14 09:14:25.129  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=69
+10-14 09:14:25.756  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:26.340  1025  1129 I ActivityManager: Profile load complete items=2
+10-14 09:14:26.512  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=72
+10-14 09:14:26.883  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:27.248  1025  1129 I ActivityManager: Profile load complete items=1
+10-14 09:14:27.480  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=75
+10-14 09:14:27.501  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:27.587  1025  1129 D ActivityManager: Profile load complete items=3
+10-14 09:14:27.938  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=78
+10-14 09:14:27.956  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:29.278  1025  1129 I ActivityManager: Profile load complete items=14
+10-14 09:14:30.569  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=81
+10-14 09:14:30.886  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:31.151  1025  1129 I ActivityManager: Profile load complete items=18
+10-14 09:14:31.390  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=84
+10-14 09:14:31.678  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:32.806  1025  1129 I ActivityManager: Profile load complete items=6
+10-14 09:14:33.203  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=87
+10-14 09:14:34.350  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:34.418  1025  1129 I ActivityManager: Profile load complete items=0
+10-14 09:14:34.982  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=90
+10-14 09:14:35.154  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:35.830  1025  1129 I ActivityManager: Profile load complete items=4
+10-14 09:14:36.100  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=93
+10-14 09:14:36.177  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:36.199  1025  1129 I ActivityManager: Profile load complete items=10
+10-14 09:14:36.411  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=96
+10-14 09:14:36.787  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:36.876  1025  1129 D ActivityManager: Profile load complete items=0
+10-14 09:14:37.443  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=99
+10-14 09:14:37.532  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:37.853  1025  1129 I ActivityManager: Profile load complete items=5
+10-14 09:14:37.875  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=102
+10-14 09:14:37.947  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:38.219  1025  1129 I ActivityManager: Profile load complete items=2
+10-14 09:14:39.532  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=105
+10-14 09:14:39.848  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:41.214  1025  1129 I ActivityManager: Profile load complete items=18
+10-14 09:14:42.286  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=108
+10-14 09:14:42.309  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:43.644  1025  1129 I ActivityManager: Profile load complete items=0
+10-14 09:14:44.348  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=111
+10-14 09:14:44.373  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:44.393  1025  1129 I ActivityManager: Profile load complete items=15
+10-14 09:14:44.779  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=114
+10-14 09:14:45.120  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:45.198  1025  1129 I ActivityManager: Profile load complete items=0
+10-14 09:14:46.510  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=117
+10-14 09:14:46.601  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:46.619  1025  1129 D ActivityManager: Profile load complete items=14
+10-14 09:14:46.639  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=120
+10-14 09:14:46.657  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:46.962  1025  1129 I ActivityManager: Profile load complete items=1
+10-14 09:14:47.671  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=123
+10-14 09:14:47.969  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:48.534  1025  1129 I ActivityManager: Profile load complete items=16
+10-14 09:14:48.720  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=126
+10-14 09:14:50.160  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:50.441  1025  1129 I ActivityManager: Profile load complete items=9
+10-14 09:14:50.462  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=129
+10-14 09:14:50.647  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:51.297  1025  1129 I ActivityManager: Profile load complete items=4
+10-14 09:14:51.534  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=132
+10-14 09:14:51.602  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:52.164  1025  1129 I ActivityManager: Profile load complete items=3
+10-14 09:14:52.744  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=135
+10-14 09:14:52.980  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:53.249  1025  1129 I ActivityManager: Profile load complete items=0
+10-14 09:14:53.420  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=138
+10-14 09:14:54.159  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:54.268  2674  2674 I BenchSettings: select volume=internal query_flags=0x0
+10-14 09:14:54.506  1025  1129 D ActivityManager: Profile load complete items=2
+10-14 09:14:54.529  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=141
+10-14 09:14:55.151  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:55.819  1025  1129 I ActivityManager: Profile load complete items=6
+10-14 09:14:56.118  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=144
+10-14 09:14:56.365  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:57.579  1025  1129 I ActivityManager: Profile load complete items=12
+10-14 09:14:57.598  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=147
+10-14 09:14:57.855  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:57.921  1025  1129 I ActivityManager: Profile load complete items=5
+10-14 09:14:58.998  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=150
+10-14 09:14:59.298  1025  1129 E ActivityManager: ANR in net.example.settings: Input dispatching timed out (Waited 5000ms for MotionEvent)
+10-14 09:14:59.602  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:59.676  1025  1129 I ActivityManager: Profile load complete items=16
+10-14 09:14:59.769  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=153
+10-14 09:14:59.958  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:14:59.978  1025  1129 I ActivityManager: Profile load complete items=5
+10-14 09:15:00.155  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=156
+10-14 09:15:00.176  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:00.459  1025  1129 I ActivityManager: Profile load complete items=15
+10-14 09:15:00.742  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=159
+10-14 09:15:00.762  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:02.004  1025  1129 D ActivityManager: Profile load complete items=5
+10-14 09:15:02.337  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=162
+10-14 09:15:02.900  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:03.246  1025  1129 I ActivityManager: Profile load complete items=10
+10-14 09:15:03.933  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=165
+10-14 09:15:04.014  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:04.629  1025  1129 I ActivityManager: Profile load complete items=12
+10-14 09:15:05.321  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=168
+10-14 09:15:05.611  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:05.822  1025  1129 I ActivityManager: Profile load complete items=16
+10-14 09:15:06.530  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=171
+10-14 09:15:06.784  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:07.116  1025  1129 I ActivityManager: Profile load complete items=14
+10-14 09:15:07.400  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=174
+10-14 09:15:07.424  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:07.444  1025  1129 I ActivityManager: Profile load complete items=2
+10-14 09:15:07.464  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=177
+10-14 09:15:08.156  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:08.407  1025  1129 I ActivityManager: Profile load complete items=17
+10-14 09:15:09.003  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=180
+10-14 09:15:09.021  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:09.273  1025  1129 D ActivityManager: Profile load complete items=1
+10-14 09:15:10.051  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=183
+10-14 09:15:10.263  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:10.954  1025  1129 I ActivityManager: Profile load complete items=2
+10-14 09:15:10.976  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=186
+10-14 09:15:11.307  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:11.329  1025  1129 I ActivityManager: Profile load complete items=8
+10-14 09:15:11.959  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=189
+10-14 09:15:11.983  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:12.155  1025  1129 I ActivityManager: Profile load complete items=9
+10-14 09:15:12.176  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=192
+10-14 09:15:12.841  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:12.914  1025  1129 I ActivityManager: Profile load complete items=14
+10-14 09:15:12.933  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=195
+10-14 09:15:13.142  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:13.162  1025  1129 I ActivityManager: Profile load complete items=16
+10-14 09:15:13.182  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=198
+10-14 09:15:13.350  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:14.689  1025  1129 I ActivityManager: Profile load complete items=12
+10-14 09:15:15.262  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=201
+10-14 09:15:16.678  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:17.342  1025  1129 D ActivityManager: Profile load complete items=7
+10-14 09:15:17.913  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=204
+10-14 09:15:18.316  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:18.386  1025  1129 I ActivityManager: Profile load complete items=15
+10-14 09:15:18.475  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=207
+10-14 09:15:18.644  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:20.079  1025  1129 I ActivityManager: Profile load complete items=3
+10-14 09:15:21.510  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=210
+10-14 09:15:21.673  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:21.694  1025  1129 I ActivityManager: Profile load complete items=10
+10-14 09:15:21.942  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=213
+10-14 09:15:22.298  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:22.567  1025  1129 I ActivityManager: Profile load complete items=7
+10-14 09:15:23.949  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=216
+10-14 09:15:23.968  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:24.218  1025  1129 I ActivityManager: Profile load complete items=7
+10-14 09:15:24.236  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=219
+10-14 09:15:24.515  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:24.533  1025  1129 I ActivityManager: Profile load complete items=11
+10-14 09:15:25.157  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=222
+10-14 09:15:25.362  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:25.384  1025  1129 D ActivityManager: Profile load complete items=13
+10-14 09:15:26.152  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=225
+10-14 09:15:27.256  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:27.278  1025  1129 I ActivityManager: Profile load complete items=8
+10-14 09:15:27.977  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=228
+10-14 09:15:28.245  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:28.644  1025  1129 I ActivityManager: Profile load complete items=14
+10-14 09:15:28.664  1025  1129 D ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=231
+10-14 09:15:28.684  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:29.998  1025  1129 I ActivityManager: Profile load complete items=4
+10-14 09:15:30.023  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=234
+10-14 09:15:30.284  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:30.358  1025  1129 I ActivityManager: Profile load complete items=13
+10-14 09:15:30.650  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=237
+10-14 09:15:31.804  1025  1129 D ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:31.824  1025  1129 I ActivityManager: Profile load complete items=14
+10-14 09:15:33.277  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=240
+10-14 09:15:33.299  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:33.323  1025  1129 I ActivityManager: Profile load complete items=13
+10-14 09:15:33.601  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=243
+10-14 09:15:33.622  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:34.835  1025  1129 D ActivityManager: Profile load complete items=0
+10-14 09:15:34.857  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=246
+10-14 09:15:35.159  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:35.355  1025  1129 I ActivityManager: Profile load complete items=0
+10-14 09:15:35.524  1025  1129 I ActivityManager: Process state update uid=10123 state=CACHED_EMPTY seq=249
+10-14 09:15:35.605  1025  1129 I ActivityManager: Trim memory level=20 target=net.example.timer
+10-14 09:15:35.629  1025  1129 I ActivityManager: Profile load complete items=3

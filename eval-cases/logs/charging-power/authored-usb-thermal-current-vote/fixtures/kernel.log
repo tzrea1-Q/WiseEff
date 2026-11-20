@@ -1,0 +1,117 @@
+<135>1 2026-10-14T09:14:00.388Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=0
+<134>1 2026-10-14T09:14:00.790Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:02.303Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:02.716Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=7
+<134>1 2026-10-14T09:14:03.646Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:05.324Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:05.523Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=11
+<135>1 2026-10-14T09:14:06.188Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:06.238Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:07.093Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=12
+<134>1 2026-10-14T09:14:07.286Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:07.886Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:08.697Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=11
+<134>1 2026-10-14T09:14:10.126Z bench-node kernel - - - mmc0: req done bytes=4096
+<135>1 2026-10-14T09:14:10.826Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:10.982Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=13
+<134>1 2026-10-14T09:14:11.038Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:11.402Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:11.446Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=2
+<134>1 2026-10-14T09:14:14.062Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:14.222Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<135>1 2026-10-14T09:14:15.718Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=2
+<134>1 2026-10-14T09:14:18.730Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:19.176Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:19.716Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=2
+<134>1 2026-10-14T09:14:23.061Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:23.103Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:23.595Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=19
+<135>1 2026-10-14T09:14:24.977Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:25.928Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:27.261Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=10
+<134>1 2026-10-14T09:14:27.462Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:28.216Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:28.926Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=16
+<134>1 2026-10-14T09:14:29.845Z bench-node kernel - - - mmc0: req done bytes=4096
+<131>1 2026-10-14T09:14:31.021Z bench-node kernel - - - usb 1-2: device descriptor read/64, error -71
+<134>1 2026-10-14T09:14:31.194Z bench-node kernel - - - usb 1-2: new full-speed USB device number 7
+<135>1 2026-10-14T09:14:32.889Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:35.620Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=12
+<134>1 2026-10-14T09:14:35.804Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:37.459Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:37.516Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=14
+<134>1 2026-10-14T09:14:37.569Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:38.002Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<135>1 2026-10-14T09:14:38.214Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=17
+<134>1 2026-10-14T09:14:38.934Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:39.698Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:40.263Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=1
+<134>1 2026-10-14T09:14:41.610Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:42.997Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:43.695Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=3
+<134>1 2026-10-14T09:14:44.012Z bench-node kernel - - - pwr-ic 2-006c: IINLIM selector 0x1e -> 0x0f
+<135>1 2026-10-14T09:14:44.178Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:44.181Z bench-node kernel - - - tcpm port0: Ready, explicit_contract=1 mv=9000 ma=3000
+<134>1 2026-10-14T09:14:44.221Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:45.087Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=1
+<134>1 2026-10-14T09:14:46.544Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:48.117Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:48.922Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=13
+<134>1 2026-10-14T09:14:48.968Z bench-node kernel - - - mmc0: req done bytes=4096
+<135>1 2026-10-14T09:14:50.740Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:50.786Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=3
+<134>1 2026-10-14T09:14:53.785Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:14:53.966Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:14:57.134Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=10
+<134>1 2026-10-14T09:14:59.718Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:00.148Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<135>1 2026-10-14T09:15:00.336Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=3
+<134>1 2026-10-14T09:15:00.380Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:00.883Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:00.940Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=3
+<134>1 2026-10-14T09:15:01.577Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:02.224Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:02.271Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=7
+<135>1 2026-10-14T09:15:02.473Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:03.348Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:04.101Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=18
+<134>1 2026-10-14T09:15:04.533Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:05.091Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:08.333Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=19
+<134>1 2026-10-14T09:15:08.777Z bench-node kernel - - - mmc0: req done bytes=4096
+<135>1 2026-10-14T09:15:09.419Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:09.879Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=16
+<134>1 2026-10-14T09:15:10.496Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:12.047Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:15.039Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=19
+<134>1 2026-10-14T09:15:15.539Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:16.047Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<135>1 2026-10-14T09:15:16.235Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=15
+<134>1 2026-10-14T09:15:17.627Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:17.683Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:18.383Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=5
+<134>1 2026-10-14T09:15:21.414Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:21.615Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:22.177Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=18
+<135>1 2026-10-14T09:15:22.230Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:22.631Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:23.101Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=8
+<134>1 2026-10-14T09:15:25.771Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:25.976Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:26.612Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=13
+<134>1 2026-10-14T09:15:26.669Z bench-node kernel - - - mmc0: req done bytes=4096
+<135>1 2026-10-14T09:15:29.485Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:30.272Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=8
+<134>1 2026-10-14T09:15:30.684Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:31.279Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:31.322Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=10
+<134>1 2026-10-14T09:15:33.140Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:33.296Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<135>1 2026-10-14T09:15:33.355Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=7
+<134>1 2026-10-14T09:15:34.055Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:34.105Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:34.825Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=14
+<134>1 2026-10-14T09:15:35.549Z bench-node kernel - - - mmc0: req done bytes=4096
+<134>1 2026-10-14T09:15:35.722Z bench-node kernel - - - power_supply usb: online=1 voltage_now=9000000
+<134>1 2026-10-14T09:15:35.765Z bench-node kernel - - - usb 1-1: urb complete status=0 actual=13
+<135>1 2026-10-14T09:15:35.818Z bench-node kernel - - - mmc0: req done bytes=4096

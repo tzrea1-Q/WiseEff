@@ -12,7 +12,8 @@
 - `LOG_ANALYSIS_API_TIMEOUT_MS`
 - `LOG_ANALYSIS_TOKEN_BUDGET`（循环模式：跨步累计 token）
 - `LOG_ANALYSIS_KERNEL`（默认 `loop`；回退 `single-shot`）
-- `LOG_ANALYSIS_MAX_STEPS`（循环步数上界，默认 6）
+- `LOG_ANALYSIS_SINGLE_SHOT_FALLBACK`（默认 `false`）。设为 `true` 后，循环内核可在模型输出无效时使用单次 JSON 内核重试一次。
+- `LOG_ANALYSIS_MAX_STEPS`（循环步数上界，默认 20）
 
 验收或离线演练可设 `LOG_ANALYSIS_DETERMINISTIC=true`，无需填写 `LOG_ANALYSIS_API_*`；此时报告的 `model` 记为 `deterministic`。确定性桩模型同时支持两种内核的协议。
 
@@ -20,7 +21,7 @@
 
 ## 技能预算与编写检查
 
-`LOG_ANALYSIS_MAX_STEPS`（默认 6）与 `LOG_ANALYSIS_TOKEN_BUDGET`（默认 8000）同时是默认值与平台上限。版本可设置更低的 `stepBudget` 和 `tokenBudget`，省略时沿用全局配置。步数至少为 1；显式 token 预算至少为 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`。API 暴露 `budgetCaps` 并校验创建、保存、发布、恢复和技能包导入，worker 运行时再次取上限。API 与 worker 应配置一致。`modelOverride` 只修改模型名，不修改模型服务凭据或超时。已发布运行使用所钉版本的流程与预算，保存草稿不会改变进行中的运行。
+`LOG_ANALYSIS_MAX_STEPS`（默认 20）与 `LOG_ANALYSIS_TOKEN_BUDGET`（默认 512000）同时是默认值与平台上限；`LOG_ANALYSIS_CONTEXT_TOKENS`（默认 128000）约束单次调用。这些默认值与 `LOG_ANALYSIS_PROTOCOL=json` 来自 MiniMax-M3 在仿真层的真实对比（2026-11-19，33 个用例各 1 次，LLM 评审）。8000 时所有运行都退回规则兜底；原生工具每轮要重发约 2,100 token 的工具定义。从 24000/6 提到 256000/20 后，评审给出的根因得分从 0.72 升到 0.83，证据召回从 0.71 升到 0.85。模型通常自行结束：单次分析 token 中位数 37k、平均 62k、p90 168k，所有运行均未超过 12 步。随后每例 3 次的对比把默认值从 256000 提到 512000：平均 token 仍约 62k，规则兜底从约 95 次中的 8 次降到 4 次，评审根因得分从 0.83 到 0.88（按用例比较 4 好 3 差，属于噪声范围）。环境中已显式写入较小值的部署在修改前保持原值。以 `<think>…</think>` 推理块开头的回复可以被接受：解析前去掉该块，也不会回传给模型。版本可设置更低的 `stepBudget` 和 `tokenBudget`，省略时沿用全局配置。步数至少为 1；显式 token 预算至少为 `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`。API 暴露 `budgetCaps` 并校验创建、保存、发布、恢复和技能包导入，worker 运行时再次取上限。API 与 worker 应配置一致。`modelOverride` 只修改模型名，不修改模型服务凭据或超时。已发布运行使用所钉版本的流程与预算，保存草稿不会改变进行中的运行。
 
 在技能工作区试运行前先保存样例与草稿。解析测试无需模型服务，检查字段和信号；分析用例与试运行使用已配置的分析器，只有显式开启确定性模式时才不用真实模型。将分析用例与上一已发布版本对比，通过试运行轨迹检查预算耗尽、源码工具不可用及未接地输出。测试结果与警告供发布时参考，不阻止发布。试运行不创建公开日志记录或结果 Webhook；该投递链路须通过普通上传验证。
 
@@ -35,8 +36,9 @@
 
 - provider 瞬时故障 → job 走既有重试/退避（`LOG_ANALYSIS_QUEUE_ATTEMPTS` / `LOG_ANALYSIS_QUEUE_BACKOFF_MS`）。
 - 重试将耗尽的最后一次尝试 → 确定性规则引擎回退，`analysis_source = 'rules-fallback'`、`degraded_reason = 'provider-unavailable'`，job 正常完成（不进死信）。
-- 预算内输出无法接地（JSON 非法或引用行全部被接地校验剔除）→ 立即回退并记 `degraded_reason = 'token-budget-exhausted'`。
-- 循环内核额外规则：步数或 token 预算耗尽仍无接地结论 → 进行一次提前收敛尝试；收敛成功返回 `analysis_source = 'agent'` + `degraded_reason = 'token-budget-exhausted'`，置信度封顶 0.5；仍失败则同因走规则回退。连续协议违规（非法工具名/参数、非 JSON 输出，连续 3 次）同样按此降级，不再烧预算。
+- 循环内核连续收到三次无效输出后标记 `invalid-model-output`，被拒绝的工具调用和缺少有效证据的终答也计入次数。启用重试时，使用同一已固定技能修订和模型做一次 JSON 调用，并独立校验证据。成功时返回 `single-shot-fallback`，置信度封顶 0.5。重试输出无效或模型服务调用失败时，直接由规则引擎生成报告。两种结果都保留 `invalid-model-output`。剩余累计预算无法容纳重试提示和输出额度时，规则报告记为 `token-budget-exhausted`。
+- 单次内核作为主内核时，答复无效或缺少有效证据会直接回退到规则引擎，并标记 `invalid-model-output`。
+- 循环内核将步数耗尽标记为 `step-budget-exhausted`，将 token 耗尽标记为 `token-budget-exhausted`。预算策略允许尝试提前收敛时，有证据依据的结论返回 `analysis_source = 'agent'`，置信度上限为 0.5。否则由规则引擎生成报告。剩余 token 无法容纳收敛请求时，规则报告记为 `token-budget-exhausted`。内核在每次请求前估算输入 token，按余额限制输出额度，并在服务商提供用量时据实计入。估算与实际用量一致时，调查至少保留 20% 供收敛使用。验证和重试共用本次运行的余额。
 - 连回退也失败才走既有 job 失败/死信路径。
 
 按可见性验证降级路径：关闭或错误配置 provider 后上传日志，确认记录以降级徽标（降级分析 · 规则回退）完成，而不是静默成功；`/logs` 与 `/log-admin` 均应可见。确定性模式下可通过上传含 `WISEEFF_SIMULATE_LLM_PROVIDER_DOWN` 标记行的日志演练同一链路。
@@ -78,18 +80,59 @@ worker 在预处理、解码、信号提取与分析阶段，每隔租约时长�
 
 - 技能作者在工作区的「诊断流程」分区编辑和预览 Markdown。`skill/v1.procedure` 可选，上限 20,000 字符。保存只更新草稿；发布创建不可变版本。Worker 从运行钉住的 `skill_revision_id` 读取流程，因此后续草稿修改不会改变排队中的运行或显式指定版本的重新分析。新上传使用当前已发布版本。
 - 提示词顺序是平台协议 → 分隔、低优先级的技能流程 → 用户任务。流程以 JSON 字符串置于 `<skill_diagnostic_procedure>` 中；换行和分隔符字符经过转义，使结束标签或伪造协议标题保持为数据。提示中明确说明流程不能覆盖接地、拒绝规则或禁止写操作的约束。证据必须来自工具结果；旧单发内核使用平台提供的摘录。工具白名单和既有证据校验仍独立执行。
-- 当前版本：循环 `2026-10-19.loop.procedure.signals.1`、关联参数循环 `2026-10-19.loop.procedure.signals.related-parameter.1`；单发 `2026-10-19.procedure.signals.1`、关联参数单发 `2026-10-19.procedure.signals.related-parameter.1`。报告保留对应的 `prompt_version`。无流程时省略流程段，平台信号工具仍可用。确定性规则回退忽略流程。
+- 当前版本：循环 `2026-10-19.loop.procedure.signals.source.11`、关联参数循环 `2026-10-19.loop.procedure.signals.source.related-parameter.11`；单发 `2026-10-19.procedure.signals.source.2`、关联参数单发 `2026-10-19.procedure.signals.source.related-parameter.2`。报告保留对应的 `prompt_version`。无流程时省略流程段，平台信号工具仍可用。确定性规则回退忽略流程。启用流程检查清单的循环版本为 `2026-10-19.loop.procedure.signals.source.12` 和 `2026-10-19.loop.procedure.signals.source.related-parameter.12`。
 - 运行 `npm run logs:eval` 检查提示词顺序、对抗性流程、分隔符注入、接地和非法写工具场景。PostgreSQL 运行级测试位于 `server/modules/logs/procedure.integration.test.ts`，通过捕获脚本模型收到的提示词验证发布、草稿隔离和显式钉住版本的重新分析。这些检查不能证明真实模型能抵抗所有提示词注入。
 
 ## 效果层评测（`logs:eval:quality`）
 
-- 确定性演示（零 API 成本）：`LOG_ANALYSIS_DETERMINISTIC=true npm run logs:eval:quality`——用确定性内核 + 确定性 rubric judge 跑金标准案例集。
-- 真模型运行：配置 `LOG_ANALYSIS_API_*`（可选 `LOG_ANALYSIS_JUDGE_*` 启用 LLM-as-judge）后运行 `npm run logs:eval:quality`。
-- 报告输出到 `docs/generated/log-analysis-quality.{json,md}`，含内核、模型、prompt version 与 judge 标签。基线门禁（`eval-cases/logs/baseline.json`）将 realLog 案例分数与已提交基线减容差比较；案例集尚无真实案例时报告如实输出 `quality baseline pending real cases`，门禁不激活。
+- 未配置分析端点或密钥时，命令使用确定性模型和评分器。也可设置 `LOG_ANALYSIS_DETERMINISTIC=true` 强制启用。真实模型运行通过环境变量 `LOG_ANALYSIS_API_*` 配置，可选用 `LOG_ANALYSIS_JUDGE_*` 配置评分器。每次运行使用一组模型配置。确定性结果用于验证评测流程。
+- `--trials <k>` 设置每个选中用例的运行次数，默认 1 次。`--tier <golden|realistic|synthetic|all>` 筛选层级，默认 `all`。`--tags <tag,...>` 保留命中任一标签的用例。报告将每个选中用例计入所属层级和全部场景标签。
+- 配套 `skill.yaml` 声明提取器时，评测向分析器提供解码事件。历史检索通过内存查询读取同一领域内其他已确认且脱敏的生产用例。语料库有符合条件的历史用例后，`LOG_ANALYSIS_PAST_CONCLUSIONS` 才会影响质量评测。
+- 报告输出到 `docs/generated/log-analysis-quality.{json,md}`，记录模型、内核、提示词版本和评分器。中文摘要列出至少一次通过的用例比例（pass@k）与每次都通过的比例（pass^k）。诊断通过要求根因得分和证据召回率均达到 0.8。预期拒答的用例在置信度不高于 0.5 时通过。
+- 成本统计采用中位数和最近秩 p95。步数按模型轮数计。token 为输入与输出之和，缺少完整用量的试验不计入 token 分布。时延涵盖分析和规则兜底。降级率以全部完成的试验为分母，早收敛率统计发出早收敛事件的试验比例。
+- 基线门禁依据 `eval-cases/logs/baseline.json` 比较金标准用例得分。真实用例待补充时门禁保持未激活。筛选排除金标准用例时，跳过已激活的门禁。
+- 没有真实模型端点时，可用 `LOG_ANALYSIS_KERNEL=loop LOG_ANALYSIS_SINGLE_SHOT_FALLBACK=false npm run logs:eval:quality -- --tier realistic --trials 3 --script-invalid-loop-output` 对比关闭和开启重试的结果。保存 JSON 后将开关设为 `true` 再运行一次。脚本在原生工具调用路径返回无效输出，单次 JSON 重试使用确定性模型。每份报告用 `caseResults` 中 `analysisSource: "rules-fallback"` 的条数除以已完成试验总数，得到规则兜底率。
+
+下一次评测会覆盖生成文件，运行前先保存上一份 JSON。对比两次报告时使用相同的用例、层级、标签归属和试验次数。对比命令输出可在 PR 中引用的 Markdown 表格。
+
+```bash
+npm run logs:eval:quality -- --trials 3 --tier realistic
+cp docs/generated/log-analysis-quality.json /tmp/log-quality-before.json
+# 应用候选改动后重新运行同一条评测命令。
+npm run logs:eval:quality -- --trials 3 --tier realistic
+npm run --silent logs:eval:quality -- --compare /tmp/log-quality-before.json docs/generated/log-analysis-quality.json
+```
+
+### 校准循环预算
+
+使用生产数据库的只读副本或快照，通过运维密钥环境注入 `LOG_ANALYSIS_TRACE_DATABASE_URL`。数据库角色须有权查询 `log_analysis_runs`、`log_analysis_trace_steps` 和 `log_analysis_reports`。安装依赖后从仓库根目录运行命令。选取目标内核和模型上线后有代表性的时间窗口。时间范围按运行完成时间筛选，包含起点，不包含终点。
+
+```bash
+npx tsx scripts/log-analysis-trace-stats.ts \
+  --since 2026-11-18T00:00:00Z --until 2026-11-25T00:00:00Z
+```
+
+命令将数据库角色可见的、已完成并保留 trace 的运行聚合为 JSON。统计不含草稿试运行、失败或进行中的运行及缺少 trace 的运行。各分布给出样本数、中位数和最近秩 p95。输入与输出 token 分别只统计有该用量字段的模型轮，零值也计入。每次运行的步数按模型轮数计，包含收敛调用及用量缺失的轮次。模型服务不支持协议的探测轮计入 `modelTurns`，步数口径与效果层评测一致，排除这些探测轮。两个比例均以有 trace 的运行数为分母。早收敛根据 trace 事件统计，降级根据最终报告的降级原因统计，包含低置信度 Agent 终答和规则兜底。无观测时相应的分位数或比例为 null。查询在只读事务中运行，语句超时为 60 秒。若超时，缩短时间窗口后重试。
+
+通过环境变量注入 `LOG_ANALYSIS_API_BASE_URL`、`LOG_ANALYSIS_API_KEY` 和 `LOG_ANALYSIS_MODEL` 后运行真实模型对比。各组保持同一端点、模型、内核、工具协议（`LOG_ANALYSIS_PROTOCOL`）、评分器配置、用例和试验次数。从已部署上限开始，每次只调整一个上限。以下数值仅为示例。对比前确认各报告的 `deterministic` 为 `false`，且模型符合预期。
+
+```bash
+budget_eval_dir=$(mktemp -d)
+export LOG_ANALYSIS_DETERMINISTIC=false LOG_ANALYSIS_KERNEL=loop
+for setting in 6:8000 6:16000 10:8000; do
+  LOG_ANALYSIS_MAX_STEPS=${setting%:*} LOG_ANALYSIS_TOKEN_BUDGET=${setting#*:} \
+    npm run logs:eval:quality -- --tier realistic --trials 3 || break
+  cp docs/generated/log-analysis-quality.json "$budget_eval_dir/$setting.json"
+done
+npm run --silent logs:eval:quality -- --compare "$budget_eval_dir/6:8000.json" "$budget_eval_dir/6:16000.json"
+npm run --silent logs:eval:quality -- --compare "$budget_eval_dir/6:8000.json" "$budget_eval_dir/10:8000.json"
+```
+
+用生产 trace 的样本数和分位数确定候选范围，同时考虑现有上限和技能覆盖值。比较 pass@k、pass^k、证据召回率、累计输入与输出 token、时延、降级率和早收敛率。循环为终答预留 20% 的 token。每次响应结束后才计量用量，单次调用可能使累计用量超过配置预算。在预发或试点环境，用不超过 10 MB 的代表性日志测量从上传到终态的端到端时延，覆盖排队和预处理。从满足质量目标且 p95 不超过 3 分钟的配置中选出成本最低的一组。在 PR 中记录采样范围、样本数、模型、提示词版本、各组预算和聚合对比结果。收集到真实模型和生产 trace 证据后，再更新默认值、上限及中英文环境变量和 API 预算说明。PR 中只附聚合结果，凭据和原始 trace 留在运维环境。
 
 ## judge 校准（P3b）
 
-- 每次效果评测按确定性规则抽样已评分案例（case id 哈希，抽样率 `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`，默认 0.2，至少 1 条），产出人工复核清单 `docs/generated/log-analysis-judge-sample.md`：含 agent 结论、judge 打分与理由，以及可直接填写的 YAML 模板。
+- 每次效果评测按用例 ID 的哈希抽样已评分用例的第一次试验，抽样率由 `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` 设置，默认 0.2，至少 1 条。人工复核清单 `docs/generated/log-analysis-judge-sample.md` 包含 Agent 结论、评分和理由，以及可填写的 YAML 模板。
 - 复核人把填好的模板提交为 `eval-cases/logs/reviews/<run-id>.yaml`（`runId`、`reviewer`、`reviewedAt`，每案例 `humanRootCauseScore` 0..1 + 可选 `humanCategoryMatch`/`notes`）。损坏的复核文件会让效果评测直接失败——必须修复，绝不静默丢弃。
 - 存在复核文件时，报告固定的「Judge calibration」段落计算 judge-human 一致性：精确一致率（分数完全相同）、均差（平均绝对差）与类别一致率；没有复核时如实输出 "no human reviews yet"。judge 漂移（均差上升）意味着在让它的分数参与门禁之前需要先调 judge 提示词/rubric。
 
@@ -215,7 +258,7 @@ npx tsx scripts/log-bundle-memory-probe.ts --mode=api-multipart --profile=config
 - request/trace id，
 - latency 与 token 数，
 - 降级原因（如适用），
-- 分析来源（`agent` / `rules-fallback`）。
+- 分析来源（`agent` / `single-shot-fallback` / `rules-fallback`）。
 
 不得向仓库文档提交 API key、原始 prompt、原始 provider payload、Authorization 头或原始客户日志内容。
 

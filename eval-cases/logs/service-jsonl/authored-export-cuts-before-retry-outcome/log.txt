@@ -1,0 +1,276 @@
+{"ts":"2026-10-14T09:14:00.933Z","level":"debug","component":"sender","msg":"poll shard=0 leases=1"}
+{"ts":"2026-10-14T09:14:00.954Z","level":"info","component":"sender","msg":"flush stream=signals acked=11 elapsed_ms=23.4"}
+{"ts":"2026-10-14T09:14:00.971Z","level":"info","component":"sender","msg":"checkpoint seq=2"}
+{"ts":"2026-10-14T09:14:01.029Z","level":"info","component":"sender","msg":"poll shard=1 leases=1"}
+{"ts":"2026-10-14T09:14:01.232Z","level":"info","component":"sender","msg":"flush stream=signals acked=14 elapsed_ms=29.1"}
+{"ts":"2026-10-14T09:14:02.370Z","level":"info","component":"sender","msg":"checkpoint seq=5"}
+{"ts":"2026-10-14T09:14:03.563Z","level":"info","component":"sender","msg":"poll shard=0 leases=2"}
+{"ts":"2026-10-14T09:14:03.632Z","level":"debug","component":"sender","msg":"flush stream=signals acked=13 elapsed_ms=10.5"}
+{"ts":"2026-10-14T09:14:03.886Z","level":"info","component":"sender","msg":"checkpoint seq=8"}
+{"ts":"2026-10-14T09:14:04.161Z","level":"info","component":"sender","msg":"poll shard=0 leases=7"}
+{"ts":"2026-10-14T09:14:04.233Z","level":"info","component":"sender","msg":"flush stream=signals acked=19 elapsed_ms=25.3"}
+{"ts":"2026-10-14T09:14:05.223Z","level":"info","component":"sender","msg":"checkpoint seq=11"}
+{"ts":"2026-10-14T09:14:06.193Z","level":"info","component":"sender","msg":"poll shard=2 leases=1"}
+{"ts":"2026-10-14T09:14:06.356Z","level":"info","component":"sender","msg":"flush stream=signals acked=10 elapsed_ms=35.7"}
+{"ts":"2026-10-14T09:14:06.607Z","level":"debug","component":"sender","msg":"checkpoint seq=14"}
+{"ts":"2026-10-14T09:14:07.263Z","level":"info","component":"sender","msg":"poll shard=2 leases=1"}
+{"ts":"2026-10-14T09:14:07.338Z","level":"info","component":"sender","msg":"flush stream=signals acked=0 elapsed_ms=41.1"}
+{"ts":"2026-10-14T09:14:07.513Z","level":"info","component":"sender","msg":"checkpoint seq=17"}
+{"ts":"2026-10-14T09:14:08.096Z","level":"info","component":"sender","msg":"poll shard=2 leases=8"}
+{"ts":"2026-10-14T09:14:08.356Z","level":"info","component":"sender","msg":"flush stream=signals acked=2 elapsed_ms=11.9"}
+{"ts":"2026-10-14T09:14:08.532Z","level":"info","component":"sender","msg":"checkpoint seq=20"}
+{"ts":"2026-10-14T09:14:08.549Z","level":"debug","component":"sender","msg":"poll shard=1 leases=3"}
+{"ts":"2026-10-14T09:14:08.565Z","level":"info","component":"sender","msg":"flush stream=signals acked=9 elapsed_ms=27.7"}
+{"ts":"2026-10-14T09:14:08.640Z","level":"info","component":"sender","msg":"checkpoint seq=23"}
+{"ts":"2026-10-14T09:14:08.858Z","level":"info","component":"sender","msg":"poll shard=1 leases=3"}
+{"ts":"2026-10-14T09:14:08.874Z","level":"info","component":"sender","msg":"flush stream=signals acked=6 elapsed_ms=18.3"}
+{"ts":"2026-10-14T09:14:08.950Z","level":"info","component":"sender","msg":"checkpoint seq=26"}
+{"ts":"2026-10-14T09:14:09.015Z","level":"info","component":"sender","msg":"poll shard=1 leases=6"}
+{"ts":"2026-10-14T09:14:09.330Z","level":"debug","component":"sender","msg":"flush stream=signals acked=4 elapsed_ms=23.3"}
+{"ts":"2026-10-14T09:14:09.523Z","level":"info","component":"sender","msg":"checkpoint seq=29"}
+{"ts":"2026-10-14T09:14:09.690Z","level":"info","component":"sender","msg":"poll shard=1 leases=1"}
+{"ts":"2026-10-14T09:14:09.926Z","level":"info","component":"sender","msg":"flush stream=signals acked=2 elapsed_ms=26.8"}
+{"ts":"2026-10-14T09:14:09.983Z","level":"info","component":"sender","msg":"checkpoint seq=32"}
+{"ts":"2026-10-14T09:14:11.262Z","level":"info","component":"sender","msg":"poll shard=2 leases=1"}
+{"ts":"2026-10-14T09:14:11.553Z","level":"info","component":"sender","msg":"flush stream=signals acked=12 elapsed_ms=17.4"}
+{"ts":"2026-10-14T09:14:11.717Z","level":"debug","component":"sender","msg":"checkpoint seq=35"}
+{"ts":"2026-10-14T09:14:11.734Z","level":"info","component":"sender","msg":"poll shard=2 leases=4"}
+{"ts":"2026-10-14T09:14:12.391Z","level":"info","component":"sender","msg":"flush stream=signals acked=18 elapsed_ms=39.9"}
+{"ts":"2026-10-14T09:14:13.576Z","level":"info","component":"sender","msg":"checkpoint seq=38"}
+{"ts":"2026-10-14T09:14:13.709Z","level":"info","component":"sender","msg":"poll shard=1 leases=3"}
+{"ts":"2026-10-14T09:14:13.781Z","level":"info","component":"sender","msg":"flush stream=signals acked=19 elapsed_ms=19.3"}
+{"ts":"2026-10-14T09:14:14.024Z","level":"info","component":"sender","msg":"checkpoint seq=41"}
+{"ts":"2026-10-14T09:14:14.100Z","level":"debug","component":"sender","msg":"poll shard=1 leases=3"}
+{"ts":"2026-10-14T09:14:15.323Z","level":"info","component":"sender","msg":"flush stream=signals acked=15 elapsed_ms=19.0"}
+{"ts":"2026-10-14T09:14:15.924Z","level":"info","component":"sender","msg":"checkpoint seq=44"}
+{"ts":"2026-10-14T09:14:16.087Z","level":"info","component":"sender","msg":"poll shard=1 leases=5"}
+{"ts":"2026-10-14T09:14:16.707Z","level":"info","component":"sender","msg":"flush stream=signals acked=11 elapsed_ms=36.6"}
+{"ts":"2026-10-14T09:14:16.724Z","level":"info","component":"sender","msg":"checkpoint seq=47"}
+{"ts":"2026-10-14T09:14:16.996Z","level":"info","component":"sender","msg":"poll shard=2 leases=5"}
+{"ts":"2026-10-14T09:14:17.000Z","level":"warn","component":"encoder","msg":"optional dimension dropped","key":"display_label"}
+{"ts":"2026-10-14T09:14:17.523Z","level":"debug","component":"sender","msg":"flush stream=signals acked=4 elapsed_ms=14.1"}
+{"ts":"2026-10-14T09:14:17.674Z","level":"info","component":"sender","msg":"checkpoint seq=50"}
+{"ts":"2026-10-14T09:14:18.182Z","level":"info","component":"sender","msg":"poll shard=0 leases=8"}
+{"ts":"2026-10-14T09:14:18.262Z","level":"info","component":"sender","msg":"flush stream=signals acked=17 elapsed_ms=14.7"}
+{"ts":"2026-10-14T09:14:18.283Z","level":"info","component":"sender","msg":"checkpoint seq=53"}
+{"ts":"2026-10-14T09:14:18.587Z","level":"info","component":"sender","msg":"poll shard=1 leases=6"}
+{"ts":"2026-10-14T09:14:18.745Z","level":"info","component":"sender","msg":"flush stream=signals acked=15 elapsed_ms=46.3"}
+{"ts":"2026-10-14T09:14:19.019Z","level":"debug","component":"sender","msg":"checkpoint seq=56"}
+{"ts":"2026-10-14T09:14:19.494Z","level":"info","component":"sender","msg":"poll shard=1 leases=5"}
+{"ts":"2026-10-14T09:14:19.572Z","level":"info","component":"sender","msg":"flush stream=signals acked=7 elapsed_ms=18.7"}
+{"ts":"2026-10-14T09:14:19.589Z","level":"info","component":"sender","msg":"checkpoint seq=59"}
+{"ts":"2026-10-14T09:14:19.646Z","level":"info","component":"sender","msg":"poll shard=1 leases=4"}
+{"ts":"2026-10-14T09:14:19.715Z","level":"info","component":"sender","msg":"flush stream=signals acked=17 elapsed_ms=37.7"}
+{"ts":"2026-10-14T09:14:19.782Z","level":"info","component":"sender","msg":"checkpoint seq=62"}
+{"ts":"2026-10-14T09:14:20.013Z","level":"debug","component":"sender","msg":"poll shard=2 leases=0"}
+{"ts":"2026-10-14T09:14:20.082Z","level":"info","component":"sender","msg":"flush stream=signals acked=16 elapsed_ms=20.2"}
+{"ts":"2026-10-14T09:14:21.056Z","level":"info","component":"sender","msg":"checkpoint seq=65"}
+{"ts":"2026-10-14T09:14:21.344Z","level":"info","component":"sender","msg":"poll shard=1 leases=0"}
+{"ts":"2026-10-14T09:14:21.650Z","level":"info","component":"sender","msg":"flush stream=signals acked=9 elapsed_ms=28.6"}
+{"ts":"2026-10-14T09:14:22.301Z","level":"info","component":"sender","msg":"checkpoint seq=68"}
+{"ts":"2026-10-14T09:14:23.486Z","level":"info","component":"sender","msg":"poll shard=1 leases=3"}
+{"ts":"2026-10-14T09:14:23.728Z","level":"debug","component":"sender","msg":"flush stream=signals acked=16 elapsed_ms=46.4"}
+{"ts":"2026-10-14T09:14:23.967Z","level":"info","component":"sender","msg":"checkpoint seq=71"}
+{"ts":"2026-10-14T09:14:24.129Z","level":"info","component":"sender","msg":"poll shard=0 leases=8"}
+{"ts":"2026-10-14T09:14:24.207Z","level":"info","component":"sender","msg":"flush stream=signals acked=9 elapsed_ms=24.4"}
+{"ts":"2026-10-14T09:14:24.533Z","level":"info","component":"sender","msg":"checkpoint seq=74"}
+{"ts":"2026-10-14T09:14:24.599Z","level":"info","component":"sender","msg":"poll shard=0 leases=4"}
+{"ts":"2026-10-14T09:14:25.649Z","level":"info","component":"sender","msg":"flush stream=signals acked=16 elapsed_ms=30.8"}
+{"ts":"2026-10-14T09:14:25.885Z","level":"debug","component":"sender","msg":"checkpoint seq=77"}
+{"ts":"2026-10-14T09:14:26.141Z","level":"info","component":"sender","msg":"poll shard=2 leases=6"}
+{"ts":"2026-10-14T09:14:26.208Z","level":"info","component":"sender","msg":"flush stream=signals acked=9 elapsed_ms=11.4"}
+{"ts":"2026-10-14T09:14:26.227Z","level":"info","component":"sender","msg":"checkpoint seq=80"}
+{"ts":"2026-10-14T09:14:26.473Z","level":"info","component":"sender","msg":"poll shard=2 leases=0"}
+{"ts":"2026-10-14T09:14:26.491Z","level":"info","component":"sender","msg":"flush stream=signals acked=7 elapsed_ms=44.7"}
+{"ts":"2026-10-14T09:14:26.624Z","level":"info","component":"sender","msg":"checkpoint seq=83"}
+{"ts":"2026-10-14T09:14:26.702Z","level":"debug","component":"sender","msg":"poll shard=1 leases=5"}
+{"ts":"2026-10-14T09:14:27.946Z","level":"info","component":"sender","msg":"flush stream=signals acked=7 elapsed_ms=28.5"}
+{"ts":"2026-10-14T09:14:28.257Z","level":"info","component":"sender","msg":"checkpoint seq=86"}
+{"ts":"2026-10-14T09:14:28.278Z","level":"info","component":"sender","msg":"poll shard=1 leases=0"}
+{"ts":"2026-10-14T09:14:28.356Z","level":"info","component":"sender","msg":"flush stream=signals acked=16 elapsed_ms=17.9"}
+{"ts":"2026-10-14T09:14:28.375Z","level":"info","component":"sender","msg":"checkpoint seq=89"}
+{"ts":"2026-10-14T09:14:29.615Z","level":"info","component":"sender","msg":"poll shard=2 leases=2"}
+{"ts":"2026-10-14T09:14:30.611Z","level":"debug","component":"sender","msg":"flush stream=signals acked=16 elapsed_ms=18.2"}
+{"ts":"2026-10-14T09:14:30.749Z","level":"info","component":"sender","msg":"checkpoint seq=92"}
+{"ts":"2026-10-14T09:14:30.770Z","level":"info","component":"sender","msg":"poll shard=2 leases=6"}
+{"ts":"2026-10-14T09:14:32.019Z","level":"info","component":"sender","msg":"flush stream=signals acked=10 elapsed_ms=45.6"}
+{"ts":"2026-10-14T09:14:32.187Z","level":"info","component":"sender","msg":"checkpoint seq=95"}
+{"ts":"2026-10-14T09:14:32.202Z","level":"info","component":"sender","msg":"poll shard=0 leases=4"}
+{"ts":"2026-10-14T09:14:32.223Z","level":"info","component":"sender","msg":"flush stream=signals acked=0 elapsed_ms=18.3"}
+{"ts":"2026-10-14T09:14:32.243Z","level":"debug","component":"sender","msg":"checkpoint seq=98"}
+{"ts":"2026-10-14T09:14:32.876Z","level":"info","component":"sender","msg":"poll shard=1 leases=4"}
+{"ts":"2026-10-14T09:14:33.807Z","level":"info","component":"sender","msg":"flush stream=signals acked=8 elapsed_ms=38.8"}
+{"ts":"2026-10-14T09:14:33.870Z","level":"info","component":"sender","msg":"checkpoint seq=101"}
+{"ts":"2026-10-14T09:14:35.087Z","level":"info","component":"sender","msg":"poll shard=0 leases=8"}
+{"ts":"2026-10-14T09:14:36.176Z","level":"info","component":"sender","msg":"flush stream=signals acked=7 elapsed_ms=13.0"}
+{"ts":"2026-10-14T09:14:36.380Z","level":"info","component":"sender","msg":"checkpoint seq=104"}
+{"ts":"2026-10-14T09:14:36.572Z","level":"debug","component":"sender","msg":"poll shard=1 leases=6"}
+{"ts":"2026-10-14T09:14:36.711Z","level":"info","component":"sender","msg":"flush stream=signals acked=18 elapsed_ms=36.8"}
+{"ts":"2026-10-14T09:14:36.882Z","level":"info","component":"sender","msg":"checkpoint seq=107"}
+{"ts":"2026-10-14T09:14:37.489Z","level":"info","component":"sender","msg":"poll shard=2 leases=8"}
+{"ts":"2026-10-14T09:14:37.558Z","level":"info","component":"sender","msg":"flush stream=signals acked=2 elapsed_ms=24.7"}
+{"ts":"2026-10-14T09:14:37.576Z","level":"info","component":"sender","msg":"checkpoint seq=110"}
+{"ts":"2026-10-14T09:14:38.856Z","level":"info","component":"sender","msg":"poll shard=2 leases=3"}
+{"ts":"2026-10-14T09:14:38.876Z","level":"debug","component":"sender","msg":"flush stream=signals acked=7 elapsed_ms=23.0"}
+{"ts":"2026-10-14T09:14:38.944Z","level":"info","component":"sender","msg":"checkpoint seq=113"}
+{"ts":"2026-10-14T09:14:40.211Z","level":"info","component":"sender","msg":"poll shard=0 leases=8"}
+{"ts":"2026-10-14T09:14:40.385Z","level":"info","component":"sender","msg":"flush stream=signals acked=14 elapsed_ms=12.3"}
+{"ts":"2026-10-14T09:14:40.648Z","level":"info","component":"sender","msg":"checkpoint seq=116"}
+{"ts":"2026-10-14T09:14:40.927Z","level":"info","component":"sender","msg":"poll shard=1 leases=4"}
+{"ts":"2026-10-14T09:14:41.139Z","level":"info","component":"sender","msg":"flush stream=signals acked=6 elapsed_ms=43.6"}
+{"ts":"2026-10-14T09:14:42.349Z","level":"debug","component":"sender","msg":"checkpoint seq=119"}
+{"ts":"2026-10-14T09:14:42.601Z","level":"info","component":"sender","msg":"poll shard=0 leases=0"}
+{"ts":"2026-10-14T09:14:42.851Z","level":"info","component":"sender","msg":"flush stream=signals acked=8 elapsed_ms=14.8"}
+{"ts":"2026-10-14T09:14:43.154Z","level":"info","component":"sender","msg":"checkpoint seq=122"}
+{"ts":"2026-10-14T09:14:43.172Z","level":"info","component":"sender","msg":"poll shard=1 leases=8"}
+{"ts":"2026-10-14T09:14:43.738Z","level":"info","component":"sender","msg":"flush stream=signals acked=10 elapsed_ms=42.6"}
+{"ts":"2026-10-14T09:14:44.051Z","level":"info","component":"sender","msg":"checkpoint seq=125"}
+{"ts":"2026-10-14T09:14:45.229Z","level":"debug","component":"sender","msg":"poll shard=2 leases=1"}
+{"ts":"2026-10-14T09:14:45.248Z","level":"info","component":"sender","msg":"flush stream=signals acked=3 elapsed_ms=27.4"}
+{"ts":"2026-10-14T09:14:45.421Z","level":"info","component":"sender","msg":"checkpoint seq=128"}
+{"ts":"2026-10-14T09:14:45.557Z","level":"info","component":"sender","msg":"poll shard=1 leases=6"}
+{"ts":"2026-10-14T09:14:45.838Z","level":"info","component":"sender","msg":"flush stream=signals acked=2 elapsed_ms=16.6"}
+{"ts":"2026-10-14T09:14:46.504Z","level":"info","component":"sender","msg":"checkpoint seq=131"}
+{"ts":"2026-10-14T09:14:46.724Z","level":"info","component":"sender","msg":"poll shard=1 leases=4"}
+{"ts":"2026-10-14T09:14:47.874Z","level":"debug","component":"sender","msg":"flush stream=signals acked=1 elapsed_ms=14.2"}
+{"ts":"2026-10-14T09:14:48.131Z","level":"info","component":"sender","msg":"checkpoint seq=134"}
+{"ts":"2026-10-14T09:14:48.647Z","level":"info","component":"sender","msg":"poll shard=2 leases=1"}
+{"ts":"2026-10-14T09:14:48.954Z","level":"info","component":"sender","msg":"flush stream=signals acked=5 elapsed_ms=36.2"}
+{"ts":"2026-10-14T09:14:49.139Z","level":"info","component":"sender","msg":"checkpoint seq=137"}
+{"ts":"2026-10-14T09:14:49.362Z","level":"info","component":"sender","msg":"poll shard=0 leases=5"}
+{"ts":"2026-10-14T09:14:49.889Z","level":"info","component":"sender","msg":"flush stream=signals acked=7 elapsed_ms=37.8"}
+{"ts":"2026-10-14T09:14:50.146Z","level":"debug","component":"sender","msg":"checkpoint seq=140"}
+{"ts":"2026-10-14T09:14:50.166Z","level":"info","component":"sender","msg":"poll shard=0 leases=6"}
+{"ts":"2026-10-14T09:14:50.186Z","level":"info","component":"sender","msg":"flush stream=signals acked=6 elapsed_ms=19.9"}
+{"ts":"2026-10-14T09:14:50.437Z","level":"info","component":"sender","msg":"checkpoint seq=143"}
+{"ts":"2026-10-14T09:14:50.579Z","level":"info","component":"sender","msg":"poll shard=0 leases=2"}
+{"ts":"2026-10-14T09:14:50.657Z","level":"info","component":"sender","msg":"flush stream=signals acked=18 elapsed_ms=31.7"}
+{"ts":"2026-10-14T09:14:51.727Z","level":"info","component":"sender","msg":"checkpoint seq=146"}
+{"ts":"2026-10-14T09:14:52.038Z","level":"debug","component":"sender","msg":"poll shard=1 leases=2"}
+{"ts":"2026-10-14T09:14:52.101Z","level":"info","component":"sender","msg":"flush stream=signals acked=12 elapsed_ms=19.5"}
+{"ts":"2026-10-14T09:14:52.121Z","level":"info","component":"sender","msg":"checkpoint seq=149"}
+{"ts":"2026-10-14T09:14:52.372Z","level":"info","component":"sender","msg":"poll shard=1 leases=7"}
+{"ts":"2026-10-14T09:14:52.675Z","level":"info","component":"sender","msg":"flush stream=signals acked=15 elapsed_ms=33.4"}
+{"ts":"2026-10-14T09:14:52.752Z","level":"info","component":"sender","msg":"checkpoint seq=152"}
+{"ts":"2026-10-14T09:14:52.937Z","level":"info","component":"sender","msg":"poll shard=1 leases=0"}
+{"ts":"2026-10-14T09:14:53.175Z","level":"debug","component":"sender","msg":"flush stream=signals acked=11 elapsed_ms=39.1"}
+{"ts":"2026-10-14T09:14:53.423Z","level":"info","component":"sender","msg":"checkpoint seq=155"}
+{"ts":"2026-10-14T09:14:53.493Z","level":"info","component":"sender","msg":"poll shard=0 leases=5"}
+{"ts":"2026-10-14T09:14:53.629Z","level":"info","component":"sender","msg":"flush stream=signals acked=8 elapsed_ms=15.4"}
+{"ts":"2026-10-14T09:14:53.967Z","level":"info","component":"sender","msg":"checkpoint seq=158"}
+{"ts":"2026-10-14T09:14:55.012Z","level":"info","component":"sender","msg":"poll shard=2 leases=0"}
+{"ts":"2026-10-14T09:14:55.034Z","level":"info","component":"sender","msg":"flush stream=signals acked=0 elapsed_ms=19.4"}
+{"ts":"2026-10-14T09:14:55.053Z","level":"debug","component":"sender","msg":"checkpoint seq=161"}
+{"ts":"2026-10-14T09:14:55.260Z","level":"info","component":"sender","msg":"poll shard=2 leases=7"}
+{"ts":"2026-10-14T09:14:55.421Z","level":"info","component":"sender","msg":"flush stream=signals acked=16 elapsed_ms=37.8"}
+{"ts":"2026-10-14T09:14:56.368Z","level":"info","component":"sender","msg":"checkpoint seq=164"}
+{"ts":"2026-10-14T09:14:56.875Z","level":"info","component":"sender","msg":"poll shard=2 leases=0"}
+{"ts":"2026-10-14T09:14:57.932Z","level":"info","component":"sender","msg":"flush stream=signals acked=5 elapsed_ms=40.6"}
+{"ts":"2026-10-14T09:14:58.543Z","level":"info","component":"sender","msg":"checkpoint seq=167"}
+{"ts":"2026-10-14T09:14:58.878Z","level":"debug","component":"sender","msg":"poll shard=1 leases=1"}
+{"ts":"2026-10-14T09:14:59.098Z","level":"info","component":"sender","msg":"flush stream=signals acked=1 elapsed_ms=22.5"}
+{"ts":"2026-10-14T09:14:59.119Z","level":"info","component":"sender","msg":"checkpoint seq=170"}
+{"ts":"2026-10-14T09:15:00.393Z","level":"info","component":"sender","msg":"poll shard=0 leases=3"}
+{"ts":"2026-10-14T09:15:00.634Z","level":"info","component":"sender","msg":"flush stream=signals acked=15 elapsed_ms=39.9"}
+{"ts":"2026-10-14T09:15:00.829Z","level":"info","component":"sender","msg":"checkpoint seq=173"}
+{"ts":"2026-10-14T09:15:01.041Z","level":"info","component":"sender","msg":"poll shard=2 leases=2"}
+{"ts":"2026-10-14T09:15:01.243Z","level":"debug","component":"sender","msg":"flush stream=signals acked=7 elapsed_ms=14.1"}
+{"ts":"2026-10-14T09:15:01.506Z","level":"info","component":"sender","msg":"checkpoint seq=176"}
+{"ts":"2026-10-14T09:15:01.661Z","level":"info","component":"sender","msg":"poll shard=1 leases=1"}
+{"ts":"2026-10-14T09:15:01.808Z","level":"info","component":"sender","msg":"flush stream=signals acked=1 elapsed_ms=25.6"}
+{"ts":"2026-10-14T09:15:01.994Z","level":"info","component":"sender","msg":"checkpoint seq=179"}
+{"ts":"2026-10-14T09:15:02.071Z","level":"info","component":"sender","msg":"poll shard=1 leases=3"}
+{"ts":"2026-10-14T09:15:02.703Z","level":"info","component":"sender","msg":"flush stream=signals acked=11 elapsed_ms=45.8"}
+{"ts":"2026-10-14T09:15:02.722Z","level":"debug","component":"sender","msg":"checkpoint seq=182"}
+{"ts":"2026-10-14T09:15:02.743Z","level":"info","component":"sender","msg":"poll shard=1 leases=0"}
+{"ts":"2026-10-14T09:15:03.898Z","level":"info","component":"sender","msg":"flush stream=signals acked=9 elapsed_ms=21.3"}
+{"ts":"2026-10-14T09:15:04.458Z","level":"info","component":"sender","msg":"checkpoint seq=185"}
+{"ts":"2026-10-14T09:15:04.653Z","level":"info","component":"sender","msg":"poll shard=1 leases=8"}
+{"ts":"2026-10-14T09:15:04.787Z","level":"info","component":"sender","msg":"flush stream=signals acked=12 elapsed_ms=9.1"}
+{"ts":"2026-10-14T09:15:05.132Z","level":"info","component":"sender","msg":"checkpoint seq=188"}
+{"ts":"2026-10-14T09:15:06.375Z","level":"debug","component":"sender","msg":"poll shard=0 leases=5"}
+{"ts":"2026-10-14T09:15:06.636Z","level":"info","component":"sender","msg":"flush stream=signals acked=8 elapsed_ms=43.2"}
+{"ts":"2026-10-14T09:15:06.848Z","level":"info","component":"sender","msg":"checkpoint seq=191"}
+{"ts":"2026-10-14T09:15:07.007Z","level":"info","component":"sender","msg":"poll shard=1 leases=6"}
+{"ts":"2026-10-14T09:15:07.322Z","level":"info","component":"sender","msg":"flush stream=signals acked=1 elapsed_ms=18.7"}
+{"ts":"2026-10-14T09:15:07.467Z","level":"info","component":"sender","msg":"checkpoint seq=194"}
+{"ts":"2026-10-14T09:15:07.541Z","level":"info","component":"sender","msg":"poll shard=2 leases=8"}
+{"ts":"2026-10-14T09:15:07.828Z","level":"debug","component":"sender","msg":"flush stream=signals acked=16 elapsed_ms=15.4"}
+{"ts":"2026-10-14T09:15:07.885Z","level":"info","component":"sender","msg":"checkpoint seq=197"}
+{"ts":"2026-10-14T09:15:08.484Z","level":"info","component":"sender","msg":"poll shard=2 leases=1"}
+{"ts":"2026-10-14T09:15:08.813Z","level":"info","component":"sender","msg":"flush stream=signals acked=11 elapsed_ms=37.5"}
+{"ts":"2026-10-14T09:15:09.027Z","level":"info","component":"sender","msg":"checkpoint seq=200"}
+{"ts":"2026-10-14T09:15:09.160Z","level":"info","component":"sender","msg":"poll shard=2 leases=1"}
+{"ts":"2026-10-14T09:15:09.318Z","level":"info","component":"sender","msg":"flush stream=signals acked=3 elapsed_ms=25.6"}
+{"ts":"2026-10-14T09:15:09.334Z","level":"debug","component":"sender","msg":"checkpoint seq=203"}
+{"ts":"2026-10-14T09:15:09.392Z","level":"info","component":"sender","msg":"poll shard=2 leases=2"}
+{"ts":"2026-10-14T09:15:09.471Z","level":"info","component":"sender","msg":"flush stream=signals acked=16 elapsed_ms=12.6"}
+{"ts":"2026-10-14T09:15:10.045Z","level":"info","component":"sender","msg":"checkpoint seq=206"}
+{"ts":"2026-10-14T09:15:11.177Z","level":"info","component":"sender","msg":"poll shard=1 leases=0"}
+{"ts":"2026-10-14T09:15:11.196Z","level":"info","component":"sender","msg":"flush stream=signals acked=11 elapsed_ms=16.1"}
+{"ts":"2026-10-14T09:15:11.359Z","level":"info","component":"sender","msg":"checkpoint seq=209"}
+{"ts":"2026-10-14T09:15:11.378Z","level":"debug","component":"sender","msg":"poll shard=2 leases=6"}
+{"ts":"2026-10-14T09:15:11.936Z","level":"info","component":"sender","msg":"flush stream=signals acked=16 elapsed_ms=37.2"}
+{"ts":"2026-10-14T09:15:12.088Z","level":"info","component":"sender","msg":"checkpoint seq=212"}
+{"ts":"2026-10-14T09:15:12.643Z","level":"info","component":"sender","msg":"poll shard=1 leases=3"}
+{"ts":"2026-10-14T09:15:12.661Z","level":"info","component":"sender","msg":"flush stream=signals acked=0 elapsed_ms=42.8"}
+{"ts":"2026-10-14T09:15:13.825Z","level":"info","component":"sender","msg":"checkpoint seq=215"}
+{"ts":"2026-10-14T09:15:13.885Z","level":"info","component":"sender","msg":"poll shard=0 leases=0"}
+{"ts":"2026-10-14T09:15:14.145Z","level":"debug","component":"sender","msg":"flush stream=signals acked=8 elapsed_ms=18.5"}
+{"ts":"2026-10-14T09:15:14.391Z","level":"info","component":"sender","msg":"checkpoint seq=218"}
+{"ts":"2026-10-14T09:15:15.641Z","level":"info","component":"sender","msg":"poll shard=2 leases=4"}
+{"ts":"2026-10-14T09:15:15.931Z","level":"info","component":"sender","msg":"flush stream=signals acked=8 elapsed_ms=37.6"}
+{"ts":"2026-10-14T09:15:16.254Z","level":"info","component":"sender","msg":"checkpoint seq=221"}
+{"ts":"2026-10-14T09:15:16.759Z","level":"info","component":"sender","msg":"poll shard=2 leases=3"}
+{"ts":"2026-10-14T09:15:17.982Z","level":"info","component":"sender","msg":"flush stream=signals acked=17 elapsed_ms=12.0"}
+{"ts":"2026-10-14T09:15:18.043Z","level":"debug","component":"sender","msg":"checkpoint seq=224"}
+{"ts":"2026-10-14T09:15:18.305Z","level":"info","component":"sender","msg":"poll shard=1 leases=5"}
+{"ts":"2026-10-14T09:15:18.569Z","level":"info","component":"sender","msg":"flush stream=signals acked=1 elapsed_ms=35.4"}
+{"ts":"2026-10-14T09:15:18.840Z","level":"info","component":"sender","msg":"checkpoint seq=227"}
+{"ts":"2026-10-14T09:15:19.078Z","level":"info","component":"sender","msg":"poll shard=0 leases=3"}
+{"ts":"2026-10-14T09:15:19.155Z","level":"info","component":"sender","msg":"flush stream=signals acked=1 elapsed_ms=26.2"}
+{"ts":"2026-10-14T09:15:20.083Z","level":"info","component":"sender","msg":"checkpoint seq=230"}
+{"ts":"2026-10-14T09:15:20.661Z","level":"debug","component":"sender","msg":"poll shard=0 leases=2"}
+{"ts":"2026-10-14T09:15:20.907Z","level":"info","component":"sender","msg":"flush stream=signals acked=16 elapsed_ms=33.0"}
+{"ts":"2026-10-14T09:15:21.206Z","level":"info","component":"sender","msg":"checkpoint seq=233"}
+{"ts":"2026-10-14T09:15:21.377Z","level":"info","component":"sender","msg":"poll shard=1 leases=6"}
+{"ts":"2026-10-14T09:15:21.714Z","level":"info","component":"sender","msg":"flush stream=signals acked=18 elapsed_ms=34.4"}
+{"ts":"2026-10-14T09:15:21.919Z","level":"info","component":"sender","msg":"checkpoint seq=236"}
+{"ts":"2026-10-14T09:15:22.176Z","level":"info","component":"sender","msg":"poll shard=0 leases=5"}
+{"ts":"2026-10-14T09:15:22.236Z","level":"debug","component":"sender","msg":"flush stream=signals acked=15 elapsed_ms=27.9"}
+{"ts":"2026-10-14T09:15:22.451Z","level":"info","component":"sender","msg":"checkpoint seq=239"}
+{"ts":"2026-10-14T09:15:22.717Z","level":"info","component":"sender","msg":"poll shard=1 leases=5"}
+{"ts":"2026-10-14T09:15:22.898Z","level":"info","component":"sender","msg":"flush stream=signals acked=9 elapsed_ms=36.8"}
+{"ts":"2026-10-14T09:15:23.196Z","level":"info","component":"sender","msg":"checkpoint seq=242"}
+{"ts":"2026-10-14T09:15:24.395Z","level":"info","component":"sender","msg":"poll shard=0 leases=0"}
+{"ts":"2026-10-14T09:15:24.646Z","level":"info","component":"sender","msg":"flush stream=signals acked=3 elapsed_ms=19.9"}
+{"ts":"2026-10-14T09:15:25.826Z","level":"debug","component":"sender","msg":"checkpoint seq=245"}
+{"ts":"2026-10-14T09:15:26.142Z","level":"info","component":"sender","msg":"poll shard=2 leases=6"}
+{"ts":"2026-10-14T09:15:26.328Z","level":"info","component":"sender","msg":"flush stream=signals acked=0 elapsed_ms=36.3"}
+{"ts":"2026-10-14T09:15:26.532Z","level":"info","component":"sender","msg":"checkpoint seq=248"}
+{"ts":"2026-10-14T09:15:26.790Z","level":"info","component":"sender","msg":"poll shard=0 leases=3"}
+{"ts":"2026-10-14T09:15:27.908Z","level":"info","component":"sender","msg":"flush stream=signals acked=2 elapsed_ms=11.1"}
+{"ts":"2026-10-14T09:15:28.218Z","level":"info","component":"sender","msg":"checkpoint seq=251"}
+{"ts":"2026-10-14T09:15:29.130Z","level":"debug","component":"sender","msg":"poll shard=1 leases=0"}
+{"ts":"2026-10-14T09:15:29.193Z","level":"info","component":"sender","msg":"flush stream=signals acked=9 elapsed_ms=42.7"}
+{"ts":"2026-10-14T09:15:29.535Z","level":"info","component":"sender","msg":"checkpoint seq=254"}
+{"ts":"2026-10-14T09:15:29.795Z","level":"info","component":"sender","msg":"poll shard=0 leases=4"}
+{"ts":"2026-10-14T09:15:29.980Z","level":"info","component":"sender","msg":"flush stream=signals acked=18 elapsed_ms=9.5"}
+{"ts":"2026-10-14T09:15:30.051Z","level":"info","component":"sender","msg":"checkpoint seq=257"}
+{"ts":"2026-10-14T09:15:30.241Z","level":"info","component":"sender","msg":"poll shard=1 leases=0"}
+{"ts":"2026-10-14T09:15:30.417Z","level":"debug","component":"sender","msg":"flush stream=signals acked=0 elapsed_ms=46.0"}
+{"ts":"2026-10-14T09:15:30.662Z","level":"info","component":"sender","msg":"checkpoint seq=260"}
+{"ts":"2026-10-14T09:15:30.885Z","level":"info","component":"sender","msg":"poll shard=1 leases=7"}
+{"ts":"2026-10-14T09:15:31.119Z","level":"info","component":"sender","msg":"flush stream=signals acked=6 elapsed_ms=15.4"}
+{"ts":"2026-10-14T09:15:31.612Z","level":"info","component":"sender","msg":"checkpoint seq=263"}
+{"ts":"2026-10-14T09:15:32.265Z","level":"info","component":"sender","msg":"poll shard=2 leases=7"}
+{"ts":"2026-10-14T09:15:32.522Z","level":"info","component":"sender","msg":"flush stream=signals acked=0 elapsed_ms=42.4"}
+{"ts":"2026-10-14T09:15:33.185Z","level":"debug","component":"sender","msg":"checkpoint seq=266"}
+{"ts":"2026-10-14T09:15:33.517Z","level":"info","component":"sender","msg":"poll shard=0 leases=1"}
+{"ts":"2026-10-14T09:15:33.682Z","level":"info","component":"sender","msg":"flush stream=signals acked=10 elapsed_ms=12.1"}
+{"ts":"2026-10-14T09:15:34.212Z","level":"info","component":"sender","msg":"checkpoint seq=269"}
+{"ts":"2026-10-14T09:15:34.285Z","level":"info","component":"sender","msg":"poll shard=2 leases=6"}
+{"ts":"2026-10-14T09:15:34.562Z","level":"info","component":"sender","msg":"flush stream=signals acked=0 elapsed_ms=22.6"}
+{"ts":"2026-10-14T09:15:34.885Z","level":"info","component":"sender","msg":"checkpoint seq=272"}
+{"ts":"2026-10-14T09:15:35.125Z","level":"info","component":"sender","stream":"batch","ack_seq":225,"state":"commit_ok"}
+{"ts":"2026-10-14T09:15:36.226Z","level":"warn","component":"sender","stream":"batch","seq":226,"attempt":2,"retry_after_ms":2400,"state":"retry_scheduled"}

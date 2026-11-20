@@ -1,3 +1,5 @@
+import type { LogDegradedReason } from "../../src/domain/logs/types";
+
 type LabelSet = Record<string, string | number | boolean>;
 
 type CounterSample = {
@@ -21,7 +23,7 @@ export type LogAnalysisJobMetricStatus = "complete" | "retry" | "dead_lettered" 
 export type LogAnalysisJobMetricStage = "parse" | "pattern" | "rootcause" | "report";
 export type LogAnalysisJobFailureReason = "parse_error" | "object_store_error" | "stale_run" | "unknown";
 export type LogAnalysisLlmCallOutcome = "ok" | "provider_error" | "invalid_output";
-export type LogAnalysisDegradedMetricReason = "provider-unavailable" | "token-budget-exhausted";
+export type LogAnalysisDegradedMetricReason = LogDegradedReason;
 export type LogWebhookDeliveryMetricOutcome = "delivered" | "retrying" | "failed" | "blocked" | "skipped";
 export type AgentToolMetricKind = "read" | "preparation" | "mutating";
 export type AgentApprovalMetricAction = "requested" | "approved" | "rejected";

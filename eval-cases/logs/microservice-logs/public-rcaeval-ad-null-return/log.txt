@@ -1,0 +1,383 @@
+04:51,1731905517986624097,frontend,serving product page,pod-1,node-1
+04:51,1731905517989857015,currencyservice,Getting supported currencies...,pod-2,node-2
+04:51,1731905517993353046,cartservice,GetCartAsync called with userId=adf41e5f-12f6-4c40-88a0-a1bcf421e416,pod-3,node-3
+04:51,1731905517998728859,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518006804430,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', '6E92ZMYYFZ', '2ZYFJ3GM2N', '0PUK6V6EV0', 'LS4PSXUNUM']",pod-4,node-2
+04:51,1731905518064989975,frontend,failed to retrieve ads,pod-1,node-1
+04:51,1731905518065229058,frontend,request complete,pod-1,node-1
+04:51,1731905518113555812,frontend,failed to retrieve ads,pod-1,node-1
+04:51,1731905518113792278,frontend,request complete,pod-1,node-1
+04:51,1731905518139718427,adservice,"Stats enabled, but temporarily unavailable",pod-5,node-2
+04:51,1731905518140049155,adservice,AdService starting.,pod-5,node-2
+04:51,1731905518141178023,adservice,Tracing enabled but temporarily unavailable,pod-5,node-2
+04:51,1731905518141894137,adservice,See https://github.com/GoogleCloudPlatform/microservices-demo/issues/422 for more info.,pod-5,node-2
+04:51,1731905518142677613,adservice,Tracing enabled - Stackdriver exporter initialized.,pod-5,node-2
+04:51,1731905518526127803,frontend,request started,pod-1,node-1
+04:51,1731905518526147585,frontend,serving product page,pod-1,node-1
+04:51,1731905518529088229,currencyservice,Getting supported currencies...,pod-2,node-2
+04:51,1731905518533702837,cartservice,GetCartAsync called with userId=79b6fc41-70d8-42ea-9810-1ae877ff7add,pod-3,node-3
+04:51,1731905518540387761,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518549465376,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', 'L9ECAV7KIM', 'OLJCESPC7Z', '1YMWWN1N4O', '66VCHSJNUP']",pod-4,node-2
+04:51,1731905518610692514,frontend,request started,pod-1,node-1
+04:51,1731905518610709006,frontend,setting currency,pod-1,node-1
+04:51,1731905518610711783,frontend,request complete,pod-1,node-1
+04:51,1731905518613872824,frontend,request started,pod-1,node-1
+04:51,1731905518613882190,frontend,home,pod-1,node-1
+04:51,1731905518615538751,currencyservice,Getting supported currencies...,pod-2,node-2
+04:51,1731905518620826785,cartservice,GetCartAsync called with userId=418ce0b6-15a4-4228-a6cf-27e322509121,pod-3,node-3
+04:51,1731905518628196375,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518631653907,frontend,request started,pod-1,node-1
+04:51,1731905518631664668,frontend,view user cart,pod-1,node-1
+04:51,1731905518632378264,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518633772686,currencyservice,Getting supported currencies...,pod-2,node-2
+04:51,1731905518636524816,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518637008928,cartservice,GetCartAsync called with userId=65f4eef7-6576-4be2-805b-c27cafa8ee53,pod-3,node-3
+04:51,1731905518640229668,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518644104899,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518648116636,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', '2ZYFJ3GM2N', 'OLJCESPC7Z', 'LS4PSXUNUM', 'L9ECAV7KIM']",pod-4,node-2
+04:51,1731905518648138308,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518651786197,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518655321132,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518658570352,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518658706505,shippingservice,[GetQuote] received request,pod-6,node-2
+04:51,1731905518658718619,shippingservice,[GetQuote] completed request,pod-6,node-2
+04:51,1731905518659764895,frontend,failed to retrieve ads,pod-1,node-1
+04:51,1731905518660027127,frontend,request complete,pod-1,node-1
+04:51,1731905518661705049,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518663415023,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+04:51,1731905518666196697,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518668470573,frontend,request complete,pod-1,node-1
+04:51,1731905518763643218,frontend,failed to retrieve ads,pod-1,node-1
+04:51,1731905518764156177,frontend,request complete,pod-1,node-1
+04:51,1731905518783134306,frontend,request started,pod-1,node-1
+04:51,1731905518783149195,frontend,view user cart,pod-1,node-1
+04:51,1731905518784901293,currencyservice,Getting supported currencies...,pod-2,node-2
+04:51,1731905518789435774,cartservice,GetCartAsync called with userId=c216dec4-2181-4773-8cc5-aa587ee59fcc,pod-3,node-3
+04:51,1731905518798060858,recommendationservice,"[Recv ListRecommendations] product_ids=['66VCHSJNUP', '1YMWWN1N4O', '9SIQT8TOJO', 'OLJCESPC7Z']",pod-4,node-2
+04:51,1731905518804916047,shippingservice,[GetQuote] received request,pod-6,node-2
+04:51,1731905518804928906,shippingservice,[GetQuote] completed request,pod-6,node-2
+04:51,1731905518807710367,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518813239290,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518817295748,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518823033402,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518827801278,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518832600688,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518835210346,frontend,request complete,pod-1,node-1
+04:51,1731905518883866709,frontend,request started,pod-1,node-1
+04:51,1731905518884401189,frontend,serving product page,pod-1,node-1
+04:51,1731905518886937928,currencyservice,Getting supported currencies...,pod-2,node-2
+04:51,1731905518891363881,cartservice,GetCartAsync called with userId=fd2169a6-17e7-4d0e-9b57-1a8b67c1ae1a,pod-3,node-3
+04:51,1731905518896497181,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905518904453074,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', '6E92ZMYYFZ', '0PUK6V6EV0', 'OLJCESPC7Z', '2ZYFJ3GM2N']",pod-4,node-2
+04:51,1731905519014376015,frontend,failed to retrieve ads,pod-1,node-1
+04:51,1731905519014821272,frontend,request complete,pod-1,node-1
+04:51,1731905519338666016,frontend,request started,pod-1,node-1
+04:51,1731905519338685538,frontend,serving product page,pod-1,node-1
+04:51,1731905519342361741,currencyservice,Getting supported currencies...,pod-2,node-2
+04:51,1731905519346986564,cartservice,GetCartAsync called with userId=cc66be0e-8e02-45b2-add1-49cd8f1b4b03,pod-3,node-3
+04:51,1731905519353741665,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519360897385,recommendationservice,"[Recv ListRecommendations] product_ids=['L9ECAV7KIM', '1YMWWN1N4O', '66VCHSJNUP', '2ZYFJ3GM2N', '6E92ZMYYFZ']",pod-4,node-2
+04:51,1731905519375063841,frontend,request started,pod-1,node-1
+04:51,1731905519375080614,frontend,setting currency,pod-1,node-1
+04:51,1731905519375087131,frontend,request complete,pod-1,node-1
+04:51,1731905519378155081,frontend,request started,pod-1,node-1
+04:51,1731905519378166040,frontend,home,pod-1,node-1
+04:51,1731905519379499554,currencyservice,Getting supported currencies...,pod-2,node-2
+04:51,1731905519384629124,cartservice,GetCartAsync called with userId=e68474c6-7c27-4a5d-9e2c-d5e430b87e55,pod-3,node-3
+04:51,1731905519390811375,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519394405161,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519398240722,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519401930272,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519405757861,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519408667552,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519412259952,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519416172927,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519420125406,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519425592330,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+04:51,1731905519456292816,frontend,request started,pod-1,node-1
+04:51,1731905519456309022,frontend,serving product page,pod-1,node-1
+04:51,1731905519459817951,currencyservice,Getting supported currencies...,pod-2,node-2
+04:51,1731905519464129391,cartservice,GetCartAsync called with userId=58e83383-a5c9-4a61-9291-cb65bc2a888b,pod-3,node-3
+04:51,1731905519469237129,frontend,failed to retrieve ads,pod-1,node-1
+04:51,1731905519469519095,frontend,request complete,pod-1,node-1
+04:51,1731905519470766100,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519475028697,frontend,request started,pod-1,node-1
+04:51,1731905519475039506,frontend,view user cart,pod-1,node-1
+04:51,1731905519476414599,currencyservice,Getting supported currencies...,pod-2,node-2
+04:51,1731905519481192689,cartservice,GetCartAsync called with userId=5e004f2d-a61a-45b2-840d-6bfd47a2be43,pod-3,node-3
+04:51,1731905519481377724,recommendationservice,"[Recv ListRecommendations] product_ids=['OLJCESPC7Z', '0PUK6V6EV0', '1YMWWN1N4O', 'L9ECAV7KIM', 'LS4PSXUNUM']",pod-4,node-2
+04:51,1731905519490893721,recommendationservice,"[Recv ListRecommendations] product_ids=['L9ECAV7KIM', '66VCHSJNUP', 'OLJCESPC7Z', '9SIQT8TOJO', '2ZYFJ3GM2N']",pod-4,node-2
+04:51,1731905519499473561,shippingservice,[GetQuote] received request,pod-6,node-2
+04:51,1731905519499485293,shippingservice,[GetQuote] completed request,pod-6,node-2
+04:51,1731905519502449623,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519507837958,currencyservice,conversion request successful,pod-2,node-2
+04:51,1731905519510382002,frontend,request complete,pod-1,node-1
+04:51,1731905519526784706,frontend,failed to retrieve ads,pod-1,node-1
+04:51,1731905519527090100,frontend,request complete,pod-1,node-1
+04:51,1731905519590521512,frontend,failed to retrieve ads,pod-1,node-1
+04:51,1731905519591018760,frontend,request complete,pod-1,node-1
+04:51,1731905519648544853,adservice,"Ad Service started, listening on 9555",pod-5,node-2
+04:52,1731905520337844965,frontend,request started,pod-1,node-1
+04:52,1731905520337867075,frontend,serving product page,pod-1,node-1
+04:52,1731905520341314967,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905520345189399,cartservice,GetCartAsync called with userId=49eac425-0b6d-4e41-b8ac-4be1a27aeb58,pod-3,node-3
+04:52,1731905520350829878,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905520358683197,recommendationservice,"[Recv ListRecommendations] product_ids=['66VCHSJNUP', 'L9ECAV7KIM', '1YMWWN1N4O', '2ZYFJ3GM2N', 'LS4PSXUNUM']",pod-4,node-2
+04:52,1731905520393704441,frontend,request started,pod-1,node-1
+04:52,1731905520393741966,frontend,serving product page,pod-1,node-1
+04:52,1731905520396866941,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905520401218148,cartservice,GetCartAsync called with userId=418ce0b6-15a4-4228-a6cf-27e322509121,pod-3,node-3
+04:52,1731905520407151101,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905520416183372,recommendationservice,"[Recv ListRecommendations] product_ids=['6E92ZMYYFZ', '66VCHSJNUP', 'OLJCESPC7Z', 'L9ECAV7KIM', '9SIQT8TOJO']",pod-4,node-2
+04:52,1731905520469698854,frontend,failed to retrieve ads,pod-1,node-1
+04:52,1731905520470008055,frontend,request complete,pod-1,node-1
+04:52,1731905520525594511,frontend,failed to retrieve ads,pod-1,node-1
+04:52,1731905520525849995,frontend,request complete,pod-1,node-1
+04:52,1731905520624476104,frontend,request started,pod-1,node-1
+04:52,1731905520624495691,frontend,serving product page,pod-1,node-1
+04:52,1731905520628009144,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905520631671403,cartservice,GetCartAsync called with userId=33421b66-55b6-413b-9ba9-3230c85c58dc,pod-3,node-3
+04:52,1731905520637334244,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905520644978266,recommendationservice,"[Recv ListRecommendations] product_ids=['LS4PSXUNUM', '9SIQT8TOJO', '6E92ZMYYFZ', '0PUK6V6EV0', '2ZYFJ3GM2N']",pod-4,node-2
+04:52,1731905520752692490,frontend,failed to retrieve ads,pod-1,node-1
+04:52,1731905520753276636,frontend,request complete,pod-1,node-1
+04:52,1731905520835772756,frontend,request started,pod-1,node-1
+04:52,1731905520835792211,frontend,serving product page,pod-1,node-1
+04:52,1731905520839834227,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905520843992620,cartservice,GetCartAsync called with userId=f3509d43-91d9-45a0-a174-70f597a55fb4,pod-3,node-3
+04:52,1731905520848738409,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905520859704924,recommendationservice,"[Recv ListRecommendations] product_ids=['LS4PSXUNUM', '2ZYFJ3GM2N', '0PUK6V6EV0', '1YMWWN1N4O', '9SIQT8TOJO']",pod-4,node-2
+04:52,1731905520969960567,frontend,failed to retrieve ads,pod-1,node-1
+04:52,1731905520970532364,frontend,request complete,pod-1,node-1
+04:52,1731905521313970680,frontend,request started,pod-1,node-1
+04:52,1731905521313992916,frontend,serving product page,pod-1,node-1
+04:52,1731905521316180011,frontend,request started,pod-1,node-1
+04:52,1731905521316359834,frontend,setting currency,pod-1,node-1
+04:52,1731905521316367082,frontend,request complete,pod-1,node-1
+04:52,1731905521319402695,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905521319958952,frontend,request started,pod-1,node-1
+04:52,1731905521319969467,frontend,home,pod-1,node-1
+04:52,1731905521321150587,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905521323797322,cartservice,GetCartAsync called with userId=d4e28c38-1561-4a66-b120-02013f892c20,pod-3,node-3
+04:52,1731905521326594762,cartservice,GetCartAsync called with userId=82f11995-8adf-4db5-b1c6-416954168927,pod-3,node-3
+04:52,1731905521328743230,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905521330487009,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905521334750172,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905521336902481,recommendationservice,"[Recv ListRecommendations] product_ids=['1YMWWN1N4O', '2ZYFJ3GM2N', '0PUK6V6EV0', '66VCHSJNUP', 'OLJCESPC7Z']",pod-4,node-2
+04:52,1731905521338160441,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905521341663946,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905521345283234,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905521348575660,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905521351889373,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905521355042438,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905521358821382,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905521362956385,adservice,received ad request (context_words=[kitchen]),pod-5,node-2
+04:52,1731905521368701723,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+04:52,1731905521444994057,frontend,failed to retrieve ads,pod-1,node-1
+04:52,1731905521445222983,frontend,request complete,pod-1,node-1
+04:52,1731905521447152451,adservice,received ad request (context_words=[]),pod-5,node-2
+04:52,1731905521468411448,frontend,failed to retrieve ads,pod-1,node-1
+04:52,1731905521468448488,frontend,request complete,pod-1,node-1
+04:52,1731905521545388032,adservice,"Nov 18, 2024 4:52:01 AM io.grpc.internal.SerializingExecutor run",pod-5,node-2
+04:52,1731905521545410175,adservice,SEVERE: Exception while executing runnable io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed@75a8f13b,pod-5,node-2
+04:52,1731905521545414647,adservice,"java.lang.NullPointerException: Cannot invoke ""java.util.Collection.toArray()"" because ""<parameter1>"" is null
+	at java.base/java.util.ArrayList.addAll(Unknown Source)
+	at hipstershop.AdService$AdServiceImpl.getAds(AdService.java:102)
+	at hipstershop.AdServiceGrpc$MethodHandlers.invoke(AdServiceGrpc.java:210)
+	at io.grpc.stub.ServerCalls$UnaryServerCallHandler$UnaryServerCallListener.onHalfClose(ServerCalls.java:182)
+	at io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.halfClosed(ServerCallImpl.java:356)
+	at io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed.runInContext(ServerImpl.java:861)
+	at io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+	at java.base/java.lang.Thread.run(Unknown Source)
+",pod-5,node-2
+04:52,1731905522164724812,frontend,request started,pod-1,node-1
+04:52,1731905522164748586,frontend,setting currency,pod-1,node-1
+04:52,1731905522164778836,frontend,request complete,pod-1,node-1
+04:52,1731905522167722723,frontend,request started,pod-1,node-1
+04:52,1731905522167739135,frontend,home,pod-1,node-1
+04:52,1731905522169333318,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905522175582751,cartservice,GetCartAsync called with userId=0ae6d9b6-4e7f-4d38-a0eb-042389dcac30,pod-3,node-3
+04:52,1731905522180963997,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522189176800,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522192592487,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522195782186,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522199991049,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522204222484,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522207342235,frontend,request started,pod-1,node-1
+04:52,1731905522207378806,frontend,home,pod-1,node-1
+04:52,1731905522208031596,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522209394119,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905522212001110,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522215406533,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522215747883,cartservice,GetCartAsync called with userId=b63bea0e-d05f-4589-be71-8fef43557432,pod-3,node-3
+04:52,1731905522221038367,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+04:52,1731905522222363102,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522224381050,adservice,received ad request (context_words=[]),pod-5,node-2
+04:52,1731905522225400187,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522228304846,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522239560115,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522247530754,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522251154482,frontend,request complete,pod-1,node-1
+04:52,1731905522251594655,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522255363668,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522259294845,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522262815879,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522269626270,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+04:52,1731905522340172166,adservice,received ad request (context_words=[]),pod-5,node-2
+04:52,1731905522344332275,frontend,request complete,pod-1,node-1
+04:52,1731905522663343572,frontend,request started,pod-1,node-1
+04:52,1731905522663366134,frontend,serving product page,pod-1,node-1
+04:52,1731905522666730710,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905522670858037,cartservice,GetCartAsync called with userId=0727db9d-83b9-44b7-acab-68a4f8f289c0,pod-3,node-3
+04:52,1731905522672542201,frontend,request started,pod-1,node-1
+04:52,1731905522672556399,frontend,serving product page,pod-1,node-1
+04:52,1731905522675483291,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905522676947785,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522680082247,cartservice,GetCartAsync called with userId=cc66be0e-8e02-45b2-add1-49cd8f1b4b03,pod-3,node-3
+04:52,1731905522684003930,recommendationservice,"[Recv ListRecommendations] product_ids=['LS4PSXUNUM', '1YMWWN1N4O', '66VCHSJNUP', '2ZYFJ3GM2N', 'OLJCESPC7Z']",pod-4,node-2
+04:52,1731905522687539962,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522695560388,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', 'LS4PSXUNUM', 'OLJCESPC7Z', '6E92ZMYYFZ', '66VCHSJNUP']",pod-4,node-2
+04:52,1731905522697563276,adservice,received ad request (context_words=[kitchen]),pod-5,node-2
+04:52,1731905522698469480,adservice,"Nov 18, 2024 4:52:02 AM io.grpc.internal.SerializingExecutor run",pod-5,node-2
+04:52,1731905522698479749,adservice,SEVERE: Exception while executing runnable io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed@6f48864d,pod-5,node-2
+04:52,1731905522698483793,adservice,"java.lang.NullPointerException: Cannot invoke ""java.util.Collection.toArray()"" because ""<parameter1>"" is null
+	at java.base/java.util.ArrayList.addAll(Unknown Source)
+	at hipstershop.AdService$AdServiceImpl.getAds(AdService.java:102)
+	at hipstershop.AdServiceGrpc$MethodHandlers.invoke(AdServiceGrpc.java:210)
+	at io.grpc.stub.ServerCalls$UnaryServerCallHandler$UnaryServerCallListener.onHalfClose(ServerCalls.java:182)
+	at io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.halfClosed(ServerCallImpl.java:356)
+	at io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed.runInContext(ServerImpl.java:861)
+	at io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+	at java.base/java.lang.Thread.run(Unknown Source)
+",pod-5,node-2
+04:52,1731905522741823386,adservice,"received ad request (context_words=[hair, beauty])",pod-5,node-2
+04:52,1731905522742676176,adservice,"Nov 18, 2024 4:52:02 AM io.grpc.internal.SerializingExecutor run",pod-5,node-2
+04:52,1731905522742686093,adservice,SEVERE: Exception while executing runnable io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed@4c6cee4a,pod-5,node-2
+04:52,1731905522742689811,adservice,"java.lang.NullPointerException: Cannot invoke ""java.util.Collection.toArray()"" because ""<parameter1>"" is null
+	at java.base/java.util.ArrayList.addAll(Unknown Source)
+	at hipstershop.AdService$AdServiceImpl.getAds(AdService.java:102)
+	at hipstershop.AdServiceGrpc$MethodHandlers.invoke(AdServiceGrpc.java:210)
+	at io.grpc.stub.ServerCalls$UnaryServerCallHandler$UnaryServerCallListener.onHalfClose(ServerCalls.java:182)
+	at io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.halfClosed(ServerCallImpl.java:356)
+	at io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed.runInContext(ServerImpl.java:861)
+	at io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+	at java.base/java.lang.Thread.run(Unknown Source)
+",pod-5,node-2
+04:52,1731905522745287426,frontend,failed to retrieve ads,pod-1,node-1
+04:52,1731905522745657140,frontend,failed to retrieve ads,pod-1,node-1
+04:52,1731905522745793959,frontend,request complete,pod-1,node-1
+04:52,1731905522745921450,frontend,request complete,pod-1,node-1
+04:52,1731905522749271179,frontend,request started,pod-1,node-1
+04:52,1731905522749281445,frontend,adding to cart,pod-1,node-1
+04:52,1731905522753823437,cartservice,"AddItemAsync called with userId=cc66be0e-8e02-45b2-add1-49cd8f1b4b03, productId=2ZYFJ3GM2N, quantity=3",pod-3,node-3
+04:52,1731905522761445333,frontend,request complete,pod-1,node-1
+04:52,1731905522764392318,frontend,request started,pod-1,node-1
+04:52,1731905522764401425,frontend,view user cart,pod-1,node-1
+04:52,1731905522766179934,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905522770023999,cartservice,GetCartAsync called with userId=cc66be0e-8e02-45b2-add1-49cd8f1b4b03,pod-3,node-3
+04:52,1731905522780527215,recommendationservice,"[Recv ListRecommendations] product_ids=['9SIQT8TOJO', '1YMWWN1N4O', '0PUK6V6EV0', 'LS4PSXUNUM', 'L9ECAV7KIM']",pod-4,node-2
+04:52,1731905522789194678,frontend,request started,pod-1,node-1
+04:52,1731905522789210957,frontend,serving product page,pod-1,node-1
+04:52,1731905522790282590,shippingservice,[GetQuote] received request,pod-6,node-2
+04:52,1731905522790298041,shippingservice,[GetQuote] completed request,pod-6,node-2
+04:52,1731905522792294084,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905522793972313,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522797009708,cartservice,GetCartAsync called with userId=fd2169a6-17e7-4d0e-9b57-1a8b67c1ae1a,pod-3,node-3
+04:52,1731905522801317002,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522802530290,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522805725971,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522809035417,recommendationservice,"[Recv ListRecommendations] product_ids=['L9ECAV7KIM', '66VCHSJNUP', '9SIQT8TOJO', 'OLJCESPC7Z', '1YMWWN1N4O']",pod-4,node-2
+04:52,1731905522809498829,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905522811531161,frontend,request complete,pod-1,node-1
+04:52,1731905522832156425,adservice,"received ad request (context_words=[hair, beauty])",pod-5,node-2
+04:52,1731905522832920801,adservice,"Nov 18, 2024 4:52:02 AM io.grpc.internal.SerializingExecutor run",pod-5,node-2
+04:52,1731905522832928427,adservice,SEVERE: Exception while executing runnable io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed@16f9b396,pod-5,node-2
+04:52,1731905522832931818,adservice,"java.lang.NullPointerException: Cannot invoke ""java.util.Collection.toArray()"" because ""<parameter1>"" is null
+	at java.base/java.util.ArrayList.addAll(Unknown Source)
+	at hipstershop.AdService$AdServiceImpl.getAds(AdService.java:102)
+	at hipstershop.AdServiceGrpc$MethodHandlers.invoke(AdServiceGrpc.java:210)
+	at io.grpc.stub.ServerCalls$UnaryServerCallHandler$UnaryServerCallListener.onHalfClose(ServerCalls.java:182)
+	at io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.halfClosed(ServerCallImpl.java:356)
+	at io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed.runInContext(ServerImpl.java:861)
+	at io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+	at java.base/java.lang.Thread.run(Unknown Source)
+",pod-5,node-2
+04:52,1731905522835340827,frontend,failed to retrieve ads,pod-1,node-1
+04:52,1731905522835979464,frontend,request complete,pod-1,node-1
+04:52,1731905523111687581,frontend,request started,pod-1,node-1
+04:52,1731905523111731081,frontend,serving product page,pod-1,node-1
+04:52,1731905523115480026,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905523121207682,cartservice,GetCartAsync called with userId=58e83383-a5c9-4a61-9291-cb65bc2a888b,pod-3,node-3
+04:52,1731905523127366583,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523133605475,frontend,request started,pod-1,node-1
+04:52,1731905523133619359,frontend,setting currency,pod-1,node-1
+04:52,1731905523133621430,frontend,request complete,pod-1,node-1
+04:52,1731905523136344973,recommendationservice,"[Recv ListRecommendations] product_ids=['OLJCESPC7Z', '1YMWWN1N4O', '66VCHSJNUP', '9SIQT8TOJO', '6E92ZMYYFZ']",pod-4,node-2
+04:52,1731905523137136650,frontend,request started,pod-1,node-1
+04:52,1731905523137146827,frontend,home,pod-1,node-1
+04:52,1731905523138652333,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905523144459638,cartservice,GetCartAsync called with userId=acc735c5-72d0-48e6-b237-46a63eac4c4d,pod-3,node-3
+04:52,1731905523149496299,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523152256137,adservice,"received ad request (context_words=[hair, beauty])",pod-5,node-2
+04:52,1731905523153002786,adservice,"Nov 18, 2024 4:52:03 AM io.grpc.internal.SerializingExecutor run",pod-5,node-2
+04:52,1731905523153014065,adservice,SEVERE: Exception while executing runnable io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed@5a1fecb1,pod-5,node-2
+04:52,1731905523153017210,adservice,"java.lang.NullPointerException: Cannot invoke ""java.util.Collection.toArray()"" because ""<parameter1>"" is null
+	at java.base/java.util.ArrayList.addAll(Unknown Source)
+	at hipstershop.AdService$AdServiceImpl.getAds(AdService.java:102)
+	at hipstershop.AdServiceGrpc$MethodHandlers.invoke(AdServiceGrpc.java:210)
+	at io.grpc.stub.ServerCalls$UnaryServerCallHandler$UnaryServerCallListener.onHalfClose(ServerCalls.java:182)
+	at io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.halfClosed(ServerCallImpl.java:356)
+	at io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed.runInContext(ServerImpl.java:861)
+	at io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+	at java.base/java.lang.Thread.run(Unknown Source)
+",pod-5,node-2
+04:52,1731905523153159644,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523155255326,frontend,failed to retrieve ads,pod-1,node-1
+04:52,1731905523155973279,frontend,request complete,pod-1,node-1
+04:52,1731905523156760898,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523159844604,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523163475428,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523167259375,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523170799840,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523174525276,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523178078150,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523183256359,frontend,ENV_PLATFORM is: aws,pod-1,node-1
+04:52,1731905523186247215,adservice,received ad request (context_words=[]),pod-5,node-2
+04:52,1731905523190448360,frontend,request complete,pod-1,node-1
+04:52,1731905523362401538,frontend,request started,pod-1,node-1
+04:52,1731905523362484754,frontend,serving product page,pod-1,node-1
+04:52,1731905523366066689,currencyservice,Getting supported currencies...,pod-2,node-2
+04:52,1731905523370525062,cartservice,GetCartAsync called with userId=65f4eef7-6576-4be2-805b-c27cafa8ee53,pod-3,node-3
+04:52,1731905523375577885,currencyservice,conversion request successful,pod-2,node-2
+04:52,1731905523383956974,recommendationservice,"[Recv ListRecommendations] product_ids=['LS4PSXUNUM', '9SIQT8TOJO', '1YMWWN1N4O', 'L9ECAV7KIM', '0PUK6V6EV0']",pod-4,node-2
+04:52,1731905523399515682,adservice,received ad request (context_words=[kitchen]),pod-5,node-2
+04:52,1731905523400466885,adservice,"Nov 18, 2024 4:52:03 AM io.grpc.internal.SerializingExecutor run",pod-5,node-2
+04:52,1731905523400474306,adservice,SEVERE: Exception while executing runnable io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed@7d71091e,pod-5,node-2
+04:52,1731905523400477332,adservice,"java.lang.NullPointerException: Cannot invoke ""java.util.Collection.toArray()"" because ""<parameter1>"" is null
+	at java.base/java.util.ArrayList.addAll(Unknown Source)
+	at hipstershop.AdService$AdServiceImpl.getAds(AdService.java:102)
+	at hipstershop.AdServiceGrpc$MethodHandlers.invoke(AdServiceGrpc.java:210)
+	at io.grpc.stub.ServerCalls$UnaryServerCallHandler$UnaryServerCallListener.onHalfClose(ServerCalls.java:182)
+	at io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.halfClosed(ServerCallImpl.java:356)
+	at io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed.runInContext(ServerImpl.java:861)
+	at io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
+	at io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+	at java.base/java.lang.Thread.run(Unknown Source)
+",pod-5,node-2

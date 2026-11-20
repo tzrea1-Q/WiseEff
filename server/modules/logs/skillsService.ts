@@ -9,7 +9,7 @@ import { type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { findLogDomainByName, getLogDomainById, insertLogDomain, listLogDomains, updateLogDomainRow } from "./domainsRepository";
 import { requireLogAdminDomains, requireLogUpload, requireLogView } from "./policy";
 import { aggregateFeedbackInsights, relatedParameterVisibilityValues } from "./repository";
-import { logSkillSpecSchema, type LogSkillSpec } from "./skillSpec";
+import { logSkillAuthoringSpecSchema, logSkillSpecSchema, type LogSkillSpec } from "./skillSpec";
 import { insertSkillRevision, listSkillRevisions, lockSkill, publishSkillRevision } from "./skillsRepository";
 import { logSkillTemplates } from "./skillTemplates";
 import { parsingSpecSchema } from "./parsing/spec";
@@ -61,7 +61,7 @@ function skillAudit(skillId: string, kind: string, metadata: Record<string, unkn
 
 /** Budget caps apply to saved and published specs; parse tests validate structure only. */
 function parseSpec(value: unknown, caps?: LogSkillBudgetCaps): LogSkillSpec {
-  const result = logSkillSpecSchema.safeParse(value);
+  const result = (caps ? logSkillAuthoringSpecSchema : logSkillSpecSchema).safeParse(value);
   if (!result.success) throw new ApiError("VALIDATION_FAILED", "分析技能配置无效。", { issues: logValidationIssues(result.error.issues) });
   if (caps) validateLogSkillBudgets(result.data, caps);
   return result.data;

@@ -18,6 +18,7 @@ import type {
 } from "@/domain/parameters/types";
 import type { ParameterDraftDto } from "@/application/ports/ParameterRepository";
 import type { NotificationItem } from "@/domain/notifications/types";
+import type { LogAnalysisSource, LogDegradedReason } from "@/domain/logs/types";
 import type { PlatformRole, UserAccount } from "@/domain/users/types";
 
 export type RiskLevel = "High" | "Medium" | "Low";
@@ -211,6 +212,7 @@ export type LogRecord = {
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
+  historicalRunIds?: string[];
   sourceSnapshot?: import("../logs/types").LogRecord["sourceSnapshot"];
   sourceSnapshotSelection?: import("../logs/types").LogRecord["sourceSnapshotSelection"];
   requestedSourceVersion?: string;
@@ -228,6 +230,9 @@ export type LogRecord = {
   stage: LogStageId;
   confidence: number;
   conclusion: string;
+  alternativeHypotheses?: import("../logs/types").LogRecord["alternativeHypotheses"];
+  checks?: import("../logs/types").LogRecord["checks"];
+  verification?: import("../logs/types").LogRecord["verification"];
   impact: string;
   evidence: LogEvidence[];
   suggestedActions: string[];
@@ -245,8 +250,8 @@ export type LogRecord = {
   archiveState?: LogArchiveState;
   logDomainId?: string;
   logDomainName?: string;
-  analysisSource?: "agent" | "rules-fallback";
-  degradedReason?: "provider-unavailable" | "token-budget-exhausted";
+  analysisSource?: LogAnalysisSource;
+  degradedReason?: LogDegradedReason;
 };
 
 export type Device = {

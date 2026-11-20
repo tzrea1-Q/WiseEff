@@ -29,6 +29,7 @@ export type LogRecordDto = {
   createdByCredentialId?: string | null;
   createdByCredentialName?: string | null;
   knowledgeRevisions?: Array<{ entryId: string; revisionId?: string; pages?: number[] }>;
+  historicalRunIds?: string[];
   sourceSnapshot?: LogRecord["sourceSnapshot"];
   sourceSnapshotSelection?: LogRecord["sourceSnapshotSelection"];
   requestedSourceVersion?: string;
@@ -47,6 +48,9 @@ export type LogRecordDto = {
   stage: "parse" | "pattern" | "rootcause" | "report";
   confidence: number;
   conclusion: string;
+  alternativeHypotheses?: LogRecord["alternativeHypotheses"];
+  checks?: LogRecord["checks"];
+  verification?: LogRecord["verification"];
   impact: string;
   evidence: LogEvidenceDto[];
   suggestedActions: string[];
@@ -68,8 +72,8 @@ export type LogRecordDto = {
   analysisQuestion?: string;
   logDomainId?: string;
   logDomainName?: string;
-  analysisSource?: "agent" | "rules-fallback";
-  degradedReason?: "provider-unavailable" | "token-budget-exhausted";
+  analysisSource?: LogRecord["analysisSource"];
+  degradedReason?: LogRecord["degradedReason"];
 };
 
 export type LogDomainDto = {
@@ -128,6 +132,7 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     skillNameSnapshot: dto.skillNameSnapshot,
     skillRevisionNumberSnapshot: dto.skillRevisionNumberSnapshot,
     knowledgeRevisions: dto.knowledgeRevisions ?? [],
+    ...(dto.historicalRunIds?.length ? { historicalRunIds: dto.historicalRunIds } : {}),
     fileName: dto.fileName,
     files: dto.files,
     signalSummary: dto.signalSummary,
@@ -140,6 +145,9 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     stage: dto.stage,
     confidence: confidencePercentFromDto(dto.confidence),
     conclusion: dto.conclusion,
+    alternativeHypotheses: dto.alternativeHypotheses,
+    ...(dto.checks?.length ? { checks: dto.checks } : {}),
+    verification: dto.verification,
     impact: dto.impact,
     evidence: dto.evidence.map((item) => ({ ...item, lineNumbers: [...item.lineNumbers] })),
     suggestedActions: [...dto.suggestedActions],
@@ -213,7 +221,7 @@ export function jobSnapshotFromDto(dto: LogJobDto): LogJobSnapshot {
 export type LogFeedbackInsightDto = {
   logDomainId: string | null;
   logDomainName: string | null;
-  analysisSource: "agent" | "rules-fallback" | null;
+  analysisSource: LogFeedbackInsight["analysisSource"];
   promptVersion: string | null;
   totalCount: number;
   helpfulCount: number;

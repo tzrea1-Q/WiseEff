@@ -12,7 +12,8 @@ Use this runbook when validating the log-analysis LLM path in staging or pilot. 
 - `LOG_ANALYSIS_API_TIMEOUT_MS`
 - `LOG_ANALYSIS_TOKEN_BUDGET` (loop mode: cumulative tokens across steps)
 - `LOG_ANALYSIS_KERNEL` (`loop` default / `single-shot` fallback)
-- `LOG_ANALYSIS_MAX_STEPS` (loop bound, default 6)
+- `LOG_ANALYSIS_SINGLE_SHOT_FALLBACK` (default `false`). Set to `true` to let the loop retry invalid model output once using the single-shot JSON kernel.
+- `LOG_ANALYSIS_MAX_STEPS` (loop bound, default 20)
 
 For acceptance or offline drills without a live model, set `LOG_ANALYSIS_DETERMINISTIC=true` instead of filling `LOG_ANALYSIS_API_*`; reports then record `model = deterministic`. The deterministic stub speaks both kernels' protocols.
 
@@ -20,7 +21,7 @@ An unconfigured, non-deterministic deployment behaves like a dead provider: ever
 
 ## Skill budgets and authoring checks
 
-`LOG_ANALYSIS_MAX_STEPS` (default 6) and `LOG_ANALYSIS_TOKEN_BUDGET` (default 8000) are both defaults and platform caps. A revision may set a lower `stepBudget` or `tokenBudget`; omitted values inherit the global settings. Steps must be at least 1; explicit token budgets must be at least `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`. The API exposes `budgetCaps` and validates create/save/publish/restore/package import; the worker clamps again. Keep API and worker caps aligned. `modelOverride` changes the model name, not provider credentials or timeout. Published runs use the pinned revision's procedure and budgets, so saving a draft does not change an in-flight run.
+`LOG_ANALYSIS_MAX_STEPS` (default 20) and `LOG_ANALYSIS_TOKEN_BUDGET` (default 512000) are both defaults and platform caps; `LOG_ANALYSIS_CONTEXT_TOKENS` (default 128000) bounds each call. These defaults and `LOG_ANALYSIS_PROTOCOL=json` come from live MiniMax-M3 comparisons on the realistic tier (2026-11-19, 33 cases, one trial each, LLM judge). At 8000 tokens every run fell back to rules, and native tools resend about 2,100 tokens of tool schemas each turn. From 24000/6 to 256000/20, the judged root-cause score rose from 0.72 to 0.83 and evidence recall from 0.71 to 0.85. The model usually stops on its own: median 37k tokens, mean 62k, p90 168k per analysis; no run exceeded 12 steps. A three-trial comparison then moved the default from 256000 to 512000: mean tokens stayed at about 62k, rules fallbacks fell from 8 to 4 of about 95 runs, and the judged root-cause score moved from 0.83 to 0.88 (case-level difference within noise: 4 cases better, 3 worse). Deployments that pinned smaller values in their environment keep them until they change them. Replies that start with a `<think>…</think>` reasoning block are accepted; the block is dropped before parsing and is not resent. A revision may set a lower `stepBudget` or `tokenBudget`; omitted values inherit the global settings. Steps must be at least 1; explicit token budgets must be at least `min(4096, LOG_ANALYSIS_TOKEN_BUDGET)`. The API exposes `budgetCaps` and validates create/save/publish/restore/package import; the worker clamps again. Keep API and worker caps aligned. `modelOverride` changes the model name, not provider credentials or timeout. Published runs use the pinned revision's procedure and budgets, so saving a draft does not change an in-flight run.
 
 In the skill workspace, save the sample and draft before a dry run. Parse tests check fields/signals without a provider; analysis cases and dry runs use the configured analyzer (the real provider unless deterministic mode is explicitly enabled). Compare analysis cases with the previous published revision and inspect the dry-run trace for exhausted budgets, unavailable source tools and ungrounded output. Test results and warnings inform publication without blocking it. Dry runs create no public log record or result webhook; normal uploads exercise that delivery path.
 
@@ -35,8 +36,9 @@ In the skill workspace, save the sample and draft before a dry run. Parse tests 
 
 - Transient provider failure → the job retries with the existing backoff (`LOG_ANALYSIS_QUEUE_ATTEMPTS` / `LOG_ANALYSIS_QUEUE_BACKOFF_MS`).
 - Retry-exhausting final attempt → deterministic rule-engine fallback, `analysis_source = 'rules-fallback'`, `degraded_reason = 'provider-unavailable'`, job completes normally (no dead letter).
-- Budgeted output that cannot be grounded (invalid JSON, or every cited line rejected by the grounding check) → immediate fallback with `degraded_reason = 'token-budget-exhausted'`.
-- Loop kernel additionally: steps or token budget exhausted before a grounded final → ONE early-convergence attempt; a grounded convergence returns `analysis_source = 'agent'` with `degraded_reason = 'token-budget-exhausted'` and confidence capped at 0.5; anything less lands on the rule fallback with the same reason. Repeated protocol violations (illegal tool names/arguments, non-JSON output — 3 consecutive) degrade the same way instead of burning budget.
+- Three consecutive invalid loop outputs, including rejected tools and ungrounded final answers, produce `invalid-model-output`. With recovery enabled, one JSON retry uses the same pinned revision and model and validates its own evidence. Success returns `single-shot-fallback` with confidence capped at 0.5. Invalid output or a provider error on this retry goes directly to the rules engine. Both paths retain `invalid-model-output`. If the recovery prompt and its output allowance cannot fit the remaining cumulative budget, the rules report records `token-budget-exhausted`.
+- When configured as the primary kernel, single-shot falls back to rules with `invalid-model-output` if its answer is invalid or lacks grounded evidence.
+- The loop marks exhausted steps as `step-budget-exhausted` and exhausted tokens as `token-budget-exhausted`. When the budget policy permits a convergence call, a grounded answer returns `analysis_source = 'agent'` with confidence capped at 0.5. Otherwise the rules engine generates the report. If the remaining tokens cannot fund a convergence request, the rules report records `token-budget-exhausted`. The kernel estimates input tokens before each request, limits completion tokens to the remaining allowance, and reconciles against the provider's usage when available. Investigation leaves at least 20% for convergence whenever estimates match provider usage. Verification and recovery draw from the same run budget.
 - Only a failing fallback continues into the existing job failure/dead-letter path.
 
 Verify the degraded path visibly: kill or misconfigure the provider, upload a log, and confirm the record completes with the prominent degraded rules-fallback badge in `/logs` and `/log-admin` instead of a silent success. In deterministic mode the same chain can be exercised by uploading a log containing the marker line `WISEEFF_SIMULATE_LLM_PROVIDER_DOWN`.
@@ -78,18 +80,59 @@ All three tools are always available and output-capped. Only anchors/lines actua
 
 - In the skill workspace, authors edit and preview Markdown in the Diagnostic procedure section. `skill/v1.procedure` is optional and capped at 20,000 characters. Saving changes only the draft; publishing creates an immutable revision. The worker reads the procedure from the run's pinned `skill_revision_id`, so subsequent draft edits cannot change queued or explicitly revision-pinned reruns. New uploads use the current published revision.
 - Prompt order is platform protocol → delimited, lower-priority skill procedure → user mission. The procedure is a JSON string inside `<skill_diagnostic_procedure>`; newlines and delimiter characters are escaped so closing tags or fake protocol headings remain data. The guidance explicitly cannot override grounding, refusal rules or the ban on writes. Evidence must come from tool results; the legacy single-shot kernel uses its platform-provided excerpt. The tool allowlist and existing evidence checks remain enforced independently of the text.
-- Current versions: loop `2026-10-19.loop.procedure.signals.1`, related-parameter loop `2026-10-19.loop.procedure.signals.related-parameter.1`; single-shot `2026-10-19.procedure.signals.1`, related-parameter single-shot `2026-10-19.procedure.signals.related-parameter.1`. Reports retain the matching `prompt_version`. Without a procedure, the procedure section is omitted; platform signal tools remain available. Deterministic rule fallback ignores the procedure.
+- Current versions: loop `2026-10-19.loop.procedure.signals.source.11`, related-parameter loop `2026-10-19.loop.procedure.signals.source.related-parameter.11`; single-shot `2026-10-19.procedure.signals.source.2`, related-parameter single-shot `2026-10-19.procedure.signals.source.related-parameter.2`. Reports retain the matching `prompt_version`. Without a procedure, the procedure section is omitted; platform signal tools remain available. Deterministic rule fallback ignores the procedure. Checklist-enabled procedures use loop versions `2026-10-19.loop.procedure.signals.source.12` and `2026-10-19.loop.procedure.signals.source.related-parameter.12`.
 - Run `npm run logs:eval` for prompt order, hostile procedure, delimiter injection, grounding and illegal write-tool scenarios. The PostgreSQL run-level test is `server/modules/logs/procedure.integration.test.ts`; it captures scripted-model prompts and verifies publication, draft isolation and explicitly pinned reruns. These checks do not establish live-provider resistance to all prompt injection.
 
 ## Quality Eval (`logs:eval:quality`)
 
-- Deterministic demo (zero API cost): `LOG_ANALYSIS_DETERMINISTIC=true npm run logs:eval:quality` — runs the golden case set with the deterministic kernel and the deterministic rubric judge.
-- Real-model run: configure `LOG_ANALYSIS_API_*` (and optionally `LOG_ANALYSIS_JUDGE_*` for the LLM-as-judge) and run `npm run logs:eval:quality`.
-- Reports land in `docs/generated/log-analysis-quality.{json,md}` with kernel, model, prompt version, and judge label. The baseline gate (`eval-cases/logs/baseline.json`) compares realLog-case scores against the committed baseline minus stated tolerances; while the set has no real cases the report states `quality baseline pending real cases` and the gate stays inactive.
+- The command uses the deterministic model and rubric judge when the analysis endpoint or key is unavailable. Set `LOG_ANALYSIS_DETERMINISTIC=true` to force this mode. For a live run, configure `LOG_ANALYSIS_API_*` and optionally `LOG_ANALYSIS_JUDGE_*` in the environment. Each run uses one model configuration. Deterministic results verify the pipeline.
+- Use `--trials <k>` to repeat each selected case (default 1), `--tier <golden|realistic|synthetic|all>` to select the tier (default `all`), and `--tags <tag,...>` to keep cases matching any listed tag. The report groups each selected case under its tier and all of its scenario tags.
+- A case with `skill.yaml` extractors supplies decoded events to the analyzer. History retrieval uses an in-memory search over other confirmed, de-identified production cases in the same domain. `LOG_ANALYSIS_PAST_CONCLUSIONS` can affect quality trials once the corpus has eligible history.
+- Reports land in `docs/generated/log-analysis-quality.{json,md}` and record the model, kernel, prompt version, and judge. The Chinese summary shows the fraction of cases that passed at least once (pass@k) and every time (pass^k). A diagnosis passes when root-cause score and evidence recall both reach 0.8. An expected refusal passes at confidence 0.5 or lower.
+- Costs use the median and nearest-rank p95 across trials. Steps count model turns. Token totals combine input and output and exclude trials with incomplete usage from the token distribution. Latency covers analysis and any rules fallback. Degradation rates use all completed trials as the denominator, and the early-convergence rate counts trials that emitted an early-convergence event.
+- The baseline gate compares golden scores against `eval-cases/logs/baseline.json`. It stays inactive while real cases are pending. A filter that excludes golden cases skips an active gate.
+- To compare recovery off and on without a live endpoint, run `LOG_ANALYSIS_KERNEL=loop LOG_ANALYSIS_SINGLE_SHOT_FALLBACK=false npm run logs:eval:quality -- --tier realistic --trials 3 --script-invalid-loop-output`, save the JSON, and repeat with the flag set to `true`. The script returns invalid output for native tool calls and uses the deterministic model for the single-shot JSON retry. In each report, divide the number of `caseResults` with `analysisSource: "rules-fallback"` by the total number of completed trials.
+
+Save the JSON from each run before starting the next one, which overwrites the generated files. Use the same cases, tier and tag assignments, and trial count for both runs. The comparison prints a Markdown table suitable for PRs.
+
+```bash
+npm run logs:eval:quality -- --trials 3 --tier realistic
+cp docs/generated/log-analysis-quality.json /tmp/log-quality-before.json
+# Run the same eval command after applying the candidate change.
+npm run logs:eval:quality -- --trials 3 --tier realistic
+npm run --silent logs:eval:quality -- --compare /tmp/log-quality-before.json docs/generated/log-analysis-quality.json
+```
+
+### Calibrate the loop budgets
+
+On a read replica or snapshot of the production database, set `LOG_ANALYSIS_TRACE_DATABASE_URL` through the operator's secret environment. Use a role with SELECT access to `log_analysis_runs`, `log_analysis_trace_steps`, and `log_analysis_reports`. Run the command from the repository root with dependencies installed. Choose a representative window after the target kernel and model were deployed. The bounds use run completion time, with an inclusive start and exclusive end.
+
+```bash
+npx tsx scripts/log-analysis-trace-stats.ts \
+  --since 2026-11-18T00:00:00Z --until 2026-11-25T00:00:00Z
+```
+
+The command returns aggregate JSON across completed runs with persisted traces visible to the database role. It excludes draft dry runs, failed and in-progress runs, and runs without traces. Each distribution shows sample count, median and nearest-rank p95. Input and output each count model turns with that usage field present, including zero. Steps count model turns per run, including a convergence call and turns with missing usage. Unsupported protocol probes count toward `modelTurns` and are excluded from steps, matching the quality eval. Both rates divide by traced runs. Early convergence comes from trace events, and degradation comes from the final report's reason, including low-confidence agent answers and rules fallback. With no observations, the corresponding percentiles or rates are null. The query runs in a read-only transaction with a 60-second statement timeout. Narrow the window if it times out.
+
+For the live comparison, inject `LOG_ANALYSIS_API_BASE_URL`, `LOG_ANALYSIS_API_KEY`, and `LOG_ANALYSIS_MODEL` in the environment. Keep the endpoint, model, kernel, tool protocol (`LOG_ANALYSIS_PROTOCOL`), judge configuration, corpus and trial count fixed across settings. Start with the deployed caps and vary one limit at a time. The following values are an example sweep. Confirm each report shows `deterministic: false` and the intended model before comparing.
+
+```bash
+budget_eval_dir=$(mktemp -d)
+export LOG_ANALYSIS_DETERMINISTIC=false LOG_ANALYSIS_KERNEL=loop
+for setting in 6:8000 6:16000 10:8000; do
+  LOG_ANALYSIS_MAX_STEPS=${setting%:*} LOG_ANALYSIS_TOKEN_BUDGET=${setting#*:} \
+    npm run logs:eval:quality -- --tier realistic --trials 3 || break
+  cp docs/generated/log-analysis-quality.json "$budget_eval_dir/$setting.json"
+done
+npm run --silent logs:eval:quality -- --compare "$budget_eval_dir/6:8000.json" "$budget_eval_dir/6:16000.json"
+npm run --silent logs:eval:quality -- --compare "$budget_eval_dir/6:8000.json" "$budget_eval_dir/10:8000.json"
+```
+
+Use production trace sample counts and percentiles to size the candidate range, accounting for existing caps and skill overrides. Compare pass@k, pass^k, evidence recall, cumulative input plus output tokens, latency, and both rates. The loop reserves 20% of tokens for the final answer. Usage is accounted after each response, so a turn can take cumulative usage above the configured budget. In staging or a pilot, measure end-to-end latency from upload to terminal state for representative logs up to 10 MB, including preprocessing and queue time. Choose the lowest-cost settings that meet the quality target and p95 of three minutes or less. Record the cohort, sample counts, model, prompt version, budgets and aggregate comparisons in the PR. Update the defaults and caps together with the environment and API budget documentation in both languages only after collecting live-model and production-trace evidence. Keep credentials and raw traces out of the PR.
 
 ## Judge Calibration (P3b)
 
-- Every quality run deterministically samples judged cases (id-hash, rate `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`, default 0.2, minimum 1) into the human review checklist `docs/generated/log-analysis-judge-sample.md`. The checklist shows the agent conclusion, the judge's scores and reasoning, and a ready-to-fill YAML template.
+- Every quality run deterministically samples first-trial results from judged cases (id-hash, rate `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`, default 0.2, minimum 1) into the human review checklist `docs/generated/log-analysis-judge-sample.md`. The checklist shows the agent conclusion, the judge's scores and reasoning, and a ready-to-fill YAML template.
 - Human reviewers commit the completed template as `eval-cases/logs/reviews/<run-id>.yaml` (`runId`, `reviewer`, `reviewedAt`, per-case `humanRootCauseScore` 0..1 + optional `humanCategoryMatch`/`notes`). Broken review files fail the quality run — they must be fixed, never silently dropped.
 - With reviews present, the report's fixed "Judge calibration" section computes judge-human agreement: exact agreement rate (identical scores), mean absolute difference, and category agreement. Without reviews it honestly says "no human reviews yet". A drifting judge (rising mean difference) means judge prompts/rubric need retuning before its scores gate anything.
 
@@ -215,7 +258,7 @@ Record:
 - request/trace id,
 - latency and token counts,
 - degradation reason when applicable,
-- analysis source (`agent` / `rules-fallback`).
+- analysis source (`agent` / `single-shot-fallback` / `rules-fallback`).
 
 Do not commit API keys, raw prompts, raw provider payloads, Authorization headers, or raw customer log content to repository docs.
 

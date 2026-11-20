@@ -2,6 +2,7 @@ import { z } from "zod";
 import { historicalAttributionSchema } from "./historicalAttribution";
 import { logDeletionPreviewSchema, logDeletionStatusSchema } from "../../../../src/domain/logs/deletionPreview";
 import { MAX_FILE_ROLE_LENGTH } from "../../../../src/domain/logs/fileApplicability";
+import { LOG_DEGRADED_REASONS } from "../../../../src/domain/logs/types";
 import { LOG_SKILL_RECOMMENDATION_LIMITS } from "../../logs/skillRecommendation";
 
 import { itemEnvelopeSchema, itemsEnvelopeSchema, okEnvelopeSchema } from "./envelopes";
@@ -9,6 +10,9 @@ export const logDeletionPreviewResponseSchema = itemEnvelopeSchema(logDeletionPr
 export const logDeletionStatusResponseSchema = itemEnvelopeSchema(logDeletionStatusSchema);
 export const logDeletionStatusListResponseSchema = itemsEnvelopeSchema(logDeletionStatusSchema);
 import { logSkillSpecSchema } from "../../logs/skillSpec";
+import { logAnalysisWireProtocolSchema } from "../../logs/logAnalysisProtocol";
+import { logAlternativeHypothesesSchema, logTraceHypothesesSchema, logReportChecksSchema } from "../../logs/hypotheses";
+import { logVerificationSchema } from "../../logs/verification";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 export { parseTestSchema, parseTestSchema as parseTestCaseSchema, parseTestsSchema, parseTestRunSchema, parseTestResultSchema,
   MAX_PARSE_TESTS, MAX_PARSE_TEST_LINES, MAX_PARSE_TEST_CHARS, MAX_PARSE_TEST_RUN_LINES } from "../../logs/parseTestSpec";
@@ -31,8 +35,8 @@ export const logRecordStatusSchema = z.enum(["uploaded", "processing", "complete
 export const logRunStatusSchema = z.enum(["queued", "processing", "complete", "failed"]);
 export const logArchiveStateSchema = z.enum(["active", "archived"]);
 export const logSeveritySchema = z.enum(["Critical", "Warning", "Info"]);
-export const logAnalysisSourceSchema = z.enum(["agent", "rules-fallback"]);
-export const logDegradedReasonSchema = z.enum(["provider-unavailable", "token-budget-exhausted"]);
+export const logAnalysisSourceSchema = z.enum(["agent", "single-shot-fallback", "rules-fallback"]);
+export const logDegradedReasonSchema = z.enum(LOG_DEGRADED_REASONS);
 export const logDomainStatusSchema = z.enum(["active", "archived"]);
 export const logSkillRecommendationReasonSchema = z.object({
   kind: z.enum(["file", "pattern"]), file: z.string(), detail: z.string(),
@@ -89,6 +93,7 @@ export const logRecordDtoSchema = z.object({
   createdByCredentialId: z.string().optional(),
   createdByCredentialName: z.string().optional(),
   knowledgeRevisions: z.array(knowledgeRevisionSchema).optional(),
+  historicalRunIds: z.array(z.string()).optional(),
   ...sourceProvenanceShape,
   signalSummary: logSignalSummarySchema.optional(),
   files: z.array(logFileDtoSchema).optional(),
@@ -106,6 +111,9 @@ export const logRecordDtoSchema = z.object({
   stage: logStageSchema,
   confidence: z.number(),
   conclusion: z.string(),
+  alternativeHypotheses: logAlternativeHypothesesSchema.optional(),
+  checks: logReportChecksSchema.optional(),
+  verification: logVerificationSchema.optional(),
   impact: z.string(),
   evidence: z.array(logEvidenceDtoSchema),
   suggestedActions: z.array(z.string()),
@@ -140,6 +148,7 @@ export const logJobDtoSchema = z.object({
 
 export const logRunDtoSchema = z.object({
   knowledgeRevisions: z.array(knowledgeRevisionSchema).optional(),
+  historicalRunIds: z.array(z.string()).optional(),
   ...sourceProvenanceShape,
   skillRevision: skillRevisionPinSchema.nullable().optional(),
   skillNameSnapshot: z.string().optional(),
@@ -330,11 +339,16 @@ export const logTraceStepSchema = z.object({
   resultBytes: z.number().int().nonnegative(),
   lines: z.array(z.object({ file: z.string().max(1024), line: z.number().int().positive(), snapshotId: z.string().max(200).optional() }).strict()).max(50),
   outcome: z.enum(["ok", "error", "truncated"]), reason: z.string().max(120).nullable(),
+  protocol: logAnalysisWireProtocolSchema.optional(),
+  hypotheses: logTraceHypothesesSchema.optional(),
   inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().nonnegative().optional()
 }).strict();
 export const logTraceResponseSchema = z.object({ steps: z.array(logTraceStepSchema).max(200) });
 export const logDryRunReportSchema = z.object({
   confidence: z.number(), conclusion: z.string(), impact: z.string(), severity: logSeveritySchema,
+  alternativeHypotheses: logAlternativeHypothesesSchema.optional(),
+  checks: logReportChecksSchema.optional(),
+  verification: logVerificationSchema.optional(),
   evidence: z.array(logEvidenceDtoSchema.omit({ id: true })), suggestedActions: z.array(z.string()),
   reportContext: z.object({ analysisQuestion: z.string().optional(), lineCount: z.number(), entryCount: z.number() }),
   analysisSource: logAnalysisSourceSchema.optional(), degradedReason: logDegradedReasonSchema.optional(),

@@ -1,0 +1,220 @@
++arabic          +file_in_path    +mouse_sgr       +tag_binary
++autocmd         +find_in_path    -mouse_sysmouse  +tag_old_static
+-balloon_eval    +float           +mouse_urxvt     -tag_any_white
+-browse          +folding         +mouse_xterm     -tcl
+++builtin_terms  -footer          +multi_byte      +terminfo
++byte_offset     +fork()          +multi_lang      +termresponse
++cindent         +gettext         -mzscheme        +textobjects
+-clientserver    -hangul_input    +netbeans_intg   +title
+-clipboard       +iconv           +path_extra      -toolbar
++cmdline_compl   +insert_expand   -perl            +user_commands
++cmdline_hist    +jumplist        +persistent_undo +vertsplit
++cmdline_info    +keymap          +postscript      +virtualedit
++comments        +langmap         +printer         +visual
++conceal         +libcall         +profile         +visualextra
++cryptv          +linebreak       +python          +viminfo
++cscope          +lispindent      -python3         +vreplace
++cursorbind      +listcmds        +quickfix        +wildignore
++cursorshape     +localmap        +reltime         +wildmenu
++dialog_con      -lua             +rightleft       +windows
++diff            +menu            -ruby            +writebackup
++digraphs        +mksession       +scrollbind      -X11
+-dnd             +modify_fname    +signs           -xfontset
+-ebcdic          +mouse           +smartindent     -xim
++emacs_tags      -mouseshape      -sniff           -xsmp
++eval            +mouse_dec       +startuptime     -xterm_clipboard
++ex_extra        +mouse_gpm       +statusline      -xterm_save
++extra_search    -mouse_jsbterm   -sun_workshop    -xpm
+   system vimrc file: "$VIM/vimrc"
+     user vimrc file: "$HOME/.vimrc"
+ 2nd user vimrc file: "~/.vim/vimrc"
+      user exrc file: "$HOME/.exrc"
+  fall-back for $VIM: "/usr/share/vim"
+Compilation: gcc -c -I. -Iproto -DHAVE_CONFIG_H     -g -O2 -fstack-protector --param=ssp-buffer-size=4 -Wformat -Werror=format-security -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=1
+Linking: gcc   -Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,--as-needed -o vim        -lm -ltinfo -lnsl  -lselinux  -lacl -lattr -lgpm -ldl    -L/usr/lib/python2.7/config-x86_64-linux-gnu -lpython2.7 -lpthread -ldl -lutil -lm -Xlinker -export-dynamic -Wl,-O1 -Wl,-Bsymbolic-functions
+iptables version
+iptables v1.4.21
+curl version
+curl 7.35.0 (x86_64-pc-linux-gnu) libcurl/7.35.0 OpenSSL/1.0.1f zlib/1.2.8 libidn/1.28 librtmp/2.3
+wget version
+GNU Wget 1.15 built on linux-gnu.
+rsync version
+rsync  version 3.1.0  protocol version 31
+gimme version
+v1.2.0
+nvm version
+0.33.6
+perlbrew version
+/home/travis/perl5/perlbrew/bin/perlbrew  - App::perlbrew/0.80
+phpenv version
+rbenv 1.1.1-25-g6aa70b6
+rvm version
+rvm 1.29.3 (latest) by Michal Papis, Piotr Kuczynski, Wayne E. Seguin [https://rvm.io]
+default ruby version
+ruby 2.4.1p111 (2017-03-22 revision 58053) [x86_64-linux]
+CouchDB version
+couchdb 1.6.1
+ElasticSearch version
+5.5.0
+Installed Firefox version
+firefox 56.0.2
+MongoDB version
+MongoDB 3.4.10
+PhantomJS version
+2.1.1
+Pre-installed PostgreSQL versions
+9.2.24
+9.3.20
+9.4.15
+9.5.10
+9.6.6
+RabbitMQ Version
+3.6.14
+Redis version
+redis-server 4.0.6
+riak version
+2.2.3
+Pre-installed Go versions
+1.7.4
+ant version
+Apache Ant(TM) version 1.9.3 compiled on April 8 2014
+mvn version
+Apache Maven 3.5.2 (138edd61fd100ec658bfa2d307c43b76940a5d7d; 2017-10-18T07:58:13Z)
+Maven home: /usr/local/maven-3.5.2
+Java version: 1.8.0_151, vendor: Oracle Corporation
+Java home: /usr/lib/jvm/java-8-oracle/jre
+Default locale: en_US, platform encoding: UTF-8
+OS name: "linux", version: "4.4.0-98-generic", arch: "amd64", family: "unix"
+gradle version
+
+------------------------------------------------------------
+Gradle 4.0.1
+------------------------------------------------------------
+
+Build time:   2017-07-07 14:02:41 UTC
+Revision:     38e5dc0f772daecca1d2681885d3d85414eb6826
+
+Groovy:       2.4.11
+Ant:          Apache Ant(TM) version 1.9.6 compiled on June 29 2015
+JVM:          1.8.0_151 (Oracle Corporation 25.151-b12)
+OS:           Linux 4.4.0-98-generic amd64
+
+lein version
+Leiningen 2.8.1 on Java 1.8.0_151 Java HotSpot(TM) 64-Bit Server VM
+Pre-installed Node.js versions
+v4.8.6
+v6.12.0
+v6.12.1
+v8.9
+v8.9.1
+phpenv versions
+  system
+  5.6
+* 5.6.32 (set by /home/travis/.phpenv/version)
+  7.0
+  7.0.25
+  7.1
+  7.1.11
+  hhvm
+  hhvm-stable
+composer --version
+Composer version 1.5.2 2017-09-11 16:59:25
+Pre-installed Ruby versions
+ruby-2.2.7
+ruby-2.3.4
+ruby-2.4.1
+travis_fold:end:system_info
+travis_fold:start:docker_mtudocker stop/waiting
+docker start/running, process 4480
+travis_fold:end:docker_mtutravis_fold:start:resolvconfresolvconf stop/waiting
+resolvconf start/running
+travis_fold:end:resolvconfUpdating gimme
+
+travis_fold:start:git.checkouttravis_time:start:0ad76754$ git clone --depth=50 https://github.com/getlantern/lantern.git getlantern/lantern
+Cloning into 'getlantern/lantern'...
+travis_time:end:0ad76754:start=1560908322856996981,finish=1560908326391736051,duration=3534739070$ cd getlantern/lantern
+travis_time:start:3766da18$ git fetch origin +refs/pull/8349/merge:
+From https://github.com/getlantern/lantern
+ * branch              refs/pull/8349/merge -> FETCH_HEAD
+travis_time:end:3766da18:start=1560908326397551100,finish=1560908344931850844,duration=18534299744$ git checkout -qf FETCH_HEAD
+travis_fold:end:git.checkout
+$ travis_export_go 1.4.3 github.com/getlantern/lantern
+
+Setting environment variables from repository settings
+$ export encrypted_efbf15799575_key=[secure]
+$ export encrypted_efbf15799575_iv=[secure]
+$ export encrypted_f217260732a9_key=[secure]
+$ export encrypted_f217260732a9_iv=[secure]
+$ export CI_USER_TOKEN=[secure]
+
+travis_time:start:00107638$ travis_setup_go
+go version go1.4.3 linux/amd64
+$ export GOPATH="/home/travis/gopath"
+$ export PATH="/home/travis/gopath/bin:/home/travis/.gimme/versions/go1.4.3.linux.amd64/bin:/home/travis/bin:/home/travis/bin:/home/travis/.local/bin:/opt/pyenv/shims:/home/travis/.phpenv/shims:/home/travis/perl5/perlbrew/bin:/home/travis/.nvm/versions/node/v8.9.1/bin:/home/travis/.kiex/elixirs/elixir-1.4.5/bin:/home/travis/.kiex/bin:/home/travis/.rvm/gems/ruby-2.4.1/bin:/home/travis/.rvm/gems/ruby-2.4.1@global/bin:/home/travis/.rvm/rubies/ruby-2.4.1/bin:/home/travis/gopath/bin:/home/travis/.gimme/versions/go1.7.4.linux.amd64/bin:/usr/local/phantomjs/bin:/usr/local/phantomjs:/usr/local/neo4j-3.2.7/bin:/usr/local/maven-3.5.2/bin:/usr/local/cmake-3.9.2/bin:/usr/local/clang-5.0.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/travis/.rvm/bin:/home/travis/.phpenv/bin:/opt/pyenv/bin:/home/travis/.yarn/bin"
+$ export GO111MODULE="auto"
+travis_time:end:00107638:start=1560908345510724491,finish=1560908370847090209,duration=25336365718$ gimme version
+v1.5.3
+$ go version
+go version go1.4.3 linux/amd64
+travis_fold:start:go.env$ go env
+GOARCH="amd64"
+GOBIN=""
+GOCHAR="6"
+GOEXE=""
+GOHOSTARCH="amd64"
+GOHOSTOS="linux"
+GOOS="linux"
+GOPATH="/home/travis/gopath"
+GORACE=""
+GOROOT="/home/travis/.gimme/versions/go1.4.3.linux.amd64"
+GOTOOLDIR="/home/travis/.gimme/versions/go1.4.3.linux.amd64/pkg/tool/linux_amd64"
+CC="gcc"
+GOGCCFLAGS="-fPIC -m64 -pthread -fmessage-length=0"
+CXX="g++"
+CGO_ENABLED="1"
+travis_fold:end:go.envtravis_fold:start:before_installtravis_time:start:33aa1c7a$ openssl aes-256-cbc -K $encrypted_f217260732a9_key -iv $encrypted_f217260732a9_iv -in envvars.bash.enc -out envvars.bash -d
+travis_time:end:33aa1c7a:start=1560908370892085041,finish=1560908370907548681,duration=15463640travis_fold:end:before_installtravis_fold:start:install.1travis_time:start:099979c5$ sudo apt-get install make -y
+Reading package lists...
+Building dependency tree...
+Reading state information...
+make is already the newest version (3.81-8.2ubuntu3).
+make set to manually installed.
+0 upgraded, 0 newly installed, 0 to remove and 304 not upgraded.
+travis_time:end:099979c5:start=1560908370913486259,finish=1560908371510493062,duration=597006803travis_fold:end:install.1travis_fold:start:install.2travis_time:start:0080f85c$ go get golang.org/x/tools/cmd/cover
+travis_time:end:0080f85c:start=1560908371516170694,finish=1560908373985325835,duration=2469155141travis_fold:end:install.2travis_fold:start:install.3travis_time:start:05f91e7c$ go get -v github.com/axw/gocov/gocov
+github.com/axw/gocov (download)
+github.com/axw/gocov
+github.com/axw/gocov/gocov/internal/testflag
+github.com/axw/gocov/gocovutil
+github.com/axw/gocov/gocov
+travis_time:end:05f91e7c:start=1560908373992088300,finish=1560908375009835914,duration=1017747614travis_fold:end:install.3travis_fold:start:install.4travis_time:start:20167812$ go get -v github.com/mattn/goveralls
+github.com/mattn/goveralls (download)
+github.com/mattn/goveralls
+travis_time:end:20167812:start=1560908375015850764,finish=1560908376301246338,duration=1285395574travis_fold:end:install.4travis_time:start:0019621e$ openssl aes-256-cbc -K $encrypted_f217260732a9_key -iv $encrypted_f217260732a9_iv -in envvars.bash.enc -out envvars.bash -d
+travis_time:end:0019621e:start=1560908376307008891,finish=1560908376314777496,duration=7768605The command "openssl aes-256-cbc -K $encrypted_f217260732a9_key -iv $encrypted_f217260732a9_iv -in envvars.bash.enc -out envvars.bash -d" exited with 0.
+
+travis_time:start:09f85720$ make test-and-cover
+=== RUN TestAnalyticsRequest-2
+DEBUG analytics: analytics.go:198 Full analytics request: POST /collect HTTP/1.1
+Host: ssl.google-analytics.com
+User-Agent: Go 1.1 package http
+Content-Length: 59
+Content-Type: application/x-www-form-urlencoded
+Accept-Encoding: gzip
+
+aip=1&cid=test-client-555&dh=&t=&tid=UA-21815217-2&uip=&v=1
+DEBUG analytics: analytics.go:214 Successfully sent request to GA: 200 OK
+--- PASS: TestAnalyticsRequest-2 (0.03s)
+PASS
+coverage: 47.6% of statements
+ok  	github.com/getlantern/analytics	0.041s
+# github.com/getlantern/appdir
+src/github.com/getlantern/appdir/appdir_test.go:4: log redeclared as imported package name
+	previous declaration at $WORK/github.com/getlantern/appdir/_test/_obj_test/appdir.go:16
+FAIL	github.com/getlantern/appdir [build failed]
+make: *** [test-and-cover] Error 1
+travis_time:end:09f85720:start=1560908376319832683,finish=1560908378656752709,duration=2336920026The command "make test-and-cover" exited with 2.
+
+
+
+Done. Your build exited with 1.

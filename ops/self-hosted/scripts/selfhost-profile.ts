@@ -196,7 +196,7 @@ function renderAcmeEnv(answers: SelfHostAnswers, secrets: SelfHostSecrets) {
     `LOG_ANALYSIS_MODEL=${answers.logAnalysisModel}`,
     `LOG_ANALYSIS_API_KEY=${answers.logAnalysisApiKey}`,
     "LOG_ANALYSIS_API_TIMEOUT_MS=30000",
-    "LOG_ANALYSIS_TOKEN_BUDGET=8000",
+    "LOG_ANALYSIS_TOKEN_BUDGET=512000",
     `LOG_ANALYSIS_DETERMINISTIC=${logAnalysisDeterministic}`,
     "",
     "LOG_WORKER_ENABLED=false",

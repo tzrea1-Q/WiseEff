@@ -35,6 +35,7 @@ import {
 } from "./repository";
 import {
   requireLogAnalyze,
+  requireLogAdminDomains,
   requireLogArchive,
   requireLogFeedback,
   requireLogUpload,
@@ -238,7 +239,7 @@ async function createLogAudit(
   tx: AuditTx,
   invocation: TrustedInvocationContext,
   input: {
-    kind: "log-upload" | "log-upload-failed" | "log-rerun" | "log-archive" | "log-unarchive" | "log-feedback";
+    kind: "log-upload" | "log-upload-failed" | "log-rerun" | "log-archive" | "log-unarchive" | "log-feedback" | "log-eval-case-draft-export";
     action: string;
     logId: string;
     severity?: "High" | "Medium" | "Low";
@@ -742,5 +743,29 @@ export async function submitLogFeedback(db: Database, auth: LogAccessContext, in
       },
       context
     );
+  });
+}
+
+export async function confirmLogEvalCaseDraftExport(db: Database, auth: LogAccessContext, logId: string, reportId: string, context: ServiceContext) {
+  requireLogAdminDomains(auth);
+  if (auth.user.organizationId !== auth.organization.id) throw new ApiError("FORBIDDEN", "无权访问此组织的日志。");
+  await db.transaction(async (tx) => {
+    const log = await getLogRecord(tx, auth, logId);
+    if (log.status !== "complete" || log.reportId !== reportId || !log.skillRevision) {
+      throw new ApiError("CONFLICT", "当前分析报告已变化或未绑定技能，请刷新后重试。");
+    }
+    // The record lock orders export against rerun and purge; confirmation is pinned to the report shown.
+    const current = await tx.query(`
+      select id from log_records where organization_id = $1 and id = $2 and status = 'complete'
+        and current_run_id = (select run_id from log_analysis_reports where organization_id = $1 and log_record_id = $2 and id = $3)
+      for update`, [organizationId(auth), logId, reportId]);
+    if (!current.rowCount) throw new ApiError("CONFLICT", "当前分析报告已变化，请刷新后重试。");
+    await tx.query(`
+      update log_analysis_runs run set eval_case_draft_exported_at = coalesce(run.eval_case_draft_exported_at, now())
+      from log_analysis_reports report where run.organization_id = $1 and report.organization_id = run.organization_id
+        and report.log_record_id = $2 and report.id = $3 and report.run_id = run.id`, [organizationId(auth), logId, reportId]);
+    await createLogAudit(asAuditTx(tx), auth.logInvocation ?? createUserInvocation(auth), {
+      kind: "log-eval-case-draft-export", action: "export-eval-case-draft", logId, metadata: { reportId }
+    }, context);
   });
 }

@@ -6,6 +6,7 @@ import { formatBytes } from "@/domain/format/formatBytes";
 import { formatLogDateTime } from "@/domain/format/formatDateTime";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { AnalysisTraceStep } from "@/features/log-skills/types";
+import { logDegradedReasonLabels } from "@/domain/logs/analysisProvenance";
 import type { LogRecord } from "@/domain/logs/types";
 
 const kinds = {
@@ -17,7 +18,8 @@ const kinds = {
 };
 const outcomes = { ok: "成功", error: "错误", truncated: "已截断" };
 const reasons: Record<string, string> = {
-  "provider-error": "模型调用失败", "provider-unavailable": "模型服务不可用",
+  ...logDegradedReasonLabels,
+  "provider-error": "模型调用失败",
   "invalid-output": "模型返回结果无效", "token-budget-exhausted": "已达到模型用量上限",
   "tool-rejected": "工具调用被拒绝", "result-cap": "结果已达到显示上限",
   "trace-line-cap": "引用行数已达到上限", "line-cap": "引用行数已达到上限"
@@ -64,7 +66,8 @@ export function AnalysisTrace({ steps, analysis, onOpenLine }: {
   const hasTokens = steps.some((step) => step.inputTokens != null || step.outputTokens != null);
   const inputTokens = steps.reduce((sum, step) => sum + (step.inputTokens ?? 0), 0);
   const outputTokens = steps.reduce((sum, step) => sum + (step.outputTokens ?? 0), 0);
-  const degraded = analysis?.analysisSource === "rules-fallback" || steps.some((step) => step.kind === "degradation" || step.kind === "rule-fallback");
+  const degraded = analysis?.analysisSource === "rules-fallback" || analysis?.analysisSource === "single-shot-fallback"
+    || steps.some((step) => step.kind === "degradation" || step.kind === "rule-fallback");
   const earlyConvergence = (analysis?.analysisSource === "agent" && analysis.degradedReason != null) || steps.some((step) => step.kind === "early-convergence");
   return <>
     <p className="mb-3 text-sm text-muted-foreground" aria-label="分析轨迹摘要">{steps.length} 步 · {toolCalls} 次工具调用

@@ -1,3 +1,7 @@
+import type { LogAlternativeHypothesis, LogReportCheck } from "./hypotheses";
+import type { LogAnalysisSource } from "./analyzer";
+import type { LogVerification } from "./verification";
+
 export const WEBHOOK_CONCLUSION_SUMMARY_MAX_CHARS = 300;
 
 export type LogAnalysisResultWebhookInput = {
@@ -10,11 +14,14 @@ export type LogAnalysisResultWebhookInput = {
   skillRevisionNumber?: number | null;
   fileName: string;
   status: "complete" | "failed";
-  analysisSource?: string;
+  analysisSource?: LogAnalysisSource;
   degradedReason?: string;
   severity?: string;
   confidence?: number;
   conclusion?: string;
+  alternativeHypotheses?: LogAlternativeHypothesis[];
+  checks?: LogReportCheck[];
+  verification?: LogVerification;
   occurredAt: string;
 };
 
@@ -43,7 +50,7 @@ export function buildLogResultWebhookPayload(input: LogAnalysisResultWebhookInpu
       revisionId: input.skillRevisionId ?? null,
       revisionNumber: input.skillRevisionNumber ?? null
     },
-    degraded: input.analysisSource === "rules-fallback" || Boolean(input.degradedReason),
+    degraded: input.analysisSource === "rules-fallback" || input.analysisSource === "single-shot-fallback" || Boolean(input.degradedReason),
     fileName: input.fileName,
     logDomainId: input.logDomainId,
     status: input.status,
@@ -52,6 +59,9 @@ export function buildLogResultWebhookPayload(input: LogAnalysisResultWebhookInpu
     severity: input.severity,
     confidence: input.confidence,
     conclusionSummary: truncateSummary(input.conclusion),
+    alternativeHypotheses: input.status === "complete" ? input.alternativeHypotheses : undefined,
+    ...(input.status === "complete" && input.checks?.length ? { checks: input.checks } : {}),
+    verification: input.status === "complete" ? input.verification : undefined,
     occurredAt: input.occurredAt,
     productPath: `${input.status === "complete" ? `/logs?id=${encodeURIComponent(`report-${input.runId}`)}&` : "/logs?"}organizationId=${encodeURIComponent(input.organizationId)}`
   };

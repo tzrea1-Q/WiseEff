@@ -4,6 +4,8 @@ import { ApiError } from "../../shared/http/errors";
 import type { LogSkillSpec } from "./skillSpec";
 import type { ParseTestRun } from "./parseTestSpec";
 import type { HistoricalAttribution } from "../../../src/domain/identity/historicalAttribution";
+import { parseProcedureChecks } from "../../../src/domain/logs/procedureChecks";
+import { readStoredProcedureChecks } from "./hypotheses";
 
 export type LogSkillRevisionDto = {
   historicalAttribution?: HistoricalAttribution;
@@ -31,8 +33,12 @@ const selectRevision = `select id, skill_id as "skillId", revision_number as num
 export async function listSkillRevisions(db: Queryable, organizationId: string, skillId: string): Promise<LogSkillRevisionDto[]> {
   const result = await db.query<LogSkillRevisionDto>(`${selectRevision}
     where organization_id = $1 and skill_id = $2 order by revision_number desc`, [organizationId, skillId]);
-  return result.rows.map((row) => ({ ...row, createdAt: new Date(row.createdAt).toISOString(),
-    publishedAt: row.publishedAt ? new Date(row.publishedAt).toISOString() : null }));
+  return result.rows.map((row) => {
+    const { procedureChecks, ...spec } = row.spec;
+    const checks = readStoredProcedureChecks(procedureChecks);
+    return { ...row, spec: checks ? { ...spec, procedureChecks: checks } : spec, createdAt: new Date(row.createdAt).toISOString(),
+      publishedAt: row.publishedAt ? new Date(row.publishedAt).toISOString() : null };
+  });
 }
 
 /** Serializes draft edits and publication against each other and shared run pins. */
@@ -45,24 +51,33 @@ export async function insertSkillRevision(db: Queryable, input: {
   organizationId: string; skillId: string; spec: LogSkillSpec; userId: string; published?: boolean;
 }): Promise<string> {
   const id = randomUUID();
+  const { procedureChecks: _derived, ...spec } = input.spec;
+  const procedureChecks = parseProcedureChecks(spec.procedure);
   await db.query(`insert into log_skill_revisions
     (id, organization_id, skill_id, revision_number, status, spec, content_hash, created_by_user_id, published_at, published_by_user_id)
     select $1, $2, $3, coalesce(max(revision_number), 0) + 1, $4, $5::jsonb,
       encode(sha256(convert_to(($5::jsonb)::text, 'UTF8')), 'hex'), $6,
       case when $7 then now() end, case when $7 then $6 end
     from log_skill_revisions where organization_id = $2 and skill_id = $3`,
-  [id, input.organizationId, input.skillId, input.published ? "published" : "draft", JSON.stringify(input.spec), input.userId, Boolean(input.published)]);
+  [id, input.organizationId, input.skillId, input.published ? "published" : "draft",
+    JSON.stringify(procedureChecks.length ? { ...spec, procedureChecks } : spec), input.userId, Boolean(input.published)]);
   return id;
 }
 
 export async function publishSkillRevision(db: Queryable, organizationId: string, skillId: string, draftId: string, userId: string) {
-  const draft = await db.query(`select id from log_skill_revisions
+  const draft = await db.query<{ spec: LogSkillSpec }>(`select spec from log_skill_revisions
     where organization_id = $1 and skill_id = $2 and id = $3 and status = 'draft'`, [organizationId, skillId, draftId]);
   if (!draft.rows.length) throw new ApiError("LOG_SKILL_DRAFT_CONFLICT", "技能草稿不存在或已更新，请刷新后重试。");
+  const { spec } = draft.rows[0];
+  // Drafts that predate the checklist format acquire their frozen list at publication.
+  const checks = readStoredProcedureChecks(spec.procedureChecks) === undefined ? parseProcedureChecks(spec.procedure) : [];
+  const frozenSpec = checks.length ? JSON.stringify({ ...spec, procedureChecks: checks }) : null;
   await db.query(`update log_skill_revisions set status = 'superseded'
     where organization_id = $1 and skill_id = $2 and status = 'published'`, [organizationId, skillId]);
-  await db.query(`update log_skill_revisions set status = 'published', published_at = now(), published_by_user_id = $4
-    where organization_id = $1 and skill_id = $2 and id = $3`, [organizationId, skillId, draftId, userId]);
+  await db.query(`update log_skill_revisions set status = 'published', published_at = now(), published_by_user_id = $4,
+    spec = coalesce($5::jsonb, spec),
+    content_hash = coalesce(encode(sha256(convert_to(($5::jsonb)::text, 'UTF8')), 'hex'), content_hash)
+    where organization_id = $1 and skill_id = $2 and id = $3`, [organizationId, skillId, draftId, userId, frozenSpec]);
   // Keep legacy GET/edit forms coherent; workers never read these columns.
   await db.query(`update log_domains d set format_profile = s.spec->'formatProfile',
     model_override = s.spec->>'modelOverride', description = coalesce(s.spec->>'description', d.description), updated_at = now()

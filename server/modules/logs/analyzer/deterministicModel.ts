@@ -1,5 +1,7 @@
 import type { SourceStatementMatches } from "../sourceStatementRepository";
+import type { LogHypothesis } from "../hypotheses";
 import { LogAnalysisProviderError, type LogAnalysisChatMessage, type LogAnalysisChatModel } from "./llmAnalyzer";
+import { asNativeModelResponse } from "./scriptedModel";
 
 /**
  * Deterministic offline stubs for `LOG_ANALYSIS_DETERMINISTIC=true` (local dev, CI, eval).
@@ -151,7 +153,7 @@ type LineRangeToolResult = {
 function parseToolResult<T>(messages: LogAnalysisChatMessage[], toolName: string): T | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message.role !== "user" || !message.content.startsWith(`Tool result for ${toolName}:`)) {
+    if ((message.role !== "user" && message.role !== "tool") || !message.content.startsWith(`Tool result for ${toolName}:`)) {
       continue;
     }
     const payload = message.content.slice(message.content.indexOf("\n") + 1);
@@ -176,14 +178,22 @@ function withUsage(payload: unknown, messages: LogAnalysisChatMessage[]) {
   };
 }
 
+/** Exercises the independent call and measures its cost in offline quality evals. Semantic verdicts are scripted in behavior evals. */
+export const deterministicConclusionVerifier: LogAnalysisChatModel = {
+  async invoke(messages) {
+    const { claims } = JSON.parse(messages.at(-1)!.content) as { claims: Array<{ id: number }> };
+    return withUsage({ claims: claims.map(({ id }) => ({ id, status: "supported" })) }, messages);
+  }
+};
+
 /**
  * Loop-protocol deterministic stub: investigates like the real kernel would —
  * pull the prefilter findings, read the neighborhood of the strongest signal,
  * optionally locate its top cited line in a ready source snapshot, then converge
  * on a grounded conclusion citing only tool results it has actually read.
  */
-export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel {
-  return {
+export function createDeterministicLogAnalysisLoopModel(hypothesisLedger = false): LogAnalysisChatModel {
+  const model: LogAnalysisChatModel = {
     async invoke(messages) {
       const promptText = messages.map((message) => message.content).join("\n");
       if (promptText.includes(LOG_ANALYSIS_SIMULATED_OUTAGE_MARKER)) {
@@ -192,14 +202,18 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
 
       const analysisQuestion = parseAnalysisQuestion(promptText);
       const bundlePrefilter = parseToolResult<PrefilterToolResult>(messages, "get_prefilter_findings");
+      const lineRangeResult = parseToolResult<LineRangeToolResult>(messages, "read_line_range");
       const files = bundlePrefilter?.files?.map((file) => ({ filePath: file.file, findings: file.findings.result }))
         ?? [{ filePath: undefined, findings: bundlePrefilter }];
       const selected = conclusionByRuleHit.map((candidate) => files.find((file) => file.findings?.evidence?.some(
         (item) => item.ruleHit === candidate.ruleHit && (item.lineNumbers?.length ?? 0) > 0
       ))).find((file) => file !== undefined) ?? files[0];
-      const filePath = selected?.filePath;
-      const prefilterResult = selected?.findings;
-      const lineRangeResult = parseToolResult<LineRangeToolResult>(messages, "read_line_range");
+      const filePath = bundlePrefilter ? selected?.filePath : lineRangeResult?.lines?.[0]?.file;
+      const prefilterResult: PrefilterToolResult | undefined = selected?.findings ?? (lineRangeResult ? {
+        // After source lookup folds the prefilter, match mission findings only against the lines read below.
+        evidence: parseRuleHits(messages.find((message) => message.role === "user")?.content ?? "")
+          .filter((hit) => hit.filePath === undefined || hit.filePath === filePath)
+      } : undefined);
       const mustConverge = messages.some(
         (message) => message.role === "user" && message.content.startsWith("Budget exhausted:")
       );
@@ -220,7 +234,11 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
           {
             action: "tool",
             tool: "read_line_range",
-            args: { ...(filePath ? { file: filePath } : {}), startLine: Math.max(1, focusLine - 2), endLine: focusLine + 2 }
+            args: { ...(filePath ? { file: filePath } : {}), startLine: Math.max(1, focusLine - 2), endLine: focusLine + 2 },
+            ...(hypothesisLedger ? { notes: { hypotheses: [{
+              id: "primary", statement: preferredRule?.conclusion ?? "异常信号可能与故障有关。",
+              status: "open", anchors: []
+            }] } } : {})
           },
           messages
         );
@@ -273,6 +291,7 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         && /^- locate_log_statement:/m.test(message.content));
       const sourceToolAttempted = messages.some((message) => {
         if (message.role !== "assistant") return false;
+        if (message.toolCalls) return message.toolCalls.some((call) => call.name === "locate_log_statement");
         try { return JSON.parse(message.content).tool === "locate_log_statement"; }
         catch { return false; }
       });
@@ -284,6 +303,21 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         } }, messages);
       }
       const source = parseToolResult<SourceStatementMatches>(messages, "locate_log_statement")?.items?.[0];
+      // Exercise the optional report and trace fields offline when a read shows an unchanged PD contract.
+      const stablePd = hypothesisLedger && matched?.ruleHit === "thermal-foldback"
+        ? lineRangeResult?.lines?.find((line) => /PPS contract unchanged|adapter contract stable/i.test(line.content))
+        : undefined;
+      const alternative = stablePd ? {
+        statement: "充电适配器重新协商导致限流",
+        reason: "热保护介入时，充电协议保持稳定。",
+        anchors: [{ file: stablePd.file ?? filePath ?? "", line: stablePd.lineNumber }]
+      } : undefined;
+      const hypotheses: LogHypothesis[] = [{ id: "primary", statement: baseConclusion,
+        status: matched ? "supported" : "inconclusive",
+        anchors: citedLines.map((line) => ({ file: filePath ?? "", line })) }];
+      if (alternative) {
+        hypotheses.push({ id: "pd-contract", statement: alternative.statement, status: "refuted", anchors: alternative.anchors });
+      }
 
       return withUsage(
         {
@@ -292,6 +326,8 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
           impact: matched?.impact ?? "引用的日志尚未显示直接的运行影响。",
           severity: matched?.severity ?? "Info",
           confidence: matched ? 0.82 : 0.45,
+          ...(hypothesisLedger ? { notes: { hypotheses } } : {}),
+          ...(alternative ? { alternativeHypotheses: [alternative] } : {}),
           suggestedActions: matched
             ? ["与负责团队一起核对引用的日志。", "结合近期参数变更核对分析结果。"]
             : ["进一步处理前，请收集设备状态及相邻时段的日志。"],
@@ -311,6 +347,15 @@ export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel 
         },
         messages
       );
+    }
+  };
+  return {
+    ...model,
+    // The offline stub reads messages directly and never tokenizes the tool schemas.
+    estimateNativeToolTokens: () => 0,
+    async invokeTools(messages) {
+      const response = await model.invoke(messages);
+      return asNativeModelResponse(JSON.parse(response.content), response, `deterministic-${messages.length}`);
     }
   };
 }

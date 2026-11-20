@@ -1,6 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 
-import { extractJsonPayload } from "../analyzer/llmAnalyzer";
+import { extractJsonPayload, stripLeadingReasoning } from "../analyzer/llmAnalyzer";
 import {
   createDeterministicQualityJudge,
   qualityJudgeOutputSchema,
@@ -65,7 +65,8 @@ export function createHttpQualityJudge(env: LogAnalysisJudgeEnv): LogAnalysisQua
     apiKey: env.LOG_ANALYSIS_JUDGE_API_KEY,
     temperature: 0,
     timeout: env.LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS,
-    maxTokens: 512,
+    // Reasoning models think before the verdict.
+    maxTokens: 4096,
     configuration: { baseURL: env.LOG_ANALYSIS_JUDGE_API_BASE_URL }
   });
 
@@ -83,7 +84,7 @@ export function createHttpQualityJudge(env: LogAnalysisJudgeEnv): LogAnalysisQua
       });
       const response = await chat.invoke([{ role: "user", content: prompt }]);
       const content = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
-      const parsed = qualityJudgeOutputSchema.safeParse(JSON.parse(extractJsonPayload(content)));
+      const parsed = qualityJudgeOutputSchema.safeParse(JSON.parse(extractJsonPayload(stripLeadingReasoning(content))));
       if (!parsed.success) {
         throw new Error(`Judge returned an invalid score payload: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`);
       }

@@ -1,18 +1,25 @@
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI, ChatOpenAICompletions } from "@langchain/openai";
 
 import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
 import type { Database } from "../../../shared/database/client";
-import type { LogAnalysisAdapter } from "../analyzer";
+import type { AnalyzeLogInput, LogAnalysisAdapter } from "../analyzer";
+import type { LogAnalysisProtocol } from "../logAnalysisProtocol";
 import { createAgentLoopLogAnalyzer } from "./agentLoop";
-import { createDeterministicLogAnalysisLoopModel, createDeterministicLogAnalysisModel } from "./deterministicModel";
+import { createDeterministicLogAnalysisLoopModel, createDeterministicLogAnalysisModel, deterministicConclusionVerifier } from "./deterministicModel";
+import { VERIFIER_MAX_OUTPUT_TOKENS } from "./conclusionVerifier";
 import {
   createLlmLogAnalyzer,
   LogAnalysisProviderError,
   LOG_ANALYSIS_DETERMINISTIC_MODEL,
+  type LogAnalysisNativeCall,
   type LogAnalysisChatModel,
-  type LogAnalysisLlmTelemetry
+  type LogAnalysisLlmTelemetry,
+  stripLeadingReasoning
 } from "./llmAnalyzer";
 import { createWorkerLogAnalysisToolBackends } from "./tools/workerToolBackends";
+import type { LogAnalysisToolContext } from "./tools/toolContext";
+import { hasPastConclusions, searchPastConclusions } from "../pastConclusionsRepository";
+import { logCompletionLimit } from "./modelBudget";
 
 export type LogAnalyzerEnv = {
   LOG_ANALYSIS_API_BASE_URL?: string;
@@ -24,7 +31,19 @@ export type LogAnalyzerEnv = {
   /** P2: "loop" (default, multi-step agent) or "single-shot" (P1 kernel kept as a config fallback). */
   LOG_ANALYSIS_KERNEL: "loop" | "single-shot";
   LOG_ANALYSIS_MAX_STEPS: number;
+  /** Per-call context window (prompt + completion); defaults to 128,000. */
+  LOG_ANALYSIS_CONTEXT_TOKENS?: number;
+  LOG_ANALYSIS_REPAIR_JSON?: boolean;
+  LOG_ANALYSIS_SINGLE_SHOT_FALLBACK?: boolean;
+  LOG_ANALYSIS_PAST_CONCLUSIONS?: boolean;
+  LOG_ANALYSIS_PROTOCOL?: LogAnalysisProtocol;
+  LOG_ANALYSIS_HYPOTHESIS_LEDGER?: boolean;
+  LOG_ANALYSIS_PROCEDURE_CHECKLIST?: boolean;
+  LOG_ANALYSIS_VERIFY_CONCLUSION?: boolean;
+  LOG_ANALYSIS_VERIFIER_MODEL?: string;
 };
+
+export const DEFAULT_LOG_ANALYSIS_CONTEXT_TOKENS = 128_000;
 
 function readNonBlank(value: string | undefined) {
   const trimmed = value?.trim();
@@ -50,28 +69,55 @@ function contentToText(content: unknown): string {
   return String(content ?? "");
 }
 
-function createChatOpenAiModel(env: LogAnalyzerEnv, modelLabel: string, tokenBudget: number): LogAnalysisChatModel {
-  const chat = new ChatOpenAI({
+function createChatOpenAiModel(
+  env: LogAnalyzerEnv, modelLabel: string, defaultMaxTokens: number
+): LogAnalysisChatModel {
+  const settings = {
     model: modelLabel,
     apiKey: env.LOG_ANALYSIS_API_KEY,
     temperature: 0,
     timeout: env.LOG_ANALYSIS_API_TIMEOUT_MS,
-    maxTokens: Math.min(tokenBudget, 2048, Math.max(256, Math.floor(tokenBudget / 4))),
+    maxRetries: 0,
+    maxTokens: defaultMaxTokens,
     configuration: {
       baseURL: env.LOG_ANALYSIS_API_BASE_URL
+    }
+  };
+  const chat = new ChatOpenAI(settings);
+  const nativeChat = new ChatOpenAICompletions(settings);
+  const readResponse = (response: Awaited<ReturnType<typeof chat.invoke>>) => ({
+    content: stripLeadingReasoning(contentToText(response.content)),
+    usage: {
+      inputTokens: response.usage_metadata?.input_tokens,
+      outputTokens: response.usage_metadata?.output_tokens
     }
   });
 
   return {
     async invoke(messages, options) {
-      const response = await chat.invoke(messages.map((message) => ({ role: message.role, content: message.content })), options);
-      return {
-        content: contentToText(response.content),
-        usage: {
-          inputTokens: response.usage_metadata?.input_tokens,
-          outputTokens: response.usage_metadata?.output_tokens
+      const maxTokens = Math.min(defaultMaxTokens, options?.maxOutputTokens ?? defaultMaxTokens);
+      const client = maxTokens === defaultMaxTokens ? chat : new ChatOpenAI({ ...settings, maxTokens });
+      const response = await client.invoke(messages.map((message) => ({ role: message.role, content: message.content })), { signal: options?.signal });
+      return readResponse(response);
+    },
+    async invokeTools(messages, { tools, signal, maxOutputTokens }) {
+      const maxTokens = Math.min(defaultMaxTokens, maxOutputTokens ?? defaultMaxTokens);
+      const client = maxTokens === defaultMaxTokens ? nativeChat : new ChatOpenAICompletions({ ...settings, maxTokens });
+      const response = await client.bindTools(tools).invoke(messages.map((message) => {
+        const { role, content } = message;
+        if (role === "assistant" && message.toolCalls) {
+          return { role, content, additional_kwargs: { tool_calls: message.toolCalls.map(({ id, name, arguments: args }) =>
+            ({ id, type: "function" as const, function: { name, arguments: args } })) } };
         }
-      };
+        if (role === "tool") return { role, content, tool_call_id: message.toolCallId };
+        return { role, content };
+      }), { signal });
+      // The raw list preserves provider order, including malformed argument strings.
+      const toolCalls: LogAnalysisNativeCall[] = (response.additional_kwargs.tool_calls ?? []).map((call) =>
+        call?.type === "function"
+          ? { id: call.id, name: call.function?.name, arguments: call.function?.arguments }
+          : { id: "", name: "", arguments: "" });
+      return { ...readResponse(response), toolCalls };
     }
   };
 }
@@ -87,6 +133,8 @@ function createUnconfiguredModel(): LogAnalysisChatModel {
 }
 
 export type CreateLogAnalyzerFromEnvOptions = {
+  /** Scripted chat model for offline analyzer and eval runs. */
+  model?: LogAnalysisChatModel;
   telemetry?: LogAnalysisLlmTelemetry;
   /**
    * Database handle for the loop kernel's organization-scoped tool backends
@@ -96,6 +144,8 @@ export type CreateLogAnalyzerFromEnvOptions = {
   db?: Database;
   /** Embedding client for hybrid domain-knowledge retrieval; absent = FTS-only. */
   embeddingClient?: KnowledgeEmbeddingClient;
+  /** Offline eval fixture only. Database-backed runs always use the worker's scoped search. */
+  bindOfflinePastConclusions?: (input: AnalyzeLogInput) => LogAnalysisToolContext["searchPastConclusions"];
 };
 
 /**
@@ -121,58 +171,100 @@ export function createLogAnalyzerFromEnv(
   const useLoopKernel = env.LOG_ANALYSIS_KERNEL === "loop";
   const providerConfigured = Boolean(readNonBlank(env.LOG_ANALYSIS_API_BASE_URL) && readNonBlank(env.LOG_ANALYSIS_API_KEY));
   const modelsByLabel = new Map<string, LogAnalysisChatModel>();
+  const verifiersByLabel = new Map<string, LogAnalysisChatModel>();
 
-  function resolveModel(modelLabel: string, tokenBudget: number): LogAnalysisChatModel {
-    const cacheKey = JSON.stringify([modelLabel, tokenBudget]);
+  function resolveVerifier(mainModelLabel: string) {
+    if (!env.LOG_ANALYSIS_VERIFY_CONCLUSION) return undefined;
+    const modelLabel = readNonBlank(env.LOG_ANALYSIS_VERIFIER_MODEL) ?? mainModelLabel;
+    let model = verifiersByLabel.get(modelLabel);
+    if (!model) {
+      model = env.LOG_ANALYSIS_DETERMINISTIC ? deterministicConclusionVerifier
+        : providerConfigured ? createChatOpenAiModel(env, modelLabel, VERIFIER_MAX_OUTPUT_TOKENS)
+          : createUnconfiguredModel();
+      verifiersByLabel.set(modelLabel, model);
+    }
+    return { model, modelLabel };
+  }
+
+  function resolveModel(modelLabel: string, tokenBudget: number, singleShotRetry = false): LogAnalysisChatModel {
+    if (options.model) return options.model;
+    const cacheKey = JSON.stringify([modelLabel, tokenBudget, singleShotRetry]);
     const cached = modelsByLabel.get(cacheKey);
     if (cached) {
       return cached;
     }
     const model = env.LOG_ANALYSIS_DETERMINISTIC
-      ? useLoopKernel
-        ? createDeterministicLogAnalysisLoopModel()
+      ? useLoopKernel && !singleShotRetry
+        ? createDeterministicLogAnalysisLoopModel(env.LOG_ANALYSIS_HYPOTHESIS_LEDGER)
         : createDeterministicLogAnalysisModel()
       : providerConfigured
-        ? createChatOpenAiModel(env, modelLabel, tokenBudget)
+        ? createChatOpenAiModel(env, modelLabel, logCompletionLimit(tokenBudget))
         : createUnconfiguredModel();
     modelsByLabel.set(cacheKey, model);
     return model;
   }
 
-  function createKernel(modelLabel: string, stepBudget: number, tokenBudget: number, hasTokenBudgetOverride: boolean): LogAnalysisAdapter {
-    const model = resolveModel(modelLabel, tokenBudget);
-    if (!useLoopKernel) {
-      return createLlmLogAnalyzer({
-        model,
-        modelLabel,
-        tokenBudget,
-        telemetry: options.telemetry
-      });
-    }
+  function createKernel(modelLabel: string, stepBudget: number, tokenBudget: number,
+    protocol: LogAnalysisProtocol): LogAnalysisAdapter {
+    const singleShot = (retry: boolean) => createLlmLogAnalyzer({
+      model: resolveModel(modelLabel, tokenBudget, retry),
+      modelLabel,
+      tokenBudget,
+      contextTokens: env.LOG_ANALYSIS_CONTEXT_TOKENS ?? DEFAULT_LOG_ANALYSIS_CONTEXT_TOKENS,
+      repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
+      telemetry: options.telemetry
+    });
+    if (!useLoopKernel) return singleShot(false);
 
     const db = options.db;
     return createAgentLoopLogAnalyzer({
-      model,
+      model: resolveModel(modelLabel, tokenBudget),
       modelLabel,
       tokenBudget,
       maxSteps: stepBudget,
-      // Unset revision budgets retain the pre-skill global convergence behavior.
-      enforceTokenBudgetBeforeCall: hasTokenBudgetOverride,
+      contextTokens: env.LOG_ANALYSIS_CONTEXT_TOKENS ?? DEFAULT_LOG_ANALYSIS_CONTEXT_TOKENS,
+      protocol,
+      hypothesisLedger: env.LOG_ANALYSIS_HYPOTHESIS_LEDGER,
+      procedureChecklist: env.LOG_ANALYSIS_PROCEDURE_CHECKLIST,
+      verifier: resolveVerifier(modelLabel),
+      endpoint: providerConfigured && !env.LOG_ANALYSIS_DETERMINISTIC ? env.LOG_ANALYSIS_API_BASE_URL : undefined,
+      repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
       telemetry: options.telemetry,
-      bindToolBackends: (input) =>
-        db && input.organizationId
-          ? createWorkerLogAnalysisToolBackends({
-              db,
-              organizationId: input.organizationId,
-              logDomainId: input.logDomainId,
-              knowledgeEntryIds: input.knowledgeEntryIds,
-              onKnowledgeRetrieved: input.onKnowledgeRetrieved,
-              relatedParameterId: input.relatedParameterId,
-              relatedParameterSnapshot: input.relatedParameterSnapshot,
-              sourceSnapshot: input.sourceSnapshot,
-              embeddingClient: options.embeddingClient
-            })
-          : {}
+      recoverInvalidModelOutput: env.LOG_ANALYSIS_SINGLE_SHOT_FALLBACK ? async (input, remainingTokens) => {
+        try {
+          const report = await singleShot(true).tryAnalyze(input, remainingTokens);
+          return typeof report === "object" ? { ...report, analysisSource: "single-shot-fallback", confidence: Math.min(report.confidence, 0.5) } : report;
+        } catch (error) {
+          input.signal?.throwIfAborted();
+          // Provider failure during recovery goes straight to rules, preserving the loop's reason.
+          if (!(error instanceof LogAnalysisProviderError)) throw error;
+          return undefined;
+        }
+      } : undefined,
+      bindToolBackends: async (input) => {
+        if (!db) return { searchPastConclusions: env.LOG_ANALYSIS_PAST_CONCLUSIONS ? options.bindOfflinePastConclusions?.(input) : undefined };
+        if (!input.organizationId) return {};
+        const scope = env.LOG_ANALYSIS_PAST_CONCLUSIONS && input.logDomainId && input.pastConclusionScope
+          ? { ...input.pastConclusionScope, organizationId: input.organizationId, skillId: input.logDomainId } : undefined;
+        const available = scope && await hasPastConclusions(db, scope).catch(() => false);
+        input.signal?.throwIfAborted();
+        return {
+          ...createWorkerLogAnalysisToolBackends({
+            db,
+            organizationId: input.organizationId,
+            logDomainId: input.logDomainId,
+            knowledgeEntryIds: input.knowledgeEntryIds,
+            onKnowledgeRetrieved: input.onKnowledgeRetrieved,
+            relatedParameterId: input.relatedParameterId,
+            relatedParameterSnapshot: input.relatedParameterSnapshot,
+            sourceSnapshot: input.sourceSnapshot,
+            embeddingClient: options.embeddingClient
+          }),
+          ...(scope && available ? {
+            searchPastConclusions: (params) => searchPastConclusions(db, scope, params)
+          } : {})
+        };
+      }
     });
   }
 
@@ -181,7 +273,10 @@ export function createLogAnalyzerFromEnv(
       const modelLabel = readNonBlank(input.logDomain?.modelOverride) ?? globalModelLabel;
       const stepBudget = Math.min(input.logDomain?.stepBudget ?? env.LOG_ANALYSIS_MAX_STEPS, env.LOG_ANALYSIS_MAX_STEPS);
       const tokenBudget = Math.min(input.logDomain?.tokenBudget ?? env.LOG_ANALYSIS_TOKEN_BUDGET, env.LOG_ANALYSIS_TOKEN_BUDGET);
-      return createKernel(modelLabel, stepBudget, tokenBudget, input.logDomain?.tokenBudget !== undefined).analyze(input);
+      const platform = env.LOG_ANALYSIS_PROTOCOL ?? "auto";
+      const override = input.logDomain?.protocolOverride;
+      const protocol = platform === "auto" || override === "json" ? override ?? platform : platform;
+      return createKernel(modelLabel, stepBudget, tokenBudget, protocol).analyze(input);
     }
   };
 }

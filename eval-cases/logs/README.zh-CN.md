@@ -1,8 +1,8 @@
-# 日志分析金标准案例集
+# 日志分析评测案例集
 
 > English: [`README.md`](README.md)
 
-金标准案例集(词汇表:Golden case set,见 `CONTEXT.md`)是支撑日志分析**效果层评测**(`npm run logs:eval:quality`)的标注语料库。同一份案例集同时服务回归门禁、模型/提示词对比,以及(P3 起)线上监控。
+这份标注语料库支撑日志分析**效果层评测**（`npm run logs:eval:quality`）。金标准生产用例用于回归门禁，仿真用例用于场景对比，合成用例用于覆盖输入格式。
 
 ## 诊断流程行为检查
 
@@ -16,7 +16,17 @@
 
 源码检索超时场景验证 Agent 收到截断结果后仍可使用已接地的日志证据继续分析。PostgreSQL 集成检查评分前的候选接纳、常见查询拒绝、数据库超时和事务超时设置恢复。
 
-该命令重新生成 `docs/generated/log-analysis-eval.{json,md}`，任何行为预期失败都会使命令失败。质量基线固定为 `2026-10-19.loop.procedure.signals.source.3`；既有容差和等待真实案例的状态保持不变。
+工具结果折叠场景检查最后一次模型调用的输入。最近两条工具结果保留原文，更早的结果折叠为摘要，之前已看到的日志锚点仍可作为终答证据。输入和输出 token 累计计入预算。调查消耗 80% 后，内核可用剩余预算进行一次终答调用，置信度上限为 0.5，降级原因为 `token-budget-exhausted`。
+
+结论验证场景引用真实的正常温度日志来推断过热。独立的脚本验证会标记矛盾、删除不受支持的引用并限制置信度。不存在的反证锚点无法成为证据。效果层可通过 `LOG_ANALYSIS_VERIFY_CONCLUSION` 与 `--tier realistic` 对比验证开关。离线模式用预设判定验证调用流程与 token 计数。效果层的幻觉率衡量引用不存在行的比例。
+
+检查清单场景覆盖两种协议的必查项提醒和锚点接地。做仿真层 A/B 时，两组用 `--tier realistic --procedure <file.md>` 加载同一个清单文件，单独切换 `LOG_ANALYSIS_PROCEDURE_CHECKLIST`，再用 `--compare` 对比两份保存的 JSON 报告。设置 `LOG_ANALYSIS_DETERMINISTIC=true` 可用固定模型响应比较提醒和提示词的开销。
+
+该命令重新生成 `docs/generated/log-analysis-eval.{json,md}`，任何行为预期失败都会使命令失败。质量基线记录循环提示词版本 `2026-10-19.loop.procedure.signals.source.4`，仍在等待专家标注的真实案例。
+
+当前循环提示词版本为 `2026-10-19.loop.procedure.signals.source.11` 和 `2026-10-19.loop.procedure.signals.source.related-parameter.11`。启用清单的运行使用 `2026-10-19.loop.procedure.signals.source.12` 和 `2026-10-19.loop.procedure.signals.source.related-parameter.12`。
+
+配套 `skill.yaml` 声明提取器时，质量评测会解码符合技能匹配规则的日志文件。对比历史检索时，对同一批用例切换 `LOG_ANALYSIS_PAST_CONCLUSIONS`。离线检索使用同一领域内经专家确认并脱敏的生产用例，排除当前评测用例。仓库当前没有符合条件的历史用例。脚本化评测测试提供了已确认用例，验证开关确实影响检索。
 
 ## 目录结构
 
@@ -26,8 +36,9 @@ eval-cases/logs/
   baseline.json                  # 已提交的质量基线(见「基线门禁」)
   <domain>/                      # 业务域 slug,例如 charging-power、uncategorized
     <case-id>/                   # kebab-case,稳定且可读
-      log.txt                    # 与真实上传完全一致的日志内容
+      log.txt                    # 单份原始日志或日志包的扁平投影
       case.yaml                  # 标注(schema 见下)
+      fixtures/                  # 可选，存放 bundleFiles 列出的原始上传文件
 ```
 
 ## `case.yaml` schema
@@ -36,7 +47,7 @@ eval-cases/logs/
 
 技能管理员可在工作区「测试」中导入、导出此目录布局。ZIP 直接从 `<domain>/<case-id>/` 开始，不添加外层 `eval-cases/logs/` 目录。已有 `case.yaml` 和 `log.txt` 在导入、导出后字节保持一致，包括 YAML 注释和原始换行。编辑导入用例的期望会替换其标注；未修改的日志文件仍保留原字节。
 
-日志包用例可通过可选 `bundleFiles` 列出相对路径，例如 `fixtures/device.zip`。这些文件保留原始上传字节，包括压缩包与 UTF-16 输入。`log.txt` 是供现有命令行评测使用的扁平 UTF-8 投影，`keyEvidenceLines` 指向投影行号。产品使用 `bundleFiles` 还原原始多文件输入。可选 `keyEvidence` 的每项用解包后的文件路径及正整数 `line`、有界线性时间 `pattern`，或二者标识证据。可选 `expectedDegradedReason` 使用已有降级原因。可选 `caseName` 独立于摘要保留用例名称。这些扩展不改变原有 golden-case 词汇，也不会让合成用例计入质量基线。
+日志包用例在 `bundleFiles` 中列出原始上传文件的相对路径，例如 `fixtures/device.zip`。工作台与命令行评测使用原始文件分析，支持压缩包与 UTF-16 输入。构建 UTF-8 的 `log.txt` 投影时，先将每个可分析文件的换行统一为 LF 并去掉一个尾部换行，再按入库顺序用 LF 拼接。`keyEvidenceLines` 指向投影行号，命令行评测将文件内的证据行号映射回投影计分。工作台的 `keyEvidence` 使用解包后的文件路径及正整数 `line`、有界线性时间 `pattern` 或两者标识证据。可选 `expectedDegradedReason` 使用已有降级原因。可选 `caseName` 独立于摘要保留用例名称。评测元数据保存在原始 YAML 中，经工作台导入、导出后保持字节一致。
 
 导入会在保存前拒绝不安全路径、重复条目、链接、无效标注、缺失日志文件和超出大小或数量限制的输入。错误包含具体用例路径和标注字段。产品限制每技能 20 个用例、每个输入日志包及规范化文本各 10 MiB、100 个文件、每次运行最多 20 个用例和 120 秒，每技能保留最近 10 次运行。编辑后的期望限 1 MiB YAML，导入标注限 2 MiB。ZIP 压缩及解压总量均限 440 MiB、2040 条目，以容纳全部有界用例及其投影。运行与草稿试运行共享组织及总量准入。相同用例比较已保存草稿与当前发布版本，复用质量评测和已配置 judge；未配置 judge 时使用确定性评分检查。得分仅供发布参考，始终不阻止发布。
 
@@ -46,15 +57,44 @@ eval-cases/logs/
 | --- | --- | --- |
 | `domain` | 是 | 业务域 slug,必须与父目录同名 |
 | `summary` | 是 | 一句话场景描述 |
-| `realLog` | 是 | `true` = 已脱敏的真实日志(计入质量分与基线门禁);`false` = 合成日志(只计入格式覆盖) |
+| `realLog` | 是 | `true` 表示已脱敏的生产日志，`false` 表示仿真或合成日志 |
 | `deIdentified` | `realLog: true` 时必填 | 脱敏声明;真实案例缺少 `deIdentified: true` 直接校验失败 |
+| `tier` | 否 | `golden`（金标准）、`realistic`（仿真）、`synthetic`（合成） |
+| `provenance` | 否 | `production`（生产）、`public-dataset`（公开数据集）、`authored`（Agent 编写） |
+| `scenarioTags` | 否 | 取值见下方场景标签词表 |
+| `datasetSource` | `public-dataset` 时必填 | `name` 数据集名、`version` 版本或提交、`url`、`license` 许可证标识、`file` 原始文件路径、`lines` 截取行范围（从 1 开始，包含首尾，格式为 `[start, end]`） |
+| `realismChecklist` | `authored` 时必填 | 逐项填写下方真实感检查清单 |
 | `rootCauseCategory` | 是 | 评测专用枚举(见下)——绝不进入产品输出契约 |
 | `rootCausePoints` | 非拒答案例必填 | 专家确认的根因陈述,结论必须覆盖 |
 | `keyEvidenceLines` | 非拒答案例必填 | 决定性证据的 1-based 原始行号(必须存在且非空行) |
 | `expectedActions` | 非拒答案例必填 | 专家期望报告给出的行动建议 |
 | `expectRefusal` | 否(默认 `false`) | `true` = 诚实的结果是拒答/低置信回答,而不是给出诊断 |
 | `analysisQuestion` | 否 | 可选的用户问题;结论必须回应它 |
-| `formatProfile` | 否 | 可选的声明式格式画像,解析 `log.txt` 时应用(格式覆盖案例用) |
+| `formatProfile` | 否 | 解析输入日志时使用的声明式格式画像 |
+
+合法组合为 `golden + production`、`realistic + public-dataset`、`realistic + authored` 和 `synthetic + authored`。省略 `tier` 或 `provenance` 时，`realLog: true` 默认对应 `golden + production`，`realLog: false` 默认对应 `synthetic + authored`。两个字段都未声明的旧合成用例可以省略真实感检查清单。仿真用例须使用 `realLog: false` 并省略 `deIdentified`。
+
+### 场景标签
+
+标签来自 P0 场景矩阵。扩充标签时同步更新词表和加载器。
+
+`multi-file`、`large-bundle`、`cascade`、`distractor`、`register-decoding`、`configuration`、`resource-exhaustion`、`android`、`clock-skew`、`multi-issue`、`truncated`、`no-fault`、`prompt-injection`、`encoding`、`public-labelled`、`generic-analysis`。
+
+### Agent 编写用例的真实感检查清单
+
+在 `realismChecklist` 中为每个键填写检查结论。
+
+| 键 | 检查内容 |
+| --- | --- |
+| `lineFormat` | 行格式和时间戳精度对应哪种真实工具输出 |
+| `noiseRatio` | 正常周期性日志至少占 90%，列明条数与总行数 |
+| `distractors` | 至少一条与根因无关的 WARN 或 ERROR，`no-fault` 用例除外 |
+| `rootCauseDiscoverability` | 为什么定位根因需要结合证据，单一关键词无法给出答案 |
+| `timeline` | 根因与症状的先后顺序，以及多文件时钟的关系 |
+| `sensitiveData` | 确认没有真实个人信息、设备序列号或凭据 |
+| `annotationReview` | 由另一位 Agent 或人工逐项复核根因要点、证据行与预期操作 |
+
+公开数据集片段入库前，须确认许可证允许再分发并保留要求的署名。
 
 ### `rootCauseCategory` 取值(v1)
 
@@ -75,7 +115,7 @@ eval-cases/logs/
 3. **证据行**:只引用*决定性*的行(通常 1–5 行)。行号基于原始文件、从 1 开始,与产品证据锚点一致。
 4. **行动建议**:写合格工程师接下来应做的事;它们喂给 rubric judge,不做字符串精确匹配。
 5. **拒答案例**:当日志确实撑不起诊断时,置 `expectRefusal: true` 并把根因字段留空——诚实拒答本身是被打分的行为。
-6. **合成案例**:标 `realLog: false`。它们只为覆盖格式画像(时间戳形态、severity 词表、JSON lines、内核风格……),绝不计入质量分。
+6. **格式覆盖**：用 `synthetic` 覆盖时间戳、严重性词表、JSON Lines 等输入格式，用 `realistic` 覆盖具体诊断场景。
 
 ## 脱敏清单(`realLog: true` 必须全部满足)
 
@@ -92,7 +132,7 @@ eval-cases/logs/
 
 ## 基线门禁
 
-`eval-cases/logs/baseline.json` 存放最近一次被接受的质量分。存在时,`npm run logs:eval:quality` 将当前运行与之比较:**`realLog: true` 案例的分数不得低于基线减去声明容差**(容差在报告中声明)。案例集尚无真实案例时,报告如实输出 `quality baseline pending real cases`,门禁不激活——但机制本身有测试覆盖。
+`eval-cases/logs/baseline.json` 存放最近一次验收的金标准分数。门禁比较金标准案例得分与基线减去容差后的值，报告单列仿真用例分数。缺少金标准案例时，报告输出 `quality baseline pending real cases`，门禁保持未激活。
 
 ## 人工复核记录(`reviews/`,P3b judge 校准)
 
@@ -113,4 +153,4 @@ cases:
 
 ## 当前状态
 
-当前提交的所有案例均为 `realLog: false` 的格式覆盖种子。真实专家标注案例(每域 20–50 条,第二个试点域由产品负责人点名)是 P2 计划中如实跟踪的外部依赖——绝不伪造「真实」案例。出于同样原因目前也没有人工复核记录:对纯合成案例做 judge 校准等于在噪声上校准。
+案例集包含格式覆盖种子以及充电、Linux、Android 和 JSON Lines 服务的 Agent 编写仿真用例。导入工作台技能时按领域打包，每个技能最多容纳 20 个用例。充电电源轨寄存器用例附带含 `parsing/v1` 解码规则的 `skill.yaml`。专家标注的生产案例和评分校准所需的人工复核记录仍待补充。

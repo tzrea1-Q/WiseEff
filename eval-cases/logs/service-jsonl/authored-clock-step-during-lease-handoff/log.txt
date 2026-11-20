@@ -1,0 +1,445 @@
+{"ts":"2026-10-14T09:14:00.035Z","level":"debug","component":"timekeeper","msg":"peer=bench-ntp offset_us=2 dispersion_us=121"}
+{"ts":"2026-10-14T09:14:00.150Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=1"}
+{"ts":"2026-10-14T09:14:00.480Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=14"}
+{"ts":"2026-10-14T09:14:00.788Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=7 dispersion_us=124"}
+{"ts":"2026-10-14T09:14:00.924Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=4"}
+{"ts":"2026-10-14T09:14:02.049Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=2"}
+{"ts":"2026-10-14T09:14:02.358Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=17 dispersion_us=125"}
+{"ts":"2026-10-14T09:14:02.916Z","level":"debug","component":"timekeeper","msg":"clock source=rtc sample_count=7"}
+{"ts":"2026-10-14T09:14:04.857Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=6"}
+{"ts":"2026-10-14T09:14:06.051Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=15 dispersion_us=122"}
+{"ts":"2026-10-14T09:14:06.083Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=10"}
+{"ts":"2026-10-14T09:14:06.764Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=7"}
+{"ts":"2026-10-14T09:14:07.113Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=12 dispersion_us=120"}
+{"ts":"2026-10-14T09:14:08.276Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=13"}
+{"ts":"2026-10-14T09:14:08.829Z","level":"debug","component":"timekeeper","msg":"wall adjusted slew_ppm=14"}
+{"ts":"2026-10-14T09:14:09.175Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=15 dispersion_us=121"}
+{"ts":"2026-10-14T09:14:09.623Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=16"}
+{"ts":"2026-10-14T09:14:09.983Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=1"}
+{"ts":"2026-10-14T09:14:10.340Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=14 dispersion_us=121"}
+{"ts":"2026-10-14T09:14:10.716Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=19"}
+{"ts":"2026-10-14T09:14:11.917Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=16"}
+{"ts":"2026-10-14T09:14:12.892Z","level":"debug","component":"timekeeper","msg":"peer=bench-ntp offset_us=3 dispersion_us=122"}
+{"ts":"2026-10-14T09:14:13.011Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=22"}
+{"ts":"2026-10-14T09:14:13.308Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=6"}
+{"ts":"2026-10-14T09:14:14.355Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=13 dispersion_us=128"}
+{"ts":"2026-10-14T09:14:14.472Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=25"}
+{"ts":"2026-10-14T09:14:14.784Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=16"}
+{"ts":"2026-10-14T09:14:15.147Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=5 dispersion_us=128"}
+{"ts":"2026-10-14T09:14:15.638Z","level":"debug","component":"timekeeper","msg":"clock source=rtc sample_count=28"}
+{"ts":"2026-10-14T09:14:15.993Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=15"}
+{"ts":"2026-10-14T09:14:16.025Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=5 dispersion_us=123"}
+{"ts":"2026-10-14T09:14:16.059Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=31"}
+{"ts":"2026-10-14T09:14:16.389Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=9"}
+{"ts":"2026-10-14T09:14:16.505Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=0 dispersion_us=120"}
+{"ts":"2026-10-14T09:14:16.661Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=34"}
+{"ts":"2026-10-14T09:14:16.697Z","level":"debug","component":"timekeeper","msg":"wall adjusted slew_ppm=11"}
+{"ts":"2026-10-14T09:14:16.738Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=7 dispersion_us=123"}
+{"ts":"2026-10-14T09:14:17.234Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=37"}
+{"ts":"2026-10-14T09:14:17.886Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=3"}
+{"ts":"2026-10-14T09:14:18.236Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=17 dispersion_us=124"}
+{"ts":"2026-10-14T09:14:20.118Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=40"}
+{"ts":"2026-10-14T09:14:20.234Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=15"}
+{"ts":"2026-10-14T09:14:22.147Z","level":"debug","component":"timekeeper","msg":"peer=bench-ntp offset_us=15 dispersion_us=123"}
+{"ts":"2026-10-14T09:14:22.186Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=43"}
+{"ts":"2026-10-14T09:14:22.707Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=11"}
+{"ts":"2026-10-14T09:14:23.005Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=5 dispersion_us=124"}
+{"ts":"2026-10-14T09:14:23.135Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=46"}
+{"ts":"2026-10-14T09:14:23.168Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=6"}
+{"ts":"2026-10-14T09:14:25.111Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=8 dispersion_us=120"}
+{"ts":"2026-10-14T09:14:25.625Z","level":"debug","component":"timekeeper","msg":"clock source=rtc sample_count=49"}
+{"ts":"2026-10-14T09:14:25.917Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=11"}
+{"ts":"2026-10-14T09:14:26.950Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=5 dispersion_us=123"}
+{"ts":"2026-10-14T09:14:27.087Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=52"}
+{"ts":"2026-10-14T09:14:27.424Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=1"}
+{"ts":"2026-10-14T09:14:27.548Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=8 dispersion_us=126"}
+{"ts":"2026-10-14T09:14:27.580Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=55"}
+{"ts":"2026-10-14T09:14:28.193Z","level":"debug","component":"timekeeper","msg":"wall adjusted slew_ppm=15"}
+{"ts":"2026-10-14T09:14:29.185Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=3 dispersion_us=128"}
+{"ts":"2026-10-14T09:14:29.226Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=58"}
+{"ts":"2026-10-14T09:14:29.565Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=11"}
+{"ts":"2026-10-14T09:14:29.692Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=6 dispersion_us=121"}
+{"ts":"2026-10-14T09:14:29.998Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=61"}
+{"ts":"2026-10-14T09:14:30.031Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=8"}
+{"ts":"2026-10-14T09:14:30.700Z","level":"debug","component":"timekeeper","msg":"peer=bench-ntp offset_us=12 dispersion_us=121"}
+{"ts":"2026-10-14T09:14:31.017Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=64"}
+{"ts":"2026-10-14T09:14:31.047Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=7"}
+{"ts":"2026-10-14T09:14:31.217Z","level":"warn","component":"timekeeper","msg":"probe rejected","peer":"backup","stratum":16}
+{"ts":"2026-10-14T09:14:31.323Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=7 dispersion_us=123"}
+{"ts":"2026-10-14T09:14:31.482Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=67"}
+{"ts":"2026-10-14T09:14:31.952Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=7"}
+{"ts":"2026-10-14T09:14:32.088Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=19 dispersion_us=126"}
+{"ts":"2026-10-14T09:14:32.120Z","level":"debug","component":"timekeeper","msg":"clock source=rtc sample_count=70"}
+{"ts":"2026-10-14T09:14:34.329Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=4"}
+{"ts":"2026-10-14T09:14:36.619Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=8 dispersion_us=121"}
+{"ts":"2026-10-14T09:14:37.596Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=73"}
+{"ts":"2026-10-14T09:14:37.976Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=0"}
+{"ts":"2026-10-14T09:14:38.298Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=3 dispersion_us=127"}
+{"ts":"2026-10-14T09:14:38.667Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=76"}
+{"ts":"2026-10-14T09:14:38.700Z","level":"debug","component":"timekeeper","msg":"wall adjusted slew_ppm=3"}
+{"ts":"2026-10-14T09:14:38.998Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=16 dispersion_us=124"}
+{"ts":"2026-10-14T09:14:39.121Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=79"}
+{"ts":"2026-10-14T09:14:39.480Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=16"}
+{"ts":"2026-10-14T09:14:39.611Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=11 dispersion_us=124"}
+{"ts":"2026-10-14T09:13:55.200Z","level":"info","component":"timekeeper","msg":"clock step applied","offset_ms":-45000,"boot_ms":882200}
+{"ts":"2026-10-14T09:13:57.042Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=82"}
+{"ts":"2026-10-14T09:13:57.671Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=6"}
+{"ts":"2026-10-14T09:13:58.150Z","level":"debug","component":"timekeeper","msg":"peer=bench-ntp offset_us=9 dispersion_us=127"}
+{"ts":"2026-10-14T09:13:58.268Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=85"}
+{"ts":"2026-10-14T09:13:58.386Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=13"}
+{"ts":"2026-10-14T09:14:00.717Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=2 dispersion_us=123"}
+{"ts":"2026-10-14T09:14:01.116Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=88"}
+{"ts":"2026-10-14T09:14:01.520Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=15"}
+{"ts":"2026-10-14T09:14:01.553Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=16 dispersion_us=123"}
+{"ts":"2026-10-14T09:14:03.716Z","level":"debug","component":"timekeeper","msg":"clock source=rtc sample_count=91"}
+{"ts":"2026-10-14T09:14:04.742Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=1"}
+{"ts":"2026-10-14T09:14:05.178Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=0 dispersion_us=120"}
+{"ts":"2026-10-14T09:14:06.484Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=94"}
+{"ts":"2026-10-14T09:14:06.519Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=3"}
+{"ts":"2026-10-14T09:14:06.965Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=11 dispersion_us=127"}
+{"ts":"2026-10-14T09:14:07.975Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=97"}
+{"ts":"2026-10-14T09:14:09.058Z","level":"debug","component":"timekeeper","msg":"wall adjusted slew_ppm=2"}
+{"ts":"2026-10-14T09:14:10.043Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=14 dispersion_us=121"}
+{"ts":"2026-10-14T09:14:11.199Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=100"}
+{"ts":"2026-10-14T09:14:11.240Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=12"}
+{"ts":"2026-10-14T09:14:11.546Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=13 dispersion_us=123"}
+{"ts":"2026-10-14T09:14:11.841Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=103"}
+{"ts":"2026-10-14T09:14:12.171Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=18"}
+{"ts":"2026-10-14T09:14:14.553Z","level":"debug","component":"timekeeper","msg":"peer=bench-ntp offset_us=14 dispersion_us=125"}
+{"ts":"2026-10-14T09:14:14.592Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=106"}
+{"ts":"2026-10-14T09:14:14.716Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=19"}
+{"ts":"2026-10-14T09:14:14.868Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=10 dispersion_us=124"}
+{"ts":"2026-10-14T09:14:14.909Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=109"}
+{"ts":"2026-10-14T09:14:16.095Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=11"}
+{"ts":"2026-10-14T09:14:16.133Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=10 dispersion_us=126"}
+{"ts":"2026-10-14T09:14:17.241Z","level":"debug","component":"timekeeper","msg":"clock source=rtc sample_count=112"}
+{"ts":"2026-10-14T09:14:17.380Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=1"}
+{"ts":"2026-10-14T09:14:17.728Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=14 dispersion_us=122"}
+{"ts":"2026-10-14T09:14:18.234Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=115"}
+{"ts":"2026-10-14T09:14:18.803Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=18"}
+{"ts":"2026-10-14T09:14:19.335Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=16 dispersion_us=125"}
+{"ts":"2026-10-14T09:14:19.626Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=118"}
+{"ts":"2026-10-14T09:14:20.849Z","level":"debug","component":"timekeeper","msg":"wall adjusted slew_ppm=9"}
+{"ts":"2026-10-14T09:14:20.967Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=2 dispersion_us=127"}
+{"ts":"2026-10-14T09:14:20.998Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=121"}
+{"ts":"2026-10-14T09:14:21.512Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=3"}
+{"ts":"2026-10-14T09:14:23.792Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=1 dispersion_us=123"}
+{"ts":"2026-10-14T09:14:23.827Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=124"}
+{"ts":"2026-10-14T09:14:24.230Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=19"}
+{"ts":"2026-10-14T09:14:24.568Z","level":"debug","component":"timekeeper","msg":"peer=bench-ntp offset_us=5 dispersion_us=120"}
+{"ts":"2026-10-14T09:14:25.092Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=127"}
+{"ts":"2026-10-14T09:14:25.596Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=13"}
+{"ts":"2026-10-14T09:14:25.638Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=4 dispersion_us=121"}
+{"ts":"2026-10-14T09:14:26.080Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=130"}
+{"ts":"2026-10-14T09:14:26.663Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=6"}
+{"ts":"2026-10-14T09:14:27.819Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=1 dispersion_us=120"}
+{"ts":"2026-10-14T09:14:27.950Z","level":"debug","component":"timekeeper","msg":"clock source=rtc sample_count=133"}
+{"ts":"2026-10-14T09:14:28.478Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=6"}
+{"ts":"2026-10-14T09:14:28.514Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=2 dispersion_us=122"}
+{"ts":"2026-10-14T09:14:28.794Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=136"}
+{"ts":"2026-10-14T09:14:28.931Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=13"}
+{"ts":"2026-10-14T09:14:31.187Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=10 dispersion_us=124"}
+{"ts":"2026-10-14T09:14:31.676Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=139"}
+{"ts":"2026-10-14T09:14:33.976Z","level":"debug","component":"timekeeper","msg":"wall adjusted slew_ppm=5"}
+{"ts":"2026-10-14T09:14:35.185Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=4 dispersion_us=127"}
+{"ts":"2026-10-14T09:14:36.415Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=142"}
+{"ts":"2026-10-14T09:14:36.920Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=12"}
+{"ts":"2026-10-14T09:14:37.446Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=16 dispersion_us=121"}
+{"ts":"2026-10-14T09:14:38.078Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=145"}
+{"ts":"2026-10-14T09:14:38.729Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=7"}
+{"ts":"2026-10-14T09:14:39.053Z","level":"debug","component":"timekeeper","msg":"peer=bench-ntp offset_us=1 dispersion_us=125"}
+{"ts":"2026-10-14T09:14:41.020Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=148"}
+{"ts":"2026-10-14T09:14:41.297Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=4"}
+{"ts":"2026-10-14T09:14:41.338Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=14 dispersion_us=124"}
+{"ts":"2026-10-14T09:14:41.454Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=151"}
+{"ts":"2026-10-14T09:14:41.972Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=12"}
+{"ts":"2026-10-14T09:14:42.467Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=6 dispersion_us=121"}
+{"ts":"2026-10-14T09:14:42.610Z","level":"debug","component":"timekeeper","msg":"clock source=rtc sample_count=154"}
+{"ts":"2026-10-14T09:14:43.797Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=4"}
+{"ts":"2026-10-14T09:14:44.961Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=13 dispersion_us=127"}
+{"ts":"2026-10-14T09:14:47.362Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=157"}
+{"ts":"2026-10-14T09:14:47.923Z","level":"info","component":"timekeeper","msg":"wall adjusted slew_ppm=13"}
+{"ts":"2026-10-14T09:14:48.081Z","level":"info","component":"timekeeper","msg":"peer=bench-ntp offset_us=16 dispersion_us=122"}
+{"ts":"2026-10-14T09:14:48.222Z","level":"info","component":"timekeeper","msg":"clock source=rtc sample_count=160"}
+{"ts":"2026-10-14T09:14:48.810Z","level":"debug","component":"timekeeper","msg":"wall adjusted slew_ppm=2"}
+{"ts":"2026-10-14T09:14:00.149Z","level":"debug","component":"leases","msg":"scan tracked=15 partitions=4 reconcile_ms=38.3"}
+{"ts":"2026-10-14T09:14:00.758Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:00.828Z","level":"info","component":"leases","msg":"checkpoint revision=2"}
+{"ts":"2026-10-14T09:14:01.301Z","level":"info","component":"leases","msg":"scan tracked=0 partitions=4 reconcile_ms=34.2"}
+{"ts":"2026-10-14T09:14:01.447Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:01.750Z","level":"info","component":"leases","msg":"checkpoint revision=5"}
+{"ts":"2026-10-14T09:14:01.964Z","level":"info","component":"leases","msg":"scan tracked=3 partitions=4 reconcile_ms=31.3"}
+{"ts":"2026-10-14T09:14:02.557Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:02.625Z","level":"info","component":"leases","msg":"checkpoint revision=8"}
+{"ts":"2026-10-14T09:14:02.694Z","level":"info","component":"leases","msg":"scan tracked=6 partitions=4 reconcile_ms=32.5"}
+{"ts":"2026-10-14T09:14:02.931Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:03.403Z","level":"info","component":"leases","msg":"checkpoint revision=11"}
+{"ts":"2026-10-14T09:14:03.652Z","level":"info","component":"leases","msg":"scan tracked=1 partitions=4 reconcile_ms=39.7"}
+{"ts":"2026-10-14T09:14:03.667Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:03.726Z","level":"debug","component":"leases","msg":"checkpoint revision=14"}
+{"ts":"2026-10-14T09:14:04.870Z","level":"info","component":"leases","msg":"scan tracked=8 partitions=4 reconcile_ms=31.2"}
+{"ts":"2026-10-14T09:14:05.339Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:05.355Z","level":"info","component":"leases","msg":"checkpoint revision=17"}
+{"ts":"2026-10-14T09:14:05.675Z","level":"info","component":"leases","msg":"scan tracked=4 partitions=4 reconcile_ms=30.4"}
+{"ts":"2026-10-14T09:14:05.905Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:06.446Z","level":"info","component":"leases","msg":"checkpoint revision=20"}
+{"ts":"2026-10-14T09:14:06.678Z","level":"debug","component":"leases","msg":"scan tracked=9 partitions=4 reconcile_ms=11.7"}
+{"ts":"2026-10-14T09:14:07.773Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:08.708Z","level":"info","component":"leases","msg":"checkpoint revision=23"}
+{"ts":"2026-10-14T09:14:08.764Z","level":"info","component":"leases","msg":"scan tracked=7 partitions=4 reconcile_ms=18.5"}
+{"ts":"2026-10-14T09:14:08.909Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:10.050Z","level":"info","component":"leases","msg":"checkpoint revision=26"}
+{"ts":"2026-10-14T09:14:10.665Z","level":"info","component":"leases","msg":"scan tracked=19 partitions=4 reconcile_ms=45.3"}
+{"ts":"2026-10-14T09:14:10.828Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:11.154Z","level":"info","component":"leases","msg":"checkpoint revision=29"}
+{"ts":"2026-10-14T09:14:11.773Z","level":"info","component":"leases","msg":"scan tracked=0 partitions=4 reconcile_ms=38.6"}
+{"ts":"2026-10-14T09:14:12.079Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:13.279Z","level":"info","component":"leases","msg":"checkpoint revision=32"}
+{"ts":"2026-10-14T09:14:13.556Z","level":"info","component":"leases","msg":"scan tracked=16 partitions=4 reconcile_ms=22.3"}
+{"ts":"2026-10-14T09:14:13.873Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:14.402Z","level":"debug","component":"leases","msg":"checkpoint revision=35"}
+{"ts":"2026-10-14T09:14:14.631Z","level":"info","component":"leases","msg":"scan tracked=6 partitions=4 reconcile_ms=16.2"}
+{"ts":"2026-10-14T09:14:15.558Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:15.767Z","level":"info","component":"leases","msg":"checkpoint revision=38"}
+{"ts":"2026-10-14T09:14:15.986Z","level":"info","component":"leases","msg":"scan tracked=18 partitions=4 reconcile_ms=39.4"}
+{"ts":"2026-10-14T09:14:16.613Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:16.917Z","level":"info","component":"leases","msg":"checkpoint revision=41"}
+{"ts":"2026-10-14T09:14:16.978Z","level":"debug","component":"leases","msg":"scan tracked=8 partitions=4 reconcile_ms=10.3"}
+{"ts":"2026-10-14T09:14:17.195Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:17.210Z","level":"info","component":"leases","msg":"checkpoint revision=44"}
+{"ts":"2026-10-14T09:14:17.276Z","level":"info","component":"leases","msg":"scan tracked=14 partitions=4 reconcile_ms=43.2"}
+{"ts":"2026-10-14T09:14:17.409Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:18.418Z","level":"info","component":"leases","msg":"checkpoint revision=47"}
+{"ts":"2026-10-14T09:14:18.484Z","level":"info","component":"leases","msg":"scan tracked=19 partitions=4 reconcile_ms=16.0"}
+{"ts":"2026-10-14T09:14:19.073Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:19.295Z","level":"info","component":"leases","msg":"checkpoint revision=50"}
+{"ts":"2026-10-14T09:14:19.479Z","level":"info","component":"leases","msg":"scan tracked=11 partitions=4 reconcile_ms=47.9"}
+{"ts":"2026-10-14T09:14:19.692Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:19.819Z","level":"info","component":"leases","msg":"checkpoint revision=53"}
+{"ts":"2026-10-14T09:14:20.027Z","level":"info","component":"leases","msg":"scan tracked=9 partitions=4 reconcile_ms=25.5"}
+{"ts":"2026-10-14T09:14:20.229Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:20.247Z","level":"debug","component":"leases","msg":"checkpoint revision=56"}
+{"ts":"2026-10-14T09:14:21.270Z","level":"info","component":"leases","msg":"scan tracked=15 partitions=4 reconcile_ms=30.9"}
+{"ts":"2026-10-14T09:14:21.471Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:21.619Z","level":"info","component":"leases","msg":"checkpoint revision=59"}
+{"ts":"2026-10-14T09:14:21.853Z","level":"info","component":"leases","msg":"scan tracked=8 partitions=4 reconcile_ms=30.2"}
+{"ts":"2026-10-14T09:14:22.160Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:22.390Z","level":"info","component":"leases","msg":"checkpoint revision=62"}
+{"ts":"2026-10-14T09:14:23.324Z","level":"debug","component":"leases","msg":"scan tracked=15 partitions=4 reconcile_ms=17.1"}
+{"ts":"2026-10-14T09:14:23.342Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:23.526Z","level":"info","component":"leases","msg":"checkpoint revision=65"}
+{"ts":"2026-10-14T09:14:23.728Z","level":"info","component":"leases","msg":"scan tracked=0 partitions=4 reconcile_ms=15.6"}
+{"ts":"2026-10-14T09:14:23.867Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:24.346Z","level":"info","component":"leases","msg":"checkpoint revision=68"}
+{"ts":"2026-10-14T09:14:25.238Z","level":"info","component":"leases","msg":"scan tracked=10 partitions=4 reconcile_ms=46.0"}
+{"ts":"2026-10-14T09:14:25.463Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:25.599Z","level":"info","component":"leases","msg":"checkpoint revision=71"}
+{"ts":"2026-10-14T09:14:26.716Z","level":"info","component":"leases","msg":"scan tracked=14 partitions=4 reconcile_ms=26.7"}
+{"ts":"2026-10-14T09:14:26.731Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:26.879Z","level":"info","component":"leases","msg":"checkpoint revision=74"}
+{"ts":"2026-10-14T09:14:27.122Z","level":"info","component":"leases","msg":"scan tracked=14 partitions=4 reconcile_ms=10.8"}
+{"ts":"2026-10-14T09:14:28.010Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:28.069Z","level":"debug","component":"leases","msg":"checkpoint revision=77"}
+{"ts":"2026-10-14T09:14:28.252Z","level":"info","component":"leases","msg":"scan tracked=2 partitions=4 reconcile_ms=20.7"}
+{"ts":"2026-10-14T09:14:28.482Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:29.396Z","level":"info","component":"leases","msg":"checkpoint revision=80"}
+{"ts":"2026-10-14T09:14:29.611Z","level":"info","component":"leases","msg":"scan tracked=18 partitions=4 reconcile_ms=10.9"}
+{"ts":"2026-10-14T09:14:29.805Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:30.771Z","level":"info","component":"leases","msg":"checkpoint revision=83"}
+{"ts":"2026-10-14T09:14:30.956Z","level":"debug","component":"leases","msg":"scan tracked=1 partitions=4 reconcile_ms=16.1"}
+{"ts":"2026-10-14T09:14:31.094Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:31.585Z","level":"info","component":"leases","msg":"checkpoint revision=86"}
+{"ts":"2026-10-14T09:14:32.712Z","level":"info","component":"leases","msg":"scan tracked=11 partitions=4 reconcile_ms=23.3"}
+{"ts":"2026-10-14T09:14:32.962Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:32.981Z","level":"info","component":"leases","msg":"checkpoint revision=89"}
+{"ts":"2026-10-14T09:14:33.107Z","level":"info","component":"leases","msg":"scan tracked=19 partitions=4 reconcile_ms=34.5"}
+{"ts":"2026-10-14T09:14:33.701Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:33.937Z","level":"info","component":"leases","msg":"checkpoint revision=92"}
+{"ts":"2026-10-14T09:14:34.254Z","level":"info","component":"leases","msg":"scan tracked=9 partitions=4 reconcile_ms=15.8"}
+{"ts":"2026-10-14T09:14:35.435Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:35.956Z","level":"info","component":"leases","msg":"checkpoint revision=95"}
+{"ts":"2026-10-14T09:14:36.187Z","level":"info","component":"leases","msg":"scan tracked=5 partitions=4 reconcile_ms=24.8"}
+{"ts":"2026-10-14T09:14:36.206Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:36.463Z","level":"debug","component":"leases","msg":"checkpoint revision=98"}
+{"ts":"2026-10-14T09:14:37.042Z","level":"info","component":"leases","msg":"scan tracked=16 partitions=4 reconcile_ms=22.7"}
+{"ts":"2026-10-14T09:14:37.104Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:37.580Z","level":"info","component":"leases","msg":"checkpoint revision=101"}
+{"ts":"2026-10-14T09:14:38.186Z","level":"info","component":"leases","msg":"scan tracked=9 partitions=4 reconcile_ms=21.3"}
+{"ts":"2026-10-14T09:14:38.206Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:38.272Z","level":"info","component":"leases","msg":"checkpoint revision=104"}
+{"ts":"2026-10-14T09:14:39.117Z","level":"info","component":"leases","op":"renew","lease":"snapshot-a","holder":"copy-a","status":"ok","boot_ms":881117,"deadline_boot_ms":885117}
+{"ts":"2026-10-14T09:14:39.345Z","level":"debug","component":"leases","msg":"scan tracked=18 partitions=4 reconcile_ms=23.1"}
+{"ts":"2026-10-14T09:14:39.416Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:39.678Z","level":"info","component":"leases","msg":"checkpoint revision=107"}
+{"ts":"2026-10-14T09:13:55.719Z","level":"info","component":"leases","msg":"scan tracked=3 partitions=4 reconcile_ms=47.1"}
+{"ts":"2026-10-14T09:13:55.899Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:13:56.393Z","level":"info","component":"leases","msg":"checkpoint revision=110"}
+{"ts":"2026-10-14T09:13:56.412Z","level":"info","component":"leases","msg":"scan tracked=10 partitions=4 reconcile_ms=42.3"}
+{"ts":"2026-10-14T09:13:56.944Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:13:57.014Z","level":"info","component":"leases","msg":"checkpoint revision=113"}
+{"ts":"2026-10-14T09:13:57.257Z","level":"info","component":"leases","msg":"scan tracked=1 partitions=4 reconcile_ms=16.5"}
+{"ts":"2026-10-14T09:13:57.403Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:13:57.537Z","level":"info","component":"leases","msg":"checkpoint revision=116"}
+{"ts":"2026-10-14T09:13:57.555Z","level":"info","component":"leases","msg":"scan tracked=7 partitions=4 reconcile_ms=35.2"}
+{"ts":"2026-10-14T09:13:58.061Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:13:58.119Z","level":"debug","component":"leases","msg":"checkpoint revision=119"}
+{"ts":"2026-10-14T09:13:58.584Z","level":"info","component":"leases","msg":"scan tracked=13 partitions=4 reconcile_ms=26.9"}
+{"ts":"2026-10-14T09:13:58.609Z","level":"error","component":"leases","op":"renew","lease":"snapshot-a","holder":"copy-a","status":"reply_timeout","boot_ms":885609}
+{"ts":"2026-10-14T09:13:58.642Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:13:58.658Z","level":"info","component":"leases","msg":"checkpoint revision=122"}
+{"ts":"2026-10-14T09:13:58.815Z","level":"info","component":"leases","msg":"scan tracked=7 partitions=4 reconcile_ms=44.9"}
+{"ts":"2026-10-14T09:13:58.847Z","level":"info","component":"leases","op":"grant","lease":"snapshot-a","holder":"copy-b","epoch":29,"boot_ms":885847}
+{"ts":"2026-10-14T09:13:59.058Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:13:59.304Z","level":"warn","component":"leases","op":"complete","lease":"snapshot-a","holder":"copy-a","status":"stale_epoch","boot_ms":886304}
+{"ts":"2026-10-14T09:13:59.564Z","level":"info","component":"leases","msg":"checkpoint revision=125"}
+{"ts":"2026-10-14T09:13:59.843Z","level":"debug","component":"leases","msg":"scan tracked=0 partitions=4 reconcile_ms=29.5"}
+{"ts":"2026-10-14T09:13:59.861Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:00.330Z","level":"info","component":"leases","msg":"checkpoint revision=128"}
+{"ts":"2026-10-14T09:14:01.258Z","level":"info","component":"leases","msg":"scan tracked=13 partitions=4 reconcile_ms=11.9"}
+{"ts":"2026-10-14T09:14:02.271Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:03.241Z","level":"info","component":"leases","msg":"checkpoint revision=131"}
+{"ts":"2026-10-14T09:14:03.257Z","level":"info","component":"leases","msg":"scan tracked=0 partitions=4 reconcile_ms=19.6"}
+{"ts":"2026-10-14T09:14:03.272Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:03.432Z","level":"info","component":"leases","msg":"checkpoint revision=134"}
+{"ts":"2026-10-14T09:14:03.618Z","level":"info","component":"leases","msg":"scan tracked=19 partitions=4 reconcile_ms=20.4"}
+{"ts":"2026-10-14T09:14:03.854Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:04.085Z","level":"info","component":"leases","msg":"checkpoint revision=137"}
+{"ts":"2026-10-14T09:14:04.145Z","level":"info","component":"leases","msg":"scan tracked=9 partitions=4 reconcile_ms=34.6"}
+{"ts":"2026-10-14T09:14:04.420Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:04.576Z","level":"debug","component":"leases","msg":"checkpoint revision=140"}
+{"ts":"2026-10-14T09:14:05.544Z","level":"info","component":"leases","msg":"scan tracked=14 partitions=4 reconcile_ms=25.8"}
+{"ts":"2026-10-14T09:14:05.717Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:06.892Z","level":"info","component":"leases","msg":"checkpoint revision=143"}
+{"ts":"2026-10-14T09:14:06.910Z","level":"info","component":"leases","msg":"scan tracked=18 partitions=4 reconcile_ms=29.2"}
+{"ts":"2026-10-14T09:14:07.079Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:07.357Z","level":"info","component":"leases","msg":"checkpoint revision=146"}
+{"ts":"2026-10-14T09:14:07.819Z","level":"debug","component":"leases","msg":"scan tracked=0 partitions=4 reconcile_ms=45.5"}
+{"ts":"2026-10-14T09:14:07.877Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:07.892Z","level":"info","component":"leases","msg":"checkpoint revision=149"}
+{"ts":"2026-10-14T09:14:08.842Z","level":"info","component":"leases","msg":"scan tracked=10 partitions=4 reconcile_ms=39.8"}
+{"ts":"2026-10-14T09:14:09.853Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:09.995Z","level":"info","component":"leases","msg":"checkpoint revision=152"}
+{"ts":"2026-10-14T09:14:10.541Z","level":"info","component":"leases","msg":"scan tracked=13 partitions=4 reconcile_ms=38.5"}
+{"ts":"2026-10-14T09:14:11.464Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:12.320Z","level":"info","component":"leases","msg":"checkpoint revision=155"}
+{"ts":"2026-10-14T09:14:12.393Z","level":"info","component":"leases","msg":"scan tracked=9 partitions=4 reconcile_ms=28.9"}
+{"ts":"2026-10-14T09:14:12.455Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:12.471Z","level":"info","component":"leases","msg":"checkpoint revision=158"}
+{"ts":"2026-10-14T09:14:13.020Z","level":"info","component":"leases","msg":"scan tracked=17 partitions=4 reconcile_ms=10.5"}
+{"ts":"2026-10-14T09:14:13.201Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:13.263Z","level":"debug","component":"leases","msg":"checkpoint revision=161"}
+{"ts":"2026-10-14T09:14:13.710Z","level":"info","component":"leases","msg":"scan tracked=3 partitions=4 reconcile_ms=46.5"}
+{"ts":"2026-10-14T09:14:14.168Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:14.691Z","level":"info","component":"leases","msg":"checkpoint revision=164"}
+{"ts":"2026-10-14T09:14:14.708Z","level":"info","component":"leases","msg":"scan tracked=14 partitions=4 reconcile_ms=22.7"}
+{"ts":"2026-10-14T09:14:15.277Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:16.362Z","level":"info","component":"leases","msg":"checkpoint revision=167"}
+{"ts":"2026-10-14T09:14:16.903Z","level":"debug","component":"leases","msg":"scan tracked=7 partitions=4 reconcile_ms=25.4"}
+{"ts":"2026-10-14T09:14:17.528Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:17.685Z","level":"info","component":"leases","msg":"checkpoint revision=170"}
+{"ts":"2026-10-14T09:14:17.750Z","level":"info","component":"leases","msg":"scan tracked=16 partitions=4 reconcile_ms=33.4"}
+{"ts":"2026-10-14T09:14:17.766Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:18.318Z","level":"info","component":"leases","msg":"checkpoint revision=173"}
+{"ts":"2026-10-14T09:14:18.580Z","level":"info","component":"leases","msg":"scan tracked=15 partitions=4 reconcile_ms=23.5"}
+{"ts":"2026-10-14T09:14:18.731Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:19.037Z","level":"info","component":"leases","msg":"checkpoint revision=176"}
+{"ts":"2026-10-14T09:14:19.100Z","level":"info","component":"leases","msg":"scan tracked=8 partitions=4 reconcile_ms=15.0"}
+{"ts":"2026-10-14T09:14:19.165Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:19.403Z","level":"info","component":"leases","msg":"checkpoint revision=179"}
+{"ts":"2026-10-14T09:14:20.544Z","level":"info","component":"leases","msg":"scan tracked=3 partitions=4 reconcile_ms=11.8"}
+{"ts":"2026-10-14T09:14:20.864Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:21.084Z","level":"debug","component":"leases","msg":"checkpoint revision=182"}
+{"ts":"2026-10-14T09:14:21.099Z","level":"info","component":"leases","msg":"scan tracked=7 partitions=4 reconcile_ms=16.7"}
+{"ts":"2026-10-14T09:14:21.261Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:21.275Z","level":"info","component":"leases","msg":"checkpoint revision=185"}
+{"ts":"2026-10-14T09:14:21.294Z","level":"info","component":"leases","msg":"scan tracked=14 partitions=4 reconcile_ms=24.9"}
+{"ts":"2026-10-14T09:14:21.461Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:21.522Z","level":"info","component":"leases","msg":"checkpoint revision=188"}
+{"ts":"2026-10-14T09:14:22.436Z","level":"debug","component":"leases","msg":"scan tracked=16 partitions=4 reconcile_ms=32.3"}
+{"ts":"2026-10-14T09:14:22.642Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:22.822Z","level":"info","component":"leases","msg":"checkpoint revision=191"}
+{"ts":"2026-10-14T09:14:23.112Z","level":"info","component":"leases","msg":"scan tracked=7 partitions=4 reconcile_ms=29.6"}
+{"ts":"2026-10-14T09:14:23.697Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:23.926Z","level":"info","component":"leases","msg":"checkpoint revision=194"}
+{"ts":"2026-10-14T09:14:24.174Z","level":"info","component":"leases","msg":"scan tracked=12 partitions=4 reconcile_ms=27.1"}
+{"ts":"2026-10-14T09:14:24.678Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:24.920Z","level":"info","component":"leases","msg":"checkpoint revision=197"}
+{"ts":"2026-10-14T09:14:25.161Z","level":"info","component":"leases","msg":"scan tracked=12 partitions=4 reconcile_ms=27.5"}
+{"ts":"2026-10-14T09:14:26.065Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:26.212Z","level":"info","component":"leases","msg":"checkpoint revision=200"}
+{"ts":"2026-10-14T09:14:26.482Z","level":"info","component":"leases","msg":"scan tracked=9 partitions=4 reconcile_ms=29.2"}
+{"ts":"2026-10-14T09:14:26.542Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:26.837Z","level":"debug","component":"leases","msg":"checkpoint revision=203"}
+{"ts":"2026-10-14T09:14:26.857Z","level":"info","component":"leases","msg":"scan tracked=7 partitions=4 reconcile_ms=19.0"}
+{"ts":"2026-10-14T09:14:27.037Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:27.057Z","level":"info","component":"leases","msg":"checkpoint revision=206"}
+{"ts":"2026-10-14T09:14:27.243Z","level":"info","component":"leases","msg":"scan tracked=6 partitions=4 reconcile_ms=40.3"}
+{"ts":"2026-10-14T09:14:27.315Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:27.331Z","level":"info","component":"leases","msg":"checkpoint revision=209"}
+{"ts":"2026-10-14T09:14:27.505Z","level":"debug","component":"leases","msg":"scan tracked=14 partitions=4 reconcile_ms=45.4"}
+{"ts":"2026-10-14T09:14:27.563Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:28.058Z","level":"info","component":"leases","msg":"checkpoint revision=212"}
+{"ts":"2026-10-14T09:14:28.527Z","level":"info","component":"leases","msg":"scan tracked=12 partitions=4 reconcile_ms=10.0"}
+{"ts":"2026-10-14T09:14:28.545Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:28.603Z","level":"info","component":"leases","msg":"checkpoint revision=215"}
+{"ts":"2026-10-14T09:14:29.136Z","level":"info","component":"leases","msg":"scan tracked=16 partitions=4 reconcile_ms=24.5"}
+{"ts":"2026-10-14T09:14:29.155Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:29.216Z","level":"info","component":"leases","msg":"checkpoint revision=218"}
+{"ts":"2026-10-14T09:14:30.158Z","level":"info","component":"leases","msg":"scan tracked=2 partitions=4 reconcile_ms=27.7"}
+{"ts":"2026-10-14T09:14:30.221Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:30.531Z","level":"info","component":"leases","msg":"checkpoint revision=221"}
+{"ts":"2026-10-14T09:14:31.080Z","level":"info","component":"leases","msg":"scan tracked=19 partitions=4 reconcile_ms=21.1"}
+{"ts":"2026-10-14T09:14:31.688Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:31.863Z","level":"debug","component":"leases","msg":"checkpoint revision=224"}
+{"ts":"2026-10-14T09:14:31.933Z","level":"info","component":"leases","msg":"scan tracked=19 partitions=4 reconcile_ms=41.3"}
+{"ts":"2026-10-14T09:14:32.408Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:32.479Z","level":"info","component":"leases","msg":"checkpoint revision=227"}
+{"ts":"2026-10-14T09:14:32.773Z","level":"info","component":"leases","msg":"scan tracked=8 partitions=4 reconcile_ms=16.6"}
+{"ts":"2026-10-14T09:14:32.793Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:32.968Z","level":"info","component":"leases","msg":"checkpoint revision=230"}
+{"ts":"2026-10-14T09:14:33.895Z","level":"debug","component":"leases","msg":"scan tracked=11 partitions=4 reconcile_ms=44.0"}
+{"ts":"2026-10-14T09:14:34.190Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:35.197Z","level":"info","component":"leases","msg":"checkpoint revision=233"}
+{"ts":"2026-10-14T09:14:35.355Z","level":"info","component":"leases","msg":"scan tracked=5 partitions=4 reconcile_ms=21.7"}
+{"ts":"2026-10-14T09:14:35.846Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:36.720Z","level":"info","component":"leases","msg":"checkpoint revision=236"}
+{"ts":"2026-10-14T09:14:36.975Z","level":"info","component":"leases","msg":"scan tracked=3 partitions=4 reconcile_ms=18.0"}
+{"ts":"2026-10-14T09:14:37.222Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:37.690Z","level":"info","component":"leases","msg":"checkpoint revision=239"}
+{"ts":"2026-10-14T09:14:37.858Z","level":"info","component":"leases","msg":"scan tracked=6 partitions=4 reconcile_ms=34.3"}
+{"ts":"2026-10-14T09:14:37.877Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:38.421Z","level":"info","component":"leases","msg":"checkpoint revision=242"}
+{"ts":"2026-10-14T09:14:38.660Z","level":"info","component":"leases","msg":"scan tracked=17 partitions=4 reconcile_ms=38.0"}
+{"ts":"2026-10-14T09:14:38.677Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:38.691Z","level":"debug","component":"leases","msg":"checkpoint revision=245"}
+{"ts":"2026-10-14T09:14:39.007Z","level":"info","component":"leases","msg":"scan tracked=12 partitions=4 reconcile_ms=13.7"}
+{"ts":"2026-10-14T09:14:39.202Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:39.351Z","level":"info","component":"leases","msg":"checkpoint revision=248"}
+{"ts":"2026-10-14T09:14:39.671Z","level":"info","component":"leases","msg":"scan tracked=8 partitions=4 reconcile_ms=34.5"}
+{"ts":"2026-10-14T09:14:39.902Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:40.950Z","level":"info","component":"leases","msg":"checkpoint revision=251"}
+{"ts":"2026-10-14T09:14:41.003Z","level":"debug","component":"leases","msg":"scan tracked=14 partitions=4 reconcile_ms=31.7"}
+{"ts":"2026-10-14T09:14:41.318Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:41.794Z","level":"info","component":"leases","msg":"checkpoint revision=254"}
+{"ts":"2026-10-14T09:14:42.306Z","level":"info","component":"leases","msg":"scan tracked=16 partitions=4 reconcile_ms=44.2"}
+{"ts":"2026-10-14T09:14:43.301Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:43.354Z","level":"info","component":"leases","msg":"checkpoint revision=257"}
+{"ts":"2026-10-14T09:14:43.424Z","level":"info","component":"leases","msg":"scan tracked=3 partitions=4 reconcile_ms=27.1"}
+{"ts":"2026-10-14T09:14:43.627Z","level":"debug","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:43.846Z","level":"info","component":"leases","msg":"checkpoint revision=260"}
+{"ts":"2026-10-14T09:14:44.927Z","level":"info","component":"leases","msg":"scan tracked=3 partitions=4 reconcile_ms=41.6"}
+{"ts":"2026-10-14T09:14:45.382Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:45.525Z","level":"info","component":"leases","msg":"checkpoint revision=263"}
+{"ts":"2026-10-14T09:14:45.673Z","level":"info","component":"leases","msg":"scan tracked=16 partitions=4 reconcile_ms=38.1"}
+{"ts":"2026-10-14T09:14:46.214Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=2"}
+{"ts":"2026-10-14T09:14:46.233Z","level":"debug","component":"leases","msg":"checkpoint revision=266"}
+{"ts":"2026-10-14T09:14:46.248Z","level":"info","component":"leases","msg":"scan tracked=18 partitions=4 reconcile_ms=39.0"}
+{"ts":"2026-10-14T09:14:47.232Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:47.494Z","level":"info","component":"leases","msg":"checkpoint revision=269"}
+{"ts":"2026-10-14T09:14:48.082Z","level":"info","component":"leases","msg":"scan tracked=17 partitions=4 reconcile_ms=38.8"}
+{"ts":"2026-10-14T09:14:48.352Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=1"}
+{"ts":"2026-10-14T09:14:49.344Z","level":"info","component":"leases","msg":"checkpoint revision=272"}
+{"ts":"2026-10-14T09:14:49.361Z","level":"debug","component":"leases","msg":"scan tracked=19 partitions=4 reconcile_ms=39.6"}
+{"ts":"2026-10-14T09:14:49.572Z","level":"info","component":"leases","msg":"lease scope=control granted=1 waiters=0"}
+{"ts":"2026-10-14T09:14:49.631Z","level":"info","component":"leases","msg":"checkpoint revision=275"}
+{"ts":"2026-10-14T09:14:50.677Z","level":"info","component":"leases","msg":"scan tracked=19 partitions=4 reconcile_ms=28.0"}

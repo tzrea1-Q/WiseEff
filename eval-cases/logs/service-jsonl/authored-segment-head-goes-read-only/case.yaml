@@ -1,0 +1,28 @@
+domain: service-jsonl
+summary: "Segment acknowledgements stop while the telemetry collector keeps servicing other work."
+realLog: false
+tier: realistic
+provenance: authored
+scenarioTags: [multi-file, large-bundle, cascade, distractor]
+rootCauseCategory: software-fault
+analysisQuestion: "Which single transition first made segment writes fail?"
+rootCausePoints:
+  - "The ext4 volume nvme0n1p2 was remounted read-only between the last success and the first EROFS."
+  - "The repeating collector write errors across shards are downstream of that mount transition. The excerpt does not show what triggered ext4 to remount."
+keyEvidenceLines: [5836, 17260, 17271]
+expectedActions:
+  - "Check mount flags on the segment filesystem and examine the earlier kernel or disk records for the ext4 trigger."
+  - "Redirect or pause writes and preserve the volume for inspection before restoring the writer."
+bundleFiles: [fixtures/host.log, fixtures/collector.log]
+keyEvidence:
+  - { file: host.log, line: 5836 }
+  - { file: collector.log, line: 5657 }
+  - { file: collector.log, line: 5668 }
+realismChecklist:
+  lineFormat: "RFC 5424 syslog with UTC millisecond timestamps and PRI severity. Structured service JSON Lines with ISO 8601 UTC timestamps at millisecond precision."
+  noiseRatio: "22900 of 25064 lines are routine traffic (91.4%). Incident, symptom and distraction lines are excluded from the numerator."
+  distractors: "The USB descriptor error at host.log:1545 concerns a different device. Its reset completes minutes before the collector sees write failures."
+  rootCauseDiscoverability: "Thousands of EROFS lines identify the symptom. The single host transition and the writer boundaries on the same device identify the first observed change."
+  timeline: "Both streams share UTC millisecond timestamps. The last good write at .491 precedes the remount at .626 and the first EROFS at .841."
+  sensitiveData: "All hosts, processes, samples and identifiers were authored for the fixture. No personal data, real serial numbers or credentials."
+  annotationReview: "Checked the same mount identifier and EROFS onset. The report intentionally limits the cause to the read-only state and asks for earlier kernel evidence. Independent review (2026-11-18): fixed. Replaced the informational USB reset as a warning with a descriptor error and corrected the ext4 remount to critical PRI severity. All 2160 EROFS records follow the one remount between the last success and first failure."

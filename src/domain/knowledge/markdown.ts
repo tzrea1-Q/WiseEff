@@ -33,7 +33,7 @@ function renderInline(escaped: string): string {
   return html;
 }
 
-export function renderMarkdownPreview(markdown: string): string {
+export function renderMarkdownPreview(markdown: string, { omitTaskListMarkers = false }: { omitTaskListMarkers?: boolean } = {}): string {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks: string[] = [];
   let paragraph: string[] = [];
@@ -91,25 +91,17 @@ export function renderMarkdownPreview(markdown: string): string {
       continue;
     }
 
-    const unorderedMatch = line.match(/^\s*[-*]\s+(.*)$/);
-    if (unorderedMatch) {
+    const listMatch = line.match(/^\s*([-*]|\d+\.)\s+(.*)$/);
+    if (listMatch) {
       flushParagraph();
-      if (listKind !== "ul") {
+      const [, marker, text] = listMatch;
+      const kind = marker.endsWith(".") ? "ol" : "ul";
+      if (listKind !== kind) {
         flushList();
-        listKind = "ul";
+        listKind = kind;
       }
-      listItems.push(`<li>${renderInline(escapeHtml(unorderedMatch[1]))}</li>`);
-      continue;
-    }
-
-    const orderedMatch = line.match(/^\s*\d+\.\s+(.*)$/);
-    if (orderedMatch) {
-      flushParagraph();
-      if (listKind !== "ol") {
-        flushList();
-        listKind = "ol";
-      }
-      listItems.push(`<li>${renderInline(escapeHtml(orderedMatch[1]))}</li>`);
+      const content = omitTaskListMarkers ? text.replace(/^\[[ \txX]\](?:[ \t]+|$)/, "") : text;
+      listItems.push(`<li>${renderInline(escapeHtml(content))}</li>`);
       continue;
     }
 
