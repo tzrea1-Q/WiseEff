@@ -1583,10 +1583,8 @@ async function handleContinueDefinitionReplacement(
   const context = migrationContext(scope, organizationId);
   if (!context) return forbidden(request.requestId);
   const replacementId = request.params.replacementId ?? "";
-  const current = await migration.getDefinitionReplacement({ organizationId, replacementId });
-  if (!current.ok) return mapDefinitionReplacementFailure(current.error, request.requestId);
   const expectedVersion = parseEtagVersion(offered);
-  if (expectedVersion === null || unquoteEtag(offered) !== unquoteEtag(replacementEtag(replacementId, current.value.version))) {
+  if (expectedVersion === null || unquoteEtag(offered) !== unquoteEtag(replacementEtag(replacementId, expectedVersion))) {
     return revisionConflict(request.requestId);
   }
   const result = await migration.continueDefinitionReplacement({

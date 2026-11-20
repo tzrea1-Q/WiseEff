@@ -296,6 +296,55 @@ export const loadCurrentBindingTips = async (
   return result.rows;
 };
 
+/** Under the Binding lock, trace the current tip back to the value confirmed in the merge.
+ * Native source commits can propagate an unchanged value through many file revisions.
+ * A changed target must come from a committed source request, and a deleted source must
+ * carry that request's absence proof. A different intervening value invalidates the merge. */
+export async function loadMergeValueProgress(client: MigrationClient, input: {
+  organizationId: string; projectId: string; bindingId: string; baseValueId: string;
+  revisionId: string; selectedDigest: string; allowDeletion: boolean;
+}) {
+  const { rows } = await client.query<{ valueId: string; deleted: boolean; matchesSelection: boolean }>(
+    `with recursive owned as (
+       select binding.current_value_id, base.value_digest
+       from parameter_catalog.project_parameter_bindings binding
+       join parameter_catalog.project_parameter_values base on base.id=$4 and base.binding_id=binding.id
+       where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3
+         and binding.effective_revision_id=$5 and base.definition_revision_id=$5 and base.value_state='present'
+         and not parameter_catalog.is_replaced_current_binding(binding.id)
+     ), lineage as (
+       select current_value_id as id from owned
+       union
+       select history.old_current_value_id
+       from lineage
+       join parameter_catalog.binding_history_events history on history.binding_id=$3 and history.new_current_value_id=lineage.id
+       join parameter_catalog.project_parameter_values next on next.id=lineage.id and next.binding_id=$3 and next.definition_revision_id=$5
+       join parameter_catalog.project_parameter_values prior on prior.id=history.old_current_value_id and prior.binding_id=$3
+         and prior.definition_revision_id=$5 and prior.value_state='present'
+       join parameter_catalog.project_value_source_pins pin on pin.project_value_id=next.id and pin.binding_id=$3
+       cross join owned
+       left join public.project_parameter_value_change_requests request on request.id=history.applied_request_id
+         and request.organization_id=$1 and request.project_id=$2 and request.status='approved'
+         and request.apply_outcome='committed' and request.applied_audit_ref=history.success_audit_ref
+       where lineage.id<>$4 and (
+         (history.reason='source-revision-propagation' and next.value_state='present' and next.value_digest=prior.value_digest
+           and next.value_kind=prior.value_kind)
+         or (request.id is not null and (
+           ($7::boolean and next.value_state='deleted' and pin.delete_request_id=request.id
+             and pin.base_source_pin_id=(select id from parameter_catalog.project_value_source_pins where project_value_id=prior.id and binding_id=$3)
+             and prior.value_digest=owned.value_digest)
+           or (not $7::boolean and next.value_state='present' and next.value_digest=$6 and prior.value_digest=owned.value_digest)
+         ))
+       )
+     )
+     select tip.id as "valueId", tip.value_state='deleted' as deleted, tip.value_digest=$6 as "matchesSelection"
+     from owned join parameter_catalog.project_parameter_values tip on tip.id=owned.current_value_id
+     where exists(select 1 from lineage where id=$4)`,
+    [input.organizationId, input.projectId, input.bindingId, input.baseValueId, input.revisionId, input.selectedDigest, input.allowDeletion],
+  );
+  return rows[0] ?? null;
+}
+
 export const countCurrentReferences = async (
   client: MigrationClient,
   organizationId: string | null,

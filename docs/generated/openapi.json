@@ -85755,6 +85755,9 @@
                             "source",
                             "target"
                           ]
+                        },
+                        "targetUpdateRequired": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -86086,6 +86089,9 @@
                               "source",
                               "target"
                             ]
+                          },
+                          "targetUpdateRequired": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -86426,6 +86432,9 @@
                             "source",
                             "target"
                           ]
+                        },
+                        "targetUpdateRequired": {
+                          "type": "boolean"
                         }
                       },
                       "required": [

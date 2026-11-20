@@ -409,9 +409,7 @@ export async function commitCanonicalSourceRevision(
     const pinId = randomUUID();
     const fileVersionId = pin.fileId === manifest.fileId ? version.id : pin.fileVersionId;
     const deleted = target && request.action === "delete";
-    const locatorDigest = deleted && pin.format === "dts"
-      ? ((await db.query<{ digest: string }>(`select parameter_catalog.canonical_dts_delete_locator_digest($1::jsonb) as digest`, [JSON.stringify(locator)])).rows[0]?.digest ?? `sha256:${digest(serializeContract(locator))}`)
-      : `sha256:${digest(serializeContract(locator))}`;
+    const locatorDigest = `sha256:${digest(serializeContract(locator))}`;
     const baseMember = manifest.members.find((member) => member.fileId === pin.fileId && member.fileVersionId === pin.fileVersionId);
     if (deleted && !baseMember) conflict("Deleted source pin is outside the immutable member manifest.");
     const deleteProof = deleted ? pin.format === "dts"

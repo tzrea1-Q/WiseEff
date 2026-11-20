@@ -38,7 +38,7 @@ import { getAuthContext } from "../auth/repository";
 import { CURRENT_POINTER_LOCK_KEY } from "../catalog-kernel/install/lockProtocol";
 import { deriveDtsSourceRef } from "../dts/sourceRef";
 import { dtsValueToPayload } from "../parameter-bindings/catalogProjectValueSync";
-import { digestProjectValuePayload } from "../parameter-bindings/values/repositories";
+import { digestProjectValuePayload, isCurrentGovernedSourceValue, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values/repositories";
 import {
   proveExactDtsProperty,
   type ExactDtsSourceIdentity,
@@ -73,6 +73,7 @@ import {
   loadCandidate,
   loadCurrentBindingTips,
   loadCurrentReleasePin,
+  loadMergeValueProgress,
   loadDefinitionInRelease,
   loadDefinitionIdentity,
   loadPolicyRevision,
@@ -277,6 +278,11 @@ type TipEvaluation = {
   readonly compatible: boolean;
 };
 
+const hasCurrentMergeSource = async (db: Queryable, tip: CurrentTipRow) => {
+  const scope = { organizationId: tip.organization_id, projectId: tip.project_id, bindingId: tip.binding_id, projectValueId: tip.current_value_id };
+  return await isCurrentGovernedSourceValue(db, scope) && !!await loadOwnedProjectValueSourcePin(db, scope);
+};
+
 const exactSourceIdentityOf = (
   row: SourcePropertyProvenanceRow | null,
   organizationId: string,
@@ -449,11 +455,12 @@ export function createParameterCatalogMigrationService(
         newBindingId: row.new_binding_id,
         newValueId: row.new_value_id,
         valueKind: tip?.valueKind ?? "string",
-        compatible: tip ? tip.coupledBindingIds.length === 0 && tip.sourceFormat === "dts" : false,
+        compatible: tip?.mergeConflict ? row.status === "completed" : !!tip && tip.coupledBindingIds.length === 0 && tip.sourceFormat === "dts",
         attemptCount: row.attempt_count,
         registrationRequired: row.status === "blocked" && row.blocker_reason === "registration-required"
           ? true
           : registrationRequired && row.status !== "completed",
+        ...(tip?.mergeConflict ? { mergeConflict: tip.mergeConflict } : {}),
       };
     });
   };
@@ -641,6 +648,7 @@ export function createParameterCatalogMigrationService(
       const blockedByProject = new Map<string, string>();
       let compatibleCount = 0;
       let coupledDefinitionCount = 0;
+      let sourceFormatSupported = true;
 
       // Resolve every sibling's real source location first: coupling is defined
       // over the resolved location, and an opaque recorded ref (for example a
@@ -661,6 +669,7 @@ export function createParameterCatalogMigrationService(
         const targetRowsByBinding = new Map<string, SourcePropertyProvenanceRow | null>();
         const sourceIdentities = new Map<string, ExactDtsSourceIdentity>();
         for (const tip of tips) {
+          if (mergeTips.some(target => target.project_id === tip.project_id)) continue;
           const targetRow = await loadSourcePropertyProvenance(tx, {
             bindingId: tip.binding_id,
             propertyKey: command.newPropertyKey,
@@ -683,6 +692,7 @@ export function createParameterCatalogMigrationService(
         await lockExactSourceRevisionsForProof(tx, [...sourceIdentities.values()]);
         const proofs = new Map<string, FrozenSourceProof | null>();
         for (const tip of tips) {
+          if (!targetRowsByBinding.has(tip.binding_id)) continue;
           proofs.set(
             tip.binding_id,
             await exactSourceProofOf(
@@ -710,8 +720,11 @@ export function createParameterCatalogMigrationService(
           sourceValue: toContractJson(tip.value),
           targetValue: toContractJson(targetTip.value),
           choice: command.mergeChoices && Object.hasOwn(command.mergeChoices, tip.project_id) ? command.mergeChoices[tip.project_id]! : null,
+          targetUpdateRequired: command.mergeChoices?.[tip.project_id] === "source" && tip.value_digest !== targetTip.value_digest,
         } : undefined;
         const recordedSource = resolveSourceLocation(sourceFactsOf(tip));
+        const hasMergeSources = targetTip && targetTips.length === 1 &&
+          await hasCurrentMergeSource(db, tip) && await hasCurrentMergeSource(db, targetTip);
         const targetProof = targetProofsByBinding.get(tip.binding_id) ?? null;
         const source =
           targetProof &&
@@ -751,14 +764,18 @@ export function createParameterCatalogMigrationService(
           exactSourceProof: targetProof,
           ...(mergeConflict ? { mergeConflict } : {}),
         } satisfies FrozenProjectTip;
+        sourceFormatSupported &&= targetTip ? !!hasMergeSources : frozen.sourceFormat === "dts";
         manifest.push(frozen);
         coupledDefinitionCount += frozen.coupledBindingIds.length;
+        const targetSchema = valueSchemaOf(mergeTarget?.revision_content);
         const mergeBlocker = targetTip ? (
-          targetTips.length !== 1 || targetTip.source_occurrence_id !== tip.source_occurrence_id ? "merge-source-occurrence-mismatch"
+          targetTips.length !== 1 ? "merge-multiple-target-bindings"
             : !mergeConflict?.choice ? "merge-choice-required"
-              : mergeConflict.choice === "source" && merge?.source.unit !== merge?.target.unit ? "merge-unit-mismatch"
-                : mergeConflict.choice === "source" && tip.value_digest !== targetTip.value_digest ? "merge-source-value-cutover-required"
-                : null
+              : !hasMergeSources ? "missing-source-provenance"
+                : mergeConflict.choice === "source" && merge?.source.unit !== merge?.target.unit ? "merge-unit-mismatch"
+                : mergeConflict.targetUpdateRequired && targetSchema && !evaluateValueCompatibility(tip.value, targetSchema).compatible
+                  ? "incompatible-value"
+                  : mergeConflict.targetUpdateRequired ? "merge-target-value-required" : "merge-source-removal-required"
         ) : merge && merge.source.unit !== merge.target.unit ? "merge-unit-mismatch" : null;
         const evaluation = mergeBlocker
           ? { status: "blocked" as const, reason: mergeBlocker, compatible: false }
@@ -851,7 +868,7 @@ export function createParameterCatalogMigrationService(
         compatibleProjectCount: compatibleCount,
         blockedProjectCount: blockedByProject.size,
         coupledDefinitionCount,
-        sourceFormatSupported: manifest.every((tip) => tip.sourceFormat === "dts"),
+        sourceFormatSupported,
         oldDefinitionLifecycle: lifecycle,
         oldDefinitionCurrentReferenceCount: referenceProjects.length,
         targetRegistrationRequired: registrationRequired,
@@ -1050,6 +1067,7 @@ export function createParameterCatalogMigrationService(
           const liveTargetRowByProject = new Map<string, SourcePropertyProvenanceRow | null>();
           const sourceIdentityByProject = new Map<string, ExactDtsSourceIdentity | null>();
           const sourceIdentities = new Map<string, ExactDtsSourceIdentity>();
+          const reviewedProjects = new Set(candidateReplacement.frozen_manifest.filter(tip => tip.mergeConflict).map(tip => tip.projectId));
           for (const row of candidateRows) {
             if (row.status === "completed" || (approved && !approved.has(row.project_id))) continue;
             const live = await loadCurrentBindingTips(
@@ -1060,6 +1078,7 @@ export function createParameterCatalogMigrationService(
             );
             const liveTip = live.find((tip) => tip.binding_id === row.old_binding_id) ?? live[0] ?? null;
             liveTipByProject.set(row.project_id, liveTip);
+            if (reviewedProjects.has(row.project_id)) continue;
             const targetRow = liveTip
               ? await loadSourcePropertyProvenance(tx, {
                   bindingId: liveTip.binding_id,
@@ -1165,11 +1184,64 @@ export function createParameterCatalogMigrationService(
         const liveTip = liveTipByProject.get(row.project_id) ?? null;
 
         const block = async (reason: string, evidence: Record<string, unknown>) => {
-          await markReplacementProjectBlocked(tx, row.id, { reason, evidence });
+          await markReplacementProjectBlocked(tx, row.id, { reason, evidence: {
+            ...(row.blocked_evidence?.mergeAwaitingReview === true && reason !== "stale-preview" ? { mergeAwaitingReview: true } : {}),
+            ...evidence,
+          } });
         };
 
         if (registration === null || registration.status !== "active") {
           await block("registration-required", { organizationId, subjectId: replacement.new_subject_id });
+          continue;
+        }
+        if (frozen?.mergeConflict) {
+          const conflict = frozen.mergeConflict;
+          const scope = { organizationId, projectId: row.project_id };
+          const targets = await loadCurrentBindingTips(tx, organizationId, [row.project_id], replacement.new_definition_id);
+          const target = targets[0];
+          if (conflict.targetUpdateRequired === undefined || targets.length !== 1 || !target ||
+              target.binding_id !== conflict.targetBindingId || target.effective_revision_id !== conflict.targetRevisionId ||
+              (liveTip && (liveTip.binding_id !== frozen.bindingId || liveTip.effective_revision_id !== conflict.sourceRevisionId))) {
+            await block("stale-preview", {});
+            continue;
+          }
+          if (!conflict.choice || (conflict.choice === "source" && !mergeUnitsMatch) ||
+              (conflict.targetUpdateRequired && schema && !evaluateValueCompatibility(conflict.sourceValue, schema).compatible)) {
+            await block(!conflict.choice ? "merge-choice-required" : !mergeUnitsMatch ? "merge-unit-mismatch" : "incompatible-value", {});
+            continue;
+          }
+          const selectedDigest = digestProjectValuePayload({ kind: "json", value: conflict.choice === "source" ? conflict.sourceValue : conflict.targetValue });
+          const targetRef = { ...scope, bindingId: target.binding_id, projectValueId: target.current_value_id };
+          if (openDrafts > 0 || openReviews > 0) {
+            await block("pending-work-conflict", { reason: openDrafts > 0 ? "draft" : "review" });
+            continue;
+          }
+          if (row.blocked_evidence?.mergeAwaitingReview !== true) {
+            if (liveTip?.current_value_id !== frozen.currentValueId || target.current_value_id !== conflict.targetValueId) {
+              await block("stale-preview", {});
+              continue;
+            }
+            if (!await hasCurrentMergeSource(tx, liveTip) || !await hasCurrentMergeSource(tx, target)) {
+              await block("missing-source-provenance", {});
+              continue;
+            }
+            await block(conflict.targetUpdateRequired ? "merge-target-value-required" : "merge-source-removal-required", { mergeAwaitingReview: true });
+            continue;
+          }
+          const sourceProgress = await loadMergeValueProgress(tx, { ...scope, selectedDigest, allowDeletion: true,
+            bindingId: frozen.bindingId, baseValueId: frozen.currentValueId, revisionId: conflict.sourceRevisionId });
+          const targetProgress = await loadMergeValueProgress(tx, { ...scope, selectedDigest, allowDeletion: false,
+            bindingId: target.binding_id, baseValueId: conflict.targetValueId, revisionId: conflict.targetRevisionId });
+          if (!sourceProgress || !targetProgress || (liveTip === null) !== sourceProgress.deleted ||
+              !await isCurrentGovernedSourceValue(tx, targetRef)) {
+            await block("stale-preview", {});
+          } else if (!targetProgress.matchesSelection) {
+            await block("merge-target-value-required", {});
+          } else if (!sourceProgress.deleted) {
+            await block("merge-source-removal-required", {});
+          } else {
+            await markReplacementProjectCompleted(tx, row.id, { newBindingId: target.binding_id, newValueId: targetProgress.valueId });
+          }
           continue;
         }
         const liveSource = liveTip ? resolveSourceLocation(sourceFactsOf(liveTip)) : null;
@@ -1200,29 +1272,6 @@ export function createParameterCatalogMigrationService(
           (liveTip.config_revision_id ?? "") !== frozen.configRevisionId
         ) {
           await block("stale-preview", staleEvidence);
-          continue;
-        }
-        if (frozen.mergeConflict) {
-          const conflict = frozen.mergeConflict;
-          const targets = await loadCurrentBindingTips(tx, organizationId, [row.project_id], replacement.new_definition_id);
-          const target = targets[0];
-          if (targets.length !== 1 || !target || target.binding_id !== conflict.targetBindingId ||
-              target.current_value_id !== conflict.targetValueId || target.effective_revision_id !== conflict.targetRevisionId ||
-              liveTip.effective_revision_id !== conflict.sourceRevisionId) {
-            await block("stale-preview", { ...staleEvidence, targetValueId: target?.current_value_id ?? null });
-          } else if (target.source_occurrence_id !== liveTip.source_occurrence_id) {
-            await block("merge-source-occurrence-mismatch", { targetBindingId: target.binding_id });
-          } else if (openDrafts > 0 || openReviews > 0) {
-            await block("pending-work-conflict", { reason: openDrafts > 0 ? "draft" : "review" });
-          } else if (!conflict.choice) {
-            await block("merge-choice-required", { targetBindingId: target.binding_id });
-          } else if (conflict.choice === "source" && !mergeUnitsMatch) {
-            await block("merge-unit-mismatch", { targetBindingId: target.binding_id });
-          } else if (conflict.choice === "source" && liveTip.value_digest !== target.value_digest) {
-            await block("merge-source-value-cutover-required", { targetBindingId: target.binding_id });
-          } else {
-            await markReplacementProjectCompleted(tx, row.id, { newBindingId: target.binding_id, newValueId: target.current_value_id });
-          }
           continue;
         }
         if (!mergeUnitsMatch) {
