@@ -20,7 +20,8 @@ import { createWorkerLogAnalysisToolBackends } from "./analyzer/tools/workerTool
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../testing/labRuntimeLogins";
 import type { SourceSnapshotDto } from "./sourceSnapshots";
 import type { getLogSkill } from "./skillsService";
-import type { LogRecordDto, LogRunDto } from "./types";
+import type { LogRunDto } from "./repository";
+import type { LogRecordDto } from "./types";
 type Skill = Awaited<ReturnType<typeof getLogSkill>>;
 
 describe("archived source snapshot restoration over HTTP and PostgreSQL", () => {
