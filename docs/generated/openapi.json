@@ -4992,6 +4992,77 @@
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
+      },
+      "patch": {
+        "operationId": "parameterFiles.updateDraftBaseline",
+        "summary": "Correct the name and notes of a draft configuration baseline",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "baselineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDraftBaselineRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseBaselineResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
       }
     },
     "/api/v1/projects/{projectId}/baselines/{baselineId}/compare": {
@@ -11907,6 +11978,67 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProjectParameterBindingListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "get": {
+        "operationId": "parameterFiles.listJsonCorrectionOptions",
+        "summary": "List current JSON instances, bindings and available target schemas",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonCorrectionOptionsResponse"
                 }
               }
             }
@@ -28277,6 +28409,476 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}": {
+      "patch": {
+        "operationId": "parameterFiles.updateConfigSetMetadata",
+        "summary": "Correct a named configuration set's name and description",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConfigurationMetadataRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectedConfigSetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/baselines/{baselineId}/errata": {
+      "post": {
+        "operationId": "parameterFiles.appendBaselineErratum",
+        "summary": "Append sourced errata to a published configuration baseline",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "baselineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppendBaselineErratumRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseBaselineResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}/files/{fileId}/path-correction/preview": {
+      "post": {
+        "operationId": "parameterFiles.previewPathCorrection",
+        "summary": "Preview a private source path correction and affected include locations",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathCorrectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathCorrectionPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}/files/{fileId}/path-correction/apply": {
+      "post": {
+        "operationId": "parameterFiles.applyPathCorrection",
+        "summary": "Apply a verified path correction with immutable file versions and a configuration revision",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathCorrectionApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathCorrectionApplyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-files/{fileId}/configuration-instances/{occurrenceId}/correction/preview": {
+      "post": {
+        "operationId": "parameterFiles.previewJsonCorrection",
+        "summary": "Validate a proposed JSON instance association and return exact mapped values",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "occurrenceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonCorrectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonCorrectionPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-files/{fileId}/configuration-instances/{occurrenceId}/correction/apply": {
+      "post": {
+        "operationId": "parameterFiles.applyJsonCorrection",
+        "summary": "Supersede a current JSON instance while retaining its values and source history",
+        "tags": [
+          "parameter-files"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "occurrenceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonCorrectionApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonCorrectionApplyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/config-set-import/preview": {
       "post": {
         "operationId": "parameterFiles.previewConfigSetImport",
@@ -37374,6 +37976,117 @@
       },
       "ReleaseBaselineDetailResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "released",
+                  "historical"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "createdBy": {
+                "type": "string"
+              },
+              "errata": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "note": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "actorName": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "note",
+                    "source",
+                    "id",
+                    "actorName",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "configSetId",
+              "name",
+              "status",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "baselineId": {
+                  "type": "string"
+                },
+                "fileId": {
+                  "type": "string"
+                },
+                "fileVersionId": {
+                  "type": "string"
+                },
+                "fileName": {
+                  "type": "string"
+                },
+                "versionNumber": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "baselineId",
+                "fileId",
+                "fileVersionId",
+                "versionNumber"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "item",
+          "members"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ReleaseBaselineDetailResponse"
       },
       "ReleaseBaselineCompareResponse": {
@@ -81142,6 +81855,827 @@
         "type": "object",
         "x-wiseeff-schema": "ConfigSetResponse"
       },
+      "UpdateConfigurationMetadataRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "UpdateConfigurationMetadataRequest"
+      },
+      "CorrectedConfigSetResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "derivedFromId": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "projectId",
+              "name",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CorrectedConfigSetResponse"
+      },
+      "UpdateDraftBaselineRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "UpdateDraftBaselineRequest"
+      },
+      "ReleaseBaselineResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "released",
+                  "historical"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "createdBy": {
+                "type": "string"
+              },
+              "errata": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "note": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "actorName": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "note",
+                    "source",
+                    "id",
+                    "actorName",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "configSetId",
+              "name",
+              "status",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ReleaseBaselineResponse"
+      },
+      "AppendBaselineErratumRequest": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "note",
+          "source"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "AppendBaselineErratumRequest"
+      },
+      "PathCorrectionRequest": {
+        "type": "object",
+        "properties": {
+          "sourceName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceName"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "PathCorrectionRequest"
+      },
+      "PathCorrectionPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "proofToken": {
+                "type": "string"
+              },
+              "entryFile": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "includeSearchPaths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "overlayOrder": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "diagnostics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "sourceName": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "number"
+                    },
+                    "node": {
+                      "type": "string"
+                    },
+                    "property": {
+                      "type": "string"
+                    },
+                    "fileId": {
+                      "type": "string"
+                    },
+                    "fileVersionId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "versionId": {
+                      "type": "string"
+                    },
+                    "memberId": {
+                      "type": "string"
+                    },
+                    "identity": {
+                      "type": "boolean"
+                    },
+                    "projectCorrection": {
+                      "type": "boolean"
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": [
+                        "error",
+                        "warning"
+                      ]
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "rawMessage": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "severity",
+                    "code"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "pathCorrection": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "references": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "sourceName": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "number"
+                        },
+                        "column": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "sourceName",
+                        "target",
+                        "line",
+                        "column"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "versions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "fileVersionId": {
+                          "type": "string"
+                        },
+                        "baseFileVersionId": {
+                          "type": "string"
+                        },
+                        "contentChanged": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "fileId",
+                        "fileVersionId",
+                        "baseFileVersionId",
+                        "contentChanged"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "references",
+                  "versions"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "proofToken",
+              "entryFile",
+              "includeSearchPaths",
+              "overlayOrder",
+              "diagnostics",
+              "pathCorrection"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "PathCorrectionPreviewResponse"
+      },
+      "PathCorrectionApplyRequest": {
+        "type": "object",
+        "properties": {
+          "sourceName": {
+            "type": "string"
+          },
+          "proofToken": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "clientMutationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceName",
+          "proofToken",
+          "reason",
+          "clientMutationId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "PathCorrectionApplyRequest"
+      },
+      "PathCorrectionApplyResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "fileVersionId": {
+                "type": "string"
+              },
+              "configRevisionId": {
+                "type": "string"
+              },
+              "pathCorrection": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "references": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "sourceName": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "number"
+                        },
+                        "column": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "sourceName",
+                        "target",
+                        "line",
+                        "column"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "versions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fileId": {
+                          "type": "string"
+                        },
+                        "fileVersionId": {
+                          "type": "string"
+                        },
+                        "baseFileVersionId": {
+                          "type": "string"
+                        },
+                        "contentChanged": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "fileId",
+                        "fileVersionId",
+                        "baseFileVersionId",
+                        "contentChanged"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "references",
+                  "versions"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "requestId",
+              "fileId",
+              "fileVersionId",
+              "configRevisionId",
+              "pathCorrection"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "PathCorrectionApplyResponse"
+      },
+      "JsonCorrectionOptionsResponse": {
+        "type": "object",
+        "properties": {
+          "configSetId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fileVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "occurrenceId": {
+                  "type": "string"
+                },
+                "configurationInstanceId": {
+                  "type": "string"
+                },
+                "subjectId": {
+                  "type": "string"
+                },
+                "configurationSchemaId": {
+                  "type": "string"
+                },
+                "rootPointer": {
+                  "type": "string"
+                },
+                "bindings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "definitionId": {
+                        "type": "string"
+                      },
+                      "pointer": {
+                        "type": "string"
+                      },
+                      "value": {},
+                      "bindingId": {
+                        "type": "string"
+                      },
+                      "valueId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "definitionId",
+                      "pointer",
+                      "value",
+                      "bindingId",
+                      "valueId"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "occurrenceId",
+                "configurationInstanceId",
+                "subjectId",
+                "configurationSchemaId",
+                "rootPointer",
+                "bindings"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "schemas": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "definitions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "key": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "key"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "definitions"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "configSetId",
+          "fileVersionId",
+          "items",
+          "schemas"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "JsonCorrectionOptionsResponse"
+      },
+      "JsonCorrectionRequest": {
+        "type": "object",
+        "properties": {
+          "configurationSchemaId": {
+            "type": "string"
+          },
+          "rootPointer": {
+            "type": "string"
+          },
+          "mappings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "definitionId": {
+                  "type": "string"
+                },
+                "pointer": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "definitionId",
+                "pointer"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "configurationSchemaId",
+          "rootPointer",
+          "mappings"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "JsonCorrectionRequest"
+      },
+      "JsonCorrectionPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "proofToken": {
+                "type": "string"
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "pointer": {
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "definitionId",
+                    "pointer",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "proofToken",
+              "values"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "JsonCorrectionPreviewResponse"
+      },
+      "JsonCorrectionApplyRequest": {
+        "type": "object",
+        "properties": {
+          "configurationSchemaId": {
+            "type": "string"
+          },
+          "rootPointer": {
+            "type": "string"
+          },
+          "mappings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "definitionId": {
+                  "type": "string"
+                },
+                "pointer": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "definitionId",
+                "pointer"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "proofToken": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "clientMutationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "configurationSchemaId",
+          "rootPointer",
+          "mappings",
+          "proofToken",
+          "reason",
+          "clientMutationId"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "JsonCorrectionApplyRequest"
+      },
+      "JsonCorrectionApplyResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "fileVersionId": {
+                "type": "string"
+              },
+              "configRevisionId": {
+                "type": "string"
+              },
+              "jsonCorrection": {
+                "type": "object",
+                "properties": {
+                  "previousOccurrenceId": {
+                    "type": "string"
+                  },
+                  "successorOccurrenceId": {
+                    "type": "string"
+                  },
+                  "bindingIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "previousOccurrenceId",
+                  "successorOccurrenceId",
+                  "bindingIds"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "requestId",
+              "fileId",
+              "fileVersionId",
+              "configRevisionId",
+              "jsonCorrection"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "JsonCorrectionApplyResponse"
+      },
       "AddConfigSetFileRequest": {
         "type": "object",
         "x-wiseeff-schema": "AddConfigSetFileRequest"
@@ -82919,15 +84453,94 @@
       },
       "ReleaseBaselineListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "organizationId": {
+                  "type": "string"
+                },
+                "configSetId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "released",
+                    "historical"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "createdBy": {
+                  "type": "string"
+                },
+                "errata": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "note": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "actorName": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "note",
+                      "source",
+                      "id",
+                      "actorName",
+                      "createdAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "organizationId",
+                "configSetId",
+                "name",
+                "status",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ReleaseBaselineListResponse"
       },
       "CreateReleaseBaselineRequest": {
         "type": "object",
         "x-wiseeff-schema": "CreateReleaseBaselineRequest"
-      },
-      "ReleaseBaselineResponse": {
-        "type": "object",
-        "x-wiseeff-schema": "ReleaseBaselineResponse"
       },
       "SubmitStructuredEditsRequest": {
         "type": "object",

@@ -338,7 +338,8 @@ describe("config set and baseline routes", () => {
     expect(baselineService.listBaselines).toHaveBeenCalledWith(
       db,
       expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
-      "cs-1"
+      "cs-1",
+      "project-1"
     );
   });
 
