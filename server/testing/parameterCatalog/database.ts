@@ -263,7 +263,9 @@ export const S2_SCH_0337_FINGERPRINT = "0eb643b1c8438c3ce184060ef0239e4caf3a1775
 export const S2_SCH_0338_FINGERPRINT = "91311a8fbd21e52e89c3ea854fe8f74b6d98a2ebb9c1ce12eeefe36d99436954";
 /** The #1578 subject-rule and alias-scope migrations in the current native schema. */
 export const S2_SCH_0341_FINGERPRINT = "5147f7d02a93266d181ed47ceba1056f9a3467227874a2ab19ad58650487ec0b";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0341_FINGERPRINT;
+/** The native schema including the integration branch's reviewed definition merge. */
+export const S2_SCH_0344_FINGERPRINT = "2f4891e9b70ac0ef2e86449afe2dd55a5b4f9532c886e81ad3d1b3a31f9c1a76";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0344_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
