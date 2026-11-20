@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-18T17:05:53.177Z",
+  "generatedAt": "2026-11-20T00:33:16.046Z",
   "promptVersion": "2026-10-19.procedure.signals.source.2",
   "loopPromptVersion": "2026-10-19.loop.procedure.signals.source.11",
   "total": 66,
@@ -4057,8 +4057,9 @@
           ]
         ],
         "conclusion": "充电表现符合过热保护降额特征。",
-        "traceStepCount": 3,
+        "traceStepCount": 4,
         "traceKinds": [
+          "early-convergence",
           "model-turn",
           "degradation",
           "rule-fallback"

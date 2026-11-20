@@ -64,6 +64,16 @@ function contentToText(content: unknown): string {
   return String(content ?? "");
 }
 
+/**
+ * Reasoning models (for example MiniMax-M3, DeepSeek-R1, Qwen3) can put their
+ * reasoning in the reply as a leading `<think>…</think>` block. It is neither
+ * the answer nor history worth resending; an unclosed block means truncation.
+ */
+function stripLeadingReasoning(text: string) {
+  const stripped = text.replace(/^\s*(?:<think>[\s\S]*?<\/think>\s*)+/, "");
+  return /^\s*<think>/.test(stripped) ? "" : stripped;
+}
+
 function createChatOpenAiModel(
   env: LogAnalyzerEnv, modelLabel: string, defaultMaxTokens: number
 ): LogAnalysisChatModel {
@@ -81,7 +91,7 @@ function createChatOpenAiModel(
   const chat = new ChatOpenAI(settings);
   const nativeChat = new ChatOpenAICompletions(settings);
   const readResponse = (response: Awaited<ReturnType<typeof chat.invoke>>) => ({
-    content: contentToText(response.content),
+    content: stripLeadingReasoning(contentToText(response.content)),
     usage: {
       inputTokens: response.usage_metadata?.input_tokens,
       outputTokens: response.usage_metadata?.output_tokens

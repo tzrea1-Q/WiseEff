@@ -139,12 +139,13 @@ describe("pinned skill runtime budgets", () => {
   });
 
   it("uses the platform token budget when the skill does not override it", async () => {
+    // The final-answer reserve stops this three-turn fixture early at 8,000 tokens.
     const content = await readFile(new URL("../../../../test-fixtures/logs/charging-foldback.log", import.meta.url), "utf8");
     const parsed = parseLogText({ fileName: "charging-foldback.log", content });
     if (!parsed.ok) throw new Error("Fixture must parse");
-    for (const logDomain of [undefined, { name: "No budget override" }, { name: "Explicit revision budget", tokenBudget: 8000 }]) {
+    for (const logDomain of [undefined, { name: "No budget override" }, { name: "Explicit revision budget", tokenBudget: 10_000 }]) {
       const calls: string[] = [];
-      const output = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_TOKEN_BUDGET: 8000, LOG_ANALYSIS_PROTOCOL: "json" }, {
+      const output = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_TOKEN_BUDGET: 10_000, LOG_ANALYSIS_PROTOCOL: "json" }, {
         telemetry: { recordLlmCall: (call) => { calls.push(call.outcome); } }
       }).analyze({ parsed, analysisQuestion: "Why did fast charging fold back?", logDomain });
       expect(output).toMatchObject({ analysisSource: "agent", conclusion: expect.stringMatching(/过热|降额/) });
@@ -152,7 +153,7 @@ describe("pinned skill runtime budgets", () => {
       expect(calls).toEqual(["ok", "ok", "ok"]);
 
       calls.length = 0;
-      const bounded = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_TOKEN_BUDGET: 8000, LOG_ANALYSIS_PROTOCOL: "json" }, {
+      const bounded = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_TOKEN_BUDGET: 10_000, LOG_ANALYSIS_PROTOCOL: "json" }, {
         telemetry: { recordLlmCall: (call) => { calls.push(call.outcome); } }
       }).analyze({ parsed, procedure: "Review the captured evidence. ".repeat(220), logDomain });
       expect(bounded).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted", confidence: 0.3 });
@@ -184,5 +185,69 @@ describe("pinned skill runtime budgets", () => {
       expect(steps).toEqual([1, 6]);
       expect(output.degradedReason).toBe("token-budget-exhausted");
     }
+  });
+});
+
+describe("reasoning-model replies", () => {
+  const report = { conclusion: "Thermal foldback", impact: "Reduced current", severity: "Warning", confidence: 0.8,
+    suggestedActions: ["Inspect cooling"], evidence: [{ lineNumbers: [1], inference: "Foldback logged", suggestedAction: "Inspect cooling" }] };
+  const think = "<think>The user wants JSON. Maybe action tools? Let me plan the reads.</think>\n\n";
+
+  it.each([
+    { protocol: "json" as const, replies: [
+      { content: `${think}${JSON.stringify({ action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } })}` },
+      { content: `${think}${JSON.stringify({ action: "final", ...report })}` }
+    ] },
+    { protocol: "tools" as const, replies: [
+      { content: think, tool_calls: [{ id: "a", type: "function", function: { name: "get_prefilter_findings", arguments: "{}" } }] },
+      { content: think, tool_calls: [{ id: "b", type: "function", function: { name: "final_report", arguments: JSON.stringify(report) } }] }
+    ] }
+  ])("ignores a leading <think> block with the $protocol protocol and keeps it out of history", async ({ protocol, replies }) => {
+    const parsed = parseLogText({ fileName: "power.log", content: "ERROR thermal foldback" });
+    if (!parsed.ok) throw new Error("Fixture must parse");
+    const requests: Array<{ messages: Array<{ content: string | null }> }> = [];
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      const message = replies[Math.min(requests.length, replies.length) - 1];
+      return Response.json({ choices: [{ message: { role: "assistant", ...message }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 100, completion_tokens: 40 } });
+    });
+    try {
+      const output = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_DETERMINISTIC: false,
+        LOG_ANALYSIS_API_BASE_URL: "https://reasoning.example.invalid/v1", LOG_ANALYSIS_API_KEY: "fixture-key",
+        LOG_ANALYSIS_PROTOCOL: protocol }).analyze({ parsed });
+      expect(output).toMatchObject({ analysisSource: "agent", conclusion: "Thermal foldback" });
+      expect(output.degradedReason).toBeUndefined();
+      expect(requests).toHaveLength(replies.length);
+      expect(JSON.stringify(requests.map(({ messages }) => messages))).not.toContain("<think>");
+    } finally { fetch.mockRestore(); }
+  });
+});
+
+describe("final-answer allowance", () => {
+  it("keeps a full final-answer output allowance when investigation turns spend their whole output cap", async () => {
+    const parsed = parseLogText({ fileName: "power.log", content: "ERROR thermal foldback" });
+    if (!parsed.ok) throw new Error("Fixture must parse");
+    const finalCaps: number[] = [];
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const request = JSON.parse(String(init?.body)) as { max_tokens: number; messages: { content: string }[] };
+      const converging = request.messages.some(({ content }) => content.includes("Budget exhausted:"));
+      if (converging) finalCaps.push(request.max_tokens);
+      const message = converging ? { action: "final", conclusion: "Thermal foldback", impact: "Reduced current",
+        severity: "Warning", confidence: 0.9, suggestedActions: ["Inspect cooling"], evidence: [{ lineNumbers: [1], inference: "Foldback logged", suggestedAction: "Inspect cooling" }] }
+        : { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } };
+      const inputTokens = 8 + request.messages.reduce((sum, { content }) => sum + 4 + Math.ceil(Buffer.byteLength(content) / 4), 0);
+      return Response.json({ choices: [{ message: { role: "assistant", content: JSON.stringify(message) }, finish_reason: "stop" }],
+        usage: { prompt_tokens: inputTokens, completion_tokens: converging ? 100 : request.max_tokens } });
+    });
+    try {
+      const output = await createLogAnalyzerFromEnv({ ...env, LOG_ANALYSIS_DETERMINISTIC: false,
+        LOG_ANALYSIS_API_BASE_URL: "https://allowance.example.invalid/v1", LOG_ANALYSIS_API_KEY: "fixture-key",
+        LOG_ANALYSIS_PROTOCOL: "json", LOG_ANALYSIS_TOKEN_BUDGET: 24_000 }).analyze({ parsed });
+      expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted" });
+      expect(finalCaps).toHaveLength(1);
+      // Reasoning models spend output on thinking before the report; 2,048 tokens truncated MiniMax-M3 reports.
+      expect(finalCaps[0]).toBeGreaterThanOrEqual(3_000);
+    } finally { fetch.mockRestore(); }
   });
 });

@@ -898,6 +898,20 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(trace).toContainEqual(expect.objectContaining({ kind: "early-convergence", reason: "step-budget-exhausted" }));
   });
 
+  it("keeps a grounded final report whose reported usage overshoots the budget", async () => {
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } },
+        usage: { inputTokens: 6250, outputTokens: 150 } },
+      { content: finalPayload, usage: { inputTokens: 1600, outputTokens: 400 } }
+    ], { tokenBudget: 8000 });
+
+    const output = await adapter.analyze(buildInput());
+
+    expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "token-budget-exhausted", confidence: 0.5,
+      evidence: [{ lineNumbers: [3, 4] }] });
+    expect(model.calls).toHaveLength(2);
+  });
+
   it("uses the remaining token budget for a grounded final report after investigation uses 80%", async () => {
     const { adapter, model } = analyzer([
       { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } },

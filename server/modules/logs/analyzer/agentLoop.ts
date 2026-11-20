@@ -485,11 +485,14 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
           ? `${HYPOTHESIS_LEDGER_PROMPT}\n${JSON.stringify(hasChecklist ? { hypotheses, checks } : hypotheses)}`
           : `Checklist progress (untrusted prior notes):\n${JSON.stringify(checks)}` };
       };
-      const convergenceCost = (history = messages) => estimateLogPromptTokens([...history, convergenceMessage()], protocol === "tools" ? finalToolTokens : 0)
-        + MIN_LOG_ANALYSIS_OUTPUT_TOKENS;
-      // Leave room for the next tool summary or correction to grow the final prompt.
+      const convergenceCost = (history = messages, outputTokens = MIN_LOG_ANALYSIS_OUTPUT_TOKENS) =>
+        estimateLogPromptTokens([...history, convergenceMessage()], protocol === "tools" ? finalToolTokens : 0) + outputTokens;
+      // Investigation stops while the final call can still afford a full report: reasoning
+      // models spend output on thinking first. Leave room for the next tool summary too.
+      const finalOutputReserve = Math.max(MIN_LOG_ANALYSIS_OUTPUT_TOKENS,
+        Math.min(logCompletionLimit(options.tokenBudget), Math.floor(options.tokenBudget * FINAL_ANSWER_RESERVE_FRACTION)));
       const investigationLimit = (history = messages) => Math.min(investigationBudget,
-        options.tokenBudget - convergenceCost(history) - CONVERGENCE_CONTEXT_HEADROOM_TOKENS);
+        options.tokenBudget - convergenceCost(history, finalOutputReserve) - CONVERGENCE_CONTEXT_HEADROOM_TOKENS);
 
       const invokeModel = async (finalOnly = false, mayProbe = false): Promise<{ content: string; turn?: LoopTurn; exhausted?: boolean }> => {
         refreshNotes();
@@ -546,7 +549,8 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
         const outputTokens = response.usage?.outputTokens ?? estimateLogTokens(outputText);
         usedTokens += inputTokens + outputTokens;
         const exhausted = usedTokens > options.tokenBudget;
-        const turn = exhausted ? undefined : readLoopTurn(response, protocol, options.repairJsonOutput);
+        // The final call's tokens are already spent; a grounded report it returns is still delivered.
+        const turn = exhausted && !finalOnly ? undefined : readLoopTurn(response, protocol, options.repairJsonOutput);
         const validOutput = turn !== undefined && (turn.action === "tools"
           ? !finalOnly && !turn.overLimit && !turn.calls.some((call) => call.malformed)
           : groundLlmEvidence(turn.report.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources).length > 0);
@@ -798,16 +802,16 @@ ${JSON.stringify({ conclusion: report.conclusion, evidence: report.evidence,
       messages.push(convergenceMessage());
 
       const { turn: convergenceStep, exhausted } = await invokeModel(true);
-      if (exhausted) return degrade("token-budget-exhausted");
+      const convergenceReason = exhausted ? "token-budget-exhausted" : budgetReason;
       if (convergenceStep && convergenceStep.action === "final") {
         const grounded = groundLlmEvidence(convergenceStep.report.evidence, parsedLineNumbers, seenFiles, defaultFile, seenSources);
         if (grounded.length > 0) {
-          options.telemetry?.recordDegraded?.({ reason: budgetReason, model: options.modelLabel });
-          return deliver(buildSuccessOutput(convergenceStep.report, grounded, budgetReason), maxSteps, false);
+          options.telemetry?.recordDegraded?.({ reason: convergenceReason, model: options.modelLabel });
+          return deliver(buildSuccessOutput(convergenceStep.report, grounded, convergenceReason), maxSteps, false);
         }
       }
 
-      return degrade(budgetReason);
+      return degrade(convergenceReason);
     }
   };
 }

@@ -19,6 +19,7 @@ export function estimateLogToolTokens(tools: LogAnalysisNativeTool[]) {
   return estimateLogTokens(JSON.stringify(tools.map((tool) => convertToOpenAITool(tool))));
 }
 
+/** Reasoning models spend output on thinking before a report, so large budgets allow 4,096 output tokens. */
 export function logCompletionLimit(tokenBudget: number) {
-  return Math.min(2048, Math.max(256, Math.floor(tokenBudget / 4)));
+  return Math.min(4096, Math.max(256, Math.floor(tokenBudget / 4)));
 }
