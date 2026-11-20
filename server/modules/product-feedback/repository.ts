@@ -34,6 +34,7 @@ export type ProductFeedbackRow = {
   page_path: string;
   page_title: string;
   feedback_type: ProductFeedbackType;
+  effective_feedback_type?: ProductFeedbackType | null;
   description: string;
   status: ProductFeedbackStatus;
   resolution_code: ProductFeedbackResolutionCode | null;
@@ -183,6 +184,7 @@ function toFeedbackAdminDto(
     pagePath: row.page_path,
     pageTitle: row.page_title,
     feedbackType: row.feedback_type,
+    effectiveFeedbackType: row.effective_feedback_type ?? row.feedback_type,
     description: row.description,
     status: row.status,
     resolutionCode: row.resolution_code,
@@ -486,6 +488,7 @@ export async function getFeedbackById(
       feedback.page_path,
       feedback.page_title,
       feedback.feedback_type,
+      feedback.effective_feedback_type,
       feedback.description,
       feedback.status,
       feedback.resolution_code,
@@ -578,7 +581,7 @@ export async function listFeedback(
     addCondition(where, values, (p) => `feedback.status = ${p}`, query.status);
   }
   if (query.feedbackType) {
-    addCondition(where, values, (p) => `feedback.feedback_type = ${p}`, query.feedbackType);
+    addCondition(where, values, (p) => `${effectiveFeedbackTypeSql} = ${p}`, query.feedbackType);
   }
   const q = query.q?.trim();
   if (q) {
@@ -618,6 +621,7 @@ export async function listFeedback(
       feedback.page_path,
       feedback.page_title,
       feedback.feedback_type,
+      feedback.effective_feedback_type,
       feedback.description,
       feedback.status,
       feedback.resolution_code,
@@ -756,6 +760,10 @@ export async function updateFeedback(
   if (hasPatchKey(patch, "priority")) {
     values.push(patch.priority);
     sets.push(`priority = $${values.length}`);
+  }
+  if (patch.effectiveFeedbackType !== undefined) {
+    values.push(patch.effectiveFeedbackType);
+    sets.push(`effective_feedback_type = nullif($${values.length}, feedback_type)`);
   }
   if (hasPatchKey(patch, "assigneeUserId")) {
     values.push(patch.assigneeUserId ?? null);
@@ -1003,6 +1011,7 @@ export async function getFeedbackForUpdate(
       feedback.page_path,
       feedback.page_title,
       feedback.feedback_type,
+      feedback.effective_feedback_type,
       feedback.description,
       feedback.status,
       feedback.resolution_code,
@@ -1049,6 +1058,8 @@ export async function updateFeedbackProgressStatus(
   );
 }
 
+const effectiveFeedbackTypeSql = "coalesce(feedback.effective_feedback_type, feedback.feedback_type)";
+
 export async function getFeedbackStats(
   db: Queryable,
   auth: AuthContext
@@ -1059,6 +1070,7 @@ export async function getFeedbackStats(
     in_progress: string | number;
     resolved: string | number;
     closed: string | number;
+    by_type: ProductFeedbackStatsDto["byType"];
   }>(
     `
     select
@@ -1066,8 +1078,14 @@ export async function getFeedbackStats(
       count(*) filter (where status = 'open')::integer as open,
       count(*) filter (where status = 'in_progress')::integer as in_progress,
       count(*) filter (where status = 'resolved')::integer as resolved,
-      count(*) filter (where status = 'closed')::integer as closed
-    from product_feedback
+      count(*) filter (where status = 'closed')::integer as closed,
+      jsonb_build_object(
+        'experience', count(*) filter (where ${effectiveFeedbackTypeSql} = 'experience'),
+        'data', count(*) filter (where ${effectiveFeedbackTypeSql} = 'data'),
+        'export_submit', count(*) filter (where ${effectiveFeedbackTypeSql} = 'export_submit'),
+        'feature', count(*) filter (where ${effectiveFeedbackTypeSql} = 'feature')
+      ) as by_type
+    from product_feedback feedback
     where organization_id = $1
       and submitted_at is not null
     `,
@@ -1080,7 +1098,8 @@ export async function getFeedbackStats(
     open: Number(row.open),
     inProgress: Number(row.in_progress),
     resolved: Number(row.resolved),
-    closed: Number(row.closed)
+    closed: Number(row.closed),
+    byType: ("by_type" in row ? row.by_type : undefined) ?? { experience: 0, data: 0, export_submit: 0, feature: 0 }
   };
 }
 

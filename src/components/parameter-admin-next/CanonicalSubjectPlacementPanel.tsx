@@ -45,6 +45,7 @@ import { toAttributionFlatNodes } from "@/components/parameter-topology/moduleAt
 import type { ModuleTreeSubject } from "@/components/parameter-topology/ModuleAttributionTree";
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
 import { SubjectRecognitionDialog } from "./SubjectRecognitionDialog";
+import { SubjectIdentityPublicationDialog } from "@/features/parameter-catalog-governance/SubjectIdentityPublicationDialog";
 
 const SUBJECT_KIND_LABEL: Record<CatalogSubjectResponse["item"]["type"], string> = {
   driver: "驱动",
@@ -68,6 +69,7 @@ function placementEtag(response: CatalogPlacementResponseWithEtag): string | nul
 
 type SubjectRow = CatalogSubjectResponse["item"];
 type RegistrationRow = CatalogRegistrationListResponse["items"][number];
+type Inventory = { subjects: SubjectRow[]; registrations: RegistrationRow[]; releaseId: string };
 
 type DefinitionState =
   | { status: "idle" }
@@ -91,7 +93,6 @@ export type CanonicalSubjectPlacementPanelProps = {
   selectedSubjectId?: string | null;
   onTreeSubjectsChange?: (subjects: ModuleTreeSubject[]) => void;
   refreshKey?: number;
-  managedRefresh?: boolean;
   onNavigate?: (path: string) => void;
   search?: string;
   visibleModuleIds?: readonly string[] | null;
@@ -118,7 +119,6 @@ export function CanonicalSubjectPlacementPanel({
   selectedSubjectId,
   onTreeSubjectsChange,
   refreshKey = 0,
-  managedRefresh = false,
   onNavigate,
   search: searchProp,
   visibleModuleIds,
@@ -135,26 +135,36 @@ export function CanonicalSubjectPlacementPanel({
   const [registrations, setRegistrations] = useState<RegistrationRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(true);
   const [inventoryComplete, setInventoryComplete] = useState(false);
+  const inventoryReady = inventoryComplete && !refreshing;
   const [localSearch, setLocalSearch] = useState("");
   const params = useMemo(() => new URLSearchParams(searchProp ?? localSearch), [searchProp, localSearch]);
   const [createSubjectOpen, setCreateSubjectOpen] = useState(false);
   const [createOwnerSubjectId, setCreateOwnerSubjectId] = useState<string | undefined>();
   const [recognitionSubject, setRecognitionSubject] = useState<{ registrationId: string; subject: SubjectRow } | null>(null);
+  const [identitySubjectId, setIdentitySubjectId] = useState<string | null>(null);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationError, setPublicationError] = useState("");
-  const canAuthorSubject = canAdmin && catalogActionsForSession({ actor, permissions: sessionPermissions }).includes("preview-publication");
+  const [publicationRefresh, setPublicationRefresh] = useState(0);
+  const sessionActions = catalogActionsForSession({ actor, permissions: sessionPermissions });
+  const canAuthorSubject = canAdmin && sessionActions.includes("preview-publication");
+  const canManageIdentity = actor === "platform-admin" && sessionActions.some(action =>
+    action === "preview-publication" || action === "review-high-risk-publication" || action === "publish-publication");
+  const identitySubject = subjects.find(subject => subject.id === identitySubjectId);
   const canCreateSubject = canAuthorSubject && isCatalogActionEnabled(actor, "preview-publication", domainState, sessionPermissions);
   useEffect(() => {
     let cancelled = false;
     setPublicationSurface(null);
     setPublicationError("");
-    if (!canAuthorSubject) return;
-    void catalog.getPublicationSurface().then(({ item }) => {
+    if (!canAuthorSubject && !canManageIdentity) return;
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+      const { item } = await catalog.getPublicationSurface();
       if (!cancelled) setPublicationSurface(item);
     }).catch(() => { if (!cancelled) setPublicationError("无法读取目录编写状态，请刷新规范数据后重试。"); });
     return () => { cancelled = true; };
-  }, [catalog, organizationId, canAuthorSubject, refreshKey]);
+  }, [catalog, organizationId, canAuthorSubject, canManageIdentity, refreshKey, publicationRefresh]);
   const subjectCreationRequested = createSubjectOpen || params.get("createSubject") === "1";
   const publicationAdvisory = publicationSurface ? publicationSurfaceAdvisory(publicationSurface) : null;
   const closeSubjectCreation = () => {
@@ -186,6 +196,9 @@ export function CanonicalSubjectPlacementPanel({
     else setLocalSearch(next.toString());
   };
   const readGeneration = useRef(0);
+  const readScope = useMemo(() => ({ catalog, governance, organizationId }), [catalog, governance, organizationId]);
+  const pendingRead = useRef<{ scope: typeof readScope; promise: Promise<Inventory | null> } | null>(null);
+  const completedRead = useRef<{ scope: typeof readScope; releaseId: string } | null>(null);
   const placementGeneration = useRef(0);
   const requestedEditorFocus = useRef<"recognition" | "placement" | null>(null);
   const editorTrigger = useRef<HTMLButtonElement | null>(null);
@@ -222,7 +235,11 @@ export function CanonicalSubjectPlacementPanel({
     (trigger.isConnected ? trigger : document.getElementById("canonical-subject-placement"))?.focus();
   }, [recognitionSubject, ownerDialog, placementDialog, openingSubjectId]);
 
-  const loadCanonical = useCallback(async () => {
+  const loadCanonical = useCallback((afterChange = false) => {
+    if (!afterChange && pendingRead.current?.scope === readScope) return pendingRead.current.promise;
+    const { catalog, governance, organizationId } = readScope;
+    const previous = completedRead.current;
+    const keepInventory = previous?.scope === readScope;
     const generation = ++readGeneration.current;
     let failed = false;
     let subjectsReceived = false;
@@ -239,73 +256,100 @@ export function CanonicalSubjectPlacementPanel({
       subjectsReceived = true;
       revealFirstBatch();
     };
-    setLoading(true);
-    setInventoryComplete(false);
+    setRefreshing(true);
     setLoadError(null);
-    setSubjects([]);
-    setRegistrations([]);
-    setDefinitionStates(new Map());
-    setDomainState({
-      kind: "loading",
-      catalogReleaseId: null,
-      stale: false,
-      writesEnabled: false
-    });
-    try {
-      const document = await catalog.getCatalog();
-      if (generation !== readGeneration.current) return null;
-      const nextState = deriveCatalogDomainState({ document });
-      setDomainState(nextState);
-      if (!document.item) {
-        setCatalogReleaseId("");
-        setSubjects([]);
-        setRegistrations([]);
-        return null;
-      }
-
-      const release = document.item.catalogReleaseId;
-      setCatalogReleaseId(release);
-      const [activeSubjects, retiredSubjects, nextRegistrations] = await Promise.all([
-        listAllCanonicalPages(
-          (query) => catalog.listSubjects(query),
-          { catalogReleaseId: release, limit: 100 },
-          { isCancelled, onPage: (items) => publishSubjects("active", items) }
-        ),
-        listAllCanonicalPages(
-          (query) => catalog.listSubjects(query),
-          { catalogReleaseId: release, lifecycle: "retired", limit: 100 },
-          { isCancelled, onPage: (items) => publishSubjects("retired", items) }
-        ),
-        listAllCanonicalPages(
-          (query) => governance.listRegistrations(organizationId, query),
-          { catalogReleaseId: release, limit: 100 },
-          { isCancelled, onPage: (items) => { setRegistrations(items); registrationsReceived = true; revealFirstBatch(); } }
-        )
-      ]);
-      if (generation !== readGeneration.current) return null;
-      const nextSubjects = [...new Map([...activeSubjects, ...retiredSubjects].map(item => [item.id, item])).values()];
-      setCatalogReleaseId(release);
-      setSubjects(nextSubjects);
-      setRegistrations(nextRegistrations);
-      setInventoryComplete(true);
-      return { subjects: nextSubjects, registrations: nextRegistrations, releaseId: release };
-    } catch (error) {
-      if (generation !== readGeneration.current) return null;
-      failed = true;
-      const nextState = catalogStateFromFailure(error);
-      setDomainState(nextState);
-      setLoadError(presentError(error, "无法加载规范主体归属，请稍后重试。"));
-      return null;
-    } finally {
-      if (generation === readGeneration.current) setLoading(false);
+    if (!keepInventory) {
+      completedRead.current = null;
+      setLoading(true);
+      setInventoryComplete(false);
+      setCatalogReleaseId("");
+      setSubjects([]);
+      setRegistrations([]);
+      setDefinitionStates(new Map());
+      setDomainState({ kind: "loading", catalogReleaseId: null, stale: false, writesEnabled: false });
     }
-  }, [catalog, governance, organizationId]);
+
+    // A discarded effect setup must not start network reads.
+    const promise = Promise.resolve().then(async () => {
+      if (isCancelled()) return null;
+      try {
+        const document = await catalog.getCatalog();
+        if (isCancelled()) return null;
+        const nextState = deriveCatalogDomainState({ document });
+        if (!document.item) {
+          completedRead.current = null;
+          setCatalogReleaseId("");
+          setSubjects([]);
+          setRegistrations([]);
+          setInventoryComplete(false);
+          setDefinitionStates(new Map());
+          setDomainState(nextState);
+          return null;
+        }
+
+        const release = document.item.catalogReleaseId;
+        if (!keepInventory) {
+          setDomainState(nextState);
+          setCatalogReleaseId(release);
+        }
+        const [activeSubjects, retiredSubjects, nextRegistrations] = await Promise.all([
+          listAllCanonicalPages(
+            (query) => catalog.listSubjects(query),
+            { catalogReleaseId: release, limit: 100 },
+            { isCancelled, onPage: keepInventory ? undefined : (items) => publishSubjects("active", items) }
+          ),
+          listAllCanonicalPages(
+            (query) => catalog.listSubjects(query),
+            { catalogReleaseId: release, lifecycle: "retired", limit: 100 },
+            { isCancelled, onPage: keepInventory ? undefined : (items) => publishSubjects("retired", items) }
+          ),
+          listAllCanonicalPages(
+            (query) => governance.listRegistrations(organizationId, query),
+            { catalogReleaseId: release, limit: 100 },
+            { isCancelled, onPage: keepInventory ? undefined : (items) => {
+              setRegistrations(items);
+              registrationsReceived = true;
+              revealFirstBatch();
+            } }
+          )
+        ]);
+        if (isCancelled()) return null;
+        const nextSubjects = [...new Map([...activeSubjects, ...retiredSubjects].map(item => [item.id, item])).values()];
+        if (keepInventory && previous.releaseId !== release) setDefinitionStates(new Map());
+        completedRead.current = { scope: readScope, releaseId: release };
+        setCatalogReleaseId(release);
+        setSubjects(nextSubjects);
+        setRegistrations(nextRegistrations);
+        setDomainState(nextState);
+        setInventoryComplete(true);
+        return { subjects: nextSubjects, registrations: nextRegistrations, releaseId: release };
+      } catch (error) {
+        if (isCancelled()) return null;
+        failed = true;
+        setInventoryComplete(false);
+        setDomainState(catalogStateFromFailure(error));
+        setLoadError(presentError(error, "无法加载规范主体归属，请稍后重试。"));
+        return null;
+      } finally {
+        if (generation === readGeneration.current) {
+          pendingRead.current = null;
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    });
+    pendingRead.current = { scope: readScope, promise };
+    return promise;
+  }, [readScope]);
 
   useEffect(() => {
     void loadCanonical();
-    return () => { readGeneration.current += 1; };
+    return () => {
+      readGeneration.current += 1;
+      pendingRead.current = null;
+    };
   }, [loadCanonical, refreshKey]);
-  useEffect(() => () => { readGeneration.current += 1; placementGeneration.current += 1; }, []);
+  useEffect(() => () => { placementGeneration.current += 1; }, [readScope]);
 
   const registrationBySubjectId = useMemo(() => {
     const map = new Map<string, RegistrationRow>();
@@ -420,12 +464,11 @@ export function CanonicalSubjectPlacementPanel({
       (registrationBySubjectId.get(subject.id)?.status ?? subject.registration.status) !== "retired").length,
     [filteredSubjects, registrationBySubjectId]
   );
-  const expandedSubject = subjects.find((subject) => subject.id === expandedSubjectId);
+  const hasExpandedSubject = subjects.some((subject) => subject.id === expandedSubjectId);
 
   useEffect(() => {
-    if (!expandedSubjectId || !catalogReleaseId || loading || !expandedSubject) return;
+    if (!expandedSubjectId || !catalogReleaseId || loading || !hasExpandedSubject) return;
     let cancelled = false;
-    const generation = readGeneration.current;
     setDefinitionStates((current) => new Map(current).set(expandedSubjectId, { status: "loading" }));
     void (async () => { try {
       const items = await listAllCanonicalPages(
@@ -435,9 +478,10 @@ export function CanonicalSubjectPlacementPanel({
           lifecycle: "active",
           catalogReleaseId,
           limit: 100
-        }
+        },
+        { isCancelled: () => cancelled }
       );
-      if (cancelled || generation !== readGeneration.current) return;
+      if (cancelled) return;
       setDefinitionStates((current) =>
         new Map(current).set(
           expandedSubjectId,
@@ -445,7 +489,7 @@ export function CanonicalSubjectPlacementPanel({
         )
       );
     } catch (error) {
-      if (cancelled || generation !== readGeneration.current) return;
+      if (cancelled) return;
       setDefinitionStates((current) =>
         new Map(current).set(expandedSubjectId, {
           status: "error",
@@ -454,10 +498,10 @@ export function CanonicalSubjectPlacementPanel({
       );
     } })();
     return () => { cancelled = true; };
-  }, [catalog, catalogReleaseId, expandedSubjectId, loading, expandedSubject, definitionRefresh]);
+  }, [catalog, organizationId, catalogReleaseId, expandedSubjectId, loading, hasExpandedSubject, definitionRefresh]);
 
   const openRegistration = (subject: SubjectRow) => {
-    if (!inventoryComplete) return;
+    if (!inventoryReady) return;
     placementGeneration.current += 1;
     setOpeningSubjectId(null);
     setPlacementDialog({
@@ -473,7 +517,7 @@ export function CanonicalSubjectPlacementPanel({
   };
 
   const openPlacement = async (subject: SubjectRow, registrationId: string) => {
-    if (!inventoryComplete || openingSubjectId === subject.id) return;
+    if (!inventoryReady || openingSubjectId === subject.id) return;
     const generation = ++placementGeneration.current;
     setOpeningSubjectId(subject.id);
     setRowErrors((current) => ({ ...current, [subject.id]: "" }));
@@ -580,8 +624,7 @@ export function CanonicalSubjectPlacementPanel({
 
   const handleCompleted = async () => {
     setPlacementDialog(null);
-    await loadCanonical();
-    await onChanged?.();
+    await Promise.all([loadCanonical(true), onChanged?.()]);
   };
 
   const closeEditor = () => {
@@ -606,7 +649,7 @@ export function CanonicalSubjectPlacementPanel({
           ...(subject.type !== "configuration-schema" ? [{ value: "recognition", label: "识别规则", id: "subject-editor-tab-recognition",
             panelId: "subject-editor-panel", disabled: busy || switching }] : []),
           ...(canEditPlacement ? [{ value: "placement", label: "归属", id: "subject-editor-tab-placement",
-            panelId: "subject-editor-panel", disabled: busy || switching || !inventoryComplete }] : [])
+            panelId: "subject-editor-panel", disabled: busy || switching || !inventoryReady }] : [])
         ]} onValueChange={next => requestLeave(() => {
           if (next === "recognition") {
             closeEditor();
@@ -647,19 +690,24 @@ export function CanonicalSubjectPlacementPanel({
             disabled={!publicationSurface?.authoringAllowed}
             title={publicationSurface?.authoringAllowed ? undefined : publicationError || "目录当前不可编写"}
             onClick={() => setCreateSubjectOpen(true)}>新增主体</button> : null}
-          {!managedRefresh ? <button
+          <button
             type="button"
             className="button subtle"
-            onClick={() => void loadCanonical()}
-            disabled={loading}
+            onClick={() => {
+              if (pendingRead.current) return;
+              setPublicationRefresh(value => value + 1);
+              void loadCanonical();
+              void onChanged?.();
+            }}
+            disabled={refreshing}
           >
             <RefreshCw
-              className={loading ? "dts-status-icon dts-status-icon--spin" : undefined}
+              className={refreshing ? "dts-status-icon dts-status-icon--spin" : undefined}
               size={14}
               aria-hidden="true"
             />
             刷新规范数据
-          </button> : null}
+          </button>
         </header>
         {lifecycleNotice ? <p role="status">{lifecycleNotice}</p> : null}
         {publicationError ? <p role="alert">{publicationError}</p> : null}
@@ -781,8 +829,8 @@ export function CanonicalSubjectPlacementPanel({
                       style={subject.ownerSubjectId ? { marginLeft: "1.5rem" } : undefined}
                     >
                       <div className="parameter-module-mapping-panel__tree-label canonical-subject-identity">
-                        <strong>{subject.canonicalName}</strong>
-                        {registration?.displayAlias ? <span className="canonical-subject-meta">{registration.displayAlias}</span> : null}
+                        <strong title="规范标识">{subject.canonicalName}</strong>
+                        {registration?.displayAlias ? <span className="canonical-subject-meta" title="组织展示别名">{registration.displayAlias}</span> : null}
                         <span className="parameter-module-mapping-panel__auto-tag">
                           {subjectTypeLabel(subject.type)}
                         </span>
@@ -793,25 +841,36 @@ export function CanonicalSubjectPlacementPanel({
                         {childCount && registrationStatus === "unregistered" ? <span>，将随驱动一同登记</span> : null}
                       </span>
                       <span className="canonical-subject-meta">
-                        {registrationStatus === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">已停用 · </span> : null}
+                        {subject.membership.status === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">共享已退役 · </span>
+                          : owner?.membership.status === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">所属驱动已退役 · </span> : null}
+                        {registrationStatus === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">组织已停用 · </span> : null}
                         {placement && !placement.moduleId ? <span className="parameter-catalog__badge" data-tone="warning">未分配模块</span> : placement
                           ? `归属：${moduleLabels.get(placement.moduleId ?? "") ?? placement.displayName}`
                           : "未登记"}
                       </span>
                       <div className="parameter-module-mapping-panel__actions canonical-subject-actions">
+                        {canManageIdentity ? <button type="button" className="button subtle"
+                          aria-label={`共享标识：${subject.canonicalName}`} onClick={() => setIdentitySubjectId(subject.id)}>共享标识</button> : null}
                         {subject.type === "driver" && subject.membership.status === "active" && canCreateSubject ? <button
                           type="button" className="button subtle" aria-label={`新增子节点类型：${subject.canonicalName}`}
                           disabled={subject.canonicalType === "node-type"}
                           title={subject.canonicalType === "node-type" ? "此主体仅在当前组织按驱动识别；新增子节点需要目录中的驱动主体。" : undefined}
                           onClick={() => { setCreateOwnerSubjectId(subject.id); setCreateSubjectOpen(true); }}>新增子节点类型</button> : null}
                         {registrationId && (subject.type !== "configuration-schema" || placementAllowed) ? <button type="button" className="button subtle"
-                          aria-label={editorTitle(subject)} disabled={subject.type === "configuration-schema" && !inventoryComplete}
+                          aria-label={editorTitle(subject)} disabled={subject.type === "configuration-schema" && !inventoryReady}
                           onClick={event => {
                             editorTrigger.current = event.currentTarget;
                             closeEditor();
                             if (subject.type === "configuration-schema") void openPlacement(subject, registrationId);
                             else setRecognitionSubject({ registrationId, subject });
                           }}>{canAdmin ? "编辑" : "查看"}{subject.ownerSubjectId ? "节点" : "主体"}</button> : null}
+                        {subject.ownerSubjectId && placementAllowed && registrationId ? <button type="button" className="button subtle"
+                          aria-label={`编辑展示别名：${subject.canonicalName}`} disabled={!inventoryReady || openingSubjectId === subject.id}
+                          onClick={event => {
+                            editorTrigger.current = event.currentTarget;
+                            closeEditor();
+                            void openPlacement(subject, registrationId);
+                          }}>编辑展示别名</button> : null}
                         {subject.definitionCounts.active > 0 ? <button
                           type="button"
                           className="button subtle"
@@ -831,7 +890,7 @@ export function CanonicalSubjectPlacementPanel({
                             type="button"
                             className="button primary"
                             aria-label={`登记主体：${subject.canonicalName}`}
-                            disabled={!inventoryComplete}
+                            disabled={!inventoryReady}
                             onClick={() => openRegistration(subject)}
                           >
                             登记主体
@@ -846,7 +905,7 @@ export function CanonicalSubjectPlacementPanel({
                         ) : null}
                         {lifecycleAllowed ? <button type="button" className="button subtle"
                           aria-label={`${registrationStatus === "retired" ? "恢复" : "移除"}${subjectLabel}：${subject.canonicalName}`}
-                          disabled={!inventoryComplete || Boolean(restoreBlockedReason)}
+                          disabled={!inventoryReady || Boolean(restoreBlockedReason)}
                           title={restoreBlockedReason}
                           onClick={() => setLifecycleDialog({ intent: lifecycleIntent, subject, registrationId })}>
                           {registrationStatus === "retired" ? `恢复${subjectLabel}` : `移除${subjectLabel}`}
@@ -941,6 +1000,13 @@ export function CanonicalSubjectPlacementPanel({
         editor={editorOptions(recognitionSubject.subject, recognitionSubject.registrationId, "recognition")}
         registrationId={recognitionSubject.registrationId} catalogReleaseId={catalogReleaseId} name={recognitionSubject.subject.canonicalName} canAdmin={canAdmin}
         onClose={closeEditor} onChanged={onChanged} /> : null}
+      {identitySubject && canManageIdentity && catalogReleaseId ? <SubjectIdentityPublicationDialog
+        key={`${organizationId}:${identitySubject.id}`} subject={identitySubject} subjects={subjects}
+        catalog={catalog} catalogReleaseId={catalogReleaseId} currentPersonId={currentPersonId} organizationId={organizationId}
+        surface={publicationSurface} onClose={() => setIdentitySubjectId(null)} onRefreshEvidence={() => {
+          setPublicationRefresh(value => value + 1);
+          return handleCompleted();
+        }} /> : null}
       {ownerDialog ? <RegistrationOwnerDialog key={`${organizationId}:${ownerDialog.subject.id}`} {...ownerDialog}
         editor={editorOptions(ownerDialog.subject, ownerDialog.registrationId, "placement")}
         actor={actor} sessionPermissions={sessionPermissions} catalog={catalog} governance={governance} organizationId={organizationId}
@@ -951,12 +1017,12 @@ export function CanonicalSubjectPlacementPanel({
         }} /> : null}
       {placementDialog && catalogReleaseId ? (
         <RegistrationDialog
-          editor={placementDialog.intent === "update-placement" && placementDialog.registrationId
+          editor={placementDialog.intent === "update-placement" && placementDialog.registrationId && !placementDialog.subject.ownerSubjectId
             ? editorOptions(placementDialog.subject, placementDialog.registrationId, "placement") : undefined}
           open
           intent={placementDialog.intent}
           actor={actor}
-          domainState={inventoryComplete ? domainState : { kind: "loading", catalogReleaseId, stale: false, writesEnabled: false }}
+          domainState={inventoryReady ? domainState : { kind: "loading", catalogReleaseId, stale: false, writesEnabled: false }}
           repository={governance}
           organizationId={organizationId}
           subjectId={placementDialog.subject.id}
@@ -970,6 +1036,7 @@ export function CanonicalSubjectPlacementPanel({
           subjectImpact={placementDialog.subjectImpact}
           currentModuleName={placementDialog.currentModuleName}
           displayAlias={placementDialog.displayAlias}
+          displayAliasOnly={Boolean(placementDialog.subject.ownerSubjectId)}
           createIdempotencyKey={createGovernanceIdempotencyKey}
           onOpenChange={(open) => {
             if (!open) closeEditor();

@@ -43,6 +43,7 @@ export const listProductFeedbackQuerySchema = z.object({
 
 export const patchProductFeedbackBodySchema = z
   .object({
+    effectiveFeedbackType: z.enum(feedbackTypes).optional(),
     status: z.enum(feedbackStatuses).optional(),
     adminNote: z.string().max(2000).nullable().optional(),
     publicMessage: z.string().max(2000).nullable().optional(),

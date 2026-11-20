@@ -452,9 +452,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       const parsed = catalogTypedPublicationCandidateRequestSchema.parse(body);
       const addedSubjects = parsed.changeSet.filter((change) => change.op === "create-subject-with-definitions" || change.op === "create-subject");
       const revised = parsed.changeSet.filter((change) => change.op === "revise-definition");
-      const semantic = revised.some((change) => change.op === "revise-definition" && change.class === "semantic");
+      const semantic = revised.some((change) => change.op === "revise-definition" &&
+        (change.class === "semantic" || change.successorDefinitionId !== undefined));
       const fakeDocumentation = revised.some((change) => {
-        if (change.op !== "revise-definition" || change.class !== "documentation") {
+        if (change.op !== "revise-definition" || change.class !== "documentation" || !change.content) {
           return false;
         }
         const current = store.definition.currentRevision;
@@ -465,6 +466,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         }
         return change.content.unit !== undefined && change.content.unit !== (current.unit?.symbol ?? null);
       });
+      const [revision] = revised;
+      const lifecycleOnly = parsed.changeSet.length === 1 && revision?.op === "revise-definition" &&
+        revision.content === undefined && revision.successorDefinitionId !== undefined;
       const candidate = {
         ...clone(catalogPublicationCandidate),
         id: `${CATALOG_CANDIDATE_ID}_${store.candidates.size + 1}`,
@@ -480,7 +484,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
             ),
           changedDefinitionCount: revised.length,
           addedSubjectCount: addedSubjects.length,
-          ...(addedSubjects.length > 0 ? { addedSubjectIds: [`csub_new_${store.candidates.size + 1}`] } : {})
+          ...(addedSubjects.length > 0 ? { addedSubjectIds: [`csub_new_${store.candidates.size + 1}`] } : {}),
+          ...(lifecycleOnly ? { definitionSuccessorChange: { definitionId: revision.definitionId,
+            successorDefinitionId: revision.successorDefinitionId ?? null, successorLabel: revision.successorDefinitionId ?? null,
+            reason: revision.reason ?? null } } : {})
         }
       };
       store.candidates.set(candidate.id, candidate);

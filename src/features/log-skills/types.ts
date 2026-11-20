@@ -38,6 +38,7 @@ export type ExtractorPatternInput = z.infer<typeof import("@wiseeff/dto-schemas"
 export type ExtractorPatternPreview = z.infer<typeof import("@wiseeff/dto-schemas").extractorPreviewResponseSchema>;
 export type FormatPreview = z.infer<typeof import("@wiseeff/dto-schemas").formatPreviewResponseSchema>;
 export type SourceSnapshot = z.infer<typeof logSourceSnapshotDtoSchema>;
+export type SourceSnapshotLabelPreview = z.infer<typeof import("@wiseeff/dto-schemas").logSourceSnapshotLabelPreviewResponseSchema>;
 export type SourceExcerpt = z.infer<typeof import("@wiseeff/dto-schemas").logSourceExcerptDtoSchema>;
 export type SourceStatementMatches = z.infer<typeof import("@wiseeff/dto-schemas").logSourceLocateResponseSchema>;
 
@@ -49,6 +50,7 @@ export interface SkillWorkspaceRepository {
   exportSkillPackage?(id: string, revision: "published" | "draft"): Promise<Blob>;
   listIntegrationCredentials?(): Promise<IntegrationCredential[]>;
   issueIntegrationCredential?(input: { name: string; skillId?: string | null }): Promise<IntegrationCredentialSecret>;
+  renameIntegrationCredential?(id: string, name: string): Promise<IntegrationCredential>;
   rotateIntegrationCredential?(id: string): Promise<IntegrationCredentialSecret>;
   revokeIntegrationCredential?(id: string): Promise<IntegrationCredential>;
   runSkillParseTests?(id: string, spec: SkillSpec): Promise<ParseTestRun>;
@@ -77,6 +79,8 @@ export interface SkillWorkspaceRepository {
   publishSkill(id: string, draftRevisionId: string): Promise<AnalysisSkill>;
   restoreSkillRevision(id: string, revisionId: string): Promise<AnalysisSkill>;
   listSourceSnapshots(id: string): Promise<SourceSnapshot[]>;
+  previewSourceSnapshotLabel?(id: string, snapshotId: string, versionLabel: string): Promise<SourceSnapshotLabelPreview>;
+  updateSourceSnapshotLabel?(id: string, snapshotId: string, input: { versionLabel: string; expectedVersionLabel: string; expectedArchived: boolean }): Promise<SourceSnapshot>;
   uploadSourceSnapshot(id: string, input: { versionLabel: string; file: File }): Promise<SourceSnapshot>;
   setDefaultSourceSnapshot(id: string, snapshotId: string): Promise<AnalysisSkill>;
   archiveSourceSnapshot(id: string, snapshotId: string): Promise<SourceSnapshot>;

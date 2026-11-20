@@ -86,15 +86,18 @@ describe("JsonBindingPanel", () => {
       definitionId: "canonical-json", propertyKey: "charging-policy", revisionId: "rev-new",
       revisionNumber: 4, contentDigest: "sha256:rev-new", displayName: "最新 JSON 名称",
       documentation: "最新已发布的 JSON 说明", unit: null, examples: ["sample"],
+      recommendedDefinition: { id: "json-next", propertyKey: "next-policy", displayName: "推荐 JSON 参数" },
       valueShape: { kind: "json-schema", schema: { type: "object" } },
       constraints: { kind: "none" }, catalogReleaseId: "release-new"
     });
     render(<JsonBindingPanel bindings={[{ ...jsonBinding, definitionId: "canonical-json",
       effectiveRevisionId: "rev-old", documentation: "旧 JSON 说明" }]}
-      loadLatestParameterSpec={loadLatestParameterSpec} />);
+      loadLatestParameterSpec={loadLatestParameterSpec} organizationId="org-target" />);
     fireEvent.click(screen.getByRole("button", { name: "参数详情 charging-policy" }));
     const dialog = await screen.findByRole("dialog", { name: "最新 JSON 名称 参数详情" });
     expect(within(dialog).getByText("最新已发布的 JSON 说明")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "推荐 JSON 参数" })).toHaveAttribute("href",
+      "/parameters/definitions?definitionId=json-next&organizationId=org-target");
     expect(within(dialog).queryByText("旧 JSON 说明")).not.toBeInTheDocument();
     expect(within(dialog).getByText(/项目合同仍固定于 rev-old/)).toBeInTheDocument();
     expect(within(dialog).getByRole("region", { name: "当前配置" })

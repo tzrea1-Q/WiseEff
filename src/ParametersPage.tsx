@@ -79,6 +79,7 @@ type ParametersPageProps = {
   dispatch: Dispatch<ParametersPageAction>;
   onNavigate: (path: string) => void;
   search: string;
+  organizationId?: string;
   parameterActions?: ParameterPageActions;
   topologyRepository?: ParameterTopologyRepository;
   canonicalRepository?: ParameterCatalogRepository;
@@ -97,6 +98,7 @@ export function ParametersPage({
   dispatch,
   onNavigate,
   search,
+  organizationId,
   parameterActions,
   topologyRepository,
   canonicalRepository,
@@ -1037,6 +1039,7 @@ export function ParametersPage({
           <ApiProjectTopologyWorkspace
             key={`${resolvedProjectId}:${currentHandoff?.setId ?? "default"}`}
             projectId={resolvedProjectId}
+            organizationId={organizationId}
             projectName={activeProject?.name}
             notice={workbenchNotice || currentHandoff?.error ? <>{workbenchNotice}{currentHandoff?.error ? <p role="status">关联参数在当前项目中不可用。</p> : null}</> : undefined}
             requestedBindingId={!currentHandoff?.error && contextQuery.projectId === resolvedProjectId ? contextQuery.bindingId : ""}

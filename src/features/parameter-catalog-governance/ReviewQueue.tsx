@@ -87,6 +87,7 @@ export function ReviewQueue({
   const [selectionLoading, setSelectionLoading] = useState(false);
   const [selectionRetry, setSelectionRetry] = useState(0);
   const [query, setQuery] = useState("");
+  const [showOutOfScope, setShowOutOfScope] = useState(false);
   const [reasonFilter, setReasonFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
   const selectedCache = useRef(new Map<string, ReviewItem>());
@@ -104,22 +105,23 @@ export function ReviewQueue({
     setItems([]);
     setNextCursor(null);
     try {
-      const response = await repository.listReviewItems(organizationId);
+      const response = showOutOfScope ? await repository.listReviewItems(organizationId, { status: "out-of-scope" })
+        : await repository.listReviewItems(organizationId);
       if (request !== generation.current) return;
       if (response.catalogReleaseId !== catalogReleaseId) throw new Error("目录发布已变化");
       setItems([...response.items]);
-      countCallback.current?.(response.totalCount ?? (response.nextCursor ? null : response.items.length));
+      if (!showOutOfScope) countCallback.current?.(response.totalCount ?? (response.nextCursor ? null : response.items.length));
       setNextCursor(response.nextCursor);
       setEmptyReason(response.items.length === 0 ? (response.emptyReason ?? "no-review-work") : null);
     } catch {
       if (request !== generation.current) return;
       setError("审核队列加载失败，请稍后重试。");
-      countCallback.current?.(null);
+      if (!showOutOfScope) countCallback.current?.(null);
       setItems([]);
     } finally {
       if (request === generation.current) setLoading(false);
     }
-  }, [catalogReleaseId, organizationId, repository]);
+  }, [catalogReleaseId, organizationId, repository, showOutOfScope]);
 
   useEffect(() => {
     selectedCache.current.clear();
@@ -137,7 +139,8 @@ export function ReviewQueue({
     setLoadingMore(true);
     setPageError(null);
     try {
-      const response = await repository.listReviewItems(organizationId, { cursor: nextCursor, limit: 50, catalogReleaseId });
+      const response = await repository.listReviewItems(organizationId, { cursor: nextCursor, limit: 50, catalogReleaseId,
+        ...(showOutOfScope ? { status: "out-of-scope" as const } : {}) });
       if (request !== generation.current) return;
       if (response.catalogReleaseId !== catalogReleaseId || response.nextCursor === nextCursor) {
         setNextCursor(null);
@@ -145,7 +148,7 @@ export function ReviewQueue({
         return;
       }
       setItems((current) => [...new Map([...current, ...response.items].map((item) => [item.id, item])).values()]);
-      countCallback.current?.(response.totalCount ?? null);
+      if (!showOutOfScope) countCallback.current?.(response.totalCount ?? null);
       setNextCursor(response.nextCursor);
     } catch {
       if (request === generation.current) setPageError("下一页加载失败，已加载的审核项已保留。");
@@ -202,6 +205,7 @@ export function ReviewQueue({
     moduleOptions={moduleOptions} subjects={subjects} onContinueDefinition={onContinueDefinition}
     defaultRegistrationId={defaultRegistrationId} createIdempotencyKey={createIdempotencyKey}
     onLeaveGuardChange={onLeaveGuardChange}
+    onSelectRelated={onSelectReviewItem}
     onOpenChange={(open) => {
       if (!open) { setSelected(null); onSelectReviewItem?.(null); }
     }}
@@ -272,13 +276,17 @@ export function ReviewQueue({
       <div className="review-queue__toolbar">
         <p>核对来源与识别依据，再选择处理方式。</p>
         <div className="review-queue__tools">
+          <SelectControl ariaLabel="审核状态" value={showOutOfScope ? "out-of-scope" : "open"} size="filter"
+            options={[{ value: "open", label: "待处理" }, { value: "out-of-scope", label: "范围外记录" }]}
+            onValueChange={status => setShowOutOfScope(status === "out-of-scope")} />
           <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void load()}>刷新列表</Button>
           {actor === "org-admin" || actor === "platform-admin" ? <Button asChild variant="outline" size="sm"><a href={withOrganizationScope("/audit?kind=parameter-catalog-governance", organizationId)}>处理记录</a></Button> : null}
         </div>
       </div>
       {loading ? <SectionSkeleton label={governanceCopy.reviewLoading} /> : null}
       {error ? <SectionError message={error} onRetry={() => void load()} /> : null}
-      {!loading && !error && emptyReason ? (
+      {!loading && !error && emptyReason && showOutOfScope ? <SectionEmpty message="暂无范围外记录。" /> : null}
+      {!loading && !error && emptyReason && !showOutOfScope ? (
         <><SectionEmpty message={governanceCopy.reviewEmpty} /><p>需要核对来源识别结果时，可在「来源识别」查看当前项目的记录；这里仅显示已进入审核流程的事项。</p><Button asChild variant="outline" size="sm" className="self-start"><a href="/parameter-admin/modules/queue">查看来源识别</a></Button></>
       ) : null}
       {selectionLoading ? <SectionSkeleton label="正在读取链接中的审核项…" /> : null}
@@ -286,7 +294,7 @@ export function ReviewQueue({
       {pageError ? <p role="alert">{pageError}</p> : null}
       {!loading && !error && items.length > 0 ? <>
         <div className="review-queue__filters">
-          <SearchField value={query} onValueChange={setQuery} ariaLabel="搜索待审核事项" placeholder="搜索兼容标识、属性或来源" />
+          <SearchField value={query} onValueChange={setQuery} ariaLabel={showOutOfScope ? "搜索范围外记录" : "搜索待审核事项"} placeholder="搜索兼容标识、属性或来源" />
           <SelectControl ariaLabel="筛选审核原因" value={reasonFilter} onValueChange={setReasonFilter} size="filter"
             options={[{ value: "all", label: "全部原因" }, ...Object.entries(reviewReasonLabels).map(([value, label]) => ({ value, label }))]} />
           {projectOptions.length > 0 ? <SelectControl ariaLabel="筛选来源项目" value={projectFilter} onValueChange={setProjectFilter} size="filter"
@@ -302,7 +310,7 @@ export function ReviewQueue({
           ariaLabel={governanceCopy.reviewQueue}
           emptyState={<SectionEmpty message="没有匹配的审核项。" actionLabel="清除筛选" onAction={() => { setQuery(""); setReasonFilter("all"); setProjectFilter("all"); }} />}
           renderRowActions={(row) => {
-            if (!canResolve || row.status !== "open") {
+            if (row.status === "open" && !canResolve) {
               return null;
             }
             const stale = reviewItemGovernanceState(row, domainState).kind === "conflict";
@@ -310,15 +318,15 @@ export function ReviewQueue({
               <button
                 type="button"
                 className="button sm"
-                disabled={stale}
-                title={stale ? governanceCopy.staleReview : undefined}
+                disabled={row.status === "open" && stale}
+                title={row.status === "open" && stale ? governanceCopy.staleReview : undefined}
                 onClick={() => {
                   selectedCache.current.set(`${organizationId}:${row.id}`, row);
                   setSelected(row);
                   onSelectReviewItem?.(row.id);
                 }}
               >
-                {governanceCopy.resolveTitle}
+                {row.status === "open" ? governanceCopy.resolveTitle : row.allowedResolutions.includes("reopen-out-of-scope") && canResolve ? "重新提请复核" : "查看审核记录"}
               </button>
             );
           }}

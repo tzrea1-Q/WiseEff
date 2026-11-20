@@ -37,6 +37,8 @@ import {
   CATALOG_CAPABILITY_CONTRACT_REVISION,
   CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION,
   CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION,
+  CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION,
+  CATALOG_SUBJECT_RULES_CAPABILITY_REVISION,
   validateSupportedDefinitionContent,
 } from "./capabilities";
 import {
@@ -67,6 +69,9 @@ import type {
   SupportedDefinitionContent,
 } from "./types";
 import { preparedPredecessorBundle } from "./preparedPredecessor";
+import { subjectIdentityProvenance, subjectRulesProvenance } from "../../catalog-kernel/compiler/subjectIdentity";
+import { applySubjectIdentityChange } from "./subjectIdentity";
+import { applySubjectRulesChange } from "./subjectRules";
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CREATE_DEFINITION_KEYS = new Set(["op", "subjectId", "propertyKey", "content"]);
@@ -80,7 +85,7 @@ const CREATE_SUBJECT_KEYS = new Set([
   "cardinality",
   "ownerSubjectId",
 ]);
-const REVISE_KEYS = new Set(["op", "definitionId", "class", "content"]);
+const REVISE_KEYS = new Set(["op", "definitionId", "class", "content", "successorDefinitionId", "reason"]);
 const LIFECYCLE_CHANGE_KEYS = new Set(["op", "definitionId", "class", "content", "reason"]);
 const SELECTOR_KEYS = new Set(["kind", "value"]);
 const DECLARE_OWNER_KEYS = new Set(["op", "subjectId", "ownerSubjectId"]);
@@ -104,7 +109,7 @@ const changeSortKey = (change: CatalogChange): string => {
     return `revise\0${change.definitionId}`;
   }
   if (change.op === "declare-subject-owner") return `zz-owner\0${change.subjectId}`;
-  return `subject\0${change.canonicalKey}`;
+  return "canonicalKey" in change ? `subject\0${change.canonicalKey}` : `identity\0${change.subjectId}`;
 };
 
 const ok = <T>(value: T): { readonly ok: true; readonly value: T } => ({ ok: true, value });
@@ -144,9 +149,12 @@ export function impactSummaryFromReport(impact: CatalogImpactReport): {
   };
 }
 
-const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[]): CapabilityContract => {
+const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[], hasSubjectRules: boolean): CapabilityContract => {
   const identity = CATALOG_CAPABILITY_ALLOW_LIST;
-  const revision = documents.some((document) => document.kind === "subject" && document.content.ownerSubjectId)
+  const revision = hasSubjectRules
+    ? CATALOG_SUBJECT_RULES_CAPABILITY_REVISION
+    : documents.some(subjectIdentityProvenance) ? CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION
+    : documents.some((document) => document.kind === "subject" && document.content.ownerSubjectId)
     ? CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION : changeSet.some((change) => change.op === "create-subject")
     ? CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION : CATALOG_CAPABILITY_CONTRACT_REVISION;
   return {
@@ -267,12 +275,14 @@ export const contentClassOf = (
     "/valueSchema": previous.valueSchema,
     "/matching": previous.matching,
     "/lifecycle": previous.lifecycle,
+    "/successorDefinitionId": previous.successorDefinitionId ?? null,
   });
   const nextSemantic = serializeContract({
     "/unit": next.unit ?? null,
     "/valueSchema": next.valueSchema,
     "/matching": next.matching,
     "/lifecycle": next.lifecycle,
+    "/successorDefinitionId": next.successorDefinitionId ?? null,
   });
   return previousSemantic === nextSemantic ? "documentation" : "semantic";
 };
@@ -372,13 +382,20 @@ const buildImpact = (
   };
 
   const subjects = delta(collectIds(predecessor, "subject"), collectIds(successor, "subject"));
-  const changedSubjectOwners = subjects.unchanged.filter((id) => {
+  const changedSubjects = subjects.unchanged.filter((id) => {
     const before = predecessor.documents.find((document) => document.kind === "subject" && document.content.id === id);
     const after = successor.documents.find((document) => document.kind === "subject" && document.content.id === id);
     return before?.kind === "subject" && after?.kind === "subject"
-      && before.content.ownerSubjectId !== after.content.ownerSubjectId;
+      && (before.content.ownerSubjectId !== after.content.ownerSubjectId ||
+        before.content.selector.value !== after.content.selector.value);
   });
   const aliases = delta(collectIds(predecessor, "alias"), collectIds(successor, "alias"));
+  const previousAliases = new Map(predecessor.documents.flatMap(doc => doc.kind === "alias" ? [[doc.content.id, doc.content] as const] : []));
+  const changedAliases = successor.documents.flatMap(doc => {
+    if (doc.kind !== "alias") return [];
+    const previous = previousAliases.get(doc.content.id);
+    return previous && (previous.subjectId !== doc.content.subjectId || previous.lifecycle !== doc.content.lifecycle) ? [doc.content.id] : [];
+  }).sort();
   const predSelectors = predecessor.documents.flatMap((document) => {
     if (document.kind === "subject") return [document.content.selector.value];
     if (document.kind === "alias") return [document.content.normalizedSelector];
@@ -412,13 +429,13 @@ const buildImpact = (
     definitions: { added, changed, unchanged },
     subjects: {
       added: subjects.added,
-      changed: changedSubjectOwners,
-      unchanged: subjects.unchanged.filter((id) => !changedSubjectOwners.includes(id)),
+      changed: changedSubjects,
+      unchanged: subjects.unchanged.filter((id) => !changedSubjects.includes(id)),
     },
     aliases: {
       added: aliases.added,
-      changed: [],
-      unchanged: aliases.unchanged,
+      changed: changedAliases,
+      unchanged: aliases.unchanged.filter(id => !changedAliases.includes(id)),
     },
     selectors: {
       added: selectorDelta.added,
@@ -427,7 +444,7 @@ const buildImpact = (
     },
     matcher: {
       existingMatchRulesChanged,
-      fallbackImpact: newNodeType || changedSubjectOwners.length > 0 || selectorDelta.added.length > 0 || selectorDelta.removed.length > 0,
+      fallbackImpact: newNodeType || changedSubjects.length > 0 || changedAliases.length > 0 || selectorDelta.added.length > 0 || selectorDelta.removed.length > 0,
       newMatchableProperties,
     },
     existingContractsTighten,
@@ -641,8 +658,12 @@ const applyReviseDefinition = (
   if (change.class !== "documentation" && change.class !== "semantic") {
     return { kind: "invalid-input", reason: "revise class must be documentation or semantic" };
   }
-  const content = validateSupportedDefinitionContent(change.content, `${path}.content`);
-  if (!content.ok) return content.error;
+  if (change.content === undefined && change.successorDefinitionId === undefined) {
+    return { kind: "invalid-input", reason: "revision-content-required" };
+  }
+  const content = change.content === undefined ? undefined :
+    validateSupportedDefinitionContent(change.content, `${path}.content`);
+  if (content && !content.ok) return content.error;
   const current = documents.find(
     (document): document is CatalogReleaseDefinitionDocument =>
       document.kind === "definition" && document.content.id === change.definitionId,
@@ -650,7 +671,22 @@ const applyReviseDefinition = (
   if (!current) {
     return { kind: "invalid-input", reason: `definition not found:${change.definitionId}` };
   }
-  const nextRevisionFields = revisedDefinitionContent(current.content.revision, content.value);
+  const revisionContent = current.content.revision;
+  if (change.successorDefinitionId === change.definitionId) {
+    return { kind: "invalid-input", reason: "definition-successor-invalid" };
+  }
+  if (change.successorDefinitionId !== undefined && revisionContent.lifecycle === "retired") {
+    return { kind: "invalid-input", reason: "definition-retired" };
+  }
+  const revised = content?.ok ? revisedDefinitionContent(revisionContent, content.value) : revisionContent;
+  const { successorDefinitionId: _previousSuccessor, ...withoutSuccessor } = revised;
+  const successorDefinitionId = change.successorDefinitionId;
+  const nextRevisionFields = successorDefinitionId === undefined ? revised : {
+    ...withoutSuccessor,
+    ...(successorDefinitionId === null
+      ? { lifecycle: "active" as const }
+      : { lifecycle: "deprecated" as const, successorDefinitionId }),
+  };
   const previousDigest = canonicalDigest(revisionContentModel(current.content.revision));
   const nextDigest = canonicalDigest(revisionContentModel(nextRevisionFields));
   if (previousDigest === nextDigest) {
@@ -817,6 +853,23 @@ export async function buildCompleteSuccessor(
     }
     if (productPath !== "m2-core" && change.op !== "create-definition") {
       return fail({ kind: "unsupported-change-op", op: change.op });
+    }
+    if (change.op === "rename-subject" || change.op === "set-subject-alias") {
+      if (input.changeSet.length !== 1) {
+        return fail({ kind: "invalid-input", reason: "subject identity corrections are published individually" });
+      }
+      const error = applySubjectIdentityChange(change, documents, frozen.releaseId);
+      if (error) return fail(error);
+      continue;
+    }
+    if (change.op === "set-driver-defaults" || change.op === "change-subject-owner" || change.op === "retire-subject" ||
+      change.op === "restore-subject" || change.op === "replace-subject-kind") {
+      if (input.changeSet.length !== 1) {
+        return fail({ kind: "invalid-input", reason: "subject corrections are published individually" });
+      }
+      const error = applySubjectRulesChange(change, documents, frozen.releaseId);
+      if (error) return fail(error);
+      continue;
     }
     if (change.op === "declare-subject-owner") {
       if (extraKeys(change as unknown as Record<string, unknown>, DECLARE_OWNER_KEYS).length
@@ -1144,8 +1197,27 @@ export async function buildCompleteSuccessor(
       violations: validated.error.violations,
     });
   }
+  // The compiler already proves the chain terminates at an active definition.
+  // Authoring also needs that definition's subject to be currently usable.
+  for (const change of input.changeSet) {
+    if (change.op !== "revise-definition" || !change.successorDefinitionId) continue;
+    let nextId: string | undefined = change.successorDefinitionId;
+    while (nextId) {
+      const definition = successor.documents.find(document => document.kind === "definition" && document.content.id === nextId);
+      if (definition?.kind !== "definition") break;
+      if (definition.content.revision.lifecycle === "active") {
+        const owner = successor.documents.find(document => document.kind === "subject" && document.content.id === definition.content.subjectId);
+        if (owner?.kind !== "subject" || owner.content.lifecycle !== "active") {
+          return fail({ kind: "invalid-input", reason: "definition-successor-terminal-invalid" });
+        }
+        break;
+      }
+      nextId = definition.content.revision.successorDefinitionId;
+    }
+  }
 
-  const contract = capabilityContract(input.changeSet, successor.documents);
+  const contract = capabilityContract(input.changeSet, successor.documents,
+    bundle.releases.some(release => release.documents.some(subjectRulesProvenance)));
   const impact = { ...buildImpact(predecessorTarget, successor, requestedClasses), capabilityContractRevision: contract.revision };
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);
   const artifactBytes = encodeBundleBytes(bundle);

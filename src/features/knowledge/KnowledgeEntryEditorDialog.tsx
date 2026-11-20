@@ -29,6 +29,7 @@ export type KnowledgeDefinitionPickerOption = {
   displayName: string | null;
   driverModule: string | null;
   lifecycle: "active" | "deprecated" | "retired";
+  recommendedDefinition?: { propertyKey: string; displayName: string };
 };
 
 export type KnowledgeDefinitionPickerPage = {
@@ -53,6 +54,7 @@ export type KnowledgeEntryEditorDialogProps = {
   /** null creates a new markdown entry; an entry edits it in place. */
   entry: KnowledgeEntry | null;
   onSubmit: (input: KnowledgeEditorSubmit) => Promise<void>;
+  referencesOnly?: boolean;
   parameterReferencePicker?: KnowledgeParameterReferencePicker;
   suggestionRepository?: Pick<KnowledgeRepository, "listReferenceSuggestions" | "acceptReferenceSuggestion" | "dismissReferenceSuggestion" | "batch">;
   onReferenceUpdate?: (entry: KnowledgeEntry) => void;
@@ -80,6 +82,7 @@ export function KnowledgeEntryEditorDialog({
   open,
   entry,
   onSubmit,
+  referencesOnly = false,
   parameterReferencePicker,
   suggestionRepository,
   onReferenceUpdate,
@@ -210,7 +213,7 @@ export function KnowledgeEntryEditorDialog({
   };
 
   const addReference = async (definitionId: string) => {
-    if (!parameterReferencePicker || !entry) return;
+    if (!parameterReferencePicker || !entry || referencePendingSpecId !== null) return;
     setReferencePendingSpecId(definitionId);
     setReferenceError("");
     try {
@@ -223,7 +226,7 @@ export function KnowledgeEntryEditorDialog({
   };
 
   const removeReference = async (reference: KnowledgeParameterReference) => {
-    if (!parameterReferencePicker || !entry) return;
+    if (!parameterReferencePicker || !entry || referencePendingSpecId !== null) return;
     setReferencePendingSpecId(reference.kind === "definition" ? reference.definitionId : reference.specId);
     setReferenceError("");
     try {
@@ -262,11 +265,12 @@ export function KnowledgeEntryEditorDialog({
     }
   };
 
+  const saving = pending || suggestionPending || referencePendingSpecId !== null;
   return (
-    <><SettingsLeaveGuard dirty={open && (title !== (entry?.title ?? "") || tagsText !== (entry?.tags.join(", ") ?? "") || content !== (entry?.contentMarkdown ?? ""))} saving={pending || suggestionPending} />
+    <><SettingsLeaveGuard dirty={open && !referencesOnly && (title !== (entry?.title ?? "") || tagsText !== (entry?.tags.join(", ") ?? "") || content !== (entry?.contentMarkdown ?? ""))} saving={saving} />
     <ModalDialog
       open={open}
-      onDismiss={pending || suggestionPending ? undefined : requestClose}
+      onDismiss={saving ? undefined : requestClose}
       className="knowledge-editor-dialog flex max-h-[min(920px,calc(100dvh-48px))] w-[min(1080px,calc(100vw-48px))] flex-col gap-4 overflow-hidden rounded-xl bg-card p-5 shadow-xl"
       backdropClassName="knowledge-modal-backdrop"
       describedBy
@@ -275,16 +279,16 @@ export function KnowledgeEntryEditorDialog({
         <>
           <div>
             <h2 id={titleId} className="text-base font-semibold text-foreground">
-              {entry?.contentForm === "file" ? "关联参数定义" : entry ? "编辑知识条目" : "新建 Markdown 条目"}
+              {referencesOnly ? "更正参数关联" : entry?.contentForm === "file" ? "关联参数定义" : entry ? "编辑知识条目" : "新建 Markdown 条目"}
             </h2>
             <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
-              {entry?.contentForm === "file" ? "接受建议或手动关联参数定义，操作立即生效。" : entry
+              {referencesOnly ? `「${entry?.title}」保持归档，仍不进入知识检索。` : entry?.contentForm === "file" ? "接受建议或手动关联参数定义，操作立即生效。" : entry
                 ? `每次保存都会产生新的不可变修订（当前修订 #${entry.headRevisionNumber}）。`
                 : "新条目以草稿创建；发布后才进入检索。"}
             </p>
           </div>
 
-          {entry?.contentForm !== "file" ? <div className="flex flex-wrap items-center gap-2">
+          {!referencesOnly && entry?.contentForm !== "file" ? <div className="flex flex-wrap items-center gap-2">
             <input
               aria-label="条目标题"
               value={title}
@@ -301,7 +305,7 @@ export function KnowledgeEntryEditorDialog({
             />
           </div> : null}
 
-          {entry?.contentForm !== "file" ? <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
+          {!referencesOnly && entry?.contentForm !== "file" ? <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
             <textarea
               aria-label="Markdown 内容"
               value={content}
@@ -369,6 +373,7 @@ export function KnowledgeEntryEditorDialog({
                     references={references}
                     onRemove={(reference) => void removeReference(reference)}
                     removePendingSpecId={referencePendingSpecId}
+                    removeDefinitionsOnly={referencesOnly}
                   />
                   {references.length === 0 ? (
                     <p className="text-xs text-muted-foreground">尚未关联参数定义。</p>
@@ -419,12 +424,15 @@ export function KnowledgeEntryEditorDialog({
                               <span className="ml-1 text-xs text-muted-foreground">
                                 ({definitionReferenceLifecycleLabels[option.lifecycle]})
                               </span>
+                              {option.recommendedDefinition ? <span className="ml-1 text-xs text-muted-foreground">
+                                · 推荐后继 {option.recommendedDefinition.displayName || option.recommendedDefinition.propertyKey}
+                              </span> : null}
                             </span>
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              disabled={alreadyReferenced || option.lifecycle === "retired" || referencePendingSpecId === option.definitionId}
+                              disabled={alreadyReferenced || option.lifecycle === "retired" || referencePendingSpecId !== null}
                               aria-busy={referencePendingSpecId === option.definitionId || undefined}
                               onClick={() => void addReference(option.definitionId)}
                             >
@@ -469,10 +477,10 @@ export function KnowledgeEntryEditorDialog({
           ) : null}
 
           <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={requestClose} disabled={pending || suggestionPending}>
-              {entry?.contentForm === "file" ? "关闭" : "取消"}
+            <Button variant="outline" size="sm" onClick={requestClose} disabled={saving}>
+              {referencesOnly || entry?.contentForm === "file" ? "关闭" : "取消"}
             </Button>
-            {entry?.contentForm !== "file" ? <Button size="sm" onClick={() => void submit()} disabled={pending || suggestionPending} aria-busy={pending || undefined}>
+            {!referencesOnly && entry?.contentForm !== "file" ? <Button size="sm" onClick={() => void submit()} disabled={saving} aria-busy={pending || undefined}>
               {pending ? "保存中…" : entry ? "保存为新修订" : "创建草稿"}
             </Button> : null}
           </div>

@@ -68,6 +68,13 @@ describe("client audit events cannot mint configuration commit receipts", () => 
     expect(response.status, response.bodyText).toBe(403);
   });
 
+  it("rejects baseline erratum receipts through the generic audit API", async () => {
+    const response = await post("/api/v1/audit-events", { app: "parameters", kind: "baseline", action: "erratum_appended", severity: "Medium",
+      projectId, targetType: "dts-release-baseline", targetId: "baseline-fixture",
+      metadata: { clientMutationId: "client-erratum", note: "Correction", source: "Memo", baselineStatus: "released", erratumPosition: 1 } });
+    expect(response.status, response.bodyText).toBe(403);
+  });
+
   it("retains ordinary client audit writes and their operating-organization boundary", async () => {
     const input = { app: "parameters", kind: "config-set", action: "inspect", severity: "Low", projectId,
       targetType: "dts-config-set", targetId: "client-selected-configuration", metadata: { note: "Manual inspection" } };

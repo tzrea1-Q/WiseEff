@@ -3,6 +3,7 @@ import { DataTable } from "./DataTable";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchField } from "@/components/common/SearchField";
 import { SelectControl } from "@/components/common/SelectControl";
@@ -16,16 +17,19 @@ export function OrganizationBridgePanel({ enabled, actions = defaultActions, rea
   enabled: boolean;
   readOnly?: boolean;
   onNavigate?: (path: string) => void;
-  actions?: { list(): Promise<OrganizationDeviceBridge[]>; revoke(id: string, reason: string): Promise<OrganizationDeviceBridge> };
+  actions?: { list(): Promise<OrganizationDeviceBridge[]>; revoke(id: string, reason: string): Promise<OrganizationDeviceBridge>; rename?(id: string, label: string): Promise<OrganizationDeviceBridge> };
 }) {
   const [items, setItems] = useState<OrganizationDeviceBridge[] | null>(null);
   const [error, setError] = useState("");
-  const [selected, setSelected] = useState<OrganizationDeviceBridge | null>(null);
-  const [reason, setReason] = useState("");
+  const [selection, setSelection] = useState<{ item: OrganizationDeviceBridge; action: "rename" | "revoke" } | null>(null);
+  const [value, setValue] = useState("");
   const [mutationError, setMutationError] = useState("");
   const [pending, setPending] = useState(false);
   const [loading, setLoading] = useState(false), [query, setQuery] = useState(""), [status, setStatus] = useState("all");
   const generation = useRef(0);
+  const selected = selection?.item;
+  const renaming = selection?.action === "rename";
+  const canSubmit = Boolean(value.trim() && (renaming ? actions.rename && value.trim() !== selected?.machineLabel : true));
   const load = useCallback(async () => {
     const request = ++generation.current;
     setError(""); setLoading(true);
@@ -34,16 +38,22 @@ export function OrganizationBridgePanel({ enabled, actions = defaultActions, rea
     finally { if (request === generation.current) setLoading(false); }
   }, [actions]);
   useEffect(() => { if (enabled) void load(); return () => { generation.current++; }; }, [enabled, load]);
-  useEffect(() => { if (readOnly) { setSelected(null); setReason(""); setMutationError(""); } }, [readOnly]);
-  async function revoke() {
-    if (!selected || pending || readOnly || !reason.trim()) return;
+  useEffect(() => { if (readOnly) setSelection(null); }, [readOnly]);
+  function open(item: OrganizationDeviceBridge, action: "rename" | "revoke") {
+    setSelection({ item, action });
+    setValue(action === "rename" ? item.machineLabel : "");
+    setMutationError("");
+  }
+  async function save() {
+    const mutate = renaming ? actions.rename : actions.revoke;
+    if (!selected || pending || readOnly || !canSubmit || !mutate) return;
     generation.current++; setLoading(false);
     setPending(true); setMutationError("");
     try {
-      const item = await actions.revoke(selected.id, reason.trim());
+      const item = await mutate(selected.id, value.trim());
       setItems(current => current?.map(existing => existing.id === item.id ? item : existing) ?? null);
-      setSelected(null);
-    } catch (failure) { setMutationError(presentError(failure, "撤销失败，请重试。")); }
+      setSelection(null);
+    } catch (failure) { setMutationError(presentError(failure, renaming ? "设备名称保存失败，请重试。" : "撤销失败，请重试。")); }
     finally { setPending(false); }
   }
   if (!enabled) return <SectionEmpty title="设备代理治理需要管理员权限与 API 模式" message="请在已连接后台的组织管理页面操作。" />;
@@ -62,10 +72,17 @@ export function OrganizationBridgePanel({ enabled, actions = defaultActions, rea
         { key: "state", header: "状态", render: item => item.revokedAt ? "已撤销" : item.online ? "在线" : "离线" },
         { key: "seen", header: "最后活动", render: item => item.lastSeenAt ? formatAbsolute(item.lastSeenAt) : "尚无活动" },
         { key: "revoked", header: "撤销时间", render: item => item.revokedAt ? formatAbsolute(item.revokedAt) : "—" }
-      ]} renderRowActions={readOnly ? undefined : item => item.revokedAt ? null : <Button variant="outline" size="sm" disabled={pending || loading} onClick={() => { setSelected(item); setReason(""); setMutationError(""); }}>撤销配对</Button>} />}
-    <ConfirmDialog open={!!selected && !readOnly} title="撤销设备代理配对？" tone="danger" confirmLabel="撤销配对" pending={pending} confirmDisabled={!reason.trim()} error={mutationError}
-      description={<>将撤销“{selected?.ownerName ?? selected?.ownerUserId}”的“{selected?.machineLabel}”（{selected?.id}）。该电脑的现有连接和凭据将失效，重新使用需由成员重新配对。</>}
-      extra={<label className="grid gap-2">撤销原因<Textarea value={reason} maxLength={500} disabled={pending} onChange={event => setReason(event.target.value)} /></label>}
-      onCancel={() => setSelected(null)} onConfirm={() => void revoke()} />
+      ]} renderRowActions={readOnly ? undefined : item => <div className="flex flex-wrap gap-2">
+        {actions.rename ? <Button variant="outline" size="sm" disabled={pending || loading} onClick={() => open(item, "rename")}>更正设备名称</Button> : null}
+        {!item.revokedAt ? <Button variant="outline" size="sm" disabled={pending || loading} onClick={() => open(item, "revoke")}>撤销配对</Button> : null}
+      </div>} />}
+    <ConfirmDialog open={!!selected && !readOnly} title={renaming ? "更正设备名称" : "撤销设备代理配对？"} tone={renaming ? "primary" : "danger"}
+      confirmLabel={renaming ? "保存名称" : "撤销配对"} pending={pending} confirmDisabled={!canSubmit} error={mutationError}
+      description={renaming
+        ? <>更正“{selected?.ownerName ?? selected?.ownerUserId}”名下设备“{selected?.machineLabel}”（{selected?.id}）的显示名称。</>
+        : <>将撤销“{selected?.ownerName ?? selected?.ownerUserId}”的“{selected?.machineLabel}”（{selected?.id}）。该电脑的现有连接和凭据将失效，重新使用需由成员重新配对。</>}
+      extra={renaming ? <label className="grid gap-2">设备名称<Input value={value} disabled={pending} onChange={event => setValue(event.target.value)} /></label>
+        : <label className="grid gap-2">撤销原因<Textarea value={value} maxLength={500} disabled={pending} onChange={event => setValue(event.target.value)} /></label>}
+      onCancel={() => setSelection(null)} onConfirm={() => void save()} />
   </section>;
 }

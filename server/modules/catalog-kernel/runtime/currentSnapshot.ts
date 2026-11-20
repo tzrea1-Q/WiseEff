@@ -159,6 +159,7 @@ const mapContent = (raw: Record<string, unknown>): DefinitionContent => {
   );
   return {
     lifecycle: (raw.lifecycle as DefinitionLifecycle) ?? "active",
+    ...(typeof raw.successorDefinitionId === "string" ? { successorDefinitionId: raw.successorDefinitionId } : {}),
     displayName: typeof raw.displayName === "string" ? raw.displayName : "",
     description: absent,
     documentation: documentation ? present(documentation) : absent,
@@ -810,7 +811,7 @@ const loadProjection = async (
     `select
        subject.id,
        subject.kind,
-       subject.canonical_key,
+       coalesce(membership.selector_snapshot->'values'->>0, membership.selector_snapshot->>'value', subject.canonical_key) as canonical_key,
        membership.lifecycle,
        membership.selector_snapshot,
        membership.tombstone_provenance
@@ -823,7 +824,7 @@ const loadProjection = async (
   const aliases = await client.query<AliasRow>(
     `select
        alias.id,
-       alias.subject_id,
+       membership.subject_id,
        alias.selector_kind,
        alias.normalized_selector,
        membership.lifecycle,

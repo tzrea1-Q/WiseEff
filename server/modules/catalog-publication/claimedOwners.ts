@@ -18,15 +18,21 @@ export async function planClaimedOwners(db: Queryable, predecessor: CatalogRelea
   { ok: true; changes: DeclareSubjectOwnerChange[] } | { ok: false }
 > {
   const subjects = predecessor.documents.flatMap(document => document.kind === "subject" ? [document.content] : []);
-  const identities = await db.query<{ id: string; owner_subject_id: string | null }>(
-    `select id, owner_subject_id from parameter_catalog.catalog_subjects where id=any($1::text[])`,
-    [subjects.map(subject => subject.id)],
+  const identities = await db.query<{ id: string; owner_subject_id: string | null; versioned: boolean }>(
+    `select subject.id, subject.owner_subject_id, to_jsonb(membership)->>'rules_snapshot' is not null as versioned
+     from parameter_catalog.catalog_subjects subject
+     left join parameter_catalog.catalog_release_subjects membership
+       on membership.subject_id=subject.id and membership.release_id=$2
+     where subject.id=any($1::text[])`,
+    [subjects.map(subject => subject.id), predecessor.manifest.release.id],
   );
-  const owners = new Map(identities.rows.map(row => [row.id, row.owner_subject_id]));
+  const owners = new Map(identities.rows.map(row => [row.id, row]));
   const changes: DeclareSubjectOwnerChange[] = [];
   for (const subject of subjects) {
-    if (!owners.has(subject.id)) return { ok: false };
-    const ownerId = owners.get(subject.id);
+    const identity = owners.get(subject.id);
+    if (!identity) return { ok: false };
+    if (identity.versioned) continue;
+    const ownerId = identity.owner_subject_id;
     if (subject.ownerSubjectId) {
       if (subject.ownerSubjectId !== ownerId) return { ok: false };
       continue;

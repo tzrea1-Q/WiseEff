@@ -15,12 +15,12 @@ describe("subject placement planning", () => {
     expect(planSubjectPlacement([{ subjectId: "driver", placement: { kind: "unclassified" } }], [root], [root], {}).changes[0]?.after).toEqual({ kind: "unclassified" });
   });
 
-  it("requires a resolution when the same field changed and forbids independent child edits", () => {
+  it("requires a resolution when the same field changed and keeps child placement inherited", () => {
     const current = { ...root, displayAlias: "Other" };
     const edits = [{ subjectId: "driver", displayAlias: null }];
     expect(planSubjectPlacement(edits, [root], [current], {}).conflicts).toMatchObject([{ key: "subject:driver:displayAlias", baseline: "Alias", file: null, current: "Other" }]);
     expect(planSubjectPlacement(edits, [root], [current], { "subject:driver:displayAlias": "file" }).changes).toHaveLength(1);
     const child = { ...root, subjectId: "child", ownerSubjectId: "driver", placement: null };
-    expect(() => planSubjectPlacement([{ subjectId: "child", displayAlias: "Bad" }], [child], [child], {})).toThrow();
+    expect(() => planSubjectPlacement([{ subjectId: "child", placement: { kind: "unset" } }], [child], [child], {})).toThrow();
   });
 });

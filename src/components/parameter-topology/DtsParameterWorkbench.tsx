@@ -57,6 +57,7 @@ type PrimaryDtsSource = {
 
 export type DtsParameterWorkbenchProps = {
   projectId?: string;
+  organizationId?: string;
   projectName?: string;
   requestedBindingId?: string;
   pendingDrafts?: readonly PendingBindingDraft[];
@@ -186,6 +187,7 @@ function nodePath(roots: DtsWorkbenchTreeNode[], nodeId: string): string[] {
 
 export function DtsParameterWorkbench({
   projectId,
+  organizationId,
   projectName,
   requestedBindingId,
   pendingDrafts = [],
@@ -864,6 +866,7 @@ export function DtsParameterWorkbench({
         <DtsBindingDetailDialog
           key={selectedRow.bindingId}
           row={selectedRow}
+          organizationId={organizationId}
           canEdit={canEdit && Boolean(onCreateDraft)}
           historyEntries={historyEntries}
           compareEntries={compareEntries}

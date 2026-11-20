@@ -48,6 +48,7 @@ export type ProductFeedbackAppendProgressInput = {
 };
 
 export type ProductFeedbackUpdateInput = {
+  effectiveFeedbackType?: ProductFeedbackType;
   status?: ProductFeedbackStatus;
   adminNote?: string | null;
   resolutionCode?: ProductFeedbackResolutionCode | null;

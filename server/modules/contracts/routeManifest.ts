@@ -174,6 +174,7 @@ export const routeManifest = [
     module: "users",
     stability: "commercial-readiness"
   },
+  { id: "users.correctLocalUsername", method: "PATCH", path: "/api/v1/users/:userId/username", module: "users", stability: "commercial-readiness" },
 
   { id: "parameters.listProjects", method: "GET", path: "/api/v1/projects", module: "parameters", stability: "mvp" },
   {
@@ -791,6 +792,7 @@ export const routeManifest = [
   { id: "logs.uploadFile", method: "POST", path: "/api/v1/log-files", module: "logs", stability: "mvp" },
   { id: "logs.listIntegrationCredentials", method: "GET", path: "/api/v1/log-integration-credentials", module: "logs", stability: "mvp" },
   { id: "logs.issueIntegrationCredential", method: "POST", path: "/api/v1/log-integration-credentials", module: "logs", stability: "mvp" },
+  { id: "logs.renameIntegrationCredential", method: "PATCH", path: "/api/v1/log-integration-credentials/:credentialId", module: "logs", stability: "mvp" },
   { id: "logs.rotateIntegrationCredential", method: "POST", path: "/api/v1/log-integration-credentials/:credentialId/rotate", module: "logs", stability: "mvp" },
   { id: "logs.revokeIntegrationCredential", method: "POST", path: "/api/v1/log-integration-credentials/:credentialId/revoke", module: "logs", stability: "mvp" },
   { id: "logs.upload", method: "POST", path: "/api/v1/logs", module: "logs", stability: "mvp" },
@@ -830,6 +832,8 @@ export const routeManifest = [
   { id: "logs.listSourceVersions", method: "GET", path: "/api/v1/log-skills/:skillId/source-versions", module: "logs", stability: "mvp" },
   { id: "logs.listSourceSnapshots", method: "GET", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },
   { id: "logs.uploadSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots", module: "logs", stability: "mvp" },
+  { id: "logs.previewSourceSnapshotLabel", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/version-label/preview", module: "logs", stability: "mvp" },
+  { id: "logs.updateSourceSnapshotLabel", method: "PATCH", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId", module: "logs", stability: "mvp" },
   { id: "logs.retrySourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/retry", module: "logs", stability: "mvp" },
   { id: "logs.restoreSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/restore", module: "logs", stability: "mvp" },
   { id: "logs.defaultSourceSnapshot", method: "POST", path: "/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default", module: "logs", stability: "mvp" },
@@ -1320,6 +1324,14 @@ export const routeManifest = [
   { id: "parameterFiles.previewAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-preview", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.applyAdministratorMemberRemoval", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/removal-apply", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.createConfigSet", method: "POST", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.updateConfigSetMetadata", method: "PATCH", path: "/api/v1/projects/:projectId/config-sets/:configSetId", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.updateDraftBaseline", method: "PATCH", path: "/api/v1/projects/:projectId/baselines/:baselineId", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.appendBaselineErratum", method: "POST", path: "/api/v1/projects/:projectId/baselines/:baselineId/errata", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.previewPathCorrection", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/path-correction/preview", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.applyPathCorrection", method: "POST", path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/path-correction/apply", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.listJsonCorrectionOptions", method: "GET", path: "/api/v2/projects/:projectId/parameter-files/:fileId/configuration-instances", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.previewJsonCorrection", method: "POST", path: "/api/v2/projects/:projectId/parameter-files/:fileId/configuration-instances/:occurrenceId/correction/preview", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.applyJsonCorrection", method: "POST", path: "/api/v2/projects/:projectId/parameter-files/:fileId/configuration-instances/:occurrenceId/correction/apply", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.previewConfigSetImport", method: "POST", path: "/api/v1/projects/:projectId/config-set-import/preview", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.applyConfigSetImport", method: "POST", path: "/api/v1/projects/:projectId/config-set-import/apply", module: "parameter-files", stability: "mvp" },
   {
@@ -1442,6 +1454,7 @@ export const routeManifest = [
   { id: "deviceBridges.listMine", method: "GET", path: "/api/v1/device-bridges/mine", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.listOrganization", method: "GET", path: "/api/v1/device-bridges/organization", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.getOrganizationBridge", method: "GET", path: "/api/v1/device-bridges/organization/:bridgeId", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.renameOrganizationBridge", method: "PATCH", path: "/api/v1/device-bridges/organization/:bridgeId", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.revokeOrganizationBridge", method: "POST", path: "/api/v1/device-bridges/organization/:bridgeId/revoke", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.updateBridge", method: "PATCH", path: "/api/v1/device-bridges/:bridgeId", module: "device-bridge", stability: "mvp" },
   { id: "deviceBridges.revokeBridge", method: "POST", path: "/api/v1/device-bridges/:bridgeId/revoke", module: "device-bridge", stability: "mvp" },

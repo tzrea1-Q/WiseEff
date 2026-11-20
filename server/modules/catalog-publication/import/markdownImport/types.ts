@@ -33,6 +33,17 @@ export type Subject = {
 };
 export type SyntaxTree = { subjects: Subject[]; diagnostics: SyntaxDiagnostic[] };
 
+export type SubjectMatch = {
+  subjectId: string;
+  canonicalName: string;
+  source: "catalog-primary" | "catalog-alias" | "organization-compatible";
+};
+
+export type OrganizationImportMatches = {
+  rules: ReadonlyMap<string, readonly string[]>;
+  selections?: readonly { selector: string; subjectId: string }[];
+};
+
 export type ImportEntry = {
   fileName?: string;
   subjectHeading: string;
@@ -40,6 +51,8 @@ export type ImportEntry = {
   selector: string;
   propertyKey: string;
   displayName: string;
+  match?: SubjectMatch;
+  matchCandidates?: SubjectMatch[];
   definitionId?: string;
   operationIndex?: number;
   tightensExistingContract?: boolean;

@@ -75,6 +75,7 @@ export type RegistrationDialogProps = {
   subjectImpact?: RegistrationSubjectImpact;
   currentModuleName?: string;
   displayAlias?: { value: string; registrationEtag: string };
+  displayAliasOnly?: boolean;
   createIdempotencyKey?: () => string;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
@@ -101,6 +102,7 @@ export function RegistrationDialog({
   subjectImpact,
   currentModuleName,
   displayAlias,
+  displayAliasOnly = false,
   createIdempotencyKey,
   onOpenChange,
   onCompleted,
@@ -141,8 +143,8 @@ export function RegistrationDialog({
     : undefined;
   const initializing = createNew && newDestinationParents.length > 0;
   const initiallyCreating = moduleOptions.length === 0 && newDestinationParents.length > 0;
-  const placementChanged = initializing !== initiallyCreating || placementMode !== "use-default" ||
-    (initializing ? Boolean(newParentId || newModuleName) : destinationModuleId !== initialDestinationModuleId);
+  const placementChanged = !displayAliasOnly && (initializing !== initiallyCreating || placementMode !== "use-default" ||
+    (initializing ? Boolean(newParentId || newModuleName) : destinationModuleId !== initialDestinationModuleId));
   const aliasOnly = aliasChanged && !placementChanged;
   const selectedModule = moduleOptions.find((option) => option.id === destinationModuleId);
   const occupant = selectedModule?.occupant?.registrationId !== registrationId ? selectedModule?.occupant : undefined;
@@ -259,9 +261,10 @@ export function RegistrationDialog({
   const selectedDestinationName =
     (initializing ? `${newDestinationParents.find((option) => option.id === newParentId)?.displayName ?? "未选择业务分类"} / ${newModuleName.trim() || "未填写模块名称"}` : moduleOptions.find((option) => option.id === destinationModuleId)?.displayName) ??
     (destinationModuleId || "未选择目标模块");
-  const title = intent === "register-subject" ? governanceCopy.registerTitle : governanceCopy.placementTitle;
+  const title = displayAliasOnly ? `编辑节点展示别名：${subjectName}` :
+    intent === "register-subject" ? governanceCopy.registerTitle : governanceCopy.placementTitle;
   const readyToConfirm = (!aliasChanged || (aliasValid && Boolean(aliasUpdate?.registrationEtag))) &&
-    (aliasOnly || (placementReady && destinationReady && replacementReady));
+    (aliasOnly || (!displayAliasOnly && placementReady && destinationReady && replacementReady));
   const confirmTitle =
     aliasOnly ? "确认修改展示别名" : replacing ? "确认替换归属" : intent === "register-subject" ? governanceCopy.confirmRegisterTitle : governanceCopy.confirmPlacementTitle;
   const confirmLabel =
@@ -360,6 +363,7 @@ export function RegistrationDialog({
                       <span id={aliasHintId} className="muted">{!displayAlias.registrationEtag ? "无法读取登记版本，请关闭编辑窗口后重试。" :
                         aliasChanged && !aliasValid ? "请输入最多 128 个字符的展示别名。" : "仅当前组织可见。留空使用规范名称。"}</span>
                     </label> : null}
+                    {displayAliasOnly ? <p>业务归属随所属驱动，识别继续使用规范标识及有效匹配规则。</p> : <>
                     {moduleOptions.length === 0 && !initializing ? (
                       <fieldset>
                         <legend>{governanceCopy.placementMode}</legend>
@@ -489,6 +493,7 @@ export function RegistrationDialog({
                         />
                       </label>
                     ) : null}
+                    </>}
                   </fieldset>
                 ) : (
                   <p>{governanceCopy.agentReadOnly}</p>

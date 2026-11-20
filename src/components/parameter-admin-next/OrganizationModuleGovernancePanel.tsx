@@ -80,6 +80,7 @@ export function OrganizationModuleGovernancePanel({
 
   return (
     <ParameterModuleMappingPanel
+      key={organizationId}
       apiClient={apiClient}
       currentPersonId={currentPersonId}
       projects={projects}

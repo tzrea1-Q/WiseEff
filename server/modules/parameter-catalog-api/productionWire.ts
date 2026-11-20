@@ -9,7 +9,7 @@ import {
 } from "../auth/trustedInvocation";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { resolveOperatingContext } from "../auth/operatingContext";
-import { parameterOrganizationId, parameterRequestAccess } from "../parameters/operatingScope";
+import { parameterInvocation, parameterOrganizationId, parameterRequestAccess } from "../parameters/operatingScope";
 import { createCatalogKernel, type CatalogKernel, type CatalogSubjectDetailSnapshot } from "../catalog-kernel/interface";
 import { isCatalogProjectionEmpty, readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import {
@@ -94,6 +94,7 @@ import type {
   TrustedGovernanceScope,
 } from "./governance/types";
 import { matchCatalogGovernanceRoute } from "./governance/handlers";
+import { isCatalogDefinitionReplacementRouteId } from "./governance/mapping";
 import { registerCatalogLegacyRoutes } from "./legacy/routes";
 import { CATALOG_SUNSET_HTTP_DATE } from "./legacy/headers";
 import type { LegacyCatalogOptions } from "./legacy/types";
@@ -179,6 +180,7 @@ export async function readCatalogDefinitionForKnowledge(
   auth: AuthContext,
   definitionId: string,
   requestId = "knowledge-definition-reference",
+  organizationId = auth.organization.id,
 ) {
   const pool = getRootPostgresPool(db);
   if (!pool) throw new ApiError("CONFLICT", "Catalog read is unavailable.", { reason: "catalog-unavailable" });
@@ -187,7 +189,7 @@ export async function readCatalogDefinitionForKnowledge(
     {
       method: "GET",
       path: `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}`,
-      params: {}, query: {}, headers: {}, requestId,
+      params: {}, query: organizationId === auth.organization.id ? {} : { organizationId }, headers: {}, requestId,
     },
   );
   if (response.status === 404) throw new ApiError("NOT_FOUND", "Parameter definition was not found.");
@@ -489,6 +491,14 @@ const authenticateGovernance =
     }
     const scope = governanceScope(auth);
     const matched = matchCatalogGovernanceRoute(request.method, request.path);
+    if (matched && isCatalogDefinitionReplacementRouteId(matched.id) && request.query.organizationId !== undefined) {
+      const organizationId = request.query.organizationId;
+      if (typeof organizationId !== "string" || !organizationId || !pool || scope.trustedActor?.initiator !== "user") {
+        return { ok: false as const, status: 403 as const };
+      }
+      const invocation = await resolveOperatingContext(pool, scope.trustedActor, organizationId);
+      return { ok: true as const, scope: governanceScope(auth, invocation) };
+    }
     const organizationDetail = matched?.id === "catalog.getRegistration";
     if (matched && (organizationDetail || [
       "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
@@ -517,23 +527,25 @@ const authenticateGovernance =
     return { ok: true as const, scope };
   };
 
-const publicationScope = (auth: AuthContext): TrustedPublicationScope => ({
+const publicationScope = (auth: AuthContext, trustedActor: TrustedInvocationContext): TrustedPublicationScope => ({
   principalId: auth.user.id,
-  organizationId: auth.organization.id,
+  organizationId: parameterOrganizationId(auth),
   actorKind: governanceActorKind(auth),
   permissions: auth.permissions,
-  trustedActor: createUserInvocation(auth),
+  trustedActor,
   projectScope: parameterUsageProjectScope(auth) ?? { kind: "only", ids: [] },
 });
 
 const authenticatePublication =
-  (resolveAuth: CatalogApiAuthResolver) =>
+  (resolveAuth: CatalogApiAuthResolver, db?: Database) =>
   async (request: CatalogPublicationRequest) => {
     const auth = await resolveAuth(request as RouteRequest);
     if (!auth.user.isActive) {
       return { ok: false as const, status: 401 as const };
     }
-    return { ok: true as const, scope: publicationScope(auth) };
+    const actor = createUserInvocation(auth);
+    const access = await parameterRequestAccess(db, actor, request as RouteRequest);
+    return { ok: true as const, scope: publicationScope(access, parameterInvocation(access) ?? actor) };
   };
 
 const factsFromSnapshot = (snapshot: LoadedCatalogSnapshot): CatalogDocumentFacts => ({
@@ -891,6 +903,10 @@ const createReplacementPublicationPorts = (
         };
       }
       if (enqueued.error.kind === "authorization") {
+        if (enqueued.error.reason === "publication-frozen" || enqueued.error.reason === "publication-policy-disabled" ||
+            enqueued.error.reason === "publication-self-approval-forbidden") {
+          return { ok: false as const, error: { kind: "preview-unavailable" as const, reason: enqueued.error.reason } };
+        }
         return {
           ok: false as const,
           error: { kind: "preview-unavailable" as const, reason: "unsupported-catalog-capability" },
@@ -948,7 +964,7 @@ const createPublicationPorts = (
     ? bindCatalogPublicationCommands({ db, pool })
     : unavailablePublicationCommandPorts;
   return {
-    authenticate: authenticatePublication(resolveAuth),
+    authenticate: authenticatePublication(resolveAuth, db),
     currentRelease: async () => {
       if (!pool) {
         return null;

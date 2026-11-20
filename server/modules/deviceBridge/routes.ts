@@ -5,6 +5,10 @@ import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridge
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { resolveOperatingContext } from "../auth/operatingContext";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
+import { getAuthContext } from "../auth/repository";
+import { lockAdministratorMutation } from "../users/administratorContinuity";
+import { requirePlatformOrganizationManager } from "../users/platformOrganizations";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -14,7 +18,7 @@ import type { BridgeConnectionPool } from "./connectionPool";
 import type { BridgeReleaseManifest } from "./releaseManifest";
 import type { BridgeToolReleaseManifest } from "./toolReleaseManifest";
 import { registerDeviceBridgeToolRoutes } from "./toolRoutes";
-import { bridgeIdParamsSchema, pairWithCodeBodySchema, renameBridgeBodySchema, revokeOrganizationBridgeBodySchema } from "./schemas";
+import { bridgeIdParamsSchema, pairWithCodeBodySchema, renameBridgeBodySchema, renameOrganizationBridgeBodySchema, revokeOrganizationBridgeBodySchema } from "./schemas";
 import { randomUUID } from "node:crypto";
 
 import type { DeviceBridgeRecord } from "./types";
@@ -219,6 +223,27 @@ export function registerDeviceBridgeRoutes(
     const { bridgeId } = parseWithSchema(bridgeIdParamsSchema, request.params);
     const record = await getBridgeForOrganization(db, invocation.operatingOrganization?.id ?? auth.organization.id, bridgeId);
     if (!record) throw new ApiError("NOT_FOUND", "设备代理不存在。");
+    return { status: 200, body: { item: toOrganizationItem(record) } };
+  });
+  router.patch("/api/v1/device-bridges/organization/:bridgeId", async (request) => {
+    const db = requireDb(options.db), auth = await options.getCurrentAuthContext(request);
+    requirePlatformOrganizationManager(auth);
+    const invocation = await organizationInvocation(db, auth, request.query), organizationId = invocation.operatingOrganization?.id ?? auth.organization.id;
+    const { bridgeId } = parseWithSchema(bridgeIdParamsSchema, request.params);
+    const { machineLabel } = parseWithSchema(renameOrganizationBridgeBodySchema, request.body);
+    const record = await db.transaction(async tx => {
+      await lockAdministratorMutation(tx);
+      requirePlatformOrganizationManager(await getAuthContext(tx, auth.user.id));
+      await requireActiveOrganization(tx, organizationId, true);
+      const current = await getBridgeForOrganization(tx, organizationId, bridgeId, true);
+      if (!current) throw new ApiError("NOT_FOUND", "设备代理不存在。");
+      if (current.machineLabel === machineLabel) return current;
+      const updated = await createDeviceBridgeRepository(tx).updateBridgeMachineLabel({ bridgeId, userId: current.userId, organizationId, machineLabel });
+      if (!updated) throw new ApiError("NOT_FOUND", "设备代理不存在。");
+      await writeAudit(tx, { id: randomUUID(), invocation, projectId: null, app: "device-bridge", kind: "device-bridge-admin-rename", action: "update", severity: "Medium",
+        targetType: "device-bridge", targetId: bridgeId, metadata: { ownerUserId: current.userId }, traceId: request.requestId ?? randomUUID() });
+      return { ...updated, ownerName: current.ownerName };
+    });
     return { status: 200, body: { item: toOrganizationItem(record) } };
   });
   router.post("/api/v1/device-bridges/organization/:bridgeId/revoke", async (request) => {

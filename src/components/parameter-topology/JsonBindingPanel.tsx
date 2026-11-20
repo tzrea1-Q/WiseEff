@@ -1,4 +1,5 @@
 import { NavigatorWorkbench } from "@/components/layout/NavigatorWorkbench";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { SectionEmpty } from "@/components/common/SectionState";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Boxes, CircleX, Download, FileCode } from "lucide-react";
@@ -58,6 +59,7 @@ export type PrimaryJsonSource = {
 
 export type JsonBindingPanelProps = {
   bindings: readonly ProjectParameterBinding[];
+  organizationId?: string;
   requestedBindingId?: string;
   pendingDrafts?: readonly PendingBindingDraft[];
   requestedEditBindingId?: string;
@@ -166,6 +168,7 @@ function findEarliestJsonSourceLine(
 /** JSON bindings workbench matching DTS layout (Topology Navigator + Table + Modal Dialogs). */
 export function JsonBindingPanel({
   bindings,
+  organizationId,
   requestedBindingId,
   pendingDrafts,
   requestedEditBindingId,
@@ -819,6 +822,9 @@ export function JsonBindingPanel({
                      {latestStatus === "error" ? <p role="status">最新目录说明暂不可用，当前展示项目固定修订。</p> : null}
                      {visibleLatestDefinition && visibleLatestDefinition.revisionId !== (activeViewBinding.effectiveRevisionId ?? activeViewBinding.parameterSpecVersionId) ?
                        <p role="status">当前目录定义 v{visibleLatestDefinition.revisionNumber} · 项目合同仍固定于 {activeViewBinding.effectiveRevisionId ?? activeViewBinding.parameterSpecVersionId}。说明来自最新目录，项目的校验规则与参数值未改变。</p> : null}
+                     {visibleLatestDefinition?.recommendedDefinition ? <p>此定义已弃用。推荐使用 <a
+                       href={withOrganizationScope(`/parameters/definitions?${new URLSearchParams({ definitionId: visibleLatestDefinition.recommendedDefinition.id })}`, organizationId)}>
+                       {visibleLatestDefinition.recommendedDefinition.displayName}</a>。</p> : null}
                      {visibleLatestDefinition ? (visibleLatestDefinition.documentation ? <p>{visibleLatestDefinition.documentation}</p> : null)
                        : activeViewBinding.description || activeViewBinding.documentation ? <p>{activeViewBinding.description || activeViewBinding.documentation}</p> : null}
                      {visibleLatestDefinition?.examples?.length ? <div><strong>最新目录示例（仅供参考）</strong><pre>{JSON.stringify(visibleLatestDefinition.examples, null, 2)}</pre></div> : null}

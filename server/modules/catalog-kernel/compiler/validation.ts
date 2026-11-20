@@ -4,8 +4,6 @@ import { createHash } from "node:crypto";
 import {
   CatalogSubjectId,
   catalogReleaseViolationCodes,
-  parseCanonicalCompatibleSelector,
-  parseCanonicalNodeName,
   parseCanonicalPropertyKey,
   serializeContract,
   type CatalogReleaseViolation,
@@ -25,6 +23,7 @@ import {
 } from "./schemaValidation";
 import { deriveSourceDocuments, inspectSource, type CatalogSource, type SourceInspection } from "./sourceAuthority";
 import type { StableCatalogRules } from "./stableRules";
+import { isCorrectedIdentity, isCorrectedSubjectRules, parseCatalogSelector } from "./subjectIdentity";
 
 export { isCatalogReleaseBundle } from "./schemaValidation";
 
@@ -374,6 +373,33 @@ const selectorScope = (document: CatalogReleaseDocument, owners: ReadonlyMap<str
   document.kind === "subject" ? owners.get(document.content.id) ?? ""
     : document.kind === "alias" ? owners.get(document.content.subjectId) ?? "" : "";
 
+function lineageOwnerScopes(releases: readonly CatalogReleaseNode[]) {
+  const firstCorrection = new Map<string, number>();
+  const legacyOwners = new Map<string, string>();
+  for (const release of orderedReleaseNodes(releases)) {
+    for (const document of release.documents) {
+      if (document.kind !== "subject") continue;
+      const { id, ownerSubjectId } = document.content;
+      if (isCorrectedSubjectRules(document, release) && !firstCorrection.has(id)) {
+        firstCorrection.set(id, release.manifest.release.sequence);
+      }
+      if (ownerSubjectId && !firstCorrection.has(id)) legacyOwners.set(id, ownerSubjectId);
+    }
+  }
+  return (release: CatalogReleaseNode) => {
+    if (!firstCorrection.size) return legacyOwners;
+    const owners = new Map(legacyOwners);
+    for (const document of release.documents) {
+      if (document.kind !== "subject") continue;
+      const { id, ownerSubjectId } = document.content;
+      if ((firstCorrection.get(id) ?? Infinity) > release.manifest.release.sequence) continue;
+      if (ownerSubjectId) owners.set(id, ownerSubjectId);
+      else owners.delete(id);
+    }
+    return owners;
+  };
+}
+
 const validateDuplicateIdentities = (
   releases: readonly CatalogReleaseNode[],
   rules: StableCatalogRules["identityRules"] = stableCatalogRules.identityRules,
@@ -504,10 +530,7 @@ const validateCanonicalIdentities = (
   const releaseId = node.manifest.release.id;
   for (const document of node.documents) {
     if (document.kind === "subject") {
-      const parsed =
-        document.content.selector.kind === "driver-compatible"
-          ? parseCanonicalCompatibleSelector(document.content.selector.value)
-          : parseCanonicalNodeName(document.content.selector.value);
+      const parsed = parseCatalogSelector(document.content.selector.kind, document.content.selector.value);
       if (!parsed.ok) {
         violations.push(
           violation({
@@ -519,12 +542,7 @@ const validateCanonicalIdentities = (
         );
       }
     } else if (document.kind === "alias") {
-      const parsed =
-        document.content.selectorKind === "driver-compatible"
-          ? parseCanonicalCompatibleSelector(
-              document.content.normalizedSelector,
-            )
-          : parseCanonicalNodeName(document.content.normalizedSelector);
+      const parsed = parseCatalogSelector(document.content.selectorKind, document.content.normalizedSelector);
       if (!parsed.ok) {
         violations.push(
           violation({
@@ -827,15 +845,16 @@ const validateStableIdentityLineage = (
   rules: StableCatalogRules["identityRules"] = stableCatalogRules.identityRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
-  const owners = subjectOwners(orderedReleaseNodes(releases));
+  const ownersAt = lineageOwnerScopes(releases);
   for (const rule of rules) {
     const kind = rule.documentKind;
     const byId = new Map<
       string,
-      { readonly naturalKey: string; readonly immutable: string }
+      { readonly naturalKey: string; readonly immutable: string; readonly document: CatalogReleaseDocument }
     >();
     const byNaturalKey = new Map<string, string>();
     for (const release of orderedReleaseNodes(releases)) {
+      const owners = ownersAt(release);
       for (const document of release.documents.filter(
         (
           candidate,
@@ -862,10 +881,37 @@ const validateStableIdentityLineage = (
           ? "definition-revision"
           : kind;
         const previous = byId.get(binding.id);
+        const prior = previous?.document;
+        const corrected = isCorrectedIdentity(document, release) && (
+          document.kind === "subject" && prior?.kind === "subject"
+            ? document.content.kind === prior.content.kind &&
+              document.content.selector.kind === prior.content.selector.kind &&
+              document.content.ownerSubjectId === prior.content.ownerSubjectId &&
+              document.content.lifecycle === "active" && prior.content.lifecycle === "active" &&
+              document.content.canonicalKey === `${document.content.kind}:${document.content.selector.value}` &&
+              canonicalKey(document.content.subtype as ContractJsonValue) === canonicalKey(prior.content.subtype as ContractJsonValue)
+            : document.kind === "alias" && prior?.kind === "alias" &&
+              document.content.selectorKind === prior.content.selectorKind &&
+              document.content.normalizedSelector === prior.content.normalizedSelector &&
+              document.content.lifecycle === "active"
+        );
+        const correctedRules = isCorrectedSubjectRules(document, release) && document.kind === "subject" &&
+          prior?.kind === "subject" && document.content.kind === prior.content.kind &&
+          document.content.canonicalKey === prior.content.canonicalKey &&
+          document.content.selector.kind === prior.content.selector.kind &&
+          document.content.selector.value === prior.content.selector.value;
+        const movedAlias = document.kind === "alias" && prior?.kind === "alias" &&
+          document.content.subjectId === prior.content.subjectId &&
+          document.content.selectorKind === prior.content.selectorKind &&
+          document.content.normalizedSelector === prior.content.normalizedSelector &&
+          release.documents.some(subject => subject.kind === "subject" && subject.content.id === document.content.subjectId &&
+            isCorrectedSubjectRules(subject, release));
         if (
-          previous !== undefined &&
+          previous !== undefined && !corrected && !correctedRules && !movedAlias &&
           (previous.naturalKey !== binding.naturalKey ||
-            previous.immutable !== binding.immutable)
+            previous.immutable !== binding.immutable ||
+            (document.kind === "subject" && prior?.kind === "subject" &&
+              document.content.selector.value !== prior.content.selector.value))
         ) {
           violations.push(
             violation({
@@ -890,6 +936,7 @@ const validateStableIdentityLineage = (
         byId.set(binding.id, {
           naturalKey: binding.naturalKey,
           immutable: binding.immutable,
+          document,
         });
         byNaturalKey.set(binding.naturalKey, binding.id);
       }
@@ -1066,17 +1113,19 @@ const validatePermanentSelectorOwnership = (
   const violations: CatalogReleaseViolation[] = [];
   const canonicalOwners = new Map<string, string>();
   const aliasOwners = new Map<string, string>();
-  const owners = subjectOwners(orderedReleaseNodes(releases));
+  const ownersAt = lineageOwnerScopes(releases);
   const claimedOwners = new Map<string, string>();
   for (const release of orderedReleaseNodes(releases)) {
+    const owners = ownersAt(release);
     for (const document of release.documents) {
       if (document.kind === "subject") {
         const previousOwner = claimedOwners.get(document.content.id);
-        if (previousOwner && previousOwner !== document.content.ownerSubjectId) {
+        if (previousOwner && previousOwner !== document.content.ownerSubjectId && !isCorrectedSubjectRules(document, release)) {
           violations.push(violation({ code: "stable-key-reassigned", location: `release:${release.manifest.release.id}/subject:${document.content.id}`,
             subjectId: document.content.id, detail: "subject-owner-is-permanent" }));
         }
         if (document.content.ownerSubjectId) claimedOwners.set(document.content.id, document.content.ownerSubjectId);
+        else claimedOwners.delete(document.content.id);
         const key = canonicalKey([
           selectorScope(document, owners),
           document.content.selector.kind,
@@ -1101,7 +1150,7 @@ const validatePermanentSelectorOwnership = (
           document.content.normalizedSelector,
         ]);
         const owner = aliasOwners.get(key);
-        if (owner !== undefined && owner !== document.content.subjectId) {
+        if (owner !== undefined && owner !== document.content.subjectId && !isCorrectedIdentity(document, release)) {
           violations.push(
             violation({
               code: "alias-owner-mismatch",
@@ -1402,7 +1451,12 @@ const validateRetirementLineage = (
         !rules.requireActiveSameKindSuccessor
       )
         continue;
-      const candidates = release.documents.filter(
+      const reviewedRetirement = releasesById.get(tombstone.withdrawnByReleaseId);
+      const reviewedSubject = reviewedRetirement?.documents.find(item => item.kind === "subject" && item.content.id === document.content.id);
+      const validatedRetirement = document.kind === "subject" && reviewedRetirement && reviewedSubject &&
+        isCorrectedSubjectRules(reviewedSubject, reviewedRetirement) ? reviewedRetirement : undefined;
+      const conversionBase = validatedRetirement?.manifest.release.predecessor?.id;
+      const candidates = (validatedRetirement ?? release).documents.filter(
         (candidate) => candidate.content.id === tombstone.successorId,
       );
       if (candidates.length === 0) {
@@ -1425,8 +1479,10 @@ const validateRetirementLineage = (
         > =>
           (candidate.kind === "subject" || candidate.kind === "alias") &&
           candidate.kind === document.kind &&
-          retirementSemanticKind(candidate) ===
-            retirementSemanticKind(document),
+          (retirementSemanticKind(candidate) === retirementSemanticKind(document) ||
+            (validatedRetirement !== undefined && tombstone.reason === "subject-kind-replaced" && candidate.kind === "subject" &&
+              isCorrectedSubjectRules(candidate, validatedRetirement) && conversionBase !== undefined &&
+              !releasesById.get(conversionBase)?.documents.some(item => item.kind === "subject" && item.content.id === candidate.content.id))),
       );
       if (!successor) {
         violations.push(

@@ -255,6 +255,16 @@ export async function updateProductFeedback(
     }
 
     const normalizedPatch: UpdateProductFeedbackPatch = {};
+    const previousFeedbackType = existing.effective_feedback_type ?? existing.feedback_type;
+    const correctedType = patch.effectiveFeedbackType;
+    if (correctedType !== undefined && correctedType !== previousFeedbackType) {
+      normalizedPatch.effectiveFeedbackType = correctedType;
+    }
+    if (correctedType === previousFeedbackType && Object.keys(patch).length === 1) {
+      const unchanged = await getFeedbackById(tx, auth, feedbackId);
+      if (!unchanged) throw productFeedbackNotFound(feedbackId);
+      return unchanged;
+    }
     let internalMessage: string | null | undefined;
     if (hasPatchKey(patch, "adminNote")) {
       if (existing.status === "closed" && patch.status !== "in_progress") {
@@ -314,6 +324,10 @@ export async function updateProductFeedback(
         metadata: {
           previousStatus: existing.status,
           nextStatus: updated.status,
+          ...(normalizedPatch.effectiveFeedbackType === undefined ? {} : {
+            previousFeedbackType,
+            nextFeedbackType: updated.effectiveFeedbackType
+          }),
           priority: updated.priority,
           assigneeUserId: updated.assigneeUserId
         }

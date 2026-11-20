@@ -548,6 +548,12 @@ function mapDefinitionReplacementFailure(
     case "registration-required":
       return conflict(requestId, "registration-required");
     case "preview-unavailable":
+      if (error.reason === "publication-frozen" || error.reason === "publication-policy-disabled" ||
+          error.reason === "publication-self-approval-forbidden") {
+        return catalogGovernanceError({ status: error.reason === "publication-frozen" ? 409 : 403,
+          code: error.reason === "publication-frozen" ? "CONFLICT" : "FORBIDDEN", requestId,
+          reason: error.reason, message: "Current publication policy blocks this replacement." });
+      }
       return catalogGovernanceError({
         status: 409,
         code: "CONFLICT",
@@ -816,7 +822,7 @@ async function handleUpdatePlacement(
   };
   const result = await ports.executeRegistration(command);
   if (!result.ok) return mapRegistrationFailure(result.error, request.requestId);
-  const placementDto = placementFromResult(result.value);
+  const placementDto = placementUpdate ? placementFromResult(result.value) : existing.placement;
   return catalogGovernanceOk({
     body: { item: mapPlacement(placementDto) },
     requestId: request.requestId,
@@ -962,10 +968,13 @@ async function handleListReviewItems(
   if (denied) return denied;
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
+  const status = queryValue(request.query, "status");
+  if (status !== undefined && status !== "out-of-scope") return validationFailed(request.requestId, "status");
   const result = await ports.listReviewQueue({
     organizationId: request.params.organizationId ?? scope.organizationId,
     capturedRelease: pin.pin,
     context: reviewContext(scope),
+    ...(status ? { status } : {}),
   });
   if (!result.ok) return mapReviewFailure(result.error, request.requestId);
   const details = await ports.readReviewItemDetails?.({
@@ -1101,6 +1110,8 @@ async function handleResolveReviewItem(
       resolution: "mark-out-of-scope",
       outOfScopeReason: parsed.data.reason,
     };
+  } else if (resolution.type === "reopen-out-of-scope") {
+    command = { ...base, resolution: "reopen-out-of-scope", correctionReason: parsed.data.reason.trim() };
   } else {
     command = {
       ...base,
@@ -1445,11 +1456,14 @@ async function handlePreviewDefinitionReplacement(
   if (!context) return forbidden(request.requestId);
   const result = await migration.previewDefinitionReplacement({
     organizationId,
+    ...(scope.trustedActor?.initiator === "user" ? { authorOrganizationId: scope.trustedActor.principal.organization.id } : {}),
     oldDefinitionId: parsed.data.oldDefinitionId,
     newSubjectId: parsed.data.newSubjectId,
     newPropertyKey: parsed.data.newPropertyKey,
     proposedContent: supportedContentFromPreview(parsed.data),
     projectIds: parsed.data.projectIds,
+    mergeIntoDefinitionId: parsed.data.mergeIntoDefinitionId,
+    mergeChoices: parsed.data.mergeChoices,
     reason: parsed.data.reason,
     expectedRelease: pin.pin,
     context,
@@ -1574,10 +1588,8 @@ async function handleContinueDefinitionReplacement(
   const context = migrationContext(scope, organizationId);
   if (!context) return forbidden(request.requestId);
   const replacementId = request.params.replacementId ?? "";
-  const current = await migration.getDefinitionReplacement({ organizationId, replacementId });
-  if (!current.ok) return mapDefinitionReplacementFailure(current.error, request.requestId);
   const expectedVersion = parseEtagVersion(offered);
-  if (expectedVersion === null || expectedVersion !== current.value.version) {
+  if (expectedVersion === null || unquoteEtag(offered) !== unquoteEtag(replacementEtag(replacementId, expectedVersion))) {
     return revisionConflict(request.requestId);
   }
   const result = await migration.continueDefinitionReplacement({
@@ -1587,6 +1599,8 @@ async function handleContinueDefinitionReplacement(
     idempotencyKey: parsed.data.idempotencyKey,
     expectedRelease: pin.pin,
     context,
+    expectedVersion,
+    ...(scope.trustedActor ? { trustedActor: scope.trustedActor } : {}),
   });
   if (!result.ok) return mapDefinitionReplacementFailure(result.error, request.requestId);
   return catalogGovernanceOk({

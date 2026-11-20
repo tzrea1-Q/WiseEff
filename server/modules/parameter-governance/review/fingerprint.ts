@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import {
+  ReviewItemEtag,
   serializeContract,
   type ContractJsonValue,
   type LegacyRowClass,
@@ -35,6 +36,17 @@ export const reviewQueueContractFingerprint = `sha256:${createHash("sha256")
 
 export const fingerprintCanonical = (value: ContractJsonValue): string =>
   `sha256:${createHash("sha256").update(serializeContract(value)).digest("hex")}`;
+
+export const fingerprintResolvedItem = (input: {
+  readonly id: string;
+  readonly etagVersion: number;
+  readonly status: "resolved" | "out-of-scope";
+  readonly groupingFingerprint: string;
+  readonly catalogReleaseId: string;
+  readonly matcherRevision: string;
+  readonly reason: ReviewReason;
+  readonly resolutionId: string;
+}): ReviewItemEtag => ReviewItemEtag(fingerprintCanonical({ kind: "review-resolution-etag", ...input }));
 
 export type ReviewGroupFingerprintModel = {
   readonly kind: "review-item-group";

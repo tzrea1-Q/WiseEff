@@ -210,12 +210,15 @@ export async function getProjectParameterFileByName(
     ${fileFromClause}
     where pf.organization_id = $1
       and pf.project_id = $2
-      and pf.file_name = $3
-    limit 1
+      and ${currentSourceNameSql} = $3
+    limit 2
     `,
     [query.organizationId, query.projectId, query.fileName]
   );
 
+  if (result.rows.length > 1) {
+    throw new ApiError("CONFLICT", "Multiple configurations use this file path. Select the exact project file.", { fileName: query.fileName });
+  }
   const row = result.rows[0];
   return row ? toFileDto(row) : null;
 }

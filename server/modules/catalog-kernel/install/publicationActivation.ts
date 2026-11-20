@@ -53,6 +53,8 @@ import {
   type CatalogInstallOutcome,
 } from "./publicationTypes";
 import { isPublicationFrozen } from "../../catalog-publication/runtime/freeze";
+import { inspectSubjectRulesImpact } from "../../catalog-publication/subjectRulesImpact";
+import { subjectRulesProvenance } from "../compiler/subjectIdentity";
 
 export type PublicationActivationOptions = MaterializeReleaseOptions;
 
@@ -679,6 +681,24 @@ export const activateOnlinePublication = async (
 
   await applyPublicationTimeouts(client, command.activationDeadlineMs);
   refuseRetiredOwnerDefinitionChanges(compiled);
+  const target = compiled.model.releases.find(release => release.release.id === compiled.release.id);
+  if (target?.documents.some(document => subjectRulesProvenance(document)?.reviewReference === compiled.release.id)) {
+    const review = candidate.identityAllocation.subjectRulesReview;
+    const organizationId = candidate.identityAllocation.authorOrganizationId;
+    const base = compiled.model.releases.find(release => release.release.id === expectedCurrent.id);
+    if (!review || typeof review !== "object" || Array.isArray(review) ||
+        !("subjectId" in review) || typeof review.subjectId !== "string" ||
+        !("fingerprint" in review) || typeof organizationId !== "string" || !base) {
+      throw new PublicationActivationFailure({ kind: "publication-not-authorized", reason: "candidate-tampered" });
+    }
+    const checked = await inspectSubjectRulesImpact(db, {
+      subjectId: review.subjectId, before: base.documents, after: target.documents,
+    });
+    if (checked.fingerprint !== review.fingerprint || checked.impact.conflictCounts.length) {
+      throw new PublicationActivationFailure({ kind: "needs-rebase", installed: pointer.current,
+        target: identityFromCompiled(compiled), expectedCurrent });
+    }
+  }
   await materializeCompiledRelease(client, compiled, options);
   if (options?.afterMaterialize) {
     await options.afterMaterialize(client);

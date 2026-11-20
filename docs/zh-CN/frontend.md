@@ -33,7 +33,7 @@ Catalog 定义修订对 `unit`、`examples`、`description` 区分字段省略�
 - `src/features/knowledge/`：知识库页面（`/knowledge` 与 `/knowledge-admin`:列表、分栏编辑器、文件上传、修订历史）。
 - `src/test/setup.ts`：Vitest DOM 初始化。
 
-M1/M2 发布走同一四条冻结路由与会话权限 `catalog:author` / `catalog:publish` / `catalog:review-high-risk`。组织管理员（`admin`）默认拥有这些能力并可自批（含高风险）；`platform-admin` 不会；Agent 只读。ChangeSet 白名单为 `create-definition`、`create-subject-with-definitions`、`revise-definition`。嵌套定义不带已发布 `subjectId`。`class: documentation|semantic` 由后端比较持久内容确认，客户端标签只是意图；假文档请求改单位/schema 不能走低风险。新主体、选择器/别名、fallback 与语义修订均为高风险；非 admin 必须由另一位 `catalog:review-high-risk` 主体批准，Org Admin 可自批。M2 草稿仅组织管理员加 catalog 叠加可写；平台管理员不能创建草稿。新主体发布成功后的组织登记是既有独立命令：目录成功而登记失败保留 Catalog/Receipt，并显示 `registration-followup-failed`。运营路径是填写 → 保存草稿（既有 Proposal）→ 预览（`POST /api/v2/catalog/publication-candidates`，带 `X-WiseEff-Catalog-Release`）→ 发布（请求体 `idempotencyKey`）。运营人员不手填内部编号、发布版本、摘要或 Git 地址，也不手工创建 Artifact / Authorization / Job。`publication_enabled` 默认关闭。隔离本地/测试进程可用 `WISEEFF_CATALOG_TEST_CAPABILITIES` 给指定 principal 叠加能力；`AUTH_MODE=production` 或 `NODE_ENV=production` 时叠加为空，不能挂到生产 AuthContext。`publication_enabled` 通过 catalog-publication-ops 策略入口打开：ephemeral 确认仍仅限实验室；正式实例使用观测到的身份引脚（先 `policy check` 再 `policy enable`）。低风险单人发布是独立开关。这不是自动生产启用。`GET /api/v2/catalog/publication-surface` 解释策略、冻结、接管和会话能力，不暴露 DSN。
+M1/M2 发布走同一四条冻结路由与会话权限 `catalog:author` / `catalog:publish` / `catalog:review-high-risk`。组织管理员（`admin`）和平台超级管理员（`platform-admin`）默认拥有这些能力。组织管理员沿用既有自批策略。Agent 只读。ChangeSet 白名单为 `create-definition`、`create-subject-with-definitions`、`revise-definition`。嵌套定义不带已发布 `subjectId`。`class: documentation|semantic` 由后端比较持久内容确认，客户端标签只是意图；假文档请求改单位/schema 不能走低风险。新主体、选择器/别名、fallback 与语义修订均为高风险；非 admin 必须由另一位 `catalog:review-high-risk` 主体批准，Org Admin 可自批。M2 草稿仅组织管理员加 catalog 叠加可写；平台管理员不能创建草稿。新主体发布成功后的组织登记是既有独立命令：目录成功而登记失败保留 Catalog/Receipt，并显示 `registration-followup-failed`。运营路径是填写 → 保存草稿（既有 Proposal）→ 预览（`POST /api/v2/catalog/publication-candidates`，带 `X-WiseEff-Catalog-Release`）→ 发布（请求体 `idempotencyKey`）。运营人员不手填内部编号、发布版本、摘要或 Git 地址，也不手工创建 Artifact / Authorization / Job。`publication_enabled` 默认关闭。隔离本地/测试进程可用 `WISEEFF_CATALOG_TEST_CAPABILITIES` 给指定 principal 叠加能力；`AUTH_MODE=production` 或 `NODE_ENV=production` 时叠加为空，不能挂到生产 AuthContext。`publication_enabled` 通过 catalog-publication-ops 策略入口打开：ephemeral 确认仍仅限实验室；正式实例使用观测到的身份引脚（先 `policy check` 再 `policy enable`）。低风险单人发布是独立开关。这不是自动生产启用。`GET /api/v2/catalog/publication-surface` 解释策略、冻结、接管和会话能力，不暴露 DSN。
 
 ## Runtime 模式
 
@@ -87,6 +87,8 @@ Catalog 定义行在等宽属性键旁保留已发布的显示名；中文名称
 定义模块导航默认收起分支，自动展开已选模块／主体的路径。文件夹、驱动和节点类型图标区分层级，主体状态放在名称下方，长名称保留完整悬停提示，数量在独立徽标列对齐。导航不常驻「全部定义」入口，再次点击已选模块或主体即可取消该项选择并保留搜索条件，导航标题不随选择变化；仅展开分支不会改变列表筛选。模块管理也移除「全部模块」入口及重复的树标题／说明，两页均保留导航搜索，模块管理不再提供高级筛选区；定义导航可搜索模块／主体名称，保留父级路径并展开匹配项，输入搜索词不改变参数列表，清空后恢复展开状态。旧模块筛选 URL 条件不再隐藏内容；两页模块名称使用相同字号与字重。
 
 模块管理的顶部操作栏提供「新建模块」。业务模块行菜单提供新增子模块和「调整上级模块」，也可移至顶层；目标列表排除自身和后代。API 模式下，这些业务分类操作按会话的 `admin:access` 权限显示，并排除 Agent；Catalog 主体登记与归属继续使用独立的组织治理权限。
+
+切回模块管理时，页面保留当前视图。「刷新规范数据」在原位重新校验模块和主体列表。编辑或结构导入成功后更新受影响的数据，主体列表保留筛选条件以及当前发布中已展开的参数定义。
 
 定义搜索在停止输入 300 毫秒后自动应用，中文输入法组词完成后才搜索，回车可立即应用。搜索更新替换当前 URL 历史项，保留范围和筛选并重置分页；仅保留搜索框及其内置清空控件，不再提供独立搜索／清空按钮。组织审核入口统一命名「待审核事项」，弹窗和来源识别中的跳转链接同步使用该名称。
 

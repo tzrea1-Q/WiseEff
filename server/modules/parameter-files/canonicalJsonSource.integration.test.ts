@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { migrationsDir, withTempDatabase } from "../../testing/tempDatabase";
@@ -13,7 +14,12 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../shared/databa
 import { createLocalObjectStore } from "../logs/objectStore";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { enablePublicationPolicy } from "../catalog-publication/authorization/testHarness";
+import { captureCurrentCatalogPin } from "../catalog-publication/runtime";
+import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
+import { captureProjectParameterPlane } from "../parameter-bindings/seedInitialization/archive";
+import { disposeProjectParameterPlaneResidue, planProjectParameterPlaneDisposal } from "../parameter-bindings/seedInitialization/dispose";
 import { casCurrentTip, insertProjectValue, loadProjectValueById } from "../parameter-bindings/values/repositories";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { loadCanonicalSourceSnapshot, preparePinnedSourceChange } from "./canonicalSource";
@@ -28,10 +34,15 @@ import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
 import { registerCatalogProjectValueConsumerRoutes } from "../parameter-bindings/catalogProjectValueRoutes";
+import { registerParameterFileRoutes } from "./routes";
 import { createWiseEffServer } from "../../app";
 import { createLocalAuthService } from "../auth/localAuth";
 import { hashLocalAccountPassword } from "../auth/localAccountCredentials";
-import { catalogBindingExportResponseSchema, catalogValueChangeRequestResponseSchema, catalogValueChangeSourceDiffResponseSchema, projectValueDraftListResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
+import {
+  catalogBindingExportResponseSchema, catalogDefinitionRevisionResponseSchema, catalogReplacementPreviewResponseSchema,
+  catalogReplacementResponseSchema, catalogValueChangeRequestResponseSchema, catalogValueChangeSourceDiffResponseSchema,
+  projectValueDraftListResponseSchema,
+} from "../contracts/dtoSchemas/parameterCatalog";
 
 const ORG = "org-t11-json";
 const PROJECT = "project-t11-json";
@@ -39,6 +50,9 @@ const USER = "user-t11-json";
 const SUBJECT = "csub_t11_json";
 const MODEL = "wiseeff.t11.limits";
 const DEFINITION = "pdef_acme_power_iin_max";
+const DEFINITION_REVISION = "drev_acme_power_iin_max_1";
+const alternateSchema = { subjectId: "csub_t1581_json", schemaId: "wiseeff.t1581.limits",
+  definitionId: "pdef_t1581_iin_max", revisionId: "drev_t1581_iin_max_1" };
 const SOURCE = '{ "a/b":{"":{"limit":36.5,"enabled":false}}, "untouched":[1,2] }\n';
 
 it("atomically refuses an existing incorrect JSON root digest when upgrading 0152", async () => {
@@ -157,7 +171,7 @@ describe("canonical JSON configuration source", () => {
        values ('t11-json-reviewer-role','reviewer-t11-json',$1,$2,'software-committer')`,
       [ORG, PROJECT]
     );
-    await installConfigurationSourceFixture(db,auth,{ subjectId: SUBJECT,schemaId: MODEL });
+    await installConfigurationSourceFixture(db,auth,{ subjectId: SUBJECT,schemaId: MODEL, alternateSchema });
     SET = (await createConfigSet(db,auth,{ projectId: PROJECT,name: "JSON configuration" })).id;
     const uploaded = await uploadProjectParameterFile(db,storage,auth,{ projectId: PROJECT,fileName: "settings.json",bytes: Buffer.from(SOURCE) });
     fileId = uploaded.file.id; versionId = uploaded.version.id;
@@ -168,6 +182,236 @@ describe("canonical JSON configuration source", () => {
     await db?.close(); await database?.drop();
     if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
   });
+
+  it("corrects the JSON schema and root through the API and replays both exact value identities", async () => {
+    const projectId = "atlas";
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'JSON correction','T1581','initialized')",
+      [projectId, ORG]);
+    const set = await createConfigSet(db, auth, { projectId, name: "JSON association correction" });
+    const file = await uploadProjectParameterFile(db, storage, auth, {
+      projectId, fileName: "association.json", bytes: Buffer.from('{"wrong":{"limit":11},"right":{"limit":22}}')
+    });
+    await addConfigSetFile(db, auth, { configSetId: set.id, fileId: file.file.id, role: "base" });
+    const runToken = `jsoncorr${process.pid}`;
+    const { apiUrl } = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken });
+    const apiDb = createPostgresDatabase(apiUrl);
+    try {
+      function server() {
+        const router = createRouter();
+        const options = { db: apiDb, objectStore: storage, getCurrentAuthContext: () => auth, refusalAuditSink: refusalSink };
+        registerParameterFileRoutes(router, options);
+        registerCatalogProjectValueConsumerRoutes(router, options);
+        return createHttpServer(router);
+      }
+      const projectPath = `/api/v2/projects/${projectId}`;
+      const path = `${projectPath}/parameter-files/${file.file.id}/configuration-instances`;
+      const api = <T,>(url: string, payload?: unknown) => requestJson<T>(server(), url,
+        payload ? { method: "POST", body: JSON.stringify(payload) } : undefined);
+      const registration = await api<{items:Array<{id:string;currentValueId:string}>}>(path, {
+        configSetId: set.id, fileVersionId: file.version.id, configurationSchemaId: MODEL, rootPointer: "/wrong",
+        mappings: [{ definitionId: DEFINITION, pointer: "/wrong/limit" }]
+      });
+      expect(registration.status, registration.bodyText).toBe(201);
+      const old = registration.body.items[0]!;
+      const values = `${projectPath}/parameter-bindings`;
+      const replayPath = `${values}/${old.id}/export?projectValueId=${old.currentValueId}`;
+      const historical = await api(replayPath);
+      expect(historical.status, historical.bodyText).toBe(200);
+      const instances = await api<{items:Array<{occurrenceId:string;rootPointer:string;bindings:unknown[]}>}>(path);
+      expect(instances.status, instances.bodyText).toBe(200);
+      expect(instances.body.items).toMatchObject([{ rootPointer: "/wrong",
+        bindings: [{ bindingId: old.id, pointer: "/wrong/limit", value: 11 }] }]);
+      const correction = `${path}/${instances.body.items[0]!.occurrenceId}/correction`;
+      const next = { configurationSchemaId: alternateSchema.schemaId, rootPointer: "/right",
+        mappings: [{ definitionId: alternateSchema.definitionId, pointer: "/right/limit" }] };
+      expect((await api(`${correction}/preview`, { ...next, rootPointer: "/missing" })).status).toBe(409);
+      expect((await api(`${correction}/preview`, { ...next, mappings: [{ definitionId: DEFINITION, pointer: "/right/limit" }] })).status).toBe(409);
+      expect((await api(`${correction}/preview`, { ...next, mappings: [{ definitionId: alternateSchema.definitionId, pointer: "/wrong/limit" }] })).status).toBe(409);
+      const collision = await api(`${correction}/preview`, { configurationSchemaId: MODEL, rootPointer: "/wrong",
+        mappings: [{ definitionId: DEFINITION, pointer: "/wrong/limit" }] });
+      expect(collision.status).toBe(409);
+      const preview = await api<{item:{proofToken:string}}>(`${correction}/preview`, next);
+      expect(preview.status, preview.bodyText).toBe(200);
+      expect(preview.body.item).toMatchObject({ values: [{ pointer: "/right/limit", value: 22 }] });
+      const apply = { ...next, proofToken: preview.body.item.proofToken, reason: "Correct authored instance root", clientMutationId: "t1581-json" };
+      expect((await api(`${correction}/apply`, { ...apply, proofToken: "0".repeat(64) })).status).toBe(409);
+      const result = await api<{item:{jsonCorrection:{previousOccurrenceId:string;successorOccurrenceId:string}}}>(`${correction}/apply`, apply);
+      expect(result.status, result.bodyText).toBe(200);
+      expect(result.body.item.jsonCorrection.previousOccurrenceId).toBe(instances.body.items[0]!.occurrenceId);
+      expect((await api(`${correction}/apply`, apply)).body).toEqual(result.body);
+      const current = await api<{items:Array<{occurrenceId:string}>}>(path);
+      expect(current.body.items).toMatchObject([{ occurrenceId: result.body.item.jsonCorrection.successorOccurrenceId,
+        configurationSchemaId: alternateSchema.schemaId, rootPointer: "/right", bindings: [{ pointer: "/right/limit", value: 22 }] }]);
+      expect((await api(replayPath)).body).toEqual(historical.body);
+      expect((await api<{items:Array<{id:string}>}>(values)).body.items.some(row => row.id === old.id)).toBe(false);
+
+      // The archive/rebuild disposer must keep the exact correction evidence
+      // and both sets of pins while removing unrelated legacy residue.
+      await db.query(`insert into public.parameter_drafts (id, organization_id, project_id, target_value, reason)
+        values ('json-correction-legacy-draft', $1, $2, '11', 'Archivable legacy residue')`, [ORG, projectId]);
+      const archive = await captureProjectParameterPlane(db, storage, auth, { projectId });
+      const operator = { role: "cutover-operator" as const, approvalRef: "t1581-archive-test" };
+      const disposal = { projectId, archiveId: archive.archiveId, archiveDigest: archive.archiveDigest };
+      const plan = await planProjectParameterPlaneDisposal(db, storage, auth, operator, disposal);
+      const { previousOccurrenceId, successorOccurrenceId } = result.body.item.jsonCorrection;
+      expect(plan.residue.canonical_source_occurrences).not.toContain(previousOccurrenceId);
+      expect(plan.residue.canonical_source_occurrences).not.toContain(successorOccurrenceId);
+      expect(plan.residue.canonical_bindings).not.toContain(old.id);
+      expect(plan.residue.canonical_values).not.toContain(old.currentValueId);
+      expect(plan.residue.parameter_drafts).toContain("json-correction-legacy-draft");
+      await disposeProjectParameterPlaneResidue(db, storage, auth, operator, disposal);
+      expect((await db.query("select id from public.parameter_drafts where id='json-correction-legacy-draft'")).rows).toEqual([]);
+      expect((await api(`${correction}/apply`, apply)).body).toEqual(result.body);
+      expect((await api(replayPath)).body).toEqual(historical.body);
+      expect((await api(path)).body).toEqual(current.body);
+    } finally {
+      await apiDb.close();
+      await dropLabRuntimeLogins(database.url, runToken);
+    }
+  });
+
+  it("replays exact JSON pins after a selected-project keep-target Definition merge and instance correction", async () => {
+    const projectId = "project-json-merge-correction";
+    const administrator = "json-merge-platform-admin";
+    const reviewer = "reviewer-t11-json";
+    await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'JSON merge correction','JMC','initialized')",
+      [projectId, ORG]);
+    await db.query("insert into users(id,organization_id,name,title) values ($1,$2,'Merge administrator','Admin')", [administrator, ORG]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$1,$2,null,'platform-admin')",
+      [administrator, ORG]);
+    await db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$2,$3,$1,'software-committer')",
+      [projectId, reviewer, ORG]);
+    const pin = (await captureCurrentCatalogPin(getRootPostgresPool(db)!))!;
+    const policyClient = new pg.Client({ connectionString: database.url });
+    await policyClient.connect();
+    try {
+      await enablePublicationPolicy(policyClient, { publicationEnabled: true, lowRiskSingleActorPublish: false }, administrator);
+    } finally {
+      await policyClient.end();
+    }
+    const runToken = `jsonmerge${process.pid}`;
+    const { apiUrl } = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken });
+    const apiDb = createPostgresDatabase(apiUrl);
+    try {
+      const server = () => createWiseEffServer({ db: apiDb, objectStore: storage, auth: { mode: "production", verifier: {
+        verify: async authorization => makeTestAuthContext({ organizationId: ORG, userId: String(authorization).slice("Bearer ".length),
+          roles: [{ roleId: "guest", projectId: null }] }),
+      } } });
+      const api = async <T,>(status: number, path: string, body?: unknown, actor = administrator, fingerprint?: string) => {
+        const response = await requestJson<T>(server(), path, {
+          headers: { authorization: `Bearer ${actor}`, "X-WiseEff-Catalog-Release": pin.id,
+            "Idempotency-Key": randomUUID(),
+            ...(fingerprint ? { "If-Match": fingerprint } : {}) },
+          ...(body === undefined ? {} : { method: "POST", body: JSON.stringify(body) }),
+        });
+        expect(response.status, `${path}\n${response.bodyText}`).toBe(status);
+        return response.body;
+      };
+      const legacyProject = `/api/v1/projects/${projectId}`;
+      const project = `/api/v2/projects/${projectId}`;
+      const set = (await api<{ item: { id: string } }>(201, `${legacyProject}/config-sets`, { name: "JSON merge" })).item;
+      const contents = { obsolete: { limit: 11 }, retained: { limit: 22 }, corrected: { limit: 33 } };
+      const { item: file, version } = await api<{ item: { id: string }; version: { id: string } }>(201, `${legacyProject}/parameter-files`, {
+        fileName: "merge.json", contentBase64: Buffer.from(JSON.stringify(contents)).toString("base64"),
+      });
+      await api(201, `${legacyProject}/config-sets/${set.id}/files`, { fileId: file.id, role: "base", sortOrder: 0 });
+      const instances = `${project}/parameter-files/${file.id}/configuration-instances`;
+      type Binding = { id: string; currentValueId: string };
+      const mapping = (configurationSchemaId: string, rootPointer: string, definitionId: string) => ({
+        configurationSchemaId, rootPointer, mappings: [{ definitionId, pointer: `${rootPointer}/limit` }],
+      });
+      const register = async (selection: ReturnType<typeof mapping>) => (await api<{ items: Binding[] }>(201, instances, {
+        configSetId: set.id, fileVersionId: version.id, ...selection,
+      })).items[0]!;
+      const obsolete = await register(mapping(MODEL, "/obsolete", DEFINITION));
+      const retained = await register(mapping(alternateSchema.schemaId, "/retained", alternateSchema.definitionId));
+      const bindings = `${project}/parameter-bindings`;
+      const exportValue = async (bindingId: string, projectValueId?: string) => catalogBindingExportResponseSchema.parse(
+        await api(200, `${bindings}/${bindingId}/export${projectValueId ? `?projectValueId=${projectValueId}` : ""}`)).item;
+      const beforeMerge = await Promise.all([obsolete, retained].map(row => exportValue(row.id, row.currentValueId)));
+      const [oldSource, oldTarget] = beforeMerge;
+      expect(oldSource).toMatchObject({ definitionId: DEFINITION, definitionRevisionId: DEFINITION_REVISION, currentValueId: obsolete.currentValueId,
+        manifest: { fileId: file.id, fileVersionId: version.id, rootPointer: "/obsolete", locator: { pointer: "/obsolete/limit" } } });
+      expect(oldTarget).toMatchObject({ definitionId: alternateSchema.definitionId, definitionRevisionId: alternateSchema.revisionId,
+        currentValueId: retained.currentValueId, manifest: { fileId: file.id, fileVersionId: version.id,
+          rootPointer: "/retained", locator: { pointer: "/retained/limit" } } });
+      const readRevision = async (source: typeof oldSource) => catalogDefinitionRevisionResponseSchema.parse(await api(200,
+        `/api/v2/catalog/definitions/${source.definitionId}/revisions/${source.definitionRevisionId}?catalogReleaseId=${source.catalogReleaseId}`)).item;
+      const revisions = await Promise.all(beforeMerge.map(readRevision));
+
+      const replacements = "/api/v2/catalog/definition-replacements";
+      const organization = `?organizationId=${ORG}`;
+      const preview = catalogReplacementPreviewResponseSchema.parse(await api(201, `${replacements}/preview${organization}`, {
+        oldDefinitionId: DEFINITION, newSubjectId: alternateSchema.subjectId, newPropertyKey: "iin_max", mergeIntoDefinitionId: alternateSchema.definitionId,
+        displayName: "Retained current limit", documentation: "Retain the target limit", valueSchema: { type: "number", minimum: 0 },
+        projectIds: [projectId], mergeChoices: { [projectId]: "target" }, reason: "Merge the duplicate project limit",
+      })).item;
+      expect(preview.projects).toMatchObject([{ projectId, blockerReason: "merge-source-removal-required",
+        mergeConflict: { choice: "target", sourceValue: 11, targetValue: 22, targetBindingId: retained.id } }]);
+      const pending = catalogReplacementResponseSchema.parse(await api(202, `${replacements}${organization}`, {
+        previewId: preview.previewId, previewFingerprint: preview.previewFingerprint, idempotencyKey: "json-merge",
+      }, administrator, preview.previewFingerprint)).item;
+      expect(pending).toMatchObject({ status: "blocked", projects: [{ projectId, blockerReason: "merge-source-removal-required" }] });
+
+      const draft = (await api<{ item: { draftId: string } }>(201, `${bindings}/${obsolete.id}/drafts`, {
+        baseRevisionId: oldSource.configRevisionId, action: "delete", reason: "Remove the duplicate JSON limit",
+      })).item;
+      const request = (await api<{ item: { id: string } }>(201, `${project}/parameter-value-drafts/${draft.draftId}/submit`, {
+        assignedToUserId: reviewer,
+      })).item;
+      const reviewPath = `${project}/parameter-value-change-requests/${request.id}/review`;
+      await api(403, reviewPath, { decision: "approve" });
+      const approval = catalogValueChangeRequestResponseSchema.parse(await api(200, reviewPath, { decision: "approve" }, reviewer)).item;
+      expect(approval).toMatchObject({ status: "approved", applyOutcome: "committed", reviewerUserId: reviewer, appliedValueId: expect.any(String) });
+      const continueMerge = () => api(202, `${replacements}/${pending.id}/continue${organization}`,
+        { idempotencyKey: "json-merge-reviewed" }, administrator, pending.etag);
+      const completed = catalogReplacementResponseSchema.parse(await continueMerge()).item;
+      const afterMerge = await exportValue(retained.id);
+      expect(completed).toMatchObject({ status: "completed", projects: [{ projectId, status: "completed", oldValueId: obsolete.currentValueId,
+        newBindingId: retained.id, newValueId: afterMerge.currentValueId }] });
+      expect(afterMerge).toMatchObject({ definitionId: alternateSchema.definitionId, definitionRevisionId: alternateSchema.revisionId,
+        manifest: { fileId: file.id, sourceOccurrenceId: oldTarget.manifest.sourceOccurrenceId, rootPointer: "/retained",
+          locator: { pointer: "/retained/limit" } } });
+      expect(afterMerge.currentValueId).not.toBe(oldTarget.currentValueId);
+      const deleted = await exportValue(obsolete.id, approval.appliedValueId!);
+      expect(deleted).toMatchObject({ definitionId: DEFINITION, definitionRevisionId: DEFINITION_REVISION, valueState: "deleted",
+        configRevisionId: afterMerge.configRevisionId, manifest: { baseSourcePinId: oldSource.manifest.sourcePinId,
+          deleteRequestId: request.id, locator: { kind: "json-delete", pointer: "/obsolete/limit" } } });
+      expect(await api(200, bindings)).toMatchObject({ items: [{ id: retained.id, definitionId: alternateSchema.definitionId,
+        currentValueId: afterMerge.currentValueId, effectiveValue: { kind: "json", value: 22 } }] });
+      expect(await api(200, instances)).toMatchObject({ items: [{ occurrenceId: afterMerge.manifest.sourceOccurrenceId,
+        rootPointer: "/retained", bindings: [{ bindingId: retained.id, pointer: "/retained/limit", value: 22 }] }] });
+
+      const correction = `${instances}/${afterMerge.manifest.sourceOccurrenceId}/correction`;
+      const selection = mapping(alternateSchema.schemaId, "/corrected", alternateSchema.definitionId);
+      const correctionPreview = (await api<{ item: { proofToken: string } }>(200, `${correction}/preview`, selection)).item;
+      expect(correctionPreview).toMatchObject({ values: [{ definitionId: alternateSchema.definitionId, pointer: "/corrected/limit", value: 33 }] });
+      const apply = { ...selection, proofToken: correctionPreview.proofToken, reason: "Correct the retained JSON root", clientMutationId: "json-merge-correction" };
+      const corrected = (await api<{ item: { jsonCorrection: { previousOccurrenceId: string; successorOccurrenceId: string; bindingIds: string[] } } }>(
+        200, `${correction}/apply`, apply)).item.jsonCorrection;
+      expect(corrected.previousOccurrenceId).toBe(afterMerge.manifest.sourceOccurrenceId);
+      expect(corrected.successorOccurrenceId).not.toBe(corrected.previousOccurrenceId);
+      expect(corrected.bindingIds).toHaveLength(1);
+      const current = await exportValue(corrected.bindingIds[0]!);
+      expect(await api(200, bindings)).toMatchObject({ items: [{ id: current.bindingId, definitionId: alternateSchema.definitionId,
+        currentValueId: current.currentValueId, effectiveValue: { kind: "json", value: 33 } }] });
+      expect(await api(200, instances)).toMatchObject({ items: [{ occurrenceId: corrected.successorOccurrenceId, rootPointer: "/corrected",
+        bindings: [{ bindingId: current.bindingId, pointer: "/corrected/limit", value: 33 }] }] });
+      expect(current).toMatchObject({ definitionRevisionId: alternateSchema.revisionId, manifest: {
+        fileId: file.id, sourceOccurrenceId: corrected.successorOccurrenceId, rootPointer: "/corrected", locator: { pointer: "/corrected/limit" },
+      } });
+      expect(JSON.parse(current.files[0]!.content)).toEqual({ ...contents, obsolete: {} });
+      expect(catalogReplacementResponseSchema.parse(await continueMerge()).item).toEqual(completed);
+      expect(await Promise.all(beforeMerge.map(readRevision))).toEqual(revisions);
+      for (const historical of [...beforeMerge, afterMerge, deleted, current]) {
+        expect(await exportValue(historical.bindingId, historical.currentValueId)).toEqual(historical);
+        expect(await api(200, `${bindings}/${historical.bindingId}/reimport-preview`, historical)).toEqual({ item: historical });
+      }
+    } finally {
+      await apiDb.close();
+      await dropLabRuntimeLogins(database.url, runToken);
+    }
+  }, 120_000);
 
   it("registers an explicit governed root without a DTS node and prepares a typed decimal edit", async () => {
     const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);

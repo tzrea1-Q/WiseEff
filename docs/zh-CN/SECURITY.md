@@ -62,9 +62,9 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 - `users:manage`
 - `platform:access`（保留的平台超级管理员角色元数据；独立控制台已删除）
 - `platform:schema-promote`（保留的旧角色元数据；晋升和历史查询能力均已退役）
-- `catalog:author`（创建 Catalog 草稿 / ChangeSet / Candidate 预览；授予组织 Admin `admin`，不授予 `platform-admin` / Agent 默认矩阵）
-- `catalog:publish`（在策略允许时批准，或请求执行已授权 Candidate；授予组织 Admin `admin`，不授予 `platform-admin` / Agent 默认矩阵）
-- `catalog:review-high-risk`（独立批准高风险 Candidate；授予组织 Admin `admin`。非 admin 编写者仍不能用第二个合成身份满足此项）
+- `catalog:author`（编写目录 ChangeSet 并预览候选；授予 `admin` 和 `platform-admin`）
+- `catalog:publish`（在策略允许时批准，或请求执行已授权候选；授予 `admin` 和 `platform-admin`）
+- `catalog:review-high-risk`（复核其他人员编写的高风险候选；授予 `admin` 和 `platform-admin`。组织管理员的自批沿用既有策略。）
 
 `platform-admin` 是第一个跨组织角色。`AuthContext` 仍绑定主组织，**不会**扩大对其他租户参数、日志、用户或项目的访问。它解锁平台作用域行（`organization_id IS NULL`）以及一个有界聚合读（晋升候选）。只有已持有 `platform-admin` 的调用方才能授予或撤销该角色。平台级审计事件可将 `organization_id` 置空，并向每个受影响租户扇出一条组织作用域事件；普通列表接口仍按调用方组织过滤。
 
@@ -194,6 +194,8 @@ Simulator-backed path 只用于本地验证。ADB/HDC 都必须经过同一个�
 Bridge 重命名（`PATCH /api/v1/device-bridges/:bridgeId`）与撤销（`POST /api/v1/device-bridges/:bridgeId/revoke`）需要 `debugging:use`，且只能操作当前用户拥有的 Bridge；撤销会立即使 bridge token 失效，阻止新的 WebSocket 连接。重命名只更新展示用机器标签，不轮换凭据，也不扩展 scope。
 
 具有 `users:manage` 的本组织管理员和平台超级管理员可通过 `/api/v1/device-bridges/organization` 盘点、撤销本组织成员的 Bridge，不改变设备执行所有权或人工批准要求。目录不含认证凭据与配对密钥。管理员撤销将操作人、所有者、目标和原因与 Bridge／token 撤销在同一事务提交，重复撤销保留原结果；提交后断开本地连接并拒绝待处理的 RPC。WebSocket 授权复核完成前不能接收设备 RPC，后续消息及每个心跳周期也会复核凭据，使其他 API 进程上的已撤销或过期连接关闭。
+
+平台超级管理员可在 `/organization/bridges` 更正操作组织内的 Bridge 显示名称。`PATCH /api/v1/device-bridges/organization/:bridgeId` 接收 `machineLabel`，并在同一事务提交显示名称与 `device-bridge-admin-rename` 审计。审计标识实际操作人、Bridge 和所有者。原连接、凭据、所有权和撤销状态保持不变，设备所有者可在个人设备列表中查看新名称。
 
 ## 不可信子进程执行（DTS 校验门禁）
 

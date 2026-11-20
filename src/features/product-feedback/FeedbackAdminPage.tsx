@@ -196,7 +196,7 @@ export function FeedbackAdminPage({ productFeedbackRepository, search, onSearchC
   const filteredRows = useMemo(() => {
     const scoped = rows.filter((feedback) => (
       (location.status === "all" || feedback.status === location.status)
-      && (location.type === "all" || feedback.feedbackType === location.type)
+      && (location.type === "all" || (feedback.effectiveFeedbackType ?? feedback.feedbackType) === location.type)
       && (location.priority === "all" || (feedback.priority ?? "normal") === location.priority)
       && (location.assignee === "all" || (location.assignee === "unassigned" ? !feedback.assigneeUserId : feedback.assigneeUserId === location.assignee))
     ));
@@ -225,7 +225,7 @@ export function FeedbackAdminPage({ productFeedbackRepository, search, onSearchC
 
   const columns: Column<ProductFeedback>[] = [
     { key: "summary", header: "反馈内容", widthClass: "feedback-admin-summary-column", sortAccessor: (item) => item.description,
-      render: (item) => <div className="feedback-admin-summary"><p className="feedback-admin-summary__title">{item.description.trim().split("\n")[0] || "未填写问题描述"}</p><p className="feedback-admin-summary__context"><span>{item.pageTitle}</span><span title={item.pagePath}>{item.pagePath}</span></p><p className="feedback-admin-summary__meta">{productFeedbackTypeLabels[item.feedbackType]}<span>·</span>{item.attachments.length ? `${item.attachments.length} 张截图` : "无附件"}</p></div> },
+      render: (item) => <div className="feedback-admin-summary"><p className="feedback-admin-summary__title">{item.description.trim().split("\n")[0] || "未填写问题描述"}</p><p className="feedback-admin-summary__context"><span>{item.pageTitle}</span><span title={item.pagePath}>{item.pagePath}</span></p><p className="feedback-admin-summary__meta">{productFeedbackTypeLabels[item.effectiveFeedbackType ?? item.feedbackType]}<span>·</span>{item.attachments.length ? `${item.attachments.length} 张截图` : "无附件"}</p></div> },
     { key: "status", header: "状态", widthClass: "feedback-admin-status-column", render: (item) => <FeedbackStatusBadge status={item.status} resolutionCode={item.resolutionCode} />, sortAccessor: (item) => item.status },
     { key: "triage", header: "分诊", widthClass: "feedback-admin-triage-column", sortAccessor: (item) => ({ low: 0, normal: 1, high: 2 })[item.priority ?? "normal"], render: (item) => <div className="feedback-admin-triage-cell"><span data-priority={item.priority ?? "normal"}>{priorityLabels[item.priority ?? "normal"]}优先级</span><span>{item.assignee?.name ?? "未分配负责人"}</span></div> },
     { key: "submitter", header: "提交人", widthClass: "feedback-admin-person-column", render: (item) => <span className="feedback-admin-person">{submitterLabel(item)}</span>, sortAccessor: submitterLabel },
@@ -245,7 +245,9 @@ export function FeedbackAdminPage({ productFeedbackRepository, search, onSearchC
       rowActions={(item) => ({ label: `反馈 ${item.id} 操作`, primaryAction: { id: "view", label: "查看", onSelect: () => changeLocation({ id: item.id }) }, items: [] })}
       filterBar={<>
         <SearchField className="feedback-admin-search" value={location.query} onValueChange={(query) => changeLocation({ query })} placeholder="搜索问题、页面或提交人" ariaLabel="搜索反馈" />
-        <SelectControl<ProductFeedbackType | "all"> ariaLabel="类型筛选" value={location.type} onValueChange={(type) => changeLocation({ type })} size="filter" options={[{ value: "all", label: "全部类型" }, ...productFeedbackTypes.map((type) => ({ value: type, label: productFeedbackTypeLabels[type] }))]} />
+        <SelectControl<ProductFeedbackType | "all"> ariaLabel="处理分类筛选" value={location.type} onValueChange={(type) => changeLocation({ type })} size="filter" options={[{ value: "all", label: "全部处理分类" }, ...productFeedbackTypes.map((type) => ({
+          value: type, label: `${productFeedbackTypeLabels[type]}${stats?.byType ? ` (${stats.byType[type]})` : ""}`
+        }))]} />
         <SelectControl ariaLabel="优先级筛选" value={location.priority} onValueChange={(priority: typeof location.priority) => changeLocation({ priority })} size="filter" options={[{ value: "all", label: "全部优先级" }, { value: "low", label: "低优先级" }, { value: "normal", label: "普通优先级" }, { value: "high", label: "高优先级" }]} />
         <SelectControl ariaLabel="负责人筛选" value={location.assignee} onValueChange={(assignee) => changeLocation({ assignee })} size="filter" options={[{ value: "all", label: "全部负责人" }, { value: "unassigned", label: "未分配负责人" }, ...assigneeOptions.map(([value, label]) => ({ value, label })), ...(location.assignee !== "all" && location.assignee !== "unassigned" && !assigneeOptions.some(([id]) => id === location.assignee) ? [{ value: location.assignee, label: "所选负责人" }] : [])]} />
         {hasActiveFilters ? <Button variant="ghost" size="sm" onClick={resetFilters}>重置</Button> : null}<span className="feedback-admin-filter-count" aria-live="polite">显示 {filteredRows.length} / {rows.length} 条{loading && rows.length ? " · 正在更新" : ""}</span>

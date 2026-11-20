@@ -239,6 +239,17 @@ export const logSourceSnapshotDtoSchema = z.object({
 export const logSourceSnapshotListResponseSchema = itemsEnvelopeSchema(logSourceSnapshotDtoSchema);
 export const logSourceVersionListResponseSchema = itemsEnvelopeSchema(z.string());
 export const logSourceSnapshotResponseSchema = itemEnvelopeSchema(logSourceSnapshotDtoSchema);
+const logSourceSnapshotReferenceSchema = logSourceSnapshotDtoSchema.pick({ id: true, versionLabel: true, status: true });
+const logSourceResolutionSchema = z.discriminatedUnion("selection", [
+  z.object({ selection: z.literal("matched_version"), snapshot: logSourceSnapshotReferenceSchema }),
+  z.object({ selection: z.literal("default"), snapshot: logSourceSnapshotReferenceSchema }),
+  z.object({ selection: z.literal("none"), snapshot: z.null() })
+]);
+const logSourceResolutionPreviewSchema = z.object({ before: logSourceResolutionSchema, after: logSourceResolutionSchema.nullable() });
+export const logSourceSnapshotLabelPreviewResponseSchema = z.object({
+  versionLabel: z.string(), nextVersionLabel: z.string(), archived: z.boolean(), hasPublishedRevision: z.boolean(),
+  conflictingSnapshot: logSourceSnapshotReferenceSchema.nullable(), oldResolution: logSourceResolutionPreviewSchema, newResolution: logSourceResolutionPreviewSchema
+});
 export const logSourceExcerptDtoSchema = z.object({
   snapshotId: z.string(), path: z.string(), line: z.number().int().positive(), versionLabel: z.string(),
   startLine: z.number().int().positive(), excerpt: z.string()

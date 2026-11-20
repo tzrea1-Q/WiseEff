@@ -284,6 +284,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "UserGovernanceResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "users.correctLocalUsername": {
+    summary: "Correct a governed user's local login username as a platform super administrator",
+    tags: ["users"], requestBody: "CorrectLocalUsernameRequest", responseBody: "UserGovernanceResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
 
   "parameters.listProjects": { summary: "List projects", tags: ["parameters"], responseBody: "ProjectListResponse" },
   "parameters.listConfigSetFiles": {
@@ -1077,6 +1082,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
 
   "logs.listIntegrationCredentials": { summary: "List organization integration credentials (logs:admin-domains)", tags: ["logs"], responseBody: "LogIntegrationCredentialListResponse" },
   "logs.issueIntegrationCredential": { summary: "Issue integration credential; secret returned once (logs:admin-domains)", tags: ["logs"], requestBody: "IssueLogIntegrationCredentialRequest", responseBody: "LogIntegrationCredentialSecretResponse", successStatus: 201 },
+  "logs.renameIntegrationCredential": { summary: "Correct the display name of an active or revoked integration credential (logs:admin-domains)", tags: ["logs"], requestBody: "RenameLogIntegrationCredentialRequest", responseBody: "LogIntegrationCredentialResponse" },
   "logs.rotateIntegrationCredential": { summary: "Rotate integration credential immediately; secret returned once (logs:admin-domains)", tags: ["logs"], responseBody: "LogIntegrationCredentialSecretResponse" },
   "logs.revokeIntegrationCredential": { summary: "Revoke integration credential (logs:admin-domains)", tags: ["logs"], responseBody: "LogIntegrationCredentialResponse" },
   "logs.uploadFile": {
@@ -1208,6 +1214,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "logs.listSourceSnapshots": { summary: "List source snapshot metadata", tags: ["logs"], responseBody: "LogSourceSnapshotListResponse" },
   "logs.listSourceVersions": { summary: "List ready source version labels (logs:view or logs:upload)", tags: ["logs"], responseBody: "LogSourceVersionListResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" } },
   "logs.uploadSourceSnapshot": { summary: "Upload a version-labelled source archive", tags: ["logs"], requestBody: "LogSourceSnapshotUploadRequest", responseBody: "LogSourceSnapshotResponse", successStatus: 201 },
+  "logs.previewSourceSnapshotLabel": { summary: "Preview sourceVersion selection before and after a label correction", tags: ["logs"], requestBody: "LogSourceSnapshotLabelPreviewRequest", responseBody: "LogSourceSnapshotLabelPreviewResponse" },
+  "logs.updateSourceSnapshotLabel": { summary: "Correct a source snapshot label under the same snapshot identity", tags: ["logs"], requestBody: "LogSourceSnapshotLabelUpdateRequest", responseBody: "LogSourceSnapshotResponse", additionalResponses: { "409": "ErrorResponse" } },
   "logs.defaultSourceSnapshot": { summary: "Set the skill draft default source snapshot", tags: ["logs"], responseBody: "LogSkillResponse" },
   "logs.archiveSourceSnapshot": { summary: "Archive a source snapshot", tags: ["logs"], responseBody: "LogSourceSnapshotResponse" },
   "logs.locateSourceStatement": { summary: "Locate log statements in a ready source snapshot (logs:admin-domains)", tags: ["logs"], requestBody: "LogSourceLocateRequest", responseBody: "LogSourceLocateResponse", additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" } },
@@ -1368,7 +1376,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ProductFeedbackListResponse",
     requestParameters: [
       { name: "status", in: "query", schema: { type: "string", enum: ["open", "in_progress", "resolved", "closed"] } },
-      { name: "feedbackType", in: "query", schema: { type: "string", enum: ["experience", "data", "export_submit", "feature"] } },
+      { name: "feedbackType", in: "query", description: "Filters by effective processing category, using the submitted category when no correction exists.",
+        schema: { type: "string", enum: ["experience", "data", "export_submit", "feature"] } },
       { name: "q", in: "query" }, { name: "pagePath", in: "query" },
       { name: "createdFrom", in: "query" }, { name: "createdTo", in: "query" },
       { name: "cursor", in: "query", description: "Opaque base64url nextCursor returned by the previous page." },
@@ -1377,7 +1386,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "productFeedback.stats": {
-    summary: "Get product feedback statistics",
+    summary: "Get product feedback totals by status and effective processing category",
     tags: ["product-feedback"],
     responseBody: "ProductFeedbackStatsResponse",
     additionalResponses: { "403": "ErrorResponse" }
@@ -2085,6 +2094,46 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.updateConfigSetMetadata": {
+    summary: "Correct a named configuration set's name and description", tags: ["parameter-files"],
+    requestBody: "UpdateConfigurationMetadataRequest", responseBody: "CorrectedConfigSetResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.updateDraftBaseline": {
+    summary: "Correct the name and notes of a draft configuration baseline", tags: ["parameter-files"],
+    requestBody: "UpdateDraftBaselineRequest", responseBody: "ReleaseBaselineResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.appendBaselineErratum": {
+    summary: "Append sourced errata to a published baseline, replaying the original result for an identical client mutation", tags: ["parameter-files"], successStatus: 201,
+    requestBody: "AppendBaselineErratumRequest", responseBody: "ReleaseBaselineResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewPathCorrection": {
+    summary: "Preview a private source path correction and affected include locations", tags: ["parameter-files"],
+    requestBody: "PathCorrectionRequest", responseBody: "PathCorrectionPreviewResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyPathCorrection": {
+    summary: "Apply a verified path correction with immutable file versions and a configuration revision", tags: ["parameter-files"],
+    requestBody: "PathCorrectionApplyRequest", responseBody: "PathCorrectionApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.listJsonCorrectionOptions": {
+    summary: "List current JSON instances, bindings and available target schemas", tags: ["parameter-files"],
+    responseBody: "JsonCorrectionOptionsResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewJsonCorrection": {
+    summary: "Validate a proposed JSON instance association and return exact mapped values", tags: ["parameter-files"],
+    requestBody: "JsonCorrectionRequest", responseBody: "JsonCorrectionPreviewResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyJsonCorrection": {
+    summary: "Supersede a current JSON instance while retaining its values and source history", tags: ["parameter-files"],
+    requestBody: "JsonCorrectionApplyRequest", responseBody: "JsonCorrectionApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.addConfigSetFile": {
     summary: "Add a parameter file to a config set with role and sort order",
     tags: ["parameter-files"],
@@ -2354,6 +2403,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["device-bridge"], responseBody: "OrganizationDeviceBridgeResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "deviceBridges.renameOrganizationBridge": {
+    summary: "Correct a member's Bridge display name as a platform super administrator",
+    tags: ["device-bridge"], requestBody: "RenameOrganizationDeviceBridgeRequest", responseBody: "OrganizationDeviceBridgeResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "deviceBridges.revokeOrganizationBridge": {
     summary: "Revoke an organization member's bridge credentials and connections with an audited reason",
     tags: ["device-bridge"], requestBody: "RevokeOrganizationDeviceBridgeRequest", responseBody: "OrganizationDeviceBridgeResponse",
@@ -2390,9 +2444,9 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
 
 for (const routeId of [
   "organization.get", "organization.workspaceSummary", "organization.update", "users.list", "users.create", "users.setOidcIdentity", "users.update", "users.delete", "users.activation",
-  "users.replaceRoles", "users.replaceOrganizationRoles", "users.resetPassword", "users.getProjectWorkflowRoleBindings", "users.replaceProjectWorkflowRoleBindings",
+  "users.replaceRoles", "users.replaceOrganizationRoles", "users.resetPassword", "users.correctLocalUsername", "users.getProjectWorkflowRoleBindings", "users.replaceProjectWorkflowRoleBindings",
   "users.listRegistrationRoleRequests", "users.approveRegistrationRoleRequest", "users.enableBasicRegistrationRoleRequest", "users.rejectRegistrationRoleRequest",
-  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
+  "deviceBridges.listOrganization", "deviceBridges.getOrganizationBridge", "deviceBridges.renameOrganizationBridge", "deviceBridges.revokeOrganizationBridge",
   "audit.createEvent", "audit.listEvents", "jobs.get", "jobs.events", "parameterSpecs.listReviewTasks",
   "parameterModules.getRegistry", "parameterModules.discoveryHints", "parameterModules.listDriverRegistry",
   "catalog.listSubjects", "catalog.getSubject", "catalog.listSubjectDefinitions", "catalog.listDefinitions",
@@ -2400,6 +2454,8 @@ for (const routeId of [
   "catalog.listRegistrations", "catalog.createRegistration", "catalog.getRegistration", "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.changeRegistrationOwner",
   "catalog.getPlacement", "catalog.updatePlacement", "catalog.listDriverCompatibleDiscovery",
   "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
+  "catalog.createPublicationCandidate", "catalog.getPublicationCandidate", "catalog.publishPublicationCandidate",
+  "catalog.getPublicationSurface", "catalog.listPublications", "catalog.getPublication",
   ...Object.keys(schemaRegistry).filter((routeId) => schemaRegistry[routeId].successStatus !== 410 && (
     routeId.startsWith("organization.teams.") || routeId.startsWith("knowledge.") || routeId.startsWith("xiaoze.") || routeId.startsWith("logs.") || routeId.startsWith("productFeedback.") ||
     routeId.startsWith("parameters.") || routeId.startsWith("parameters-dashboard-") ||

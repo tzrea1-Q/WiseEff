@@ -76,6 +76,10 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "A platform administrator previews and transfers a local account with explicit target roles, revoked old sessions and pairings, retained source work and machine credentials, and a successful target login."
   },
   {
+    id: "ORG-MEMBER-BRIDGE-CORRECTION-001", workflow: "H", required: false,
+    title: "A platform administrator corrects a selected Organization's local login name, member profile email and Bridge display name and reads them back in the affected views."
+  },
+  {
     id: "PCAT-REGISTRATION-INITIALIZE-001", workflow: "C", required: false,
     title: "An authorized organization administrator explicitly creates a typed destination under a business parent and registers its subject atomically, with tenant, release, retry and rollback guards."
   },
@@ -138,6 +142,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PFB-ADMIN-001",
     workflow: "I",
     title: "Admin lists product feedback, opens detail, advances open to in_progress to closed, and sets an admin note.",
+    required: true
+  },
+  {
+    id: "PFB-CATEGORY-CORRECTION-001",
+    workflow: "I",
+    title: "Platform Admin corrects the processing category in a selected organization and verifies filtering, counts, original submission and audit.",
     required: true
   },
   {
@@ -217,6 +227,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     workflow: "J",
     title:
       "An editor searches paged Catalog Definitions and manages exact Definition references with audited idempotent add/remove; related knowledge excludes draft and archived entries, both navigation directions preserve identity, and a legal same-Definition deprecated revision preserves its chip. Existing Spec history remains distinct and readable/removable, while new Spec references are refused.",
+    required: true
+  },
+  {
+    id: "KB-ARCHIVED-REFERENCE-CORRECTION-001",
+    workflow: "J",
+    title: "Platform Admin corrects exact Catalog Definition links in a selected organization's archive and verifies unchanged history and retrieval exclusion.",
     required: true
   },
   {
@@ -518,6 +534,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "LOG-SKILL-KNOWLEDGE-001",
     workflow: "D",
     title: "Skill knowledge links publish with revisions; Markdown uploads follow knowledge permissions and draft publication; report provenance shows actual retrieved knowledge revisions.",
+    required: true
+  },
+  {
+    id: "LOG-SKILL-CORRECTIONS-001",
+    workflow: "D",
+    title: "Platform Admin corrects source version labels and credential display names in the selected organization while retaining report identity.",
     required: true
   },
   {

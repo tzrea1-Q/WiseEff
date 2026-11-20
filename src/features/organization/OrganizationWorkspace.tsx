@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import type { OrganizationWorkspaceClient } from "@/infrastructure/http/userGovernanceClient";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
 import { presentError } from "@/infrastructure/http/presentError";
-import { listOrganizationBridges, revokeOrganizationBridge } from "@/infrastructure/http/deviceBridgeClient";
+import { listOrganizationBridges, renameOrganizationBridge, revokeOrganizationBridge } from "@/infrastructure/http/deviceBridgeClient";
 import { createIntegrationCredentialClient } from "@/infrastructure/http/logClient";
 import { createAccountTransferClient } from "@/infrastructure/http/accountTransferClient";
 
@@ -22,11 +22,15 @@ function ResolvedOrganizationWorkspace({ requestedId, workspaceClient, onAuthori
   const [error, setError] = useState(""), [attempt, setAttempt] = useState(0);
   const [projects, setProjects] = useState<Array<{ id: string; name: string }> | null>(null), [projectError, setProjectError] = useState("");
   const operatingId = scope?.organization.id;
+  const platform = scope?.actor.roles.some((role) => role.projectId === null && role.roleId === "platform-admin");
   const client = useMemo(() => operatingId ? workspaceClient.forOrganization(operatingId) : null, [operatingId, workspaceClient]);
-  const bridgeActions = useMemo(() => ({ list: () => listOrganizationBridges(undefined, operatingId), revoke: (id: string, reason: string) => revokeOrganizationBridge(id, reason, undefined, operatingId) }), [operatingId]);
+  const bridgeActions = useMemo(() => ({
+    list: () => listOrganizationBridges(undefined, operatingId),
+    revoke: (id: string, reason: string) => revokeOrganizationBridge(id, reason, undefined, operatingId),
+    ...(platform ? { rename: (id: string, label: string) => renameOrganizationBridge(id, label, undefined, operatingId) } : {})
+  }), [operatingId, platform]);
   const credentialRepository = useMemo(() => createIntegrationCredentialClient(undefined, operatingId), [operatingId]);
   const foreign = Boolean(scope && scope.organization.id !== scope.actor.organization.id);
-  const platform = scope?.actor.roles.some((role) => role.projectId === null && role.roleId === "platform-admin");
   const administrator = Boolean(scope?.actor.permissions.includes("users:manage") && scope.actor.roles.some(role => role.projectId === null && ["admin", "platform-admin"].includes(role.roleId)));
   const accountTransferClient = useMemo(() => platform && operatingId ? createAccountTransferClient(operatingId) : undefined, [platform, operatingId]);
 

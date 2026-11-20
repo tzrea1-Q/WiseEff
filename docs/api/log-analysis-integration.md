@@ -101,6 +101,8 @@ Step budgets must be integers of at least 1. Per-revision token budgets must be 
 
 Supply an optional `sourceVersion` label (trimmed, 1–200 characters) to select the matching source snapshot belonging to the pinned skill. The worker selects a matching non-archived snapshot even while it is queued, indexing or failed; source tools are offered only when that snapshot is ready. With no matching label, or no label, it uses the pinned revision's default snapshot. An unknown label is recorded in report provenance, with a short fallback note there. The same field is accepted by JSON uploads, multipart uploads and `POST /api/v1/logs` when creating a record from a stored file. `GET /api/v1/log-skills` exposes `hasSourceSnapshots` and `readySourceVersions`, an array of ready version labels without snapshot metadata. The upload dialog offers these labels and a default-snapshot option; integration APIs continue accepting free-text labels.
 
+When an administrator corrects a version label, use the new label for future uploads. The old label follows the current matching and fallback rules. Existing reports and reanalysis using the original version keep the snapshot ID selected by the original run.
+
 `GET /api/v1/log-skills/{skillId}/source-versions` returns only `{ "items": ["v2.4.0"] }` for ready snapshots in the skill's organization. It permits `logs:view` or active users with `logs:upload`, including upload-only clients; foreign-organization skills return `404`. It exposes no snapshot ids, status, file inventory or source content.
 
 A successful `201` response is `{ fileObject, log, job }`. Save `log.id` as `LOG_ID`; no second create request is needed. `POST /api/v1/logs` is an alternative for an already stored file, not the next step after uploading.

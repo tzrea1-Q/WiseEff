@@ -45,7 +45,7 @@ export type WorkbenchBaselineDockProps = {
   actionError?: string;
   compareMembers?: DtsBaselineMemberComparison[] | null;
   compareAgainst?: "working" | "released";
-  pinnedMembers?: Array<{ fileId: string; fileVersionId: string; versionNumber: number }>;
+  pinnedMembers?: Array<{ fileId: string; fileName?: string; fileVersionId: string; versionNumber: number }>;
   pinnedMembersLoading?: boolean;
   pinnedMembersError?: string;
   onRetryMembers?: () => void;
@@ -59,6 +59,7 @@ export type WorkbenchBaselineDockProps = {
   onCompare: (against: "working" | "released") => void;
   onOpenRelease: () => void;
   onOpenRestore: () => void;
+  onCorrectBaseline?: (baseline: DtsReleaseBaseline) => void;
   onSelectCompareMember?: (member: DtsBaselineMemberComparison) => void;
   comparing?: boolean;
 };
@@ -86,6 +87,7 @@ export function WorkbenchBaselineDock({
   onCompare,
   onOpenRelease,
   onOpenRestore,
+  onCorrectBaseline,
   onSelectCompareMember,
   comparing
 }: WorkbenchBaselineDockProps) {
@@ -125,15 +127,24 @@ export function WorkbenchBaselineDock({
             <div><h3>{selected.name}</h3><p>保存时固定的文件版本</p></div>
             {canAdmin && identity === "draft" ? <Button size="sm" disabled={!canRelease} title={releaseBlockedReason} onClick={onOpenRelease}>设为正式版本</Button> : null}
           </header>
+          {selected.notes ? <p className="[overflow-wrap:anywhere]">{selected.notes}</p> : null}
+          {selected.errata?.length ? <section aria-label="版本勘误" className="[overflow-wrap:anywhere]">
+            <h4>版本勘误</h4>
+            <ul>{selected.errata.map(item => <li key={item.id}><p>{item.note}</p>
+              <p>{item.source} · {item.actorName} · <time dateTime={item.createdAt}>{formatAbsolute(item.createdAt)}</time></p></li>)}</ul>
+          </section> : null}
           {pinnedMembersLoading ? <p role="status">正在读取快照文件…</p>
             : pinnedMembersError ? <div role="alert"><p>{pinnedMembersError}</p>{onRetryMembers ? <Button size="sm" variant="outline" onClick={onRetryMembers}>重试读取文件</Button> : null}</div>
             : pinnedMembers?.length ? <Table className="configuration-versions__files" aria-label="快照中的文件版本">
               <TableHeader><TableRow><TableHead>文件</TableHead><TableHead>固定版本</TableHead></TableRow></TableHeader>
               <TableBody>{pinnedMembers.map((member) => <TableRow key={member.fileId}>
-                <TableCell>{fileNames?.[member.fileId] ?? member.fileId}</TableCell><TableCell>v{member.versionNumber}</TableCell>
+                <TableCell>{member.fileName ?? fileNames?.[member.fileId] ?? member.fileId}</TableCell><TableCell>v{member.versionNumber}</TableCell>
               </TableRow>)}</TableBody>
             </Table> : <p className="configuration-versions__empty">此快照未记录文件。</p>}
           {canAdmin ? <div className="configuration-workbench__baseline-actions" aria-label="配置版本操作">
+            {onCorrectBaseline ? <Button size="sm" variant="outline" onClick={() => onCorrectBaseline(selected)}>
+              {identity === "draft" ? "更正草稿版本资料" : "追加版本勘误"}
+            </Button> : null}
             <Button size="sm" variant="outline" disabled={comparing} onClick={() => onCompare("working")}>对比当前配置</Button>
             <Button size="sm" variant="outline" disabled={!canPreviewRestore} onClick={onOpenRestore}>恢复到此版本…</Button>
           </div> : null}

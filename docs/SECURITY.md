@@ -59,9 +59,9 @@ Current frontend permissions include:
 - `users:manage`
 - `platform:access` (retained Platform Admin role metadata; the dedicated console is removed)
 - `platform:schema-promote` (retained legacy role metadata; promotion and history-query surfaces are retired)
-- `catalog:author` (create Catalog drafts / ChangeSets / Candidate preview; granted on Org Admin `admin`, not on `platform-admin` / Agent defaults)
-- `catalog:publish` (approve within policy or request execution of an authorized Candidate; granted on Org Admin `admin`; not on `platform-admin` / Agent defaults)
-- `catalog:review-high-risk` (independent high-risk Candidate approval; granted on Org Admin `admin`. Non-admin authors still cannot satisfy this with a second synthetic identity)
+- `catalog:author` (author Catalog ChangeSets and preview Candidates; granted to `admin` and `platform-admin`)
+- `catalog:publish` (approve within policy or request execution of an authorized Candidate; granted to `admin` and `platform-admin`)
+- `catalog:review-high-risk` (review a high-risk Candidate from another author; granted to `admin` and `platform-admin`. The existing Org Admin self-approval policy still applies.)
 
 `platform-admin` is the first cross-organization role. It keeps a home organization on `AuthContext` and does **not** widen access to other tenants' parameters, logs, users, or projects. It unlocks platform-scoped rows (`organization_id IS NULL`) and one bounded aggregate read (promotion candidates). Only a caller who already holds `platform-admin` may grant or revoke that role. Platform-scoped audit events may use a null `organization_id` and fan out one organization-scoped event per affected tenant; ordinary list endpoints still filter by the caller's organization.
 
@@ -308,6 +308,8 @@ The local bridge listens on loopback (`127.0.0.1:18787`) and its HTTP surface is
 Bridge rename (`PATCH /api/v1/device-bridges/:bridgeId`) and revoke (`POST /api/v1/device-bridges/:bridgeId/revoke`) require `debugging:use`, must target a user-owned bridge, and revoke immediately invalidates the bridge token for new WebSocket connections. Renaming updates display metadata only; it does not rotate credentials or grant additional scopes.
 
 Home-organization administrators and platform administrators with `users:manage` may inventory and revoke members' Bridges under `/api/v1/device-bridges/organization`; this does not change execution ownership or device approval requirements. Inventory omits credentials and pairing secrets. Administrator revocation records the actor, owner, target and reason in the same transaction as Bridge/token revocation, and duplicate revocations keep the original result. After commit the local connection is disconnected and pending RPCs fail. WebSocket admission remains unavailable to RPCs until authorization is rechecked; subsequent messages and each heartbeat interval also recheck credentials, closing revoked or expired connections on other API processes.
+
+In `/organization/bridges`, a platform super administrator can correct the display name of a Bridge in the operating organization. `PATCH /api/v1/device-bridges/organization/:bridgeId` accepts `machineLabel` and commits the label with a `device-bridge-admin-rename` audit event identifying the operator, Bridge and owner. The existing connection, credentials, owner and revocation state are preserved. The device owner sees the updated name in their personal inventory.
 
 ## Untrusted Subprocess Execution (DTS Validation Gate)
 

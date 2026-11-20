@@ -89,7 +89,7 @@
 | `catalog:publish` | 请求执行已授权 Candidate，或在策略内批准。 |
 | `catalog:review-high-risk` | 独立批准高风险 Candidate。非 admin 编写者不能用第二个合成身份满足此项。 |
 
-组织 Admin（`admin`）**会**在默认角色矩阵中获得 `catalog:author`、`catalog:publish`、`catalog:review-high-risk`。`platform-admin` 与 Agent **不会**。请求体中的角色、组织、风险与批准标志仍不可信。服务端从可信上下文计算 actor、scope、风险与策略。
+默认角色矩阵向组织管理员（`admin`）和平台超级管理员（`platform-admin`）授予 `catalog:author`、`catalog:publish`、`catalog:review-high-risk`。目录发布要求真实用户操作。服务端从可信上下文确定操作人、作用范围、风险与策略。
 
 持有 `catalog:publish` 的 Org Admin 可以批准自己起草的 Candidate，**包括高风险**。该例外不适用于其他角色。
 

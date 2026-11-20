@@ -16,13 +16,15 @@ export function KnowledgeParameterReferenceChips({
   references,
   onOpenDefinition,
   onRemove,
-  removePendingSpecId = null
+  removePendingSpecId = null,
+  removeDefinitionsOnly = false
 }: {
   references: KnowledgeParameterReference[];
   onOpenDefinition?: (definitionId: string) => void;
   /** Present in the editor: renders a per-chip remove control. */
   onRemove?: (reference: KnowledgeParameterReference) => void;
   removePendingSpecId?: string | null;
+  removeDefinitionsOnly?: boolean;
 }) {
   if (references.length === 0) {
     return null;
@@ -91,12 +93,12 @@ export function KnowledgeParameterReferenceChips({
             >
               {statusLabel}
             </span>
-            {onRemove ? (
+            {onRemove && (!removeDefinitionsOnly || canonical) ? (
               <button
                 type="button"
                 className="knowledge-parameter-reference-chip__remove"
                 aria-label={`移除引用 ${name}`}
-                disabled={removePendingSpecId === identity}
+                disabled={removePendingSpecId !== null}
                 onClick={() => onRemove(reference)}
               >
                 <X size={12} strokeWidth={2} aria-hidden="true" />

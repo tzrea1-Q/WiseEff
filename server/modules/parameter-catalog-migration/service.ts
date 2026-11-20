@@ -19,12 +19,16 @@ import {
   type Result,
 } from "../parameter-catalog-contract/index";
 import type { AuthContext } from "../auth/types";
+import { canOperateInOrganization } from "../auth/policy";
 import {
-  assertTrustedInvocationMatchesAuth,
+  assertTrustedInvocationMatchesScope,
   createUserInvocation,
   type TrustedInvocationContext,
 } from "../auth/trustedInvocation";
 import { classifyImpact } from "../catalog-publication/authorization/classify";
+import { withPublicationCoordinator } from "../catalog-publication/coordinator";
+import { getPolicy } from "../catalog-publication/persistence/store";
+import { isPublicationFrozen } from "../catalog-publication/runtime/freeze";
 import { previewPublicationCandidate } from "../catalog-publication/preview";
 import type { SupportedDefinitionContent } from "../catalog-publication/builder/types";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -34,7 +38,7 @@ import { getAuthContext } from "../auth/repository";
 import { CURRENT_POINTER_LOCK_KEY } from "../catalog-kernel/install/lockProtocol";
 import { deriveDtsSourceRef } from "../dts/sourceRef";
 import { dtsValueToPayload } from "../parameter-bindings/catalogProjectValueSync";
-import { digestProjectValuePayload } from "../parameter-bindings/values/repositories";
+import { digestProjectValuePayload, isCurrentGovernedSourceValue, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values/repositories";
 import {
   proveExactDtsProperty,
   type ExactDtsSourceIdentity,
@@ -43,6 +47,7 @@ import { lockExactSourceRevisionsForProof } from "../parameter-files/sourceVersi
 
 import {
   evaluateValueCompatibility,
+  isRecordValue,
   resolveSourceLocation,
   type ResolvedSourceLocation,
   type SourceProvenanceFacts,
@@ -68,13 +73,14 @@ import {
   loadCandidate,
   loadCurrentBindingTips,
   loadCurrentReleasePin,
+  loadMergeValueProgress,
   loadDefinitionInRelease,
   loadDefinitionIdentity,
   loadPolicyRevision,
   loadProjects,
   loadReplacement,
   loadReplacementPreview,
-  loadZeroProjectActivation,
+  loadReplacementActivation,
   loadReplacementProjects,
   lockReplacementSourceRows,
   lockReplacementWorkflowRows,
@@ -90,6 +96,7 @@ import {
   consumeReplacementPreview,
   type MigrationClient,
   type CurrentTipRow,
+  type DefinitionRow,
   type ReplacementProjectRow,
   type ReplacementRow,
   type SourcePropertyProvenanceRow,
@@ -182,9 +189,18 @@ const authorizeReplacementWrite = (context: TrustedMigrationContext, organizatio
 
 const authorizeReplacementManifest = async (client: MigrationClient, context: TrustedMigrationContext, organizationId: string, zeroProjects: boolean) => {
   if (context.actorKind === "platform-admin" && isControlFree(context.principalId) &&
-    await isCurrentAdministrator(client, organizationId, context.principalId, zeroProjects ? "platform-admin" : "admin")) return null;
+    await isCurrentAdministrator(client, organizationId, context.principalId, "platform-admin", zeroProjects)) return null;
   return zeroProjects ? { kind: "permission-denied" as const } : authorizeOrganizationWrite(context, organizationId);
 };
+
+const lockMergePolicy = (db: Database) => withPublicationCoordinator(db, async tx => {
+  await tx.query("select catalog_publication.acquire_publication_guard_lock()");
+  const frozen = await isPublicationFrozen(tx);
+  const policy = await getPolicy(tx);
+  await tx.query("reset role");
+  if (frozen) return "publication-frozen" as const;
+  return policy.ok && policy.value.publicationEnabled ? null : "publication-policy-disabled" as const;
+});
 
 const createCommandFingerprint = (command: CreateDefinitionReplacementCommand): string =>
   sha256({
@@ -248,10 +264,23 @@ const valueSchemaOf = (content: unknown): SupportedDefinitionContent["valueSchem
   return schema as SupportedDefinitionContent["valueSchema"];
 };
 
+const revisionContractOf = (definition: DefinitionRow) => {
+  const schema = definition.revision_content?.valueSchema;
+  return {
+    valueType: isRecordValue(schema) && typeof schema.type === "string" ? schema.type : null,
+    unit: definition.revision_content?.unit ?? null,
+  };
+};
+
 type TipEvaluation = {
   readonly status: "pending" | "blocked";
   readonly reason: string | null;
   readonly compatible: boolean;
+};
+
+const hasCurrentMergeSource = async (db: Queryable, tip: CurrentTipRow) => {
+  const scope = { organizationId: tip.organization_id, projectId: tip.project_id, bindingId: tip.binding_id, projectValueId: tip.current_value_id };
+  return await isCurrentGovernedSourceValue(db, scope) && !!await loadOwnedProjectValueSourcePin(db, scope);
 };
 
 const exactSourceIdentityOf = (
@@ -426,11 +455,12 @@ export function createParameterCatalogMigrationService(
         newBindingId: row.new_binding_id,
         newValueId: row.new_value_id,
         valueKind: tip?.valueKind ?? "string",
-        compatible: tip ? tip.coupledBindingIds.length === 0 && tip.sourceFormat === "dts" : false,
+        compatible: tip?.mergeConflict ? row.status === "completed" : !!tip && tip.coupledBindingIds.length === 0 && tip.sourceFormat === "dts",
         attemptCount: row.attempt_count,
         registrationRequired: row.status === "blocked" && row.blocker_reason === "registration-required"
           ? true
           : registrationRequired && row.status !== "completed",
+        ...(tip?.mergeConflict ? { mergeConflict: tip.mergeConflict } : {}),
       };
     });
   };
@@ -509,16 +539,12 @@ export function createParameterCatalogMigrationService(
       // organization (default 1).  Cross-organization selection is refused here
       // and again by the composite FK `(project_id, organization_id)`.
       const selected = await loadProjects(db, command.organizationId, command.projectIds);
-      if (selected.length !== new Set(command.projectIds).size) {
+      if (selected.length !== command.projectIds.length) {
         return fail({ kind: "invalid-command", reason: "cross-organization-project" });
       }
-      if (selected.some((project) => project.organization_id !== command.organizationId)) {
-        return fail({ kind: "invalid-command", reason: "cross-organization-project" });
-      }
-
       const release = command.expectedRelease;
       const current = await loadCurrentReleasePin(db);
-      if (!current || current.id !== release.id) {
+      if (!current || current.id !== release.id || current.digest !== release.digest) {
         return fail({
           kind: "release-drift",
           expected: release,
@@ -551,8 +577,19 @@ export function createParameterCatalogMigrationService(
         return fail({ kind: "invalid-command", reason: "identity-unchanged" });
       }
       const existingTarget = await loadDefinitionIdentity(db, command.newSubjectId, command.newPropertyKey);
-      if (existingTarget) return fail({ kind: "target-identity-conflict", reason: "duplicate-natural-key",
+      if (existingTarget && existingTarget.id !== command.mergeIntoDefinitionId) return fail({ kind: "target-identity-conflict", reason: "duplicate-natural-key",
         existingDefinitionId: existingTarget.id, subjectId: existingTarget.subject_id });
+      if ((command.mergeIntoDefinitionId && (!existingTarget || zeroProjects)) ||
+          (command.mergeChoices && (!existingTarget || Object.keys(command.mergeChoices).some(id => !command.projectIds.includes(id))))) {
+        return fail({ kind: "invalid-command", reason: "invalid-merge-selection" });
+      }
+      const mergeTarget = existingTarget ? await loadDefinitionInRelease(db, release.id, existingTarget.id) : null;
+      if (existingTarget && (!mergeTarget || mergeTarget.revision_content?.lifecycle !== "active")) {
+        return fail({ kind: "replacement-target-unavailable" });
+      }
+      const merge = mergeTarget ? {
+        source: revisionContractOf(oldDefinition), target: revisionContractOf(mergeTarget),
+      } : undefined;
 
       const targetSubject = await loadSubjectInRelease(db, release.id, command.newSubjectId);
       if (!targetSubject) {
@@ -591,6 +628,14 @@ export function createParameterCatalogMigrationService(
         command.projectIds,
         command.oldDefinitionId,
       );
+      if (new Set(tips.map(tip => tip.project_id)).size !== tips.length) {
+        return fail({ kind: "invalid-command", reason: "multiple-source-bindings-in-project" });
+      }
+      const mergeTips = mergeTarget
+        ? await loadCurrentBindingTips(db, command.organizationId, command.projectIds, mergeTarget.id) : [];
+      const referenceProjects = await listCurrentReferenceProjects(db, zeroProjects ? null : command.organizationId, command.oldDefinitionId);
+      const remainingProjects = await loadProjects(db, command.organizationId,
+        referenceProjects.filter(projectId => !command.projectIds.includes(projectId)));
 
       const siblingFacts = await loadSiblingSourceFacts(
         db,
@@ -603,6 +648,7 @@ export function createParameterCatalogMigrationService(
       const blockedByProject = new Map<string, string>();
       let compatibleCount = 0;
       let coupledDefinitionCount = 0;
+      let sourceFormatSupported = true;
 
       // Resolve every sibling's real source location first: coupling is defined
       // over the resolved location, and an opaque recorded ref (for example a
@@ -623,6 +669,7 @@ export function createParameterCatalogMigrationService(
         const targetRowsByBinding = new Map<string, SourcePropertyProvenanceRow | null>();
         const sourceIdentities = new Map<string, ExactDtsSourceIdentity>();
         for (const tip of tips) {
+          if (mergeTips.some(target => target.project_id === tip.project_id)) continue;
           const targetRow = await loadSourcePropertyProvenance(tx, {
             bindingId: tip.binding_id,
             propertyKey: command.newPropertyKey,
@@ -645,6 +692,7 @@ export function createParameterCatalogMigrationService(
         await lockExactSourceRevisionsForProof(tx, [...sourceIdentities.values()]);
         const proofs = new Map<string, FrozenSourceProof | null>();
         for (const tip of tips) {
+          if (!targetRowsByBinding.has(tip.binding_id)) continue;
           proofs.set(
             tip.binding_id,
             await exactSourceProofOf(
@@ -662,7 +710,21 @@ export function createParameterCatalogMigrationService(
 
       for (const tip of tips) {
         const siblings = siblingFacts.filter((sibling) => sibling.project_id === tip.project_id);
+        const targetTips = mergeTips.filter(target => target.project_id === tip.project_id);
+        const targetTip = targetTips[0];
+        const mergeConflict = targetTip ? {
+          targetBindingId: targetTip.binding_id,
+          targetValueId: targetTip.current_value_id,
+          sourceRevisionId: tip.effective_revision_id,
+          targetRevisionId: targetTip.effective_revision_id,
+          sourceValue: toContractJson(tip.value),
+          targetValue: toContractJson(targetTip.value),
+          choice: command.mergeChoices && Object.hasOwn(command.mergeChoices, tip.project_id) ? command.mergeChoices[tip.project_id]! : null,
+          targetUpdateRequired: command.mergeChoices?.[tip.project_id] === "source" && tip.value_digest !== targetTip.value_digest,
+        } : undefined;
         const recordedSource = resolveSourceLocation(sourceFactsOf(tip));
+        const hasMergeSources = targetTip && targetTips.length === 1 &&
+          await hasCurrentMergeSource(db, tip) && await hasCurrentMergeSource(db, targetTip);
         const targetProof = targetProofsByBinding.get(tip.binding_id) ?? null;
         const source =
           targetProof &&
@@ -700,16 +762,31 @@ export function createParameterCatalogMigrationService(
           sourceFormat: source.status === "resolved" && !sourceCutoverReason ? "dts" : "unsupported",
           coupledBindingIds: coupled.map((sibling) => sibling.binding_id),
           exactSourceProof: targetProof,
+          ...(mergeConflict ? { mergeConflict } : {}),
         } satisfies FrozenProjectTip;
+        sourceFormatSupported &&= targetTip ? !!hasMergeSources : frozen.sourceFormat === "dts";
         manifest.push(frozen);
         coupledDefinitionCount += frozen.coupledBindingIds.length;
-        const evaluation = sourceCutoverReason
+        const targetSchema = valueSchemaOf(mergeTarget?.revision_content);
+        const mergeBlocker = targetTip ? (
+          targetTips.length !== 1 ? "merge-multiple-target-bindings"
+            : !mergeConflict?.choice ? "merge-choice-required"
+              : !hasMergeSources ? "missing-source-provenance"
+                : mergeConflict.choice === "source" && merge?.source.unit !== merge?.target.unit ? "merge-unit-mismatch"
+                : mergeConflict.targetUpdateRequired && targetSchema && !evaluateValueCompatibility(tip.value, targetSchema).compatible
+                  ? "incompatible-value"
+                  : mergeConflict.targetUpdateRequired ? "merge-target-value-required" : "merge-source-removal-required"
+        ) : merge && merge.source.unit !== merge.target.unit ? "merge-unit-mismatch" : null;
+        const evaluation = mergeBlocker
+          ? { status: "blocked" as const, reason: mergeBlocker, compatible: false }
+          : targetTip ? { status: "pending" as const, reason: null, compatible: true }
+          : sourceCutoverReason
           ? { status: "blocked" as const, reason: sourceCutoverReason, compatible: false }
           : evaluateTip({
               tip: frozen,
               source,
               value: targetProof?.payload.value ?? tip.value,
-              schema: command.proposedContent.valueSchema,
+              schema: mergeTarget ? valueSchemaOf(mergeTarget.revision_content) : command.proposedContent.valueSchema,
             });
         if (evaluation.status === "blocked") {
           blockedByProject.set(tip.project_id, evaluation.reason ?? "blocked");
@@ -728,7 +805,7 @@ export function createParameterCatalogMigrationService(
 
       // Mint the successor Candidate through the existing complete-successor
       // path.  Never inserts into any Catalog relation directly.
-      const built = await previewPublicationCandidate({
+      const built = mergeTarget ? null : await previewPublicationCandidate({
         db,
         predecessorDigest: release.digest,
         changeSet: [
@@ -740,9 +817,10 @@ export function createParameterCatalogMigrationService(
           },
         ],
         authorPrincipalId: command.context.principalId,
-        authorOrganizationId: command.organizationId,
+        authorOrganizationId: command.authorOrganizationId ?? command.organizationId,
+        ...(!zeroProjects ? { replacementSourceDefinitionId: oldDefinition.id } : {}),
       });
-      if (!built.ok) {
+      if (built && !built.ok) {
         switch (built.error.kind) {
           case "artifact-missing":
             return fail({ kind: "preview-unavailable", reason: "artifact-missing" });
@@ -762,10 +840,10 @@ export function createParameterCatalogMigrationService(
         }
       }
 
-      const allocation = built.value.candidate.identityAllocation as Record<string, unknown>;
-      const allocated = allocationDefinitions(allocation).find(
-        (definition) => definition.propertyKey === command.newPropertyKey,
-      );
+      const candidate = built?.value.candidate;
+      const allocated = mergeTarget ? { definitionId: mergeTarget.id, subjectId: mergeTarget.subject_id,
+        propertyKey: mergeTarget.property_key, revisionId: mergeTarget.revision_id }
+        : allocationDefinitions(candidate?.identityAllocation ?? {}).find(definition => definition.propertyKey === command.newPropertyKey);
       if (!allocated) {
         return fail({ kind: "preview-unavailable", reason: "unsupported-catalog-capability" });
       }
@@ -779,7 +857,7 @@ export function createParameterCatalogMigrationService(
         newRevisionId: allocated.revisionId,
         manifest,
         previewReleaseId: release.id,
-        capabilityContractDigest: built.value.candidate.impactReportDigest,
+        capabilityContractDigest: candidate?.impactReportDigest ?? release.digest,
         policyRevision,
       });
 
@@ -790,13 +868,9 @@ export function createParameterCatalogMigrationService(
         compatibleProjectCount: compatibleCount,
         blockedProjectCount: blockedByProject.size,
         coupledDefinitionCount,
-        sourceFormatSupported: manifest.every((tip) => tip.sourceFormat === "dts"),
+        sourceFormatSupported,
         oldDefinitionLifecycle: lifecycle,
-        oldDefinitionCurrentReferenceCount: await countCurrentReferences(
-          db,
-          zeroProjects ? null : command.organizationId,
-          command.oldDefinitionId,
-        ),
+        oldDefinitionCurrentReferenceCount: referenceProjects.length,
         targetRegistrationRequired: registrationRequired,
       };
 
@@ -814,8 +888,8 @@ export function createParameterCatalogMigrationService(
         preview_fingerprint: previewFingerprint,
         preview_catalog_release_id: release.id,
         preview_catalog_release_digest: release.digest,
-        candidate_id: built.value.candidate.id,
-        artifact_digest: built.value.candidate.artifactDigest,
+        candidate_id: candidate?.id ?? null,
+        artifact_digest: candidate?.artifactDigest ?? null,
         manifest,
         blockers,
         impact,
@@ -840,6 +914,7 @@ export function createParameterCatalogMigrationService(
           compatible: blocked === null,
           attemptCount: 0,
           registrationRequired,
+          ...(tip.mergeConflict ? { mergeConflict: tip.mergeConflict } : {}),
         };
       });
 
@@ -862,9 +937,12 @@ export function createParameterCatalogMigrationService(
           allocated.revisionId,
         ),
         catalogReleaseId: release.id,
+        ...(!zeroProjects && candidate ? { publicationCandidateId: candidate.id } : {}),
         impact,
         blockers,
         projects,
+        ...(zeroProjects ? {} : { remainingProjects: remainingProjects.map(project => ({ id: project.id, name: project.name ?? project.id })) }),
+        ...(merge ? { merge } : {}),
         expiresAt: expiresAt.toISOString(),
       });
     };
@@ -879,7 +957,9 @@ export function createParameterCatalogMigrationService(
     replacementId: string,
     approvedProjectIds: readonly string[] | null,
     auditRequestId: string,
+    context: TrustedMigrationContext,
     invocation?: TrustedInvocationContext,
+    expectedVersion?: number,
   ): Promise<Result<DefinitionReplacementView, DefinitionReplacementFailure>> => {
     const successor = await (async () => {
       const replacement = await loadReplacement(db, organizationId, replacementId, { lock: "none" });
@@ -899,6 +979,7 @@ export function createParameterCatalogMigrationService(
       return { replacement, releaseId, releaseDigest: null };
     })();
     if (!successor) return fail({ kind: "not-found" });
+    const merging = successor.replacement.candidate_id === null;
 
     if (!successor.releaseId) {
       const view = await replacementView(db, successor.replacement);
@@ -915,11 +996,11 @@ export function createParameterCatalogMigrationService(
     );
     const releaseDigest = materialized.rows[0]?.release_digest ?? successor.releaseDigest;
     const zeroActivation = successor.replacement.frozen_manifest.length === 0
-      ? await loadZeroProjectActivation(db, successor.replacement.source_preview_id, principalId) : null;
+      ? await loadReplacementActivation(db, successor.replacement.source_preview_id, principalId, true) : null;
     const provenZeroActivation = zeroActivation?.targetAvailable && zeroActivation.publicationJobId === successor.replacement.publication_job_id &&
       zeroActivation.authorizationId === successor.replacement.authorization_id && zeroActivation.releaseId === successor.releaseId;
     if (zeroActivation && !provenZeroActivation) return fail({ kind: "replacement-target-unavailable" });
-    if ((current?.id !== successor.releaseId && !provenZeroActivation) || !releaseDigest) {
+    if ((current?.id !== successor.releaseId && !provenZeroActivation && !merging) || !releaseDigest) {
       const rows = await loadReplacementProjects(db, successor.replacement.id);
       if (rows.some((row) => row.status !== "completed")) {
         await db.transaction(async (tx) => {
@@ -934,19 +1015,41 @@ export function createParameterCatalogMigrationService(
     }
 
     let audited: DefinitionReplacementView;
-    // Audit only for a principal that resolves in this Organization (pre-existing
-    // contract); a supplied trusted actor must be that same principal.
+    // The operating scope is independent of the principal's home organization.
     const auth = await resolveAuthContext(principalId);
+    if (merging && (!auth?.user.isActive || !auth.permissions.includes("catalog:publish"))) {
+      return fail({ kind: "permission-denied" });
+    }
+    if (auth && !canOperateInOrganization(auth, organizationId)) return fail({ kind: "permission-denied" });
     const auditInvocation = !auth
       ? undefined
-      : invocation
-        ? assertTrustedInvocationMatchesAuth(auth, invocation, "definition replacement audit")
+      : invocation?.initiator === "user"
+        ? assertTrustedInvocationMatchesScope(auth, invocation, organizationId, "definition replacement audit")
         : createUserInvocation(auth);
     try {
       audited = await auditedTransaction(auditInvocation, auditRequestId, async (tx) => {
+        let mergeUnitsMatch = true;
+        if (auditInvocation?.initiator === "user" && !await isCurrentAdministrator(
+          tx, organizationId, principalId, context.actorKind === "platform-admin" ? "platform-admin" : "admin")) {
+          throw new ApiError("FORBIDDEN", "The operator can no longer migrate projects in this organization.", { replacement: "permission-denied" });
+        }
+        if (merging) {
+          await tx.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
+          const policyDenial = await lockMergePolicy(tx);
+          if (policyDenial) throw new ApiError("FORBIDDEN", "Catalog publication policy blocks this merge.", { replacement: policyDenial });
+          const pin = await loadCurrentReleasePin(tx);
+          const source = pin && await loadDefinitionInRelease(tx, pin.id, successor.replacement.old_definition_id);
+          const target = pin && await loadDefinitionInRelease(tx, pin.id, successor.replacement.new_definition_id);
+          if (!source || source.revision_id !== successor.replacement.old_revision_id || source.subject_status !== "active" ||
+              !target || target.revision_id !== successor.replacement.new_revision_id || target.subject_status !== "active" ||
+              target.revision_content?.lifecycle !== "active") {
+            throw new ApiError("CONFLICT", "The merge source or target changed.", { replacement: "replacement-target-unavailable" });
+          }
+          mergeUnitsMatch = source.revision_content?.unit === target.revision_content?.unit;
+        }
         if (successor.replacement.frozen_manifest.length === 0) {
           await tx.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
-          const proof = await loadZeroProjectActivation(tx, successor.replacement.source_preview_id, principalId);
+          const proof = await loadReplacementActivation(tx, successor.replacement.source_preview_id, principalId, true);
           if (!proof?.targetAvailable || proof.publicationJobId !== successor.replacement.publication_job_id ||
             proof.authorizationId !== successor.replacement.authorization_id) throw new ApiError("CONFLICT", "The published replacement target is unavailable.", { reason: "candidate-stale", replacement: "replacement-target-unavailable" });
         }
@@ -964,6 +1067,7 @@ export function createParameterCatalogMigrationService(
           const liveTargetRowByProject = new Map<string, SourcePropertyProvenanceRow | null>();
           const sourceIdentityByProject = new Map<string, ExactDtsSourceIdentity | null>();
           const sourceIdentities = new Map<string, ExactDtsSourceIdentity>();
+          const reviewedProjects = new Set(candidateReplacement.frozen_manifest.filter(tip => tip.mergeConflict).map(tip => tip.projectId));
           for (const row of candidateRows) {
             if (row.status === "completed" || (approved && !approved.has(row.project_id))) continue;
             const live = await loadCurrentBindingTips(
@@ -974,6 +1078,7 @@ export function createParameterCatalogMigrationService(
             );
             const liveTip = live.find((tip) => tip.binding_id === row.old_binding_id) ?? live[0] ?? null;
             liveTipByProject.set(row.project_id, liveTip);
+            if (reviewedProjects.has(row.project_id)) continue;
             const targetRow = liveTip
               ? await loadSourcePropertyProvenance(tx, {
                   bindingId: liveTip.binding_id,
@@ -1006,13 +1111,13 @@ export function createParameterCatalogMigrationService(
           tx as unknown as Queryable,
           [...discoveredSources.sourceIdentities.values()],
         );
+        const pendingRows = discoveredRows.filter(row => row.status !== "completed" && (!approved || approved.has(row.project_id)));
+        const mergeConflicts = discoveredReplacement.frozen_manifest
+          .filter(tip => pendingRows.some(row => row.project_id === tip.projectId))
+          .flatMap(tip => tip.mergeConflict ? [tip.mergeConflict] : []);
         await lockReplacementSourceRows(tx, {
-          bindingIds: discoveredRows
-            .filter((row) => row.status !== "completed" && (!approved || approved.has(row.project_id)))
-            .map((row) => row.old_binding_id),
-          valueIds: discoveredRows
-            .filter((row) => row.status !== "completed" && (!approved || approved.has(row.project_id)))
-            .map((row) => row.old_value_id),
+          bindingIds: [...pendingRows.map(row => row.old_binding_id), ...mergeConflicts.map(conflict => conflict.targetBindingId)],
+          valueIds: [...pendingRows.map(row => row.old_value_id), ...mergeConflicts.map(conflict => conflict.targetValueId)],
         });
         await lockReplacementWorkflowRows(tx, {
           previewId: discoveredReplacement.source_preview_id,
@@ -1026,6 +1131,9 @@ export function createParameterCatalogMigrationService(
         // it before proof or writes; a changed identity is a retryable conflict.
         const replacement = await loadReplacement(tx, organizationId, replacementId, { lock: "none" });
         if (!replacement) throw new Error("definition-replacement-vanished");
+        if (expectedVersion !== undefined && Number(replacement.replacement_version) !== expectedVersion) {
+          throw new ApiError("CONFLICT", "The replacement changed before continuation.", { replacement: "replacement-version-conflict" });
+        }
         const rows = await loadReplacementProjects(tx, replacement.id);
         const lockedSources = await collectSourceFacts(rows, replacement);
         for (const [projectId, discoveredIdentity] of discoveredSources.sourceIdentityByProject) {
@@ -1056,7 +1164,7 @@ export function createParameterCatalogMigrationService(
           organizationId,
           replacement.old_revision_id,
           replacement.preview_catalog_release_id,
-        );
+        ) + (merging ? await countOpenDrafts(tx, organizationId, replacement.new_revision_id, replacement.preview_catalog_release_id) : 0);
         const openReviews = await countOpenReviewItems(
           tx,
           organizationId,
@@ -1076,11 +1184,64 @@ export function createParameterCatalogMigrationService(
         const liveTip = liveTipByProject.get(row.project_id) ?? null;
 
         const block = async (reason: string, evidence: Record<string, unknown>) => {
-          await markReplacementProjectBlocked(tx, row.id, { reason, evidence });
+          await markReplacementProjectBlocked(tx, row.id, { reason, evidence: {
+            ...(row.blocked_evidence?.mergeAwaitingReview === true && reason !== "stale-preview" ? { mergeAwaitingReview: true } : {}),
+            ...evidence,
+          } });
         };
 
         if (registration === null || registration.status !== "active") {
           await block("registration-required", { organizationId, subjectId: replacement.new_subject_id });
+          continue;
+        }
+        if (frozen?.mergeConflict) {
+          const conflict = frozen.mergeConflict;
+          const scope = { organizationId, projectId: row.project_id };
+          const targets = await loadCurrentBindingTips(tx, organizationId, [row.project_id], replacement.new_definition_id);
+          const target = targets[0];
+          if (conflict.targetUpdateRequired === undefined || targets.length !== 1 || !target ||
+              target.binding_id !== conflict.targetBindingId || target.effective_revision_id !== conflict.targetRevisionId ||
+              (liveTip && (liveTip.binding_id !== frozen.bindingId || liveTip.effective_revision_id !== conflict.sourceRevisionId))) {
+            await block("stale-preview", {});
+            continue;
+          }
+          if (!conflict.choice || (conflict.choice === "source" && !mergeUnitsMatch) ||
+              (conflict.targetUpdateRequired && schema && !evaluateValueCompatibility(conflict.sourceValue, schema).compatible)) {
+            await block(!conflict.choice ? "merge-choice-required" : !mergeUnitsMatch ? "merge-unit-mismatch" : "incompatible-value", {});
+            continue;
+          }
+          const selectedDigest = digestProjectValuePayload({ kind: "json", value: conflict.choice === "source" ? conflict.sourceValue : conflict.targetValue });
+          const targetRef = { ...scope, bindingId: target.binding_id, projectValueId: target.current_value_id };
+          if (openDrafts > 0 || openReviews > 0) {
+            await block("pending-work-conflict", { reason: openDrafts > 0 ? "draft" : "review" });
+            continue;
+          }
+          if (row.blocked_evidence?.mergeAwaitingReview !== true) {
+            if (liveTip?.current_value_id !== frozen.currentValueId || target.current_value_id !== conflict.targetValueId) {
+              await block("stale-preview", {});
+              continue;
+            }
+            if (!await hasCurrentMergeSource(tx, liveTip) || !await hasCurrentMergeSource(tx, target)) {
+              await block("missing-source-provenance", {});
+              continue;
+            }
+            await block(conflict.targetUpdateRequired ? "merge-target-value-required" : "merge-source-removal-required", { mergeAwaitingReview: true });
+            continue;
+          }
+          const sourceProgress = await loadMergeValueProgress(tx, { ...scope, selectedDigest, allowDeletion: true,
+            bindingId: frozen.bindingId, baseValueId: frozen.currentValueId, revisionId: conflict.sourceRevisionId });
+          const targetProgress = await loadMergeValueProgress(tx, { ...scope, selectedDigest, allowDeletion: false,
+            bindingId: target.binding_id, baseValueId: conflict.targetValueId, revisionId: conflict.targetRevisionId });
+          if (!sourceProgress || !targetProgress || (liveTip === null) !== sourceProgress.deleted ||
+              !await isCurrentGovernedSourceValue(tx, targetRef)) {
+            await block("stale-preview", {});
+          } else if (!targetProgress.matchesSelection) {
+            await block("merge-target-value-required", {});
+          } else if (!sourceProgress.deleted) {
+            await block("merge-source-removal-required", {});
+          } else {
+            await markReplacementProjectCompleted(tx, row.id, { newBindingId: target.binding_id, newValueId: targetProgress.valueId });
+          }
           continue;
         }
         const liveSource = liveTip ? resolveSourceLocation(sourceFactsOf(liveTip)) : null;
@@ -1106,10 +1267,15 @@ export function createParameterCatalogMigrationService(
         if (
           !frozen ||
           !liveTip ||
+          liveTip.binding_id !== frozen.bindingId ||
           liveTip.current_value_id !== frozen.currentValueId ||
           (liveTip.config_revision_id ?? "") !== frozen.configRevisionId
         ) {
           await block("stale-preview", staleEvidence);
+          continue;
+        }
+        if (!mergeUnitsMatch) {
+          await block("merge-unit-mismatch", {});
           continue;
         }
         if (liveSource?.status === "blocked" && liveSource.reason === "unsupported-source-format") {
@@ -1175,7 +1341,7 @@ export function createParameterCatalogMigrationService(
           continue;
         }
         if (schema) {
-          const compatibility = evaluateValueCompatibility(liveTip.value, schema);
+          const compatibility = evaluateValueCompatibility(liveTargetProof.payload.value, schema);
           if (!compatibility.compatible) {
             await block("incompatible-value", { detail: compatibility.reason });
             continue;
@@ -1258,7 +1424,6 @@ export function createParameterCatalogMigrationService(
       return {
         result: view,
         audit: {
-          ...(auditInvocation?.initiator === "system" ? { organizationId } : {}),
           app: "parameter-catalog-migration",
           kind: "definition-replacement",
           action: "definition-replacement-advanced",
@@ -1271,8 +1436,15 @@ export function createParameterCatalogMigrationService(
       };
       });
     } catch (error) {
-      if (error instanceof ApiError && error.code === "CONFLICT" && error.details.replacement === "replacement-target-unavailable") {
-        return fail({ kind: "replacement-target-unavailable" });
+      if (error instanceof ApiError) {
+        const reason = error.details.replacement;
+        if (reason === "permission-denied") return fail({ kind: reason });
+        if (reason === "replacement-target-unavailable") return fail({ kind: reason });
+        if (reason === "publication-frozen" || reason === "publication-policy-disabled") return fail({ kind: "preview-unavailable", reason });
+        if (reason === "replacement-version-conflict") return fail({
+          kind: "revision-conflict", idempotencyKey: replacementId,
+          storedFingerprint: "changed", attemptedFingerprint: String(expectedVersion),
+        });
       }
       if (
         (error as { readonly code?: string }).code === "55P03" ||
@@ -1317,16 +1489,10 @@ export function createParameterCatalogMigrationService(
             attemptedFingerprint: fingerprint,
           };
         }
-        if (reserved.state === "committed" && reserved.result_ref) {
-          return { kind: "replay" as const, replacementId: reserved.result_ref };
-        }
         const preview = await loadReplacementPreview(tx, command.organizationId, command.previewId);
         if (!preview) return { kind: "missing-preview" as const };
         if (await authorizeReplacementManifest(tx, command.context, command.organizationId, preview.manifest.length === 0)) {
           return { kind: "denied" as const };
-        }
-        if (preview.consumed_by_replacement_id) {
-          return { kind: "replay" as const, replacementId: preview.consumed_by_replacement_id };
         }
         if (preview.preview_fingerprint !== command.previewFingerprint) {
           return {
@@ -1335,9 +1501,21 @@ export function createParameterCatalogMigrationService(
             attemptedFingerprint: command.previewFingerprint,
           };
         }
-        const zeroActivation = preview.manifest.length === 0 ? await loadZeroProjectActivation(tx, preview.id, command.context.principalId) : null;
-        if (zeroActivation && !zeroActivation.targetAvailable) return { kind: "target-unavailable" as const };
-        if (!zeroActivation && new Date(preview.expires_at).getTime() <= now().getTime()) {
+        if (preview.approval_principal_id !== command.context.principalId) return { kind: "denied" as const };
+        if (preview.consumed_by_replacement_id) {
+          return { kind: "replay" as const, replacementId: preview.consumed_by_replacement_id };
+        }
+        if (preview.impact.selectedProjectCount !== 0 && preview.manifest.length === 0) {
+          return { kind: "invalid-manifest" as const, reason: "unbound-project" };
+        }
+        if (preview.manifest.some(tip => tip.mergeConflict && !tip.mergeConflict.choice)) {
+          return { kind: "invalid-manifest" as const, reason: "merge-choice-required" };
+        }
+        const activation = preview.candidate_id
+          ? await loadReplacementActivation(tx, preview.id, command.context.principalId, preview.manifest.length === 0) : null;
+        if (activation && !activation.targetAvailable) return { kind: "target-unavailable" as const };
+        const provenZeroActivation = preview.manifest.length === 0 && activation;
+        if (!provenZeroActivation && new Date(preview.expires_at).getTime() <= now().getTime()) {
           return { kind: "expired" as const };
         }
         const current = await loadCurrentReleasePin(tx);
@@ -1355,18 +1533,18 @@ export function createParameterCatalogMigrationService(
         if (
           !current ||
           (current.id !== preview.preview_catalog_release_id &&
-            current.id !== successorReleaseId && !zeroActivation)
+            current.id !== successorReleaseId && !provenZeroActivation)
         ) {
           return { kind: "drift" as const, actualId: current?.id ?? null };
         }
         // The native activation receipt guards global absence at publication's
         // linearization point. A later reference must not orphan that already
         // published identity on a same-command finalization retry.
-        if (preview.manifest.length === 0 && !zeroActivation && current.id !== successorReleaseId) {
+        if (preview.manifest.length === 0 && !provenZeroActivation && current.id !== successorReleaseId) {
           const currentReferenceCount = await countCurrentReferences(tx, null, preview.old_definition_id);
           if (currentReferenceCount > 0) return { kind: "references" as const, currentReferenceCount };
         }
-        return { kind: "ready" as const, preview, zeroActivation };
+        return { kind: "ready" as const, preview, activation };
       });
 
       if (preflight.kind === "conflict") {
@@ -1379,6 +1557,7 @@ export function createParameterCatalogMigrationService(
       }
       if (preflight.kind === "missing-preview") return fail({ kind: "not-found" });
       if (preflight.kind === "denied") return fail({ kind: "permission-denied" });
+      if (preflight.kind === "invalid-manifest") return fail({ kind: "invalid-command", reason: preflight.reason });
       if (preflight.kind === "target-unavailable") return fail({ kind: "replacement-target-unavailable" });
       if (preflight.kind === "references") return fail({ kind: "current-project-references", currentReferenceCount: preflight.currentReferenceCount });
       if (preflight.kind === "stale") {
@@ -1408,39 +1587,39 @@ export function createParameterCatalogMigrationService(
       }
 
       const preview = preflight.preview;
-      if (!input.publication || !command.trustedActor) {
-        return fail({ kind: "publication-unavailable", jobId: null });
-      }
-
-      // Phase B: mint the publication job through the existing
-      // Candidate/Authorization enqueue path and let the publication manager
-      // (or the injected test driver) activate it.
-      const enqueued = preflight.zeroActivation ? { ok: true as const, value: { ...preflight.zeroActivation, replayed: true } } : await input.publication.enqueueReplacementPublication({
-        organizationId: command.organizationId,
-        candidateId: preview.candidate_id,
-        idempotencyKey: command.idempotencyKey,
-        trustedActor: command.trustedActor,
-      });
-      if (!enqueued.ok) return fail(enqueued.error);
-      const activation = preflight.zeroActivation ? { kind: "active" as const, ...preflight.zeroActivation } : input.publication.activateReplacementPublication
-        ? await input.publication.activateReplacementPublication({
-            jobId: enqueued.value.publicationJobId,
-          })
-        : { kind: "pending" as const, jobId: enqueued.value.publicationJobId };
-      if (activation.kind === "blocked") {
-        return fail({ kind: "preview-unavailable", reason: "needs-rebase" });
-      }
-      if (activation.kind !== "active") {
-        // The replacement row has hard, deferred FKs to the minted definition
-        // and revision, so it can only be written once the successor release is
-        // published and materialized.  The frozen preview (and therefore the
-        // operator's exact manifest) is retained for a same-key retry.
-        return fail({ kind: "publication-unavailable", jobId: enqueued.value.publicationJobId });
+      let publication: { candidateId: string; publicationJobId: string; authorizationId: string } | null = null;
+      let releaseId = preview.preview_catalog_release_id;
+      let releaseDigest = preview.preview_catalog_release_digest;
+      if (preview.candidate_id) {
+        if (!input.publication || !command.trustedActor) {
+          return fail({ kind: "publication-unavailable", jobId: null });
+        }
+        // Only identity creation needs publication and an activation receipt.
+        const enqueued = preflight.activation ? { ok: true as const, value: preflight.activation } : await input.publication.enqueueReplacementPublication({
+          organizationId: command.organizationId,
+          candidateId: preview.candidate_id,
+          idempotencyKey: command.idempotencyKey,
+          trustedActor: command.trustedActor,
+        });
+        if (!enqueued.ok) return fail(enqueued.error);
+        const activation = preflight.activation ? { kind: "active" as const, ...preflight.activation } :
+          await input.publication.activateReplacementPublication?.({ jobId: enqueued.value.publicationJobId });
+        if (activation?.kind === "blocked") return fail({ kind: "preview-unavailable", reason: "needs-rebase" });
+        if (activation?.kind !== "active") return fail({ kind: "publication-unavailable", jobId: enqueued.value.publicationJobId });
+        publication = enqueued.value;
+        releaseId = activation.releaseId;
+        releaseDigest = activation.releaseDigest;
+      } else {
+        const auth = await resolveAuthContext(command.context.principalId);
+        if (command.trustedActor?.initiator !== "user" || !auth?.user.isActive || !auth.permissions.includes("catalog:publish")) {
+          return fail({ kind: "permission-denied" });
+        }
+        assertTrustedInvocationMatchesScope(auth, command.trustedActor, command.organizationId, "definition merge");
       }
 
       // Phase C: record the approved replacement and its per-project manifest.
       const finalized = await db.transaction(async (tx) => {
-        if (preview.manifest.length === 0) await tx.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
+        if (!publication || preview.manifest.length === 0) await tx.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
         // Match Phase A's lock order. Concurrent retries otherwise hold the
         // idempotency row and preview row in opposite orders.
         const reserved = await reserveGovernanceIdempotency(tx, {
@@ -1450,11 +1629,20 @@ export function createParameterCatalogMigrationService(
         if (reserved.state === "committed" && reserved.result_ref) return { kind: "replay" as const, replacementId: reserved.result_ref };
         const reloaded = await loadReplacementPreview(tx, command.organizationId, command.previewId);
         if (!reloaded) return { kind: "missing-preview" as const };
+        if (await authorizeReplacementManifest(tx, command.context, command.organizationId, reloaded.manifest.length === 0)) {
+          return { kind: "denied" as const };
+        }
         if (reloaded.consumed_by_replacement_id) return { kind: "replay" as const, replacementId: reloaded.consumed_by_replacement_id };
+        if (!publication) {
+          const policyDenial = await lockMergePolicy(tx);
+          if (policyDenial) return { kind: "policy-denied" as const, reason: policyDenial };
+          const current = await loadCurrentReleasePin(tx);
+          if (current?.id !== releaseId || current.digest !== releaseDigest) return { kind: "target-unavailable" as const };
+        }
         if (reloaded.manifest.length === 0) {
-          const proof = await loadZeroProjectActivation(tx, reloaded.id, command.context.principalId);
-          if (!proof?.targetAvailable || proof.publicationJobId !== enqueued.value.publicationJobId ||
-            proof.authorizationId !== enqueued.value.authorizationId) return { kind: "target-unavailable" as const };
+          const proof = await loadReplacementActivation(tx, reloaded.id, command.context.principalId, true);
+          if (!proof?.targetAvailable || proof.publicationJobId !== publication?.publicationJobId ||
+            proof.authorizationId !== publication?.authorizationId) return { kind: "target-unavailable" as const };
         }
         const registration = await loadRegistration(
           tx,
@@ -1497,11 +1685,11 @@ export function createParameterCatalogMigrationService(
           manifest: reloaded.manifest,
           approvalPrincipalId: command.context.principalId,
           reason: reloaded.reason,
-          candidateId: enqueued.value.candidateId,
-          publicationJobId: enqueued.value.publicationJobId,
-          authorizationId: enqueued.value.authorizationId,
-          successorReleaseId: activation.releaseId,
-          successorReleaseDigest: activation.releaseDigest,
+          candidateId: publication?.candidateId ?? null,
+          publicationJobId: publication?.publicationJobId ?? null,
+          authorizationId: publication?.authorizationId ?? null,
+          successorReleaseId: releaseId,
+          successorReleaseDigest: releaseDigest,
         });
         await insertReplacementProjects(tx, {
           replacementId,
@@ -1522,6 +1710,8 @@ export function createParameterCatalogMigrationService(
         return { kind: "created" as const, replacementId };
       });
       if (finalized.kind === "missing-preview") return fail({ kind: "not-found" });
+      if (finalized.kind === "denied") return fail({ kind: "permission-denied" });
+      if (finalized.kind === "policy-denied") return fail({ kind: "preview-unavailable", reason: finalized.reason });
       if (finalized.kind === "target-unavailable") return fail({ kind: "replacement-target-unavailable" });
       if (finalized.kind === "replay") {
         const stored = await loadReplacement(db, command.organizationId, finalized.replacementId, { lock: "none" });
@@ -1536,6 +1726,7 @@ export function createParameterCatalogMigrationService(
         finalized.replacementId,
         null,
         `definition-replacement:${finalized.replacementId}`,
+        command.context,
         command.trustedActor,
       );
     };
@@ -1596,6 +1787,9 @@ export function createParameterCatalogMigrationService(
         command.replacementId,
         command.projectIds,
         `definition-replacement-continue:${command.replacementId}`,
+        command.context,
+        command.trustedActor,
+        command.expectedVersion,
       );
       if (!advanced.ok) return advanced;
       await db.transaction(async (tx) => {

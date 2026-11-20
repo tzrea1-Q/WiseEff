@@ -8,6 +8,7 @@ ADR-0048 扩展 ADR-0038：`Authorization: Bearer wie_<credentialId>_<secret>` �
 | --- | --- | --- |
 | `GET` | `/api/v1/log-integration-credentials` | 用户须有 `logs:admin-domains`；返回本组织 `{ items }`，不含密钥或哈希。 |
 | `POST` | `/api/v1/log-integration-credentials` | 同上；请求 `{ name, skillId?: string \| null }`；返回 `201 { item, token }`。 |
+| `PATCH` | `/api/v1/log-integration-credentials/:credentialId` | 同一权限。请求 `{ name }`，更正有效或已撤销凭据的显示名，返回 `{ item }`。 |
 | `POST` | `/api/v1/log-integration-credentials/:credentialId/rotate` | 同上；请求 `{}`；返回 `{ item, token }`，旧密钥立即失效。 |
 | `POST` | `/api/v1/log-integration-credentials/:credentialId/revoke` | 同上；请求 `{}`；返回 `{ item }`，下一请求即拒绝该凭据。 |
 
@@ -628,6 +629,8 @@ JSON、multipart 的 `POST /api/v1/log-files` 以及基于已有文件的 `POST 
 | --- | --- | --- |
 | `GET` | `/api/v1/log-skills/:skillId/source-snapshots` | `200 { items: snapshot[] }`；需要 `logs:view`，只读元数据，包含已归档快照。 |
 | `POST` | `/api/v1/log-skills/:skillId/source-snapshots` | 仅支持 multipart `{ versionLabel, file }`；返回 `201 { item: snapshot }`，状态为 `queued`。需要 `logs:admin-domains`。 |
+| `POST` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/version-label/preview` | 请求 `{ versionLabel }`，按已发布版本预览新旧标签在更正前后的解析，并指出占用标签的有效快照。需要 `logs:admin-domains`。 |
+| `PATCH` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId` | 请求 `{ versionLabel, expectedVersionLabel, expectedArchived }`，更正标签并返回 `{ item }`。预览过期或有效标签被占用时返回 `409`。需要 `logs:admin-domains`。 |
 | `POST` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default` | `200 { item: skill }`；创建或替换草稿的 `spec.defaultSourceSnapshotId`，下次发布生效。需要 `logs:admin-domains`。 |
 | `POST` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/archive` | `200 { item: snapshot }`，状态为 `archived`。需要 `logs:admin-domains`。 |
 

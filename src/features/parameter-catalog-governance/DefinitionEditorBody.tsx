@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type {
   CatalogDefinitionResponse,
+  CatalogPublicationCandidateResponse,
   CatalogPublicationJobResponse,
   CatalogReplacement,
   CatalogReplacementPreview,
@@ -44,6 +45,8 @@ import { createGovernanceIdempotencyKey } from "./governanceState";
 
 export type DefinitionEditorBodyProps = {
   actor: CatalogActorKind;
+  organizationId?: string;
+  organizationAdmin?: boolean;
   sessionPermissions?: readonly string[] | null;
   domainState: CatalogDomainState;
   catalog: ParameterCatalogRepository;
@@ -205,6 +208,8 @@ const projectStatusLabel = {
  */
 export function DefinitionEditorBody({
   actor,
+  organizationId,
+  organizationAdmin = actor === "org-admin",
   sessionPermissions,
   domainState,
   catalog,
@@ -236,17 +241,30 @@ export function DefinitionEditorBody({
     CatalogPublicationJobResponse["item"] | null
   >(null);
   const [replacement, setReplacement] = useState<CatalogReplacement | null>(null);
+  const [replacementRecords, setReplacementRecords] = useState<CatalogReplacement[] | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [existingDefinition, setExistingDefinition] = useState<{ definitionId: string; subjectId: string } | null>(null);
+  const [mergeChoices, setMergeChoices] = useState<Record<string, "source" | "target">>({});
+  const publishedSuccessor = definition.currentRevision.successorDefinitionId ?? "";
+  const [deprecated, setDeprecated] = useState(definition.lifecycle === "deprecated");
+  const [successor, setSuccessor] = useState(publishedSuccessor);
+  const [successorSearch, setSuccessorSearch] = useState("");
+  const [successorOptions, setSuccessorOptions] = useState<CatalogDefinitionResponse["item"][]>([]);
+  const [revisionCandidate, setRevisionCandidate] = useState<CatalogPublicationCandidateResponse["item"] | null>(null);
+  const [reviewId, setReviewId] = useState("");
+  const [reviewing, setReviewing] = useState(false);
   const [previewIdempotencyKey, setPreviewIdempotencyKey] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
 
+  const publicationState: CatalogDomainState = actor === "platform-admin" && domainState.kind === "retired" &&
+    (domainState.target === "registration" || (domainState.target === "definition" && definition.lifecycle === "deprecated"))
+      ? { kind: "ready", catalogReleaseId, writesEnabled: true } : domainState;
   const allowed = canExecutePublicationAction(
     actor,
     "preview-publication",
-    domainState,
+    publicationState,
     sessionPermissions
   );
   const publishDisabledReason = !publishingAllowed
@@ -262,11 +280,20 @@ export function DefinitionEditorBody({
     setSelectedProjects([]);
     setPreview(null);
     setReplacement(null);
+    setReplacementRecords(null);
     setPublicationJob(null);
     setConfirmOpen(false);
     setPending(false);
     setError("");
     setExistingDefinition(null);
+    setMergeChoices({});
+    setDeprecated(definition.lifecycle === "deprecated");
+    setSuccessor(publishedSuccessor);
+    setSuccessorSearch("");
+    setSuccessorOptions([]);
+    setRevisionCandidate(null);
+    setReviewId("");
+    setReviewing(false);
     setPreviewIdempotencyKey(null);
     setIdempotencyKey(null);
     setHistoryOpen(false);
@@ -281,15 +308,17 @@ export function DefinitionEditorBody({
   );
 
   const selectableSubjects = useMemo(
-    () => subjects.filter((subject) => subject.membership.status === "active" && subject.registration.status !== "retired"),
-    [subjects]
+    () => subjects.filter((subject) => subject.membership.status === "active" &&
+      (actor === "platform-admin" || subject.registration.status !== "retired")),
+    [actor, subjects]
   );
-  const editable = authoringAllowed && allowed && definition.lifecycle === "active" &&
+  const editable = authoringAllowed && allowed &&
+    (definition.lifecycle === "active" || (actor === "platform-admin" && definition.lifecycle === "deprecated")) &&
     definitionSubject?.membership.status === "active" &&
-    definitionSubject.registration.status !== "retired" && definition.registration.status !== "retired";
+    (actor === "platform-admin" || (definitionSubject.registration.status !== "retired" && definition.registration.status !== "retired"));
   const targetSubjectAllowed = selectableSubjects.some((subject) => subject.id === subjectId);
   const canPublish = editable && targetSubjectAllowed && publishingAllowed && canExecutePublicationAction(
-    actor, "publish-publication", domainState, sessionPermissions
+    actor, "publish-publication", publicationState, sessionPermissions
   );
   useEffect(() => {
     if (!editable || !targetSubjectAllowed) setConfirmOpen(false);
@@ -304,6 +333,14 @@ export function DefinitionEditorBody({
       fingerprintContent(content) !== fingerprintContent(currentContent),
     [content, currentContent]
   );
+  const deprecationChanged = deprecated !== (definition.lifecycle === "deprecated") ||
+    (deprecated && successor !== publishedSuccessor);
+  const canReviewRevision = canPublish && canExecutePublicationAction(
+    actor, "review-high-risk-publication", publicationState, sessionPermissions
+  );
+  const unresolvedMerge = preview?.projects.some(project => project.mergeConflict && !project.mergeConflict.choice) ||
+    preview?.projects.some(project => project.mergeConflict &&
+      (mergeChoices[project.projectId] ?? project.mergeConflict.choice) !== project.mergeConflict.choice);
   const removedOptionalContent = [
     currentContent.unit.trim() && !content.unit.trim() ? "单位" : null,
     currentContent.examples.trim() && !content.examples.trim() ? "示例" : null
@@ -313,7 +350,7 @@ export function DefinitionEditorBody({
     content.minimum !== currentContent.minimum ||
     content.maximum !== currentContent.maximum;
   const dirty = (phase === "compose" || phase === "preview") &&
-    (identityChanged || contentChanged || Boolean(reason.trim()) || selectedProjects.length > 0);
+    (identityChanged || contentChanged || deprecationChanged || Boolean(reason.trim()) || selectedProjects.length > 0);
 
   useEffect(() => {
     onEditorStateChange?.({ dirty, pending });
@@ -367,7 +404,7 @@ export function DefinitionEditorBody({
     return () => { cancelled = true; clearTimeout(timer); };
   }, [catalog, publicationJobId, publicationPending, onRefreshEvidence]);
 
-  const runPreview = async () => {
+  const runPreview = async (mergeIntoDefinitionId?: string) => {
     if (!editable || !targetSubjectAllowed || pending) return;
     if (!validateExamples()) return;
     if (selectedProjects.length === 0 && actor !== "platform-admin") {
@@ -379,7 +416,10 @@ export function DefinitionEditorBody({
       return;
     }
     setPending(true);
-    setExistingDefinition(null);
+    if (!mergeIntoDefinitionId) {
+      setExistingDefinition(null);
+      setMergeChoices({});
+    }
     try {
       // Preview is a catalog write route: it requires an idempotency key, kept
       // stable so a retry of the same preview is not a second command.
@@ -392,6 +432,7 @@ export function DefinitionEditorBody({
           newPropertyKey: propertyKey.trim(),
           projectIds: [...selectedProjects],
           reason: reason.trim(),
+          ...(mergeIntoDefinitionId ? { mergeIntoDefinitionId, mergeChoices } : {}),
           ...definitionContentOf({ ...emptyPublicationDraft(), ...content, mode: "revise-definition", definitionId: definition.id, propertyKey: propertyKey.trim(), reason: reason.trim() })
         },
         { catalogReleaseId, idempotencyKey: key }
@@ -434,7 +475,7 @@ export function DefinitionEditorBody({
   /** Content-only edit: publish a revision, no project reference moves. */
   const saveContentRevision = async () => {
     if (!canPublish || pending) return;
-    if (!validateExamples()) return;
+    if (deprecationChanged ? (contentChanged || identityChanged || (deprecated && !successor)) : !validateExamples()) return;
     if (!reason.trim()) {
       setError("请填写修改原因，用于审计。");
       return;
@@ -445,9 +486,15 @@ export function DefinitionEditorBody({
       const key = idempotencyKey ?? (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
       setIdempotencyKey(key);
       const candidate = await catalog.createPublicationCandidate(
-        { changeSet: buildPublicationChangeSet(contentDraft()) as never },
+        { changeSet: deprecationChanged ? [{ op: "revise-definition", definitionId: definition.id, class: "semantic",
+          successorDefinitionId: deprecated ? successor : null, reason: reason.trim() }] : buildPublicationChangeSet(contentDraft()) as never },
         { catalogReleaseId }
       );
+      if (deprecationChanged && !organizationAdmin) {
+        setRevisionCandidate(candidate.item);
+        setReviewing(false);
+        return;
+      }
       const published = await catalog.publishPublicationCandidate(
         candidate.item.id,
         { idempotencyKey: key },
@@ -464,8 +511,75 @@ export function DefinitionEditorBody({
     }
   };
 
+  const searchSuccessors = async () => {
+    setPending(true);
+    setError("");
+    try {
+      const result = await catalog.listDefinitions({ search: successorSearch.trim(), lifecycle: "active,deprecated",
+        subjectLifecycle: "active", catalogReleaseId, limit: 30 });
+      setSuccessorOptions(result.items.filter(item => item.id !== definition.id));
+    } catch (caught) {
+      setError(failureText(caught));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const loadReplacements = async () => {
+    setPending(true);
+    setError("");
+    try {
+      const result = await catalog.listDefinitionReplacements();
+      setReplacementRecords(result.items.filter(item => item.oldIdentity.definitionId === definition.id));
+    } catch (caught) {
+      setError(failureText(caught));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const loadRevisionCandidate = async () => {
+    if (!canReviewRevision || !reviewId.trim()) return;
+    setPending(true);
+    setError("");
+    setRevisionCandidate(null);
+    try {
+      const result = await catalog.getPublicationCandidate(reviewId.trim());
+      const change = result.item.impactSummary.definitionSuccessorChange ?? result.item.impactSummary.definitionReplacement;
+      if (change?.definitionId !== definition.id) {
+        setError("此候选不属于当前定义的弃用修订或身份纠错。");
+        return;
+      }
+      setRevisionCandidate(result.item);
+      setReviewing(true);
+    } catch (caught) {
+      setError(failureText(caught));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const publishReviewedRevision = async () => {
+    if (!canReviewRevision || !reviewing || !revisionCandidate || revisionCandidate.expectedBaseReleaseId !== catalogReleaseId) return;
+    setPending(true);
+    setError("");
+    try {
+      const key = idempotencyKey ?? (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
+      setIdempotencyKey(key);
+      const result = await catalog.publishPublicationCandidate(revisionCandidate.id, { idempotencyKey: key }, { catalogReleaseId });
+      setPublicationJob(result.item);
+      setPhase("content-saved");
+      if (publicationSuccessKind(result.item)) await onRefreshEvidence?.();
+      onCompleted?.();
+    } catch (caught) {
+      setError(failureText(caught));
+    } finally {
+      setPending(false);
+    }
+  };
+
   const execute = async () => {
-    if (!canPublish || !preview || pending) return;
+    if (!canPublish || !preview || pending || unresolvedMerge) return;
     setPending(true);
     const key = idempotencyKey ?? (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
     setIdempotencyKey(key);
@@ -518,6 +632,7 @@ export function DefinitionEditorBody({
 
   const continueBlocked = async () => {
     if (!canPublish || !replacement || pending) return;
+    setError("");
     setPending(true);
     const key = (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
     try {
@@ -555,9 +670,7 @@ export function DefinitionEditorBody({
     finally { setPending(false); }
   };
 
-  const blockedCount = replacement
-    ? replacement.projects.filter((project) => project.status === "blocked").length
-    : 0;
+  const canContinue = replacement?.projects.some(project => project.status === "blocked" || project.status === "pending");
 
   return (
     <>
@@ -700,8 +813,28 @@ export function DefinitionEditorBody({
               ) : null}
 
               <div className="definition-editor__governance-stack">
+                {actor === "platform-admin" && (definitionSubject?.registration.status === "retired" || definition.registration.status === "retired") ?
+                  <p role="status">当前组织的登记已停用。此处编辑共享目录定义，组织登记与识别规则继续生效。</p> : null}
+                {actor === "platform-admin" && !identityChanged ? <fieldset className="definition-editor__projects">
+                  <legend>共享定义弃用</legend>
+                  <label><input type="checkbox" checked={deprecated} onChange={event => setDeprecated(event.target.checked)} />弃用此定义</label>
+                  {deprecated ? <>
+                    <p>现有项目继续显示固定版本的值。请选择推荐的后继定义。</p>
+                    <label>搜索后继定义<input value={successorSearch} onChange={event => setSuccessorSearch(event.target.value)} /></label>
+                    <button type="button" className="button subtle" onClick={() => void searchSuccessors()}>查找定义</button>
+                    <label><span>后继定义</span><SelectControl ariaLabel="后继定义" value={successor} onValueChange={setSuccessor}
+                      options={[
+                        { value: "", label: "请选择后继定义" },
+                        ...(successor && !successorOptions.some(item => item.id === successor)
+                          ? [{ value: successor, label: successor }] : []),
+                        ...successorOptions.map(item => ({ value: item.id, label: `${item.subject.canonicalName} · ${item.propertyKey}` }))
+                      ]} /></label>
+                  </> : null}
+                  {deprecationChanged && contentChanged ? <p role="status">内容修订与弃用变更须分别保存，便于复核。</p> : null}
+                </fieldset> : null}
                 {identityChanged ? <fieldset className="definition-editor__projects">
                   <legend>受影响项目</legend>
+                  {organizationId ? <p>目标组织 <code>{organizationId}</code></p> : null}
                   <p className="parameter-catalog__muted">{actor === "platform-admin"
                     ? "不选择项目时，预演和发布会核对全平台当前引用；仅无引用定义可直接纠错。有引用时请选择实际项目并沿用迁移流程。"
                     : "仅迁移明确选中的项目，预演会核对其引用与兼容性。"}</p>
@@ -852,11 +985,12 @@ export function DefinitionEditorBody({
                       type="button"
                       className="button primary"
                       data-editor-action="save-content"
-                      disabled={!canPublish || pending || !contentChanged || !reason.trim()}
+                      disabled={!canPublish || pending || (!contentChanged && !deprecationChanged) ||
+                        (deprecationChanged && (contentChanged || (deprecated && !successor))) || !reason.trim()}
                       title={canPublish ? undefined : publishDisabledReason}
                       onClick={() => void saveContentRevision()}
                     >
-                      {pending ? "正在发布…" : "保存内容修订"}
+                      {pending ? "正在处理…" : deprecationChanged ? "预览弃用修订" : "保存内容修订"}
                     </button>
                   )}
                 </div>
@@ -940,7 +1074,12 @@ export function DefinitionEditorBody({
               <h3 className="definition-editor__card-title">纠错影响预览</h3>
               <span className="definition-editor__card-desc">{preview.impact.selectedProjectCount === 0 ? "发布时会再次核对全平台当前引用" : "核对受影响项目的兼容性与迁移阻挡原因"}</span>
             </div>
+            {preview.publicationCandidateId ? <details className="definition-editor__more">
+              <summary>发布与复核信息</summary>
+              <p>若发布策略要求独立复核，请把候选编号 <code>{preview.publicationCandidateId}</code> 交给具备复核权限的管理员。发布生效后，在此继续执行项目迁移。</p>
+            </details> : null}
             <dl className="parameter-catalog__dl definition-editor__preview-dl">
+              <dt>目标组织</dt><dd>{preview.organizationId}</dd>
               <dt>选定项目</dt>
               <dd>{preview.impact.selectedProjectCount}</dd>
               <dt>可迁移</dt>
@@ -956,6 +1095,11 @@ export function DefinitionEditorBody({
               <dt>新主体需要登记</dt>
               <dd>{preview.impact.targetRegistrationRequired ? "是" : "否"}</dd>
             </dl>
+            {preview.remainingProjects?.length ? <p>本组织剩余项目 {preview.remainingProjects.map(project => project.name).join("、")}</p> : null}
+            {preview.merge ? <dl className="parameter-catalog__dl">
+              <dt>来源定义</dt><dd>{preview.oldIdentity.propertyKey} · {preview.merge.source.valueType ?? "未知类型"} · {preview.merge.source.unit ?? "无单位"} · <code>{preview.oldIdentity.revisionId}</code></dd>
+              <dt>已有目标</dt><dd>{preview.newIdentity.propertyKey} · {preview.merge.target.valueType ?? "未知类型"} · {preview.merge.target.unit ?? "无单位"} · <code>{preview.newIdentity.revisionId}</code></dd>
+            </dl> : null}
             {preview.blockers.length > 0 ? (
               <ul data-correction-blockers="true" className="definition-editor__blockers">
                 {preview.blockers.map((blocker) => (
@@ -979,12 +1123,26 @@ export function DefinitionEditorBody({
                       <td>{project.projectName}</td>
                       <td>{projectStatusLabel[project.status]}</td>
                       <td>{project.compatible ? "兼容" : "不兼容"}</td>
-                      <td>{project.blockerReason ?? "—"}</td>
+                      <td>{replacementBlockerLabel(project.blockerReason)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div> : null}
+            {preview.projects.filter(project => project.mergeConflict).map(project => {
+              const conflict = project.mergeConflict!;
+              return <fieldset key={project.projectId} className="definition-editor__projects" disabled={pending}>
+                <legend>{project.projectName}的值冲突</legend>
+                <p>来源 <code>{JSON.stringify(conflict.sourceValue)}</code> · <code>{project.oldBindingId}</code> · 修订 <code>{conflict.sourceRevisionId}</code></p>
+                <p>目标 <code>{JSON.stringify(conflict.targetValue)}</code> · <code>{conflict.targetBindingId}</code> · 修订 <code>{conflict.targetRevisionId}</code></p>
+                <SelectControl ariaLabel={`${project.projectName}保留的值`}
+                  value={mergeChoices[project.projectId] ?? conflict.choice ?? ""}
+                  onValueChange={value => setMergeChoices(current => ({ ...current, [project.projectId]: value as "source" | "target" }))}
+                  options={[{ value: "", label: "请选择保留的值", disabled: true },
+                    { value: "target", label: "保留目标值" }, { value: "source", label: "保留来源值" }]} />
+                {isMergeSourcePending(project.blockerReason) ? <p>确认后将保存本次选择。项目来源变更需另行提交审核，审核生效后可继续合并。</p> : null}
+              </fieldset>;
+            })}
             <div className="dialog-actions definition-editor__dialog-actions">
               <button
                 type="button"
@@ -994,15 +1152,18 @@ export function DefinitionEditorBody({
               >
                 返回修改
               </button>
+              {preview.merge && unresolvedMerge ? <button type="button" className="button subtle" disabled={pending ||
+                preview.projects.some(project => project.mergeConflict && !(mergeChoices[project.projectId] ?? project.mergeConflict.choice))}
+                onClick={() => void runPreview(preview.newIdentity.definitionId)}>重新预演合并</button> : null}
               <button
                 type="button"
                 className="button primary"
                 data-correction-action="execute"
-                disabled={!canPublish || pending}
+                disabled={!canPublish || pending || unresolvedMerge || preview.blockers.includes("unbound-project") && preview.projects.length === 0}
                 title={canPublish ? undefined : publishDisabledReason}
                 onClick={() => setConfirmOpen(true)}
               >
-                {preview.impact.selectedProjectCount === 0 ? "确认并执行纠错" : "确认并执行迁移"}
+                {preview.merge ? "确认并执行合并" : preview.impact.selectedProjectCount === 0 ? "确认并执行纠错" : "确认并执行迁移"}
               </button>
             </div>
           </section>
@@ -1014,7 +1175,7 @@ export function DefinitionEditorBody({
               <h3 className="definition-editor__card-title">纠错执行结果</h3>
               <span className="definition-editor__card-desc">{preview?.impact.selectedProjectCount === 0
                 ? "替代身份已发布，旧定义保持有效；纠错不会自动退役或删除旧定义。"
-                : "身份替换已生效，受影响项目引用迁移汇总"}</span>
+                : `目标组织 ${replacement.organizationId} · ${replacement.oldIdentity.propertyKey} → ${replacement.newIdentity.propertyKey}`}</span>
             </div>
             {preview?.impact.selectedProjectCount === 0 ? <dl className="parameter-catalog__dl">
               <dt>旧身份</dt><dd>{replacement.oldIdentity.propertyKey}</dd>
@@ -1031,17 +1192,32 @@ export function DefinitionEditorBody({
                   <tr>
                     <th scope="col">项目</th>
                     <th scope="col">状态</th>
-                    <th scope="col">阻止原因</th>
+                    <th scope="col">说明</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {replacement.projects.map((project) => (
-                    <tr key={project.projectId}>
+                  {replacement.projects.map((project) => {
+                    const conflict = project.mergeConflict;
+                    const changeTarget = project.blockerReason === "merge-target-value-required";
+                    return <tr key={project.projectId}>
                       <td>{project.projectName}</td>
                       <td>{projectStatusLabel[project.status]}</td>
-                      <td>{project.blockerReason ?? "—"}</td>
-                    </tr>
-                  ))}
+                      <td>
+                        {conflict && project.status === "completed"
+                          ? (conflict.choice === "source" ? "已保留来源值" : "已保留目标值")
+                          : replacementBlockerLabel(project.blockerReason)}
+                        {conflict && isMergeSourcePending(project.blockerReason) ? <p>
+                          {changeTarget ? <>在目标绑定中写入 <code>{JSON.stringify(conflict.sourceValue)}</code>。审核生效后返回继续。</>
+                            : <>在来源绑定中移除旧属性。审核生效后返回继续。</>}{" "}
+                          <a target="_blank" rel="noreferrer" href={`/parameters?${new URLSearchParams({
+                            project: project.projectId, organizationId: replacement.organizationId,
+                            bindingId: changeTarget ? conflict.targetBindingId : project.oldBindingId,
+                            definitionId: changeTarget ? replacement.newIdentity.definitionId : replacement.oldIdentity.definitionId,
+                          })}`}>{changeTarget ? "打开目标绑定" : "打开来源绑定"}</a>
+                        </p> : null}
+                      </td>
+                    </tr>;
+                  })}
                 </tbody>
               </table>
             </div></>}
@@ -1058,7 +1234,7 @@ export function DefinitionEditorBody({
                   关闭
                 </button>
               ) : null}
-              {blockedCount > 0 ? (
+              {canContinue ? (
                 <button
                   type="button"
                   className="button subtle"
@@ -1066,7 +1242,7 @@ export function DefinitionEditorBody({
                   disabled={!canPublish || pending}
                   onClick={() => void continueBlocked()}
                 >
-                  继续处理被阻止的项目
+                  {replacement.projects.some(project => isMergeSourcePending(project.blockerReason)) ? "核对来源变更并继续合并" : "继续处理被阻止的项目"}
                 </button>
               ) : null}
             </div>
@@ -1100,8 +1276,44 @@ export function DefinitionEditorBody({
             {error}
           </p>
         ) : null}
-        {existingDefinition ? <a target="_blank" rel="noreferrer" href={`?${new URLSearchParams({
-          subjectId: existingDefinition.subjectId, definitionId: existingDefinition.definitionId })}`}>查看已有定义</a> : null}
+        {existingDefinition && phase === "compose" && identityChanged ? <div className="dialog-actions">
+          <a target="_blank" rel="noreferrer" href={`?${new URLSearchParams({
+            subjectId: existingDefinition.subjectId, definitionId: existingDefinition.definitionId })}`}>查看已有定义</a>
+          <button type="button" className="button subtle" disabled={pending || selectedProjects.length === 0}
+            onClick={() => void runPreview(existingDefinition.definitionId)}>预演合并到已有定义</button>
+        </div> : null}
+        {editable && phase === "compose" && (actor === "platform-admin" || actor === "org-admin") ? <details className="definition-editor__more">
+          <summary>查看本组织迁移记录</summary>
+          <button type="button" className="button subtle" disabled={pending || dirty} onClick={() => void loadReplacements()}>读取迁移记录</button>
+          {replacementRecords?.length === 0 ? <p role="status">本组织暂无此定义的迁移记录。</p> : null}
+          {replacementRecords?.map(item => <p key={item.id}><button type="button" className="button subtle" disabled={pending || dirty}
+            onClick={() => { setReplacement(item); setPreview(null); setIdempotencyKey(null); setPhase("executed"); }}>
+            {item.newIdentity.propertyKey} · {item.createdAt} · {item.reason}</button></p>)}
+        </details> : null}
+        {canReviewRevision && phase === "compose" ? <details className="definition-editor__more">
+          <summary>复核定义发布候选</summary>
+          <label>候选编号<input value={reviewId} disabled={pending} onChange={event => { setReviewId(event.target.value); setReviewing(false); }} /></label>
+          <button type="button" className="button subtle" disabled={pending || !reviewId.trim()} onClick={() => void loadRevisionCandidate()}>读取候选</button>
+        </details> : null}
+        {revisionCandidate && phase === "compose" ? <section aria-label="定义发布候选">
+          <p>{reviewing ? "核对共享定义的变更后确认发布。" : "请把候选编号交给另一位具备高风险复核权限的管理员。"}</p>
+          <dl className="parameter-catalog__dl">
+            <dt>候选编号</dt><dd><code>{revisionCandidate.id}</code></dd>
+            {revisionCandidate.impactSummary.definitionSuccessorChange ? <>
+              <dt>后继定义</dt><dd>{revisionCandidate.impactSummary.definitionSuccessorChange.successorLabel ??
+                (revisionCandidate.impactSummary.definitionSuccessorChange.successorDefinitionId || "撤销弃用")}</dd>
+              <dt>修改原因</dt><dd>{revisionCandidate.impactSummary.definitionSuccessorChange.reason}</dd>
+            </> : null}
+            {revisionCandidate.impactSummary.definitionReplacement ? <>
+              <dt>新属性键</dt><dd>{revisionCandidate.impactSummary.definitionReplacement.propertyKey}</dd>
+              <dt>目标主体</dt><dd>{subjects.find(subject => subject.id === revisionCandidate.impactSummary.definitionReplacement?.subjectId)?.canonicalName ??
+                revisionCandidate.impactSummary.definitionReplacement.subjectId}</dd>
+            </> : null}
+          </dl>
+          {reviewing ? <button type="button" className="button primary" disabled={pending || revisionCandidate.expectedBaseReleaseId !== catalogReleaseId}
+            onClick={() => void publishReviewedRevision()}>确认发布定义候选</button> : null}
+          {revisionCandidate.expectedBaseReleaseId !== catalogReleaseId ? <p role="alert">目录版本已变化，请重新预览。</p> : null}
+        </section> : null}
         {relatedKnowledge ? (
           <details className="definition-editor__more">
             <summary>相关知识</summary>
@@ -1115,7 +1327,8 @@ export function DefinitionEditorBody({
         description={
           preview
             ? [
-                `将发布替代身份 ${preview.newIdentity.propertyKey}（主体 ${preview.newIdentity.subjectName}）。`,
+                preview.merge ? `将确认迁移到已有定义 ${preview.newIdentity.propertyKey}（主体 ${preview.newIdentity.subjectName}）。`
+                  : `将发布替代身份 ${preview.newIdentity.propertyKey}（主体 ${preview.newIdentity.subjectName}）。`,
                 preview.impact.selectedProjectCount === 0
                   ? "全平台当前引用为 0，无需迁移项目；发布时将重新检查。"
                   : `迁移 ${preview.impact.compatibleProjectCount} 个项目，${preview.impact.blockedProjectCount} 个项目会被阻止并保留待续。`,
@@ -1136,10 +1349,34 @@ export function DefinitionEditorBody({
 
 function failureText(error: unknown): string {
   if (error instanceof WiseEffApiError) {
+    switch (error.details.field) {
+      case "definition-successor-missing": return "后继定义不存在，或后继链缺少定义。";
+      case "definition-successor-invalid": return "定义不能将自身设为后继。";
+      case "definition-successor-cycle": return "后继链存在循环，请选择其他定义。";
+      case "definition-successor-terminal-invalid": return "后继链必须最终指向有效定义。";
+    }
     if (error.details.replacement === "current-project-references") return "旧定义已有当前项目引用，请选择实际项目并使用迁移流程。当前输入已保留。";
     if (error.details.replacement === "target-identity-conflict") return "目标身份已存在，请查看已有定义或修改目标身份。当前输入已保留。";
     if (error.details.replacement === "replacement-target-unavailable") return "已发布的替代定义当前不可用，请刷新 Catalog 后核对目标身份。当前输入已保留。";
+    if (error.details.reason === "publication-self-approval-forbidden") return "当前发布策略要求另一位管理员独立复核。请在发布与复核信息中查看候选编号。";
   }
   const state = catalogStateFromFailure(error);
   return `${catalogStateMessage(state) ?? "操作未完成，请稍后重试。"} 当前输入已保留。`;
+}
+
+function isMergeSourcePending(reason: string | null): boolean {
+  return reason === "merge-target-value-required" || reason === "merge-source-removal-required";
+}
+
+function replacementBlockerLabel(reason: string | null): string {
+  switch (reason) {
+    case "merge-choice-required": return "请选择要保留的值。";
+    case "merge-target-value-required": return "等待审核写入目标值";
+    case "merge-source-removal-required": return "等待审核移除来源属性";
+    case "merge-multiple-target-bindings": return "项目存在多个目标绑定，无法确定应保留的绑定。";
+    case "merge-unit-mismatch": return "两侧定义的单位不同，需先核对并纠正单位。";
+    case "missing-source-provenance": return "无法确认绑定的来源版本。";
+    case "stale-preview": return "当前来源或取值已变化，请重新预演。";
+    default: return reason ?? "—";
+  }
 }

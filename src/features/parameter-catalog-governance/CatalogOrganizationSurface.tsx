@@ -398,6 +398,8 @@ export function CatalogOrganizationSurface({
           ) : null}
           <DefinitionEditorBody
             actor={actor}
+            organizationId={organizationId}
+            organizationAdmin={sessionRoles?.some(role => role.roleId === "admin" && role.projectId === null)}
             sessionPermissions={sessionPermissions}
             domainState={history.domainState}
             catalog={catalog}

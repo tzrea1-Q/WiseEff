@@ -246,7 +246,7 @@ export async function loadSourceBindingCohortReadOnly(tx: Queryable, input: { or
 }
 
 /** Snapshot restore retains exact identities, including members retired since
- * that immutable revision. Replaced Definitions are never restoration targets. */
+ * that immutable revision. Superseded identities stay available for historical reads. */
 export async function loadConfigurationRestoreCohort(tx: Queryable, input: {
   organizationId: string; projectId: string; configSetId: string; snapshotRevisionId: string;
 }) {
@@ -269,6 +269,8 @@ export async function loadConfigurationRestoreCohort(tx: Queryable, input: {
     where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
       and (active.id is not null or historical.id is not null)
       and not parameter_catalog.is_replaced_current_binding(binding.id)
+      and not exists(select 1 from parameter_catalog.json_instance_corrections correction
+        where correction.previous_occurrence_id=occurrence.id)
     order by binding.id`, [input.organizationId,input.projectId,input.configSetId,input.snapshotRevisionId])).rows;
 }
 

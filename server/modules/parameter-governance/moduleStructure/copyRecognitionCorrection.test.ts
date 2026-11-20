@@ -13,7 +13,11 @@ vi.mock("../../parameter-modules/recognitionSettings", () => ({
   registrationRecognitionEtag: () => "recognition-version",
 }));
 vi.mock("../../parameter-modules/recognitionInstances", () => ({ listModuleRecognitionInstances: mocks.instances }));
-vi.mock("../../catalog-kernel/ownerSchema", () => ({ listOrganizationOwnedSubjects: mocks.children, readCatalogSubjectOwner: vi.fn() }));
+vi.mock("../../catalog-kernel/ownerSchema", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../catalog-kernel/ownerSchema")>(),
+  listOrganizationOwnedSubjects: mocks.children,
+  readCatalogSubjectOwner: vi.fn(),
+}));
 vi.mock("../registration/repositories", () => ({ insertRegistration: mocks.registration, insertPlacement: mocks.placement }));
 
 type Subject = z.infer<typeof moduleStructureExportSchema>["subjects"][number];
@@ -33,7 +37,7 @@ const input = (subject = driver, resolutions: Input["resolutions"] = {}): Input 
 
 function client(owner: string | null = null) {
   const query = vi.fn(async (sql: string) => {
-    if (sql.includes("select s.kind,s.owner_subject_id,rs.lifecycle")) return { rows: [{ kind: "node-type", owner_subject_id: owner, lifecycle: "active" }], rowCount: 1 };
+    if (sql.includes("select s.kind,") && sql.includes("as owner_subject_id,rs.lifecycle")) return { rows: [{ kind: "node-type", owner_subject_id: owner, lifecycle: "active" }], rowCount: 1 };
     if (sql.includes("r.status || ':'")) return { rows: [{ id: "registration", subject_id: driver.subjectId, version: "v1", owner_subject_id: null }], rowCount: 1 };
     if (sql.startsWith("select id from parameter_catalog.organization_subject_registrations")) return { rows: [{ id: "registration" }], rowCount: 1 };
     if (sql.includes("current_project_parameter_bindings") || sql.includes("array_agg(distinct b.definition_id")) return { rows: [], rowCount: 0 };

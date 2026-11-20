@@ -34,6 +34,7 @@ describe("browser impact selection", () => {
       "e2e/acceptance/knowledge.acceptance.spec.ts",
       "e2e/acceptance/log-analysis.acceptance.spec.ts",
       "e2e/acceptance/log-deletion-preview.acceptance.spec.ts",
+      "e2e/acceptance/log-skill-corrections.acceptance.spec.ts",
       "e2e/acceptance/log-skill-design-goals.acceptance.spec.ts",
       "e2e/acceptance/log-skill-knowledge.acceptance.spec.ts",
       "e2e/acceptance/log904-related-parameter.acceptance.spec.ts",

@@ -68,12 +68,20 @@ function feedbackRecord(overrides: Partial<ProductFeedbackDto> = {}): ProductFee
     pagePath: "/parameters",
     pageTitle: "Project Parameters",
     feedbackType: "experience",
+    effectiveFeedbackType: "experience",
     description: "The buttons are hard to scan.",
     status: "open",
     adminNote: null,
+    priority: "normal",
+    assigneeUserId: null,
+    assignee: null,
+    submitter: { id: "user-1", name: "User", username: null },
+    submittedAt: "2026-07-08T08:00:00.000Z",
+    resolutionCode: null,
     createdAt: "2026-07-08T08:00:00.000Z",
     updatedAt: "2026-07-08T08:00:00.000Z",
     attachments: [],
+    progressEvents: [],
     ...overrides
   };
 }
@@ -317,7 +325,7 @@ describe("product feedback routes", () => {
   it("GET /api/v1/product-feedback/mine returns my feedbacks", async () => {
     const db = makeDb();
     const myItem = feedbackRecord({ id: "my-fb-1" });
-    vi.mocked(service.listMyProductFeedback).mockResolvedValue({ items: [myItem as any], nextCursor: null });
+    vi.mocked(service.listMyProductFeedback).mockResolvedValue({ items: [myItem as any], nextCursor: null, pendingAttachmentCleanupCount: 0 });
 
     const response = await requestJson<{ items: unknown[]; nextCursor: unknown }>(
       makeServer({ db }),
@@ -331,7 +339,7 @@ describe("product feedback routes", () => {
 
   it("passes my-feedback filters and cursor to the service", async () => {
     const db = makeDb();
-    vi.mocked(service.listMyProductFeedback).mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(service.listMyProductFeedback).mockResolvedValue({ items: [], nextCursor: null, pendingAttachmentCleanupCount: 0 });
     const cursor = { updatedAt: "2026-10-15T00:00:00.123456Z", id: "feedback-1" };
     const encoded = Buffer.from(JSON.stringify(cursor)).toString("base64url");
     const response = await requestJson(makeServer({ db }), `/api/v1/product-feedback/mine?q=button&status=draft&limit=20&cursor=${encoded}`);
@@ -342,7 +350,7 @@ describe("product feedback routes", () => {
   it("round-trips the next my-feedback page cursor without losing PostgreSQL timestamp precision", async () => {
     const db = makeDb();
     const nextCursor = { updatedAt: "2026-10-15T00:00:00.123456Z", id: "feedback-1" };
-    vi.mocked(service.listMyProductFeedback).mockResolvedValue({ items: [], nextCursor });
+    vi.mocked(service.listMyProductFeedback).mockResolvedValue({ items: [], nextCursor, pendingAttachmentCleanupCount: 0 });
     const first = await requestJson<{ nextCursor: string }>(makeServer({ db }), "/api/v1/product-feedback/mine");
     expect(typeof first.body.nextCursor).toBe("string");
     const second = await requestJson(makeServer({ db }), `/api/v1/product-feedback/mine?cursor=${encodeURIComponent(first.body.nextCursor)}`);

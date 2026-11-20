@@ -47,6 +47,7 @@ export async function loadCurrentCanonicalDtsDefinitionDetail(
   }
   return {
     definitionId: definition.id,
+    ...(definition.recommendedDefinition ? { recommendedDefinition: definition.recommendedDefinition } : {}),
     revisionId: revision.id,
     revisionNumber: revision.revisionNumber,
     propertyKey: definition.propertyKey,

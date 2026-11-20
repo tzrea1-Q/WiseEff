@@ -191,6 +191,7 @@ function appendQuery(path: string, query?: CatalogListQuery) {
   if (!query) return path;
   const params = new URLSearchParams();
   if (query.view) params.set("view", query.view);
+  if (query.status) params.set("status", query.status);
   if (query.cursor) params.set("cursor", query.cursor);
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.type) params.set("type", query.type);
@@ -278,7 +279,9 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     const pathname = path.split("?")[0]!;
     const organizationProjection = method === "GET" && /^\/api\/v2\/catalog\/(subjects|definitions|revision-document)(\/|$)/.test(pathname)
       && !pathname.endsWith("/deletion-preview");
-    const resourcePath = path.startsWith("/api/v2/projects/") || organizationProjection ? withOrganizationScope(path, options.organizationId) : path;
+    const scopedCatalogOperation = /^\/api\/v2\/catalog\/(definition-replacements|publication-candidates|publication-surface|publications)(\/|$)/.test(pathname);
+    const resourcePath = path.startsWith("/api/v2/projects/") || organizationProjection || scopedCatalogOperation
+      ? withOrganizationScope(path, options.organizationId) : path;
     const response = await fetchImpl(`${baseUrl}${resourcePath}`, {
       method,
       headers,

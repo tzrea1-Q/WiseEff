@@ -4,11 +4,20 @@ import { LOG_SKILL_RECOMMENDATION_LIMITS as recommendationLimits } from "./skill
 export const issueLogIntegrationCredentialBodySchema = z.object({
   name: z.string().trim().min(1).max(120), skillId: z.string().min(1).nullable().optional()
 }).strict();
+export const renameLogIntegrationCredentialBodySchema = issueLogIntegrationCredentialBodySchema.pick({ name: true }).extend({
+  name: issueLogIntegrationCredentialBodySchema.shape.name.refine((name) => !name.includes("\0"))
+});
 
 export const sourceSnapshotUploadSchema = z.object({
   versionLabel: z.string().trim().min(1).max(200),
   fileName: z.string().min(1).max(255)
 }).strict();
+export const sourceSnapshotLabelPreviewSchema = z.object({
+  versionLabel: sourceSnapshotUploadSchema.shape.versionLabel.refine((label) => !label.includes("\0"))
+}).strict();
+export const sourceSnapshotLabelUpdateSchema = sourceSnapshotLabelPreviewSchema.extend({
+  expectedVersionLabel: z.string().min(1).max(200), expectedArchived: z.boolean()
+});
 
 import { logRecordStatuses } from "./status";
 

@@ -194,6 +194,16 @@ it("uses the current published head for an old release link while comparing valu
   expect(getDefinition).toHaveBeenCalledWith(CATALOG_DEFINITION_ID, { catalogReleaseId: CATALOG_RELEASE_ID, view: "library" });
 });
 
+it("links to the recommended definition in the current operating organization", async () => {
+  const repository = createMockParameterCatalogRepository();
+  const definition = await repository.getDefinition(CATALOG_DEFINITION_ID);
+  vi.spyOn(repository, "getDefinition").mockResolvedValue({ item: { ...definition.item,
+    recommendedDefinition: { id: "pdef_successor", propertyKey: "limit-v2", displayName: "推荐定义" } } });
+  render(<CatalogPage libraryMode repository={repository} actor="user" organizationId="org-target" search={`?definitionId=${CATALOG_DEFINITION_ID}`} />);
+  expect(await screen.findByRole("link", { name: "推荐定义" })).toHaveAttribute("href",
+    "/parameters/definitions?definitionId=pdef_successor&organizationId=org-target");
+});
+
 it("does not show delayed project options from another Organization", async () => {
   const previous = deferred<Array<{ id: string; name: string; code: string }>>();
   const current = deferred<Array<{ id: string; name: string; code: string }>>();

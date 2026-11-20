@@ -276,6 +276,10 @@ export async function updatePasswordCredential(db: Queryable, input: { userId: s
   return result.rowCount;
 }
 
+export async function updateLocalUsername(db: Queryable, userId: string, username: string) {
+  await db.query("update user_password_credentials set username = $2 where user_id = $1", [userId, username]);
+}
+
 export async function updateUser(db: Queryable, input: { organizationId: string; userId: string; name?: string; email?: string; title?: string }) {
   const current = await getUserById(db, { organizationId: input.organizationId, userId: input.userId });
   if (!current) return null;

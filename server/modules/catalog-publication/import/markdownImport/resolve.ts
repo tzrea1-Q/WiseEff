@@ -1,15 +1,17 @@
 import type { CatalogReleaseNode, CatalogReleaseSubjectDocument } from "../../../catalog-kernel/compiler/types";
 import type { CatalogChange, SupportedDefinitionContent } from "../../builder/types";
 import { parseCanonicalCompatibleSelector, parseCanonicalConfigurationSchemaId, parseCanonicalNodeName } from "../../../parameter-catalog-contract/index";
-import { diagnostic, type ImportDiagnostic, type Subject, type SubjectKind } from "./types";
+import { diagnostic, type ImportDiagnostic, type OrganizationImportMatches, type SubjectMatch, type Subject, type SubjectKind } from "./types";
 
 const SELECTOR_KIND = {
   driver: "driver-compatible", "node-type": "node-type-name", "configuration-schema": "configuration-schema-id",
 } as const satisfies Record<SubjectKind, string>;
 
 /** Resolve the subject and validate any declared facts against the snapshot. */
-export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): {
+export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode, organization?: OrganizationImportMatches): {
   subject: CatalogReleaseSubjectDocument | undefined;
+  match?: SubjectMatch;
+  matchCandidates?: SubjectMatch[];
   diagnostics: ImportDiagnostic[];
   section: Subject;
   nature?: "physical-device" | "logical-service";
@@ -42,16 +44,35 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
     && item.content.lifecycle === "active"
     && snapshot.documents.some((subject) => subject.kind === "subject" && subject.content.id === item.content.subjectId
       && subject.content.ownerSubjectId === ownerSubjectId));
-  const subject = snapshot.documents.find((item): item is CatalogReleaseSubjectDocument =>
+  let subject = snapshot.documents.find((item): item is CatalogReleaseSubjectDocument =>
     item.kind === "subject" && item.content.kind === section.kind
     && item.content.ownerSubjectId === ownerSubjectId
     && ((item.content.selector.kind === selectorKind && item.content.selector.value === section.selector)
       || (alias?.kind === "alias" && item.content.id === alias.content.subjectId)));
 
+  let source: SubjectMatch["source"] = alias ? "catalog-alias" : "catalog-primary";
+  const matchCandidates: SubjectMatch[] = [];
+  const selected = section.kind === "driver" ? organization?.selections?.find(item => item.selector === section.selector) : undefined;
+  if (!subject && section.kind === "driver") {
+    const ids = organization?.rules.get(section.selector) ?? [];
+    const candidates = snapshot.documents.filter((item): item is CatalogReleaseSubjectDocument =>
+      item.kind === "subject" && item.content.kind === "driver" && item.content.lifecycle === "active" && ids.includes(item.content.id));
+    subject = selected ? candidates.find(item => item.content.id === selected.subjectId) : undefined;
+    source = "organization-compatible";
+    if (!subject) matchCandidates.push(...candidates.map(item => ({
+      subjectId: item.content.id, canonicalName: item.content.selector.value, source,
+    })));
+  }
+  const match = subject ? { subjectId: subject.content.id, canonicalName: subject.content.selector.value, source } : undefined;
+  if (selected && (source !== "organization-compatible" || !subject)) {
+    diagnostics.push(diagnostic(section, null, "主体", "本组织的匹配已变化，请重新选择主体。", section.line));
+  } else if (!subject && matchCandidates.length) {
+    diagnostics.push(diagnostic(section, null, "主体", "请选择当前组织的 compatible 规则所匹配的主体，再次预览。", section.line));
+  }
   if (subject?.content.lifecycle === "retired") {
     diagnostics.push(diagnostic(section, null, "主体", "主体已退役。", section.line));
   }
-  if (section.kind && !subject) {
+  if (section.kind && !subject && !matchCandidates.length && !selected) {
     const parsed = section.kind === "driver" ? parseCanonicalCompatibleSelector(section.selector)
       : section.kind === "node-type" ? parseCanonicalNodeName(section.selector)
         : parseCanonicalConfigurationSchemaId(section.selector);
@@ -104,10 +125,11 @@ export function resolveSubject(section: Subject, snapshot: CatalogReleaseNode): 
       }
     }
   }
-  if (section.kind === "driver" && !subject && !nature) {
+  if (section.kind === "driver" && !subject && !nature && !matchCandidates.length && !selected) {
     diagnostics.push(diagnostic(section, null, "主体", "新建 Driver 必须填写 nature 和 cardinality。", section.line));
   }
-  return { subject, diagnostics, section, nature, cardinality, ownerSubjectId, categoryPath, displayAlias, warnings, hintLine: categoryLine ?? hintLine };
+  return { subject, match, ...(matchCandidates.length ? { matchCandidates } : {}), diagnostics, section, nature,
+    cardinality, ownerSubjectId, categoryPath, displayAlias, warnings, hintLine: categoryLine ?? hintLine };
 }
 
 /** Convert this subject's accepted definitions to existing publication operations. */

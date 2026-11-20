@@ -1,5 +1,6 @@
 import type { Queryable } from "../../../shared/database/client";
 import { CURRENT_POINTER_LOCK_KEY } from "../../catalog-kernel/install/lockProtocol";
+import { publishedSubjectOwner } from "../../catalog-kernel/ownerSchema";
 
 export async function lockCurrentRecognitionRelease(db: Queryable): Promise<string | null> {
   await db.query("select pg_catalog.pg_advisory_xact_lock_shared($1::bigint)", [CURRENT_POINTER_LOCK_KEY]);
@@ -28,10 +29,13 @@ export async function readRegistrationRecognitionSubject(db: Queryable, organiza
 /** Type correction is organization-local; neither a published child nor an organization-owned child may become a root driver. */
 export async function readRecognitionSubjectIdentity(db: Queryable, organizationId: string, subjectId: string) {
   const result = await db.query<{ kind: string; owner_subject_id: string | null; organization_owner_subject_id: string | null }>(
-    `select subject.kind, subject.owner_subject_id, registration.owner_subject_id as organization_owner_subject_id
+    `select subject.kind, ${publishedSubjectOwner("membership", "subject")} as owner_subject_id,
+       registration.owner_subject_id as organization_owner_subject_id
        from parameter_catalog.catalog_subjects subject
        left join parameter_catalog.organization_subject_registrations registration
          on registration.subject_id=subject.id and registration.organization_id=$1
+       left join parameter_catalog.catalog_release_subjects membership on membership.subject_id=subject.id
+         and membership.release_id=(select current_catalog_release_id from parameter_catalog.catalog_state)
       where subject.id=$2`, [organizationId, subjectId],
   );
   return result.rows[0] ?? null;
@@ -72,20 +76,24 @@ export type ModuleRecognitionSubjectDefault = {
 
 /** Published selectors and driver attributes for a captured release, or the current release when absent. */
 export async function readModuleRecognitionSubjectDefaults(
-  db: Queryable, subjectIds: readonly string[], releaseId: string | null,
+  db: Queryable, subjectIds: readonly string[] | "versioned-singletons", releaseId: string | null,
 ): Promise<ModuleRecognitionSubjectDefault[]> {
   if (subjectIds.length === 0) return [];
   const result = await db.query<ModuleRecognitionSubjectDefault>(
-    `select membership.subject_id, membership.selector_snapshot, driver.nature, driver.cardinality,
+    `select membership.subject_id, membership.selector_snapshot,
+       coalesce(to_jsonb(membership)->'rules_snapshot'->'defaults'->>'nature', driver.nature) as nature,
+       coalesce(to_jsonb(membership)->'rules_snapshot'->'defaults'->>'cardinality', driver.cardinality) as cardinality,
        coalesce((select array_agg(alias.normalized_selector order by alias.normalized_selector)
          from parameter_catalog.catalog_release_subject_aliases alias_membership
          join parameter_catalog.catalog_subject_aliases alias on alias.id = alias_membership.alias_id
-         where alias_membership.release_id = membership.release_id and alias.subject_id = membership.subject_id
+         where alias_membership.release_id = membership.release_id and alias_membership.subject_id = membership.subject_id
            and alias_membership.lifecycle = 'active'), '{}') as aliases
      from parameter_catalog.catalog_release_subjects membership
      left join parameter_catalog.catalog_drivers driver on driver.subject_id = membership.subject_id
-     where membership.subject_id = any($1::text[]) and membership.release_id = coalesce($2::text,
-       (select current_catalog_release_id from parameter_catalog.catalog_state))`, [subjectIds, releaseId],
+     where membership.release_id = coalesce($2::text, (select current_catalog_release_id from parameter_catalog.catalog_state))
+       and case when $1::text[] is null then
+         membership.lifecycle='active' and to_jsonb(membership)->'rules_snapshot'->'defaults'->>'cardinality'='singleton-per-project'
+       else membership.subject_id=any($1::text[]) end`, [subjectIds === "versioned-singletons" ? null : subjectIds, releaseId],
   );
   return result.rows;
 }

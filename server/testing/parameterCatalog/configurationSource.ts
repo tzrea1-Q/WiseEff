@@ -20,6 +20,7 @@ export async function installConfigurationSourceFixture(db: Database, auth: Auth
   additionalDefinitionWithSameName?: { definitionId: string; revisionId: string; propertyKey: string };
   retainArtifactForErasure?: boolean;
   historicalPlacement?: boolean;
+  alternateSchema?: { subjectId: string; schemaId: string; definitionId: string; revisionId: string };
 }) {
   const pool = getRootPostgresPool(db);
   if (!pool) throw new Error("Configuration fixture requires native PostgreSQL");
@@ -49,6 +50,21 @@ export async function installConfigurationSourceFixture(db: Database, auth: Auth
     sameName.content.revision.matching.sourceProperty = input.additionalDefinitionWithSameName.propertyKey;
     release.documents.push(sameName);
   }
+  if (input.alternateSchema) {
+    const alternate = input.alternateSchema;
+    const subject = structuredClone(release.documents.find(document => document.kind === "subject")!);
+    const definition = structuredClone(release.documents.find(document => document.kind === "definition")!);
+    if (subject.kind !== "subject" || subject.content.selector.kind !== "configuration-schema-id" || definition.kind !== "definition") {
+      throw new Error("Missing configuration subject and Definition fixtures");
+    }
+    subject.content.id = alternate.subjectId;
+    subject.content.canonicalKey = alternate.schemaId;
+    subject.content.selector.value = alternate.schemaId;
+    definition.content.id = alternate.definitionId;
+    definition.content.subjectId = alternate.subjectId;
+    definition.content.revision.id = alternate.revisionId;
+    release.documents.push(subject, definition);
+  }
   refreshAuthoritativeSource(release);
   const bundle = { schemaVersion: full.schemaVersion,targetReleaseId: release.manifest.release.id,releases: [release] };
   const compiled = compileCatalogRelease(bundle);
@@ -69,13 +85,15 @@ export async function installConfigurationSourceFixture(db: Database, auth: Auth
       moduleId: module.id, reason: "T1.1 JSON source" });
     return module;
   }
-  const registration = await executeRegistration(pool,{
-    kind: "register",organizationId: auth.organization.id,subjectId: CatalogSubjectId(input.subjectId),subjectKind: "configuration-schema",
-    expectedRelease: compiled.value.release,placement: { mode: "use-default" },destinationModuleId: module.id,
-    method: "explicit",proof: { reason: "T1.1 JSON source" },idempotencyKey: "t11-json-registration",
-    context: { actorKind: "org-admin",principalId: auth.user.id },
-  });
-  if (!registration.ok) throw new Error(JSON.stringify(registration.error));
+  for (const subjectId of [input.subjectId, ...(input.alternateSchema ? [input.alternateSchema.subjectId] : [])]) {
+    const registration = await executeRegistration(pool,{
+      kind: "register",organizationId: auth.organization.id,subjectId: CatalogSubjectId(subjectId),subjectKind: "configuration-schema",
+      expectedRelease: compiled.value.release,placement: { mode: "use-default" },destinationModuleId: module.id,
+      method: "explicit",proof: { reason: "T1.1 JSON source" },idempotencyKey: subjectId === input.subjectId ? "t11-json-registration" : "t11-json-alternate-registration",
+      context: { actorKind: "org-admin",principalId: auth.user.id },
+    });
+    if (!registration.ok) throw new Error(JSON.stringify(registration.error));
+  }
   return module;
 }
 

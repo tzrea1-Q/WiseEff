@@ -68,6 +68,7 @@ ADR-0048 extends ADR-0038 with an organization-scoped integration principal. `Au
 | --- | --- | --- |
 | `GET` | `/api/v1/log-integration-credentials` | Requires user `logs:admin-domains`; `{ items }` lists organization credentials without secrets or hashes. |
 | `POST` | `/api/v1/log-integration-credentials` | Same permission; `{ name, skillId?: string \| null }` issues a credential and returns `201 { item, token }`. |
+| `PATCH` | `/api/v1/log-integration-credentials/:credentialId` | Same permission; `{ name }` updates the display name of an active or revoked credential. Returns `{ item }`. |
 | `POST` | `/api/v1/log-integration-credentials/:credentialId/rotate` | Same permission; `{}` returns `{ item, token }`; old secret immediately fails. |
 | `POST` | `/api/v1/log-integration-credentials/:credentialId/revoke` | Same permission; `{}` returns `{ item }`; revoked credential fails on next request. |
 
@@ -277,6 +278,8 @@ Only query results' own `events[].file/line` anchors establish observation. End-
 | --- | --- | --- |
 | `GET` | `/api/v1/log-skills/:skillId/source-snapshots` | `200 { items: snapshot[] }`; requires `logs:view`. Metadata only, including archived snapshots. |
 | `POST` | `/api/v1/log-skills/:skillId/source-snapshots` | Multipart `{ versionLabel, file }` only; `201 { item: snapshot }` in `queued` state. Requires `logs:admin-domains`. |
+| `POST` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/version-label/preview` | `{ versionLabel }` returns before/after selection for both labels against the published revision and identifies any active occupant. Requires `logs:admin-domains`. |
+| `PATCH` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId` | `{ versionLabel, expectedVersionLabel, expectedArchived }` corrects the label and returns `{ item }`. A stale preview or active label collision returns `409`. Requires `logs:admin-domains`. |
 | `POST` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/default` | `200 { item: skill }`; creates or replaces the draft with `spec.defaultSourceSnapshotId`. Requires `logs:admin-domains`; takes effect on the next publication. |
 | `POST` | `/api/v1/log-skills/:skillId/source-snapshots/:snapshotId/archive` | `200 { item: snapshot }` in `archived` state; requires `logs:admin-domains`. |
 

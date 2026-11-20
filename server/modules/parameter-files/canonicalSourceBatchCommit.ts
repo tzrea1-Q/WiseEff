@@ -393,12 +393,7 @@ export async function commitCanonicalSourceBatchRevision(
         beforeSourceDigest: sourceDigest(manifest.members[memberIndex]!.checksum),
         afterSourceDigest: sourceDigest(candidate.checksum)
       } : null;
-      const locatorDigest = deleted && pin.format === "dts"
-        ? (await tx.query<{ digest: string }>(
-          "select parameter_catalog.canonical_dts_delete_locator_digest($1::jsonb) as digest",
-          [JSON.stringify(locator)])).rows[0]?.digest
-        : `sha256:${digest(serializeContract(locator as ContractJsonValue))}`;
-      if (!locatorDigest) conflict("DTS batch deletion locator digest is unavailable.");
+      const locatorDigest = `sha256:${digest(serializeContract(locator as ContractJsonValue))}`;
       await tx.query(`insert into parameter_catalog.project_value_source_pins
         (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,
          config_revision_id,file_id,file_version_id,format,locator,locator_digest,property_occurrence_id,

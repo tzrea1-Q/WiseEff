@@ -73,6 +73,7 @@ import {
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
+  organizationId?: string;
   projectName?: string;
   requestedBindingId?: string;
   requestedConfigSetId?: string;
@@ -329,6 +330,7 @@ async function loadWorkspace(
  */
 export function ApiProjectTopologyWorkspace({
   projectId,
+  organizationId,
   projectName,
   requestedBindingId,
   requestedConfigSetId,
@@ -1463,6 +1465,7 @@ export function ApiProjectTopologyWorkspace({
   ) : jsonBindings.length > 0 ? (
     <JsonBindingPanel
       key={projectId}
+      organizationId={organizationId}
       bindings={jsonBindings}
       pendingDrafts={bindingDrafts}
       requestedEditBindingId={editRequest?.bindingId}
@@ -1544,6 +1547,7 @@ export function ApiProjectTopologyWorkspace({
           <DtsParameterWorkbench
             key={projectId}
             projectId={projectId}
+            organizationId={organizationId}
             projectName={projectName}
             toolbarActions={activeFormatTab === "dts" ? formatSwitcher : undefined}
             notice={notice || unavailableBinding || jsonState?.state === "error" ? <>

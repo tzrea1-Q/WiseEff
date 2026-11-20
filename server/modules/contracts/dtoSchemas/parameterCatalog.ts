@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { subjectIdentityChangeSchema, subjectIdentityImpactSchema } from "./catalogSubjectIdentity";
 import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema, moduleStructurePreviewResponseSchema, moduleStructureApplyRequestSchema, moduleStructureReceiptSchema } from "./moduleStructure";
 import { dtsBuildInputsSchema, dtsPreprocessingReceiptSchema } from "./dtsPreprocessing";
 
@@ -40,6 +41,7 @@ export const catalogApiFailureReasons = [
   "release-drift",
   "subject-not-published",
   "subject-retired",
+  "subject-selector-occupied",
   "definition-not-found",
   "definition-already-exists",
   "definition-retired",
@@ -83,6 +85,7 @@ export const catalogFailureClientBehaviors = {
   "release-drift": "refresh-and-reconfirm",
   "subject-not-published": "show-not-found-no-create",
   "subject-retired": "show-lifecycle-no-restore",
+  "subject-selector-occupied": "edit-selector-keep-input",
   "definition-not-found": "show-not-found",
   "definition-already-exists": "edit-existing-definition-keep-input",
   "definition-retired": "historical-read-block-mutation",
@@ -323,6 +326,7 @@ export const catalogSubjectDtoSchema = catalogObject({
   canonicalType: catalogSubjectTypeSchema.optional(),
   canonicalName: z.string(),
   aliases: z.array(z.string()),
+  formalAliases: z.array(catalogObject({ selector: z.string(), status: catalogSubjectLifecycleSchema })).optional(),
   membership: catalogObject({
     status: catalogSubjectLifecycleSchema,
     catalogReleaseId: z.string()
@@ -351,6 +355,7 @@ export const catalogDefinitionRevisionDtoSchema = catalogObject({
   definitionId: z.string(),
   revisionNumber: z.number().int().positive(),
   contentDigest: z.string(),
+  successorDefinitionId: z.string().optional(),
   /** Editable display name; empty string means the author left it unset. */
   displayName: z.string(),
   valueShape: catalogValueShapeSchema,
@@ -373,6 +378,7 @@ export const catalogDefinitionDtoSchema = catalogObject({
   propertyKey: z.string(),
   lifecycle: catalogDefinitionLifecycleSchema,
   currentRevision: catalogDefinitionRevisionDtoSchema,
+  recommendedDefinition: catalogObject({ id: z.string(), propertyKey: z.string(), displayName: z.string() }).optional(),
   registration: catalogRegistrationProjectionSchema,
   usageSummary: catalogObject({
     policyCount: z.number().int().nonnegative().nullable(),
@@ -604,7 +610,10 @@ export const catalogReviewItemDtoSchema = catalogObject({
     canonicalName: z.string(),
     placementDisplayName: z.string()
   })).optional(),
-  allowedResolutions: z.array(catalogReviewResolutionTypeSchema),
+  allowedResolutions: z.array(z.union([catalogReviewResolutionTypeSchema, z.literal("reopen-out-of-scope")])),
+  decision: catalogObject({ id: z.string(), type: catalogReviewResolutionTypeSchema, reason: z.string().nullable() }).optional(),
+  reopenedFrom: catalogObject({ id: z.string(), reason: z.string() }).optional(),
+  reopenedReviewItemId: z.string().optional(),
   candidateState: z.union([
     catalogObject({
       status: z.literal("current"),
@@ -635,6 +644,9 @@ export const catalogResolveReviewItemRequestSchema = catalogObject({
     }),
     catalogObject({
       type: z.literal("open-definition-proposal")
+    }),
+    catalogObject({
+      type: z.literal("reopen-out-of-scope")
     })
   ]),
   reason: z.string()
@@ -651,6 +663,7 @@ export const catalogReviewResolutionDtoSchema = catalogObject({
     placement: catalogPlacementDtoSchema
   }).optional(),
   proposalId: z.string().optional(),
+  reopenedReviewItemId: z.string().optional(),
   catalogReleaseId: z.string()
 });
 
@@ -849,8 +862,10 @@ export const catalogReviseDefinitionChangeSchema = catalogObject({
   op: z.literal("revise-definition"),
   definitionId: z.string(),
   class: z.enum(["documentation", "semantic"]),
-  content: catalogSupportedDefinitionContentSchema
-});
+  content: catalogSupportedDefinitionContentSchema.optional(),
+  successorDefinitionId: z.string().min(1).nullable().optional(),
+  reason: z.string().min(1).max(512).optional()
+}).refine(change => change.content !== undefined || change.successorDefinitionId !== undefined);
 
 export const catalogCreateSubjectChangeSchema = catalogObject({
   op: z.literal("create-subject"),
@@ -898,6 +913,7 @@ export const catalogRestoreDefinitionChangeSchema = catalogObject({
 });
 
 export const catalogChangeSchema = z.union([
+  subjectIdentityChangeSchema,
   catalogCreateSubjectChangeSchema,
   catalogCreateDefinitionChangeSchema,
   catalogCreateSubjectWithDefinitionsChangeSchema,
@@ -914,7 +930,9 @@ export const catalogTypedPublicationCandidateRequestSchema = catalogObject({
 export const catalogMarkdownImportRequestSchema = catalogObject({
   markdownImport: catalogObject({ document: z.string().max(1_048_576), fileName: z.string().min(1).max(255),
     additionalDocuments: z.array(catalogObject({ document: z.string().max(1_048_576),
-      fileName: z.string().min(1).max(255) })).max(19).optional()
+      fileName: z.string().min(1).max(255) })).max(19).optional(),
+    organizationSubjectSelections: z.array(catalogObject({ selector: z.string().min(1).max(255), subjectId: z.string().min(1).max(255) }))
+      .max(1024).refine(items => new Set(items.map(item => item.selector)).size === items.length).optional()
   }).refine(input => [input, ...(input.additionalDocuments ?? [])].reduce((size, item) => size + new TextEncoder().encode(item.document).byteLength, 0) <= 1_048_576,
     "整批 Markdown 内容不能超过 1 MiB。")
 });
@@ -931,13 +949,29 @@ export const catalogOwnerDeclarationSchema = catalogObject({
   subjectId: z.string(), subjectName: z.string(), ownerSubjectId: z.string(), ownerName: z.string()
 });
 
+export const catalogDefinitionSuccessorChangeSummarySchema = catalogObject({
+  definitionId: z.string(),
+  successorDefinitionId: z.string().nullable(),
+  successorLabel: z.string().nullable(),
+  reason: z.string().nullable()
+});
+
+export const catalogDefinitionReplacementSummarySchema = catalogObject({
+  definitionId: z.string(),
+  propertyKey: z.string(),
+  subjectId: z.string()
+});
+
 export const catalogPublicationImpactSummaryDtoSchema = catalogObject({
   addedDefinitionCount: z.number().int().nonnegative(),
   changedDefinitionCount: z.number().int().nonnegative(),
   addedSubjectCount: z.number().int().nonnegative(),
   addedSubjectIds: z.array(z.string()).optional(),
   ownerDeclarations: z.array(catalogOwnerDeclarationSchema).optional(),
-  ownerPublicationOnly: z.boolean().optional()
+  ownerPublicationOnly: z.boolean().optional(),
+  subjectIdentity: subjectIdentityImpactSchema.optional(),
+  definitionSuccessorChange: catalogDefinitionSuccessorChangeSummarySchema.optional(),
+  definitionReplacement: catalogDefinitionReplacementSummarySchema.optional()
 });
 
 export const catalogPublicationCapabilityContractDtoSchema = catalogObject({
@@ -1577,6 +1611,10 @@ export const catalogProposalResponseSchema = itemEnvelopeSchema(catalogProposalD
 export const catalogPublicationCandidateResponseSchema = itemEnvelopeSchema(
   catalogPublicationCandidateDtoSchema
 ).superRefine(rejectLegacySpecKeys);
+const catalogMarkdownSubjectMatchSchema = catalogObject({
+  subjectId: z.string(), canonicalName: z.string(),
+  source: z.enum(["catalog-primary", "catalog-alias", "organization-compatible"]),
+});
 export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObject({
   candidate: catalogPublicationCandidateDtoSchema.nullable(),
   noChange: z.boolean(),
@@ -1587,6 +1625,8 @@ export const catalogMarkdownImportResponseSchema = itemEnvelopeSchema(catalogObj
     fileName: z.string().optional(),
     subjectHeading: z.string(), definitionHeading: z.string(),
     selector: z.string(), propertyKey: z.string(), displayName: z.string(),
+    match: catalogMarkdownSubjectMatchSchema.optional(),
+    matchCandidates: z.array(catalogMarkdownSubjectMatchSchema).optional(),
     outcome: z.enum(["create", "revise", "skip", "conflict", "error"]),
     revisionClass: z.enum(["documentation", "semantic"]).optional(),
     riskClass: z.enum(["low", "high"]).optional(),
@@ -1688,7 +1728,17 @@ export const catalogReplacementProjectDtoSchema = catalogObject({
   valueKind: z.string(),
   compatible: z.boolean(),
   attemptCount: z.number().int().nonnegative(),
-  registrationRequired: z.boolean()
+  registrationRequired: z.boolean(),
+  mergeConflict: catalogObject({
+    targetBindingId: z.string(),
+    targetValueId: z.string(),
+    sourceRevisionId: z.string(),
+    targetRevisionId: z.string(),
+    sourceValue: catalogJsonValueSchema,
+    targetValue: catalogJsonValueSchema,
+    choice: z.enum(["source", "target"]).nullable(),
+    targetUpdateRequired: z.boolean().optional()
+  }).optional()
 });
 
 export const catalogReplacementPreviewRequestSchema = catalogObject({
@@ -1702,6 +1752,8 @@ export const catalogReplacementPreviewRequestSchema = catalogObject({
   valueSchema: catalogSupportedValueSchemaSchema,
   examples: z.array(catalogJsonValueSchema).optional(),
   projectIds: z.array(z.string()).max(200),
+  mergeIntoDefinitionId: z.string().min(1).optional(),
+  mergeChoices: z.record(z.string(), z.enum(["source", "target"])).optional(),
   reason: z.string().min(1).max(512)
 });
 
@@ -1748,6 +1800,7 @@ export const catalogReplacementPreviewDtoSchema = catalogObject({
   oldIdentity: catalogReplacementIdentitySchema,
   newIdentity: catalogReplacementIdentitySchema,
   catalogReleaseId: z.string(),
+  publicationCandidateId: z.string().optional(),
   impact: catalogObject({
     selectedProjectCount: z.number().int().nonnegative(),
     compatibleProjectCount: z.number().int().nonnegative(),
@@ -1760,6 +1813,11 @@ export const catalogReplacementPreviewDtoSchema = catalogObject({
   }),
   blockers: z.array(z.string()),
   projects: z.array(catalogReplacementProjectDtoSchema),
+  remainingProjects: z.array(catalogObject({ id: z.string(), name: z.string() })).optional(),
+  merge: catalogObject({
+    source: catalogObject({ valueType: z.string().nullable(), unit: z.string().nullable() }),
+    target: catalogObject({ valueType: z.string().nullable(), unit: z.string().nullable() })
+  }).optional(),
   expiresAt: z.string().nullable()
 });
 
@@ -2806,7 +2864,7 @@ export const parameterCatalogSchemaRegistry = {
     tags: ["catalog"],
     responseBody: "CatalogReviewItemListResponse",
     additionalResponses: catalogReadErrors,
-    requestParameters: pageQueryParameters,
+    requestParameters: [...pageQueryParameters, { name: "status", in: "query", schema: { type: "string", enum: ["out-of-scope"] } }],
     successHeaders: [catalogReleaseResponseHeader]
   },
   "catalog.getReviewItem": {
@@ -2817,7 +2875,7 @@ export const parameterCatalogSchemaRegistry = {
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   },
   "catalog.resolveReviewItem": {
-    summary: "Resolve one review item with an explicit placement or closed outcome",
+    summary: "Resolve a review item or reopen an out-of-scope decision",
     tags: ["catalog"],
     requestBody: "CatalogResolveReviewItemRequest",
     responseBody: "CatalogReviewResolutionResponse",

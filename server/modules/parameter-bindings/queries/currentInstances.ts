@@ -1,6 +1,32 @@
 import type { Queryable } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
+import type { ContractJsonValue } from "../../parameter-catalog-contract";
 import { currentManagedSourceBindingPredicate } from "./currentManagedBindings";
+
+type JsonFileInstanceRow = {
+  occurrenceId: string; configurationInstanceId: string; subjectId: string; rootPointer: string;
+  bindings: Array<{ bindingId: string; valueId: string; definitionId: string; pointer: string; value: ContractJsonValue }>;
+};
+
+export async function selectCurrentJsonInstancesForFile(
+  db: Queryable,
+  file: { organizationId: string; projectId: string; configSetId: string; fileId: string; fileVersionId: string },
+) {
+  const result = await db.query<JsonFileInstanceRow>(`
+    select occurrence.id as "occurrenceId",occurrence.configuration_instance_id as "configurationInstanceId",
+      occurrence.configuration_schema_subject_id as "subjectId",occurrence.root_pointer as "rootPointer",
+      jsonb_agg(jsonb_build_object('bindingId',binding.id,'valueId',value.id,'definitionId',binding.definition_id,
+        'pointer',pin.locator->>'pointer','value',value.value) order by binding.definition_id) as bindings
+    from parameter_catalog.project_parameter_source_occurrences occurrence
+    join parameter_catalog.current_project_parameter_bindings binding on binding.source_occurrence_id=occurrence.id
+    join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id and value.binding_id=binding.id
+    join parameter_catalog.project_value_source_pins pin on pin.binding_id=binding.id and pin.project_value_id=value.id
+    where occurrence.organization_id=$1 and occurrence.project_id=$2 and occurrence.file_id=$3 and occurrence.config_set_id=$4
+      and occurrence.occurrence_kind='json' and pin.file_id=$3 and pin.file_version_id=$5 and pin.format='json'
+    group by occurrence.id order by occurrence.root_pointer,occurrence.id`,
+  [file.organizationId, file.projectId, file.fileId, file.configSetId, file.fileVersionId]);
+  return result.rows;
+}
 
 // B is selected before its evidence is checked: broken current references must
 // never disappear through an inner join and become a successful zero count.

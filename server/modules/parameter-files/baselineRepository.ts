@@ -24,6 +24,7 @@ type ReleaseBaselineMemberRow = {
   file_id: string;
   file_version_id: string;
   version_number: number | string;
+  source_name?: string | null;
 };
 
 type ConfigSetMemberFileRow = {
@@ -61,6 +62,7 @@ function toReleaseBaselineMemberDto(row: ReleaseBaselineMemberRow): ReleaseBasel
     baselineId: row.baseline_id,
     fileId: row.file_id,
     fileVersionId: row.file_version_id,
+    ...(row.source_name ? { fileName: row.source_name } : {}),
     versionNumber: Number(row.version_number)
   };
 }
@@ -183,10 +185,18 @@ export async function listReleaseBaselineMembers(
 ): Promise<ReleaseBaselineMemberDto[]> {
   const result = await db.query<ReleaseBaselineMemberRow>(
     `
-    select *
-    from dts_release_baseline_members
-    where baseline_id = $1
-    order by file_id asc
+    select saved.*, (
+      select member.source_name from dts_config_revision_members member
+      join dts_config_revisions revision on revision.id=member.config_revision_id
+      where member.file_id=saved.file_id and member.file_version_id=saved.file_version_id
+        and revision.config_set_id=baseline.config_set_id
+        and (revision.id=baseline.source_snapshot->>'configRevisionId'
+          or (baseline.source_snapshot is null and revision.created_at<=baseline.created_at))
+      order by revision.revision_number desc limit 1
+    ) as source_name
+    from dts_release_baseline_members saved join dts_release_baseline baseline on baseline.id=saved.baseline_id
+    where saved.baseline_id = $1
+    order by saved.file_id asc
     `,
     [query.baselineId]
   );
