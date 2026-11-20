@@ -1715,7 +1715,8 @@ export const catalogReplacementProjectDtoSchema = catalogObject({
     targetRevisionId: z.string(),
     sourceValue: catalogJsonValueSchema,
     targetValue: catalogJsonValueSchema,
-    choice: z.enum(["source", "target"]).nullable()
+    choice: z.enum(["source", "target"]).nullable(),
+    targetUpdateRequired: z.boolean().optional()
   }).optional()
 });
 
