@@ -4,6 +4,7 @@ import { createWiseEffServer } from "../../app";
 import { createPostgresDatabase } from "../../shared/database/client";
 import { requestJson } from "../../test/testClient";
 import { seedCoreGraph } from "../../testing/fixtures";
+import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../testing/labRuntimeLogins";
 import { createMemoryObjectStore } from "../../testing/objectStore";
 import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { seedBaselineAuthCatalog } from "../auth/baselineCatalog";
@@ -26,6 +27,8 @@ describe.skipIf(!available)("feedback category correction over HTTP and PostgreS
   it("audits one correction in the selected organization and retains the submitted record", async () => {
     const fixture = await createEphemeralTestDatabase("feedback1584");
     const db = createPostgresDatabase(fixture.url);
+    const runToken = `feedback1584_${process.pid}`;
+    let api: ReturnType<typeof createPostgresDatabase> | undefined;
     try {
       await seedCoreGraph(db, { organization: { id: home }, users: [{ id: "platform" }, { id: "foreign-admin" }] });
       await seedCoreGraph(db, { organization: { id: target }, users: [{ id: "submitter" }] });
@@ -33,7 +36,9 @@ describe.skipIf(!available)("feedback category correction over HTTP and PostgreS
       await db.query(`insert into user_role_bindings(id,user_id,organization_id,role_id) values
         ('fb-platform','platform',$1,'platform-admin'), ('fb-foreign','foreign-admin',$1,'admin'),
         ('fb-submitter','submitter',$2,'hardware-user')`, [home, target]);
-      const server = createWiseEffServer({ db, objectStore: createMemoryObjectStore(), env: { AUTH_PROVIDER: "hmac" },
+      const runtime = await provisionPublicationRuntimeLogins(fixture.url, { mode: "lab", runToken });
+      api = createPostgresDatabase(runtime.apiUrl);
+      const server = createWiseEffServer({ db: api, objectStore: createMemoryObjectStore(), env: { AUTH_PROVIDER: "hmac" },
         auth: { mode: "production", verifier: createTokenVerifier({ issuer: "feedback-correction", secret }) } });
       const platform = token("platform", home), submitter = token("submitter", target);
       const request = <T,>(url: string, method = "GET", body?: unknown, bearer = platform) =>
@@ -51,6 +56,7 @@ describe.skipIf(!available)("feedback category correction over HTTP and PostgreS
       expect((await request(`${detail}?${scope}`, "PATCH", patch, token("foreign-admin", home))).status).toBe(403);
       const filtered = (type: string) => request<{ items: ProductFeedbackAdminDto[] }>(`${path}?${scope}&feedbackType=${type}`);
       expect((await filtered("experience")).body.items.map((item) => item.id)).toEqual([original.id]);
+      expect((await request(`${path}/stats?${scope}`)).body).toMatchObject({ byType: { experience: 1, data: 0 } });
       const history = { feedbackType: "experience", description, submittedAt: original.submittedAt, progressEvents: original.progressEvents };
       const corrected = await request<{ item: ProductFeedbackAdminDto }>(`${detail}?${scope}`, "PATCH", patch);
       expect(corrected.status, corrected.bodyText).toBe(200);
@@ -65,6 +71,8 @@ describe.skipIf(!available)("feedback category correction over HTTP and PostgreS
       const audits = await request<{ items: unknown[] }>(`/api/v1/audit-events?${scope}&kind=product-feedback-update&targetId=${original.id}`);
       expect(audits.body.items).toMatchObject([{ actorUserId: "platform", metadata: { previousFeedbackType: "experience", nextFeedbackType: "data", operatingOrganizationId: target } }]);
     } finally {
+      await api?.close();
+      await dropLabRuntimeLogins(fixture.url, runToken);
       await db.close();
       await fixture.drop();
     }
