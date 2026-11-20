@@ -237,7 +237,7 @@ describe("administrator Canonical member removal through the API database role",
     const jsonLane = await createEphemeralTestDatabase("admin-member-json");
     const owner = createPostgresDatabase(jsonLane.url);
     let jsonApi: ReturnType<typeof createPostgresDatabase> | undefined;
-    const jsonToken = `member_json_${process.pid}`;
+    const jsonToken = `memberjson${crypto.randomUUID().replaceAll("-", "").slice(0, 14)}`;
     try {
       await owner.query("insert into organizations(id,name) values ($1,'JSON removal')", [ORG]);
       await owner.query("insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Admin','Admin',true)", [USER, ORG]);
@@ -277,7 +277,13 @@ describe("administrator Canonical member removal through the API database role",
       expect(values).toHaveLength(1); expect(values[0]!.sourceFileId).toBe(a.file.id); expect(values[0]!.rawValue).toContain("36");
       const history = await requestJson(server(admin, dependencies), `/api/v1/projects/${PROJECT}/parameter-files/${b.file.id}/versions/${b.version.id}/content`);
       expect(history.status).toBe(200); expect(history.bodyText).toBe('{"limit":48}\n');
-    } finally { await jsonApi?.close(); await dropLabRuntimeLogins(jsonLane.url, jsonToken); await owner.close(); await jsonLane.drop(); }
+    } finally {
+      await jsonApi?.close();
+      const cleanup = await dropLabRuntimeLogins(jsonLane.url, jsonToken);
+      await owner.close();
+      await jsonLane.drop();
+      expect(cleanup.failed).toEqual([]);
+    }
   });
 
   it("can permanently erase a Definition after removal and fallback receipts while retaining original source", async () => {
