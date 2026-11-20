@@ -18,7 +18,8 @@ export function applySubjectRulesChange(
   };
   const find = (id: string | undefined) => subjects.find(doc => doc.content.id === id)?.content;
   const moveChild = (child: CatalogReleaseSubjectDocument, ownerSubjectId: string | undefined): BuildCompleteSuccessorError | undefined => {
-    const aliases = documents.filter(document => document.kind === "alias" && document.content.selectorKind === "node-type-name");
+    const aliases = documents.filter(document => document.kind === "alias")
+      .filter(document => document.content.selectorKind === "node-type-name");
     const selectors = new Set([child.content.selector.value,
       ...aliases.filter(alias => alias.content.subjectId === child.content.id).map(alias => alias.content.normalizedSelector)]);
     const taken = documents.find(document => document.kind === "subject" && document.content.kind === "node-type" &&
