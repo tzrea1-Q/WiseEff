@@ -72,9 +72,9 @@ Three layers reject a write that names a binding which has been replaced:
 
 The database is therefore the last line: even a writer that bypassed the port and lock layers cannot append a current value to a replaced binding.
 
-### 5. Exactly one current successor per old definition
+### 5. A replacement publication reserves one successor per old definition
 
-A partial unique index — `definition_replacements_current_successor_unique` on `(old_definition_id)` `where status in ('pending','executing','completed','blocked')` — admits at most one non-`failed` replacement per old definition. A `failed` row is excluded so a fresh preview may retry after a genuine failure. A `blocked` row deliberately **holds the slot**: continuation of the blocked replacement, not a second replacement, is the correction path for that old definition.
+The partial unique index `definition_replacements_current_successor_unique` admits one replacement publication per old definition in `pending`, `executing`, `completed` or `blocked` state. A failed row allows a fresh preview. A blocked publication retains its slot for continuation. Existing-target merges follow the scoped rule in section 11.
 
 ### 6. Confirmed defaults
 
@@ -147,7 +147,7 @@ Retiring the old definition requires authoritative evidence of global completion
 ### Trade-offs
 
 - **The old definition keeps its current-reference count until every project is migrated.** Until the last project commits, the old identity remains genuinely current somewhere. That is why usage counts and catalog read surfaces must count only the current-binding view: counting raw `project_parameter_bindings` would keep a phantom count on the old definition after migration.
-- **A blocked replacement holds the single-current-successor slot.** Because the partial unique index includes `blocked`, a different correction for the same old definition cannot start until the blocked replacement is continued to completion or explicitly failed and superseded. This is deliberate — two competing replacements for one identity would be worse than a serialized one — but it makes continuation a required operator action rather than an optional one.
+- **A blocked replacement publication retains its successor slot.** Continue its frozen manifest to complete the remaining work. An existing-target merge can cover additional current bindings after a fresh preview.
 - **Current reads pay one projection lookup.** Every current-binding read gains a lookup against the replacement projection. The design keeps this to one view predicate or one exact-identity helper call rather than a join chain, and confines the cost to current reads, since historical and pinned reads are untouched.
 
 ## Required verification owners

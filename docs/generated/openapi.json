@@ -41393,6 +41393,9 @@
                         "contentDigest": {
                           "type": "string"
                         },
+                        "successorDefinitionId": {
+                          "type": "string"
+                        },
                         "displayName": {
                           "type": "string"
                         },
@@ -41480,6 +41483,26 @@
                         "documentation",
                         "unit",
                         "publishedInCatalogReleaseId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "recommendedDefinition": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "propertyKey": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "propertyKey",
+                        "displayName"
                       ],
                       "additionalProperties": false
                     },
@@ -41713,6 +41736,9 @@
                             "type": "number"
                           },
                           "contentDigest": {
+                            "type": "string"
+                          },
+                          "successorDefinitionId": {
                             "type": "string"
                           },
                           "displayName": {
@@ -42088,6 +42114,9 @@
                           "contentDigest": {
                             "type": "string"
                           },
+                          "successorDefinitionId": {
+                            "type": "string"
+                          },
                           "displayName": {
                             "type": "string"
                           },
@@ -42175,6 +42204,26 @@
                           "documentation",
                           "unit",
                           "publishedInCatalogReleaseId"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "recommendedDefinition": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "propertyKey": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "propertyKey",
+                          "displayName"
                         ],
                         "additionalProperties": false
                       },
@@ -42408,6 +42457,9 @@
                               "type": "number"
                             },
                             "contentDigest": {
+                              "type": "string"
+                            },
+                            "successorDefinitionId": {
                               "type": "string"
                             },
                             "displayName": {
@@ -85308,6 +85360,19 @@
               "type": "string"
             }
           },
+          "mergeIntoDefinitionId": {
+            "type": "string"
+          },
+          "mergeChoices": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "source",
+                "target"
+              ]
+            }
+          },
           "reason": {
             "type": "string"
           }
@@ -85397,6 +85462,9 @@
                 "additionalProperties": false
               },
               "catalogReleaseId": {
+                "type": "string"
+              },
+              "publicationCandidateId": {
                 "type": "string"
               },
               "impact": {
@@ -85505,6 +85573,49 @@
                     },
                     "registrationRequired": {
                       "type": "boolean"
+                    },
+                    "mergeConflict": {
+                      "type": "object",
+                      "properties": {
+                        "targetBindingId": {
+                          "type": "string"
+                        },
+                        "targetValueId": {
+                          "type": "string"
+                        },
+                        "sourceRevisionId": {
+                          "type": "string"
+                        },
+                        "targetRevisionId": {
+                          "type": "string"
+                        },
+                        "sourceValue": {
+                          "type": "object"
+                        },
+                        "targetValue": {
+                          "type": "object"
+                        },
+                        "choice": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "source",
+                            "target"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "targetBindingId",
+                        "targetValueId",
+                        "sourceRevisionId",
+                        "targetRevisionId",
+                        "sourceValue",
+                        "targetValue",
+                        "choice"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -85523,6 +85634,79 @@
                   ],
                   "additionalProperties": false
                 }
+              },
+              "remainingProjects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "merge": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "valueType": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "valueType",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "target": {
+                    "type": "object",
+                    "properties": {
+                      "valueType": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "valueType",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "source",
+                  "target"
+                ],
+                "additionalProperties": false
               },
               "expiresAt": {
                 "type": [
@@ -85720,6 +85904,49 @@
                       },
                       "registrationRequired": {
                         "type": "boolean"
+                      },
+                      "mergeConflict": {
+                        "type": "object",
+                        "properties": {
+                          "targetBindingId": {
+                            "type": "string"
+                          },
+                          "targetValueId": {
+                            "type": "string"
+                          },
+                          "sourceRevisionId": {
+                            "type": "string"
+                          },
+                          "targetRevisionId": {
+                            "type": "string"
+                          },
+                          "sourceValue": {
+                            "type": "object"
+                          },
+                          "targetValue": {
+                            "type": "object"
+                          },
+                          "choice": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "source",
+                              "target"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "targetBindingId",
+                          "targetValueId",
+                          "sourceRevisionId",
+                          "targetRevisionId",
+                          "sourceValue",
+                          "targetValue",
+                          "choice"
+                        ],
+                        "additionalProperties": false
                       }
                     },
                     "required": [
@@ -86017,6 +86244,49 @@
                     },
                     "registrationRequired": {
                       "type": "boolean"
+                    },
+                    "mergeConflict": {
+                      "type": "object",
+                      "properties": {
+                        "targetBindingId": {
+                          "type": "string"
+                        },
+                        "targetValueId": {
+                          "type": "string"
+                        },
+                        "sourceRevisionId": {
+                          "type": "string"
+                        },
+                        "targetRevisionId": {
+                          "type": "string"
+                        },
+                        "sourceValue": {
+                          "type": "object"
+                        },
+                        "targetValue": {
+                          "type": "object"
+                        },
+                        "choice": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "source",
+                            "target"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "targetBindingId",
+                        "targetValueId",
+                        "sourceRevisionId",
+                        "targetRevisionId",
+                        "sourceValue",
+                        "targetValue",
+                        "choice"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -86733,6 +87003,9 @@
                     "contentDigest": {
                       "type": "string"
                     },
+                    "successorDefinitionId": {
+                      "type": "string"
+                    },
                     "displayName": {
                       "type": "string"
                     },
@@ -86820,6 +87093,26 @@
                     "documentation",
                     "unit",
                     "publishedInCatalogReleaseId"
+                  ],
+                  "additionalProperties": false
+                },
+                "recommendedDefinition": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "propertyKey": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "propertyKey",
+                    "displayName"
                   ],
                   "additionalProperties": false
                 },
@@ -87075,6 +87368,9 @@
                   "contentDigest": {
                     "type": "string"
                   },
+                  "successorDefinitionId": {
+                    "type": "string"
+                  },
                   "displayName": {
                     "type": "string"
                   },
@@ -87162,6 +87458,26 @@
                   "documentation",
                   "unit",
                   "publishedInCatalogReleaseId"
+                ],
+                "additionalProperties": false
+              },
+              "recommendedDefinition": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "propertyKey": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "propertyKey",
+                  "displayName"
                 ],
                 "additionalProperties": false
               },
@@ -88155,6 +88471,9 @@
                 "contentDigest": {
                   "type": "string"
                 },
+                "successorDefinitionId": {
+                  "type": "string"
+                },
                 "displayName": {
                   "type": "string"
                 },
@@ -88300,6 +88619,9 @@
                 "type": "number"
               },
               "contentDigest": {
+                "type": "string"
+              },
+              "successorDefinitionId": {
                 "type": "string"
               },
               "displayName": {
@@ -95391,13 +95713,21 @@
                             "valueSchema"
                           ],
                           "additionalProperties": false
+                        },
+                        "successorDefinitionId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
                         }
                       },
                       "required": [
                         "op",
                         "definitionId",
-                        "class",
-                        "content"
+                        "class"
                       ],
                       "additionalProperties": false
                     },
@@ -95691,6 +96021,59 @@
                       },
                       "ownerPublicationOnly": {
                         "type": "boolean"
+                      },
+                      "definitionSuccessorChange": {
+                        "type": "object",
+                        "properties": {
+                          "definitionId": {
+                            "type": "string"
+                          },
+                          "successorDefinitionId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "successorLabel": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "definitionId",
+                          "successorDefinitionId",
+                          "successorLabel",
+                          "reason"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "definitionReplacement": {
+                        "type": "object",
+                        "properties": {
+                          "definitionId": {
+                            "type": "string"
+                          },
+                          "propertyKey": {
+                            "type": "string"
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "definitionId",
+                          "propertyKey",
+                          "subjectId"
+                        ],
+                        "additionalProperties": false
                       }
                     },
                     "required": [
@@ -95808,6 +96191,59 @@
                           },
                           "ownerPublicationOnly": {
                             "type": "boolean"
+                          },
+                          "definitionSuccessorChange": {
+                            "type": "object",
+                            "properties": {
+                              "definitionId": {
+                                "type": "string"
+                              },
+                              "successorDefinitionId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "successorLabel": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "reason": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "definitionId",
+                              "successorDefinitionId",
+                              "successorLabel",
+                              "reason"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "definitionReplacement": {
+                            "type": "object",
+                            "properties": {
+                              "definitionId": {
+                                "type": "string"
+                              },
+                              "propertyKey": {
+                                "type": "string"
+                              },
+                              "subjectId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "definitionId",
+                              "propertyKey",
+                              "subjectId"
+                            ],
+                            "additionalProperties": false
                           }
                         },
                         "required": [
@@ -96169,6 +96605,59 @@
                           },
                           "ownerPublicationOnly": {
                             "type": "boolean"
+                          },
+                          "definitionSuccessorChange": {
+                            "type": "object",
+                            "properties": {
+                              "definitionId": {
+                                "type": "string"
+                              },
+                              "successorDefinitionId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "successorLabel": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "reason": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "definitionId",
+                              "successorDefinitionId",
+                              "successorLabel",
+                              "reason"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "definitionReplacement": {
+                            "type": "object",
+                            "properties": {
+                              "definitionId": {
+                                "type": "string"
+                              },
+                              "propertyKey": {
+                                "type": "string"
+                              },
+                              "subjectId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "definitionId",
+                              "propertyKey",
+                              "subjectId"
+                            ],
+                            "additionalProperties": false
                           }
                         },
                         "required": [
@@ -96299,6 +96788,59 @@
                       },
                       "ownerPublicationOnly": {
                         "type": "boolean"
+                      },
+                      "definitionSuccessorChange": {
+                        "type": "object",
+                        "properties": {
+                          "definitionId": {
+                            "type": "string"
+                          },
+                          "successorDefinitionId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "successorLabel": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "definitionId",
+                          "successorDefinitionId",
+                          "successorLabel",
+                          "reason"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "definitionReplacement": {
+                        "type": "object",
+                        "properties": {
+                          "definitionId": {
+                            "type": "string"
+                          },
+                          "propertyKey": {
+                            "type": "string"
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "definitionId",
+                          "propertyKey",
+                          "subjectId"
+                        ],
+                        "additionalProperties": false
                       }
                     },
                     "required": [
@@ -96655,6 +97197,59 @@
                   },
                   "ownerPublicationOnly": {
                     "type": "boolean"
+                  },
+                  "definitionSuccessorChange": {
+                    "type": "object",
+                    "properties": {
+                      "definitionId": {
+                        "type": "string"
+                      },
+                      "successorDefinitionId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "successorLabel": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "reason": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "definitionId",
+                      "successorDefinitionId",
+                      "successorLabel",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "definitionReplacement": {
+                    "type": "object",
+                    "properties": {
+                      "definitionId": {
+                        "type": "string"
+                      },
+                      "propertyKey": {
+                        "type": "string"
+                      },
+                      "subjectId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "definitionId",
+                      "propertyKey",
+                      "subjectId"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [

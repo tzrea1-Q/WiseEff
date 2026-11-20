@@ -64,7 +64,7 @@ Migration `0144` 把该规则暴露为 `parameter_catalog.current_project_parame
 
 ### 5. 每个旧定义恰好一个当前后继
 
-一个部分唯一索引——`definition_replacements_current_successor_unique`，作用于 `(old_definition_id)` 且 `where status in ('pending','executing','completed','blocked')`——对每个旧定义至多允许一条非 `failed` 替换。`failed` 行被排除，因此真实失败后可以重新 preview。`blocked` 行则有意**占据该槽位**：对该旧定义而言，纠正路径是续做这条被阻塞的替换，而不是发起第二条替换。
+部分唯一索引 `definition_replacements_current_successor_unique` 为每个旧定义保留一个新身份发布槽位，涵盖 `pending`、`executing`、`completed` 和 `blocked` 状态。失败后可重新预演。发布阻塞时保留槽位供续做。合并到已有目标沿用第 8 节的范围规则。
 
 ### 6. 已确认的默认值
 
@@ -112,7 +112,7 @@ Migration `0144` 把该规则暴露为 `parameter_catalog.current_project_parame
 ### 权衡
 
 - **旧定义在每个项目迁移完成前保留其当前引用计数。** 在最后一个项目提交之前，旧身份在某处仍是真正的当前身份。正因如此，使用计数与 catalog 读表面必须只统计当前 binding 视图：统计原始 `project_parameter_bindings` 会让旧定义在迁移后仍留有幻影计数。
-- **被阻塞的替换占据唯一的当前后继槽位。** 由于部分唯一索引包含 `blocked`，对同一旧定义的另一项纠正无法启动，除非把该被阻塞替换续做到完成，或显式将其置为 `failed` 并取代。这是有意为之——为同一身份并行两条替换比串行一条更糟——但它使续做成为必需的运维动作，而非可选项。
+- **被阻塞的新身份发布保留后继槽位。** 可续做原清单。剩余当前绑定也可在重新预演后合并到已有目标。
 - **当前读取多付一次投影查找。** 每个当前 binding 读取都会增加一次对替换投影的查找。本设计把它限制为一个视图谓词或一次精确身份辅助函数调用，而不是一条 join 链，并把代价仅限在当前读取上，因为历史与钉住读取不受影响。
 
 ## 必须保持的核验
