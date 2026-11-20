@@ -774,7 +774,7 @@ export async function applyCanonicalMemberAddition(db: Database, storage: Object
       const updated = await tx.query(`update public.project_parameter_files set current_version_id=$2, updated_at=now(),
         file_name=case when id=$4 then $5 else file_name end where id=$1 and current_version_id=$3`,
       [edit.fileId, edit.fileVersionId, edit.baseFileVersionId, target.fileId,
-        configurationSourceFileName(input.configSetId, proof.pathCorrection!.to)]);
+        configurationSourceFileName(input.configSetId, `private/${target.fileId}${posixPath.extname(member.sourceName).toLowerCase()}`)]);
       if (updated.rowCount !== 1) conflict("项目文件已变化，整次更正已回滚。");
       versionIds.set(edit.fileId, edit.fileVersionId);
       if (edit.fileId === target.fileId) fileVersionId = edit.fileVersionId;

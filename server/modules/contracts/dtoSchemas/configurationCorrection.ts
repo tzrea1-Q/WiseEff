@@ -45,7 +45,9 @@ const pathCorrection = z.object({ from: z.string(), to: z.string(),
   versions: z.array(z.object({ fileId: z.string(), fileVersionId: z.string(), baseFileVersionId: z.string(), contentChanged: z.boolean() }))
 });
 const preview = memberAdditionPreviewResponseSchema.shape.item;
-export const pathCorrectionPreviewResponseSchema = z.object({ item: preview.extend({ pathCorrection }) });
+export const pathCorrectionPreviewResponseSchema = z.object({ item: preview.pick({
+  proofToken: true, entryFile: true, includeSearchPaths: true, overlayOrder: true, diagnostics: true
+}).extend({ pathCorrection }) });
 export const pathCorrectionApplyResponseSchema = z.object({ item: memberAdditionApplyResponseSchema.shape.item.extend({ pathCorrection }) });
 
 const jsonMapping = z.object({ definitionId: z.string().min(1).max(240), pointer: z.string().max(2000) }).strict();
@@ -55,7 +57,7 @@ export const jsonCorrectionSchema = z.object({
   mappings: z.array(jsonMapping).min(1).max(1000)
 }).strict();
 export const jsonCorrectionApplySchema = jsonCorrectionSchema.extend(confirmation);
-export const jsonCorrectionPreviewResponseSchema = z.object({ item: preview.extend({ values: z.array(jsonMappingValue) }) });
+export const jsonCorrectionPreviewResponseSchema = z.object({ item: preview.pick({ proofToken: true }).extend({ values: z.array(jsonMappingValue) }) });
 export const jsonCorrectionApplyResponseSchema = z.object({ item: memberAdditionApplyResponseSchema.shape.item.extend({
   jsonCorrection: z.object({ previousOccurrenceId: z.string(), successorOccurrenceId: z.string(), bindingIds: z.array(z.string()) })
 }) });

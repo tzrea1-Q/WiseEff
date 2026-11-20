@@ -199,8 +199,14 @@ export function ProjectConfigurationWorkbench({
   const [setRootTarget, setSetRootTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const correctionClient = useMemo(() => apiMode && apiClient ? createConfigurationCorrectionClient(apiClient, project.id) : null,
     [apiMode, apiClient, project.id]);
-  const [correction, setCorrection] = useState<WorkbenchCorrection | null>(null);
-  useEffect(() => { setCorrection(null); }, [project.id, organizationId, currentUserId]);
+  const [correctionTask, setCorrectionTask] = useState<{
+    target: WorkbenchCorrection; client: typeof correctionClient; actorId: string; organizationId?: string;
+  } | null>(null);
+  const correction = correctionTask?.client === correctionClient && correctionTask.actorId === currentUserId
+    && correctionTask.organizationId === organizationId ? correctionTask.target : null;
+  function setCorrection(target: WorkbenchCorrection | null) {
+    setCorrectionTask(target ? { target, client: correctionClient, actorId: currentUserId, organizationId } : null);
+  }
   const [reviewedMemberRemovalTarget, setReviewedMemberRemovalTarget] = useState<DtsConfigSetMemberFile | null>(null);
   const [sourceUpdateReviewTarget, setSourceUpdateReviewTarget] = useState<HTMLDivElement | null>(null);
   const [singleConflictReview, setSingleConflictReview] = useState<{ candidateId: string; active: boolean } | null>(null);

@@ -12,7 +12,10 @@ import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAddition
 import { listMemberAdditionIntents, reserveMemberAddition, resolveMemberAdditionIntent } from "./canonicalMemberAdditionIntents";
 import { readCurrentJsonInstances, readJsonCorrectionSchemas } from "./canonicalJsonSource";
 import { loadSnapshot, requireCurrentSourceAdministrator } from "./sourceRevisionService";
-import { jsonCorrectionApplySchema, jsonCorrectionSchema, pathCorrectionApplySchema, pathCorrectionSchema } from "../contracts/dtoSchemas/configurationCorrection";
+import {
+  jsonCorrectionApplySchema, jsonCorrectionPreviewResponseSchema, jsonCorrectionSchema,
+  pathCorrectionApplySchema, pathCorrectionPreviewResponseSchema, pathCorrectionSchema
+} from "../contracts/dtoSchemas/configurationCorrection";
 
 export function registerCanonicalMemberAdditionRoutes(router: WiseEffRouter, options: {
   db?: Database; objectStore?: ObjectStore; refusalAuditSink?: TrustedRefusalAuditSink;
@@ -48,7 +51,7 @@ export function registerCanonicalMemberAdditionRoutes(router: WiseEffRouter, opt
     const item = apply?.success
       ? await applyCanonicalMemberAddition(options.db, options.objectStore, auth, { ...input, ...apply.data }, security)
       : await previewCanonicalMemberAddition(options.db, options.objectStore, auth, input, security);
-    return { status: 200, body: { item } };
+    return { status: 200, body: apply?.success ? { item } : pathCorrectionPreviewResponseSchema.parse({ item }) };
   }
   const path = "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId/path-correction";
   router.post(`${path}/preview`, (request) => correctPath(request, "preview"));
@@ -79,7 +82,7 @@ export function registerCanonicalMemberAdditionRoutes(router: WiseEffRouter, opt
     const item = apply?.success
       ? await applyCanonicalMemberAddition(options.db, options.objectStore, auth, { ...input, ...apply.data }, security)
       : await previewCanonicalMemberAddition(options.db, options.objectStore, auth, input, security);
-    return { status: 200, body: { item } };
+    return { status: 200, body: apply?.success ? { item } : jsonCorrectionPreviewResponseSchema.parse({ item }) };
   }
   router.get(jsonPath, request => correctJson(request, "read"));
   router.post(`${jsonPath}/:occurrenceId/correction/preview`, request => correctJson(request, "preview"));
