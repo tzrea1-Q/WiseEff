@@ -449,8 +449,7 @@ export function ParameterModuleMappingPanel({
           : <SectionEmpty message={canonicalEnabled ? "来源识别需要可用的 API 组织与治理服务。" : "Mock 模式不提供来源识别，请使用 API 模式。"} />}
       </div>} /> : <section aria-label="历史驱动注册表" aria-busy={driverRegistryLoading}>
       <div role="tabpanel" id={activeTab.panelId} aria-labelledby={activeTab.id}><AdminListPage label="历史注册表"
-        headerActions={<Button type="button" variant="outline" size="sm" disabled={driverRegistryLoading}
-          onClick={() => void refreshDriverRegistry()}>刷新历史注册表</Button>}
+        headerActions={null}
         notice={<p>历史注册快照仅用于溯源，不代表当前主体身份或归属；此接口不提供历史时间线。当前登记请在模块页查阅。</p>}
         filterBar={<><label className="admin-list-page__filter-field">搜索历史记录<input type="search" aria-label="搜索历史记录" placeholder="驱动组、兼容标识或业务分类"
           value={historyQuery} onChange={(event) => updateHistorySearch({ historyQ: event.target.value })} /></label>
@@ -458,7 +457,9 @@ export function ParameterModuleMappingPanel({
             options={[{ value: "all", label: "全部业务分类" }, ...[...new Set(driverRegistry.map((row) => row.businessCategoryName || "未分类"))].sort().map((value) => ({ value, label: value }))]} />
           <SelectControl ariaLabel="筛选历史观察状态" value={historyObserved} onValueChange={(value) => updateHistorySearch({ historyObserved: value })} size="filter"
             options={[{ value: "all", label: "全部观察状态" }, { value: "observed", label: "已观察" }, { value: "unobserved", label: "未观察" }, { value: "not-yet", label: "尚未观察" }]} />
-          <Button type="button" variant="ghost" size="sm" onClick={() => updateHistorySearch({ historyQ: "", historyCategory: "", historyObserved: "" })}>清除筛选</Button></>}
+          <Button type="button" variant="ghost" size="sm" onClick={() => updateHistorySearch({ historyQ: "", historyCategory: "", historyObserved: "" })}>清除筛选</Button>
+          <Button type="button" variant="outline" size="sm" disabled={driverRegistryLoading}
+            onClick={() => void refreshDriverRegistry()}>刷新历史注册表</Button></>}
         table={{ ariaLabel: "历史驱动注册表", rows: historicalRows, rowKey: (row) => row.moduleId, columns: historyColumns,
           page: historyPage, onPageChange: (page) => updateHistorySearch({ historyPage: String(page) }) }}
         rowActions={(row) => ({ label: `${row.name}操作`, primaryAction: { id: "detail", label: "查看", ariaLabel: `查看历史记录 ${row.name}`, onSelect: () => setHistoricalDetail(row) }, items: [] })}

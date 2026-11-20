@@ -1,3 +1,4 @@
+import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type Page, type Request } from "playwright/test";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";

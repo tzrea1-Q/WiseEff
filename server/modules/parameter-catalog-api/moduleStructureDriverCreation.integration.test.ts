@@ -244,7 +244,7 @@ describe("module structure creates drivers through publication before atomic org
     expect(await snapshot(id)).toEqual(before);
   });
 
-  it("isolates organizations and enforces publication capability independently of ordinary import access", async () => {
+  it("isolates organizations and keeps high-risk approval separate for pure platform administrators", async () => {
     const id = "new-driver-auth", source = await organization(id);
     const other = await organization("new-driver-auth-other");
     const document = withDrivers(await source.exported(), "auth");
@@ -256,21 +256,16 @@ describe("module structure creates drivers through publication before atomic org
     expect(cross.status, cross.bodyText).toBe(403);
     const ownForeign = await other.preview(document);
     expect(ownForeign.status, ownForeign.bodyText).toBe(403);
-    // Production authentication reloads database roles and ignores permissions
-    // supplied by the verifier. Platform admins retain organization import access
-    // but require an explicit Catalog capability grant to publish.
+    // Production authentication reloads database roles. The platform role
+    // provides Catalog capabilities without organization-admin self-approval.
     await db.query("update user_role_bindings set role_id='platform-admin' where id=$1", [`${id}-role`]);
-    await db.query(`insert into roles(id,name,level,permissions)
-      values ('catalog-capability-module-driver-author','Driver author','user',array['catalog:author'])`);
-    await db.query(`insert into user_role_bindings(id,user_id,organization_id,role_id)
-      values ($1,$2,$3,'catalog-capability-module-driver-author')`, [`${id}-author`, `${id}-admin`, id]);
-    const restricted = await getAuthContext(api, `${id}-admin`);
-    expect(restricted.permissions).toContain("catalog:author");
-    expect(restricted.permissions).not.toContain("catalog:publish");
+    const platformAdmin = await getAuthContext(api, `${id}-admin`);
+    expect(platformAdmin.roles.map(({ roleId }) => roleId)).toEqual(["platform-admin"]);
+    expect(platformAdmin.permissions).toEqual(expect.arrayContaining(["catalog:author", "catalog:publish", "catalog:review-high-risk"]));
     const allowedImport = await checkedPreview(source, document);
-    const rejected = await source.confirm("driver-publications", document, allowedImport.token, "without-publish");
+    const rejected = await source.confirm("driver-publications", document, allowedImport.token, "self-approval");
     expect(rejected.status, rejected.bodyText).toBe(403);
-    expect(rejected.body).toMatchObject({ error: { code: "FORBIDDEN", details: { reason: "publication-capability-missing" } } });
+    expect(rejected.body).toMatchObject({ error: { code: "FORBIDDEN", details: { reason: "publication-self-approval-forbidden" } } });
     expect(await snapshot(id)).toEqual(before);
   });
 
