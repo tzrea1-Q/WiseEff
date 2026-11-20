@@ -46,9 +46,9 @@ describe("FeedbackAdminPage", () => {
     ]));
     const table = screen.getByRole("table", { name: "产品反馈记录" });
     const priorities = () => within(table).getAllByRole("row").slice(1).map((row) => row.querySelector("[data-priority]")?.getAttribute("data-priority"));
-    fireEvent.click(within(table).getByRole("button", { name: "分诊", exact: true }));
+    fireEvent.click(within(table).getByRole("button", { name: "分诊" }));
     expect(priorities()).toEqual(["low", "normal", "high"]);
-    fireEvent.click(within(table).getByRole("button", { name: "分诊", exact: true }));
+    fireEvent.click(within(table).getByRole("button", { name: "分诊" }));
     expect(priorities()).toEqual(["high", "normal", "low"]);
   });
 
