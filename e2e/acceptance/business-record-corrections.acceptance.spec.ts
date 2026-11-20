@@ -4,6 +4,7 @@ import { expect, test } from "playwright/test";
 import { acceptanceUserIdForRole, authHeadersForRole, authHeadersForUser, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute } from "./helpers/runtime";
 
@@ -19,6 +20,8 @@ async function createOrganization() {
 }
 
 test("[route:feedback-admin] corrects a submitted category and keeps the original in the selected organization", async ({ page }, testInfo) => {
+  // @acceptance PFB-CATEGORY-CORRECTION-001
+  // @operation PFB-CATEGORY-CORRECTION-001
   const target = await createOrganization();
   const submitterId = `${target.id}-submitter`, email = `${submitterId}@example.test`;
   const submitter = authHeadersForUser(submitterId, email, "Feedback Submitter", target.id);
@@ -28,6 +31,7 @@ test("[route:feedback-admin] corrects a submitted category and keeps the origina
   });
   const admin = authHeadersForRole("platform-admin");
   const me = await page.request.get(apiRoute("/api/v1/me"), { headers: admin });
+  expect(me.status(), await me.text()).toBe(200);
   expect((await me.json()).roles).toEqual([expect.objectContaining({ roleId: "platform-admin", projectId: null })]);
   const feedbackPath = "/api/v1/product-feedback";
   const description = "分类更正前的反馈原文";
@@ -60,7 +64,8 @@ test("[route:feedback-admin] corrects a submitted category and keeps the origina
   await expect(record.getByText("处理安排已保存。")).toBeVisible();
   await expect(record.getByText("提交分类：体验问题")).toBeVisible();
   await expect(record.getByText("数据问题", { exact: true })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("feedback-category-1440.png"), animations: "disabled" });
+  const screenshot = testInfo.outputPath("feedback-category-1440.png");
+  await page.screenshot({ path: screenshot, animations: "disabled" });
 
   await record.getByRole("button", { name: "返回反馈列表" }).click();
   const filter = page.getByRole("combobox", { name: "处理分类筛选" });
@@ -71,12 +76,20 @@ test("[route:feedback-admin] corrects a submitted category and keeps the origina
   await page.getByRole("option", { name: "数据问题 (1)", exact: true }).click();
   await expect(page.getByRole("row").filter({ hasText: description })).toBeVisible();
   const repeat = await page.request.patch(apiRoute(detail), { headers: admin, data: patch });
+  expect(repeat.status(), await repeat.text()).toBe(200);
   expect((await repeat.json()).item).toEqual(corrected);
   const audit = await page.request.get(apiRoute(`/api/v1/audit-events?${target.query}&kind=product-feedback-update&targetId=${original.id}`), { headers: admin });
   expect((await audit.json()).items).toMatchObject([{ actorUserId: acceptanceUserIdForRole("platform-admin"), metadata: { previousFeedbackType: "experience", nextFeedbackType: "data" } }]);
+  await recordOperationEvidence({
+    testInfo, operationId: "PFB-CATEGORY-CORRECTION-001", title: "Feedback category correction", status: "passed", artifacts: [screenshot],
+    api: [summarizeApiResponse(saved, { method: "PATCH", path: detail })],
+    audit: [{ kind: "product-feedback-update", targetId: original.id, metadataSummary: "One selected-organization classification correction retained the original submission." }]
+  });
 });
 
 test("[route:knowledge-admin] corrects archived Catalog links without opening retrieval", async ({ page }, testInfo) => {
+  // @acceptance KB-ARCHIVED-REFERENCE-CORRECTION-001
+  // @operation KB-ARCHIVED-REFERENCE-CORRECTION-001
   const target = await createOrganization();
   const admin = authHeadersForRole("platform-admin");
   const definitions = await page.request.get(apiRoute(`/api/v2/catalog/definitions?${target.query}&lifecycle=active&limit=30`), { headers: admin });
@@ -120,10 +133,15 @@ test("[route:knowledge-admin] corrects archived Catalog links without opening re
   expect(added.status(), await added.text()).toBe(200);
   expect(new URL(added.url()).searchParams.get("organizationId")).toBe(target.id);
   const oldChip = dialog.locator(`[data-definition-id="${old.id}"]`);
+  const removing = page.waitForResponse((response) => response.request().method() === "DELETE" && new URL(response.url()).pathname === link(old.id));
   await oldChip.getByRole("button", { name: /移除引用/ }).click();
+  const removed = await removing;
+  expect(removed.status(), await removed.text()).toBe(200);
+  expect(new URL(removed.url()).searchParams.get("organizationId")).toBe(target.id);
   await expect(oldChip).toHaveCount(0);
   await expect(dialog.locator(`[data-definition-id="${next.id}"]`)).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("archived-knowledge-links-1440.png"), animations: "disabled" });
+  const screenshot = testInfo.outputPath("archived-knowledge-links-1440.png");
+  await page.screenshot({ path: screenshot, animations: "disabled" });
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(row).toBeVisible();
 
@@ -135,4 +153,10 @@ test("[route:knowledge-admin] corrects archived Catalog links without opening re
   expect((await search.json()).items).toEqual([]);
   const audit = await page.request.get(apiRoute(`/api/v1/audit-events?${target.query}&kind=knowledge-definition-reference-remove&targetId=${entry.id}`), { headers: admin });
   expect((await audit.json()).items).toMatchObject([{ actorUserId: acceptanceUserIdForRole("platform-admin"), metadata: { previousDefinitionId: old.id, nextDefinitionId: null } }]);
+  await recordOperationEvidence({
+    testInfo, operationId: "KB-ARCHIVED-REFERENCE-CORRECTION-001", title: "Archived knowledge reference correction", status: "passed", artifacts: [screenshot],
+    api: [summarizeApiResponse(added, { method: "PUT", path: `${link(next.id)}?${target.query}` }),
+      summarizeApiResponse(removed, { method: "DELETE", path: `${link(old.id)}?${target.query}` })],
+    audit: [{ kind: "knowledge-definition-reference-remove", targetId: entry.id, metadataSummary: "One scoped removal retained the previous exact Definition ID." }]
+  });
 });

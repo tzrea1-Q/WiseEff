@@ -317,6 +317,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
+    id: "PFB-CATEGORY-CORRECTION-001",
+    priority: "P1",
+    area: "product-feedback",
+    route: "/feedback-admin",
+    roles: ["Platform Admin"],
+    action: "Correct the processing category, filter by it, and verify its counts, the original submission, denied writes, and one scoped audit after retry.",
+    coverage: "automated",
+    acceptanceIds: ["PFB-CATEGORY-CORRECTION-001"],
+    specFiles: ["e2e/acceptance/business-record-corrections.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit", "screenshot"]
+  },
+  {
     id: "PFB-AUTHZ-001",
     priority: "P1",
     area: "product-feedback",
@@ -467,6 +479,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["KB-XREF-001"],
     specFiles: ["e2e/acceptance/knowledge-canonical-definition.acceptance.spec.ts"],
     assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "KB-ARCHIVED-REFERENCE-CORRECTION-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/knowledge-admin",
+    roles: ["Platform Admin"],
+    action: "Add and remove exact Catalog Definition links in a selected organization's archive and verify denied writes, idempotence, unchanged history, retrieval exclusion, and scoped audit.",
+    coverage: "automated",
+    acceptanceIds: ["KB-ARCHIVED-REFERENCE-CORRECTION-001"],
+    specFiles: ["e2e/acceptance/business-record-corrections.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit", "screenshot"]
   },
   {
     id: "SHELL-DIAG-001",

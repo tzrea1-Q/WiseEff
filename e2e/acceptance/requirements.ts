@@ -145,6 +145,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PFB-CATEGORY-CORRECTION-001",
+    workflow: "I",
+    title: "Platform Admin corrects the processing category in a selected organization and verifies filtering, counts, original submission and audit.",
+    required: true
+  },
+  {
     id: "PFB-AUTHZ-001",
     workflow: "I",
     title: "Non-Admin users cannot access product feedback admin APIs or the feedback-admin page.",
@@ -221,6 +227,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     workflow: "J",
     title:
       "An editor searches paged Catalog Definitions and manages exact Definition references with audited idempotent add/remove; related knowledge excludes draft and archived entries, both navigation directions preserve identity, and a legal same-Definition deprecated revision preserves its chip. Existing Spec history remains distinct and readable/removable, while new Spec references are refused.",
+    required: true
+  },
+  {
+    id: "KB-ARCHIVED-REFERENCE-CORRECTION-001",
+    workflow: "J",
+    title: "Platform Admin corrects exact Catalog Definition links in a selected organization's archive and verifies unchanged history and retrieval exclusion.",
     required: true
   },
   {
