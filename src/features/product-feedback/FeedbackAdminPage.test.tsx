@@ -165,6 +165,22 @@ describe("FeedbackAdminPage", () => {
     expect(new URLSearchParams(window.location.search).get("id")).toBe("feedback-1");
   });
 
+  it("saves the processing category and keeps the submitted category visible", async () => {
+    const repository = await renderPage(createRepository([feedback()], {
+      update: vi.fn().mockResolvedValue(feedback({ effectiveFeedbackType: "data" }))
+    }));
+    fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "查看" }));
+    const detail = await screen.findByRole("article", { name: "页面切换后筛选条件丢失" });
+    fireEvent.click(within(detail).getByRole("button", { name: "编辑" }));
+    await selectControlOption(within(detail).getByLabelText("处理分类"), "data");
+    fireEvent.click(within(detail).getByRole("button", { name: "保存安排" }));
+    await within(detail).findByText("处理安排已保存。");
+    expect(repository.update).toHaveBeenCalledWith("feedback-1", { effectiveFeedbackType: "data" });
+    expect(within(detail).getByText("提交分类：体验问题")).toBeVisible();
+    fireEvent.click(within(detail).getByRole("button", { name: "返回反馈列表" }));
+    expect(within(screen.getByRole("table")).getByText(/数据问题/)).toBeVisible();
+  });
+
   it("refreshes statistics after explicitly saved routing changes", async () => {
     const repository = await renderPage(createRepository([feedback()], { getStats: vi.fn().mockResolvedValue({ total: 1, open: 1, inProgress: 0, resolved: 0, closed: 0 }) }));
     fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "查看" }));
@@ -173,7 +189,7 @@ describe("FeedbackAdminPage", () => {
     await selectControlOption(within(detail).getByLabelText("优先级"), "high");
     fireEvent.click(within(detail).getByRole("button", { name: "保存安排" }));
     await within(detail).findByText("处理安排已保存。");
-    expect(repository.update).toHaveBeenCalledWith("feedback-1", { priority: "high", assigneeUserId: null });
+    expect(repository.update).toHaveBeenCalledWith("feedback-1", { priority: "high" });
     expect(repository.getStats).toHaveBeenCalledTimes(2);
     fireEvent.click(within(detail).getByRole("button", { name: "返回反馈列表" }));
     expect(within(screen.getByRole("table")).getByText("高优先级")).toBeInTheDocument();

@@ -266,7 +266,8 @@ export function PageRouter({
           propertyKey: item.propertyKey,
           displayName: item.currentRevision.displayName,
           driverModule: item.subject.canonicalName,
-          lifecycle: item.lifecycle
+          lifecycle: item.lifecycle,
+          recommendedDefinition: item.recommendedDefinition
         })),
         nextCursor: page.nextCursor,
         catalogReleaseId: page.catalogReleaseId
@@ -302,9 +303,9 @@ export function PageRouter({
   if (workspaceSkillId) {
     try { workspaceSkillId = decodeURIComponent(workspaceSkillId); } catch { /* The API returns not-found for a malformed id. */ }
   }
-  const canManagePublication = currentRoleId === "platform-admin" && (!sessionRoles || sessionRoles.some((role) => role.roleId === "platform-admin" && role.projectId === null));
+  const isPlatformAdministrator = currentRoleId === "platform-admin" && (!sessionRoles || sessionRoles.some((role) => role.roleId === "platform-admin" && role.projectId === null));
   if ((!canAccessPage(currentRoleId, page.key, { path: page.path, runtimeMode: runtimeMode ?? "mock", permissions: sessionPermissions, roles: sessionRoles, projectMemberships }) && !(runtimeMode === "api" && page.key === "parameter-submissions" && projectMemberships?.length) && !(skillWorkspaceMatch && sessionPermissions?.includes("logs:view"))) ||
-    ((page.key === "workflow-publication" || page.key === "platform-organizations") && !canManagePublication)) {
+    ((page.key === "workflow-publication" || page.key === "platform-organizations") && !isPlatformAdministrator)) {
     const requiredRole = getRequiredRoleForPage(page.key);
     return (
       <section className="permission-denied-page" aria-label="无权访问">
@@ -488,6 +489,7 @@ export function PageRouter({
     case "knowledge-admin":
       return knowledgeRepository && knowledgeCapability ? (
         <KnowledgeAdminPage repository={knowledgeRepository} organizationId={new URLSearchParams(search).get("organizationId") ?? undefined} capability={knowledgeCapability}
+          searchArchivedDefinitions={isPlatformAdministrator ? searchParameterDefinitions : undefined}
           onNavigate={(path) => onNavigate(withOrganizationScope(path, new URLSearchParams(search).get("organizationId") ?? undefined))} />
       ) : null;
     case "debugging":

@@ -18,7 +18,7 @@ describe("feedback API DTO contracts", () => {
     expect(productFeedbackUserDtoSchema.safeParse({ ...publicItem, progressEvents: [{ ...publicItem.progressEvents[0], internalMessage: "private", actorUserId: "admin-1" }] }).success).toBe(false);
     expect(productFeedbackAdminDtoSchema.safeParse({
       ...publicItem, submitterUserId: "user-1", submitter: { id: "user-1", name: "User", username: null },
-      adminNote: null, priority: "high", assigneeUserId: null, assignee: null,
+      effectiveFeedbackType: "data", adminNote: null, priority: "high", assigneeUserId: null, assignee: null,
       progressEvents: [{ ...publicItem.progressEvents[0], internalMessage: "private", actorUserId: "admin-1" }]
     }).success).toBe(true);
   });

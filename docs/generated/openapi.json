@@ -21311,6 +21311,7 @@
             "name": "feedbackType",
             "in": "query",
             "required": false,
+            "description": "Filters by effective processing category, using the submitted category when no correction exists.",
             "schema": {
               "type": "string",
               "enum": [
@@ -22016,7 +22017,7 @@
     "/api/v1/product-feedback/stats": {
       "get": {
         "operationId": "productFeedback.stats",
-        "summary": "Get product feedback statistics",
+        "summary": "Get product feedback totals by status and effective processing category",
         "tags": [
           "product-feedback"
         ],
@@ -73193,6 +73194,15 @@
                   "null"
                 ]
               },
+              "effectiveFeedbackType": {
+                "type": "string",
+                "enum": [
+                  "experience",
+                  "data",
+                  "export_submit",
+                  "feature"
+                ]
+              },
               "submitterUserId": {
                 "type": [
                   "string",
@@ -73286,6 +73296,7 @@
               "updatedAt",
               "attachments",
               "progressEvents",
+              "effectiveFeedbackType",
               "submitterUserId",
               "submitter",
               "adminNote",
@@ -74723,6 +74734,15 @@
                       "null"
                     ]
                   },
+                  "effectiveFeedbackType": {
+                    "type": "string",
+                    "enum": [
+                      "experience",
+                      "data",
+                      "export_submit",
+                      "feature"
+                    ]
+                  },
                   "submitterUserId": {
                     "type": [
                       "string",
@@ -74816,6 +74836,7 @@
                   "updatedAt",
                   "attachments",
                   "progressEvents",
+                  "effectiveFeedbackType",
                   "submitterUserId",
                   "submitter",
                   "adminNote",
@@ -75693,6 +75714,15 @@
                     "null"
                   ]
                 },
+                "effectiveFeedbackType": {
+                  "type": "string",
+                  "enum": [
+                    "experience",
+                    "data",
+                    "export_submit",
+                    "feature"
+                  ]
+                },
                 "submitterUserId": {
                   "type": [
                     "string",
@@ -75786,6 +75816,7 @@
                 "updatedAt",
                 "attachments",
                 "progressEvents",
+                "effectiveFeedbackType",
                 "submitterUserId",
                 "submitter",
                 "adminNote",
@@ -75827,6 +75858,30 @@
           },
           "closed": {
             "type": "number"
+          },
+          "byType": {
+            "type": "object",
+            "properties": {
+              "experience": {
+                "type": "number"
+              },
+              "data": {
+                "type": "number"
+              },
+              "export_submit": {
+                "type": "number"
+              },
+              "feature": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "experience",
+              "data",
+              "export_submit",
+              "feature"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -75834,7 +75889,8 @@
           "open",
           "inProgress",
           "resolved",
-          "closed"
+          "closed",
+          "byType"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "ProductFeedbackStatsResponse"
@@ -75878,6 +75934,15 @@
       "PatchProductFeedbackRequest": {
         "type": "object",
         "properties": {
+          "effectiveFeedbackType": {
+            "type": "string",
+            "enum": [
+              "experience",
+              "data",
+              "export_submit",
+              "feature"
+            ]
+          },
           "status": {
             "type": "string",
             "enum": [

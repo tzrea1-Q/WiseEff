@@ -3,10 +3,11 @@ import type {
   ProductFeedback,
   ProductFeedbackAttachment,
   ProductFeedbackProgressEventKind,
-  ProductFeedbackStatus
+  ProductFeedbackStatus,
+  ProductFeedbackType
 } from "@/domain/productFeedback/types";
 import { mockApiError } from "./mockApiError";
-import { MAX_FEEDBACK_ATTACHMENT_COUNT, MAX_FEEDBACK_ATTACHMENT_BYTES, MAX_FEEDBACK_MESSAGE_ATTACHMENT_BYTES } from "@/domain/productFeedback/types";
+import { MAX_FEEDBACK_ATTACHMENT_COUNT, MAX_FEEDBACK_ATTACHMENT_BYTES, MAX_FEEDBACK_MESSAGE_ATTACHMENT_BYTES, productFeedbackTypes } from "@/domain/productFeedback/types";
 
 const MOCK_PRODUCT_FEEDBACK_NOW = "2026-07-08T00:00:00.000Z";
 
@@ -28,7 +29,7 @@ function matchesQuery(feedback: ProductFeedback, query?: ProductFeedbackListQuer
   if (feedback.submittedAt === null) return false;
   if (!query) return true;
   if (query.status && feedback.status !== query.status) return false;
-  if (query.feedbackType && feedback.feedbackType !== query.feedbackType) return false;
+  if (query.feedbackType && (feedback.effectiveFeedbackType ?? feedback.feedbackType) !== query.feedbackType) return false;
   if (query.pagePath && feedback.pagePath !== query.pagePath) return false;
   if (query.createdFrom && feedback.createdAt < query.createdFrom) return false;
   if (query.createdTo && feedback.createdAt > query.createdTo) return false;
@@ -148,6 +149,7 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
       }
       const updated: ProductFeedback = {
         ...current,
+        ...(patch.effectiveFeedbackType !== undefined ? { effectiveFeedbackType: patch.effectiveFeedbackType } : {}),
         ...(hasNote ? { adminNote } : {}),
         ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
         ...(patch.assigneeUserId !== undefined ? { assigneeUserId: patch.assigneeUserId, assignee: null } : {}),
@@ -339,6 +341,9 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
     async getStats() {
       const submitted = items.filter((item) => item.submittedAt !== null && item.submittedAt !== undefined);
       return {
+        byType: Object.fromEntries(productFeedbackTypes.map((type) =>
+          [type, submitted.filter((item) => (item.effectiveFeedbackType ?? item.feedbackType) === type).length]
+        )) as Record<ProductFeedbackType, number>,
         total: submitted.length,
         open: submitted.filter((item) => item.status === "open").length,
         inProgress: submitted.filter((item) => item.status === "in_progress").length,

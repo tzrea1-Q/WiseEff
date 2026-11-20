@@ -1,8 +1,8 @@
 import { ArrowLeft, CheckCircle2, ChevronRight, CircleX, LockKeyhole, MessageSquare, Pencil, PlayCircle, RefreshCw, RotateCcw, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ProductFeedbackAppendProgressInput, ProductFeedbackUpdateInput } from "@/application/ports/ProductFeedbackRepository";
-import type { ProductFeedback, ProductFeedbackResolutionCode } from "@/domain/productFeedback/types";
-import { productFeedbackResolutionCodes, productFeedbackResolutionLabels, productFeedbackTypeLabels } from "@/domain/productFeedback/types";
+import type { ProductFeedback, ProductFeedbackResolutionCode, ProductFeedbackType } from "@/domain/productFeedback/types";
+import { productFeedbackResolutionCodes, productFeedbackResolutionLabels, productFeedbackTypeLabels, productFeedbackTypes } from "@/domain/productFeedback/types";
 import { SelectControl } from "@/components/common/SelectControl";
 import { presentError } from "@/infrastructure/http/presentError";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
@@ -46,6 +46,7 @@ export function FeedbackAdminDrawer({ feedback, open, onClose, onUpdate, onAppen
   const [replyMode, setReplyMode] = useState<"public" | "internal">("public");
   const [replies, setReplies] = useState({ public: "", internal: "" });
   const [editingTriage, setEditingTriage] = useState(false);
+  const [feedbackType, setFeedbackType] = useState<ProductFeedbackType>("experience");
   const [priority, setPriority] = useState<"low" | "normal" | "high">("normal");
   const [assigneeUserId, setAssigneeUserId] = useState("");
   const [assignees, setAssignees] = useState<Assignee[]>([]);
@@ -62,7 +63,9 @@ export function FeedbackAdminDrawer({ feedback, open, onClose, onUpdate, onAppen
   const headingRef = useRef<HTMLHeadingElement>(null);
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
-  const triageDirty = editingTriage && Boolean(feedback && (priority !== (feedback.priority ?? "normal") || assigneeUserId !== (feedback.assigneeUserId ?? "")));
+  const effectiveFeedbackType = feedback?.effectiveFeedbackType ?? feedback?.feedbackType ?? "experience";
+  const triageDirty = editingTriage && Boolean(feedback && (feedbackType !== effectiveFeedbackType
+    || priority !== (feedback.priority ?? "normal") || assigneeUserId !== (feedback.assigneeUserId ?? "")));
   const dirty = Boolean(replies.public.trim() || replies.internal.trim() || triageDirty || (action && actionMessage.trim()));
 
   useEffect(() => {
@@ -71,8 +74,9 @@ export function FeedbackAdminDrawer({ feedback, open, onClose, onUpdate, onAppen
     if (open) headingRef.current?.focus();
   }, [feedback?.id, open]);
   useEffect(() => {
+    setFeedbackType(effectiveFeedbackType);
     setPriority(feedback?.priority ?? "normal"); setAssigneeUserId(feedback?.assigneeUserId ?? "");
-  }, [feedback?.id, feedback?.priority, feedback?.assigneeUserId]);
+  }, [feedback?.id, feedback?.priority, feedback?.assigneeUserId, effectiveFeedbackType]);
   useEffect(() => { if (replyOpen) replyRef.current?.focus(); }, [replyOpen, replyMode]);
   useEffect(() => {
     let active = true;
@@ -157,7 +161,14 @@ export function FeedbackAdminDrawer({ feedback, open, onClose, onUpdate, onAppen
     if (!feedback || locked || !triageDirty) return;
     if (assigneeUserId && assigneeUserId !== feedback.assigneeUserId && !assignees.some((item) => item.id === assigneeUserId)) { setTriageError("请选择列表中的负责人。"); return; }
     setPending(true); setTriageError(""); setSuccessMessage("");
-    try { await onUpdate(feedback.id, { priority, assigneeUserId: assigneeUserId || null }); setEditingTriage(false); setSuccessMessage("处理安排已保存。"); }
+    try {
+      await onUpdate(feedback.id, {
+        ...(feedbackType !== effectiveFeedbackType ? { effectiveFeedbackType: feedbackType } : {}),
+        ...(priority !== (feedback.priority ?? "normal") ? { priority } : {}),
+        ...(assigneeUserId !== (feedback.assigneeUserId ?? "") ? { assigneeUserId: assigneeUserId || null } : {})
+      });
+      setEditingTriage(false); setSuccessMessage("处理安排已保存。");
+    }
     catch (error) { setTriageError(presentError(error, "处理安排保存失败，请重试。")); }
     finally { setPending(false); }
   };
@@ -182,7 +193,7 @@ export function FeedbackAdminDrawer({ feedback, open, onClose, onUpdate, onAppen
       {feedback && <div className="feedback-record-grid">
         <div className="feedback-record-content">
           <section className="feedback-record-issue">
-            <div className="feedback-record-eyebrow"><FeedbackStatusBadge status={feedback.status} resolutionCode={feedback.resolutionCode} /><span>{productFeedbackTypeLabels[feedback.feedbackType]}</span></div>
+            <div className="feedback-record-eyebrow"><FeedbackStatusBadge status={feedback.status} resolutionCode={feedback.resolutionCode} /><span>提交分类：{productFeedbackTypeLabels[feedback.feedbackType]}</span></div>
             <h2 ref={headingRef} tabIndex={-1}>{title}</h2>
             <p className="feedback-record-byline">{author}<span>提交于 <time dateTime={feedback.submittedAt ?? feedback.createdAt} title={formatAbsolute(feedback.submittedAt ?? feedback.createdAt)}>{formatRelativeOrAbsolute(feedback.submittedAt ?? feedback.createdAt)}</time></span></p>
             {body && <p className="feedback-record-description">{body}</p>}
@@ -207,12 +218,13 @@ export function FeedbackAdminDrawer({ feedback, open, onClose, onUpdate, onAppen
         <aside className="feedback-record-aside" aria-label="反馈信息">
           <section><div className="feedback-record-section-heading"><h3>处理安排</h3><Button variant="ghost" size="sm" disabled={locked || editingTriage} onClick={() => { setEditingTriage(true); setTriageError(""); }}><Pencil data-icon="inline-start" />编辑</Button></div>
             {editingTriage ? <div className="feedback-record-triage-editor">
+              <div className="feedback-admin-field"><label htmlFor="feedback-effective-type">处理分类</label><SelectControl id="feedback-effective-type" ariaLabel="处理分类" value={feedbackType} onValueChange={setFeedbackType} disabled={locked} options={productFeedbackTypes.map((value) => ({ value, label: productFeedbackTypeLabels[value] }))} /></div>
               <div className="feedback-admin-field"><label htmlFor="feedback-priority">优先级</label><SelectControl id="feedback-priority" ariaLabel="优先级" value={priority} onValueChange={setPriority} disabled={locked} options={Object.entries(priorityLabels).map(([value, label]) => ({ value: value as typeof priority, label }))} /></div>
               <div className="feedback-admin-field"><label htmlFor="feedback-assignee">负责人</label><SelectControl id="feedback-assignee" ariaLabel="负责人" value={assigneeUserId} onValueChange={setAssigneeUserId} disabled={locked || assigneesLoading || Boolean(assigneesError) || !listAssignees} options={[{ value: "", label: "未分配负责人" }, ...assignees.map((item) => ({ value: item.id, label: item.name })), ...(assigneeUserId && !assignees.some((item) => item.id === assigneeUserId) ? [{ value: assigneeUserId, label: feedback.assignee?.name ?? "当前负责人" }] : [])]} /></div>
               {assigneesLoading && <p className="feedback-admin-help" role="status">正在加载负责人…</p>}{assigneesError && <p className="feedback-admin-inline-error" role="alert">{assigneesError}<Button variant="ghost" size="sm" onClick={() => setAssigneesAttempt((attempt) => attempt + 1)}>重试</Button></p>}{!listAssignees && <p className="feedback-admin-help">当前环境暂不支持调整负责人。</p>}
               {triageError && <p className="feedback-admin-inline-error" role="alert">{triageError}</p>}
-              <div className="feedback-record-triage-actions"><Button variant="ghost" size="sm" disabled={locked} onClick={() => { setPriority(feedback.priority ?? "normal"); setAssigneeUserId(feedback.assigneeUserId ?? ""); setEditingTriage(false); }}>取消</Button><Button variant="outline" size="sm" disabled={locked || !triageDirty} onClick={() => void saveTriage()}>保存安排</Button></div>
-            </div> : <dl className="feedback-record-properties"><div><dt>负责人</dt><dd>{feedback.assignee?.name ?? "未分配"}</dd></div><div><dt>优先级</dt><dd data-priority={feedback.priority ?? "normal"}>{priorityLabels[feedback.priority ?? "normal"]}</dd></div></dl>}
+              <div className="feedback-record-triage-actions"><Button variant="ghost" size="sm" disabled={locked} onClick={() => { setFeedbackType(effectiveFeedbackType); setPriority(feedback.priority ?? "normal"); setAssigneeUserId(feedback.assigneeUserId ?? ""); setEditingTriage(false); }}>取消</Button><Button variant="outline" size="sm" disabled={locked || !triageDirty} onClick={() => void saveTriage()}>保存安排</Button></div>
+            </div> : <dl className="feedback-record-properties"><div><dt>处理分类</dt><dd>{productFeedbackTypeLabels[effectiveFeedbackType]}</dd></div><div><dt>负责人</dt><dd>{feedback.assignee?.name ?? "未分配"}</dd></div><div><dt>优先级</dt><dd data-priority={feedback.priority ?? "normal"}>{priorityLabels[feedback.priority ?? "normal"]}</dd></div></dl>}
           </section>
           <section><h3>问题来源</h3><p className="feedback-record-source">{feedback.pageTitle}<code>{feedback.pagePath}</code></p></section>
           <section><h3>最近更新</h3><time className="feedback-record-updated" dateTime={feedback.updatedAt} title={formatAbsolute(feedback.updatedAt)}>{formatRelativeOrAbsolute(feedback.updatedAt)}</time></section>

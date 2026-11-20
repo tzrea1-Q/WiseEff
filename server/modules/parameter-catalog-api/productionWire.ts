@@ -180,6 +180,7 @@ export async function readCatalogDefinitionForKnowledge(
   auth: AuthContext,
   definitionId: string,
   requestId = "knowledge-definition-reference",
+  organizationId = auth.organization.id,
 ) {
   const pool = getRootPostgresPool(db);
   if (!pool) throw new ApiError("CONFLICT", "Catalog read is unavailable.", { reason: "catalog-unavailable" });
@@ -188,7 +189,7 @@ export async function readCatalogDefinitionForKnowledge(
     {
       method: "GET",
       path: `/api/v2/catalog/definitions/${encodeURIComponent(definitionId)}`,
-      params: {}, query: {}, headers: {}, requestId,
+      params: {}, query: organizationId === auth.organization.id ? {} : { organizationId }, headers: {}, requestId,
     },
   );
   if (response.status === 404) throw new ApiError("NOT_FOUND", "Parameter definition was not found.");

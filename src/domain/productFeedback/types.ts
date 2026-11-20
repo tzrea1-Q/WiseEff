@@ -75,6 +75,7 @@ export type ProductFeedback = {
   pagePath: string;
   pageTitle: string;
   feedbackType: ProductFeedbackType;
+  effectiveFeedbackType?: ProductFeedbackType;
   description: string;
   status: ProductFeedbackStatus;
   resolutionCode?: ProductFeedbackResolutionCode | null;
@@ -114,6 +115,7 @@ export const productFeedbackResolutionLabels: Record<ProductFeedbackResolutionCo
 };
 
 export type ProductFeedbackStats = {
+  byType?: Record<ProductFeedbackType, number>;
   total: number;
   open: number;
   inProgress: number;

@@ -22,7 +22,7 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyDescription, EmptyContent } from "
 import { Button } from "@/components/ui/button";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { KnowledgeTagList, KnowledgeUnsearchableBadge } from "./badges";
-import { KnowledgeEntryEditorDialog } from "./KnowledgeEntryEditorDialog";
+import { KnowledgeEntryEditorDialog, type KnowledgeParameterReferencePicker } from "./KnowledgeEntryEditorDialog";
 import { KnowledgeFileUploadDialog } from "./KnowledgeFileUploadDialog";
 import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 
@@ -32,6 +32,7 @@ export type KnowledgeAdminPageProps = {
   repository: KnowledgeRepository;
   organizationId?: string;
   capability: KnowledgeCapability;
+  searchArchivedDefinitions?: KnowledgeParameterReferencePicker["search"];
   /** Opens review deep links (/knowledge?entryId=… and /logs?logId=…). */
   onNavigate?: (path: string) => void;
 };
@@ -51,7 +52,7 @@ function formatDateTime(value: string | null) {
  * archive-reject), archived-entry management, manage-gated hard delete, and
  * retrieval index health (per-entry status, retry, rebuild-all).
  */
-export function KnowledgeAdminPage({ repository, capability, onNavigate, organizationId }: KnowledgeAdminPageProps) {
+export function KnowledgeAdminPage({ repository, capability, onNavigate, organizationId, searchArchivedDefinitions }: KnowledgeAdminPageProps) {
   const canManage = capability.canManage;
   const [collection, selectCollection] = useCollectionTab(collectionTabs, "drafts");
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
@@ -70,6 +71,20 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate, organiz
   const [agentDraftError, setAgentDraftError] = useState("");
   const [agentActionPendingId, setAgentActionPendingId] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<KnowledgeEntry | null>(null);
+  const [correctingEntry, setCorrectingEntry] = useState<KnowledgeEntry | null>(null);
+
+  const updateArchivedReferences = (updated: KnowledgeEntry) => {
+    setRows((current) => current.map((entry) => entry.id === updated.id ? updated : entry));
+    return updated.parameterReferences;
+  };
+  const archivedReferencePicker: KnowledgeParameterReferencePicker | undefined =
+    canManage && searchArchivedDefinitions ? {
+      search: searchArchivedDefinitions,
+      onAdd: async (entryId, definitionId) => updateArchivedReferences(await repository.addDefinitionReference(entryId, definitionId)),
+      onRemove: async (entryId, reference) => reference.kind === "definition"
+        ? updateArchivedReferences(await repository.removeDefinitionReference(entryId, reference.definitionId))
+        : correctingEntry?.parameterReferences ?? []
+    } : undefined;
 
   const loadArchived = useCallback(async () => {
     setLoading(true);
@@ -437,7 +452,9 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate, organiz
             table={{ "aria-label": "已归档知识条目", rows, rowKey: (entry) => entry.id, columns, pageSize: 10, emptyState: <Empty className="section-empty"><EmptyHeader><EmptyMedia variant="icon"><BookOpen /></EmptyMedia><EmptyDescription>{loading ? "正在加载已归档条目…" : "暂无已归档条目。"}</EmptyDescription></EmptyHeader>{knowledgeNextStep}</Empty> }}
             rowActions={(entry) => ({ label: entry.title,
               primaryAction: { id: "restore", label: "恢复", disabled: restorePendingId !== null, onSelect: () => restoreEntry(entry) },
-              items: [{ id: "edit", label: "编辑", disabled: !canGovernEntry(entry, capability), onSelect: () => setEditingEntry(entry) },
+              items: [
+                ...(archivedReferencePicker ? [{ id: "correct-references", label: "更正参数关联", onSelect: () => setCorrectingEntry(entry) }] : []),
+                { id: "edit", label: "编辑", disabled: !canGovernEntry(entry, capability), onSelect: () => setEditingEntry(entry) },
                 ...(canManage ? [{ id: "delete", label: "彻底删除", destructive: true as const,
                 confirmation: { title: `彻底删除「${entry.title}」`, description: `将永久删除该条目及其全部 ${entry.headRevisionNumber} 个修订，不可恢复。存储中的原始文件保留。删除会写入审计记录。`, confirmLabel: "彻底删除" },
                 onSelect: () => deleteEntry(entry) }] : [])]
@@ -445,8 +462,9 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate, organiz
             emptyState={{ message: loading ? "正在加载已归档条目…" : "暂无已归档条目。" }} />
         )}
       </TabPanel>
-      <KnowledgeEntryEditorDialog open={editingEntry?.contentForm === "markdown"} entry={editingEntry}
-        onSubmit={saveEntry} onClose={() => setEditingEntry(null)} />
+      <KnowledgeEntryEditorDialog open={Boolean(correctingEntry) || editingEntry?.contentForm === "markdown"} entry={correctingEntry ?? editingEntry}
+        referencesOnly={Boolean(correctingEntry)} parameterReferencePicker={correctingEntry ? archivedReferencePicker : undefined}
+        onSubmit={saveEntry} onClose={() => { setCorrectingEntry(null); setEditingEntry(null); }} />
       <KnowledgeFileUploadDialog open={editingEntry?.contentForm === "file"} entry={editingEntry}
         onSubmit={saveEntry} onClose={() => setEditingEntry(null)} />
     </div>

@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
+import { registerAuditRoutes } from "../audit/routes";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../shared/database/client";
@@ -35,6 +37,7 @@ const ORG_A = "org-kb-definition-a";
 const ORG_B = "org-kb-definition-b";
 const USER_A = "user-kb-definition-a";
 const USER_B = "user-kb-definition-b";
+const PLATFORM_USER = "user-kb-definition-platform";
 const REFERENCE_CREATOR = "user-kb-definition-ref-creator";
 const PERMISSIONS: BackendPermission[] = ["parameter:view", "knowledge:view", "knowledge:edit", "knowledge:manage"];
 
@@ -104,7 +107,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     archiveRoot = await mkdtemp(join(tmpdir(), "wiseeff-kb903-legacy-archive-"));
     objectStore = createLocalObjectStore(join(archiveRoot, "objects"));
     await pool.query("insert into organizations (id,name) values ($1,'Knowledge A'),($2,'Knowledge B')", [ORG_A, ORG_B]);
-    for (const [id, organizationId] of [[USER_A, ORG_A], [USER_B, ORG_B], [REFERENCE_CREATOR, ORG_A]] as const) {
+    for (const [id, organizationId] of [[USER_A, ORG_A], [USER_B, ORG_B], [PLATFORM_USER, ORG_B], [REFERENCE_CREATOR, ORG_A]] as const) {
       await pool.query(
         "insert into users (id,organization_id,name,title,is_active) values ($1,$2,$1,'Admin',true)",
         [id, organizationId]
@@ -114,6 +117,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     auth = makeAuth(USER_A, ORG_A);
     authB = makeAuth(USER_B, ORG_B);
     await pool.query("insert into user_role_bindings (id, organization_id, user_id, role_id) values ('k1339-a', $1, $2, 'admin'), ('k1339-b', $3, $4, 'admin'), ('k1339-manager', $1, $5, 'admin')", [ORG_A, USER_A, ORG_B, USER_B, REFERENCE_CREATOR]);
+    await pool.query("insert into user_role_bindings (id, organization_id, user_id, role_id) values ('k1584-platform', $1, $2, 'platform-admin')", [ORG_B, PLATFORM_USER]);
     let activeAuth = auth;
     const router = createRouter();
     registerKnowledgeRoutes(router, {
@@ -123,6 +127,7 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
       getCurrentAuthContext: () => activeAuth
     });
     registerParameterCatalogApi(router, { db, resolveAuth: () => activeAuth });
+    registerAuditRoutes(router, { db, getCurrentAuthContext: () => activeAuth });
     server = createHttpServer(router);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -675,6 +680,51 @@ describe.skipIf(!databaseAvailable)("Knowledge Definition references over HTTP a
     await drainSuggestions();
     expect((await request(auth, "GET", `/api/v1/knowledge/entries/${created.body.item.id}/reference-suggestions`)).body.items)
       .toEqual([expect.objectContaining({ page: 2, detectedRevisionId: revised.body.item.headRevisionId })]);
+  });
+
+  it("audits exact Definition changes while preserving archived content, revisions and search visibility", async () => {
+    const platform = makeTestAuthContext({ organizationId: ORG_B, userId: PLATFORM_USER, roleId: "platform-admin" });
+    const entryId = await createEntry(auth, "Archived correction historical evidence");
+    const base = `/api/v1/knowledge/entries/${entryId}`;
+    const scope = `organizationId=${ORG_A}`;
+    const link = (definitionId: string) => `${base}/definition-references/${definitionId}`;
+    const deprecated = "pdef_kb_batch_29_0", successor = "pdef_kb_batch_29_1";
+    expect((await request(auth, "PUT", link(deprecated))).status).toBe(200);
+    const archived = await request(auth, "POST", `${base}/archive`);
+    expect(archived.status).toBe(200);
+    const revisions = (await request(auth, "GET", `${base}/revisions`)).body.items;
+    const original = archived.body.item;
+    expect(original.parameterReferences).toMatchObject([{ definitionId: deprecated, lifecycle: "deprecated" }]);
+    expect((await request(platform, "PUT", link(successor))).status).toBe(404);
+    expect((await request(authB, "PUT", `${link(successor)}?${scope}`)).status).toBe(403);
+    expect((await request(auth, "PUT", link(successor))).status).toBe(400);
+    expect((await request(platform, "PUT", `${link(retiredDefinitionId)}?${scope}`)).status).toBe(409);
+    expect((await request(platform, "PUT", `${link("pdef_missing_1584")}?${scope}`)).status).toBe(404);
+    for (const method of ["PUT", "DELETE"] as const) {
+      const definitionId = method === "PUT" ? successor : deprecated;
+      const result = await request(platform, method, `${link(definitionId)}?${scope}`);
+      expect(result.status, JSON.stringify(result.body)).toBe(200);
+      expect(result.body.item).toMatchObject({
+        organizationId: ORG_A, status: "archived", archivedAt: original.archivedAt,
+        headRevisionId: original.headRevisionId, contentMarkdown: original.contentMarkdown
+      });
+      expect((await request(platform, method, `${link(definitionId)}?${scope}`)).body.item).toEqual(result.body.item);
+    }
+    const read = await request(platform, "GET", `${base}?${scope}`);
+    expect(read.body.item.parameterReferences).toMatchObject([{ definitionId: successor, lifecycle: "active", createdByUserId: PLATFORM_USER,
+      historicalAttribution: { actors: { created_by_user_id: { id: PLATFORM_USER, name: PLATFORM_USER, source: "recorded" } } } }]);
+    expect((await request(platform, "GET", `${base}/revisions?${scope}`)).body.items).toEqual(revisions);
+    expect((await request(platform, "GET", `/api/v1/knowledge/search?${scope}&q=Canonical`)).body.items)
+      .not.toContainEqual(expect.objectContaining({ entryId }));
+    expect((await request(platform, "GET", `/api/v1/knowledge/related-to-definition?${scope}&definitionId=${successor}`)).body.items)
+      .not.toContainEqual(expect.objectContaining({ entryId }));
+    const audits = await request(platform, "GET", `/api/v1/audit-events?${scope}&targetId=${entryId}&actorUserId=${PLATFORM_USER}`);
+    expect(audits.status).toBe(200);
+    expect(audits.body.items).toHaveLength(2);
+    expect(audits.body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "knowledge-definition-reference-add", actorUserId: PLATFORM_USER, metadata: expect.objectContaining({ previousDefinitionId: null, nextDefinitionId: successor, operatingOrganizationId: ORG_A }) }),
+      expect.objectContaining({ kind: "knowledge-definition-reference-remove", actorUserId: PLATFORM_USER, metadata: expect.objectContaining({ previousDefinitionId: deprecated, nextDefinitionId: null, operatingOrganizationId: ORG_A }) })
+    ]));
   });
 
   it("returns only published definition-related knowledge and requires knowledge:view", async () => {

@@ -1373,7 +1373,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ProductFeedbackListResponse",
     requestParameters: [
       { name: "status", in: "query", schema: { type: "string", enum: ["open", "in_progress", "resolved", "closed"] } },
-      { name: "feedbackType", in: "query", schema: { type: "string", enum: ["experience", "data", "export_submit", "feature"] } },
+      { name: "feedbackType", in: "query", description: "Filters by effective processing category, using the submitted category when no correction exists.",
+        schema: { type: "string", enum: ["experience", "data", "export_submit", "feature"] } },
       { name: "q", in: "query" }, { name: "pagePath", in: "query" },
       { name: "createdFrom", in: "query" }, { name: "createdTo", in: "query" },
       { name: "cursor", in: "query", description: "Opaque base64url nextCursor returned by the previous page." },
@@ -1382,7 +1383,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "productFeedback.stats": {
-    summary: "Get product feedback statistics",
+    summary: "Get product feedback totals by status and effective processing category",
     tags: ["product-feedback"],
     responseBody: "ProductFeedbackStatsResponse",
     additionalResponses: { "403": "ErrorResponse" }

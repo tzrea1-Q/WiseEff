@@ -68,12 +68,20 @@ function feedbackRecord(overrides: Partial<ProductFeedbackDto> = {}): ProductFee
     pagePath: "/parameters",
     pageTitle: "Project Parameters",
     feedbackType: "experience",
+    effectiveFeedbackType: "experience",
     description: "The buttons are hard to scan.",
     status: "open",
     adminNote: null,
+    priority: "normal",
+    assigneeUserId: null,
+    assignee: null,
+    submitter: { id: "user-1", name: "User", username: null },
+    submittedAt: "2026-07-08T08:00:00.000Z",
+    resolutionCode: null,
     createdAt: "2026-07-08T08:00:00.000Z",
     updatedAt: "2026-07-08T08:00:00.000Z",
     attachments: [],
+    progressEvents: [],
     ...overrides
   };
 }
