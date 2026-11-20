@@ -417,6 +417,8 @@ export function compareToQualityBaseline(
   };
 }
 
+const JUDGED_REFUSAL_CATEGORIES = new Set<LogEvalRootCauseCategory>(["no-fault", "insufficient-evidence"]);
+
 export function evaluateQualityCaseOutput(
   goldenCase: GoldenLogCase,
   output: AnalyzeLogOutput,
@@ -479,7 +481,7 @@ export function evaluateQualityCaseOutput(
       expected: goldenCase.expectRefusal,
       refused,
       appropriate: goldenCase.expectRefusal
-        ? refused || (goldenCase.rootCauseCategory === "no-fault" && extras.judge?.categoryMatch === true) : null
+        ? refused || (JUDGED_REFUSAL_CATEGORIES.has(goldenCase.rootCauseCategory) && extras.judge?.categoryMatch === true) : null
     },
     judge: extras.judge
   };
@@ -669,8 +671,8 @@ async function runQualityTrial(
     now: () => new Date(now())
   });
   const latencyMs = Math.max(0, now() - startedAtMs);
-  // A no-fault case is also answered by a confident "no fault" report, which only the judge can recognize.
-  const judged = !goldenCase.expectRefusal || goldenCase.rootCauseCategory === "no-fault";
+  // A refusal case is also answered by a confident "no fault" or "cannot tell" report, which only the judge can recognize.
+  const judged = !goldenCase.expectRefusal || JUDGED_REFUSAL_CATEGORIES.has(goldenCase.rootCauseCategory);
   const judge = !judged ? null : await rubric.score({ goldenCase, output }).catch(() => {
     throw new Error(`The ${rubric.label} judge failed to score the output.`);
   });

@@ -64,7 +64,7 @@ const rawEnvSchema = z.object({
   LOG_ANALYSIS_API_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   LOG_ANALYSIS_JOB_MAX_MS: z.coerce.number().int().positive().max(2_147_483_647).default(600_000),
   LOG_ANALYSIS_PREPROCESS_MAX_MS: z.coerce.number().int().positive().max(2_147_483_647).default(20_000),
-  LOG_ANALYSIS_TOKEN_BUDGET: z.coerce.number().int().positive().default(24_000),
+  LOG_ANALYSIS_TOKEN_BUDGET: z.coerce.number().int().positive().default(256_000),
   LOG_ANALYSIS_DETERMINISTIC: z
     .enum(["true", "false"])
     .default("false")
@@ -78,7 +78,7 @@ const rawEnvSchema = z.object({
   LOG_ANALYSIS_PROCEDURE_CHECKLIST: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   LOG_ANALYSIS_VERIFY_CONCLUSION: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   LOG_ANALYSIS_VERIFIER_MODEL: z.string().optional(),
-  LOG_ANALYSIS_MAX_STEPS: z.coerce.number().int().positive().default(6),
+  LOG_ANALYSIS_MAX_STEPS: z.coerce.number().int().positive().default(20),
   LOG_ANALYSIS_CONTEXT_TOKENS: z.coerce.number().int().min(4096).default(128_000),
   LOG_ANALYSIS_JUDGE_API_BASE_URL: z.string().optional(),
   LOG_ANALYSIS_JUDGE_MODEL: z.string().optional(),
