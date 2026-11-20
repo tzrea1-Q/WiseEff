@@ -95,7 +95,7 @@ export type ReviewEvidenceRef = {
 export type ReviewQueueItem = {
   readonly id: ReviewItemId;
   readonly organizationId: string;
-  readonly status: "open";
+  readonly status: "open" | "resolved" | "out-of-scope";
   readonly reason: ReviewReason;
   readonly rClass: LegacyRowClass | null;
   readonly identityKey: string;
@@ -106,7 +106,10 @@ export type ReviewQueueItem = {
   readonly candidateState: ReviewCandidateState;
   readonly evidenceCount: number;
   readonly evidenceRefs: readonly ReviewEvidenceRef[];
-  readonly allowedResolutions: readonly ReviewResolutionType[];
+  readonly allowedResolutions: readonly (ReviewResolutionType | "reopen-out-of-scope")[];
+  readonly decision?: { readonly id: string; readonly type: ReviewResolutionType; readonly reason: string | null };
+  readonly reopenedFrom?: { readonly id: string; readonly reason: string };
+  readonly reopenedReviewItemId?: string;
 };
 
 export type ReviewQueueList = {
@@ -120,6 +123,7 @@ export type ListReviewQueueQuery = {
   readonly organizationId: string;
   readonly capturedRelease: CatalogReleasePin;
   readonly context: ReviewQueueTrustedContext;
+  readonly status?: "out-of-scope";
 };
 
 export type GetReviewItemQuery = ListReviewQueueQuery & {

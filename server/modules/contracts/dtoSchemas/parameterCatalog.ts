@@ -610,7 +610,10 @@ export const catalogReviewItemDtoSchema = catalogObject({
     canonicalName: z.string(),
     placementDisplayName: z.string()
   })).optional(),
-  allowedResolutions: z.array(catalogReviewResolutionTypeSchema),
+  allowedResolutions: z.array(z.union([catalogReviewResolutionTypeSchema, z.literal("reopen-out-of-scope")])),
+  decision: catalogObject({ id: z.string(), type: catalogReviewResolutionTypeSchema, reason: z.string().nullable() }).optional(),
+  reopenedFrom: catalogObject({ id: z.string(), reason: z.string() }).optional(),
+  reopenedReviewItemId: z.string().optional(),
   candidateState: z.union([
     catalogObject({
       status: z.literal("current"),
@@ -641,6 +644,9 @@ export const catalogResolveReviewItemRequestSchema = catalogObject({
     }),
     catalogObject({
       type: z.literal("open-definition-proposal")
+    }),
+    catalogObject({
+      type: z.literal("reopen-out-of-scope")
     })
   ]),
   reason: z.string()
@@ -657,6 +663,7 @@ export const catalogReviewResolutionDtoSchema = catalogObject({
     placement: catalogPlacementDtoSchema
   }).optional(),
   proposalId: z.string().optional(),
+  reopenedReviewItemId: z.string().optional(),
   catalogReleaseId: z.string()
 });
 
@@ -2857,7 +2864,7 @@ export const parameterCatalogSchemaRegistry = {
     tags: ["catalog"],
     responseBody: "CatalogReviewItemListResponse",
     additionalResponses: catalogReadErrors,
-    requestParameters: pageQueryParameters,
+    requestParameters: [...pageQueryParameters, { name: "status", in: "query", schema: { type: "string", enum: ["out-of-scope"] } }],
     successHeaders: [catalogReleaseResponseHeader]
   },
   "catalog.getReviewItem": {
@@ -2868,7 +2875,7 @@ export const parameterCatalogSchemaRegistry = {
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   },
   "catalog.resolveReviewItem": {
-    summary: "Resolve one review item with an explicit placement or closed outcome",
+    summary: "Resolve a review item or reopen an out-of-scope decision",
     tags: ["catalog"],
     requestBody: "CatalogResolveReviewItemRequest",
     responseBody: "CatalogReviewResolutionResponse",

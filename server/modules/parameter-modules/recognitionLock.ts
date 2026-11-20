@@ -5,7 +5,7 @@ export async function lockOrganizationModuleRecognition(db: Queryable, organizat
   await db.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-recognition:${organizationId}`]);
 }
 
-async function lockCatalogPointerForRegistration(db: Queryable) {
+export async function lockCatalogPointerForGovernance(db: { query(text: string): Promise<unknown> }) {
   await db.query(`do $$
     declare previous_timeout text := pg_catalog.current_setting('lock_timeout');
     begin
@@ -21,14 +21,14 @@ async function lockCatalogPointerForRegistration(db: Queryable) {
 }
 
 export async function lockOrganizationSubjectRegistration(db: Queryable, organizationId: string) {
-  await lockCatalogPointerForRegistration(db);
+  await lockCatalogPointerForGovernance(db);
   // ponytail: registration writes serialize per organization; partition by subject if throughput warrants it.
   await db.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`subject-registration:${organizationId}`]);
 }
 
 /** Catalog pointer → recognition → registration → module tree. */
 export async function lockOrganizationModuleStructure(db: Queryable, organizationId: string) {
-  await lockCatalogPointerForRegistration(db);
+  await lockCatalogPointerForGovernance(db);
   await lockOrganizationModuleRecognition(db, organizationId);
   await lockOrganizationSubjectRegistration(db, organizationId);
   await db.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-tree:${organizationId}`]);

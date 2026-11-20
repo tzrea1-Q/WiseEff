@@ -8,12 +8,14 @@ import {
   type CatalogReleasePin,
   type LegacyRowClass,
   type ReviewReason,
+  type ReviewResolutionType,
 } from "../../parameter-catalog-contract/index";
 import { createCatalogKernel } from "../../catalog-kernel/interface";
 import { createPinCapturingCatalogRuntime } from "../../catalog-publication/runtime";
 
 import { authorizeReviewQueueRead } from "./authorize";
 import { groupReviewEvidence, projectReviewQueueItem, reviewItemIdFor } from "./group";
+import { fingerprintResolvedItem } from "./fingerprint";
 import type {
   ExistingOpenReviewItem,
   GetReviewItemQuery,
@@ -59,6 +61,8 @@ type ReviewItemRow = {
   reason: ReviewReason;
   status: string;
   etag_version: string;
+  reopened_from_item_id: string | null;
+  reopen_reason: string | null;
 };
 
 const invalid = (reason: string): Result<never, ReviewQueueFailure> => ({
@@ -132,7 +136,7 @@ const loadItems = async (
   catalogReleaseId: string,
 ): Promise<{ records: ReviewItemRow[]; existing: ExistingOpenReviewItem[] }> => {
   const result = await client.query<ReviewItemRow>(
-    `select id, evidence_fingerprint, matcher_revision, catalog_release_id, reason, status, etag_version
+    `select id, evidence_fingerprint, matcher_revision, catalog_release_id, reason, status, etag_version, reopened_from_item_id, reopen_reason
        from parameter_catalog.parameter_review_items
       where organization_id = $1 and catalog_release_id = $2`,
     [organizationId, catalogReleaseId],
@@ -217,16 +221,56 @@ const projectGroups = (
     const persisted = byId.get(id);
     if (!persisted || persisted.status !== "open" || persisted.evidence_fingerprint !== group.groupingFingerprint
       || persisted.catalog_release_id !== capturedRelease.id || persisted.matcher_revision !== group.matcherRevision) return [];
-    return [projectReviewQueueItem(group, {
+    return [{ ...projectReviewQueueItem(group, {
       capturedRelease,
       candidateState,
       persisted: {
         id,
         etagVersion: Number(persisted.etag_version),
       },
-    })];
+    }), ...reopenedFrom(persisted) }];
   });
 };
+
+const reopenedFrom = (row: ReviewItemRow) => row.reopened_from_item_id && row.reopen_reason
+  ? { reopenedFrom: { id: row.reopened_from_item_id, reason: row.reopen_reason } } : {};
+
+async function readClosedItems(client: Queryable, query: ListReviewQueueQuery, reviewItemId?: string): Promise<ReviewQueueItem[]> {
+  const result = await client.query<ReviewItemRow & { status: "resolved" | "out-of-scope"; resolution_id: string;
+    resolution_type: ReviewResolutionType; out_of_scope_reason: string | null; successor_id: string | null; release_digest: string }>(
+    `select item.id,item.evidence_fingerprint,item.matcher_revision,item.catalog_release_id,item.reason,item.status,item.etag_version,
+       item.reopened_from_item_id,item.reopen_reason,resolution.id as resolution_id,resolution.resolution_type,resolution.out_of_scope_reason,
+       successor.id as successor_id,release.release_digest
+     from parameter_catalog.parameter_review_items item
+     join parameter_catalog.parameter_review_resolutions resolution on resolution.review_item_id=item.id and resolution.id=item.current_resolution_id
+     join parameter_catalog.catalog_releases release on release.id=item.catalog_release_id
+     left join parameter_catalog.parameter_review_items successor on successor.organization_id=item.organization_id and successor.reopened_from_item_id=item.id
+     where item.organization_id=$1 and (($2::text is null and item.status='out-of-scope') or item.id=$2)
+     order by resolution.created_at desc,item.id`, [query.organizationId, reviewItemId ?? null]);
+  if (!result.rows.length) return [];
+  const grouped = groupReviewEvidence(await loadEvidence(client, query.organizationId), query.capturedRelease);
+  const byFingerprint = new Map((grouped.ok ? grouped.value : []).map(group => [group.groupingFingerprint, group]));
+  return result.rows.map(row => {
+    const id = ReviewItemId(row.id);
+    const catalogReleaseId = CatalogReleaseId(row.catalog_release_id);
+    const current = catalogReleaseId === query.capturedRelease.id;
+    const group = byFingerprint.get(row.evidence_fingerprint);
+    const candidateState = current ? { status: "current" as const, capturedRelease: query.capturedRelease } :
+      { status: "stale" as const, capturedRelease: { id: catalogReleaseId, digest: CatalogReleaseDigest(row.release_digest) }, currentRelease: query.capturedRelease };
+    const evidence = group ? projectReviewQueueItem(group, { capturedRelease: query.capturedRelease, candidateState,
+      persisted: { id, etagVersion: Number(row.etag_version) } }) : null;
+    return { id, organizationId: query.organizationId, status: row.status, reason: row.reason, catalogReleaseId, candidateState,
+      rClass: evidence?.rClass ?? null, identityKey: evidence?.identityKey ?? row.evidence_fingerprint,
+      matcherRevision: row.matcher_revision, groupingFingerprint: row.evidence_fingerprint,
+      evidenceCount: evidence?.evidenceCount ?? 0, evidenceRefs: evidence?.evidenceRefs ?? [],
+      etag: fingerprintResolvedItem({ id, status: row.status, etagVersion: Number(row.etag_version), groupingFingerprint: row.evidence_fingerprint,
+        catalogReleaseId, matcherRevision: row.matcher_revision, reason: row.reason, resolutionId: row.resolution_id }),
+      decision: { id: row.resolution_id, type: row.resolution_type, reason: row.out_of_scope_reason },
+      ...reopenedFrom(row), ...(row.successor_id ? { reopenedReviewItemId: row.successor_id } : {}),
+      allowedResolutions: current && group && row.status === "out-of-scope" && !row.successor_id ? ["reopen-out-of-scope"] : [],
+    };
+  });
+}
 
 /** Existing Review Queue grouping, used by the trusted file-activation transaction. */
 export async function materializeReviewItemsInTransaction(
@@ -276,6 +320,11 @@ const readAuthorizedQueue = async (
   const client = await pool.connect();
   try {
     await client.query("begin");
+    if (query.status === "out-of-scope") {
+      const items = await readClosedItems(client, query);
+      await client.query("commit");
+      return { ok: true, value: { items, ignoredReviewItemCount: items.length } };
+    }
     const materialized = await materializeReviewItemsInTransaction(client,query.organizationId,pin.value);
     if (!materialized.ok) {
       await client.query("rollback");
@@ -283,8 +332,8 @@ const readAuthorizedQueue = async (
     }
     const items = projectGroups(materialized.value.actionable, pin.value, materialized.value.refreshed);
     await client.query("commit");
-    const ignoredReviewItemCount = new Set(materialized.value.refreshed.filter((row) => row.status === "out-of-scope")
-      .map((row) => row.id)).size;
+    const reopened = new Set(materialized.value.refreshed.map(row => row.reopened_from_item_id));
+    const ignoredReviewItemCount = materialized.value.refreshed.filter(row => row.status === "out-of-scope" && !reopened.has(row.id)).length;
     return { ok: true, value: { items, ignoredReviewItemCount } };
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
@@ -331,13 +380,18 @@ export const getReviewItem = async (
   const result = await readAuthorizedQueue(pool, query);
   if (!result.ok) return result;
   const item = result.value.items.find((entry) => entry.id === query.reviewItemId);
-  if (!item) {
+  if (item) return { ok: true, value: item };
+  const client = await pool.connect();
+  try {
+    const [closed] = await readClosedItems(client, query, query.reviewItemId);
+    if (closed) return { ok: true, value: closed };
     return {
       ok: false,
       error: { kind: "review-item-not-found", reviewItemId: query.reviewItemId },
     };
+  } finally {
+    client.release();
   }
-  return { ok: true, value: item };
 };
 
 export const createReviewQueueReader = (pool: pg.Pool): ReviewQueueReader => ({

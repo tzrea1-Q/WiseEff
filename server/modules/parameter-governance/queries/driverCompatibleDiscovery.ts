@@ -248,8 +248,10 @@ export async function listDriverCompatibleDiscovery(input: {
     })) }));
   }
   const ignored = canReadReviewQueue ? (await db.query<{ count: string }>(
-    `select count(distinct id)::text as count from parameter_catalog.parameter_review_items
-      where organization_id=$1 and catalog_release_id=$2 and status='out-of-scope'`,
+    `select count(*)::text as count from parameter_catalog.parameter_review_items item
+      where item.organization_id=$1 and item.catalog_release_id=$2 and item.status='out-of-scope'
+        and not exists (select 1 from parameter_catalog.parameter_review_items successor
+          where successor.reopened_from_item_id=item.id and successor.organization_id=item.organization_id)`,
     [parameterOrganizationId(auth),pin.id],
   )).rows[0]?.count ?? "0" : null;
   const finalPin = await captureCurrentCatalogPin(pool);

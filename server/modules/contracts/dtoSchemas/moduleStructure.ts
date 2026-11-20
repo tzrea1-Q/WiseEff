@@ -52,7 +52,9 @@ export const moduleStructureUpdateDocumentSchema = moduleStructureExportSchema.e
 });
 const resolutions = z.record(z.string(), z.enum(["current", "file"]));
 export const moduleStructurePreviewRequestSchema = z.object({ mode: z.enum(["update", "copy"]).default("update"), document: moduleStructureUpdateDocumentSchema, resolutions,
-  mappings: z.record(z.string(), z.string().min(1)).default({}) }).strict();
+  mappings: z.record(z.string(), z.string().min(1)).default({}),
+  mappingCorrections: z.record(z.string(), z.object({ targetId: z.string().min(1).max(512), revision: z.number().int().positive().max(2147483647) }).strict()).optional(),
+}).strict();
 export const moduleStructureApplyRequestSchema = moduleStructurePreviewRequestSchema.extend({ token: z.string().regex(/^[a-f0-9]{64}$/),
   idempotencyKey: z.string().trim().min(1).max(200), reason: z.string().trim().min(1).max(1000) }).strict();
 const fieldValue = z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string()),
@@ -65,7 +67,10 @@ export const moduleStructurePreviewResponseSchema = z.object({
   changes: z.array(z.object({ moduleId: z.string(), field: z.string(), before: fieldValue, after: fieldValue }).strict()),
   conflicts: z.array(z.object({ key: z.string(), moduleId: z.string(), field: z.string(), baseline: fieldValue, file: fieldValue, current: fieldValue }).strict()),
   impact: z.array(z.object({ subjectId: z.string(), projectId: z.string(), bindingCount: z.number().int(), definitions: z.array(z.string()) }).strict()),
-  mappings: z.array(z.object({ ref: z.string(), selected: z.string().nullable(), frozen: z.boolean(), candidates: z.array(z.object({ id: z.string(), name: z.string(), suggested: z.boolean() }).strict()) }).strict()).optional(),
+  mappings: z.array(z.object({ ref: z.string(), selected: z.string().nullable(), frozen: z.boolean(),
+    candidates: z.array(z.object({ id: z.string(), name: z.string(), suggested: z.boolean() }).strict()),
+    history: z.array(z.object({ moduleId: z.string(), revision: z.number().int(), recordedAt: z.string(), available: z.boolean() }).strict()).optional(),
+  }).strict()).optional(),
   targets: z.array(z.object({ id: z.string(), name: z.string() }).strict()).optional(),
   token: z.string(),
 }).strict();

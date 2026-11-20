@@ -15,7 +15,7 @@ type Resolutions = Record<string, "current" | "file">;
 type Preview = ModuleStructurePreviewResponse;
 type Receipt = ModuleStructureReceipt;
 const value = (item: unknown) => item === undefined ? "（省略）" : JSON.stringify(item);
-const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块", delete: "删除模块", legacyImpact: "将解除的遗留引用数", placement: "归属", displayAlias: "展示别名",
+const fieldLabels: Record<string, string> = { name: "名称", description: "描述", scope: "范围", sortOrder: "排序", importance: "重要性", parentRef: "上级模块", create: "新增模块", delete: "删除模块", legacyImpact: "将解除的遗留引用数", placement: "归属", displayAlias: "展示别名", mapping: "复制映射",
   state: "登记状态", kind: "当前组织主体类型", ownerSubjectId: "所属驱动", recognition: "识别规则", "recognition.mode": "识别模式", "recognition.compatibles": "兼容标识", "recognition.driverNature": "驱动性质",
   "recognition.instanceCardinality": "实例基数", "recognition.nodeTypeName": "节点名称" };
 
@@ -28,6 +28,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, se
   const [resolutions, setResolutions] = useState<Resolutions>({});
   const [mode, setMode] = useState<"update" | "copy">("update");
   const [mappings, setMappings] = useState<Record<string, string>>({});
+  const [mappingCorrections, setMappingCorrections] = useState<Record<string, { targetId: string; revision: number }>>({});
   const [preview, setPreview] = useState<Preview | null>(null);
   const [reason, setReason] = useState("");
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -47,19 +48,21 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, se
   const canPublish = Boolean(canImport && sessionPermissions?.includes("catalog:author") && sessionPermissions.includes("catalog:publish"));
   const publicationStarted = Boolean(publicationAttempted || creation?.jobId || creation?.candidateId);
   const readyToApply = !creation || creation.phase === "ready" || creation.phase === "applied";
+  const mappingConflicts = new Map(preview?.conflicts.filter(conflict => conflict.field === "mapping").map(conflict => [conflict.moduleId, conflict]));
   const dirty = Boolean(fileName && !receipt);
   const base = `/api/v2/organizations/${encodeURIComponent(organizationId ?? "")}/module-structure`;
   const clearError = useCallback(() => { setError(""); setDiagnostic(null); }, []);
-  const close = () => { requestEpoch.current++; setOpen(false); setDocument(null); setFileName(""); setResolutions({}); setMappings({}); setMode("update"); setPreview(null); setReason(""); setReceipt(null); setPublicationAttempted(false); clearError(); write.current = null; publicationWrite.current = null; };
+  const close = () => { requestEpoch.current++; setOpen(false); setDocument(null); setFileName(""); setResolutions({}); setMappings({}); setMappingCorrections({}); setMode("update"); setPreview(null); setReason(""); setReceipt(null); setPublicationAttempted(false); clearError(); write.current = null; publicationWrite.current = null; };
   const requestClose = () => { if (publicationStarted && !receipt) setOpen(false); else if (dirty) setDiscard(true); else close(); };
   const showError = useCallback((cause: unknown, fallback: string, phase: ImportDiagnostic["phase"]) => setDiagnostic(importDiagnostic(cause, fallback, phase)), []);
-  const refresh = useCallback(async (next: Resolutions, nextMappings = mappings, background = false) => {
+  const refresh = useCallback(async (next: Resolutions, nextMappings = mappings, background = false, corrections = mappingCorrections) => {
     if (!apiClient || !document || requestPending.current) return;
     const epoch = requestEpoch.current;
     requestPending.current = true;
     if (!background) { setBusy(true); clearError(); setPreview(null); }
     try {
-      const updated = await apiClient.post<Preview>(`${base}/previews`, { mode, document, resolutions: next, mappings: nextMappings });
+      const updated = await apiClient.post<Preview>(`${base}/previews`, { mode, document, resolutions: next, mappings: nextMappings,
+        ...(Object.keys(corrections).length ? { mappingCorrections: corrections } : {}) });
       if (epoch === requestEpoch.current) {
         if (updated.driverCreation?.phase === "blocked" && publicationWrite.current) publicationWrite.current.retryAfterFailure = true;
         setPreview(updated); clearError();
@@ -67,7 +70,7 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, se
     } catch (cause) {
       if (epoch === requestEpoch.current) showError(cause, "预览失败，请检查文件后重试。", "preview");
     } finally { requestPending.current = false; if (epoch === requestEpoch.current && !background) setBusy(false); }
-  }, [apiClient, document, mappings, base, mode, clearError, showError]);
+  }, [apiClient, document, mappings, mappingCorrections, base, mode, clearError, showError]);
   useEffect(() => {
     if (!open || !publishing || diagnostic || busy || receipt) return;
     const timer = window.setTimeout(() => { void refresh(resolutions, mappings, true); }, 1500);
@@ -99,7 +102,8 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, se
   };
   const apply = async () => {
     if (!apiClient || !preview || !readyToApply || requestPending.current) return;
-    const body = { mode, document, resolutions, mappings, token: preview.token, reason: reason.trim() };
+    const body = { mode, document, resolutions, mappings, token: preview.token, reason: reason.trim(),
+      ...(Object.keys(mappingCorrections).length ? { mappingCorrections } : {}) };
     const fingerprint = JSON.stringify(body);
     if (write.current?.fingerprint !== fingerprint) write.current = { fingerprint, key: createGovernanceIdempotencyKey() };
     const epoch = requestEpoch.current;
@@ -170,12 +174,12 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, se
             <p id={descriptionId}>更新当前组织结构，并可声明新驱动；或复制模块和主体到当前组织。删除须明确处置子模块和主体归属；复制须确认复用或新建。</p></div></div>
           <div className="param-admin-module-edit-body">
             {!receipt ? <SelectControl ariaLabel="导入模式" value={mode} disabled={busy || publishing} options={[{ value: "update", label: "更新当前组织" }, { value: "copy", label: "复制到当前组织" }]} onValueChange={next => {
-              setMode(next as "update" | "copy"); setMappings({}); setResolutions({}); setPreview(null); clearError();
+              setMode(next as "update" | "copy"); setMappings({}); setMappingCorrections({}); setResolutions({}); setPreview(null); clearError();
             }} /> : null}
             {!receipt ? <label className="button subtle focus-within:ring-2 focus-within:ring-ring">选择 JSON 文件<input className="sr-only" aria-label="JSON 文件" type="file" accept="application/json,.json" disabled={busy || publishing} onChange={async event => {
               const file = event.target.files?.[0]; if (!file) return;
               const epoch = ++requestEpoch.current;
-              setFileName(file.name); setDocument(null); setPreview(null); setReceipt(null); setResolutions({}); setMappings({}); setPublicationAttempted(false); clearError(); write.current = null; publicationWrite.current = null;
+              setFileName(file.name); setDocument(null); setPreview(null); setReceipt(null); setResolutions({}); setMappings({}); setMappingCorrections({}); setPublicationAttempted(false); clearError(); write.current = null; publicationWrite.current = null;
               if (file.size > 32 * 1024 * 1024) { setError("JSON 文件不能超过 32 MiB。"); return; }
               try {
                 const text = await new Promise<string>((resolve, reject) => {
@@ -190,14 +194,40 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, se
             {fileName ? <p>文件：{fileName}；来源组织：{typeof source === "string" ? source : "未提供"}；目标组织：{organizationId}</p> : null}
             {preview && !receipt ? <>
               {creation ? <ModuleStructureDriverCreation creation={creation} displayPlacement={displayValue} canPublish={canPublish} /> : null}
-              {mode === "copy" ? <><h3>模块映射</h3>{preview.mappings?.map(mapping => <div key={mapping.ref}>
-                <strong>{moduleLabel(mapping.ref)}</strong>
-                <SelectControl ariaLabel={`${mapping.ref} 的目标模块`} value={mapping.selected ?? ""} disabled={busy || mapping.frozen} options={[
-                  { value: "", label: "请选择", disabled: true }, { value: "create", label: "新建目标模块" },
-                  ...mapping.candidates.map(candidate => ({ value: candidate.id, label: `建议：复用 ${candidate.name}` })),
-                  ...(preview.targets ?? []).filter(target => !mapping.candidates.some(candidate => candidate.id === target.id)).map(target => ({ value: target.id, label: `复用 ${target.name}` }))
-                ]} onValueChange={choice => { if (!choice) return; const next = { ...mappings, [mapping.ref]: choice }; setMappings(next); void refresh(resolutions, next); }} />
-              </div>)}</> : null}
+              {mode === "copy" ? <><h3>模块映射</h3>{preview.mappings?.map(mapping => {
+                const prior = mapping.history?.at(-1);
+                const conflict = mappingConflicts.get(mapping.ref);
+                return <div key={mapping.ref}>
+                  <strong>{moduleLabel(mapping.ref)}</strong>
+                  {prior ? <details><summary>查看原有复制记录（{mapping.history?.length}）</summary><ul>
+                    {mapping.history?.map(record => <li key={record.revision}>{record.moduleId} · {record.available ? "可用" : "已删除或不可用"} · <time dateTime={record.recordedAt}>{new Date(record.recordedAt).toLocaleString("zh-CN")}</time></li>)}
+                  </ul></details> : null}
+                  <SelectControl ariaLabel={prior ? `${mapping.ref} 的映射纠正目标` : `${mapping.ref} 的目标模块`}
+                    value={mapping.selected ?? ""} disabled={busy || (mapping.frozen && !prior)} options={[
+                      { value: "", label: prior ? "请选择新的目标模块" : "请选择", disabled: true },
+                      ...(prior ? prior.available ? [] : [{ value: prior.moduleId, label: `已保存：${prior.moduleId}（已删除或不可用）` }] : [{ value: "create", label: "新建目标模块" }]),
+                      ...mapping.candidates.map(candidate => ({ value: candidate.id, label: `${candidate.id === prior?.moduleId ? "已保存：" : "建议：复用 "}${candidate.name}` })),
+                      ...(preview.targets ?? []).filter(target => !mapping.candidates.some(candidate => candidate.id === target.id))
+                        .map(target => ({ value: target.id, label: `${target.id === prior?.moduleId ? "已保存：" : "复用 "}${target.name}` })),
+                    ]} onValueChange={choice => {
+                      if (!choice) return;
+                      if (prior) {
+                        const next = choice === prior.moduleId ? { ...mappingCorrections }
+                          : { ...mappingCorrections, [mapping.ref]: { targetId: choice, revision: prior.revision } };
+                        if (choice === prior.moduleId) delete next[mapping.ref];
+                        setMappingCorrections(next);
+                        setResolutions({});
+                        void refresh({}, mappings, false, next);
+                      } else {
+                        const next = { ...mappings, [mapping.ref]: choice };
+                        setMappings(next);
+                        void refresh(resolutions, next);
+                      }
+                    }} />
+                  {prior && mapping.selected !== prior.moduleId ? <p>后续复制目标：{preview.targets?.find(target => target.id === mapping.selected)?.name ?? mapping.selected}</p> : null}
+                  {conflict?.current ? <p role="alert">{prior && !prior.available && mapping.selected === prior.moduleId ? "已保存的目标已删除或不可用，请选择新目标。" : "目标模块重复，请为每个来源选择不同目标。"}</p> : null}
+                </div>;
+              })}</> : null}
               <h3>变更（{preview.changes.length}）</h3>
 {preview.changes.length ? [...groups].map(([id, changes]) => <section key={id}>
   <h4>{moduleLabel(id)}</h4><ul>{changes.flatMap((change, index) => change.field === "recognition"
@@ -227,6 +257,8 @@ export function ModuleStructureImport({ apiClient, organizationId, canImport, se
             {error ? <p className="form-error" role="alert">{error}</p> : null}
             {diagnostic ? <ModuleStructureImportError diagnostic={diagnostic} context={{ fileName, mode, targetOrganizationId: organizationId,
               sourceOrganizationId: typeof source === "string" ? source : undefined, exportId: typeof sourceInfo?.exportId === "string" ? sourceInfo.exportId : undefined }} /> : null}
+            {diagnostic && Object.keys(mappingCorrections).length ? <Button type="button" variant="outline" disabled={busy}
+              onClick={() => { setMappingCorrections({}); setResolutions({}); void refresh({}, mappings, false, {}); }}>重新读取已保存映射</Button> : null}
           </div>
           <div className="dialog-actions"><button type="button" className="button subtle" disabled={busy} onClick={requestClose}>关闭</button>
             {!receipt ? <><button type="button" className="button subtle" disabled={!document || busy} onClick={() => void refresh(resolutions)}>{publishing ? "刷新发布进度" : "预览"}</button>

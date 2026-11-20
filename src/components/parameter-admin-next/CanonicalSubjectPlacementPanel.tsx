@@ -864,6 +864,13 @@ export function CanonicalSubjectPlacementPanel({
                             if (subject.type === "configuration-schema") void openPlacement(subject, registrationId);
                             else setRecognitionSubject({ registrationId, subject });
                           }}>{canAdmin ? "编辑" : "查看"}{subject.ownerSubjectId ? "节点" : "主体"}</button> : null}
+                        {subject.ownerSubjectId && placementAllowed && registrationId ? <button type="button" className="button subtle"
+                          aria-label={`编辑展示别名：${subject.canonicalName}`} disabled={!inventoryReady || openingSubjectId === subject.id}
+                          onClick={event => {
+                            editorTrigger.current = event.currentTarget;
+                            closeEditor();
+                            void openPlacement(subject, registrationId);
+                          }}>编辑展示别名</button> : null}
                         {subject.definitionCounts.active > 0 ? <button
                           type="button"
                           className="button subtle"
@@ -1010,7 +1017,7 @@ export function CanonicalSubjectPlacementPanel({
         }} /> : null}
       {placementDialog && catalogReleaseId ? (
         <RegistrationDialog
-          editor={placementDialog.intent === "update-placement" && placementDialog.registrationId
+          editor={placementDialog.intent === "update-placement" && placementDialog.registrationId && !placementDialog.subject.ownerSubjectId
             ? editorOptions(placementDialog.subject, placementDialog.registrationId, "placement") : undefined}
           open
           intent={placementDialog.intent}
@@ -1029,6 +1036,7 @@ export function CanonicalSubjectPlacementPanel({
           subjectImpact={placementDialog.subjectImpact}
           currentModuleName={placementDialog.currentModuleName}
           displayAlias={placementDialog.displayAlias}
+          displayAliasOnly={Boolean(placementDialog.subject.ownerSubjectId)}
           createIdempotencyKey={createGovernanceIdempotencyKey}
           onOpenChange={(open) => {
             if (!open) closeEditor();

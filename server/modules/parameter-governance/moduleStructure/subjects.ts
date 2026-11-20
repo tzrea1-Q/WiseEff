@@ -15,7 +15,7 @@ export type SubjectConflict = { key: string; subjectId: string; field: Field; ba
 
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Plan only explicitly supplied root placement and alias edits. */
+/** Plan explicit organization aliases and independent root placement edits. */
 export function planSubjectPlacement(edits: SubjectEdit[], baseline: Subject[], current: Subject[], resolutions: Record<string, "current" | "file">) {
   const bases = new Map(baseline.map(subject => [subject.subjectId, subject]));
   const targets = new Map(current.map(subject => [subject.subjectId, subject]));
@@ -28,7 +28,7 @@ export function planSubjectPlacement(edits: SubjectEdit[], baseline: Subject[], 
     for (const field of ["placement", "displayAlias"] as const) {
       const file = edit[field];
       if (file === undefined || equal(file, base[field])) continue;
-      if (base.ownerSubjectId) throw new ApiError("VALIDATION_FAILED", "Owned children inherit their owner's placement and cannot edit a root alias.", { path: `subjects.${index}.${field}` });
+      if (base.ownerSubjectId && field === "placement") throw new ApiError("VALIDATION_FAILED", "Owned children inherit their owner's placement.", { path: `subjects.${index}.${field}` });
       if (!target || target.ownerSubjectId !== base.ownerSubjectId || target.state !== base.state)
         throw new ApiError("CONFLICT", "Subject registration or ownership changed after export.", { path: `subjects.${index}` });
       if (field === "placement" && (!file || (typeof file === "object" && file.kind === "reference")))
@@ -57,10 +57,12 @@ export async function applySubjectPlacement(client: pg.PoolClient, organizationI
        join parameter_catalog.catalog_subjects s on s.id=r.subject_id
        where r.organization_id=$1 and r.subject_id=$2 for update of r`, [organizationId, change.subjectId]);
     const row = result.rows[0];
-    if (!row || row.owner_subject_id) throw new ApiError("CONFLICT", "Subject registration or ownership changed.");
+    if (!row) throw new ApiError("CONFLICT", "Subject registration changed.");
     if (change.field === "displayAlias") {
       await updateRegistrationDisplayAlias(client, organizationId, row.id, change.after as string | null);
     } else {
+      if (row.owner_subject_id)
+        throw new ApiError("CONFLICT", "Subject ownership changed.");
       const placement = change.after as Placement;
       let moduleId: string | null = null;
       if (placement.kind === "module") moduleId = moduleIds.get(placement.moduleRef) ?? null;
