@@ -303,7 +303,8 @@ export function RegistrationDialog({
         await repository.updatePlacement(
           organizationId,
           registrationId,
-          { ...(aliasOnly ? {} : { placement, ...destination }), ...(aliasUpdate ? { displayAlias: aliasUpdate } : {}),
+          aliasOnly && aliasUpdate ? { displayAlias: aliasUpdate } : {
+            placement, ...destination, ...(aliasUpdate ? { displayAlias: aliasUpdate } : {}),
             ...(replacing && replacementEvidence ? { replacement: {
             registrationId: replacementEvidence.registrationId,
             placementEtag: replacementEvidence.placementEtag,
@@ -544,7 +545,10 @@ export function RegistrationDialog({
         open={open && confirmOpen && allowed && readyToConfirm && (!replacing || confirmedReplacement === replacementEvidence)}
         title={confirmTitle}
         description={
-          <div>{aliasUpdate ? <p>{aliasUpdate.value === null ? `清除展示别名，使用规范名称 ${subjectName}。` : `展示别名：${aliasUpdate.value}`}</p> : null}
+          <div>{aliasUpdate && displayAlias ? <>
+            <p>当前展示名称：{displayAlias.value || subjectName}</p>
+            <p>{aliasUpdate.value === null ? `清除展示别名，使用规范名称 ${subjectName}。` : `新展示别名：${aliasUpdate.value}`}</p>
+          </> : null}
           {aliasOnly ? null : <p>
             {initializing ? `新建目标模块并登记：${selectedDestinationName}` : destinationModuleId.trim()
               ? `目标模块：${selectedDestinationName}`

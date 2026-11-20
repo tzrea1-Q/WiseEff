@@ -401,6 +401,12 @@ test.describe("canonical parameter catalog governance interactions", () => {
     const newKey = { ...aliasWrite, headers: { ...aliasWrite.headers, "Idempotency-Key": `alias-stale:${registrationId}` } };
     expect((await catalogJson(page.request, "PATCH", path, newKey)).status).toBe(409);
     expect((await catalogJson(page.request, "PATCH", path, { ...newKey, actor: "user" })).status).toBe(403);
+    expect((await catalogJson(page.request, "PATCH", path, { ...newKey, data: {} })).status).toBe(400);
+    const originalModuleId = (initial.body as { item: { moduleId: string } }).item.moduleId;
+    const staleCombinedWrite = await catalogJson(page.request, "PATCH", path, {
+      ...newKey, data: { ...newKey.data, placement: { mode: "use-default" }, destinationModuleId: originalModuleId }
+    });
+    expect(staleCombinedWrite.status).toBe(409);
 
     await openAliasEditor();
     await expect(alias).toHaveValue("组织内电源名称");

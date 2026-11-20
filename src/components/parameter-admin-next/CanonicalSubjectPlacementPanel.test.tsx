@@ -295,27 +295,29 @@ describe("CanonicalSubjectPlacementPanel", () => {
     expect(alias).toHaveValue("旧名称");
     await userEvent.clear(alias);
     await userEvent.type(alias, "新名称");
-    const confirmAlias = async () => {
+    const confirmAlias = async (currentAlias: string) => {
       await userEvent.click(screen.getByRole("button", { name: "继续确认" }));
       const confirmation = screen.getByRole("dialog", { name: "确认修改展示别名" });
+      expect(confirmation).toHaveTextContent(`当前展示名称：${currentAlias}`);
       expect(confirmation).toHaveTextContent("新名称");
       await userEvent.click(within(confirmation).getByRole("checkbox"));
       await userEvent.click(within(confirmation).getByRole("button", { name: "确认修改展示别名" }));
     };
-    await confirmAlias();
+    await confirmAlias("旧名称");
     expect(ports.updatePlacement).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID, "registration-driver",
       { displayAlias: { value: "新名称", registrationEtag: "registration-v1" } },
       expect.objectContaining({ ifMatch: "etag-driver" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("输入已保留");
 
     const placement = await ports.getPlacement(CATALOG_ORGANIZATION_ID, "registration-driver");
+    ports.getRegistration.mockResolvedValue({ ...registration, item: { ...registration.item, displayAlias: "另一位管理员保存的名称" }, etag: "registration-v2" });
     ports.getPlacement.mockResolvedValue({ item: { ...placement.item, moduleId: "issue897-driver-b" }, etag: "etag-refreshed" });
     await userEvent.click(screen.getByRole("button", { name: "刷新证据" }));
     await waitFor(() => expect(screen.getByLabelText("目标模块")).toHaveAttribute("data-value", "issue897-driver-b"));
     expect(alias).toHaveValue("新名称");
-    await confirmAlias();
+    await confirmAlias("另一位管理员保存的名称");
     expect(ports.updatePlacement).toHaveBeenLastCalledWith(CATALOG_ORGANIZATION_ID, "registration-driver",
-      { displayAlias: { value: "新名称", registrationEtag: "registration-v1" } },
+      { displayAlias: { value: "新名称", registrationEtag: "registration-v2" } },
       expect.objectContaining({ ifMatch: "etag-refreshed" }));
   });
 

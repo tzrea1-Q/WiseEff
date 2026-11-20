@@ -732,8 +732,7 @@ async function handleUpdatePlacement(
   } catch {
     return validationFailed(request.requestId, "registrationId");
   }
-  const placement = parsed.data.placement ? parsePlacement(parsed.data.placement) : undefined;
-  if (parsed.data.placement && !placement) return validationFailed(request.requestId, "placement");
+  const placementUpdate = "placement" in parsed.data ? parsed.data : undefined;
   const context = registrationContext(scope, request.requestId);
   if (!context) return forbidden(request.requestId);
   const organizationId = request.params.organizationId ?? scope.organizationId;
@@ -761,17 +760,19 @@ async function handleUpdatePlacement(
     displayAlias = { value, expectedRegistrationVersion };
   }
   let destinationModuleId: string | undefined;
-  if (placement) {
+  if (placementUpdate) {
+    const placement = parsePlacement(placementUpdate.placement);
+    if (!placement) return validationFailed(request.requestId, "placement");
     const subjectKind = await resolveSubjectKind(ports, scope, existing.subjectId);
     if (!subjectKind) return validationFailed(request.requestId, "subjectId");
-    destinationModuleId = parsed.data.newDestination
+    destinationModuleId = placementUpdate.newDestination
       ? `pmod_canonical_${createHash("sha256").update(JSON.stringify([organizationId, registrationId, idempotencyKey])).digest("hex").slice(0, 32)}`
-      : await resolveDestinationModuleId(ports, scope, { organizationId, subjectKind, placement, destinationModuleId: parsed.data.destinationModuleId }) ?? undefined;
+      : await resolveDestinationModuleId(ports, scope, { organizationId, subjectKind, placement, destinationModuleId: placementUpdate.destinationModuleId }) ?? undefined;
     if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
   }
   let replacement: Extract<RegistrationCommand, { kind: "move-placement" }>["replacement"];
-  if (parsed.data.replacement) {
-    const choice = parsed.data.replacement;
+  if (placementUpdate?.replacement) {
+    const choice = placementUpdate.replacement;
     if (choice.registrationId === registrationId) return validationFailed(request.requestId, "replacement");
     const displaced = await ports.getRegistration({
       ...queryScope(scope, request, pin.pin),
@@ -807,7 +808,7 @@ async function handleUpdatePlacement(
     expectedRelease: pin.pin,
     destinationModuleId,
     ...(displayAlias ? { displayAlias } : {}),
-    ...(parsed.data.newDestination ? { newDestination: parsed.data.newDestination } : {}),
+    ...(placementUpdate?.newDestination ? { newDestination: placementUpdate.newDestination } : {}),
     expectedPlacementVersion,
     ...(replacement ? { replacement } : {}),
     idempotencyKey,
