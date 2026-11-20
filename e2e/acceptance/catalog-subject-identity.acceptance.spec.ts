@@ -1,6 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { expect } from "playwright/test";
-import { catalogRuntimeTest as test } from "./helpers/catalogFixtureRuntime";
+import { catalogAppUrl, catalogRuntimeTest as test } from "./helpers/catalogFixtureRuntime";
 import { assertNoPageOverflow, CATALOG_EXPECTED_API_FAILURES, catalogScreenshot, confirmGovernanceDialog, openCatalogAt, signInCatalogActor } from "./helpers/catalogBrowser";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { signInBrowserAsUser } from "./helpers/bearerAuth";
@@ -94,7 +94,7 @@ test("confirms the Huawei organization match and publishes a shared alias from m
     await assertNoPageOverflow(page);
     await catalogScreenshot(page, testInfo, "huawei-shared-alias-preview-1440x900");
 
-    await signInBrowserAsUser(page, reviewer.userId, reviewer.email, reviewer.name, new URL(route, catalogRuntime.frontendUrl).href);
+    await signInBrowserAsUser(page, reviewer.userId, reviewer.email, reviewer.name, catalogAppUrl(route));
     await page.getByRole("button", { name: `共享标识：${name}` }).click();
     await identity.getByText("复核已有共享标识候选").click();
     await identity.getByLabel("候选编号").fill(candidateId!);
