@@ -5,6 +5,7 @@ import { createUserInvocation, type TrustedInvocationContext } from "../auth/tru
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import { requireActiveOrganization } from "../auth/organizationLifecycle";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { lockOrganizationModuleRecognition } from "../parameter-modules/recognitionLock";
@@ -27,7 +28,7 @@ import { captureBaselineSourceSnapshot, type CanonicalRestorePreview } from "./c
 import { assertLegacySourceMutationAllowed, getFileVersionById, getProjectParameterFileById, insertFileVersion, setCurrentVersion } from "./repository";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
-import type { ReleaseBaselineDto, ReleaseBaselineMemberDto } from "./types";
+import type { BaselineErratum, ReleaseBaselineDto, ReleaseBaselineMemberDto } from "./types";
 import { runValidationGate, type ValidationGateDeps, type ValidationGateResult } from "./validationGate";
 import { assertReleaseGateAllows, assertReleaseGatePendingWorkUnchanged, type EvaluateReleaseReadinessDeps } from "./releaseReadinessService";
 
@@ -101,7 +102,7 @@ async function writeBaselineAudit(
   tx: AuditTx,
   invocation: TrustedInvocationContext,
   input: {
-    action: "created";
+    action: "created" | "updated" | "erratum_appended";
     projectId: string | null;
     targetId: string;
     metadata: Record<string, unknown>;
@@ -214,7 +215,8 @@ export async function createBaseline(
 export async function getBaseline(
   db: Queryable,
   auth: AuthContext,
-  baselineId: string
+  baselineId: string,
+  projectId?: string
 ): Promise<{ baseline: ReleaseBaselineDto; members: ReleaseBaselineMemberDto[] }> {
   requireParameterFileAdmin(auth);
 
@@ -223,17 +225,80 @@ export async function getBaseline(
     throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
   }
 
+  if (projectId !== undefined) {
+    const set = await getConfigSetById(db, { organizationId: parameterOrganizationId(auth), configSetId: baseline.configSetId });
+    if (set?.projectId !== projectId) throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
+    await attachBaselineErrata(db, parameterOrganizationId(auth), projectId, [baseline]);
+  }
   const members = await listReleaseBaselineMembers(db, { baselineId });
   return { baseline, members };
+}
+
+async function attachBaselineErrata(db: Queryable, organizationId: string, projectId: string, baselines: ReleaseBaselineDto[]) {
+  const ids = baselines.filter(baseline => baseline.status !== "draft").map(baseline => baseline.id);
+  if (!ids.length) return;
+  const rows = (await db.query<BaselineErratum & { baselineId: string }>(`
+    select id, target_id as "baselineId", metadata->>'note' as note, metadata->>'source' as source,
+      metadata->>'actorName' as "actorName", to_jsonb(created_at)#>>'{}' as "createdAt"
+    from audit_events where organization_id=$1 and project_id=$2 and app='parameters' and kind='baseline'
+      and target_type='dts-release-baseline' and target_id=any($3::text[]) and action='erratum_appended'
+    order by created_at,id`, [organizationId, projectId, ids])).rows;
+  for (const baseline of baselines) {
+    const errata = rows.filter(row => row.baselineId === baseline.id).map(({ baselineId: _id, ...row }) => row);
+    if (errata.length) baseline.errata = errata;
+  }
+}
+
+export async function correctBaseline(
+  db: Database, auth: AuthContext, input: { projectId: string; baselineId: string } &
+    ({ name: string; notes?: string | null } | { note: string; source: string }),
+  context: BaselineServiceContext
+) {
+  requireParameterFileAdmin(auth);
+  return db.transaction(async (tx) => {
+    await requireActiveOrganization(tx, parameterOrganizationId(auth), true);
+    const baseline = (await tx.query<{ status: string }>(`
+      select baseline.status from dts_release_baseline baseline
+      join dts_config_set config on config.id=baseline.config_set_id and config.organization_id=baseline.organization_id
+      where baseline.id=$1 and baseline.organization_id=$2 and config.project_id=$3 for update of baseline`,
+    [input.baselineId, parameterOrganizationId(auth), input.projectId])).rows[0];
+    if (!baseline) throw new ApiError("NOT_FOUND", "Baseline not found.");
+    const draftEdit = "name" in input;
+    if (draftEdit !== (baseline.status === "draft")) {
+      throw new ApiError("CONFLICT", draftEdit ? "Published baseline metadata is immutable." : "Errata require a previously released baseline.");
+    }
+    if (draftEdit) {
+      await tx.query("update dts_release_baseline set name=$2, notes=case when $3 then $4 else notes end where id=$1",
+        [input.baselineId, input.name, input.notes !== undefined, input.notes ?? null]);
+    }
+    await writeBaselineAudit(asAuditTx(tx), parameterInvocation(auth) ?? createUserInvocation(auth), {
+      action: draftEdit ? "updated" : "erratum_appended", projectId: input.projectId, targetId: input.baselineId,
+      metadata: draftEdit ? { name: input.name, notes: input.notes } :
+        { note: input.note, source: input.source, actorName: auth.user.name }
+    }, context);
+    return (await getBaseline(tx, auth, input.baselineId, input.projectId)).baseline;
+  }).catch((error: unknown) => {
+    if (typeof error === "object" && error && "constraint" in error && error.constraint === "dts_release_baseline_config_set_id_name_key") {
+      throw new ApiError("CONFLICT", "A baseline with this name already exists in the configuration.");
+    }
+    throw error;
+  });
 }
 
 export async function listBaselines(
   db: Queryable,
   auth: AuthContext,
-  configSetId: string
+  configSetId: string,
+  projectId?: string
 ): Promise<ReleaseBaselineDto[]> {
   requireParameterFileAdmin(auth);
-  return listReleaseBaselinesByConfigSet(db, { configSetId });
+  if (projectId !== undefined) {
+    const set = await getConfigSetById(db, { organizationId: parameterOrganizationId(auth), configSetId });
+    if (set?.projectId !== projectId) throw new ApiError("NOT_FOUND", "Config set not found.");
+  }
+  const items = await listReleaseBaselinesByConfigSet(db, { configSetId });
+  if (projectId !== undefined) await attachBaselineErrata(db, parameterOrganizationId(auth), projectId, items);
+  return items;
 }
 
 async function loadStructuralDiff(
@@ -311,14 +376,12 @@ export async function compareBaseline(
     }
     againstBaselineId = tip.id;
     const tipMembers = await listReleaseBaselineMembers(db, { baselineId: tip.id });
-    const tipMemberFiles = await listConfigSetMemberFiles(db, baseline.configSetId);
-    const nameByFile = new Map(tipMemberFiles.map((member) => [member.fileId, member.fileName]));
     againstByFile = new Map(
       tipMembers.map((member) => [
         member.fileId,
         {
           fileId: member.fileId,
-          fileName: nameByFile.get(member.fileId),
+          fileName: member.fileName,
           versionId: member.fileVersionId
         }
       ])
@@ -333,7 +396,7 @@ export async function compareBaseline(
     const againstMember = againstByFile.get(fileId);
 
     if (baselineMember && !againstMember) {
-      members.push({ fileId, status: "file_removed", baselineVersionId: baselineMember.fileVersionId });
+      members.push({ fileId, fileName: baselineMember.fileName, status: "file_removed", baselineVersionId: baselineMember.fileVersionId });
       continue;
     }
 
@@ -371,6 +434,7 @@ export async function compareBaseline(
         baselineVersion &&
         againstVersion &&
         baselineVersion.storageKey === againstVersion.storageKey
+        && (!baselineMember.fileName || !againstMember.fileName || baselineMember.fileName === againstMember.fileName)
       ) {
         members.push({
           fileId,

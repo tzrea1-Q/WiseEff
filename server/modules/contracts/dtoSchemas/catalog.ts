@@ -90,6 +90,12 @@ import { administratorMemberRemovalApplyRequestSchema, administratorMemberRemova
 import { logDeletionPreviewResponseSchema, logDeletionStatusResponseSchema, logDeletionStatusListResponseSchema } from "./logs";
 import { memberAdditionBodySchema, memberAdditionApplyBodySchema, memberAdditionPreviewResponseSchema, memberAdditionApplyResponseSchema, memberAdditionIntentRegisterSchema, memberAdditionIntentActionSchema, memberAdditionIntentResponseSchema, memberAdditionIntentsResponseSchema } from "./canonicalMemberAddition";
 import { configSetImportPreviewBodySchema, configSetImportApplyBodySchema, configSetImportPreviewResponseSchema, configSetImportApplyResponseSchema } from "./configSetPackage";
+import {
+  appendBaselineErratumSchema, correctedBaselineDetailResponseSchema, correctedBaselineListResponseSchema, correctedBaselineResponseSchema,
+  correctedConfigSetResponseSchema, jsonCorrectionApplyResponseSchema, jsonCorrectionApplySchema, jsonCorrectionOptionsResponseSchema,
+  jsonCorrectionPreviewResponseSchema, jsonCorrectionSchema, pathCorrectionApplyResponseSchema, pathCorrectionApplySchema,
+  pathCorrectionPreviewResponseSchema, pathCorrectionSchema, updateConfigurationMetadataSchema, updateDraftBaselineSchema
+} from "./configurationCorrection";
 import { skillDeletionRequestSchema, skillDeletionPreviewResponseSchema, skillDeletionStatusResponseSchema, skillDeletionListResponseSchema } from "./skillDeletion";
 import { releaseBaselineRestoreRequestSchema, releaseBaselineRestorePreviewResponseSchema, releaseBaselineRollbackResponseSchema } from "./canonicalConfigurationRestore";
 
@@ -150,6 +156,22 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ReleaseBaselineRestoreRequest: releaseBaselineRestoreRequestSchema,
   ReleaseBaselineRestorePreviewResponse: releaseBaselineRestorePreviewResponseSchema,
   ReleaseBaselineRollbackResponse: releaseBaselineRollbackResponseSchema,
+  ReleaseBaselineResponse: correctedBaselineResponseSchema,
+  ReleaseBaselineListResponse: correctedBaselineListResponseSchema,
+  ReleaseBaselineDetailResponse: correctedBaselineDetailResponseSchema,
+  UpdateConfigurationMetadataRequest: updateConfigurationMetadataSchema,
+  CorrectedConfigSetResponse: correctedConfigSetResponseSchema,
+  UpdateDraftBaselineRequest: updateDraftBaselineSchema,
+  AppendBaselineErratumRequest: appendBaselineErratumSchema,
+  PathCorrectionRequest: pathCorrectionSchema,
+  PathCorrectionApplyRequest: pathCorrectionApplySchema,
+  PathCorrectionPreviewResponse: pathCorrectionPreviewResponseSchema,
+  PathCorrectionApplyResponse: pathCorrectionApplyResponseSchema,
+  JsonCorrectionOptionsResponse: jsonCorrectionOptionsResponseSchema,
+  JsonCorrectionRequest: jsonCorrectionSchema,
+  JsonCorrectionApplyRequest: jsonCorrectionApplySchema,
+  JsonCorrectionPreviewResponse: jsonCorrectionPreviewResponseSchema,
+  JsonCorrectionApplyResponse: jsonCorrectionApplyResponseSchema,
   CanonicalMemberAdditionPreviewRequest: memberAdditionBodySchema,
   ConfigSetImportPreviewRequest: configSetImportPreviewBodySchema,
   ConfigSetImportApplyRequest: configSetImportApplyBodySchema,
@@ -300,6 +322,9 @@ export const dtoSchemaCoveredRouteIds = [
   "parameters.previewRestoreReleaseBaseline", "parameters.rollbackReleaseBaseline",
   "logs.listSkillDeletions", "logs.previewSkillDeletion", "logs.getSkillDeletionStatus", "logs.purgeSkill",
   "parameterFiles.previewCanonicalMemberAddition", "parameterFiles.applyCanonicalMemberAddition",
+  "parameterFiles.updateConfigSetMetadata", "parameterFiles.updateDraftBaseline", "parameterFiles.appendBaselineErratum",
+  "parameterFiles.previewPathCorrection", "parameterFiles.applyPathCorrection",
+  "parameterFiles.listJsonCorrectionOptions", "parameterFiles.previewJsonCorrection", "parameterFiles.applyJsonCorrection",
   "parameterFiles.reserveMemberAdditionIntent", "parameterFiles.listMemberAdditionIntents", "parameterFiles.stopMemberAdditionIntent", "parameterFiles.acknowledgeMemberAdditionIntent",
   "parameterFiles.previewAdministratorMemberRemoval", "parameterFiles.applyAdministratorMemberRemoval",
   "logs.previewDeletion",

@@ -59,7 +59,7 @@ export type ReleaseBaselineSessionSnapshot = {
   readinessError: string;
   acknowledgedWarningIds: ReadonlySet<string>;
   selectedBaselineId: string | null;
-  pinnedMembers: Array<{ fileId: string; fileVersionId: string; versionNumber: number }>;
+  pinnedMembers: Array<{ fileId: string; fileName?: string; fileVersionId: string; versionNumber: number }>;
   pinnedMembersLoading: boolean;
   pinnedMembersError: string;
   compareResult: DtsCompareBaselineResult | null;
@@ -371,6 +371,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
         if (generation !== pinnedMembersGeneration || selectedBaselineId !== baselineId) return;
         pinnedMembers = detail.members.map((member) => ({
           fileId: member.fileId,
+          ...(member.fileName ? { fileName: member.fileName } : {}),
           fileVersionId: member.fileVersionId,
           versionNumber: member.versionNumber
         }));

@@ -6,10 +6,10 @@ import type { ObjectStore } from "../logs/objectStore";
 import type { AuthContext } from "../auth/types";
 import { trustedDomainAttribution, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
-import { NormalizedConfigurationSchemaId, type CatalogSnapshot } from "../catalog-kernel/interface";
+import { CatalogPageLimit, CatalogSubjectId, NormalizedConfigurationSchemaId, type CatalogSnapshot } from "../catalog-kernel/interface";
 import { stabilizeCanonicalBinding, readSourceRegistrationAgreement, type Binding } from "../parameter-bindings/binding";
 import { writebackProtectedReference } from "../parameter-bindings/adapters";
-import { asValueClient } from "../parameter-bindings/catalogProjectValueSync";
+import { asValueClient, loadActiveOrganizationSourceRegistrations } from "../parameter-bindings/catalogProjectValueSync";
 import { lockOrganizationModuleRecognition } from "../parameter-modules/recognitionLock";
 import { ParameterDefinitionId, SubjectRegistrationId, serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 import { canAdminParameters } from "../parameter-kernel/policy";
@@ -23,6 +23,88 @@ import type { ConfigRevisionManifestMember } from "../parameter-topology/types";
 import { discoverCurrentSourceRevisionPins, loadSourceValueReplay, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { loadExactSourceRevisionForProof, lockExactSourceRevisionsForProof, rethrowSourceTransactionError } from "./sourceVersion";
 import { filterPreviouslySuspendedSourceBindings } from "./sourceManagedScope";
+import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
+
+export type JsonInstanceMapping = {
+  configurationSchemaId: string; rootPointer: string;
+  mappings: Array<{ definitionId: string; pointer: string }>;
+};
+
+export type CurrentJsonInstance = {
+  occurrenceId: string; configurationInstanceId: string; configurationSchemaId: string;
+  subjectId: string; rootPointer: string;
+  bindings: Array<{ bindingId: string; valueId: string; definitionId: string; pointer: string; value: ContractJsonValue }>;
+};
+
+export async function readCurrentJsonInstances(
+  db: Queryable, snapshot: CatalogSnapshot, scope: { organizationId: string; projectId: string; fileId: string }
+) {
+  const file = (await db.query<{ configSetId: string; fileVersionId: string }>(`
+    select config_set_id as "configSetId",current_version_id as "fileVersionId" from project_parameter_files
+    where organization_id=$1 and project_id=$2 and id=$3 and format='json'`,
+  [scope.organizationId, scope.projectId, scope.fileId])).rows[0];
+  if (!file) throw new ApiError("NOT_FOUND", "Project JSON file not found.");
+  const instances = (await db.query<Omit<CurrentJsonInstance, "configurationSchemaId">>(`
+    select occurrence.id as "occurrenceId",occurrence.configuration_instance_id as "configurationInstanceId",
+      occurrence.configuration_schema_subject_id as "subjectId",occurrence.root_pointer as "rootPointer",
+      jsonb_agg(jsonb_build_object('bindingId',binding.id,'valueId',value.id,'definitionId',binding.definition_id,
+        'pointer',pin.locator->>'pointer','value',value.value) order by binding.definition_id) as bindings
+    from parameter_catalog.project_parameter_source_occurrences occurrence
+    join parameter_catalog.current_project_parameter_bindings binding on binding.source_occurrence_id=occurrence.id
+    join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id and value.binding_id=binding.id
+    join parameter_catalog.project_value_source_pins pin on pin.binding_id=binding.id and pin.project_value_id=value.id
+    where occurrence.organization_id=$1 and occurrence.project_id=$2 and occurrence.file_id=$3 and occurrence.config_set_id=$4
+      and occurrence.occurrence_kind='json' and pin.file_id=$3 and pin.file_version_id=$5 and pin.format='json'
+    group by occurrence.id order by occurrence.root_pointer,occurrence.id`,
+  [scope.organizationId, scope.projectId, scope.fileId, file.configSetId, file.fileVersionId])).rows;
+  const items: CurrentJsonInstance[] = instances.map(instance => {
+    const subject = snapshot.getSubject(CatalogSubjectId(instance.subjectId));
+    const selector = subject.status === "found" ? subject.subject.membership.selector : undefined;
+    return { ...instance, configurationSchemaId: selector?.kind === "configuration-schema-id" ? selector.value : instance.subjectId };
+  });
+  return { ...file, items };
+}
+
+export async function readJsonCorrectionSchemas(db: Queryable, snapshot: CatalogSnapshot, organizationId: string) {
+  const registrations = await loadActiveOrganizationSourceRegistrations(db, { organizationId });
+  return registrations.flatMap(({ subjectId }) => {
+    const found = snapshot.getSubject(CatalogSubjectId(subjectId));
+    if (found.status !== "found" || found.subject.membership.selector.kind !== "configuration-schema-id") return [];
+    const definitions = snapshot.listDefinitions({ scope: { kind: "subject", subjectId: found.subject.id },
+      selection: { kind: "all" }, lifecycles: ["active", "deprecated"], propertyKey: { kind: "absent" },
+      search: { kind: "absent" }, page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: { kind: "absent" } } });
+    if (definitions.status !== "found" || !definitions.page.items.length) return [];
+    return [{ id: found.subject.membership.selector.value,
+      definitions: definitions.page.items.map(definition => ({ id: definition.id, key: definition.propertyKey })) }];
+  });
+}
+
+export async function checkJsonInstanceMapping(
+  db: Queryable, snapshot: CatalogSnapshot, organizationId: string, input: JsonInstanceMapping, bytes: Buffer | string
+) {
+  if (!input.mappings.length || new Set(input.mappings.map(mapping => mapping.definitionId)).size !== input.mappings.length) {
+    throw new ApiError("VALIDATION_FAILED", "Explicit unique Definition mappings are required.");
+  }
+  const found = snapshot.resolveSubject({ driverCompatibles: [], nodeTypeFallback: { kind: "absent" },
+    configurationSchemaIds: [NormalizedConfigurationSchemaId(input.configurationSchemaId)] });
+  if (found.status !== "matched" || found.subject.kind !== "configuration-schema") {
+    throw new ApiError("CONFLICT", "A published ConfigurationSchema must be selected explicitly.");
+  }
+  const subject = found.subject;
+  const registration = await readSourceRegistrationAgreement(db, { organizationId, subjectId: subject.id });
+  if (!registration) throw new ApiError("CONFLICT", "An active governed registration and placement are required.");
+  readJsonSourceValue(bytes, input.rootPointer);
+  const values = input.mappings.map(mapping => {
+    const found = snapshot.getDefinitionById(ParameterDefinitionId(mapping.definitionId));
+    if (found.status !== "found" || found.definition.subjectId !== subject.id) {
+      throw new ApiError("CONFLICT", "Definition does not belong to the selected ConfigurationSchema.", { definitionId: mapping.definitionId });
+    }
+    const value = readJsonSourceValue(bytes, mapping.pointer, input.rootPointer) as ContractJsonValue;
+    assertCanonicalValueConstraints(found.definition.selectedRevision, { kind: "json", value });
+    return { ...mapping, definition: found.definition, value };
+  });
+  return { subject, registration, values };
+}
 
 export async function registerCanonicalJsonSource(
   db: Queryable,
@@ -47,13 +129,6 @@ export async function registerCanonicalJsonSource(
     throw new ApiError("VALIDATION_FAILED", "Explicit unique Definition mappings are required.");
   }
   await lockOrganizationModuleRecognition(db, parameterOrganizationId(auth));
-  const subject = snapshot.resolveSubject({ driverCompatibles: [], nodeTypeFallback: { kind: "absent" }, configurationSchemaIds: [NormalizedConfigurationSchemaId(input.configurationSchemaId)] });
-  if (subject.status !== "matched" || subject.subject.kind !== "configuration-schema") throw new ApiError("CONFLICT", "A published ConfigurationSchema must be selected explicitly.");
-  const definitions = input.mappings.map((mapping) => {
-    const definition = snapshot.getDefinitionById(ParameterDefinitionId(mapping.definitionId));
-    if (definition.status !== "found" || definition.definition.subjectId !== subject.subject.id) throw new ApiError("CONFLICT", "Definition does not belong to the selected ConfigurationSchema.");
-    return { ...mapping, definition: definition.definition };
-  });
   const set = await db.query(`select id from dts_config_set where id=$1 and organization_id=$2 and project_id=$3 for update nowait`, [input.configSetId,parameterOrganizationId(auth),input.projectId]);
   if (set.rows.length !== 1) throw new ApiError("NOT_FOUND", "Configuration set is unavailable.");
   await db.query(`select id from project_parameter_files where config_set_id=$1 order by id for update nowait`, [input.configSetId]);
@@ -144,30 +219,45 @@ export async function registerCanonicalJsonSource(
     configSetId: input.configSetId,configRevisionId: revisionId,fileId: file.fileId,fileVersionId: file.fileVersionId });
   for (const member of source.members) if (member.format === "json") parseJsonSource(member.bytes);
   const bytes = source.members.find((member) => member.fileId === file.fileId)!.bytes;
-  readJsonSourceValue(bytes, input.rootPointer);
-  const values = definitions.map((definition) => ({ ...definition, value: readJsonSourceValue(bytes, definition.pointer, input.rootPointer) as ContractJsonValue }));
-  const registration = await readSourceRegistrationAgreement(db,{ organizationId: parameterOrganizationId(auth),subjectId: subject.subject.id });
-  if (!registration) throw new ApiError("CONFLICT", "An active governed registration and placement are required.");
+  const checked = await checkJsonInstanceMapping(db, snapshot, sourceScope.organizationId, input, bytes);
+  const result = await writeCheckedJsonInstance(db, snapshot, { ...sourceScope, ...input, configRevisionId: revisionId }, checked);
+  await writeTrustedAuditEventInTx(asAuditTx(db), {
+    invocation,app: "parameters",kind: "parameter-topology-governance",action: "binding-edited",severity: "Medium",projectId: input.projectId,
+    targetType: "parameter-source-occurrence",targetId: result.occurrenceId,
+    metadata: { fileId: input.fileId,sourceOccurrenceId: result.occurrenceId,bindingIds: result.bindings.map((binding) => binding.id) },traceId: input.requestId,
+  });
+  return { bindings: result.bindings };
+  } catch (error) { rethrowSourceTransactionError(error); }
+}
+
+export async function writeCheckedJsonInstance(db: Queryable, snapshot: CatalogSnapshot, input: {
+  organizationId: string; projectId: string; configSetId: string; fileId: string;
+  fileVersionId: string; configRevisionId: string; rootPointer: string;
+}, { subject, registration, values }: Awaited<ReturnType<typeof checkJsonInstanceMapping>>) {
+  const { organizationId, configRevisionId: revisionId } = input;
   await db.query(`insert into parameter_catalog.project_parameter_source_occurrences
     (id,organization_id,project_id,config_set_id,file_id,occurrence_kind,configuration_instance_id,configuration_schema_subject_id,root_pointer,root_pointer_digest)
     values ($1,$2,$3,$4,$5,'json',$6,$7,$8,$9) on conflict do nothing`,
-  [randomUUID(),parameterOrganizationId(auth),input.projectId,input.configSetId,input.fileId,randomUUID(),subject.subject.id,input.rootPointer,`sha256:${createHash("sha256").update(input.rootPointer).digest("hex")}`]);
+  [randomUUID(),organizationId,input.projectId,input.configSetId,input.fileId,randomUUID(),subject.id,input.rootPointer,`sha256:${createHash("sha256").update(input.rootPointer).digest("hex")}`]);
   const occurrence = await db.query<{ id: string }>(`select id from parameter_catalog.project_parameter_source_occurrences
     where organization_id=$1 and project_id=$2 and config_set_id=$3 and file_id=$4 and occurrence_kind='json'
       and configuration_schema_subject_id=$5 and root_pointer=$6`,
-  [parameterOrganizationId(auth),input.projectId,input.configSetId,input.fileId,subject.subject.id,input.rootPointer]);
+  [organizationId,input.projectId,input.configSetId,input.fileId,subject.id,input.rootPointer]);
   if (occurrence.rows.length !== 1) throw new ApiError("CONFLICT", "JSON instance identity is ambiguous.");
   const occurrenceId = occurrence.rows[0]!.id;
+  if ((await db.query("select 1 from parameter_catalog.json_instance_corrections where previous_occurrence_id=$1", [occurrenceId])).rowCount) {
+    throw new ApiError("CONFLICT", "The selected JSON instance has already been corrected.");
+  }
   const bindings: Binding[] = [];
   for (const mapping of values) {
     const stabilized = await stabilizeCanonicalBinding(asValueClient(db), {
-      snapshot,organizationId: parameterOrganizationId(auth),projectId: input.projectId,logicalNodeId: null,sourceOccurrenceId: occurrenceId,
+      snapshot,organizationId,projectId: input.projectId,logicalNodeId: null,sourceOccurrenceId: occurrenceId,
       registrationId: SubjectRegistrationId(registration.id),definitionId: mapping.definition.id,
       effectiveRevisionId: mapping.definition.selectedRevision.id,expectedEffectiveRevisionId: null,
     });
     if (!stabilized.ok) throw new ApiError("CONFLICT", "JSON source could not establish a canonical Binding.", { reason: stabilized.error });
     const binding = stabilized.value.binding;
-    const pin = await loadSourceValueReplay(db,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,
+    const pin = await loadSourceValueReplay(db,{ organizationId,projectId: input.projectId,
       projectValueId: binding.currentValueId,bindingId: binding.id,sourceOccurrenceId: occurrenceId });
     if (pin) {
       if (pin.fileVersionId !== input.fileVersionId || pin.locator.pointer !== mapping.pointer
@@ -186,14 +276,9 @@ export async function registerCanonicalJsonSource(
     await db.query(`insert into parameter_catalog.project_value_source_pins
       (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,file_id,file_version_id,format,locator,locator_digest)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'json',$11::jsonb,$12)`,
-    [randomUUID(),appended.value.currentTip,binding.id,binding.definitionId,parameterOrganizationId(auth),input.projectId,occurrenceId,revisionId,input.fileId,input.fileVersionId,
+    [randomUUID(),appended.value.currentTip,binding.id,binding.definitionId,organizationId,input.projectId,occurrenceId,revisionId,input.fileId,input.fileVersionId,
       JSON.stringify(locator),`sha256:${createHash("sha256").update(serializeContract(locator)).digest("hex")}`]);
     bindings.push({ ...binding,currentValueId: appended.value.currentTip });
   }
-  await writeTrustedAuditEventInTx(asAuditTx(db), {
-    invocation,app: "parameters",kind: "parameter-topology-governance",action: "binding-edited",severity: "Medium",projectId: input.projectId,
-    targetType: "parameter-source-occurrence",targetId: occurrenceId,metadata: { fileId: input.fileId,sourceOccurrenceId: occurrenceId,bindingIds: bindings.map((binding) => binding.id) },traceId: input.requestId,
-  });
-  return { bindings };
-  } catch (error) { rethrowSourceTransactionError(error); }
+  return { occurrenceId, bindings };
 }

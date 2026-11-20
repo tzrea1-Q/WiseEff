@@ -572,6 +572,9 @@ export async function provisionPublicationRuntimeLogins(
         await admin.query(`revoke execute on function ${routine} from ${quoteIdent(names.worker)}, ${quoteIdent(names.manager)}`);
         await admin.query(`grant execute on function ${routine} to ${quoteIdent(names.api)}`);
       }
+      if ((await admin.query("select to_regclass('parameter_catalog.json_instance_corrections') as relation")).rows[0]?.relation) {
+        await admin.query(`grant insert on parameter_catalog.json_instance_corrections to ${quoteIdent(names.api)}`);
+      }
 
       // Suspension provenance is read only through the exact scoped RPC. The
       // generic schema SELECT grant must not expose independent receipt rows.

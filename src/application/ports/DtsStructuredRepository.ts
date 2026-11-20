@@ -122,6 +122,7 @@ export type DtsReleaseBaseline = {
   configSetId: string;
   name: string;
   notes?: string;
+  errata?: Array<{ id: string; note: string; source: string; actorName: string; createdAt: string }>;
   status: BaselineStatus;
   createdBy?: string;
   createdAt: string;
@@ -370,7 +371,7 @@ export interface DtsStructuredRepository {
   getBaseline(
     projectId: string,
     baselineId: string
-  ): Promise<{ item: DtsReleaseBaseline; members: Array<{ baselineId: string; fileId: string; fileVersionId: string; versionNumber: number }> }>;
+  ): Promise<{ item: DtsReleaseBaseline; members: Array<{ baselineId: string; fileId: string; fileName?: string; fileVersionId: string; versionNumber: number }> }>;
   getReleaseReadiness(
     projectId: string,
     configSetId: string,

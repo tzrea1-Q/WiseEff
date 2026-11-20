@@ -5,6 +5,7 @@ import {
   canonicalBatchRollbackSubmitRequestSchema
 } from "../contracts/dtoSchemas/canonicalBatchRollback";
 import { canonicalManualSyncPrepareRequestSchema } from "../contracts/dtoSchemas/canonicalManualSync";
+import { appendBaselineErratumSchema, updateConfigurationMetadataSchema, updateDraftBaselineSchema } from "../contracts/dtoSchemas/configurationCorrection";
 import { projectLocalOverrideRequestSchema } from "../contracts/dtoSchemas/sourceRevision";
 import { prepareProjectLocalOverride } from "./projectLocalOverride";
 
@@ -34,6 +35,7 @@ import {
 } from "./repository";
 import {
   compareBaseline,
+  correctBaseline,
   createBaseline,
   getBaseline,
   listBaselines,
@@ -48,7 +50,8 @@ import {
   createConfigSet,
   listConfigSetFiles,
   listConfigSets,
-  removeConfigSetFile
+  removeConfigSetFile,
+  updateConfigSet
 } from "./configSetService";
 import type { DtcValidator } from "./dtcValidator";
 import { exportConfigSet } from "./exportService";
@@ -688,6 +691,16 @@ export function registerParameterFileRoutes(
     return { status: 201, body: { item } };
   });
 
+  router.patch("/api/v1/projects/:projectId/config-sets/:configSetId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
+    const body = parseWithSchema(updateConfigurationMetadataSchema, request.body);
+    const item = await updateConfigSet(db, auth, { ...params, ...body }, { requestId: request.requestId });
+    return { status: 200, body: { item } };
+  });
+
   router.get("/api/v1/projects/:projectId/config-sets/:configSetId/files", async (request) => {
     const db = requireDb(options.db);
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
@@ -742,7 +755,7 @@ export function registerParameterFileRoutes(
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
-    const items = await listBaselines(db, auth, params.configSetId);
+    const items = await listBaselines(db, auth, params.configSetId, params.projectId);
 
     return { status: 200, body: { items } };
   });
@@ -793,10 +806,27 @@ export function registerParameterFileRoutes(
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
-    const item = await getBaseline(db, auth, params.baselineId);
+    const item = await getBaseline(db, auth, params.baselineId, params.projectId);
     return { status: 200, body: { item: item.baseline, members: item.members } };
   });
 
+  router.patch("/api/v1/projects/:projectId/baselines/:baselineId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
+    const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
+    const body = parseWithSchema(updateDraftBaselineSchema, request.body);
+    const item = await correctBaseline(db, auth, { ...params, ...body }, request);
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/baselines/:baselineId/errata", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
+    const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
+    const body = parseWithSchema(appendBaselineErratumSchema, request.body);
+    const item = await correctBaseline(db, auth, { ...params, ...body }, request);
+    return { status: 201, body: { item } };
+  });
   router.get("/api/v1/projects/:projectId/baselines/:baselineId/compare", async (request) => {
     const db = requireDb(options.db);
     const auth = await parameterRequestAccess(options.db, createUserInvocation(await options.getCurrentAuthContext(request)), request);

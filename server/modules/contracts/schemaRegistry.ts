@@ -2090,6 +2090,46 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterFiles.updateConfigSetMetadata": {
+    summary: "Correct a named configuration set's name and description", tags: ["parameter-files"],
+    requestBody: "UpdateConfigurationMetadataRequest", responseBody: "CorrectedConfigSetResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.updateDraftBaseline": {
+    summary: "Correct the name and notes of a draft configuration baseline", tags: ["parameter-files"],
+    requestBody: "UpdateDraftBaselineRequest", responseBody: "ReleaseBaselineResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.appendBaselineErratum": {
+    summary: "Append sourced errata to a published configuration baseline", tags: ["parameter-files"], successStatus: 201,
+    requestBody: "AppendBaselineErratumRequest", responseBody: "ReleaseBaselineResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewPathCorrection": {
+    summary: "Preview a private source path correction and affected include locations", tags: ["parameter-files"],
+    requestBody: "PathCorrectionRequest", responseBody: "PathCorrectionPreviewResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyPathCorrection": {
+    summary: "Apply a verified path correction with immutable file versions and a configuration revision", tags: ["parameter-files"],
+    requestBody: "PathCorrectionApplyRequest", responseBody: "PathCorrectionApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.listJsonCorrectionOptions": {
+    summary: "List current JSON instances, bindings and available target schemas", tags: ["parameter-files"],
+    responseBody: "JsonCorrectionOptionsResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewJsonCorrection": {
+    summary: "Validate a proposed JSON instance association and return exact mapped values", tags: ["parameter-files"],
+    requestBody: "JsonCorrectionRequest", responseBody: "JsonCorrectionPreviewResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.applyJsonCorrection": {
+    summary: "Supersede a current JSON instance while retaining its values and source history", tags: ["parameter-files"],
+    requestBody: "JsonCorrectionApplyRequest", responseBody: "JsonCorrectionApplyResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.addConfigSetFile": {
     summary: "Add a parameter file to a config set with role and sort order",
     tags: ["parameter-files"],

@@ -91,6 +91,93 @@ describe("complete configuration package through the actual API role",()=>{
   },120_000);
   afterAll(async()=>{await api?.close();if(lane)await dropLabRuntimeLogins(lane.url,token);await db?.close();await lane?.drop();if(directory)await rm(directory,{recursive:true,force:true});},120_000);
 
+  it("corrects a named configuration set through the project API and protects the default", async () => {
+    const first = await createConfigSet(db, auth, { projectId: PRIVATE, name: "Uncorrected" });
+    const second = await createConfigSet(db, auth, { projectId: PRIVATE, name: "Taken" });
+    const patch = (projectId: string, id: string, name: string, principal = auth) => requestJson(server(principal),
+      `/api/v1/projects/${projectId}/config-sets/${id}`,
+      { method: "PATCH", body: JSON.stringify({ name, description: "Corrected project metadata" }) });
+    expect((await patch(PRIVATE, first.id, second.name)).status).toBe(409);
+    expect((await patch(SOURCE, first.id, "Corrected")).status).toBe(404);
+    expect((await patch(PRIVATE, first.id, "Corrected", foreign)).status).toBe(404);
+    const corrected = await patch(PRIVATE, first.id, "Corrected");
+    expect(corrected.status, corrected.bodyText).toBe(200);
+    expect(corrected.body).toMatchObject({ item: { id: first.id, name: "Corrected", description: "Corrected project metadata" } });
+    const { ensureDefaultConfigSet } = await import("./configSetService");
+    const builtIn = await ensureDefaultConfigSet(db, auth, PRIVATE);
+    expect((await patch(PRIVATE, builtIn.id, "No longer the default")).status).toBe(409);
+    expect(await ensureDefaultConfigSet(db, auth, PRIVATE)).toMatchObject({ id: builtIn.id, name: "default" });
+  });
+
+  it("corrects draft metadata and appends sourced errata to a released baseline", async () => {
+    const root = `/api/v1/projects/${SOURCE}`;
+    const readiness = await requestJson<{item:{gateToken:string}}>(server(), `${root}/config-sets/${setId}/release-readiness`);
+    const created = await post<{item:{id:string}}>(`${root}/config-sets/${setId}/baselines`, {
+      name: "Draft metadata", notes: "Draft note", gateToken: readiness.body.item.gateToken
+    });
+    expect(created.status, created.bodyText).toBe(201);
+    const baseline = `${root}/baselines/${created.body.item.id}`;
+    const before = await requestJson<{members:unknown[]}>(server(), baseline);
+    const body = { name: "Corrected release", notes: "Original release note" };
+    const patch = (path: string) => requestJson(server(), path, { method: "PATCH", body: JSON.stringify(body) });
+    expect((await patch(baseline.replace(SOURCE, PRIVATE))).status).toBe(404);
+    const corrected = await patch(baseline);
+    expect(corrected.status, corrected.bodyText).toBe(200);
+    expect(corrected.body).toMatchObject({ item: body });
+    const released = await post(`${baseline}/release`, { gateToken: readiness.body.item.gateToken });
+    expect(released.status, released.bodyText).toBe(200);
+    expect((await patch(baseline)).status).toBe(409);
+    const erratum = { note: "Correct the test-board label", source: "Engineering record QA-107" };
+    expect((await post(`${baseline}/errata`, erratum)).status).toBe(201);
+    const replay = await requestJson(server(), baseline);
+    expect(replay.body).toMatchObject({ item: { ...body, status: "released",
+      errata: [expect.objectContaining({ ...erratum, actorName: auth.user.name })] }, members: before.body.members });
+  });
+
+  it("moves private members with stable file identity and keeps the old source manifest replayable", async () => {
+    const gate = await evaluateReleaseReadiness(api, auth, { configSetId: setId }, { objectStore: storage });
+    const snapshot = await createBaseline(api, auth, { configSetId: setId, name: "Before path correction",
+      gateToken: gate.gateToken, acknowledgedWarningIds: gate.warnings.filter(row => row.acknowledgementRequired).map(row => row.id) }, {}, { objectStore: storage });
+    const baselinePath = `/api/v1/projects/${SOURCE}/baselines/${snapshot.id}`;
+    const initial = await requestJson<ExportConfigSetResult>(server(), `/api/v1/projects/${SOURCE}/config-sets/${setId}/export`);
+    const jsonMember = initial.body.manifest.members.find((member) => member.fileName === "private/settings.json")!;
+    const path = `/api/v1/projects/${SOURCE}/config-sets/${setId}/files/${jsonMember.fileId}/path-correction`;
+    const next = { sourceName: "settings/corrected.json" };
+    const conflict = await post(`${path}/preview`, { sourceName: initial.body.files[0]!.name });
+    expect(conflict.status, conflict.bodyText).toBe(409);
+    const preview = await post<{item:{proofToken:string}}>(`${path}/preview`, next);
+    expect(preview.status, preview.bodyText).toBe(200);
+    const body = { ...next, proofToken: preview.body.item.proofToken, reason: "Fix private source location", clientMutationId: "package-path-1581" };
+    const stale = await post(`${path}/apply`, { ...body, proofToken: "0".repeat(64) });
+    expect(stale.status).toBe(409);
+    const applied = await post<{item:{fileId:string;fileVersionId:string;configRevisionId:string}}>(`${path}/apply`, body);
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect(applied.body.item.fileId).toBe(jsonMember.fileId);
+    const versions = await requestJson<{items:Array<{id:string;versionNumber:number}>}>(server(),
+      `/api/v1/projects/${SOURCE}/parameter-files/${jsonMember.fileId}/versions`);
+    expect(versions.body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ versionNumber: 1 }), expect.objectContaining({ versionNumber: 2, id: applied.body.item.fileVersionId })
+    ]));
+    expect((await post(`${path}/apply`, body)).body).toEqual(applied.body);
+    const after = await requestJson<ExportConfigSetResult>(server(), `/api/v1/projects/${SOURCE}/config-sets/${setId}/export`);
+    expect(after.body.files).toContainEqual(expect.objectContaining({ name: next.sourceName, content: json }));
+    expect(after.body.files.some(file => file.name === "private/settings.json")).toBe(false);
+    const list = await requestJson(server(), `/api/v1/projects/${SOURCE}/config-sets/${setId}/files`);
+    expect(list.body).toMatchObject({ items: expect.arrayContaining([expect.objectContaining({ fileId: jsonMember.fileId, fileName: next.sourceName })]) });
+    const historical = await requestJson(server(), baselinePath);
+    expect(historical.body).toMatchObject({ members: expect.arrayContaining([
+      expect.objectContaining({ fileId: jsonMember.fileId, fileName: "private/settings.json", versionNumber: 1 })
+    ]) });
+    const restore = await requestJson<{item:RestorePreviewResult}>(server(), `${baselinePath}/restore-preview`);
+    expect(restore.status, restore.bodyText).toBe(200);
+    expect(restore.body.item.canonical).toMatchObject({ canRestore: true, requiresCompositionConfirmation: true });
+    const back = await post(`${baselinePath}/rollback`, { clientMutationId: "package-path-1581-back",
+      reason: "Replay the original path", confirmCompositionChanges: true, proofToken: restore.body.item.canonical?.proofToken });
+    expect(back.status, back.bodyText).toBe(200);
+    const replayed = await requestJson<ExportConfigSetResult>(server(), `/api/v1/projects/${SOURCE}/config-sets/${setId}/export`);
+    expect(replayed.body.files).toEqual(initial.body.files);
+  });
+
   it("imports ordinary project source archives with explicit entry, ordered overlays and private original bytes",async()=>{
     const TARGET="package-raw-target";await createEmptyProject(TARGET,"RAWNEW");
     const files=[{name:"boards/board.dts",content:'\uFEFF/dts-v1/;\r\n/include/ "../common/defaults.dtsi"\r\n/ { model = "Raw project"; compatible = "unknown,board"; };\r\n'},
@@ -114,6 +201,27 @@ describe("complete configuration package through the actual API role",()=>{
     const readback=await requestJson<ExportConfigSetResult>(server(),`/api/v1/projects/${TARGET}/config-sets/${imported.body.item.configSetId}/export`);expect(readback.status,readback.bodyText).toBe(200);
     expect(readback.body.files.map(({name,content})=>({name,content}))).toEqual(files);expect(readback.body.manifest.sourcePackage?.overlayOrder).toEqual(chosen.sourceConfiguration.overlayOrder);
     expect(readback.body.manifest.sourcePackage?.sharedClosure).toEqual([]);expect(await listCatalogBindingRowsForProject(api,auth,{projectId:TARGET})).toEqual([]);
+    const setPath = `/api/v1/projects/${TARGET}/config-sets/${imported.body.item.configSetId}`;
+    async function move(before: string, after: string, expected: Record<string, unknown>) {
+      const state = await requestJson<ExportConfigSetResult>(server(), `${setPath}/export`);
+      const member = state.body.manifest.members.find(row => row.fileName === before)!;
+      const route = `${setPath}/files/${member.fileId}/path-correction`;
+      const preview = await post<{ item: { proofToken: string } }>(`${route}/preview`, { sourceName: after });
+      expect(preview.status, preview.bodyText).toBe(200);
+      expect(preview.body.item).toMatchObject(expected);
+      const applied = await post(`${route}/apply`, { sourceName: after, proofToken: preview.body.item.proofToken,
+        clientMutationId: `move:${after}`, reason: "Correct private DTS source paths" });
+      expect(applied.status, applied.bodyText).toBe(200);
+    }
+    await move("common/defaults.dtsi", "local/defaults.dtsi", { pathCorrection: { references: [
+      { sourceName: "boards/board.dts", target: "common/defaults.dtsi", line: 2, column: 1 }
+    ] } });
+    await move("boards/board.dts", "board.dts", { entryFile: "board.dts" });
+    await move("overrides/last.dtsi", "tuning/final.dtsi", { overlayOrder: ["overrides/first.dtsi", "tuning/final.dtsi"] });
+    const moved = await requestJson<ExportConfigSetResult>(server(), `${setPath}/export`);
+    expect(moved.status, moved.bodyText).toBe(200);
+    expect(moved.body.files).toContainEqual(expect.objectContaining({ name: "board.dts",
+      content: files[0]!.content.replace("../common/defaults.dtsi", "local/defaults.dtsi") }));
     expect((await post(`${importPath(PRIVATE)}/preview`,{...chosen,ownership:"reuse"})).status).toBe(400);
     expect((await post(`${importPath(PRIVATE)}/preview`,{...chosen,sourceConfiguration:{...chosen.sourceConfiguration,entryFile:"../outside.dts"}})).status).toBe(400);
     expect((await post(`${importPath("package-foreign-project")}/preview`,chosen)).status).toBe(404);
@@ -195,6 +303,11 @@ describe("complete configuration package through the actual API role",()=>{
     const checked=await post<{item:{proofToken:string}}>(`${addition}/preview`,reference);expect(checked.status,checked.bodyText).toBe(200);
     expect((await post(`${addition}/apply`,{...reference,proofToken:checked.body.item.proofToken,reason:"Portable snapshot source",clientMutationId:"snapshot-package-reference"})).status).toBe(200);
     const sourceExport=await requestJson<ExportConfigSetResult>(server(),`/api/v1/projects/${SOURCE}/config-sets/${setId}/export`);expect(sourceExport.status,sourceExport.bodyText).toBe(200);
+    const sourceSharedMember = sourceExport.body.manifest.members.find(member => member.sharedReference?.resourceId === id)!;
+    const refusedPath = await post(`/api/v1/projects/${SOURCE}/config-sets/${setId}/files/${sourceSharedMember.fileId}/path-correction/preview`,
+      { sourceName: "shared/new-name.dtsi" });
+    expect(refusedPath.status, refusedPath.bodyText).toBe(409);
+    expect(refusedPath.bodyText).toContain("shared-reference-readonly");
     const input={name:"Portable snapshot",ownership:"reuse",archive:await packageArchive(sourceExport.body)};
     const importPreview=await post<{item:ConfigSetImportPreview}>(`${importPath(TARGET)}/preview`,input,importer);expect(importPreview.status,importPreview.bodyText).toBe(200);
     const imported=await post<{item:ConfigSetImportResult}>(`${importPath(TARGET)}/apply`,{...input,proofToken:importPreview.body.item.proofToken,reason:"Import frozen source",clientMutationId:"snapshot-package-import"},importer);expect(imported.status,imported.bodyText).toBe(200);

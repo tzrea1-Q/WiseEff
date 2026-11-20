@@ -846,6 +846,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       "catalog_archive_writes",
       "definition_erasures",
       "definition_purge_rows",
+      "json_instance_corrections",
       "log_erasures",
       "module_structure_export_baselines",
       "module_structure_created_refs",
