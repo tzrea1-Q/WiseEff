@@ -59,9 +59,9 @@ Current frontend permissions include:
 - `users:manage`
 - `platform:access` (retained Platform Admin role metadata; the dedicated console is removed)
 - `platform:schema-promote` (retained legacy role metadata; promotion and history-query surfaces are retired)
-- `catalog:author` (create Catalog drafts / ChangeSets / Candidate preview; granted on Org Admin `admin`, not on `platform-admin` / Agent defaults)
-- `catalog:publish` (approve within policy or request execution of an authorized Candidate; granted on Org Admin `admin`; not on `platform-admin` / Agent defaults)
-- `catalog:review-high-risk` (independent high-risk Candidate approval; granted on Org Admin `admin`. Non-admin authors still cannot satisfy this with a second synthetic identity)
+- `catalog:author` (author Catalog ChangeSets and preview Candidates; granted to `admin` and `platform-admin`)
+- `catalog:publish` (approve within policy or request execution of an authorized Candidate; granted to `admin` and `platform-admin`)
+- `catalog:review-high-risk` (review a high-risk Candidate from another author; granted to `admin` and `platform-admin`. The existing Org Admin self-approval policy still applies.)
 
 `platform-admin` is the first cross-organization role. It keeps a home organization on `AuthContext` and does **not** widen access to other tenants' parameters, logs, users, or projects. It unlocks platform-scoped rows (`organization_id IS NULL`) and one bounded aggregate read (promotion candidates). Only a caller who already holds `platform-admin` may grant or revoke that role. Platform-scoped audit events may use a null `organization_id` and fan out one organization-scoped event per affected tenant; ordinary list endpoints still filter by the caller's organization.
 

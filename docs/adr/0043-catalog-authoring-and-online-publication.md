@@ -90,7 +90,7 @@ Capabilities (frozen names):
 | `catalog:publish` | Request execution of an already-authorized Candidate, or approve within policy. |
 | `catalog:review-high-risk` | Independently approve a high-risk Candidate. For non-admin actors, the authoring principal cannot satisfy this with a second synthetic identity. |
 
-Organization Admin (`admin`) **does** receive `catalog:author`, `catalog:publish`, and `catalog:review-high-risk` on the default role matrix. `platform-admin` and Agent do **not**. Request-body role, organization, risk class, and approval flags remain untrusted. The server computes actor, scope, risk, and policy from trusted context.
+The default role matrix grants `catalog:author`, `catalog:publish`, and `catalog:review-high-risk` to organization administrators (`admin`) and platform administrators (`platform-admin`). Catalog publication requires a real user. The server computes actor, scope, risk, and policy from trusted context.
 
 An Org Admin who holds `catalog:publish` may approve a Candidate they authored, including high-risk. That exception does not apply to other roles.
 
