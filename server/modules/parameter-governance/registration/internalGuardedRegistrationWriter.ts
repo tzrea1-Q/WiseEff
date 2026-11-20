@@ -453,7 +453,8 @@ export const writeGuardedRegistration = async (
     const subjectId = await subjectIdForGuard(client, command);
     if (!subjectId.ok) return subjectId;
     const ownerId = await readOrganizationSubjectOwner(client, command.organizationId, subjectId.value);
-    if (ownerId && ((command.kind === "register" && command.method !== "automatic") || command.kind === "move-placement")) {
+    if (ownerId && ((command.kind === "register" && command.method !== "automatic") ||
+        (command.kind === "move-placement" && command.destinationModuleId !== undefined))) {
       return fail({ kind: "invalid-command", reason: command.kind === "register" ? "请登记其所属驱动" : "请调整其所属驱动的归属" });
     }
     if (ownerId && command.kind === "register" && command.proof.ownerSubjectId !== ownerId) {

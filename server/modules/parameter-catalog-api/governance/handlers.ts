@@ -822,7 +822,7 @@ async function handleUpdatePlacement(
   };
   const result = await ports.executeRegistration(command);
   if (!result.ok) return mapRegistrationFailure(result.error, request.requestId);
-  const placementDto = placementFromResult(result.value);
+  const placementDto = placementUpdate ? placementFromResult(result.value) : existing.placement;
   return catalogGovernanceOk({
     body: { item: mapPlacement(placementDto) },
     requestId: request.requestId,
@@ -968,10 +968,13 @@ async function handleListReviewItems(
   if (denied) return denied;
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
+  const status = queryValue(request.query, "status");
+  if (status !== undefined && status !== "out-of-scope") return validationFailed(request.requestId, "status");
   const result = await ports.listReviewQueue({
     organizationId: request.params.organizationId ?? scope.organizationId,
     capturedRelease: pin.pin,
     context: reviewContext(scope),
+    ...(status ? { status } : {}),
   });
   if (!result.ok) return mapReviewFailure(result.error, request.requestId);
   const details = await ports.readReviewItemDetails?.({
@@ -1107,6 +1110,8 @@ async function handleResolveReviewItem(
       resolution: "mark-out-of-scope",
       outOfScopeReason: parsed.data.reason,
     };
+  } else if (resolution.type === "reopen-out-of-scope") {
+    command = { ...base, resolution: "reopen-out-of-scope", correctionReason: parsed.data.reason.trim() };
   } else {
     command = {
       ...base,

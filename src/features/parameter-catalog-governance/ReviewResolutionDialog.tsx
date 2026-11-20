@@ -46,6 +46,7 @@ export type ReviewResolutionDialogProps = {
   createIdempotencyKey?: () => string;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
+  onSelectRelated?: (id: string) => void;
   onRefreshEvidence?: () => Promise<CatalogReviewItemResponse["item"]>;
   embedded?: boolean;
   onLeaveGuardChange?: (guard: (() => boolean) | null) => void;
@@ -58,7 +59,8 @@ const resolutionCopy: Record<ResolutionType, { label: string; description: strin
   "register-subject": { label: "登记主体", description: "将已识别的目录主体登记到组织模块，供后续配置使用。", result: "主体将登记到所选模块，并关联当前有效定义。" },
   "restore-registration": { label: "恢复登记", description: "恢复此来源对应的已退役登记，沿用原有归属。", result: "所选登记将恢复使用，保留原有模块归属。" },
   "open-definition-proposal": { label: "记录定义修订意向", description: "记录需要补充或修改定义的需求，之后前往定义目录编写和发布。", result: "仅记录修订意向；参数定义需在定义目录继续编写、审核和发布。" },
-  "mark-out-of-scope": { label: "标为范围外", description: "确认此来源无需纳入本次参数目录管理，将其移出待处理队列。", result: "此事项将标为范围外，保留识别证据和处理记录。" }
+  "mark-out-of-scope": { label: "标为范围外", description: "确认此来源无需纳入本次参数目录管理，将其移出待处理队列。", result: "此事项将标为范围外，保留识别证据和处理记录。" },
+  "reopen-out-of-scope": { label: "重新提请复核", description: "根据当前组织的来源证据，重新提请审核原范围外事项。", result: "将创建一条关联的待处理事项，并保留原结论和更正原因。" }
 };
 
 function availableSubjects(item: ReviewItem, subjects: CatalogSubjectListResponse["items"]) {
@@ -95,6 +97,7 @@ export function ReviewResolutionDialog({
   createIdempotencyKey,
   onOpenChange,
   onCompleted,
+  onSelectRelated,
   onRefreshEvidence,
   embedded = false,
   onLeaveGuardChange
@@ -102,7 +105,8 @@ export function ReviewResolutionDialog({
   const generatedId = useId();
   const itemState = reviewItemGovernanceState(item, domainState);
   const stale = itemState.kind === "conflict" || item.catalogReleaseId !== catalogReleaseId;
-  const allowed = item.status === "open" && !stale && canExecuteGovernanceAction(actor, "resolve-review-item", domainState);
+  const canReopen = item.status === "out-of-scope" && item.allowedResolutions.includes("reopen-out-of-scope");
+  const allowed = (item.status === "open" || canReopen) && !stale && canExecuteGovernanceAction(actor, "resolve-review-item", domainState);
   const gateRef = useRef<GovernanceSubmitGate>(createGovernanceSubmitGate());
   const wasOpen = useRef(false);
   const allowedResolutions = item.allowedResolutions;
@@ -265,7 +269,7 @@ export function ReviewResolutionDialog({
   const automaticCheck = useRef(refreshEvidence);
   useEffect(() => { automaticCheck.current = refreshEvidence; });
   useEffect(() => {
-    if (!open || !hasEvidenceRefresh) return;
+    if (!open || !hasEvidenceRefresh || (item.status !== "open" && !canReopen)) return;
     void automaticCheck.current();
     const recheck = () => {
       if (document.visibilityState === "visible") void automaticCheck.current();
@@ -278,7 +282,7 @@ export function ReviewResolutionDialog({
       window.removeEventListener("focus", recheck);
       document.removeEventListener("visibilitychange", recheck);
     };
-  }, [open, item.id, hasEvidenceRefresh]);
+  }, [open, item.id, item.status, hasEvidenceRefresh, canReopen]);
 
   const buildBody = (): CatalogResolveReviewItemRequest => {
     if (resolutionType === "register-subject") {
@@ -298,10 +302,7 @@ export function ReviewResolutionDialog({
         reason: reason.trim()
       };
     }
-    if (resolutionType === "open-definition-proposal") {
-      return { resolution: { type: "open-definition-proposal" }, reason: reason.trim() };
-    }
-    return { resolution: { type: "mark-out-of-scope" }, reason: reason.trim() };
+    return { resolution: { type: resolutionType }, reason: reason.trim() };
   };
 
   const submit = async () => {
@@ -348,7 +349,7 @@ export function ReviewResolutionDialog({
   const source = sources[0];
   const sourceTitle = source?.compatible ?? source?.propertyKey ?? item.observation?.propertyKey ?? source?.fileName ?? reviewReasonLabels[item.reason];
   const hasAuthority = catalogActionsForActor(actor).includes("resolve-review-item");
-  const stateNotice = item.status !== "open" ? "此审核项已处理，不能重复提交。" :
+  const stateNotice = item.status !== "open" && !canReopen ? "此审核项已处理。" :
     stale ? undefined : domainState.kind === "loading" ? "正在读取目录和审核依据，输入已保留，请稍候。" :
       !hasAuthority ? "当前身份仅可阅读；处理审核需要组织管理员权限。" :
         !allowed ? "当前目录状态暂不支持处理审核。返回页面时会自动核对最新状态。" : undefined;
@@ -383,19 +384,28 @@ export function ReviewResolutionDialog({
             {item.candidates.length ? <details><summary>查看 {item.candidates.length} 个候选及识别依据</summary><ul className="review-resolution__evidence">{item.candidates.map((candidate, index) => <li key={candidate.subjectId}><strong>{subjects.find((entry) => entry.id === candidate.subjectId)?.canonicalName ?? candidate.canonicalName ?? `候选主体 ${index + 1}`}</strong><span>{candidate.evidence.length ? candidate.evidence.map((entry) => entry === "compatible" ? "兼容标识匹配" : entry).join("；") : "未提供额外匹配依据"}</span></li>)}</ul></details> : <p className="review-resolution__hint">尚无可验证的目录主体候选。可记录修订意向，或在确认无需纳管后标为范围外。</p>}
             <details className="review-resolution__technical"><summary>审核追溯信息</summary><dl className="review-resolution__facts"><div><dt>审核编号</dt><dd><code>{item.id}</code></dd></div>{item.observation?.id ? <div><dt>观测编号</dt><dd><code>{item.observation.id}</code></dd></div> : null}<div><dt>目录发布</dt><dd><code>{item.catalogReleaseId}</code></dd></div></dl></details>
           </section>
+          {item.decision || item.reopenedFrom ? <section className="review-resolution__source" aria-label="审核记录">
+            {item.decision ? <p>结论：{resolutionCopy[item.decision.type].label}{item.decision.reason ? ` · ${item.decision.reason}` : ""}</p> : null}
+            {item.reopenedFrom ? <>
+              <p>重新提请原因：{item.reopenedFrom.reason}</p>
+              {onSelectRelated ? <Button variant="outline" type="button" onClick={() => { if (guardLeave()) onSelectRelated(item.reopenedFrom!.id); }}>查看原审核事项</Button> : null}
+            </> : null}
+            {item.reopenedReviewItemId && !receipt && onSelectRelated ? <Button variant="outline" type="button" onClick={() => { if (guardLeave()) onSelectRelated(item.reopenedReviewItemId!); }}>查看关联复核事项</Button> : null}
+          </section> : null}
           {receipt ? <section className="review-resolution__receipt" aria-label="审核处理回执">
-            <h3 role="status">{receipt.proposalId ? "定义修订意向已记录，尚未发布。" : resolutionType === "mark-out-of-scope" ? "已标为范围外" : resolutionType === "restore-registration" ? "登记已恢复" : "主体已登记"}</h3>
+            <h3 role="status">{receipt.reopenedReviewItemId ? "已重新提请复核" : receipt.proposalId ? "定义修订意向已记录，尚未发布。" : resolutionType === "mark-out-of-scope" ? "已标为范围外" : resolutionType === "restore-registration" ? "登记已恢复" : "主体已登记"}</h3>
             <p>来源：{sourceTitle}{sources.length > 1 ? `（共 ${sources.length} 个来源）` : ""}</p><p>{impact}</p>
             {receipt.registration ? <p>主体：{affectedTarget}；目标模块：{targetModule?.displayName ?? receipt.registration.placement.displayName}。</p> : null}
             <p className="parameter-text-content">处理原因：{reason.trim()}</p><p>此次处理不更改项目参数值或源文件。可返回审核列表查看处理记录。</p>
             <div><Button asChild variant="outline" size="sm"><a href={withOrganizationScope(`/audit?kind=parameter-catalog-governance&targetId=${encodeURIComponent(item.id)}`, organizationId)} target="_blank" rel="noreferrer">查看处理记录</a></Button></div>
+            {receipt.reopenedReviewItemId && onSelectRelated ? <Button variant="outline" type="button" onClick={() => onSelectRelated(receipt.reopenedReviewItemId!)}>查看关联复核事项</Button> : null}
             {receipt.proposalId ? <>
               <p>{definitionSubjectId ? "本次处理没有修改当前定义。请在定义目录选择目标定义，通过编辑和发布流程继续。" : "尚无唯一匹配主体。请前往参数定义管理准备主体与定义，再按编写和发布流程继续。"}</p>
               {onContinueDefinition ? <Button type="button" onClick={() => onContinueDefinition({ proposalId: receipt.proposalId!, propertyKey: item.observation?.propertyKey, subjectId: definitionSubjectId })}>{definitionSubjectId ? "前往定义目录继续编辑" : "前往参数定义管理"}</Button> : <Button asChild variant="outline"><a href="/parameter-admin/specs">{definitionSubjectId ? "前往定义目录继续编辑" : "前往参数定义管理"}</a></Button>}
             </> : null}
           </section> : <>
             {stateNotice ? <p role="status" className="review-resolution__notice">{stateNotice}</p> : null}
-            {item.status === "open" && hasAuthority ? <>
+            {(item.status === "open" || canReopen) && hasAuthority ? <>
               <fieldset className="review-resolution__choices" disabled={busy || !allowed}>
                 <legend>处理方式</legend>
                 {allowedResolutions.map((resolution) => {

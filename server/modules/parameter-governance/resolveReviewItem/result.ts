@@ -18,7 +18,7 @@ export type ReviewResolutionResult = {
   readonly outcome: "committed" | "replayed";
   readonly reviewItemId: ReviewItemId;
   readonly resolutionId: ReviewResolutionId;
-  readonly resolutionType: ReviewResolutionType;
+  readonly resolutionType: ReviewResolutionType | "reopen-out-of-scope";
   readonly organizationId: string;
   readonly status: Extract<ReviewItemStatus, "resolved" | "out-of-scope">;
   readonly etag: ReviewItemEtag;
@@ -31,4 +31,5 @@ export type ReviewResolutionResult = {
   readonly placementId?: SubjectPlacementId;
   readonly subjectId?: CatalogSubjectId;
   readonly proposalId?: DefinitionProposalId;
+  readonly reopenedReviewItemId?: ReviewItemId;
 };

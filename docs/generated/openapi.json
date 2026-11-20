@@ -14785,6 +14785,17 @@
             }
           },
           {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "out-of-scope"
+              ]
+            }
+          },
+          {
             "name": "organizationId",
             "in": "query",
             "required": false,
@@ -14920,7 +14931,7 @@
     "/api/v2/organizations/{organizationId}/parameter-review-items/{reviewItemId}/resolve": {
       "post": {
         "operationId": "catalog.resolveReviewItem",
-        "summary": "Resolve one review item with an explicit placement or closed outcome",
+        "summary": "Resolve a review item or reopen an out-of-scope decision",
         "tags": [
           "catalog"
         ],
@@ -91028,6 +91039,25 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "mappingCorrections": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "targetId": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "targetId",
+                "revision"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -93069,6 +93099,33 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "history": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "moduleId": {
+                        "type": "string"
+                      },
+                      "revision": {
+                        "type": "number"
+                      },
+                      "recordedAt": {
+                        "type": "string"
+                      },
+                      "available": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "moduleId",
+                      "revision",
+                      "recordedAt",
+                      "available"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
@@ -93605,6 +93662,25 @@
             "type": "object",
             "additionalProperties": {
               "type": "string"
+            }
+          },
+          "mappingCorrections": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "targetId": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "targetId",
+                "revision"
+              ],
+              "additionalProperties": false
             }
           },
           "token": {
@@ -94388,14 +94464,72 @@
                 "allowedResolutions": {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "enum": [
-                      "register-subject",
-                      "restore-registration",
-                      "mark-out-of-scope",
-                      "open-definition-proposal"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "register-subject",
+                          "restore-registration",
+                          "mark-out-of-scope",
+                          "open-definition-proposal"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "reopen-out-of-scope"
+                        ]
+                      }
                     ]
                   }
+                },
+                "decision": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "register-subject",
+                        "restore-registration",
+                        "mark-out-of-scope",
+                        "open-definition-proposal"
+                      ]
+                    },
+                    "reason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                },
+                "reopenedFrom": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                },
+                "reopenedReviewItemId": {
+                  "type": "string"
                 },
                 "candidateState": {
                   "anyOf": [
@@ -94772,14 +94906,72 @@
               "allowedResolutions": {
                 "type": "array",
                 "items": {
-                  "type": "string",
-                  "enum": [
-                    "register-subject",
-                    "restore-registration",
-                    "mark-out-of-scope",
-                    "open-definition-proposal"
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "register-subject",
+                        "restore-registration",
+                        "mark-out-of-scope",
+                        "open-definition-proposal"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "enum": [
+                        "reopen-out-of-scope"
+                      ]
+                    }
                   ]
                 }
+              },
+              "decision": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "register-subject",
+                      "restore-registration",
+                      "mark-out-of-scope",
+                      "open-definition-proposal"
+                    ]
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
+              "reopenedFrom": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
+              "reopenedReviewItemId": {
+                "type": "string"
               },
               "candidateState": {
                 "anyOf": [
@@ -95008,6 +95200,21 @@
                   "type"
                 ],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "reopen-out-of-scope"
+                    ]
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": false
               }
             ]
           },
@@ -95101,6 +95308,9 @@
                 "additionalProperties": false
               },
               "proposalId": {
+                "type": "string"
+              },
+              "reopenedReviewItemId": {
                 "type": "string"
               },
               "catalogReleaseId": {

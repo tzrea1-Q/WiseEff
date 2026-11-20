@@ -62,7 +62,8 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
   }
   if (document.subjects.length + (document.newDrivers?.length ?? 0) > 10_000)
     throw new ApiError("VALIDATION_FAILED", "已有主体与新增驱动合计不能超过 10000 条。", { path: "document.newDrivers" });
-  if (Object.keys(parsed.data.mappings).length) throw new ApiError("VALIDATION_FAILED", "Mappings are only valid in copy mode.");
+  if (Object.keys(parsed.data.mappings).length || Object.keys(parsed.data.mappingCorrections ?? {}).length)
+    throw new ApiError("VALIDATION_FAILED", "Mappings are only valid in copy mode.");
   if (document.source.organizationId !== organizationId) throw new ApiError("FORBIDDEN", "The package is not from this organization.");
   const result = await client.query<{ document: z.infer<typeof moduleStructureExportSchema> }>(
     "select document from parameter_catalog.module_structure_export_baselines where organization_id=$1 and export_id=$2", [organizationId, document.source.exportId]);

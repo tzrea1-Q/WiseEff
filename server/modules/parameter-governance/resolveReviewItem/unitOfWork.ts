@@ -6,7 +6,6 @@ import pg from "pg";
 import {
   CatalogSubjectId,
   DefinitionProposalId,
-  ReviewItemEtag,
   ReviewItemId,
   ReviewResolutionId,
   SubjectPlacementId,
@@ -16,7 +15,7 @@ import {
   type ReviewReason,
   type ReviewResolutionType,
 } from "../../parameter-catalog-contract/index";
-import { fingerprintCanonical } from "../review/fingerprint";
+import { fingerprintResolvedItem } from "../review/fingerprint";
 import type {
   ReviewEvidenceRecord,
   StoredReviewEvidenceBody,
@@ -189,11 +188,12 @@ export const commitIdempotency = async (
   client: ReviewResolutionWriterClient,
   command: ResolveReviewItemCommand,
   resultRef: string,
+  resultKind = "review-resolution",
 ): Promise<void> => {
   await client.query(
     `update parameter_catalog.governance_command_idempotency
         set state = 'committed',
-            result_kind = 'review-resolution',
+            result_kind = $5,
             result_ref = $4,
             committed_at = now()
       where organization_id = $1
@@ -205,6 +205,7 @@ export const commitIdempotency = async (
       reviewResolutionCommandFamily,
       command.idempotencyKey,
       resultRef,
+      resultKind,
     ],
   );
 };
@@ -328,30 +329,6 @@ export const reviewEvidenceSourceIsOwned = async (
   };
   return checkSource(evidencePayload);
 };
-
-export const fingerprintResolvedItem = (input: {
-  readonly id: string;
-  readonly etagVersion: number;
-  readonly status: "resolved" | "out-of-scope";
-  readonly groupingFingerprint: string;
-  readonly catalogReleaseId: string;
-  readonly matcherRevision: string;
-  readonly reason: ReviewReason;
-  readonly resolutionId: string;
-}): ReviewItemEtag =>
-  ReviewItemEtag(
-    fingerprintCanonical({
-      kind: "review-resolution-etag",
-      id: input.id,
-      etagVersion: input.etagVersion,
-      status: input.status,
-      groupingFingerprint: input.groupingFingerprint,
-      catalogReleaseId: input.catalogReleaseId,
-      matcherRevision: input.matcherRevision,
-      reason: input.reason,
-      resolutionId: input.resolutionId,
-    }),
-  );
 
 export const insertSuccessAudit = async (
   client: ReviewResolutionWriterClient,

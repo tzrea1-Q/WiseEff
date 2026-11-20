@@ -94,7 +94,8 @@ export type ResolveReviewItemCommand =
   | RegisterSubjectResolutionCommand
   | RestoreRegistrationResolutionCommand
   | MarkOutOfScopeResolutionCommand
-  | OpenDefinitionProposalResolutionCommand;
+  | OpenDefinitionProposalResolutionCommand
+  | (ResolveReviewItemCommandBase & { readonly resolution: "reopen-out-of-scope"; readonly correctionReason: string });
 
 const controlFree = (value: string): boolean =>
   value.length > 0 && value.trim() === value && !/[\u0000-\u001F\u007F-\u009F]/u.test(value);
@@ -118,11 +119,12 @@ const reviewReasons = new Set<ReviewReason>([
   "retired-registration-observed",
 ]);
 
-const reviewResolutions = new Set<ReviewResolutionType>([
+const reviewResolutions = new Set<ReviewResolutionType | "reopen-out-of-scope">([
   "register-subject",
   "restore-registration",
   "mark-out-of-scope",
   "open-definition-proposal",
+  "reopen-out-of-scope",
 ]);
 
 const hasForbiddenRegistrationPayload = (command: ResolveReviewItemCommand): boolean =>
@@ -208,6 +210,11 @@ export const validateResolveReviewItemCommand = (
     if (!controlFree(command.outOfScopeReason)) return invalid("outOfScopeReason");
     return { ok: true, value: command };
   }
+  if (command.resolution === "reopen-out-of-scope") {
+    if (!command.invocation || !command.requestId) return permissionDenied(context.actorKind);
+    if (!controlFree(command.correctionReason) || [...command.correctionReason].length > 1000) return invalid("correctionReason");
+    return { ok: true, value: command };
+  }
 
   if (!controlFree(command.proposal.reason)) return invalid("proposal.reason");
   return { ok: true, value: command };
@@ -285,6 +292,16 @@ const commandFingerprintModel = (command: ResolveReviewItemCommand): ContractJso
           reason: command.proposal.reason,
           payload: command.proposal.payload ?? {},
         },
+      };
+    case "reopen-out-of-scope":
+      return {
+        organizationId: command.organizationId,
+        reviewItemId: command.reviewItemId,
+        expectedRelease: release,
+        etag: command.etag,
+        context: actor,
+        resolution: command.resolution,
+        correctionReason: command.correctionReason,
       };
   }
 };

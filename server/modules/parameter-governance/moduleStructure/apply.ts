@@ -46,17 +46,18 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     // FK writers take key-share locks; wait for them before reading deletion impact and block new references until commit.
     if (input.mode === "update" && input.document.modules.some(module => module.operation === "delete")) await client.query(
       "select id from parameter_modules where organization_id=$1 order by id for update", [organizationId]);
-    const plan = await planModuleStructure(client, organizationId, invocation, { mode: input.mode, document: input.document, resolutions: input.resolutions, mappings: input.mappings });
+    const plan = await planModuleStructure(client, organizationId, invocation, { mode: input.mode, document: input.document,
+      resolutions: input.resolutions, mappings: input.mappings, ...(input.mappingCorrections ? { mappingCorrections: input.mappingCorrections } : {}) });
     if (plan.driverCreation && !["ready", "applied"].includes(plan.driverCreation.phase))
       throw new ApiError("CONFLICT", "新增驱动尚未完成发布；请先发布驱动，完成后重新预览并确认模块与登记。", { reason: "driver-publication-required" });
     if (plan.token !== input.token) throw new ApiError("CONFLICT", "Preview is stale; review the current state again.");
     if (plan.conflicts.length) throw new ApiError("CONFLICT", "Resolve all conflicts before applying.");
     for (const mapping of plan.copyMappings) await client.query(`insert into parameter_catalog.module_structure_created_refs
-      (organization_id,source_organization_id,export_id,package_ref,module_id,initial_snapshot) values ($1,$2,$3,$4,$5,$6)`,
-      [organizationId, input.document.source.organizationId, input.document.source.exportId, mapping.ref, mapping.moduleId, JSON.stringify(mapping.snapshot)]);
+      (organization_id,source_organization_id,export_id,package_ref,module_id,initial_snapshot,revision) values ($1,$2,$3,$4,$5,$6,$7)`,
+      [organizationId, input.document.source.organizationId, input.document.source.exportId, mapping.ref, mapping.moduleId, JSON.stringify(mapping.snapshot), mapping.revision]);
     const createdRefs = new Set(plan.changes.filter(change => change.field === "create").map(change => change.moduleId));
     const changes = new Map<string, Record<string, unknown>>();
-    for (const change of plan.changes) if (!change.moduleId.startsWith("subject:") && !createdRefs.has(change.moduleId) && !["parentRef", "delete", "legacyImpact"].includes(change.field)) changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
+    for (const change of plan.changes) if (!change.moduleId.startsWith("subject:") && !createdRefs.has(change.moduleId) && !["mapping", "parentRef", "delete", "legacyImpact"].includes(change.field)) changes.set(change.moduleId, { ...changes.get(change.moduleId), [change.field]: change.after });
     // Temporary names make valid swaps safe under the immediate sibling-name index.
     const structural = new Set(plan.changes.filter(change => !createdRefs.has(change.moduleId) && (change.field === "name" || change.field === "parentRef")).map(change => change.moduleId));
     for (const moduleId of new Set([...structural, ...plan.deleted])) await client.query(
@@ -114,7 +115,7 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
     await applyRecognition(client as unknown as Database, organizationId, plan.currentCatalogReleaseId, invocation, requestId, input.idempotencyKey, [...plan.recognitionChanges, ...copiedRecognition]);
     const deletions = await client.query<{ id: string }>("select id from parameter_modules where organization_id=$1 and id=any($2::text[]) order by depth desc,id", [organizationId, [...plan.deleted]]);
     for (const row of deletions.rows) await deleteParameterModule(client as unknown as Queryable, { organizationId, moduleId: row.id });
-    const changedModules = new Set(plan.changes.filter(change => !change.moduleId.startsWith("subject:")).map(change => change.moduleId)).size;
+    const changedModules = new Set(plan.changes.filter(change => change.field !== "mapping" && !change.moduleId.startsWith("subject:")).map(change => change.moduleId)).size;
     const receipt = { id: `msr_${randomUUID()}`, organizationId, changedModules, changedFields: plan.changes.length + plan.recognitionChanges.length };
     if (plan.driverCreation?.phase === "ready") await client.query(`update parameter_catalog.module_structure_driver_publications
       set applied_receipt=$4 where organization_id=$1 and export_id=$2 and declarations_digest=$3 and applied_receipt is null`,
@@ -123,7 +124,9 @@ export async function applyModuleStructure(pool: pg.Pool, organizationId: string
       action: "module-structure-update", severity: "Medium", projectId: null, targetType: "organization", targetId: organizationId,
       metadata: { receiptId: receipt.id, reason: input.reason, exportId: input.document.source.exportId,
         sourceOrganizationId: input.document.source.organizationId, catalogReleaseId: plan.currentCatalogReleaseId,
-        changedModules: receipt.changedModules, changedFields: receipt.changedFields } });
+        changedModules: receipt.changedModules, changedFields: receipt.changedFields,
+        mappingCorrections: plan.changes.filter(change => change.field === "mapping").map(change =>
+          ({ sourceRef: change.moduleId, previousTargetId: change.before, targetId: change.after })) } });
     await client.query(`update parameter_catalog.governance_command_idempotency set state='committed',result_kind='module-structure-receipt',result_ref=$3,committed_at=now()
       where organization_id=$1 and command_family='module-structure-update' and idempotency_key=$2`, [organizationId, input.idempotencyKey, JSON.stringify(receipt)]);
     await client.query("commit"); return receipt;

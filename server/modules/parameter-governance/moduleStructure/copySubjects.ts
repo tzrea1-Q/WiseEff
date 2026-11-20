@@ -68,7 +68,7 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
       throw new ApiError("CONFLICT", "The selected owner driver is unavailable.", { path: `subjects.${index}.ownerSubjectId` });
     if (subject.cascadeRetired && (subject.state !== "retired" || !subject.ownerSubjectId))
       throw new ApiError("CONFLICT", "Invalid cascade-retirement snapshot.", { path: `subjects.${index}.cascadeRetired` });
-    if (subject.ownerSubjectId ? subject.placement !== null || subject.displayAlias !== null : !subject.placement || subject.placement.kind === "reference")
+    if (subject.ownerSubjectId ? subject.placement !== null : !subject.placement || subject.placement.kind === "reference")
       throw new ApiError("CONFLICT", "Subject placement is incompatible with its ownership.", { path: `subjects.${index}.placement` });
     if (subject.displayAlias !== null && (!subject.displayAlias.trim() || subject.displayAlias !== subject.displayAlias.trim() || [...subject.displayAlias].length > 128 || /[\u0000-\u001f\u007f-\u009f]/u.test(subject.displayAlias)))
       throw new ApiError("VALIDATION_FAILED", "Invalid display alias.", { path: `subjects.${index}.displayAlias` });
@@ -106,8 +106,8 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
         if (!choice) { conflicts.push({ key, moduleId: `subject:${subject.subjectId}`, field, baseline: null, file, current: target[field] }); continue; }
         if (choice === "current") continue;
         if (field === "cascadeRetired" || (subject.ownerSubjectId && field === "state")) continue;
-        if (subject.ownerSubjectId && (field === "placement" || field === "displayAlias"))
-          throw new ApiError("CONFLICT", "Owned Subject placement and alias cannot be changed independently.");
+        if (subject.ownerSubjectId && field === "placement")
+          throw new ApiError("CONFLICT", "Owned Subject placement cannot be changed independently.");
         if (field === "state") {
           const row = (await client.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, subject.subjectId])).rows[0]!;
           lifecycle.push({ subjectId: subject.subjectId, operation: subject.state === "active" ? "restore" : "retire", registrationId: row.id, kind: catalog.kind });
@@ -161,10 +161,10 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
     if (correctedDriver) changes.push({ moduleId: `subject:${subject.subjectId}`, field: "kind", before: catalog.kind, after: subject.kind });
     changes.push({ moduleId: `subject:${subject.subjectId}`, field: "state", before: null, after: subject.state });
     changes.push({ moduleId: `subject:${subject.subjectId}`, field: "cascadeRetired", before: null, after: subject.cascadeRetired });
-    if (!subject.ownerSubjectId) {
+    if (!subject.ownerSubjectId)
       changes.push({ moduleId: `subject:${subject.subjectId}`, field: "placement", before: null, after: subject.placement });
+    if (!subject.ownerSubjectId || subject.displayAlias !== null)
       changes.push({ moduleId: `subject:${subject.subjectId}`, field: "displayAlias", before: null, after: subject.displayAlias });
-    }
     if (previewRecognition) changes.push({ moduleId: `subject:${subject.subjectId}`, field: "recognition", before: null, after: previewRecognition });
   }
   const selectedSubjects = subjects.map(subject => {
