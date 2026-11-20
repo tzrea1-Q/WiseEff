@@ -93,7 +93,7 @@ export function IntegrationCredentials({ skill, repository, apiMode, canEdit, ca
             { key: "status", header: "状态", widthClass: "w-20", className: "px-2", render: (item) => <Badge variant="outline" className={item.status === "active" ? "text-[var(--success)] bg-[var(--success-soft)]" : "text-muted-foreground bg-muted"}>{item.status === "active" ? "有效" : "已撤销"}</Badge> },
             { key: "used", header: "最近使用", widthClass: "w-36", className: "px-2 whitespace-nowrap", render: (item) => item.lastUsedAt ? <time title={formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(item.lastUsedAt).slice(0, 16).replaceAll("-", "/")}</time> : "尚未使用" },
             { key: "actions", header: "操作", widthClass: "w-24", className: "px-2", render: (item) => {
-              const lifecycleActions = supported && item.status === "active" ? (["rotate", "revoke"] as const).map((kind) => ({ id: kind, label: kind === "rotate" ? "轮换" : "撤销", destructive: true, disabled,
+              const lifecycleActions = supported && item.status === "active" ? (["rotate", "revoke"] as const).map((kind) => ({ id: kind, label: kind === "rotate" ? "轮换" : "撤销", destructive: true as const, disabled,
                 onRequestConfirmation: () => { setError(""); setAction({ kind, item }); } })) : [];
               const renameActions = repository.renameIntegrationCredential ? [{ id: "rename", label: "更正名称", disabled, onSelect: () => {
                 setError(""); setName(item.name); setAction({ kind: "rename", item });
