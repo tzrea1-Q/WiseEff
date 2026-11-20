@@ -131,6 +131,8 @@ describe("fresh database fixture policy", () => {
       "server/modules/logs/webhookMigration.acl.integration.test.ts": ["whacl:false"],
       "server/modules/parameter-bindings/binding/propertyDeleteMigration.integration.test.ts": ["deleteupgrade:false"],
       "server/modules/parameter-bindings/binding/sourceOccurrenceMigration.integration.test.ts": ["src_occ_0151:false"],
+      // Seed the published Catalog before replaying the subject-identity migration.
+      "server/modules/parameter-catalog-api/publication/subjectIdentity.integration.test.ts": ["identity1577:false"],
       "server/modules/parameter-catalog-migration/sourceOccurrenceGuard.integration.test.ts": ["srcintegrityupgrade:false"],
       "server/modules/parameter-files/canonicalJsonSource.integration.test.ts": ["json_digest_upgrade:false"],
       "server/modules/parameter-files/memberAdditionIntentUpgrade.integration.test.ts": ["intentupgrade:false"],
