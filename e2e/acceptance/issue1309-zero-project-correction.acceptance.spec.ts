@@ -151,6 +151,7 @@ for (const choice of ["target", "source"] as const) {
       await resume.click();
       await expect(result).toContainText(choice === "source" ? "已保留来源值" : "已保留目标值");
       expect(await bindings()).toMatchObject([{ id: target.id, effectiveValue: { groups: [[{ value: choice === "source" ? "5" : "7" }]] } }]);
+      await expect(page.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "ready");
       await catalogScreenshot(page, testInfo, `issue1579-${choice}-completed`);
     } finally { await db.close(); }
   });

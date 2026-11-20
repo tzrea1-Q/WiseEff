@@ -1192,7 +1192,7 @@ export function DefinitionEditorBody({
                   <tr>
                     <th scope="col">项目</th>
                     <th scope="col">状态</th>
-                    <th scope="col">阻止原因</th>
+                    <th scope="col">说明</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1203,7 +1203,9 @@ export function DefinitionEditorBody({
                       <td>{project.projectName}</td>
                       <td>{projectStatusLabel[project.status]}</td>
                       <td>
-                        {replacementBlockerLabel(project.blockerReason)}
+                        {conflict && project.status === "completed"
+                          ? (conflict.choice === "source" ? "已保留来源值" : "已保留目标值")
+                          : replacementBlockerLabel(project.blockerReason)}
                         {conflict && isMergeSourcePending(project.blockerReason) ? <p>
                           {changeTarget ? <>在目标绑定中写入 <code>{JSON.stringify(conflict.sourceValue)}</code>。审核生效后返回继续。</>
                             : <>在来源绑定中移除旧属性。审核生效后返回继续。</>}{" "}
@@ -1213,7 +1215,6 @@ export function DefinitionEditorBody({
                             definitionId: changeTarget ? replacement.newIdentity.definitionId : replacement.oldIdentity.definitionId,
                           })}`}>{changeTarget ? "打开目标绑定" : "打开来源绑定"}</a>
                         </p> : null}
-                        {conflict && project.status === "completed" ? (conflict.choice === "source" ? "已保留来源值" : "已保留目标值") : null}
                       </td>
                     </tr>;
                   })}
