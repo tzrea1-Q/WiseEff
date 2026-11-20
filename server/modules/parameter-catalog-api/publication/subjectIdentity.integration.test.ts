@@ -9,7 +9,6 @@ import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/dat
 import { makeTestAuthContext } from "../../../testing/authContext";
 import { seedPublishedCatalog } from "../../../testing/parameterCatalog/seedPublishedCatalog";
 import { applyMigrations, migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
-import { permissionsForRoles } from "../../auth/policy";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
@@ -75,8 +74,11 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
       const manager = createPostgresDatabase(runtime.managerUrl);
       const pool = getRootPostgresPool(api)!;
       const managerPool = getRootPostgresPool(manager)!;
-      const scopeFor = (principalId: string, role: "platform-admin" | "admin", org = organizationId): TrustedPublicationScope => {
-        const auth = makeTestAuthContext({ userId: principalId, organizationId: org, roleId: role, permissions: permissionsForRoles([role]) });
+      const scopeFor = (principalId: string, role: "platform-admin" | "admin", org = organizationId, alsoOrgAdmin = false): TrustedPublicationScope => {
+        const auth = makeTestAuthContext({ userId: principalId, organizationId: org, roles: [
+          { roleId: role, projectId: null },
+          ...(alsoOrgAdmin ? [{ roleId: "admin" as const, projectId: null }] : []),
+        ] });
         return { principalId, organizationId: org, actorKind: role === "admin" ? "org-admin" : role, projectScope: { kind: "all" },
           permissions: auth.permissions, trustedActor: createUserInvocation(auth) };
       };
@@ -133,7 +135,7 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
           context: { actorKind: "platform-admin", principalId: author.principalId },
         });
         expect(result.ok, JSON.stringify(result)).toBe(true);
-        const editor = makeTestAuthContext({ organizationId, userId: orgAdmin.principalId, roleId: "admin", permissions: permissionsForRoles(["admin"]) });
+        const editor = makeTestAuthContext({ organizationId, userId: orgAdmin.principalId, roleId: "admin" });
         const configSet = await createConfigSet(api, editor, { projectId, name: "Huawei DTS" });
         const fileName = "charger.dts";
         const dts = '/dts-v1/; / { charger { compatible = "huawei,direct_charger"; use_5A = <1 0>; }; };';
@@ -176,6 +178,9 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         scope = author;
         const add = await preview(alias);
         expect(add).toMatchObject({ status: 201, body: { item: { riskClass: "high", impactSummary: { subjectIdentity: { change: alias } } } } });
+        expect(await publish(candidateId(add.body), "alias-publication")).toMatchObject({ status: 403,
+          body: { error: { details: { reason: "publication-self-approval-forbidden" } } } });
+        scope = scopeFor("identity-author", "platform-admin", organizationId, true);
         expect(await publish(candidateId(add.body), "alias-publication")).toMatchObject({ status: 403,
           body: { error: { details: { reason: "publication-self-approval-forbidden" } } } });
         scope = orgAdmin;

@@ -221,9 +221,14 @@ const evaluateApprovalGate = (input: {
     return { reason: "publication-capability-missing", detail: "actor is inactive" };
   }
   const actor = assertTrustedInvocationContext(input.actor);
-  if (input.requiresPlatformAdmin && (actor.initiator !== "user" ||
-    !actor.principal.roles.some(role => role.roleId === "platform-admin"))) {
-    return { reason: "publication-capability-missing", detail: "shared identity corrections require a platform administrator" };
+  if (input.requiresPlatformAdmin) {
+    if (actor.initiator !== "user" ||
+      !actor.principal.roles.some(role => role.roleId === "platform-admin")) {
+      return { reason: "publication-capability-missing", detail: "shared identity corrections require a platform administrator" };
+    }
+    if (actorId === input.authorPrincipalId) {
+      return { reason: "publication-self-approval-forbidden" };
+    }
   }
 
   if (input.riskClass === "high") {
