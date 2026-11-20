@@ -13,6 +13,7 @@ import { permissionsForRoles } from "../../auth/policy";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
+import { connect } from "../../catalog-kernel/install/publicationTestHarness";
 import { enablePublicationPolicy } from "../../catalog-publication/authorization/testHarness";
 import { encodeBundleBytes, parseBundleBytes } from "../../catalog-publication/builder/bundleCodec";
 import { runPublicationManagerOnce } from "../../catalog-publication/jobs/manager";
@@ -29,7 +30,10 @@ import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, syncPublishedCatalogProjectValuesInTransaction } from "../../parameter-bindings/catalogProjectValueSync";
 import { createRegistrationService } from "../../parameter-governance/registration/service";
-import { CATALOG_RELEASE_HEADER } from "../../contracts/dtoSchemas/parameterCatalog";
+import {
+  CATALOG_RELEASE_HEADER, catalogMarkdownImportResponseSchema, catalogPublicationCandidateResponseSchema,
+  catalogPublicationJobResponseSchema,
+} from "../../contracts/dtoSchemas/parameterCatalog";
 import { listenCatalogPublicationHttpServer } from "./http";
 import { bindCatalogPublicationCommands } from "./ports";
 import type { TrustedPublicationScope } from "./types";
@@ -59,9 +63,9 @@ it("upgrades the populated Catalog and publishes versioned identities with exact
         },
       });
       expect(adopt.ok, JSON.stringify(adopt)).toBe(true);
-      const observer = await bootstrap.connect();
+      const observer = await connect(connectionString);
       try { await enablePublicationPolicy(observer, { publicationEnabled: true, lowRiskSingleActorPublish: true }); }
-      finally { observer.release(); }
+      finally { await observer.end(); }
       const token = `id${randomBytes(5).toString("hex")}`;
       const runtime = await provisionPublicationRuntimeLogins(connectionString, { mode: "lab", runToken: token });
       const api = createPostgresDatabase(runtime.apiUrl);
@@ -95,6 +99,9 @@ it("upgrades the populated Catalog and publishes versioned identities with exact
       };
       const preview = (change: unknown) => post("", { changeSet: [change] });
       const publish = (id: string, idempotencyKey: string) => post(`/${id}/publish`, { idempotencyKey });
+      const candidateId = (body: unknown) => catalogPublicationCandidateResponseSchema.parse(body).item.id;
+      const jobId = (body: unknown) => catalogPublicationJobResponseSchema.parse(body).item.id;
+      const importResult = (body: unknown) => catalogMarkdownImportResponseSchema.parse(body).item;
       const importDefinition = (selector: string, selectedSubjectId?: string) => post("", {
         markdownImport: {
           fileName: "charger.md",
@@ -142,7 +149,7 @@ it("upgrades the populated Catalog and publishes versioned identities with exact
             sourceOccurrenceId: binding.sourceOccurrenceId, rawValue: binding.rawValue }));
         const bound = await readBindings();
         expect(bound).toMatchObject([{ definitionId: "pdef_drv_huawei_direct_charger_use_5A" }]);
-        expect((await importDefinition(short)).body.item.entries[0].diagnostics[0].message).toContain("nature 和 cardinality");
+        expect(importResult((await importDefinition(short)).body).entries[0]?.diagnostics[0]?.message).toContain("nature 和 cardinality");
         await db.query(`insert into public.registration_recognition_rules
           (organization_id,registration_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
           select organization_id,id,subject_id,array[$3],'physical-device','multiple'
@@ -158,7 +165,7 @@ it("upgrades the populated Catalog and publishes versioned identities with exact
         } } });
         scope = scopeFor("identity-author", "platform-admin", foreignOrganizationId);
         expect(await importDefinition(short, subjectId)).toMatchObject({ status: 200, body: { item: { candidate: null } } });
-        expect((await importDefinition(short)).body.item.entries[0].diagnostics[0].message).toContain("nature 和 cardinality");
+        expect(importResult((await importDefinition(short)).body).entries[0]?.diagnostics[0]?.message).toContain("nature 和 cardinality");
 
         const alias = { op: "set-subject-alias", subjectId, selector: short, active: true };
         scope = orgAdmin;
@@ -166,38 +173,39 @@ it("upgrades the populated Catalog and publishes versioned identities with exact
         scope = author;
         const add = await preview(alias);
         expect(add).toMatchObject({ status: 201, body: { item: { riskClass: "high", impactSummary: { subjectIdentity: { change: alias } } } } });
-        const duplicate = await preview(alias);
-        expect(duplicate.status).toBe(201);
-        expect(await publish(add.body.item.id, "alias-publication")).toMatchObject({ status: 403,
+        expect(await publish(candidateId(add.body), "alias-publication")).toMatchObject({ status: 403,
           body: { error: { details: { reason: "publication-self-approval-forbidden" } } } });
         scope = orgAdmin;
-        expect((await publish(add.body.item.id, "alias-publication")).status).toBe(403);
+        expect((await publish(candidateId(add.body), "alias-publication")).status).toBe(403);
         scope = reviewer;
-        const approved = await publish(add.body.item.id, "alias-publication");
+        const approved = await publish(candidateId(add.body), "alias-publication");
         expect(approved.status, JSON.stringify(approved)).toBe(201);
-        expect(await publish(add.body.item.id, "alias-publication")).toMatchObject({ status: 200, body: { item: { id: approved.body.item.id } } });
+        expect(await publish(candidateId(add.body), "alias-publication")).toMatchObject({ status: 200, body: { item: { id: jobId(approved.body) } } });
         const aliased = await run();
         expect(aliased.id).not.toBe(previous.id);
         releaseId = aliased.id;
-        const stale = await publish(duplicate.body.item.id, "concurrent-alias");
-        expect(stale.status).toBe(201);
-        expect(await run()).toEqual(aliased);
-        const staleJob = await fetch(`${http.baseUrl}/api/v2/catalog/publications/${stale.body.item.id}`);
-        expect(await staleJob.json()).toMatchObject({ item: { status: "needs-rebase" } });
         scope = author;
         expect(await importDefinition(short)).toMatchObject({ status: 201, body: { item: { entries: [{ match: { subjectId, source: "catalog-alias" } }] } } });
 
         const renamed = "huawei,direct-charger";
         const rename = await preview({ op: "rename-subject", subjectId, selector: renamed, keepOldAlias: true });
         expect(rename.status, JSON.stringify(rename)).toBe(201);
+        const competing = await preview({ op: "rename-subject", subjectId, selector: "huawei,direct-charger-alt", keepOldAlias: false });
+        expect(competing.status).toBe(201);
         expect((await preview({ op: "rename-subject", subjectId, selector: short, keepOldAlias: false })).status).toBe(409);
         scope = reviewer;
-        expect((await publish(rename.body.item.id, "rename-publication")).status).toBe(201);
+        expect((await publish(candidateId(rename.body), "rename-publication")).status).toBe(201);
+        const competingJob = await publish(candidateId(competing.body), "concurrent-rename");
+        expect(competingJob.status).toBe(201);
         const current = await run();
         expect(current.id).not.toBe(aliased.id);
         releaseId = current.id;
+        expect(await run()).toEqual(current);
+        const staleJob = await fetch(`${http.baseUrl}/api/v2/catalog/publications/${jobId(competingJob.body)}`);
+        expect(await staleJob.json()).toMatchObject({ item: { status: "needs-rebase" } });
         scope = author;
-        const toImport = await importDefinition(renamed);
+        const toImport = importResult((await importDefinition(renamed)).body).candidate;
+        if (!toImport) throw new Error("Huawei definition import candidate was not created");
         for (const [name, source] of [[primary, "catalog-alias"], [renamed, "catalog-primary"]]) {
           expect(await importDefinition(name!)).toMatchObject({ status: 201, body: { item: {
             candidate: { impactSummary: { addedDefinitionCount: 1, addedSubjectCount: 0 } },
@@ -222,7 +230,7 @@ it("upgrades the populated Catalog and publishes versioned identities with exact
         expect(verified.ok && verified.value.status, JSON.stringify(verified)).toBe("verified");
         expect((await db.query("select subject_id from parameter_catalog.organization_subject_registrations where organization_id=$1", [organizationId])).rows)
           .toEqual([{ subject_id: subjectId }]);
-        expect((await publish(toImport.body.item.candidate.id, "import-huawei-definition")).status).toBe(201);
+        expect((await publish(toImport.id, "import-huawei-definition")).status).toBe(201);
         const imported = await run(author);
         expect(imported.id).not.toBe(current.id);
         releaseId = imported.id;
@@ -242,7 +250,7 @@ it("upgrades the populated Catalog and publishes versioned identities with exact
           const candidate = await preview(change);
           expect(candidate.status, JSON.stringify(candidate)).toBe(201);
           scope = reviewer;
-          expect((await publish(candidate.body.item.id, key)).status).toBe(201);
+          expect((await publish(candidateId(candidate.body), key)).status).toBe(201);
           const installed = await run();
           expect(installed.id).not.toBe(releaseId);
           releaseId = installed.id;
