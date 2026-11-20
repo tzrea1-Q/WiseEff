@@ -632,6 +632,7 @@ export function DefinitionEditorBody({
 
   const continueBlocked = async () => {
     if (!canPublish || !replacement || pending) return;
+    setError("");
     setPending(true);
     const key = (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
     try {
@@ -669,9 +670,7 @@ export function DefinitionEditorBody({
     finally { setPending(false); }
   };
 
-  const blockedCount = replacement
-    ? replacement.projects.filter((project) => project.status === "blocked").length
-    : 0;
+  const canContinue = replacement?.projects.some(project => project.status === "blocked" || project.status === "pending");
 
   return (
     <>
@@ -1141,10 +1140,7 @@ export function DefinitionEditorBody({
                   onValueChange={value => setMergeChoices(current => ({ ...current, [project.projectId]: value as "source" | "target" }))}
                   options={[{ value: "", label: "请选择保留的值", disabled: true },
                     { value: "target", label: "保留目标值" }, { value: "source", label: "保留来源值" }]} />
-                {project.blockerReason === "merge-source-value-cutover-required" ? <p>
-                  <a target="_blank" rel="noreferrer" href={`/parameters?${new URLSearchParams({ project: project.projectId, bindingId: conflict.targetBindingId,
-                    returnTo: `/parameter-admin/specs?${new URLSearchParams({ definitionId: definition.id })}` })}`}>打开目标绑定</a>
-                </p> : null}
+                {isMergeSourcePending(project.blockerReason) ? <p>确认后将保存本次选择。项目来源变更需另行提交审核，审核生效后可继续合并。</p> : null}
               </fieldset>;
             })}
             <div className="dialog-actions definition-editor__dialog-actions">
@@ -1196,17 +1192,32 @@ export function DefinitionEditorBody({
                   <tr>
                     <th scope="col">项目</th>
                     <th scope="col">状态</th>
-                    <th scope="col">阻止原因</th>
+                    <th scope="col">说明</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {replacement.projects.map((project) => (
-                    <tr key={project.projectId}>
+                  {replacement.projects.map((project) => {
+                    const conflict = project.mergeConflict;
+                    const changeTarget = project.blockerReason === "merge-target-value-required";
+                    return <tr key={project.projectId}>
                       <td>{project.projectName}</td>
                       <td>{projectStatusLabel[project.status]}</td>
-                      <td>{replacementBlockerLabel(project.blockerReason)}</td>
-                    </tr>
-                  ))}
+                      <td>
+                        {conflict && project.status === "completed"
+                          ? (conflict.choice === "source" ? "已保留来源值" : "已保留目标值")
+                          : replacementBlockerLabel(project.blockerReason)}
+                        {conflict && isMergeSourcePending(project.blockerReason) ? <p>
+                          {changeTarget ? <>在目标绑定中写入 <code>{JSON.stringify(conflict.sourceValue)}</code>。审核生效后返回继续。</>
+                            : <>在来源绑定中移除旧属性。审核生效后返回继续。</>}{" "}
+                          <a target="_blank" rel="noreferrer" href={`/parameters?${new URLSearchParams({
+                            project: project.projectId, organizationId: replacement.organizationId,
+                            bindingId: changeTarget ? conflict.targetBindingId : project.oldBindingId,
+                            definitionId: changeTarget ? replacement.newIdentity.definitionId : replacement.oldIdentity.definitionId,
+                          })}`}>{changeTarget ? "打开目标绑定" : "打开来源绑定"}</a>
+                        </p> : null}
+                      </td>
+                    </tr>;
+                  })}
                 </tbody>
               </table>
             </div></>}
@@ -1223,7 +1234,7 @@ export function DefinitionEditorBody({
                   关闭
                 </button>
               ) : null}
-              {blockedCount > 0 ? (
+              {canContinue ? (
                 <button
                   type="button"
                   className="button subtle"
@@ -1231,7 +1242,7 @@ export function DefinitionEditorBody({
                   disabled={!canPublish || pending}
                   onClick={() => void continueBlocked()}
                 >
-                  继续处理被阻止的项目
+                  {replacement.projects.some(project => isMergeSourcePending(project.blockerReason)) ? "核对来源变更并继续合并" : "继续处理被阻止的项目"}
                 </button>
               ) : null}
             </div>
@@ -1316,7 +1327,7 @@ export function DefinitionEditorBody({
         description={
           preview
             ? [
-                preview.merge ? `将迁移到已有定义 ${preview.newIdentity.propertyKey}（主体 ${preview.newIdentity.subjectName}）。`
+                preview.merge ? `将确认迁移到已有定义 ${preview.newIdentity.propertyKey}（主体 ${preview.newIdentity.subjectName}）。`
                   : `将发布替代身份 ${preview.newIdentity.propertyKey}（主体 ${preview.newIdentity.subjectName}）。`,
                 preview.impact.selectedProjectCount === 0
                   ? "全平台当前引用为 0，无需迁移项目；发布时将重新检查。"
@@ -1353,12 +1364,19 @@ function failureText(error: unknown): string {
   return `${catalogStateMessage(state) ?? "操作未完成，请稍后重试。"} 当前输入已保留。`;
 }
 
+function isMergeSourcePending(reason: string | null): boolean {
+  return reason === "merge-target-value-required" || reason === "merge-source-removal-required";
+}
+
 function replacementBlockerLabel(reason: string | null): string {
   switch (reason) {
     case "merge-choice-required": return "请选择要保留的值。";
-    case "merge-source-value-cutover-required": return "请先在项目中通过来源变更将目标值改为来源值，然后重新预演。";
-    case "merge-source-occurrence-mismatch": return "两侧绑定的来源实例不同，无法合并。";
+    case "merge-target-value-required": return "等待审核写入目标值";
+    case "merge-source-removal-required": return "等待审核移除来源属性";
+    case "merge-multiple-target-bindings": return "项目存在多个目标绑定，无法确定应保留的绑定。";
     case "merge-unit-mismatch": return "两侧定义的单位不同，需先核对并纠正单位。";
+    case "missing-source-provenance": return "无法确认绑定的来源版本。";
+    case "stale-preview": return "当前来源或取值已变化，请重新预演。";
     default: return reason ?? "—";
   }
 }

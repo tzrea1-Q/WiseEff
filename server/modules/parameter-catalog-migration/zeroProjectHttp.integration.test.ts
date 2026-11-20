@@ -22,8 +22,8 @@ const path = "/api/v2/catalog/definition-replacements";
 describe("#1309 zero-project identity correction through the real API role", () => {
   let harness: MigrationHarness, api: ReturnType<typeof createPostgresDatabase>;
   const token = `zero_correction_${randomUUID().slice(0, 8)}`;
-  const app = (principalId = ADMIN) => createWiseEffServer({ db: api, objectStore: harness.objectStore,
-    auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ organizationId: ORG,
+  const app = (principalId = ADMIN, organizationId = ORG) => createWiseEffServer({ db: api, objectStore: harness.objectStore,
+    auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ organizationId,
       userId: principalId, roles: [{ roleId: "guest", projectId: null }] }) } } });
   const pin = async () => (await captureCurrentCatalogPin(harness.pool))!;
   const post = async (suffix: string, body: unknown, fingerprint?: string, organizationId?: string) => requestJson(app(),
@@ -244,78 +244,150 @@ describe("#1309 zero-project identity correction through the real API role", () 
     } finally { await harness.db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('zero-admin',$1,$2,'admin')", [ADMIN, ORG]); }
   }, 120_000);
 
-  it("merges into an existing definition only after explicit resolution of both pinned values", async () => {
-    const source = await unused("merge_source");
-    const target = await unused("merge_target");
-    const projectId = "merge-project";
-    const organizationId = "org-merge-values";
+  it.each(["target", "source"] as const)("keeps the %s value across distinct reviewed source occurrences", async choice => {
+    const sourceKey = `merge_reviewed_old_${choice}`, targetKey = `merge_reviewed_target_${choice}`;
+    const source = await unused(sourceKey), target = await unused(targetKey);
+    const projectId = `reviewed-merge-${choice}`, organizationId = `org-reviewed-merge-${choice}`;
+    const reviewerId = `reviewed-merge-reviewer-${choice}`;
     await harness.seedOrganization(organizationId);
-    await harness.seedProject(organizationId, projectId, "Merge project");
-    const remainingProjectId = "merge-remaining-project";
-    await harness.seedProject(organizationId, remainingProjectId, "Remaining project");
+    await harness.seedProject(organizationId, projectId, "Reviewed merge");
     const registrationId = await harness.registerSubject({ organizationId, subjectId: PREDECESSOR_SUBJECT_ID,
-      subjectKind: "driver", moduleId: "merge-module" });
-    const fixture = { organizationId, projectId, registrationId, logicalNodeId: "merge-node",
-      sources: [{ sourceRef: "merge.dts", configRevisionId: "merge-revision" }] };
-    const oldBinding = await harness.seedBindingValue({ ...fixture, ...source, propertyKeys: ["merge_target"], values: [5] });
-    const targetBinding = await harness.seedBindingValue({ ...fixture, ...target, values: [7] });
-    await harness.seedBindingValue({ ...fixture, ...source, projectId: remainingProjectId, logicalNodeId: "merge-remaining-node",
-      sources: [{ sourceRef: "merge-remaining.dts", configRevisionId: "merge-remaining-revision" }], propertyKeys: ["merge_target"], values: [5] });
+      subjectKind: "driver", moduleId: `reviewed-module-${choice}` });
+    await harness.db.query("insert into users(id,organization_id,name,title) values ($1,$2,'Source reviewer','Software')", [reviewerId, organizationId]);
+    await harness.db.query("insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$1,$2,$3,'software-committer')", [reviewerId, organizationId, projectId]);
+    const apiRequest = <T>(url: string, body?: unknown, reviewer = false) => requestJson<T>(
+      reviewer ? app(reviewerId, organizationId) : app(), `${url}?organizationId=${organizationId}`, {
+        method: body === undefined ? "GET" : "POST", headers: { authorization: "Bearer human" },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    const config = await apiRequest<{ item: { id: string } }>(`/api/v1/projects/${projectId}/config-sets`, { name: "Keys" });
+    expect(config.status, config.bodyText).toBe(201);
+    const upload = () => apiRequest<{ item: { id: string } }>(`/api/v1/projects/${projectId}/parameter-files`, {
+      fileName: "charger.dts", contentBase64: Buffer.from(`/dts-v1/; / {
+        source { compatible = "acme,power"; ${sourceKey} = <5>; };
+        target { compatible = "acme,power"; ${targetKey} = <7>; };
+      };`).toString("base64"),
+    });
+    const file = await upload();
+    expect(file.status, file.bodyText).toBe(201);
+    const member = await apiRequest(`/api/v1/projects/${projectId}/config-sets/${config.body.item.id}/files`, {
+      fileId: file.body.item.id, role: "base", sortOrder: 0,
+    });
+    expect(member.status, member.bodyText).toBeLessThan(300);
+    const ingested = await upload();
+    expect(ingested.status, ingested.bodyText).toBe(201);
+
+    const projectPath = `/api/v2/projects/${projectId}`;
+    const bindingPath = `${projectPath}/parameter-bindings`;
+    type Binding = { id: string; definitionId: string; currentValueId: string; sourceOccurrenceId: string };
+    const readBindings = async () => {
+      const read = await apiRequest<{ items: Binding[] }>(bindingPath);
+      expect(read.status, read.bodyText).toBe(200);
+      return read.body.items;
+    };
+    const bindings = await readBindings();
+    expect(bindings).toHaveLength(2);
+    const old = bindings.find(binding => binding.definitionId === source.definitionId)!;
+    const duplicate = bindings.find(binding => binding.definitionId === target.definitionId)!;
+    expect(old.sourceOccurrenceId).toEqual(expect.any(String));
+    expect(duplicate.sourceOccurrenceId).toEqual(expect.any(String));
+    expect(old.sourceOccurrenceId).not.toBe(duplicate.sourceOccurrenceId);
+    const exportValue = async (binding: Binding) => {
+      const exported = await requestJson<{ item: { configRevisionId: string } }>(app(),
+        `${bindingPath}/${binding.id}/export?${new URLSearchParams({ organizationId, projectValueId: binding.currentValueId })}`,
+        { headers: { authorization: "Bearer human" } });
+      expect(exported.status, exported.bodyText).toBe(200);
+      return exported.body;
+    };
+    const originalExports = await Promise.all(bindings.map(exportValue));
+    const remainingProject = `${projectId}-remaining`;
+    if (choice === "target") {
+      await harness.refreshCatalog();
+      await harness.seedProject(organizationId, remainingProject, "Remaining project");
+      await harness.seedBindingValue({ ...source, organizationId, projectId: remainingProject, registrationId,
+        logicalNodeId: "remaining-node", sources: [{ sourceRef: "remaining.dts", configRevisionId: "remaining-merge-revision" }],
+        propertyKeys: [targetKey], values: [5] });
+    }
+
     const draft = { oldDefinitionId: source.definitionId, newSubjectId: PREDECESSOR_SUBJECT_ID,
-      newPropertyKey: "merge_target", mergeIntoDefinitionId: target.definitionId,
-      ...integerContent("Unused proposed content", 0), projectIds: [projectId], reason: "Resolve duplicate definitions" };
+      newPropertyKey: targetKey, mergeIntoDefinitionId: target.definitionId,
+      ...integerContent("Existing target content", 0), projectIds: [projectId], reason: "Merge two reviewed source occurrences" };
     const preview = await post("/preview", draft, undefined, organizationId);
     expect(preview.status, preview.bodyText).toBe(201);
-    const frozen = catalogReplacementPreviewResponseSchema.parse(preview.body).item;
-    expect(frozen.remainingProjects).toEqual([{ id: remainingProjectId, name: "Remaining project" }]);
-    expect(frozen.projects).toMatchObject([{ projectId, blockerReason: "merge-choice-required",
-      oldBindingId: oldBinding.bindingId, mergeConflict: { sourceValue: 5, targetValue: 7, targetBindingId: targetBinding.bindingId } }]);
-    const command = { previewId: frozen.previewId, previewFingerprint: frozen.previewFingerprint, idempotencyKey: "unresolved-merge" };
-    expect((await post("", command, frozen.previewFingerprint, organizationId)).status).toBe(400);
-    const approved = await post("/preview", { ...draft, mergeChoices: { [projectId]: "target" } }, undefined, organizationId);
-    expect(approved.status, approved.bodyText).toBe(201);
-    const resolved = catalogReplacementPreviewResponseSchema.parse(approved.body).item;
-    const competingPreview = await post("/preview", { ...draft, mergeChoices: { [projectId]: "target" } }, undefined, organizationId);
-    const competing = catalogReplacementPreviewResponseSchema.parse(competingPreview.body).item;
-    const before = await pin();
-    const apply = () => post("", { previewId: resolved.previewId, previewFingerprint: resolved.previewFingerprint,
-      idempotencyKey: "resolved-merge" }, resolved.previewFingerprint, organizationId);
-    expect((await setPublicationFreeze(harness.db, { frozen: true, actorPrincipalId: ADMIN })).ok).toBe(true);
-    try {
-      const frozen = await apply();
-      expect(frozen.body).toMatchObject({ error: { details: { reason: "publication-frozen" } } });
-    } finally {
-      expect((await setPublicationFreeze(harness.db, { frozen: false, actorPrincipalId: ADMIN })).ok).toBe(true);
+    const unresolved = catalogReplacementPreviewResponseSchema.parse(preview.body).item;
+    expect(unresolved.projects).toMatchObject([{ blockerReason: "merge-choice-required", mergeConflict: { sourceValue: 5, targetValue: 7 } }]);
+    expect((await post("", { previewId: unresolved.previewId, previewFingerprint: unresolved.previewFingerprint,
+      idempotencyKey: "unresolved" }, unresolved.previewFingerprint, organizationId)).status).toBe(400);
+    const selection = { ...draft, projectIds: choice === "target" ? [projectId, remainingProject] : [projectId], mergeChoices: { [projectId]: choice } };
+    const selected = await post("/preview", selection, undefined, organizationId);
+    expect(selected.status, selected.bodyText).toBe(201);
+    const frozen = catalogReplacementPreviewResponseSchema.parse(selected.body).item;
+    const command = { previewId: frozen.previewId, previewFingerprint: frozen.previewFingerprint, idempotencyKey: `reviewed-merge-${choice}` };
+    const competing = catalogReplacementPreviewResponseSchema.parse((await post("/preview", { ...draft, mergeChoices: selection.mergeChoices }, undefined, organizationId)).body).item;
+
+    if (choice === "target") {
+      expect(unresolved.remainingProjects).toEqual([{ id: remainingProject, name: "Remaining project" }]);
+      expect((await setPublicationFreeze(harness.db, { frozen: true, actorPrincipalId: ADMIN })).ok).toBe(true);
+      try {
+        expect((await post("", command, frozen.previewFingerprint, organizationId)).body).toMatchObject({ error: { details: { reason: "publication-frozen" } } });
+      } finally {
+        expect((await setPublicationFreeze(harness.db, { frozen: false, actorPrincipalId: ADMIN })).ok).toBe(true);
+      }
     }
-    const applied = await apply();
-    expect(applied.status, applied.bodyText).toBe(202);
-    expect(applied.body).toMatchObject({ item: { status: "completed", candidateId: null, projects: [
-      { projectId, status: "completed", oldBindingId: oldBinding.bindingId, newBindingId: targetBinding.bindingId },
-    ] } });
-    expect((await apply()).body).toEqual(applied.body);
-    const bindingPath = `/api/v2/projects/${projectId}/parameter-bindings?organizationId=${organizationId}`;
-    const current = await requestJson(app(), bindingPath, { headers: { authorization: "Bearer administrator" } });
-    expect(current.body).toMatchObject({ items: [{ id: targetBinding.bindingId, currentValueId: targetBinding.valueId,
-      effectiveValue: { groups: [[{ value: "7" }]] } }] });
-    const historyPath = `/api/v2/projects/${projectId}/parameter-bindings/${oldBinding.bindingId}/export`;
-    const historical = await requestJson(app(), `${historyPath}?organizationId=${organizationId}&projectValueId=${oldBinding.valueId}`,
-      { headers: { authorization: "Bearer administrator" } });
-    expect(historical.status, historical.bodyText).toBe(200);
-    expect(historical.body).toMatchObject({ item: { bindingId: oldBinding.bindingId, currentValueId: oldBinding.valueId,
-      definitionId: source.definitionId, definitionRevisionId: source.revisionId, configRevisionId: "merge-revision",
-      files: [expect.objectContaining({ content: expect.stringContaining("merge_source = <5>;") })] } });
+
+    const created = await post("", command, frozen.previewFingerprint, organizationId);
+    expect(created.status, created.bodyText).toBe(202);
+    const pending = catalogReplacementResponseSchema.parse(created.body).item;
+    expect(pending.status).toBe("blocked");
+    expect(pending.projects.find(row => row.projectId === projectId)).toMatchObject({
+      blockerReason: choice === "source" ? "merge-target-value-required" : "merge-source-removal-required",
+      oldValueId: old.currentValueId, mergeConflict: { choice, targetValueId: duplicate.currentValueId } });
+    const alreadyCompleted = pending.projects.find(row => row.projectId === remainingProject);
+    if (choice === "target") expect(alreadyCompleted?.status).toBe("completed");
+    expect(await readBindings()).toEqual(bindings);
+
+    const continueMerge = async (version: string, key: string) => {
+      const result = await post(`/${pending.id}/continue`, { idempotencyKey: key }, version, organizationId);
+      expect(result.status, result.bodyText).toBe(202);
+      return catalogReplacementResponseSchema.parse(result.body).item;
+    };
+    const waiting = await continueMerge(pending.etag, "before-source-review");
+    expect(waiting.status).toBe("blocked");
+
+    const applyValueChange = async (binding: Binding, action: "set" | "delete") => {
+      const draft = await apiRequest<{ item: { draftId: string } }>(`${bindingPath}/${binding.id}/drafts`, {
+        baseRevisionId: (await exportValue(binding)).item.configRevisionId, reason: "Reviewed definition merge", action,
+        ...(action === "set" ? { targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", value: "5", raw: "5" }]] } } : {}),
+      });
+      expect(draft.status, draft.bodyText).toBe(201);
+      const submitted = await apiRequest<{ item: { id: string } }>(`${projectPath}/parameter-value-drafts/${draft.body.item.draftId}/submit`, { assignedToUserId: reviewerId });
+      expect(submitted.status, submitted.bodyText).toBeLessThan(300);
+      const reviewPath = `${projectPath}/parameter-value-change-requests/${submitted.body.item.id}/review`;
+      expect((await apiRequest(reviewPath, { decision: "approve" })).status).toBe(403);
+      const approved = await apiRequest(reviewPath, { decision: "approve" }, true);
+      expect(approved.status, approved.bodyText).toBe(200);
+    };
+    if (choice === "source") await applyValueChange(duplicate, "set");
+    // Editing the target first can advance its entire file's source cohort.
+    await applyValueChange((await readBindings()).find(binding => binding.id === old.id)!, "delete");
+
+    const current = await readBindings();
+    expect(current).toMatchObject([{ id: duplicate.id, definitionId: target.definitionId,
+      effectiveValue: { groups: [[{ value: choice === "source" ? "5" : "7" }]] } }]);
+    expect(current).toHaveLength(1);
+    const completed = await continueMerge(waiting.etag, "after-source-review");
+    expect(completed.status).toBe("completed");
+    expect(completed.projects.find(row => row.projectId === projectId)).toMatchObject({ status: "completed", newBindingId: duplicate.id,
+      oldValueId: old.currentValueId, newValueId: current[0]!.currentValueId, mergeConflict: { choice, targetValueId: duplicate.currentValueId } });
+    expect(completed.projects.find(row => row.projectId === remainingProject)).toEqual(alreadyCompleted);
+    expect(await continueMerge(waiting.etag, "after-source-review")).toEqual(completed);
+
     const stale = await post("", { previewId: competing.previewId, previewFingerprint: competing.previewFingerprint,
       idempotencyKey: "competing-merge" }, competing.previewFingerprint, organizationId);
     expect(stale.status, stale.bodyText).toBe(202);
     expect(stale.body).toMatchObject({ item: { status: "blocked", projects: [{ projectId, blockerReason: "stale-preview" }] } });
-    const subsequent = await post("/preview", { ...draft, projectIds: [remainingProjectId] }, undefined, organizationId);
-    const remaining = catalogReplacementPreviewResponseSchema.parse(subsequent.body).item;
-    expect(remaining.remainingProjects).toEqual([]);
-    const completed = await post("", { previewId: remaining.previewId, previewFingerprint: remaining.previewFingerprint,
-      idempotencyKey: "remaining-merge" }, remaining.previewFingerprint, organizationId);
-    expect(completed.status, completed.bodyText).toBe(202);
-    expect(completed.body).toMatchObject({ item: { status: "completed", projects: [{ projectId: remainingProjectId, status: "completed" }] } });
-    expect(await pin()).toEqual(before);
+
+    expect(await Promise.all(bindings.map(exportValue))).toEqual(originalExports);
   }, 120_000);
 
   it("keeps the real selected-project migration available to a dual-role administrator", async () => {

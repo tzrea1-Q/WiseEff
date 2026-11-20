@@ -45,6 +45,7 @@ import { toAttributionFlatNodes } from "@/components/parameter-topology/moduleAt
 import type { ModuleTreeSubject } from "@/components/parameter-topology/ModuleAttributionTree";
 import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
 import { SubjectRecognitionDialog } from "./SubjectRecognitionDialog";
+import { SubjectIdentityPublicationDialog } from "@/features/parameter-catalog-governance/SubjectIdentityPublicationDialog";
 
 const SUBJECT_KIND_LABEL: Record<CatalogSubjectResponse["item"]["type"], string> = {
   driver: "驱动",
@@ -142,23 +143,28 @@ export function CanonicalSubjectPlacementPanel({
   const [createSubjectOpen, setCreateSubjectOpen] = useState(false);
   const [createOwnerSubjectId, setCreateOwnerSubjectId] = useState<string | undefined>();
   const [recognitionSubject, setRecognitionSubject] = useState<{ registrationId: string; subject: SubjectRow } | null>(null);
+  const [identitySubjectId, setIdentitySubjectId] = useState<string | null>(null);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationError, setPublicationError] = useState("");
   const [publicationRefresh, setPublicationRefresh] = useState(0);
-  const canAuthorSubject = canAdmin && catalogActionsForSession({ actor, permissions: sessionPermissions }).includes("preview-publication");
+  const sessionActions = catalogActionsForSession({ actor, permissions: sessionPermissions });
+  const canAuthorSubject = canAdmin && sessionActions.includes("preview-publication");
+  const canManageIdentity = actor === "platform-admin" && sessionActions.some(action =>
+    action === "preview-publication" || action === "review-high-risk-publication" || action === "publish-publication");
+  const identitySubject = subjects.find(subject => subject.id === identitySubjectId);
   const canCreateSubject = canAuthorSubject && isCatalogActionEnabled(actor, "preview-publication", domainState, sessionPermissions);
   useEffect(() => {
     let cancelled = false;
     setPublicationSurface(null);
     setPublicationError("");
-    if (!canAuthorSubject) return;
+    if (!canAuthorSubject && !canManageIdentity) return;
     void Promise.resolve().then(async () => {
       if (cancelled) return;
       const { item } = await catalog.getPublicationSurface();
       if (!cancelled) setPublicationSurface(item);
     }).catch(() => { if (!cancelled) setPublicationError("无法读取目录编写状态，请刷新规范数据后重试。"); });
     return () => { cancelled = true; };
-  }, [catalog, organizationId, canAuthorSubject, refreshKey, publicationRefresh]);
+  }, [catalog, organizationId, canAuthorSubject, canManageIdentity, refreshKey, publicationRefresh]);
   const subjectCreationRequested = createSubjectOpen || params.get("createSubject") === "1";
   const publicationAdvisory = publicationSurface ? publicationSurfaceAdvisory(publicationSurface) : null;
   const closeSubjectCreation = () => {
@@ -823,8 +829,8 @@ export function CanonicalSubjectPlacementPanel({
                       style={subject.ownerSubjectId ? { marginLeft: "1.5rem" } : undefined}
                     >
                       <div className="parameter-module-mapping-panel__tree-label canonical-subject-identity">
-                        <strong>{subject.canonicalName}</strong>
-                        {registration?.displayAlias ? <span className="canonical-subject-meta">{registration.displayAlias}</span> : null}
+                        <strong title="规范标识">{subject.canonicalName}</strong>
+                        {registration?.displayAlias ? <span className="canonical-subject-meta" title="组织展示别名">{registration.displayAlias}</span> : null}
                         <span className="parameter-module-mapping-panel__auto-tag">
                           {subjectTypeLabel(subject.type)}
                         </span>
@@ -841,6 +847,8 @@ export function CanonicalSubjectPlacementPanel({
                           : "未登记"}
                       </span>
                       <div className="parameter-module-mapping-panel__actions canonical-subject-actions">
+                        {canManageIdentity && subject.membership.status === "active" ? <button type="button" className="button subtle"
+                          aria-label={`共享标识：${subject.canonicalName}`} onClick={() => setIdentitySubjectId(subject.id)}>共享标识</button> : null}
                         {subject.type === "driver" && subject.membership.status === "active" && canCreateSubject ? <button
                           type="button" className="button subtle" aria-label={`新增子节点类型：${subject.canonicalName}`}
                           disabled={subject.canonicalType === "node-type"}
@@ -983,6 +991,13 @@ export function CanonicalSubjectPlacementPanel({
         editor={editorOptions(recognitionSubject.subject, recognitionSubject.registrationId, "recognition")}
         registrationId={recognitionSubject.registrationId} catalogReleaseId={catalogReleaseId} name={recognitionSubject.subject.canonicalName} canAdmin={canAdmin}
         onClose={closeEditor} onChanged={onChanged} /> : null}
+      {identitySubject && canManageIdentity && catalogReleaseId ? <SubjectIdentityPublicationDialog
+        key={`${organizationId}:${identitySubject.id}`} subject={identitySubject} subjects={subjects}
+        catalog={catalog} catalogReleaseId={catalogReleaseId} currentPersonId={currentPersonId} organizationId={organizationId}
+        surface={publicationSurface} onClose={() => setIdentitySubjectId(null)} onRefreshEvidence={() => {
+          setPublicationRefresh(value => value + 1);
+          return handleCompleted();
+        }} /> : null}
       {ownerDialog ? <RegistrationOwnerDialog key={`${organizationId}:${ownerDialog.subject.id}`} {...ownerDialog}
         editor={editorOptions(ownerDialog.subject, ownerDialog.registrationId, "placement")}
         actor={actor} sessionPermissions={sessionPermissions} catalog={catalog} governance={governance} organizationId={organizationId}

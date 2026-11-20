@@ -70,6 +70,7 @@ const parseOperation = (value: unknown): ImpactOperationFact | null => {
   if (value.op === "create-subject-with-definitions") {
     return { op: "create-subject-with-definitions" };
   }
+  if (value.op === "correct-subject-identity") return { op: value.op };
   if (value.op === "revise-definition") {
     if (value.class !== "documentation" && value.class !== "semantic") {
       return null;

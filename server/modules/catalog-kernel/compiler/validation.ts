@@ -4,8 +4,6 @@ import { createHash } from "node:crypto";
 import {
   CatalogSubjectId,
   catalogReleaseViolationCodes,
-  parseCanonicalCompatibleSelector,
-  parseCanonicalNodeName,
   parseCanonicalPropertyKey,
   serializeContract,
   type CatalogReleaseViolation,
@@ -25,6 +23,7 @@ import {
 } from "./schemaValidation";
 import { deriveSourceDocuments, inspectSource, type CatalogSource, type SourceInspection } from "./sourceAuthority";
 import type { StableCatalogRules } from "./stableRules";
+import { isCorrectedIdentity, parseCatalogSelector } from "./subjectIdentity";
 
 export { isCatalogReleaseBundle } from "./schemaValidation";
 
@@ -504,10 +503,7 @@ const validateCanonicalIdentities = (
   const releaseId = node.manifest.release.id;
   for (const document of node.documents) {
     if (document.kind === "subject") {
-      const parsed =
-        document.content.selector.kind === "driver-compatible"
-          ? parseCanonicalCompatibleSelector(document.content.selector.value)
-          : parseCanonicalNodeName(document.content.selector.value);
+      const parsed = parseCatalogSelector(document.content.selector.kind, document.content.selector.value);
       if (!parsed.ok) {
         violations.push(
           violation({
@@ -519,12 +515,7 @@ const validateCanonicalIdentities = (
         );
       }
     } else if (document.kind === "alias") {
-      const parsed =
-        document.content.selectorKind === "driver-compatible"
-          ? parseCanonicalCompatibleSelector(
-              document.content.normalizedSelector,
-            )
-          : parseCanonicalNodeName(document.content.normalizedSelector);
+      const parsed = parseCatalogSelector(document.content.selectorKind, document.content.normalizedSelector);
       if (!parsed.ok) {
         violations.push(
           violation({
@@ -832,7 +823,7 @@ const validateStableIdentityLineage = (
     const kind = rule.documentKind;
     const byId = new Map<
       string,
-      { readonly naturalKey: string; readonly immutable: string }
+      { readonly naturalKey: string; readonly immutable: string; readonly document: CatalogReleaseDocument }
     >();
     const byNaturalKey = new Map<string, string>();
     for (const release of orderedReleaseNodes(releases)) {
@@ -862,10 +853,26 @@ const validateStableIdentityLineage = (
           ? "definition-revision"
           : kind;
         const previous = byId.get(binding.id);
+        const prior = previous?.document;
+        const corrected = isCorrectedIdentity(document, release) && (
+          document.kind === "subject" && prior?.kind === "subject"
+            ? document.content.kind === prior.content.kind &&
+              document.content.selector.kind === prior.content.selector.kind &&
+              document.content.ownerSubjectId === prior.content.ownerSubjectId &&
+              document.content.lifecycle === "active" && prior.content.lifecycle === "active" &&
+              document.content.canonicalKey === `${document.content.kind}:${document.content.selector.value}` &&
+              canonicalKey(document.content.subtype as ContractJsonValue) === canonicalKey(prior.content.subtype as ContractJsonValue)
+            : document.kind === "alias" && prior?.kind === "alias" &&
+              document.content.selectorKind === prior.content.selectorKind &&
+              document.content.normalizedSelector === prior.content.normalizedSelector &&
+              document.content.lifecycle === "active"
+        );
         if (
-          previous !== undefined &&
+          previous !== undefined && !corrected &&
           (previous.naturalKey !== binding.naturalKey ||
-            previous.immutable !== binding.immutable)
+            previous.immutable !== binding.immutable ||
+            (document.kind === "subject" && prior?.kind === "subject" &&
+              document.content.selector.value !== prior.content.selector.value))
         ) {
           violations.push(
             violation({
@@ -890,6 +897,7 @@ const validateStableIdentityLineage = (
         byId.set(binding.id, {
           naturalKey: binding.naturalKey,
           immutable: binding.immutable,
+          document,
         });
         byNaturalKey.set(binding.naturalKey, binding.id);
       }
@@ -1101,7 +1109,7 @@ const validatePermanentSelectorOwnership = (
           document.content.normalizedSelector,
         ]);
         const owner = aliasOwners.get(key);
-        if (owner !== undefined && owner !== document.content.subjectId) {
+        if (owner !== undefined && owner !== document.content.subjectId && !isCorrectedIdentity(document, release)) {
           violations.push(
             violation({
               code: "alias-owner-mismatch",

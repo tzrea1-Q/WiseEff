@@ -117,6 +117,8 @@ export type ReplacementMergeConflict = {
   readonly sourceValue: ContractJsonValue;
   readonly targetValue: ContractJsonValue;
   readonly choice: "source" | "target" | null;
+  /** Present on previews that require the project's reviewed source cutover. */
+  readonly targetUpdateRequired?: boolean;
 };
 
 export type FrozenSourceProof = {
