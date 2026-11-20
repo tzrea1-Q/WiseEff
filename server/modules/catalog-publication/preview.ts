@@ -81,6 +81,17 @@ export type PreviewPublicationValue = {
     readonly addedSubjectIds?: readonly string[];
     readonly ownerDeclarations?: readonly OwnerDeclaration[];
     readonly ownerPublicationOnly?: boolean;
+    readonly definitionSuccessorChange?: {
+      readonly definitionId: string;
+      readonly successorDefinitionId: string | null;
+      readonly successorLabel: string | null;
+      readonly reason: string | null;
+    };
+    readonly definitionReplacement?: {
+      readonly definitionId: string;
+      readonly propertyKey: string;
+      readonly subjectId: string;
+    };
   };
 };
 
@@ -158,11 +169,14 @@ export function parsePublicationChangeSet(
       continue;
     }
     if (entry.op === "revise-definition") {
-      const content = asSupportedContent(entry.content);
+      const content = entry.content === undefined ? undefined : asSupportedContent(entry.content);
+      const successor = entry.successorDefinitionId;
       if (
         typeof entry.definitionId !== "string" ||
         (entry.class !== "documentation" && entry.class !== "semantic") ||
-        content === null
+        content === null || (content === undefined && successor === undefined) ||
+        (successor !== undefined && successor !== null && (typeof successor !== "string" || !successor)) ||
+        (entry.reason !== undefined && typeof entry.reason !== "string")
       ) {
         return { error: { kind: "invalid-input", reason: "changeSet" } };
       }
@@ -170,7 +184,9 @@ export function parsePublicationChangeSet(
         op: "revise-definition",
         definitionId: entry.definitionId,
         class: entry.class,
-        content,
+        ...(content === undefined ? {} : { content }),
+        ...(successor === undefined ? {} : { successorDefinitionId: successor }),
+        ...(typeof entry.reason === "string" ? { reason: entry.reason } : {}),
       });
       continue;
     }
@@ -383,6 +399,7 @@ export async function previewPublicationCandidate(input: {
   readonly changeSet: readonly CatalogChange[];
   readonly authorPrincipalId: string;
   readonly authorOrganizationId: string;
+  readonly replacementSourceDefinitionId?: string;
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
   readonly markdownSource?: { readonly fileName: string; readonly sha256: string; readonly parserVersion: string };
@@ -466,6 +483,11 @@ export async function previewPublicationCandidate(input: {
     if (built.error.kind === "persist-failed") {
       return { ok: false, error: { kind: "persist-failed", detail: built.error.stage } };
     }
+    if (built.error.kind === "invalid-input") return { ok: false, error: built.error };
+    if (built.error.kind === "invalid-release") {
+      const detail = built.error.violations?.find(violation => violation.detail?.startsWith("definition-successor-"))?.detail;
+      if (detail) return { ok: false, error: { kind: "invalid-input", reason: detail } };
+    }
     return { ok: false, error: { kind: "invalid-input", reason: built.error.kind } };
   }
   if (built.value.kind !== "successor") {
@@ -490,9 +512,23 @@ export async function previewPublicationCandidate(input: {
       subjectName: subject?.kind === "subject" ? subject.content.selector.value : change.subjectId,
       ownerName: owner?.kind === "subject" ? owner.content.selector.value : change.ownerSubjectId }];
   });
+  const [change] = input.changeSet;
+  const successorChange = input.changeSet.length === 1 && change?.op === "revise-definition" &&
+    change.content === undefined && change.successorDefinitionId !== undefined ? change : null;
+  const successor = successorChange && predecessorTarget.documents.find(document =>
+    document.kind === "definition" && document.content.id === successorChange.successorDefinitionId);
+  const replacementChange = input.replacementSourceDefinitionId && input.changeSet.length === 1 && change?.op === "create-definition"
+    ? { definitionId: input.replacementSourceDefinitionId, propertyKey: change.propertyKey, subjectId: change.subjectId } : null;
   const impactSummary = { ...impactSummaryFromReport(built.value.impact),
     ...(ownerDeclarations.length ? { ownerDeclarations,
-      ownerPublicationOnly: ownerDeclarations.length === input.changeSet.length } : {}) };
+      ownerPublicationOnly: ownerDeclarations.length === input.changeSet.length } : {}),
+    ...(successorChange ? { definitionSuccessorChange: {
+      definitionId: successorChange.definitionId,
+      successorDefinitionId: successorChange.successorDefinitionId ?? null,
+      successorLabel: successor?.kind === "definition" ? successor.content.revision.displayName || successor.content.propertyKey : null,
+      reason: successorChange.reason ?? null,
+    } } : {}),
+    ...(replacementChange ? { definitionReplacement: replacementChange } : {}) };
   const persisted = await persistSuccessorBuild(
     {
       db: input.db,

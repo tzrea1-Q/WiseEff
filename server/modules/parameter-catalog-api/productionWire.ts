@@ -94,6 +94,7 @@ import type {
   TrustedGovernanceScope,
 } from "./governance/types";
 import { matchCatalogGovernanceRoute } from "./governance/handlers";
+import { isCatalogDefinitionReplacementRouteId } from "./governance/mapping";
 import { registerCatalogLegacyRoutes } from "./legacy/routes";
 import { CATALOG_SUNSET_HTTP_DATE } from "./legacy/headers";
 import type { LegacyCatalogOptions } from "./legacy/types";
@@ -489,6 +490,14 @@ const authenticateGovernance =
     }
     const scope = governanceScope(auth);
     const matched = matchCatalogGovernanceRoute(request.method, request.path);
+    if (matched && isCatalogDefinitionReplacementRouteId(matched.id) && request.query.organizationId !== undefined) {
+      const organizationId = request.query.organizationId;
+      if (typeof organizationId !== "string" || !organizationId || !pool || scope.trustedActor?.initiator !== "user") {
+        return { ok: false as const, status: 403 as const };
+      }
+      const invocation = await resolveOperatingContext(pool, scope.trustedActor, organizationId);
+      return { ok: true as const, scope: governanceScope(auth, invocation) };
+    }
     const organizationDetail = matched?.id === "catalog.getRegistration";
     if (matched && (organizationDetail || [
       "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
@@ -891,6 +900,10 @@ const createReplacementPublicationPorts = (
         };
       }
       if (enqueued.error.kind === "authorization") {
+        if (enqueued.error.reason === "publication-frozen" || enqueued.error.reason === "publication-policy-disabled" ||
+            enqueued.error.reason === "publication-self-approval-forbidden") {
+          return { ok: false as const, error: { kind: "preview-unavailable" as const, reason: enqueued.error.reason } };
+        }
         return {
           ok: false as const,
           error: { kind: "preview-unavailable" as const, reason: "unsupported-catalog-capability" },

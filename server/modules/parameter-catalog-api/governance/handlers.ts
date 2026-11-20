@@ -548,6 +548,12 @@ function mapDefinitionReplacementFailure(
     case "registration-required":
       return conflict(requestId, "registration-required");
     case "preview-unavailable":
+      if (error.reason === "publication-frozen" || error.reason === "publication-policy-disabled" ||
+          error.reason === "publication-self-approval-forbidden") {
+        return catalogGovernanceError({ status: error.reason === "publication-frozen" ? 409 : 403,
+          code: error.reason === "publication-frozen" ? "CONFLICT" : "FORBIDDEN", requestId,
+          reason: error.reason, message: "Current publication policy blocks this replacement." });
+      }
       return catalogGovernanceError({
         status: 409,
         code: "CONFLICT",
@@ -1445,11 +1451,14 @@ async function handlePreviewDefinitionReplacement(
   if (!context) return forbidden(request.requestId);
   const result = await migration.previewDefinitionReplacement({
     organizationId,
+    ...(scope.trustedActor?.initiator === "user" ? { authorOrganizationId: scope.trustedActor.principal.organization.id } : {}),
     oldDefinitionId: parsed.data.oldDefinitionId,
     newSubjectId: parsed.data.newSubjectId,
     newPropertyKey: parsed.data.newPropertyKey,
     proposedContent: supportedContentFromPreview(parsed.data),
     projectIds: parsed.data.projectIds,
+    mergeIntoDefinitionId: parsed.data.mergeIntoDefinitionId,
+    mergeChoices: parsed.data.mergeChoices,
     reason: parsed.data.reason,
     expectedRelease: pin.pin,
     context,
@@ -1577,7 +1586,7 @@ async function handleContinueDefinitionReplacement(
   const current = await migration.getDefinitionReplacement({ organizationId, replacementId });
   if (!current.ok) return mapDefinitionReplacementFailure(current.error, request.requestId);
   const expectedVersion = parseEtagVersion(offered);
-  if (expectedVersion === null || expectedVersion !== current.value.version) {
+  if (expectedVersion === null || unquoteEtag(offered) !== unquoteEtag(replacementEtag(replacementId, current.value.version))) {
     return revisionConflict(request.requestId);
   }
   const result = await migration.continueDefinitionReplacement({
@@ -1587,6 +1596,8 @@ async function handleContinueDefinitionReplacement(
     idempotencyKey: parsed.data.idempotencyKey,
     expectedRelease: pin.pin,
     context,
+    expectedVersion,
+    ...(scope.trustedActor ? { trustedActor: scope.trustedActor } : {}),
   });
   if (!result.ok) return mapDefinitionReplacementFailure(result.error, request.requestId);
   return catalogGovernanceOk({

@@ -42,11 +42,14 @@ export type ReplacementStatus = "pending" | "executing" | "completed" | "blocked
 
 export type PreviewDefinitionReplacementCommand = {
   readonly organizationId: string;
+  readonly authorOrganizationId?: string;
   readonly oldDefinitionId: string;
   readonly newSubjectId: string;
   readonly newPropertyKey: string;
   readonly proposedContent: SupportedDefinitionContent;
   readonly projectIds: readonly string[];
+  readonly mergeIntoDefinitionId?: string;
+  readonly mergeChoices?: Readonly<Record<string, "source" | "target">>;
   readonly reason: string;
   readonly expectedRelease: CatalogReleasePin;
   readonly context: TrustedMigrationContext;
@@ -70,6 +73,8 @@ export type ContinueDefinitionReplacementCommand = {
   readonly idempotencyKey: string;
   readonly expectedRelease: CatalogReleasePin;
   readonly context: TrustedMigrationContext;
+  readonly trustedActor?: import("../auth/trustedInvocation").TrustedInvocationContext;
+  readonly expectedVersion?: number;
 };
 
 export type GetDefinitionReplacementQuery = {
@@ -101,6 +106,17 @@ export type FrozenProjectTip = {
   readonly sourceFormat: "dts" | "unsupported";
   readonly coupledBindingIds: readonly string[];
   readonly exactSourceProof: FrozenSourceProof | null;
+  readonly mergeConflict?: ReplacementMergeConflict;
+};
+
+export type ReplacementMergeConflict = {
+  readonly targetBindingId: string;
+  readonly targetValueId: string;
+  readonly sourceRevisionId: string;
+  readonly targetRevisionId: string;
+  readonly sourceValue: ContractJsonValue;
+  readonly targetValue: ContractJsonValue;
+  readonly choice: "source" | "target" | null;
 };
 
 export type FrozenSourceProof = {
@@ -143,6 +159,7 @@ export type ReplacementProjectView = {
   readonly compatible: boolean;
   readonly attemptCount: number;
   readonly registrationRequired: boolean;
+  readonly mergeConflict?: ReplacementMergeConflict;
 };
 
 export type ReplacementIdentityView = {
@@ -182,9 +199,15 @@ export type DefinitionReplacementPreviewView = {
   readonly oldIdentity: ReplacementIdentityView;
   readonly newIdentity: ReplacementIdentityView;
   readonly catalogReleaseId: string;
+  readonly publicationCandidateId?: string;
   readonly impact: ReplacementPreviewImpact;
   readonly blockers: readonly string[];
   readonly projects: readonly ReplacementProjectView[];
+  readonly remainingProjects?: readonly { id: string; name: string }[];
+  readonly merge?: {
+    readonly source: { readonly valueType: string | null; readonly unit: string | null };
+    readonly target: { readonly valueType: string | null; readonly unit: string | null };
+  };
   readonly expiresAt: string | null;
 };
 
@@ -211,6 +234,7 @@ export type DefinitionReplacementFailure =
         | "unsupported-catalog-capability"
         | "publication-policy-disabled"
         | "publication-frozen"
+        | "publication-self-approval-forbidden"
         | "needs-rebase"
         | "preview-expired"
         | "preview-consumed";

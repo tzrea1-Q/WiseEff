@@ -7,6 +7,7 @@
 import type pg from "pg";
 import { randomUUID } from "node:crypto";
 
+import { PUBLICATION_REQUEST_SCOPE } from "../catalog-publication/preview";
 import type { DefinitionReplacementFailure, FrozenProjectTip, ReplacementStatus } from "./types";
 
 export type MigrationRow = pg.QueryResultRow;
@@ -33,12 +34,16 @@ export const loadCurrentReleasePin = async (
   return result.rows[0] ?? null;
 };
 
-export const isCurrentAdministrator = async (client: MigrationClient, organizationId: string, principalId: string, role: "admin" | "platform-admin") =>
+export const isCurrentAdministrator = async (client: MigrationClient, organizationId: string, principalId: string,
+  role: "admin" | "platform-admin", homeOnly = false) =>
   (await client.query<{ authorized: boolean }>(
-    `select exists(select 1 from public.users administrator join public.user_role_bindings role on role.user_id=administrator.id
-      and role.organization_id=administrator.organization_id where administrator.id=$1 and administrator.organization_id=$2
+    `select exists(select 1 from public.organizations target cross join public.users administrator
+      join public.user_role_bindings role on role.user_id=administrator.id
+      and role.organization_id=administrator.organization_id where administrator.id=$1
+      and (($3='platform-admin' and not $4::boolean) or administrator.organization_id=$2)
+      and target.id=$2 and target.status<>'deleting'
       and administrator.is_active and role.role_id=$3 and role.project_id is null) as authorized`,
-    [principalId, organizationId, role])).rows[0]?.authorized === true;
+    [principalId, organizationId, role, homeOnly])).rows[0]?.authorized === true;
 
 export const loadReleasePinById = async (
   client: MigrationClient,
@@ -58,7 +63,7 @@ export type DefinitionRow = {
   subject_id: string;
   property_key: string;
   revision_id: string;
-  revision_content: { lifecycle?: string; valueSchema?: unknown } | null;
+  revision_content: { lifecycle?: string; valueSchema?: unknown; unit?: string } | null;
   subject_status: string | null;
   subject_name: string | null;
 };
@@ -145,8 +150,8 @@ export const loadProjects = async (
             project.organization_id,
             coalesce(project.name, project.id) as name
        from public.projects project
-      where project.id = any($1::text[])`,
-    [[...projectIds]],
+      where project.organization_id = $1 and project.id = any($2::text[])`,
+    [organizationId, [...projectIds]],
   );
   return result.rows;
 };
@@ -607,8 +612,8 @@ export type PreviewRow = {
   preview_fingerprint: string;
   preview_catalog_release_id: string;
   preview_catalog_release_digest: string;
-  candidate_id: string;
-  artifact_digest: string;
+  candidate_id: string | null;
+  artifact_digest: string | null;
   manifest: FrozenProjectTip[];
   blockers: string[];
   impact: Record<string, unknown>;
@@ -677,7 +682,7 @@ export const loadReplacementPreview = async (
 };
 
 /** An actual receipt, not the preview's proposed allocation, proves activation. */
-export const loadZeroProjectActivation = async (client: MigrationClient, previewId: string, principalId: string) =>
+export const loadReplacementActivation = async (client: MigrationClient, previewId: string, principalId: string, zeroProjects: boolean) =>
   (await client.query<{ candidateId: string; publicationJobId: string; authorizationId: string; releaseId: string; releaseDigest: string; targetAvailable: boolean }>(
     `select receipt.candidate_id as "candidateId",receipt.publication_job_id as "publicationJobId",
       receipt.authorization_id as "authorizationId",receipt.release_id as "releaseId",receipt.release_digest as "releaseDigest",
@@ -689,17 +694,19 @@ export const loadZeroProjectActivation = async (client: MigrationClient, preview
      from parameter_catalog.definition_replacement_previews preview
      join catalog_publication.candidates candidate on candidate.id=preview.candidate_id and candidate.artifact_digest=preview.artifact_digest
      join parameter_catalog.catalog_activation_receipts receipt on receipt.candidate_id=candidate.id
-       and receipt.kind='online-publication' and receipt.actor_principal_id=$2
+       and receipt.kind='online-publication' and (not $3::boolean or receipt.actor_principal_id=$2)
        and receipt.predecessor_release_id=preview.preview_catalog_release_id
        and receipt.predecessor_release_digest=preview.preview_catalog_release_digest
      join catalog_publication.publication_jobs job on job.id=receipt.publication_job_id
        and job.candidate_id=receipt.candidate_id and job.authorization_id=receipt.authorization_id and job.status='active'
-       and job.request_scope='organization:'||preview.organization_id||':definition-replacement'
+       and (job.request_scope='organization:'||preview.organization_id||':definition-replacement'
+         or (not $3::boolean and job.request_scope=$4))
      join catalog_publication.publication_authorizations approval on approval.id=receipt.authorization_id
        and approval.candidate_id=receipt.candidate_id and approval.event_kind='approve' and approval.actor_principal_id=receipt.actor_principal_id
      join parameter_catalog.catalog_release_definition_heads activated on activated.release_id=receipt.release_id
        and activated.definition_id=preview.new_definition_id and activated.revision_id=preview.new_revision_id
-     where preview.id=$1 and jsonb_array_length(preview.manifest)=0`, [previewId, principalId])).rows[0] ?? null;
+     where preview.id=$1 and (jsonb_array_length(preview.manifest)=0)=$3::boolean
+     order by receipt.created_at desc limit 1`, [previewId, principalId, zeroProjects, PUBLICATION_REQUEST_SCOPE])).rows[0] ?? null;
 
 export const consumeReplacementPreview = async (
   client: MigrationClient,
@@ -770,9 +777,9 @@ export const insertReplacement = async (
     readonly manifest: readonly FrozenProjectTip[];
     readonly approvalPrincipalId: string;
     readonly reason: string;
-    readonly candidateId: string;
-    readonly publicationJobId: string;
-    readonly authorizationId: string;
+    readonly candidateId: string | null;
+    readonly publicationJobId: string | null;
+    readonly authorizationId: string | null;
     readonly successorReleaseId: string;
     readonly successorReleaseDigest: string;
   },

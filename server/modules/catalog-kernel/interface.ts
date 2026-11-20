@@ -207,6 +207,7 @@ export interface CatalogSubjectDetailSnapshot extends CatalogSubjectSnapshot {
 
 export interface DefinitionContent {
   readonly lifecycle: DefinitionLifecycle;
+  readonly successorDefinitionId?: string;
   readonly displayName: string;
   readonly description: OptionalValue<string>;
   readonly documentation: OptionalValue<string>;

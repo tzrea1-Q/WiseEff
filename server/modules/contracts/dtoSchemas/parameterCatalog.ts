@@ -351,6 +351,7 @@ export const catalogDefinitionRevisionDtoSchema = catalogObject({
   definitionId: z.string(),
   revisionNumber: z.number().int().positive(),
   contentDigest: z.string(),
+  successorDefinitionId: z.string().optional(),
   /** Editable display name; empty string means the author left it unset. */
   displayName: z.string(),
   valueShape: catalogValueShapeSchema,
@@ -373,6 +374,7 @@ export const catalogDefinitionDtoSchema = catalogObject({
   propertyKey: z.string(),
   lifecycle: catalogDefinitionLifecycleSchema,
   currentRevision: catalogDefinitionRevisionDtoSchema,
+  recommendedDefinition: catalogObject({ id: z.string(), propertyKey: z.string(), displayName: z.string() }).optional(),
   registration: catalogRegistrationProjectionSchema,
   usageSummary: catalogObject({
     policyCount: z.number().int().nonnegative().nullable(),
@@ -849,8 +851,10 @@ export const catalogReviseDefinitionChangeSchema = catalogObject({
   op: z.literal("revise-definition"),
   definitionId: z.string(),
   class: z.enum(["documentation", "semantic"]),
-  content: catalogSupportedDefinitionContentSchema
-});
+  content: catalogSupportedDefinitionContentSchema.optional(),
+  successorDefinitionId: z.string().min(1).nullable().optional(),
+  reason: z.string().min(1).max(512).optional()
+}).refine(change => change.content !== undefined || change.successorDefinitionId !== undefined);
 
 export const catalogCreateSubjectChangeSchema = catalogObject({
   op: z.literal("create-subject"),
@@ -931,13 +935,28 @@ export const catalogOwnerDeclarationSchema = catalogObject({
   subjectId: z.string(), subjectName: z.string(), ownerSubjectId: z.string(), ownerName: z.string()
 });
 
+export const catalogDefinitionSuccessorChangeSummarySchema = catalogObject({
+  definitionId: z.string(),
+  successorDefinitionId: z.string().nullable(),
+  successorLabel: z.string().nullable(),
+  reason: z.string().nullable()
+});
+
+export const catalogDefinitionReplacementSummarySchema = catalogObject({
+  definitionId: z.string(),
+  propertyKey: z.string(),
+  subjectId: z.string()
+});
+
 export const catalogPublicationImpactSummaryDtoSchema = catalogObject({
   addedDefinitionCount: z.number().int().nonnegative(),
   changedDefinitionCount: z.number().int().nonnegative(),
   addedSubjectCount: z.number().int().nonnegative(),
   addedSubjectIds: z.array(z.string()).optional(),
   ownerDeclarations: z.array(catalogOwnerDeclarationSchema).optional(),
-  ownerPublicationOnly: z.boolean().optional()
+  ownerPublicationOnly: z.boolean().optional(),
+  definitionSuccessorChange: catalogDefinitionSuccessorChangeSummarySchema.optional(),
+  definitionReplacement: catalogDefinitionReplacementSummarySchema.optional()
 });
 
 export const catalogPublicationCapabilityContractDtoSchema = catalogObject({
@@ -1688,7 +1707,16 @@ export const catalogReplacementProjectDtoSchema = catalogObject({
   valueKind: z.string(),
   compatible: z.boolean(),
   attemptCount: z.number().int().nonnegative(),
-  registrationRequired: z.boolean()
+  registrationRequired: z.boolean(),
+  mergeConflict: catalogObject({
+    targetBindingId: z.string(),
+    targetValueId: z.string(),
+    sourceRevisionId: z.string(),
+    targetRevisionId: z.string(),
+    sourceValue: catalogJsonValueSchema,
+    targetValue: catalogJsonValueSchema,
+    choice: z.enum(["source", "target"]).nullable()
+  }).optional()
 });
 
 export const catalogReplacementPreviewRequestSchema = catalogObject({
@@ -1702,6 +1730,8 @@ export const catalogReplacementPreviewRequestSchema = catalogObject({
   valueSchema: catalogSupportedValueSchemaSchema,
   examples: z.array(catalogJsonValueSchema).optional(),
   projectIds: z.array(z.string()).max(200),
+  mergeIntoDefinitionId: z.string().min(1).optional(),
+  mergeChoices: z.record(z.string(), z.enum(["source", "target"])).optional(),
   reason: z.string().min(1).max(512)
 });
 
@@ -1748,6 +1778,7 @@ export const catalogReplacementPreviewDtoSchema = catalogObject({
   oldIdentity: catalogReplacementIdentitySchema,
   newIdentity: catalogReplacementIdentitySchema,
   catalogReleaseId: z.string(),
+  publicationCandidateId: z.string().optional(),
   impact: catalogObject({
     selectedProjectCount: z.number().int().nonnegative(),
     compatibleProjectCount: z.number().int().nonnegative(),
@@ -1760,6 +1791,11 @@ export const catalogReplacementPreviewDtoSchema = catalogObject({
   }),
   blockers: z.array(z.string()),
   projects: z.array(catalogReplacementProjectDtoSchema),
+  remainingProjects: z.array(catalogObject({ id: z.string(), name: z.string() })).optional(),
+  merge: catalogObject({
+    source: catalogObject({ valueType: z.string().nullable(), unit: z.string().nullable() }),
+    target: catalogObject({ valueType: z.string().nullable(), unit: z.string().nullable() })
+  }).optional(),
   expiresAt: z.string().nullable()
 });
 

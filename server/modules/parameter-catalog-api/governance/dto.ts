@@ -56,9 +56,12 @@ export function mapDefinitionReplacementPreview(
     oldIdentity: view.oldIdentity,
     newIdentity: view.newIdentity,
     catalogReleaseId: view.catalogReleaseId,
+    ...(view.publicationCandidateId ? { publicationCandidateId: view.publicationCandidateId } : {}),
     impact: view.impact,
     blockers: [...view.blockers],
     projects: [...view.projects],
+    ...(view.remainingProjects ? { remainingProjects: [...view.remainingProjects] } : {}),
+    ...(view.merge ? { merge: view.merge } : {}),
     expiresAt: view.expiresAt,
   });
 }

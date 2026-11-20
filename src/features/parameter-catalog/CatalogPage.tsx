@@ -745,7 +745,10 @@ export function CatalogPage({
   };
   const canPublishDefinitions = !libraryMode && definitionPublishingAllowed;
   const canEditDefinition = (item: DefinitionItem) => !libraryMode && definitionAuthoringAllowed &&
-    Boolean(renderDefinitionEditor) && !inFlight && error === undefined && item.lifecycle === "active" && ownerWritable(item);
+    Boolean(renderDefinitionEditor) && !inFlight && error === undefined &&
+    (actor === "platform-admin"
+      ? item.lifecycle !== "retired" && subjectsById.get(item.subject.id)?.membership.status === "active"
+      : item.lifecycle === "active" && ownerWritable(item));
   const definitionEditable = snapshot?.definition ? canEditDefinition(snapshot.definition) : false;
   const canDeleteDefinition = !libraryMode && definitionDeletionAllowed && Boolean(repository.previewDefinitionDeletion && repository.deleteDefinition);
   const definitionActionLabel = definitionEditable ? "编辑" : "查看";
@@ -1105,6 +1108,9 @@ export function CatalogPage({
             <div className="parameter-library-detail__definition">
               <div className="parameter-library-detail__reading">
                 <section className="parameter-library-detail__section"><h2>定义说明</h2>
+                  {reading.recommendedDefinition ? <p>此定义已弃用。推荐使用 <a
+                    href={`${CATALOG_READ_PAGE_PATH}?${new URLSearchParams({ definitionId: reading.recommendedDefinition.id })}`}>
+                    {reading.recommendedDefinition.displayName}</a>。</p> : null}
                   {revision.documentation ? <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(revision.documentation) }} /> : <p className="parameter-catalog__muted">该定义暂未提供说明。</p>}
                 </section>
                 <section className="parameter-library-detail__section"><h2>示例</h2>
