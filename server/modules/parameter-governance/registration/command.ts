@@ -93,7 +93,8 @@ export type MovePlacementCommand = {
   readonly organizationId: string;
   readonly registrationId: SubjectRegistrationId;
   readonly expectedRelease: CatalogReleasePin;
-  readonly destinationModuleId: string;
+  readonly destinationModuleId?: string;
+  readonly displayAlias?: { readonly value: string | null; readonly expectedRegistrationVersion: string };
   readonly newDestination?: { readonly parentModuleId: string; readonly name: string };
   /** Version captured from the current Placement ETag, when supplied by HTTP. */
   readonly expectedPlacementVersion?: string;
@@ -206,8 +207,12 @@ export const validateRegistrationCommand = (
     return { ok: true, value: command };
   }
   if (command.kind === "move-placement") {
-    if (!controlFree(command.destinationModuleId)) {
+    if (command.destinationModuleId === undefined ? !command.displayAlias || command.newDestination || command.replacement : !controlFree(command.destinationModuleId)) {
       return invalid("destinationModuleId");
+    }
+    if (command.displayAlias && (!/^active:\d+$/.test(command.displayAlias.expectedRegistrationVersion) ||
+      (command.displayAlias.value !== null && (!controlFree(command.displayAlias.value) || [...command.displayAlias.value].length > 128)))) {
+      return invalid("displayAlias");
     }
     if (command.newDestination && (!controlFree(command.newDestination.parentModuleId) || !controlFree(command.newDestination.name) || command.newDestination.name.length > 120 || command.replacement)) return invalid("newDestination");
     if (
@@ -284,7 +289,8 @@ const commandFingerprintModel = (command: RegistrationCommand): ContractJsonValu
         organizationId: command.organizationId,
         registrationId: command.registrationId,
         expectedRelease: release,
-        destinationModuleId: command.destinationModuleId,
+        ...(command.destinationModuleId !== undefined ? { destinationModuleId: command.destinationModuleId } : {}),
+        ...(command.displayAlias ? { displayAlias: { ...command.displayAlias } } : {}),
         ...(command.newDestination ? { newDestination: { ...command.newDestination } } : {}),
         ...(command.expectedPlacementVersion !== undefined
           ? { expectedPlacementVersion: command.expectedPlacementVersion }

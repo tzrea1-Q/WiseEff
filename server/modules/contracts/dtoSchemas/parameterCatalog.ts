@@ -514,7 +514,11 @@ export const catalogRegistrationRecognitionResponseSchema = itemEnvelopeSchema(c
 }));
 
 export const catalogUpdatePlacementRequestSchema = catalogObject({
-  placement: catalogPlacementIntentSchema,
+  placement: catalogPlacementIntentSchema.optional(),
+  displayAlias: catalogObject({
+    value: z.string().min(1).refine(value => value === value.trim() && [...value].length <= 128 && !/[\u0000-\u001f\u007f-\u009f]/u.test(value)).nullable(),
+    registrationEtag: z.string().min(1)
+  }).optional(),
   destinationModuleId: z.string().min(1).optional(),
   newDestination: catalogObject({
     parentModuleId: z.string().trim().min(1),
@@ -527,10 +531,13 @@ export const catalogUpdatePlacementRequestSchema = catalogObject({
     reason: z.string().trim().min(1).max(1000)
   }).optional()
 }).superRefine((value, context) => {
-  if (value.newDestination && (value.destinationModuleId || value.replacement || value.placement.mode !== "use-default")) {
+  if (!value.placement && (!value.displayAlias || value.destinationModuleId || value.newDestination || value.replacement)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Supply a placement or a display alias update." });
+  }
+  if (value.newDestination && (value.destinationModuleId || value.replacement || value.placement?.mode !== "use-default")) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "A new destination requires an explicit business parent and no existing destination." });
   }
-  if (value.replacement && (!value.destinationModuleId || value.placement.mode !== "use-default")) {
+  if (value.replacement && (!value.destinationModuleId || value.placement?.mode !== "use-default")) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "A placement replacement requires an explicit destination module." });
   }
 });
@@ -2730,7 +2737,7 @@ export const parameterCatalogSchemaRegistry = {
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   },
   "catalog.updatePlacement": {
-    summary: "Rename or reparent the retained placement using If-Match",
+    summary: "Update the retained placement or organization display alias using the applicable ETags",
     tags: ["catalog"],
     requestBody: "CatalogUpdatePlacementRequest",
     responseBody: "CatalogPlacementResponse",

@@ -732,8 +732,8 @@ async function handleUpdatePlacement(
   } catch {
     return validationFailed(request.requestId, "registrationId");
   }
-  const placement = parsePlacement(parsed.data.placement);
-  if (!placement) return validationFailed(request.requestId, "placement");
+  const placement = parsed.data.placement ? parsePlacement(parsed.data.placement) : undefined;
+  if (parsed.data.placement && !placement) return validationFailed(request.requestId, "placement");
   const context = registrationContext(scope, request.requestId);
   if (!context) return forbidden(request.requestId);
   const organizationId = request.params.organizationId ?? scope.organizationId;
@@ -749,17 +749,26 @@ async function handleUpdatePlacement(
   if (!/^\d+$/.test(expectedPlacementVersion) || offered !== placementEtag(existing.placement.id, expectedPlacementVersion)) {
     return revisionConflict(request.requestId);
   }
-  const subjectKind = await resolveSubjectKind(ports, scope, existing.subjectId);
-  if (!subjectKind) return validationFailed(request.requestId, "subjectId");
-  const destinationModuleId = parsed.data.newDestination
-    ? `pmod_canonical_${createHash("sha256").update(JSON.stringify([organizationId, registrationId, idempotencyKey])).digest("hex").slice(0, 32)}`
-    : await resolveDestinationModuleId(ports, scope, {
-    organizationId,
-    subjectKind,
-    placement,
-    destinationModuleId: parsed.data.destinationModuleId,
-  });
-  if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
+  let displayAlias: Extract<RegistrationCommand, { kind: "move-placement" }>["displayAlias"];
+  if (parsed.data.displayAlias) {
+    const { registrationEtag, value } = parsed.data.displayAlias;
+    const registrationPrefix = `${registrationId}:`;
+    const registrationToken = unquoteEtag(registrationEtag);
+    const expectedRegistrationVersion = registrationToken.startsWith(registrationPrefix) ? registrationToken.slice(registrationPrefix.length) : "";
+    if (!/^active:\d+$/.test(expectedRegistrationVersion) || registrationEtag !== `"${registrationPrefix}${expectedRegistrationVersion}"`) {
+      return revisionConflict(request.requestId);
+    }
+    displayAlias = { value, expectedRegistrationVersion };
+  }
+  let destinationModuleId: string | undefined;
+  if (placement) {
+    const subjectKind = await resolveSubjectKind(ports, scope, existing.subjectId);
+    if (!subjectKind) return validationFailed(request.requestId, "subjectId");
+    destinationModuleId = parsed.data.newDestination
+      ? `pmod_canonical_${createHash("sha256").update(JSON.stringify([organizationId, registrationId, idempotencyKey])).digest("hex").slice(0, 32)}`
+      : await resolveDestinationModuleId(ports, scope, { organizationId, subjectKind, placement, destinationModuleId: parsed.data.destinationModuleId }) ?? undefined;
+    if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
+  }
   let replacement: Extract<RegistrationCommand, { kind: "move-placement" }>["replacement"];
   if (parsed.data.replacement) {
     const choice = parsed.data.replacement;
@@ -797,6 +806,7 @@ async function handleUpdatePlacement(
     registrationId,
     expectedRelease: pin.pin,
     destinationModuleId,
+    ...(displayAlias ? { displayAlias } : {}),
     ...(parsed.data.newDestination ? { newDestination: parsed.data.newDestination } : {}),
     expectedPlacementVersion,
     ...(replacement ? { replacement } : {}),

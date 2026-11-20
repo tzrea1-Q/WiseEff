@@ -282,6 +282,43 @@ describe("CanonicalSubjectPlacementPanel", () => {
       expect.objectContaining({ id: "subject-driver", name: "vendor,driver", displayAlias: "旧驱动名称" }),
     ]));
   });
+
+  it("retains an alias draft after a conflict without undoing the refreshed placement", async () => {
+    const ports = createPorts();
+    const registration = await ports.getRegistration(CATALOG_ORGANIZATION_ID, "registration-driver");
+    ports.getRegistration.mockResolvedValue({ ...registration, item: { ...registration.item, displayAlias: "旧名称" }, etag: "registration-v1" });
+    ports.updatePlacement.mockRejectedValueOnce(catalogApiFailure("placement-conflict"));
+    render(<CanonicalSubjectPlacementPanel {...ports} organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin />);
+
+    await openPlacementEditor("vendor,driver");
+    const alias = await screen.findByRole("textbox", { name: "展示别名" });
+    expect(alias).toHaveValue("旧名称");
+    await userEvent.clear(alias);
+    await userEvent.type(alias, "新名称");
+    const confirmAlias = async () => {
+      await userEvent.click(screen.getByRole("button", { name: "继续确认" }));
+      const confirmation = screen.getByRole("dialog", { name: "确认修改展示别名" });
+      expect(confirmation).toHaveTextContent("新名称");
+      await userEvent.click(within(confirmation).getByRole("checkbox"));
+      await userEvent.click(within(confirmation).getByRole("button", { name: "确认修改展示别名" }));
+    };
+    await confirmAlias();
+    expect(ports.updatePlacement).toHaveBeenCalledWith(CATALOG_ORGANIZATION_ID, "registration-driver",
+      { displayAlias: { value: "新名称", registrationEtag: "registration-v1" } },
+      expect.objectContaining({ ifMatch: "etag-driver" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("输入已保留");
+
+    const placement = await ports.getPlacement(CATALOG_ORGANIZATION_ID, "registration-driver");
+    ports.getPlacement.mockResolvedValue({ item: { ...placement.item, moduleId: "issue897-driver-b" }, etag: "etag-refreshed" });
+    await userEvent.click(screen.getByRole("button", { name: "刷新证据" }));
+    await waitFor(() => expect(screen.getByLabelText("目标模块")).toHaveAttribute("data-value", "issue897-driver-b"));
+    expect(alias).toHaveValue("新名称");
+    await confirmAlias();
+    expect(ports.updatePlacement).toHaveBeenLastCalledWith(CATALOG_ORGANIZATION_ID, "registration-driver",
+      { displayAlias: { value: "新名称", registrationEtag: "registration-v1" } },
+      expect.objectContaining({ ifMatch: "etag-refreshed" }));
+  });
+
   it("nests registered owned nodes under their driver with independent removal", async () => {
     const ports = createPorts();
     const driver = (await ports.catalog.listSubjects()).items[0]!;

@@ -92,7 +92,7 @@ export interface ParameterCatalogGovernanceRepository {
   getRegistration(
     organizationId: string,
     registrationId: string
-  ): Promise<CatalogRegistrationResponse>;
+  ): Promise<CatalogRegistrationResponse & { etag?: string }>;
   retireRegistration(
     organizationId: string,
     registrationId: string,

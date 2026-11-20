@@ -13889,7 +13889,7 @@
       },
       "patch": {
         "operationId": "catalog.updatePlacement",
-        "summary": "Rename or reparent the retained placement using If-Match",
+        "summary": "Update the retained placement or organization display alias using the applicable ETags",
         "tags": [
           "catalog"
         ],
@@ -89399,6 +89399,25 @@
               }
             ]
           },
+          "displayAlias": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "registrationEtag": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "registrationEtag"
+            ],
+            "additionalProperties": false
+          },
           "destinationModuleId": {
             "type": "string"
           },
@@ -89443,9 +89462,6 @@
             "additionalProperties": false
           }
         },
-        "required": [
-          "placement"
-        ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogUpdatePlacementRequest"
       },

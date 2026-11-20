@@ -863,14 +863,16 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         throw catalogApiFailure("revision-conflict");
       }
       if (
-        parsed.placement.mode === "choose-parent" &&
+        parsed.placement?.mode === "choose-parent" &&
         parsed.placement.parentPlacementId === store.registration.placement.id
       ) {
         throw catalogApiFailure("invalid-placement-parent");
       }
       return replayOrStore(store, "updatePlacement", write, parsed, () => {
-        const nextPlacement = placementFromIntent(parsed.placement);
-        store.registration = { ...store.registration!, placement: nextPlacement };
+        const current = store.registration!;
+        const nextPlacement = parsed.placement ? placementFromIntent(parsed.placement) : current.placement;
+        store.registration = { ...current, placement: nextPlacement,
+          ...(parsed.displayAlias ? { displayAlias: parsed.displayAlias.value ?? undefined } : {}) };
         return { item: clone(nextPlacement) };
       });
     },
