@@ -672,7 +672,7 @@ it("writes only blocking MOD D02 evidence from a complete scoped inventory and p
       ["parameter_catalog.catalog_materializations", ["release_id", "compiled_fingerprint", "database_fingerprint", "installed_at"]],
       ["parameter_catalog.catalog_release_subjects", ["release_id", "subject_id", "lifecycle", "selector_snapshot", "tombstone_provenance"]],
       ["parameter_catalog.catalog_subjects", ["id", "kind", "canonical_key", "owner_subject_id"]],
-      ["parameter_catalog.catalog_release_subject_aliases", ["release_id", "alias_id", "lifecycle", "tombstone_provenance"]],
+      ["parameter_catalog.catalog_release_subject_aliases", ["release_id", "alias_id", "subject_id", "lifecycle", "tombstone_provenance"]],
       ["parameter_catalog.catalog_subject_aliases", ["id", "subject_id", "selector_kind", "normalized_selector"]],
       ["parameter_catalog.catalog_release_definition_heads", ["release_id", "definition_id", "revision_id"]],
       ["parameter_catalog.parameter_definitions", ["id", "subject_id", "property_key"]],

@@ -263,6 +263,8 @@ export const S2_SCH_0337_FINGERPRINT = "0eb643b1c8438c3ce184060ef0239e4caf3a1775
 export const S2_SCH_0338_FINGERPRINT = "91311a8fbd21e52e89c3ea854fe8f74b6d98a2ebb9c1ce12eeefe36d99436954";
 /** 0339, 0343 and 0344 add versioned subject identities and reviewed definition merges. Measured on PostgreSQL/pgvector. */
 export const S2_SCH_0344_FINGERPRINT = "bb07ddfaf7b7d5eaa31d65c7b8053120ba4b9470fb05868a803d7da314bdca0f";
+/** 0351 adds JSON instance correction receipts and their integrity checks. */
+export const S2_SCH_0351_FINGERPRINT = "1cc2f02a9ef8ac04f3ff2431eb02aa24a711681f905f68f22b577e1501583239";
 /** 0356–0357 retain copy-mapping revisions and link reopened review items, after 0350–0351. */
 export const S2_SCH_0357_FINGERPRINT = "1636751685f8389d204e15c27b1f5543807f5e0abf5d431ade653b895514af68";
 export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0357_FINGERPRINT;

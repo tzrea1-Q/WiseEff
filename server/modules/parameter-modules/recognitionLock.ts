@@ -5,7 +5,7 @@ export async function lockOrganizationModuleRecognition(db: Queryable, organizat
   await db.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`parameter-module-recognition:${organizationId}`]);
 }
 
-export async function lockCatalogPointerForGovernance(db: Pick<import("pg").PoolClient, "query"> | Queryable) {
+export async function lockCatalogPointerForGovernance(db: { query(text: string): Promise<unknown> }) {
   await db.query(`do $$
     declare previous_timeout text := pg_catalog.current_setting('lock_timeout');
     begin

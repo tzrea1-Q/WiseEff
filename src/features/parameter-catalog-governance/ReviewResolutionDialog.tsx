@@ -192,6 +192,13 @@ export function ReviewResolutionDialog({
     return true;
   }, [busy, dirty]);
   const requestClose = () => { if (guardLeave()) onOpenChange(false); };
+  const selectPrevious = () => {
+    if (item.reopenedFrom && guardLeave()) onSelectRelated?.(item.reopenedFrom.id);
+  };
+  const selectSuccessor = () => {
+    const id = receipt?.reopenedReviewItemId ?? item.reopenedReviewItemId;
+    if (id && guardLeave()) onSelectRelated?.(id);
+  };
   const finishLeave = (leave: boolean) => {
     const resolve = leaveDecision.current;
     leaveDecision.current = null;
@@ -388,9 +395,9 @@ export function ReviewResolutionDialog({
             {item.decision ? <p>结论：{resolutionCopy[item.decision.type].label}{item.decision.reason ? ` · ${item.decision.reason}` : ""}</p> : null}
             {item.reopenedFrom ? <>
               <p>重新提请原因：{item.reopenedFrom.reason}</p>
-              {onSelectRelated ? <Button variant="outline" type="button" onClick={() => { if (guardLeave()) onSelectRelated(item.reopenedFrom!.id); }}>查看原审核事项</Button> : null}
+              {onSelectRelated ? <Button variant="outline" type="button" onClick={selectPrevious}>查看原审核事项</Button> : null}
             </> : null}
-            {item.reopenedReviewItemId && !receipt && onSelectRelated ? <Button variant="outline" type="button" onClick={() => { if (guardLeave()) onSelectRelated(item.reopenedReviewItemId!); }}>查看关联复核事项</Button> : null}
+            {item.reopenedReviewItemId && !receipt && onSelectRelated ? <Button variant="outline" type="button" onClick={selectSuccessor}>查看关联复核事项</Button> : null}
           </section> : null}
           {receipt ? <section className="review-resolution__receipt" aria-label="审核处理回执">
             <h3 role="status">{receipt.reopenedReviewItemId ? "已重新提请复核" : receipt.proposalId ? "定义修订意向已记录，尚未发布。" : resolutionType === "mark-out-of-scope" ? "已标为范围外" : resolutionType === "restore-registration" ? "登记已恢复" : "主体已登记"}</h3>
@@ -398,7 +405,7 @@ export function ReviewResolutionDialog({
             {receipt.registration ? <p>主体：{affectedTarget}；目标模块：{targetModule?.displayName ?? receipt.registration.placement.displayName}。</p> : null}
             <p className="parameter-text-content">处理原因：{reason.trim()}</p><p>此次处理不更改项目参数值或源文件。可返回审核列表查看处理记录。</p>
             <div><Button asChild variant="outline" size="sm"><a href={withOrganizationScope(`/audit?kind=parameter-catalog-governance&targetId=${encodeURIComponent(item.id)}`, organizationId)} target="_blank" rel="noreferrer">查看处理记录</a></Button></div>
-            {receipt.reopenedReviewItemId && onSelectRelated ? <Button variant="outline" type="button" onClick={() => onSelectRelated(receipt.reopenedReviewItemId!)}>查看关联复核事项</Button> : null}
+            {receipt.reopenedReviewItemId && onSelectRelated ? <Button variant="outline" type="button" onClick={selectSuccessor}>查看关联复核事项</Button> : null}
             {receipt.proposalId ? <>
               <p>{definitionSubjectId ? "本次处理没有修改当前定义。请在定义目录选择目标定义，通过编辑和发布流程继续。" : "尚无唯一匹配主体。请前往参数定义管理准备主体与定义，再按编写和发布流程继续。"}</p>
               {onContinueDefinition ? <Button type="button" onClick={() => onContinueDefinition({ proposalId: receipt.proposalId!, propertyKey: item.observation?.propertyKey, subjectId: definitionSubjectId })}>{definitionSubjectId ? "前往定义目录继续编辑" : "前往参数定义管理"}</Button> : <Button asChild variant="outline"><a href="/parameter-admin/specs">{definitionSubjectId ? "前往定义目录继续编辑" : "前往参数定义管理"}</a></Button>}
