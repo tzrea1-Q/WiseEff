@@ -69,6 +69,10 @@ describe("archived source snapshot restoration over HTTP and PostgreSQL", () => 
     await db.query("insert into users(id,organization_id,name,title) values($1,'source-restore-other','Platform actor','Platform Admin')", [platform]);
     await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values($1,$1,'source-restore-other','platform-admin')", [platform]);
     const skillPath = `/api/v1/log-skills/${h.skill.id}`;
+    const originalDraft = await request<{ item: Skill }>(`${h.base}/default`, "POST");
+    expect(originalDraft.status).toBe(200);
+    const originalPublished = await request<{ item: Skill }>(`${skillPath}/publish`, "POST", { draftRevisionId: originalDraft.body.item.draft!.id });
+    expect(originalPublished.status).toBe(200);
     const defaultDraft = await request<{ item: Skill }>(`${skillPath}/source-snapshots/${fallback.id}/default`, "POST");
     const published = await request<{ item: Skill }>(`${skillPath}/publish`, "POST", { draftRevisionId: defaultDraft.body.item.draft!.id });
     expect(published.status).toBe(200);
@@ -125,6 +129,8 @@ describe("archived source snapshot restoration over HTTP and PostgreSQL", () => 
     await processJob(rerun.body.job.id);
     const runs = await request<{ items: LogRunDto[] }>(`${original.path}/runs`);
     expect(runs.body.items.map(run => run.sourceSnapshot?.id)).toEqual([h.snapshot.id, h.snapshot.id]);
+    const configReplay = await request<{ item: Skill }>(`${skillPath}/revisions/${originalPublished.body.item.currentRevision.id}/restore`, "POST");
+    expect(configReplay).toMatchObject({ status: 200, body: { item: { draft: { spec: { defaultSourceSnapshotId: h.snapshot.id } } } } });
   }, 120_000);
 
   it("returns the active occupant to the loser of a concurrent restore and label correction", async () => {

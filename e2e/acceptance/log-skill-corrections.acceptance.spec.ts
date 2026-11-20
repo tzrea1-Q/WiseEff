@@ -5,7 +5,6 @@ import { expect, test } from "playwright/test";
 import { acceptanceUserIdForRole, authHeadersForRole, authHeadersForUser, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { withPgClient } from "./helpers/database";
 import { installBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { prepareInteractionSurface } from "./helpers/interactionSurface";
 import { recordOperationEvidence } from "./helpers/operationEvidence";
 import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute } from "./helpers/runtime";
@@ -79,7 +78,10 @@ test("corrects source labels and credential names in a selected log workspace", 
   expect(prior.sourceSnapshot?.id).toBe(original.id);
 
   const restorePath = `${snapshotsPath}/${archived.id}/restore`;
-  const diagnostics = installBrowserDiagnostics(page, testInfo, { expectedApiFailures: [{ method: "POST", path: restorePath, status: 409, exact: true }] });
+  const diagnostics = installBrowserDiagnostics(page, testInfo, { expectedApiFailures: [
+    { method: "POST", path: restorePath, status: 409, exact: true },
+    { method: "POST", path: "/api/v1/organization/operating-scope", status: 403, exact: true }
+  ] });
   await signInBrowserAsRole(page, "platform-admin", `/log-admin?tab=skills&organizationId=${organizationId}`);
   await expect(page.getByRole("region", { name: "当前操作组织" })).toContainText(organizationName);
   await page.getByRole("table", { name: "分析技能列表" }).getByRole("link", { name: skillName, exact: true }).click();
@@ -130,8 +132,9 @@ test("corrects source labels and credential names in a selected log workspace", 
   expect(await analyze("build-new")).toMatchObject({ sourceSnapshot: { id: original.id }, sourceSnapshotSelection: "matched_version" });
   expect(await readReport(prior.id)).toMatchObject({ reportId: prior.reportId, sourceSnapshot: { id: original.id }, requestedSourceVersion: "build-old" });
 
-  await signInBrowserAsRole(page, "guest", `/log-admin/skills/${skill.id}?section=source&organizationId=${organizationId}`);
-  await prepareInteractionSurface(page);
+  await signInBrowserAsRole(page, "guest", "/logs");
+  await page.goto(`/log-admin/skills/${skill.id}?section=source&organizationId=${organizationId}`);
+  await expect(page.getByRole("alert")).toContainText("没有权限执行该操作。");
   await expect(page.getByRole("button", { name: /快照操作/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "签发凭据" })).toHaveCount(0);
   const admin = acceptanceAdminOnlyUser;
@@ -141,11 +144,12 @@ test("corrects source labels and credential names in a selected log workspace", 
       data: { versionLabel: "denied", expectedVersionLabel: "build-new", expectedArchived: false } })).status()).toBe(403);
   }
   const audit = await withPgClient(db => db.query(`select kind, actor_user_id, organization_id,
-    metadata->>'beforeName' as before_name, metadata->>'afterName' as after_name
+    coalesce(metadata->>'beforeName', metadata->>'beforeVersionLabel') as before_name,
+    coalesce(metadata->>'afterName', metadata->>'afterVersionLabel') as after_name
     from audit_events where target_id=any($1) and kind in ('log-source-snapshot-rename','log-integration-credential-rename') order by kind`, [[original.id, credential.id]]));
   expect(audit.rows).toEqual([
     { kind: "log-integration-credential-rename", actor_user_id: actorId, organization_id: organizationId, before_name: "Uploader before correction", after_name: "Uploader after correction" },
-    { kind: "log-source-snapshot-rename", actor_user_id: actorId, organization_id: organizationId, before_name: null, after_name: null }
+    { kind: "log-source-snapshot-rename", actor_user_id: actorId, organization_id: organizationId, before_name: "build-old", after_name: "build-new" }
   ]);
   diagnostics.assertNoBrowserDiagnosticsFailures();
   await recordOperationEvidence({ testInfo, operationId: "LOG-SKILL-CORRECTIONS-001", title: "Log skill corrections", status: "passed", role: "Platform Admin",
