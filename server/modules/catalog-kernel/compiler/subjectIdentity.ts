@@ -14,10 +14,13 @@ export function parseCatalogSelector(kind: string, value: unknown) {
   return parseCanonicalNodeName(value);
 }
 
-export function isCorrectedIdentity(document: CatalogReleaseDocument, release: CatalogReleaseNode): boolean {
+export function subjectIdentityProvenance(document: CatalogReleaseDocument) {
   const provenance = document.kind === "subject" ? document.content.selector.provenance
     : document.kind === "alias" ? document.content.selectorProvenance : undefined;
+  return provenance?.source === SUBJECT_IDENTITY_CORRECTION ? provenance : undefined;
+}
+
+export function isCorrectedIdentity(document: CatalogReleaseDocument, release: CatalogReleaseNode): boolean {
   return document.source.path === TYPED_CHANGESET_SOURCE_PATH &&
-    provenance?.source === SUBJECT_IDENTITY_CORRECTION &&
-    provenance.reviewReference === release.manifest.release.id;
+    subjectIdentityProvenance(document)?.reviewReference === release.manifest.release.id;
 }

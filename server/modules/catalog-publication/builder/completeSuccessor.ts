@@ -37,6 +37,7 @@ import {
   CATALOG_CAPABILITY_CONTRACT_REVISION,
   CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION,
   CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION,
+  CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION,
   validateSupportedDefinitionContent,
 } from "./capabilities";
 import {
@@ -67,6 +68,7 @@ import type {
   SupportedDefinitionContent,
 } from "./types";
 import { preparedPredecessorBundle } from "./preparedPredecessor";
+import { subjectIdentityProvenance } from "../../catalog-kernel/compiler/subjectIdentity";
 import { applySubjectIdentityChange } from "./subjectIdentity";
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -148,7 +150,8 @@ export function impactSummaryFromReport(impact: CatalogImpactReport): {
 
 const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[]): CapabilityContract => {
   const identity = CATALOG_CAPABILITY_ALLOW_LIST;
-  const revision = documents.some((document) => document.kind === "subject" && document.content.ownerSubjectId)
+  const revision = documents.some(subjectIdentityProvenance) ? CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION
+    : documents.some((document) => document.kind === "subject" && document.content.ownerSubjectId)
     ? CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION : changeSet.some((change) => change.op === "create-subject")
     ? CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION : CATALOG_CAPABILITY_CONTRACT_REVISION;
   return {

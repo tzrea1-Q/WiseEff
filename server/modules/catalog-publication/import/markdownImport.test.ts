@@ -44,10 +44,10 @@ describe("Definition import planner", () => {
     const foreign = planMarkdownImport(shortName, "charger.md", snapshot);
     expect(foreign.entries[0]?.diagnostics[0]?.message).toContain("nature 和 cardinality");
     const ambiguous = planMarkdownImport(shortName, "charger.md", snapshot, [], {
-      rules: new Map([["direct_charger", [subjectId, "csub_acme_power"]]]),
+      rules: new Map([["direct_charger", [subjectId, "csub_drv_huawei_charging_core"]]]),
     });
     expect(ambiguous.changeSet).toBeNull();
-    expect(ambiguous.entries[0]?.matchCandidates?.map(candidate => candidate.subjectId).sort()).toEqual(["csub_acme_power", subjectId]);
+    expect(ambiguous.entries[0]?.matchCandidates?.map(candidate => candidate.subjectId).sort()).toEqual(["csub_drv_huawei_charging_core", subjectId]);
   });
 
   it("does not invent format errors for valid revision clears when the target is missing", () => {

@@ -111,7 +111,7 @@ export function SubjectIdentityPublicationDialog(props: {
             {action === "rename" ? <label><input type="checkbox" checked={keepOldAlias} disabled={busy}
               onChange={event => setEdited(() => setKeepOldAlias(event.target.checked))} /> 保留旧名为正式目录别名</label> : null}
           </div> : null}
-          {impact && candidate ? <section aria-label="共享标识发布预览">
+          {impact && candidate ? <section aria-label={success ? "共享标识发布结果" : "共享标识发布预览"}>
             <p>影响所有使用共享目录的组织及其 DTS 匹配。主体 ID、定义、登记和既有项目绑定保留。</p>
             <ul>{impact.subjects.map(entry => <li key={entry.id}>
               {impact.change.op === "set-subject-alias" && impact.change.fromSubjectId ? entry.id === impact.change.fromSubjectId ? "转出：" : "转入：" : ""}
@@ -119,7 +119,8 @@ export function SubjectIdentityPublicationDialog(props: {
               {entry.ownerSubjectId ? ` · 所属驱动 ${entry.ownerSubjectId}` : ""}
             </li>)}</ul>
             {impact.change.op === "rename-subject" ? <p>新规范标识 {impact.change.selector}。{impact.change.keepOldAlias ? "旧名继续匹配。" : "旧名退出共享匹配。"}</p>
-              : <p>正式目录别名 {impact.change.selector} 将{impact.change.active ? "启用" : "停用"}。</p>}
+              : <p>正式目录别名 {impact.change.selector} {success ? "已" : "将"}{impact.change.active ? "启用" : "停用"}。</p>}
+            {!success ? <p>高风险发布。复核人可凭候选编号读取并确认影响。</p> : null}
             <p>候选编号 <code>{candidate.id}</code> · 基准版本 <code>{candidate.expectedBaseReleaseId}</code></p>
           </section> : null}
           {canReview && !success ? <details><summary>复核已有共享标识候选</summary>

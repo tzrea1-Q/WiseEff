@@ -39,6 +39,7 @@ describe("buildCompleteSuccessor", () => {
     });
     expect(result.ok, result.ok ? undefined : JSON.stringify(result.error)).toBe(true);
     if (!result.ok || result.value.kind !== "successor") return;
+    expect(result.value.capabilityContract.revision).toBe("catalog-capability/v7");
     const [previous, successor] = result.value.artifact.bundle.releases;
     expect(previous).toEqual(predecessor.first);
     expect(successor?.documents).toEqual(expect.arrayContaining([

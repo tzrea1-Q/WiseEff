@@ -105,6 +105,7 @@ test("confirms the Huawei organization match and publishes a shared alias from m
     expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool),
       resolvePublisherActor: async (id) => createUserInvocation(await getAuthContext(db, id)) })).toBe("claimed");
     await expect(identity.getByRole("status")).toContainText("目录发布已生效", { timeout: 30_000 });
+    await expect(identity.getByText("direct_charger（启用）", { exact: true })).toBeVisible();
     await catalogScreenshot(page, testInfo, "huawei-shared-alias-active-1440x900");
   } finally {
     await db.close();
