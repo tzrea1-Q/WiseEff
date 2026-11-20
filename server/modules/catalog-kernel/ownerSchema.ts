@@ -25,11 +25,21 @@ export async function catalogOwnersAvailable(client: Client): Promise<boolean> {
 
 export async function readCatalogSubjectOwners(client: Client, releaseId: string): Promise<Map<string, string>> {
   if (!await catalogOwnersAvailable(client)) return new Map();
+  // Offline capture has column grants. A whole-row JSON conversion would
+  // require read access to unrelated membership columns.
+  const versioned = await client.query<{ available: boolean }>(`select exists (
+    select 1 from pg_catalog.pg_attribute
+    where attrelid = 'parameter_catalog.catalog_release_subjects'::regclass
+      and attname = 'rules_snapshot' and not attisdropped
+  ) as available`);
+  const owner = versioned.rows[0]?.available
+    ? "case when membership.rules_snapshot is null then subject.owner_subject_id else membership.rules_snapshot->>'ownerSubjectId' end"
+    : "subject.owner_subject_id";
   const result = await client.query<{ id: string; owner_subject_id: string }>(`
-    select subject.id, ${publishedSubjectOwner("membership", "subject")} as owner_subject_id
+    select subject.id, ${owner} as owner_subject_id
     from parameter_catalog.catalog_release_subjects membership
     join parameter_catalog.catalog_subjects subject on subject.id = membership.subject_id
-    where membership.release_id = $1 and (${publishedSubjectOwner("membership", "subject")}) is not null`, [releaseId]);
+    where membership.release_id = $1 and (${owner}) is not null`, [releaseId]);
   return new Map(result.rows.map((row) => [row.id, row.owner_subject_id]));
 }
 

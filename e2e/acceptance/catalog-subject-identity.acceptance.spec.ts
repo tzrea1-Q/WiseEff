@@ -169,6 +169,7 @@ test("reviews Huawei shared aliases and driver rules from module management", as
       expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool),
         resolvePublisherActor: async (id) => createUserInvocation(await getAuthContext(db, id)) })).toBe("claimed");
       await expect(identity.getByRole("status")).toContainText("目录发布已生效", { timeout: 30_000 });
+      await expect(identity.getByText(`direct_charger（${after === "生效" ? "启用" : "停用"}）`, { exact: true })).toBeVisible();
     };
     await reviewLifecycle("退役共享主体", "生效", "退役");
     await catalogScreenshot(page, testInfo, "huawei-shared-retirement-1440x900");

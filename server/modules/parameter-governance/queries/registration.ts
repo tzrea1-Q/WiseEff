@@ -4,7 +4,6 @@ import {
   type ContractJsonValue,
 } from "../../parameter-catalog-contract/index";
 import type { Queryable } from "../../../shared/database/client";
-import { publishedSubjectOwner } from "../../catalog-kernel/ownerSchema";
 
 import { assertOrgScope, fail, isUsableToken, runQuery } from "./client";
 import { emptyReasonForView, mapRegistrationMethod, mapRegistrationStatus } from "./mapping";
@@ -185,7 +184,8 @@ const registrationSelect = `
     registration.organization_id,
     registration.subject_id,
     registration.display_alias,
-    coalesce(registration.owner_subject_id, ${publishedSubjectOwner("membership", "subject")}) as owner_subject_id,
+    coalesce(registration.owner_subject_id, case when membership.rules_snapshot is null then subject.owner_subject_id
+      else membership.rules_snapshot->>'ownerSubjectId' end) as owner_subject_id,
     registration.status,
     registration.registration_method,
     registration.current_placement_id,
