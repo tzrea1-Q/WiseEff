@@ -168,7 +168,6 @@ describe("fresh database fixture policy", () => {
     });
     expect(manual.sort()).toEqual([
       "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
-      "server/modules/parameter-files/canonicalReleaseReadinessHttp.integration.test.ts",
       "server/modules/parameter-specs/populatedUpgrade.integration.test.ts",
       "server/shared/database/migrations.test.ts",
       "server/testing/parameterCatalog/database.test.ts"
