@@ -80,7 +80,7 @@ export const loadDefinitionInRelease = async (
             head.revision_id,
             revision.content as revision_content,
             membership.lifecycle as subject_status,
-            subject.canonical_key as subject_name
+            coalesce(membership.selector_snapshot->'values'->>0, membership.selector_snapshot->>'value', subject.canonical_key) as subject_name
        from parameter_catalog.parameter_definitions definition
        join parameter_catalog.catalog_release_definition_heads head
          on head.definition_id = definition.id
@@ -126,7 +126,8 @@ export const loadSubjectInRelease = async (
   subjectId: string,
 ): Promise<SubjectRow | null> => {
   const result = await client.query<SubjectRow>(
-    `select subject.id, subject.kind, membership.lifecycle as status, subject.canonical_key
+    `select subject.id, subject.kind, membership.lifecycle as status,
+            coalesce(membership.selector_snapshot->'values'->>0, membership.selector_snapshot->>'value', subject.canonical_key) as canonical_key
        from parameter_catalog.catalog_subjects subject
        join parameter_catalog.catalog_release_subjects membership
          on membership.subject_id = subject.id

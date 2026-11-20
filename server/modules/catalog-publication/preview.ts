@@ -9,6 +9,7 @@ import {
   DefinitionProposalRevisionId,
 } from "../parameter-catalog-contract/index";
 import type { Database } from "../../shared/database/client";
+import { isSubjectIdentityOp, subjectIdentityChangeSchema, type SubjectIdentityImpact } from "../contracts/dtoSchemas/catalogSubjectIdentity";
 import { classifyImpact } from "./authorization/classify";
 import type { OwnerDeclaration } from "./claimedOwners";
 import type { ImpactFacts, PublicationRiskClass } from "./authorization/types";
@@ -68,6 +69,7 @@ export type PreviewPublicationError =
   | { readonly kind: "subject-not-found"; readonly subjectId: string }
   | { readonly kind: "subject-not-active"; readonly subjectId: string }
   | { readonly kind: "definition-already-exists" }
+  | { readonly kind: "subject-selector-occupied" }
   | { readonly kind: "persist-failed"; readonly detail: string };
 
 export type PreviewPublicationValue = {
@@ -81,6 +83,7 @@ export type PreviewPublicationValue = {
     readonly addedSubjectIds?: readonly string[];
     readonly ownerDeclarations?: readonly OwnerDeclaration[];
     readonly ownerPublicationOnly?: boolean;
+    readonly subjectIdentity?: SubjectIdentityImpact;
     readonly definitionSuccessorChange?: {
       readonly definitionId: string;
       readonly successorDefinitionId: string | null;
@@ -135,6 +138,12 @@ export function parsePublicationChangeSet(
   for (const entry of value) {
     if (!isRecord(entry) || typeof entry.op !== "string") {
       return { error: { kind: "invalid-input", reason: "changeSet" } };
+    }
+    if (isSubjectIdentityOp(entry.op)) {
+      const parsed = subjectIdentityChangeSchema.safeParse(entry);
+      if (!parsed.success) return { error: { kind: "invalid-input", reason: "changeSet" } };
+      changes.push(parsed.data);
+      continue;
     }
     if (entry.op === "create-definition") {
       const content = asSupportedContent(entry.content);
@@ -268,6 +277,7 @@ export function publicationImpactFacts(
   return {
     authorPrincipalId,
     operations: changeSet.map((change) => {
+      if (isSubjectIdentityOp(change.op)) return { op: "correct-subject-identity" as const };
       if (change.op === "create-definition") {
         return { op: "create-definition" as const, supported: true };
       }
@@ -366,7 +376,7 @@ const mintFrozenIdentity = (
       }
       continue;
     }
-    if (change.op === "declare-subject-owner") continue;
+    if (!("definitionId" in change)) continue;
     const current = predecessorDefinitions.find(
       (document) => document.kind === "definition" && document.content.id === change.definitionId,
     );
@@ -475,6 +485,9 @@ export async function previewPublicationCandidate(input: {
       if (built.error.reason === "duplicate-natural-key") {
         return { ok: false, error: { kind: "definition-already-exists" } };
       }
+      if (input.changeSet.some(change => isSubjectIdentityOp(change.op))) {
+        return { ok: false, error: { kind: "subject-selector-occupied" } };
+      }
       return {
         ok: false,
         error: { kind: "unsupported-catalog-capability", detail: built.error.reason },
@@ -487,6 +500,10 @@ export async function previewPublicationCandidate(input: {
     if (built.error.kind === "invalid-release") {
       const detail = built.error.violations?.find(violation => violation.detail?.startsWith("definition-successor-"))?.detail;
       if (detail) return { ok: false, error: { kind: "invalid-input", reason: detail } };
+      if (input.changeSet.some(change => isSubjectIdentityOp(change.op)) &&
+        built.error.violations.some(violation => ["alias-collision", "duplicate-stable-identity", "stable-key-reassigned"].includes(violation.code))) {
+        return { ok: false, error: { kind: "subject-selector-occupied" } };
+      }
     }
     return { ok: false, error: { kind: "invalid-input", reason: built.error.kind } };
   }
@@ -519,7 +536,16 @@ export async function previewPublicationCandidate(input: {
     document.kind === "definition" && document.content.id === successorChange.successorDefinitionId);
   const replacementChange = input.replacementSourceDefinitionId && input.changeSet.length === 1 && change?.op === "create-definition"
     ? { definitionId: input.replacementSourceDefinitionId, propertyKey: change.propertyKey, subjectId: change.subjectId } : null;
+  const identity = input.changeSet.find(change => change.op === "rename-subject" || change.op === "set-subject-alias");
+  const identityIds = identity ? [identity.subjectId, ...(identity.op === "set-subject-alias" && identity.fromSubjectId ? [identity.fromSubjectId] : [])] : [];
+  const subjectIdentity = identity ? { change: identity, subjects: predecessorTarget.documents.flatMap(document =>
+    document.kind === "subject" && identityIds.includes(document.content.id)
+      ? [{ id: document.content.id, canonicalName: document.content.selector.value,
+          ...(document.content.ownerSubjectId ? { ownerSubjectId: document.content.ownerSubjectId } : {}),
+          definitionCount: predecessorTarget.documents.filter(item => item.kind === "definition" && item.content.subjectId === document.content.id).length }]
+      : []) } : undefined;
   const impactSummary = { ...impactSummaryFromReport(built.value.impact),
+    ...(subjectIdentity ? { subjectIdentity } : {}),
     ...(ownerDeclarations.length ? { ownerDeclarations,
       ownerPublicationOnly: ownerDeclarations.length === input.changeSet.length } : {}),
     ...(successorChange ? { definitionSuccessorChange: {

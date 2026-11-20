@@ -80,7 +80,7 @@ export async function readModuleRecognitionSubjectDefaults(
        coalesce((select array_agg(alias.normalized_selector order by alias.normalized_selector)
          from parameter_catalog.catalog_release_subject_aliases alias_membership
          join parameter_catalog.catalog_subject_aliases alias on alias.id = alias_membership.alias_id
-         where alias_membership.release_id = membership.release_id and alias.subject_id = membership.subject_id
+         where alias_membership.release_id = membership.release_id and alias_membership.subject_id = membership.subject_id
            and alias_membership.lifecycle = 'active'), '{}') as aliases
      from parameter_catalog.catalog_release_subjects membership
      left join parameter_catalog.catalog_drivers driver on driver.subject_id = membership.subject_id

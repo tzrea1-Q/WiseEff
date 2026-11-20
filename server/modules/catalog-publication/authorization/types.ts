@@ -71,6 +71,7 @@ export type ImpactOperationFact =
   | {
       readonly op: "create-subject-with-definitions";
     }
+  | { readonly op: "correct-subject-identity" }
   | {
       readonly op: "revise-definition";
       readonly class: "documentation" | "semantic";

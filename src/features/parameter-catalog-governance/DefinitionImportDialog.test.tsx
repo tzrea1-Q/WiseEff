@@ -8,6 +8,7 @@ import {
 } from "@/application/parameter-catalog/fixtures";
 import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { takeBatchRegistrationHandoff } from "./batchRegistrationHandoff";
@@ -42,6 +43,28 @@ function renderImport(options: {
   const view = render(ui());
   return { ports, completed, rerenderRelease: (releaseId: string) => view.rerender(ui(releaseId)) };
 }
+
+it("confirms an existing subject from the current organization's compatible rules and previews again", async () => {
+  const document = "# Driver `direct_charger`";
+  const match = { subjectId: "csub_drv_huawei_direct_charger", canonicalName: "huawei,direct_charger", source: "organization-compatible" as const };
+  const entry = { subjectHeading: document, definitionHeading: "support_series_bat_mode", selector: "direct_charger",
+    propertyKey: "support_series_bat_mode", displayName: "串联电池模式", outcome: "error" as const, diagnostics: [] };
+  const source = { fileName: "粘贴.md", sha256: "test", parserVersion: "v2" };
+  const preview = vi.fn<NonNullable<ParameterCatalogRepository["previewMarkdownImport"]>>();
+  preview.mockResolvedValueOnce({ item: { candidate: null, noChange: false, placementHints: [],
+    entries: [{ ...entry, matchCandidates: [match] }], source } });
+  preview.mockResolvedValueOnce({ item: { candidate: catalogPublicationCandidate, noChange: false, placementHints: [],
+    entries: [{ ...entry, outcome: "create", match }], source } });
+  renderImport({ initialDocument: document, prepare: ports => { ports.catalog.previewMarkdownImport = preview; } });
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "解析并预览" }));
+  await user.click(await screen.findByRole("combobox", { name: "direct_charger 的组织匹配主体" }));
+  await user.click(await screen.findByRole("option", { name: /huawei,direct_charger/ }));
+  await user.click(screen.getByRole("button", { name: "解析并预览" }));
+  expect(await screen.findByText("组织 compatible 规则 · huawei,direct_charger")).toBeVisible();
+  expect(preview).toHaveBeenLastCalledWith({ markdownImport: { document, fileName: "粘贴.md",
+    organizationSubjectSelections: [{ selector: "direct_charger", subjectId: match.subjectId }] } }, { catalogReleaseId: CATALOG_RELEASE_ID });
+});
 
 it("allows one new preview against an updated Catalog even when the previous result had no candidate", async () => {
   const preview = vi.fn(async () => ({ item: { candidate: null, noChange: true, placementHints: [], entries: [],

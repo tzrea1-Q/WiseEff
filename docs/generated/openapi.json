@@ -86726,6 +86726,29 @@
                     "type": "string"
                   }
                 },
+                "formalAliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "selector": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "retired"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "selector",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "membership": {
                   "type": "object",
                   "properties": {
@@ -86946,6 +86969,29 @@
                 "type": "array",
                 "items": {
                   "type": "string"
+                }
+              },
+              "formalAliases": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "selector": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "retired"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "selector",
+                    "status"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "membership": {
@@ -95554,6 +95600,9 @@
                 "items": {
                   "anyOf": [
                     {
+                      "type": "object"
+                    },
+                    {
                       "type": "object",
                       "properties": {
                         "op": {
@@ -96078,6 +96127,25 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "organizationSubjectSelections": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "selector": {
+                          "type": "string"
+                        },
+                        "subjectId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "selector",
+                        "subjectId"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "required": [
@@ -96181,6 +96249,45 @@
                       },
                       "ownerPublicationOnly": {
                         "type": "boolean"
+                      },
+                      "subjectIdentity": {
+                        "type": "object",
+                        "properties": {
+                          "change": {
+                            "type": "object"
+                          },
+                          "subjects": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "canonicalName": {
+                                  "type": "string"
+                                },
+                                "ownerSubjectId": {
+                                  "type": "string"
+                                },
+                                "definitionCount": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "canonicalName",
+                                "definitionCount"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "change",
+                          "subjects"
+                        ],
+                        "additionalProperties": false
                       },
                       "definitionSuccessorChange": {
                         "type": "object",
@@ -96352,6 +96459,45 @@
                           "ownerPublicationOnly": {
                             "type": "boolean"
                           },
+                          "subjectIdentity": {
+                            "type": "object",
+                            "properties": {
+                              "change": {
+                                "type": "object"
+                              },
+                              "subjects": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "canonicalName": {
+                                      "type": "string"
+                                    },
+                                    "ownerSubjectId": {
+                                      "type": "string"
+                                    },
+                                    "definitionCount": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "canonicalName",
+                                    "definitionCount"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "change",
+                              "subjects"
+                            ],
+                            "additionalProperties": false
+                          },
                           "definitionSuccessorChange": {
                             "type": "object",
                             "properties": {
@@ -96520,6 +96666,59 @@
                         },
                         "displayName": {
                           "type": "string"
+                        },
+                        "match": {
+                          "type": "object",
+                          "properties": {
+                            "subjectId": {
+                              "type": "string"
+                            },
+                            "canonicalName": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "catalog-primary",
+                                "catalog-alias",
+                                "organization-compatible"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "subjectId",
+                            "canonicalName",
+                            "source"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "matchCandidates": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "subjectId": {
+                                "type": "string"
+                              },
+                              "canonicalName": {
+                                "type": "string"
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "catalog-primary",
+                                  "catalog-alias",
+                                  "organization-compatible"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "subjectId",
+                              "canonicalName",
+                              "source"
+                            ],
+                            "additionalProperties": false
+                          }
                         },
                         "outcome": {
                           "type": "string",
@@ -96766,6 +96965,45 @@
                           "ownerPublicationOnly": {
                             "type": "boolean"
                           },
+                          "subjectIdentity": {
+                            "type": "object",
+                            "properties": {
+                              "change": {
+                                "type": "object"
+                              },
+                              "subjects": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "canonicalName": {
+                                      "type": "string"
+                                    },
+                                    "ownerSubjectId": {
+                                      "type": "string"
+                                    },
+                                    "definitionCount": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "canonicalName",
+                                    "definitionCount"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "change",
+                              "subjects"
+                            ],
+                            "additionalProperties": false
+                          },
                           "definitionSuccessorChange": {
                             "type": "object",
                             "properties": {
@@ -96949,6 +97187,45 @@
                       "ownerPublicationOnly": {
                         "type": "boolean"
                       },
+                      "subjectIdentity": {
+                        "type": "object",
+                        "properties": {
+                          "change": {
+                            "type": "object"
+                          },
+                          "subjects": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "canonicalName": {
+                                  "type": "string"
+                                },
+                                "ownerSubjectId": {
+                                  "type": "string"
+                                },
+                                "definitionCount": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "canonicalName",
+                                "definitionCount"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "change",
+                          "subjects"
+                        ],
+                        "additionalProperties": false
+                      },
                       "definitionSuccessorChange": {
                         "type": "object",
                         "properties": {
@@ -97117,6 +97394,59 @@
                     },
                     "displayName": {
                       "type": "string"
+                    },
+                    "match": {
+                      "type": "object",
+                      "properties": {
+                        "subjectId": {
+                          "type": "string"
+                        },
+                        "canonicalName": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "catalog-primary",
+                            "catalog-alias",
+                            "organization-compatible"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "subjectId",
+                        "canonicalName",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "matchCandidates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "canonicalName": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "catalog-primary",
+                              "catalog-alias",
+                              "organization-compatible"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "subjectId",
+                          "canonicalName",
+                          "source"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "outcome": {
                       "type": "string",
@@ -97358,6 +97688,45 @@
                   "ownerPublicationOnly": {
                     "type": "boolean"
                   },
+                  "subjectIdentity": {
+                    "type": "object",
+                    "properties": {
+                      "change": {
+                        "type": "object"
+                      },
+                      "subjects": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "canonicalName": {
+                              "type": "string"
+                            },
+                            "ownerSubjectId": {
+                              "type": "string"
+                            },
+                            "definitionCount": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "canonicalName",
+                            "definitionCount"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "change",
+                      "subjects"
+                    ],
+                    "additionalProperties": false
+                  },
                   "definitionSuccessorChange": {
                     "type": "object",
                     "properties": {
@@ -97526,6 +97895,7 @@
                       "release-drift",
                       "subject-not-published",
                       "subject-retired",
+                      "subject-selector-occupied",
                       "definition-not-found",
                       "definition-already-exists",
                       "definition-retired",
@@ -97766,6 +98136,7 @@
                         "release-drift",
                         "subject-not-published",
                         "subject-retired",
+                        "subject-selector-occupied",
                         "definition-not-found",
                         "definition-already-exists",
                         "definition-retired",

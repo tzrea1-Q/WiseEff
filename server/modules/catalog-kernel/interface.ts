@@ -202,6 +202,7 @@ export interface DefinitionLifecycleCounts {
 
 export interface CatalogSubjectDetailSnapshot extends CatalogSubjectSnapshot {
   readonly aliases: readonly SubjectAliasSnapshot[];
+  readonly publishedAliases?: readonly SubjectAliasSnapshot[];
   readonly definitionCounts: DefinitionLifecycleCounts;
 }
 
