@@ -13,11 +13,17 @@ import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { mockSourceSnapshots } from "@/infrastructure/mock/logSkills";
-import type { AnalysisSkill, SkillSpec, SkillWorkspaceRepository, SourceSnapshot, SourceStatementMatches } from "./types";
+import type { AnalysisSkill, SkillSpec, SkillWorkspaceRepository, SourceSnapshot, SourceSnapshotLabelPreview, SourceStatementMatches } from "./types";
 
 const labels = { queued: "等待索引", indexing: "索引中", ready: "就绪", failed: "索引失败", archived: "已归档" };
 const tones = { queued: "text-[var(--info)] bg-[var(--info-soft)]", indexing: "text-[var(--info)] bg-[var(--info-soft)]", ready: "text-[var(--success)] bg-[var(--success-soft)]", failed: "text-[var(--danger)] bg-[var(--danger-soft)]", archived: "text-muted-foreground bg-muted" };
 const active = (item: SourceSnapshot) => item.status === "queued" || item.status === "indexing";
+function resolutionText(resolution: SourceSnapshotLabelPreview["oldResolution"]["after"]) {
+  if (!resolution) return "存在冲突，无法更正";
+  if (!resolution.snapshot) return "无可选快照";
+  const { versionLabel, status } = resolution.snapshot;
+  return `${resolution.selection === "matched_version" ? "匹配标签" : "使用已发布默认快照"} · ${versionLabel} · ${labels[status]}`;
+}
 const skipLabels: Record<string, string> = { "第三方或忽略目录": "第三方", "二进制或非 UTF-8 文件": "二进制", "不支持的文件类型": "类型不支持", "超过单文件大小上限": "超过大小限制" };
 function skippedSummary(item: SourceSnapshot) {
   const counts = new Map<string, number>();
@@ -38,6 +44,8 @@ export function SourceSnapshots({ skill, spec, setSpec, repository, apiMode, can
   const [loadFailed, setLoadFailed] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [labelSnapshot, setLabelSnapshot] = useState<SourceSnapshot | null>(null);
+  const [labelPreview, setLabelPreview] = useState<SourceSnapshotLabelPreview | null>(null);
   const [skippedSnapshot, setSkippedSnapshot] = useState<SourceSnapshot | null>(null);
   const [versionLabel, setVersionLabel] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -103,16 +111,43 @@ export function SourceSnapshots({ skill, spec, setSpec, repository, apiMode, can
       setRefresh(value => value + 1);
     }); } catch (cause) {
       setError(presentError(cause, "恢复失败，请重试。"));
-      const occupant = cause instanceof WiseEffApiError ? cause.details.conflictingSnapshot as { id?: unknown; versionLabel?: unknown } | undefined : undefined;
-      if (typeof occupant?.id === "string" && typeof occupant.versionLabel === "string") setConflict({ id: occupant.id, versionLabel: occupant.versionLabel });
+      showConflict(cause);
     }
   }
+  function showConflict(cause: unknown) {
+    const occupant = cause instanceof WiseEffApiError ? cause.details.conflictingSnapshot as { id?: unknown; versionLabel?: unknown } | undefined : undefined;
+    if (typeof occupant?.id === "string" && typeof occupant.versionLabel === "string") setConflict({ id: occupant.id, versionLabel: occupant.versionLabel });
+    setRefresh(value => value + 1);
+  }
+  async function previewLabel() {
+    if (pending || disabled || !labelSnapshot || !versionLabel.trim()) return;
+    setFormError(""); setLabelPreview(null);
+    try { await mutate(async () => setLabelPreview(await repository!.previewSourceSnapshotLabel!(skill.id, labelSnapshot.id, versionLabel.trim()))); }
+    catch (cause) { setFormError(presentError(cause, "无法预览版本标签，请重试。")); }
+  }
+  async function saveLabel() {
+    if (pending || disabled || !labelSnapshot || !labelPreview || (!labelPreview.archived && labelPreview.conflictingSnapshot)) return;
+    setFormError("");
+    try { await mutate(async () => {
+      const updated = await repository!.updateSourceSnapshotLabel!(skill.id, labelSnapshot.id, {
+        versionLabel: labelPreview.nextVersionLabel, expectedVersionLabel: labelPreview.versionLabel, expectedArchived: labelPreview.archived
+      });
+      setItems(current => current?.map(snapshot => snapshot.id === updated.id ? updated : snapshot) ?? null);
+      setLabelSnapshot(null); setRefresh(value => value + 1);
+    }); } catch (cause) {
+      setFormError(presentError(cause, "更正失败，请重新预览后重试。"));
+      setLabelPreview(null);
+      showConflict(cause);
+    }
+  }
+  const conflictLink = (occupant: { id: string; versionLabel: string }) => <Button asChild variant="link"><a href={`#source-snapshot-${encodeURIComponent(occupant.id)}`}
+    onClick={() => setLabelSnapshot(null)}>查看占用快照 {occupant.versionLabel}</a></Button>;
   return <section className="skill-section" aria-label="源码"><h2>源码</h2>
     <p>默认快照随下一次技能发布生效。快照尚未就绪时，日志分析会继续完成并注明未使用源码。</p>
     {editable ? <div><Button disabled={disabled} onClick={() => { setVersionLabel(""); setFile(null); setFormError(""); setUploadOpen(true); }}>上传快照</Button></div> : null}
     {editable && setSpec ? <Button variant="outline" disabled={disabled || !defaultId} onClick={() => { const next = { ...currentSpec }; delete next.defaultSourceSnapshotId; setSpec(next); }}>不使用默认快照</Button> : null}
     {editable && dirty ? <p>请先保存或放弃未保存的更改，再设为默认快照。</p> : null}
-    {error ? <div role="alert">{error}{conflict ? <Button asChild variant="link"><a href={`#source-snapshot-${encodeURIComponent(conflict.id)}`}>查看占用快照 {conflict.versionLabel}</a></Button> : null}</div> : null}
+    {error ? <div role="alert">{error}{conflict ? conflictLink(conflict) : null}</div> : null}
     {loadFailed ? <SectionError message="无法加载源码快照" onRetry={() => { setLoadFailed(false); setRefresh((value) => value + 1); }} />
       : !items ? <SectionSkeleton label="正在加载源码快照" />
       : <DataTable rows={items} rowKey={(item) => item.id} ariaLabel="源码快照" tableClassName="[&_th]:whitespace-nowrap [&_th]:px-3 [&_td]:px-3" emptyState={<SectionEmpty title="尚无源码快照" message="上传源码压缩包后，将在后台建立索引。" />} columns={[
@@ -127,7 +162,11 @@ export function SourceSnapshots({ skill, spec, setSpec, repository, apiMode, can
         { key: "createdAt", header: "上传时间", widthClass: "w-28 whitespace-nowrap", render: (item) => <span title={formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}>{formatAbsolute(item.createdAt).slice(0, 16).replaceAll("-", "/")}</span> },
         { key: "default", header: "默认", widthClass: "w-20 whitespace-nowrap", render: (item) => item.id === defaultId ? <span className="badge whitespace-nowrap">{skill.draft ? "草稿默认" : "已发布默认"}</span> : "—" }
       ]} renderRowActions={editable ? (item) => {
-        if (item.status === "archived") return <Button variant="outline" size="sm" disabled={disabled || pending || !repository?.restoreSourceSnapshot} onClick={() => void restore(item)}>恢复快照</Button>;
+        const renameActions = repository?.previewSourceSnapshotLabel && repository.updateSourceSnapshotLabel ? [{ id: "rename", label: "更正版本标签", disabled: disabled || pending, onSelect: () => {
+          setLabelSnapshot(item); setVersionLabel(item.versionLabel); setLabelPreview(null); setFormError(""); setConflict(undefined);
+        } }] : [];
+        if (item.status === "archived") return <RowActionMenu label={`${item.versionLabel} 快照操作`}
+          primaryAction={{ id: "restore", label: "恢复快照", disabled: disabled || pending || !repository?.restoreSourceSnapshot, onSelect: () => restore(item) }} items={renameActions} />;
         const defaultAction = { id: "default", label: "设为默认", disabled: disabled || dirty || item.id === defaultId, onSelect: async () => {
           try { await mutate(async () => onSkillUpdated(await repository!.setDefaultSourceSnapshot!(skill.id, item.id))); }
           catch (cause) { setError(presentError(cause, "设置默认快照失败，请刷新后重试。")); }
@@ -139,7 +178,7 @@ export function SourceSnapshots({ skill, spec, setSpec, repository, apiMode, can
             setItems(current => current?.map(snapshot => snapshot.id === queued.id ? queued : snapshot) ?? null);
             setRefresh(value => value + 1);
           }); } catch (cause) { setError(presentError(cause, "重新排队失败，请重试。")); }
-        } } : defaultAction} items={[...(item.status === "failed" ? [defaultAction] : []), { id: "archive", label: "归档", destructive: true, disabled,
+        } } : defaultAction} items={[...renameActions, ...(item.status === "failed" ? [defaultAction] : []), { id: "archive", label: "归档", destructive: true, disabled,
           confirmation: { title: "归档源码快照？", description: `将归档“${item.versionLabel}”。已发布版本的引用保留，使用此快照的后续分析将注明源码不可用。`, confirmLabel: "归档" },
           onSelect: async () => { await mutate(async () => { await repository!.archiveSourceSnapshot!(skill.id, item.id); setRefresh((value) => value + 1); }); }
         }]} />;
@@ -173,6 +212,34 @@ export function SourceSnapshots({ skill, spec, setSpec, repository, apiMode, can
         ]} />
         <div className="dialog-actions"><Button variant="outline" onClick={() => setSkippedSnapshot(null)}>关闭</Button></div>
       </> : null}
+    </ModalDialog>
+    <ModalDialog open={editable && !!labelSnapshot} initialFocusRef={labelRef} onDismiss={pending ? undefined : () => setLabelSnapshot(null)} className="skill-publish-dialog">
+      {({ titleId }) => labelSnapshot ? <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void previewLabel(); }}>
+        <h2 id={titleId}>更正源码版本标签</h2>
+        <p>当前标签 <strong className="break-all">{labelPreview?.versionLabel ?? labelSnapshot.versionLabel}</strong></p>
+        <label className="grid gap-2">新版本标签<Input ref={labelRef} value={versionLabel} maxLength={200} disabled={pending}
+          aria-describedby={formError ? errorId : undefined} onChange={(event) => { setVersionLabel(event.target.value); setLabelPreview(null); setFormError(""); setConflict(undefined); }} /></label>
+        {formError ? <div id={errorId} role="alert">{formError}{conflict ? conflictLink(conflict) : null}</div> : null}
+        <div aria-live="polite" className="grid gap-2">
+          {labelPreview ? <>
+            {labelPreview.archived ? <p>快照仍为已归档状态。恢复时会检查标签是否已被占用。</p> : null}
+            {!labelPreview.hasPublishedRevision ? <p>技能尚未发布，外部上报当前没有可选快照。</p> : null}
+            {labelPreview.conflictingSnapshot ? <p>同一技能已有有效快照使用该标签。{conflictLink(labelPreview.conflictingSnapshot)}</p> : null}
+            <dl aria-label="外部上报 sourceVersion 预览" className="grid gap-2 break-all">
+              {([[labelPreview.versionLabel, labelPreview.oldResolution], [labelPreview.nextVersionLabel, labelPreview.newResolution]] as const).map(([label, resolution], index) => <div key={index}>
+                <dt className="font-semibold">{index === 0 ? "旧标签" : "新标签"} {label}</dt>
+                <dd>更正前 {resolutionText(resolution.before)}</dd><dd>更正后 {resolutionText(resolution.after)}</dd>
+              </div>)}
+            </dl>
+          </> : null}
+        </div>
+        <div className="dialog-actions">
+          <Button type="button" variant="outline" disabled={pending} onClick={() => setLabelSnapshot(null)}>取消</Button>
+          <Button type="submit" variant="outline" disabled={disabled || pending || !versionLabel.trim()}>预览解析</Button>
+          <Button type="button" disabled={disabled || pending || !labelPreview || labelPreview.versionLabel === labelPreview.nextVersionLabel
+            || (!labelPreview.archived && !!labelPreview.conflictingSnapshot)} onClick={() => void saveLabel()}>保存标签</Button>
+        </div>
+      </form> : null}
     </ModalDialog>
     <ModalDialog open={uploadOpen} initialFocusRef={labelRef} onDismiss={pending ? undefined : () => setUploadOpen(false)} className="skill-publish-dialog">
       {({ titleId }) => <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void upload(); }} noValidate>

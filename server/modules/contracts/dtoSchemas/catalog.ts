@@ -2,7 +2,7 @@ import type { ZodTypeAny } from "zod";
 import { z } from "zod";
 import { createLogFileBodySchema, createLogBodySchema, rerunLogBodySchema, createLogDomainBodySchema, createLogSkillBodySchema, replaceLogSkillSampleBodySchema, sourceSnapshotUploadSchema, logSkillRecommendationRequestSchema } from "../../logs/schemas";
 import { logSkillSpecSchema, parseTestRequestSchema, skillFilePreviewRequestSchema, skillFilePreviewResponseSchema } from "../../logs/skillSpec";
-import { issueLogIntegrationCredentialBodySchema } from "../../logs/schemas";
+import { issueLogIntegrationCredentialBodySchema, renameLogIntegrationCredentialBodySchema, sourceSnapshotLabelPreviewSchema, sourceSnapshotLabelUpdateSchema } from "../../logs/schemas";
 import { parseTestRunSchema } from "../../logs/parseTestSpec";
 import { parsePreviewRequestSchema, parsePreviewResponseSchema } from "../../logs/parsing/spec";
 import { signalPreviewRequestSchema, signalPreviewResponseSchema } from "../../logs/signalRules";
@@ -45,7 +45,7 @@ import {
   logSkillRecommendationResponseSchema,
   logSkillListResponseSchema, logSkillResponseSchema, logSkillRevisionResponseSchema, logSkillRevisionListResponseSchema,
   logSkillTemplateListResponseSchema, logSkillSampleResponseSchema, logSkillSampleReplaceResponseSchema,
-  logSourceSnapshotListResponseSchema, logSourceSnapshotResponseSchema, logSourceVersionListResponseSchema,
+  logSourceSnapshotListResponseSchema, logSourceSnapshotResponseSchema, logSourceVersionListResponseSchema, logSourceSnapshotLabelPreviewResponseSchema,
   logSourceEvidenceResponseSchema, logSourceLocateRequestSchema, logSourceLocateResponseSchema,
   logDomainResponseSchema,
   logFeedbackInsightsResponseSchema,
@@ -207,6 +207,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogFormatPreviewResponse: formatPreviewResponseSchema,
   LogFileUploadRequest: createLogFileBodySchema,
   IssueLogIntegrationCredentialRequest: issueLogIntegrationCredentialBodySchema,
+  RenameLogIntegrationCredentialRequest: renameLogIntegrationCredentialBodySchema,
   LogIntegrationCredentialListResponse: logIntegrationCredentialListResponseSchema,
   LogIntegrationCredentialResponse: logIntegrationCredentialResponseSchema,
   LogIntegrationCredentialSecretResponse: logIntegrationCredentialSecretResponseSchema,
@@ -221,6 +222,9 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   LogSkillSampleResponse: logSkillSampleResponseSchema,
   LogSkillSampleReplaceResponse: logSkillSampleReplaceResponseSchema,
   LogSourceSnapshotUploadRequest: sourceSnapshotUploadSchema,
+  LogSourceSnapshotLabelPreviewRequest: sourceSnapshotLabelPreviewSchema,
+  LogSourceSnapshotLabelUpdateRequest: sourceSnapshotLabelUpdateSchema,
+  LogSourceSnapshotLabelPreviewResponse: logSourceSnapshotLabelPreviewResponseSchema,
   LogSourceSnapshotListResponse: logSourceSnapshotListResponseSchema,
   LogSourceVersionListResponse: logSourceVersionListResponseSchema,
   LogSourceSnapshotResponse: logSourceSnapshotResponseSchema,
@@ -350,7 +354,7 @@ export const dtoSchemaCoveredRouteIds = [
   "parameters-dashboard-hotspots",
   "parameterModules.getRegistry",
   "logs.uploadFile",
-  "logs.listIntegrationCredentials", "logs.issueIntegrationCredential", "logs.rotateIntegrationCredential", "logs.revokeIntegrationCredential",
+  "logs.listIntegrationCredentials", "logs.issueIntegrationCredential", "logs.renameIntegrationCredential", "logs.rotateIntegrationCredential", "logs.revokeIntegrationCredential",
   "logs.list",
   "logs.get",
   "logs.getLines",
@@ -374,6 +378,7 @@ export const dtoSchemaCoveredRouteIds = [
   "logs.importAnalysisCases",
   "logs.importSkillPackage",
   "logs.listSourceSnapshots", "logs.listSourceVersions", "logs.uploadSourceSnapshot", "logs.defaultSourceSnapshot", "logs.archiveSourceSnapshot", "logs.locateSourceStatement", "logs.sourceEvidence",
+  "logs.previewSourceSnapshotLabel", "logs.updateSourceSnapshotLabel",
   "logs.listDomains",
   "logs.createDomain",
   "logs.updateDomain",
