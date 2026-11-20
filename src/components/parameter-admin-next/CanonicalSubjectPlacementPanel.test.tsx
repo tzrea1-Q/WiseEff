@@ -1,5 +1,5 @@
 import { selectControlOption } from "@/test/selectControlOption";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -620,6 +620,40 @@ describe("CanonicalSubjectPlacementPanel", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "重新读取完整目录" }));
     expect(await screen.findByText("vendor,configuration")).toBeVisible();
     expect(screen.getByRole("button", { name: "登记主体：vendor,node" })).toBeEnabled();
+  });
+
+  it("keeps the expanded snapshot during refresh and ignores an in-flight read invalidated by a change", async () => {
+    const ports = createPorts();
+    const getCatalog = vi.mocked(ports.catalog.getCatalog);
+    const view = (refreshKey: number) => <CanonicalSubjectPlacementPanel {...ports}
+      organizationId={CATALOG_ORGANIZATION_ID} actor="org-admin" canAdmin refreshKey={refreshKey}
+      search="?subjectQ=driver&expandedSubject=subject-driver" />;
+    const rendered = render(view(0));
+    expect(await screen.findByText("extra_119")).toBeVisible();
+    const refresh = screen.getByRole("button", { name: "刷新规范数据" });
+    await waitFor(() => expect(refresh).toBeEnabled());
+
+    let resolveOld!: (value: Awaited<ReturnType<typeof getCatalog>>) => void;
+    const oldRead = new Promise<Awaited<ReturnType<typeof getCatalog>>>(resolve => { resolveOld = resolve; });
+    getCatalog.mockReturnValueOnce(oldRead);
+    await userEvent.click(refresh);
+    expect(refresh).toBeDisabled();
+    expect(screen.getByLabelText("筛选规范主体")).toHaveValue("driver");
+    expect(screen.getByText("extra_119")).toBeVisible();
+
+    const current = ports.listSubjects.getMockImplementation()!;
+    ports.listSubjects.mockImplementation(async query => {
+      const result = await current(query);
+      return { ...result, items: result.items.map(item => item.id === "subject-driver"
+        ? { ...item, canonicalName: "vendor,driver-updated" } : item) };
+    });
+    rendered.rerender(view(1));
+    expect(await screen.findByRole("listitem", { name: /vendor,driver-updated/ })).toBeVisible();
+    await act(async () => { resolveOld(readyCatalogDocument); });
+    expect(screen.getByRole("listitem", { name: /vendor,driver-updated/ })).toBeVisible();
+    expect(getCatalog).toHaveBeenCalledTimes(3);
+    expect(ports.listSubjects).toHaveBeenCalledTimes(6);
+    expect(ports.catalog.listDefinitions).toHaveBeenCalledTimes(2);
   });
 
   it("keeps zero-definition subjects quiet while preserving a real empty response for nonzero counts", async () => {
