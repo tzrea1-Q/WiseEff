@@ -527,12 +527,12 @@ const authenticateGovernance =
     return { ok: true as const, scope };
   };
 
-const publicationScope = (auth: AuthContext): TrustedPublicationScope => ({
+const publicationScope = (auth: AuthContext, trustedActor: TrustedInvocationContext): TrustedPublicationScope => ({
   principalId: auth.user.id,
   organizationId: parameterOrganizationId(auth),
   actorKind: governanceActorKind(auth),
   permissions: auth.permissions,
-  trustedActor: parameterInvocation(auth) ?? createUserInvocation(auth),
+  trustedActor,
   projectScope: parameterUsageProjectScope(auth) ?? { kind: "only", ids: [] },
 });
 
@@ -543,8 +543,9 @@ const authenticatePublication =
     if (!auth.user.isActive) {
       return { ok: false as const, status: 401 as const };
     }
-    const access = await parameterRequestAccess(db, createUserInvocation(auth), request as RouteRequest);
-    return { ok: true as const, scope: publicationScope(access) };
+    const actor = createUserInvocation(auth);
+    const access = await parameterRequestAccess(db, actor, request as RouteRequest);
+    return { ok: true as const, scope: publicationScope(access, parameterInvocation(access) ?? actor) };
   };
 
 const factsFromSnapshot = (snapshot: LoadedCatalogSnapshot): CatalogDocumentFacts => ({

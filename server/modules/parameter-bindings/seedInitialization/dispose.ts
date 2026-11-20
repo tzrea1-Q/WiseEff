@@ -163,15 +163,29 @@ async function loadSuccessorPks(
   for (const relation of ARCHIVED_PARAMETER_PLANE_RELATIONS) {
     successor.set(relation.key, new Set());
   }
-  const currentBindings = asSet(
+  // A correction links two immutable source identities. Disposing either one
+  // would cascade-delete the receipt and lose the original replay.
+  const jsonCorrections = (await db.query<{ occurrenceId: string; configSetId: string; requestId: string }>(
+    `select occurrence.id as "occurrenceId", occurrence.config_set_id as "configSetId", correction.request_id as "requestId"
+       from parameter_catalog.project_parameter_source_occurrences occurrence
+       join parameter_catalog.json_instance_corrections correction
+         on occurrence.id in (correction.previous_occurrence_id, correction.successor_occurrence_id)
+      where occurrence.organization_id = $1 and occurrence.project_id = $2`,
+    [organizationId, projectId],
+  )).rows;
+  const correctedOccurrences = [...new Set(jsonCorrections.map(row => row.occurrenceId))];
+  const retainedBindings = asSet(
     await idsFrom(
       db,
       `select id from parameter_catalog.current_project_parameter_bindings
-        where organization_id = $1 and project_id = $2`,
-      [organizationId, projectId],
+        where organization_id = $1 and project_id = $2
+       union
+       select id from parameter_catalog.project_parameter_bindings
+        where organization_id = $1 and project_id = $2 and source_occurrence_id = any($3::text[])`,
+      [organizationId, projectId, correctedOccurrences],
     ),
   );
-  successor.set("canonical_bindings", currentBindings);
+  successor.set("canonical_bindings", retainedBindings);
   successor.set(
     "project_parameter_bindings",
     asSet(
@@ -183,7 +197,7 @@ async function loadSuccessorPks(
       ),
     ),
   );
-  const bindingList = [...currentBindings];
+  const bindingList = [...retainedBindings];
   successor.set(
     "canonical_values",
     asSet(
@@ -208,8 +222,9 @@ async function loadSuccessorPks(
   );
   successor.set(
     "canonical_source_occurrences",
-    asSet(
-      await idsFrom(
+    asSet([
+      ...correctedOccurrences,
+      ...await idsFrom(
         db,
         `select source_occurrence_id as id
            from parameter_catalog.current_project_parameter_bindings
@@ -217,7 +232,7 @@ async function loadSuccessorPks(
             and source_occurrence_id is not null`,
         [organizationId, projectId],
       ),
-    ),
+    ]),
   );
   successor.set(
     "binding_history_events",
@@ -241,7 +256,7 @@ async function loadSuccessorPks(
       ),
     ),
   );
-  const currentConfigSets = asSet(
+  const retainedConfigSets = asSet(
     await idsFrom(
       db,
       `select id from public.dts_config_set
@@ -249,8 +264,9 @@ async function loadSuccessorPks(
       [organizationId, projectId],
     ),
   );
-  successor.set("dts_config_set", currentConfigSets);
-  const configList = [...currentConfigSets];
+  for (const correction of jsonCorrections) retainedConfigSets.add(correction.configSetId);
+  successor.set("dts_config_set", retainedConfigSets);
+  const configList = [...retainedConfigSets];
   // Revisions below remain retained; their members and versions still need
   // parent files even after those files leave the active config set.
   successor.set(
@@ -417,6 +433,9 @@ async function loadSuccessorPks(
     );
   } catch {
     successor.set("project_parameter_value_change_requests", new Set());
+  }
+  for (const correction of jsonCorrections) {
+    successor.get("project_parameter_value_change_requests")!.add(correction.requestId);
   }
   successor.set("project_parameter_value_change_targets", asSet(await idsFrom(
     db,

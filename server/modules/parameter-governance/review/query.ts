@@ -8,10 +8,10 @@ import {
   type CatalogReleasePin,
   type LegacyRowClass,
   type ReviewReason,
-  type ReviewResolutionType,
 } from "../../parameter-catalog-contract/index";
 import { createCatalogKernel } from "../../catalog-kernel/interface";
 import { createPinCapturingCatalogRuntime } from "../../catalog-publication/runtime";
+import { readClosedReviewDecisions } from "../queries/reviewDecisionHistory";
 
 import { authorizeReviewQueueRead } from "./authorize";
 import { groupReviewEvidence, projectReviewQueueItem, reviewItemIdFor } from "./group";
@@ -232,31 +232,29 @@ const projectGroups = (
   });
 };
 
-const reopenedFrom = (row: ReviewItemRow) => row.reopened_from_item_id && row.reopen_reason
+const reopenedFrom = (row: Pick<ReviewItemRow, "reopened_from_item_id" | "reopen_reason">) => row.reopened_from_item_id && row.reopen_reason
   ? { reopenedFrom: { id: row.reopened_from_item_id, reason: row.reopen_reason } } : {};
 
-async function readClosedItems(client: Queryable, query: ListReviewQueueQuery, reviewItemId?: string): Promise<ReviewQueueItem[]> {
-  const result = await client.query<ReviewItemRow & { status: "resolved" | "out-of-scope"; resolution_id: string;
-    resolution_type: ReviewResolutionType; out_of_scope_reason: string | null; successor_id: string | null; release_digest: string }>(
-    `select item.id,item.evidence_fingerprint,item.matcher_revision,item.catalog_release_id,item.reason,item.status,item.etag_version,
-       item.reopened_from_item_id,item.reopen_reason,resolution.id as resolution_id,resolution.resolution_type,resolution.out_of_scope_reason,
-       successor.id as successor_id,release.release_digest
-     from parameter_catalog.parameter_review_items item
-     join parameter_catalog.parameter_review_resolutions resolution on resolution.review_item_id=item.id and resolution.id=item.current_resolution_id
-     join parameter_catalog.catalog_releases release on release.id=item.catalog_release_id
-     left join parameter_catalog.parameter_review_items successor on successor.organization_id=item.organization_id and successor.reopened_from_item_id=item.id
-     where item.organization_id=$1 and (($2::text is null and item.status='out-of-scope') or item.id=$2)
-     order by resolution.created_at desc,item.id`, [query.organizationId, reviewItemId ?? null]);
-  if (!result.rows.length) return [];
-  const grouped = groupReviewEvidence(await loadEvidence(client, query.organizationId), query.capturedRelease);
+async function readClosedItems(pool: pg.Pool, query: ListReviewQueueQuery, reviewItemId?: string): Promise<ReviewQueueItem[]> {
+  const rows = await readClosedReviewDecisions(pool, query.organizationId, reviewItemId);
+  if (!rows.length) return [];
+  const kernel = createCatalogKernel(pool);
+  const historicalIds = new Set(rows.map(row => CatalogReleaseId(row.catalog_release_id)));
+  historicalIds.delete(query.capturedRelease.id);
+  const historicalPins = new Map(await Promise.all([...historicalIds].map(async id => {
+    const pin = await kernel.resolveCatalogReleasePin(id);
+    if (!pin.ok) throw new Error(`Review decision release is unavailable: ${pin.error.kind}`);
+    return [id, pin.value] as const;
+  })));
+  const grouped = groupReviewEvidence(await loadEvidence(pool, query.organizationId), query.capturedRelease);
   const byFingerprint = new Map((grouped.ok ? grouped.value : []).map(group => [group.groupingFingerprint, group]));
-  return result.rows.map(row => {
+  return rows.map(row => {
     const id = ReviewItemId(row.id);
     const catalogReleaseId = CatalogReleaseId(row.catalog_release_id);
     const current = catalogReleaseId === query.capturedRelease.id;
     const group = byFingerprint.get(row.evidence_fingerprint);
     const candidateState = current ? { status: "current" as const, capturedRelease: query.capturedRelease } :
-      { status: "stale" as const, capturedRelease: { id: catalogReleaseId, digest: CatalogReleaseDigest(row.release_digest) }, currentRelease: query.capturedRelease };
+      { status: "stale" as const, capturedRelease: historicalPins.get(catalogReleaseId)!, currentRelease: query.capturedRelease };
     const evidence = group ? projectReviewQueueItem(group, { capturedRelease: query.capturedRelease, candidateState,
       persisted: { id, etagVersion: Number(row.etag_version) } }) : null;
     return { id, organizationId: query.organizationId, status: row.status, reason: row.reason, catalogReleaseId, candidateState,
@@ -317,14 +315,13 @@ const readAuthorizedQueue = async (
   const current = await assertCurrentPin(pool, pin.value);
   if (!current.ok) return current;
 
+  if (query.status === "out-of-scope") {
+    const items = await readClosedItems(pool, query);
+    return { ok: true, value: { items, ignoredReviewItemCount: items.length } };
+  }
   const client = await pool.connect();
   try {
     await client.query("begin");
-    if (query.status === "out-of-scope") {
-      const items = await readClosedItems(client, query);
-      await client.query("commit");
-      return { ok: true, value: { items, ignoredReviewItemCount: items.length } };
-    }
     const materialized = await materializeReviewItemsInTransaction(client,query.organizationId,pin.value);
     if (!materialized.ok) {
       await client.query("rollback");
@@ -381,17 +378,9 @@ export const getReviewItem = async (
   if (!result.ok) return result;
   const item = result.value.items.find((entry) => entry.id === query.reviewItemId);
   if (item) return { ok: true, value: item };
-  const client = await pool.connect();
-  try {
-    const [closed] = await readClosedItems(client, query, query.reviewItemId);
-    if (closed) return { ok: true, value: closed };
-    return {
-      ok: false,
-      error: { kind: "review-item-not-found", reviewItemId: query.reviewItemId },
-    };
-  } finally {
-    client.release();
-  }
+  const [closed] = await readClosedItems(pool, query, query.reviewItemId);
+  if (closed) return { ok: true, value: closed };
+  return { ok: false, error: { kind: "review-item-not-found", reviewItemId: query.reviewItemId } };
 };
 
 export const createReviewQueueReader = (pool: pg.Pool): ReviewQueueReader => ({

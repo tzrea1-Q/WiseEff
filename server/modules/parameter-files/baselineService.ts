@@ -1,4 +1,4 @@
-import { parameterOrganizationId, parameterInvocation } from "../parameters/operatingScope";
+import { parameterOrganizationId, parameterInvocation, parameterScopeInvocation } from "../parameters/operatingScope";
 import { randomUUID } from "node:crypto";
 
 import { createUserInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
@@ -255,11 +255,11 @@ async function attachBaselineErrata(db: Queryable, organizationId: string, proje
 export async function correctBaseline(
   db: Database, auth: AuthContext, input: { projectId: string; baselineId: string } &
     ({ name: string; notes?: string | null } | { note: string; source: string; clientMutationId: string }),
-  context: BaselineServiceContext
+  context: BaselineServiceContext & { invocation: TrustedInvocationContext }
 ) {
   requireParameterFileAdmin(auth);
   const organizationId = parameterOrganizationId(auth);
-  const invocation = parameterInvocation(auth) ?? createUserInvocation(auth);
+  const invocation = parameterScopeInvocation(auth, context.invocation, "baseline correction");
   return db.transaction(async (tx) => {
     await requireActiveOrganization(tx, organizationId, true);
     const baseline = (await tx.query<{ status: ReleaseBaselineDto["status"] }>(`

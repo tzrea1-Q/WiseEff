@@ -135,6 +135,37 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
     })).rejects.toMatchObject({ code: "55000" });
     await expect(db.query("update public.shared_dtsi_revisions set name='rewrite' where id=$1", [owned.version])).rejects.toMatchObject({ code: "55000" });
     await expect(db.query("delete from public.shared_dtsi_revision_members where revision_id=$1", [owned.version])).rejects.toMatchObject({ code: "55000" });
+    await db.transaction(async tx => {
+      await tx.query(`insert into parameter_catalog.parameter_review_items
+        (id,organization_id,evidence_fingerprint,matcher_revision,catalog_release_id,reason,status,etag_version,current_resolution_id)
+        select org||'-original',org,org||'-review','erasure-fixture',current_catalog_release_id,'unknown','out-of-scope',2,org||'-verdict'
+        from parameter_catalog.catalog_state cross join (values ('dtsi-target'),('dtsi-foreign')) organizations(org)`);
+      await tx.query(`insert into parameter_catalog.parameter_review_resolutions
+        (id,review_item_id,resolution_type,before_etag_version,after_etag_version,accountable_principal_id,initiator_type,
+         captured_catalog_release_id,request_fingerprint,out_of_scope_reason,success_audit_ref)
+        select current_resolution_id,id,'mark-out-of-scope',1,2,organization_id||'-admin','user',catalog_release_id,
+          evidence_fingerprint,'Previous review verdict',id||'-audit'
+        from parameter_catalog.parameter_review_items where id in ('dtsi-target-original','dtsi-foreign-original')`);
+      await tx.query(`insert into parameter_catalog.parameter_review_items
+        (id,organization_id,evidence_fingerprint,matcher_revision,catalog_release_id,reason,status,etag_version,reopened_from_item_id,reopen_reason)
+        select organization_id||'-reopened',organization_id,evidence_fingerprint,matcher_revision,catalog_release_id,
+          reason,'open',1,id,'Recheck scope'
+        from parameter_catalog.parameter_review_items where id in ('dtsi-target-original','dtsi-foreign-original')`);
+    });
+    await expect(db.query("delete from parameter_catalog.parameter_review_items where id='dtsi-target-reopened'"))
+      .rejects.toMatchObject({ code: "55000" });
+    await expect(db.query("update parameter_catalog.parameter_review_items set reopen_reason='Changed' where id='dtsi-target-reopened'"))
+      .rejects.toMatchObject({ code: "55000" });
+    const review = (org: string) => db.query(`select item.id,item.reopened_from_item_id,item.reopen_reason,resolution.out_of_scope_reason
+      from parameter_catalog.parameter_review_items item
+      left join parameter_catalog.parameter_review_resolutions resolution on resolution.review_item_id=item.id
+      where item.organization_id=$1 order by item.id`, [org]);
+    const beforeOwnedReviews = (await review("dtsi-target")).rows;
+    const beforeForeignReviews = (await review("dtsi-foreign")).rows;
+    expect(beforeOwnedReviews).toEqual(expect.arrayContaining([
+      { id: "dtsi-target-original", reopened_from_item_id: null, reopen_reason: null, out_of_scope_reason: "Previous review verdict" },
+      { id: "dtsi-target-reopened", reopened_from_item_id: "dtsi-target-original", reopen_reason: "Recheck scope", out_of_scope_reason: null },
+    ]));
     const catalog = () => db.query(`select
       (select jsonb_agg(to_jsonb(r) order by id) from parameter_catalog.parameter_definitions r) definitions,
       (select jsonb_agg(to_jsonb(r) order by id) from parameter_catalog.catalog_subjects r) subjects,
@@ -178,6 +209,7 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
     expect((await db.query("select content from shared_dtsi_revision_members where revision_id=$1", [owned.version])).rows).toEqual([{ content: source }]);
     expect((await db.query("select content from shared_dtsi_draft_members where resource_id=$1", [draft.draft.resourceId])).rows)
       .toEqual([{ content: source.replace("disabled", "okay") }]);
+    expect((await review("dtsi-target")).rows).toEqual(beforeOwnedReviews);
     await expect(api.transaction(async tx => {
       await tx.query("select set_config('wiseeff.organization_erasure_id',$1,true),set_config('wiseeff.organization_erasure_lease','forged',true)", [started.body.item.id]);
       await tx.query("delete from public.shared_dtsi_drafts where resource_id=$1", [draft.draft.resourceId]);
@@ -195,6 +227,9 @@ describe("Shared DTSI organization erasure through HTTP and a PostgreSQL API log
     expect((await request(`${owned.resource}/versions/${owned.version}`, "GET", undefined, "dtsi-foreign-admin")).status).toBe(404);
     expect((await request(`${foreign.resource}/versions/${foreign.version}`, "GET", undefined, "dtsi-foreign-admin")).body).toEqual(foreignVersion.body);
     expect((await request(foreignDraft.resource, "GET", undefined, "dtsi-foreign-admin")).body).toEqual(foreignSource.body);
+    expect((await review("dtsi-target")).rows).toEqual([]);
+    expect((await db.query("select id from parameter_catalog.parameter_review_resolutions where review_item_id='dtsi-target-original'")).rows).toEqual([]);
+    expect((await review("dtsi-foreign")).rows).toEqual(beforeForeignReviews);
     expect((await catalog()).rows).toEqual(beforeCatalog);
     expect((await request<{ item: { status: string } }>(`/api/v1/platform/organization-deletions/${erased.body.item.id}/retry`, "POST")).body.item.status).toBe("deleted");
   });

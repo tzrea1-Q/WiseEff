@@ -64,6 +64,8 @@ const allowedCatalogIdentifiers = new Set([
   // #1305: read-only exact logical-anchor/effective-property agreement.
   "source_origin_matches",
   "source_anchor_restoration_matches",
+  // #1581 restore can read supersession receipts but cannot change them.
+  "json_instance_corrections",
   // Scoped owner lookup; private suspension receipts remain inaccessible.
   "find_source_binding_suspension",
 ]);
@@ -217,7 +219,7 @@ describe("S6-VAL production Catalog isolation", () => {
       expect(source, file).not.toContain("listDefinitionRevisions(");
       expect(source, file).not.toContain("stabilizeCanonicalBinding");
       expect(source, file).not.toContain("writeGuardedRegistration");
-      expect(source, file).not.toMatch(/(?:insert\s+into|update|delete\s+from)\s+parameter_catalog\.(?:project_parameter_source_occurrences|organization_subject_registrations)\b/i);
+      expect(source, file).not.toMatch(/(?:insert\s+into|update|delete\s+from|merge\s+into|truncate(?:\s+table)?)\s+parameter_catalog\.(?:project_parameter_source_occurrences|organization_subject_registrations|json_instance_corrections)\b/i);
       for (const token of catalogStructuralTokens) {
         expect(source, `${file} must not mention ${token}`).not.toContain(token);
       }

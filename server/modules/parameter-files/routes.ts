@@ -812,19 +812,23 @@ export function registerParameterFileRoutes(
 
   router.patch("/api/v1/projects/:projectId/baselines/:baselineId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
+    const actor = createUserInvocation(await options.getCurrentAuthContext(request));
+    const auth = await parameterRequestAccess(db, actor, request);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
     const body = parseWithSchema(updateDraftBaselineSchema, request.body);
-    const item = await correctBaseline(db, auth, { ...params, ...body }, request);
+    const item = await correctBaseline(db, auth, { ...params, ...body },
+      { requestId: request.requestId, invocation: parameterInvocation(auth) ?? actor });
     return { status: 200, body: { item } };
   });
 
   router.post("/api/v1/projects/:projectId/baselines/:baselineId/errata", async (request) => {
     const db = requireDb(options.db);
-    const auth = await parameterRequestAccess(db, createUserInvocation(await options.getCurrentAuthContext(request)), request);
+    const actor = createUserInvocation(await options.getCurrentAuthContext(request));
+    const auth = await parameterRequestAccess(db, actor, request);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
     const body = parseWithSchema(appendBaselineErratumSchema, request.body);
-    const item = await correctBaseline(db, auth, { ...params, ...body }, request);
+    const item = await correctBaseline(db, auth, { ...params, ...body },
+      { requestId: request.requestId, invocation: parameterInvocation(auth) ?? actor });
     return { status: 201, body: { item } };
   });
   router.get("/api/v1/projects/:projectId/baselines/:baselineId/compare", async (request) => {

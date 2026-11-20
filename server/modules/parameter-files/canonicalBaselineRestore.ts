@@ -249,7 +249,7 @@ async function inspect(tx: Database, storage: ObjectStore, auth: AuthContext, in
   }
   const cohort = await loadConfigurationRestoreCohort(tx,{ organizationId: parameterOrganizationId(auth),projectId: input.projectId,configSetId,snapshotRevisionId: targetRevision.id });
   const expectedPinCount = baseline.source_snapshot?.sourcePinCount ?? targetRevision.source_pin_count!;
-  if (cohort.filter((row) => row.snapshotValueId !== null).length !== expectedPinCount) conflict("快照中的定义或实例已更正，或来源已删除，无法完整恢复到工作配置。");
+  if (cohort.filter((row) => row.snapshotValueId !== null).length !== expectedPinCount) conflict("快照中的定义或实例已更正，或来源已删除，无法完整恢复到工作配置；不会复活已彻底删除的定义。");
   // Restoring source bytes does not reactivate parameters already suspended by
   // an approved whole-source edit. Their exact historical pins remain available;
   // the next whole-source reconciliation owns any return to managed values.

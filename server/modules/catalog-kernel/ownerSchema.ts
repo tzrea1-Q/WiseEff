@@ -90,6 +90,17 @@ export async function readOrganizationSubjectOwner(client: Client, organizationI
   return result.rows[0]?.owner_subject_id ?? null;
 }
 
+export async function hasActiveOrganizationSubjectOwner(client: Client, organizationId: string, subjectId: string): Promise<boolean> {
+  const owner = await readOrganizationSubjectOwner(client, organizationId, subjectId);
+  if (!owner) return true;
+  const result = await client.query(`select 1 from parameter_catalog.organization_subject_registrations registration
+    join parameter_catalog.catalog_release_subjects membership on membership.subject_id=registration.subject_id
+      and membership.release_id=(select current_catalog_release_id from parameter_catalog.catalog_state)
+      and membership.lifecycle='active'
+    where registration.organization_id=$1 and registration.subject_id=$2 and registration.status='active'`, [organizationId, owner]);
+  return result.rows.length === 1;
+}
+
 export async function listOrganizationOwnedSubjects(client: Client, organizationId: string, ownerId: string, activeReleaseId?: string): Promise<string[]> {
   if (!await organizationSubjectOwnersAvailable(client)) return listOwnedCatalogSubjects(client, ownerId, activeReleaseId);
   const result = await client.query<{ id: string }>(`

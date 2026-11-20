@@ -275,7 +275,9 @@ export const S2_SCH_0351_WITH_SUBJECT_RULES_FINGERPRINT = "dfbbf1bffcba94da9f413
 export const S2_SCH_0357_FINGERPRINT = "1636751685f8389d204e15c27b1f5543807f5e0abf5d431ade653b895514af68";
 /** 0357 measured with the #1578 subject rules and alias scope migrations. */
 export const S2_SCH_0357_WITH_SUBJECT_RULES_FINGERPRINT = "9306d9556e9ebd7c934cd38fe65461cc78290968a2bbc51dcc8dfa570731299c";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0357_WITH_SUBJECT_RULES_FINGERPRINT;
+/** 0366 restores the exact-row erasure exception to the lineage guard. */
+export const S2_SCH_0366_FINGERPRINT = "e53750f39ab89cc4245099354082025ae60b57e1aa31d98ff637264e715e89f5";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0366_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

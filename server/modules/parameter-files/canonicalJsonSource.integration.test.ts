@@ -18,6 +18,8 @@ import { enablePublicationPolicy } from "../catalog-publication/authorization/te
 import { captureCurrentCatalogPin } from "../catalog-publication/runtime";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../catalog-publication/runtime/provisionRuntimeLogins";
 import { asValueClient, listCatalogBindingRowsForProject, loadPublishedCatalog, readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
+import { captureProjectParameterPlane } from "../parameter-bindings/seedInitialization/archive";
+import { disposeProjectParameterPlaneResidue, planProjectParameterPlaneDisposal } from "../parameter-bindings/seedInitialization/dispose";
 import { casCurrentTip, insertProjectValue, loadProjectValueById } from "../parameter-bindings/values/repositories";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { loadCanonicalSourceSnapshot, preparePinnedSourceChange } from "./canonicalSource";
@@ -182,7 +184,7 @@ describe("canonical JSON configuration source", () => {
   });
 
   it("corrects the JSON schema and root through the API and replays both exact value identities", async () => {
-    const projectId = "project-t11-json-correction";
+    const projectId = "atlas";
     await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'JSON correction','T1581','initialized')",
       [projectId, ORG]);
     const set = await createConfigSet(db, auth, { projectId, name: "JSON association correction" });
@@ -242,6 +244,26 @@ describe("canonical JSON configuration source", () => {
         configurationSchemaId: alternateSchema.schemaId, rootPointer: "/right", bindings: [{ pointer: "/right/limit", value: 22 }] }]);
       expect((await api(replayPath)).body).toEqual(historical.body);
       expect((await api<{items:Array<{id:string}>}>(values)).body.items.some(row => row.id === old.id)).toBe(false);
+
+      // The archive/rebuild disposer must keep the exact correction evidence
+      // and both sets of pins while removing unrelated legacy residue.
+      await db.query(`insert into public.parameter_drafts (id, organization_id, project_id, target_value, reason)
+        values ('json-correction-legacy-draft', $1, $2, '11', 'Archivable legacy residue')`, [ORG, projectId]);
+      const archive = await captureProjectParameterPlane(db, storage, auth, { projectId });
+      const operator = { role: "cutover-operator" as const, approvalRef: "t1581-archive-test" };
+      const disposal = { projectId, archiveId: archive.archiveId, archiveDigest: archive.archiveDigest };
+      const plan = await planProjectParameterPlaneDisposal(db, storage, auth, operator, disposal);
+      const { previousOccurrenceId, successorOccurrenceId } = result.body.item.jsonCorrection;
+      expect(plan.residue.canonical_source_occurrences).not.toContain(previousOccurrenceId);
+      expect(plan.residue.canonical_source_occurrences).not.toContain(successorOccurrenceId);
+      expect(plan.residue.canonical_bindings).not.toContain(old.id);
+      expect(plan.residue.canonical_values).not.toContain(old.currentValueId);
+      expect(plan.residue.parameter_drafts).toContain("json-correction-legacy-draft");
+      await disposeProjectParameterPlaneResidue(db, storage, auth, operator, disposal);
+      expect((await db.query("select id from public.parameter_drafts where id='json-correction-legacy-draft'")).rows).toEqual([]);
+      expect((await api(`${correction}/apply`, apply)).body).toEqual(result.body);
+      expect((await api(replayPath)).body).toEqual(historical.body);
+      expect((await api(path)).body).toEqual(current.body);
     } finally {
       await apiDb.close();
       await dropLabRuntimeLogins(database.url, runToken);
