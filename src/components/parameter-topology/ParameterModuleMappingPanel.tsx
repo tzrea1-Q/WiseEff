@@ -101,15 +101,7 @@ export function ParameterModuleMappingPanel({
   const [busy, setBusy] = useState(false);
   const [canonicalDiscoveryRefresh, setCanonicalDiscoveryRefresh] = useState(0);
   const [registryRefresh, setRegistryRefresh] = useState(0);
-  useEffect(() => {
-    const refreshOnFocus = () => {
-      if (busy) return;
-      setRegistryRefresh((value) => value + 1);
-      setCanonicalDiscoveryRefresh((value) => value + 1);
-    };
-    window.addEventListener("focus", refreshOnFocus);
-    return () => window.removeEventListener("focus", refreshOnFocus);
-  }, [busy]);
+  const registryGeneration = useRef(0);
   const [localSubView, setLocalSubView] = useState<{ location: string; value: ParameterAdminModulesSubView } | null>(null);
   const [localSelection, setLocalSelection] = useState<{ location: string; value: string | null } | null>(null);
   const [treeSubjects, setTreeSubjects] = useState<ModuleTreeSubject[]>([]);
@@ -170,35 +162,38 @@ export function ParameterModuleMappingPanel({
   useEffect(() => {
     if (activeSubView === "queue") return;
     let cancelled = false;
-    void refreshDriverRegistry(() => cancelled);
+    queueMicrotask(() => { if (!cancelled) void refreshDriverRegistry(() => cancelled); });
     return () => { cancelled = true; };
   }, [refreshDriverRegistry, activeSubView, registryRefresh]);
+
+  const refreshRegistry = useCallback(async () => {
+    const generation = ++registryGeneration.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const nextRegistry = await client.getRegistry();
+      if (generation === registryGeneration.current) setRegistry(nextRegistry);
+    } catch (loadError) {
+      if (generation === registryGeneration.current) {
+        setError(presentError(loadError, "无法加载模块注册表，请稍后重试。"));
+      }
+    } finally {
+      if (generation === registryGeneration.current) {
+        setLoading(false);
+        setRegistryLoaded(true);
+      }
+    }
+  }, [client]);
 
   useEffect(() => {
     if (activeSubView !== "tree") return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    client.getRegistry()
-      .then((nextRegistry) => {
-        if (cancelled) return;
-        setRegistry(nextRegistry);
-
-      })
-      .catch((loadError) => {
-        if (cancelled) return;
-        setError(presentError(loadError, "无法加载模块注册表，请稍后重试。"));
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-          setRegistryLoaded(true);
-        }
-      });
+    queueMicrotask(() => { if (!cancelled) void refreshRegistry(); });
     return () => {
       cancelled = true;
+      registryGeneration.current += 1;
     };
-  }, [client, canonicalEnabled, registryRefresh, activeSubView]);
+  }, [refreshRegistry, canonicalEnabled, registryRefresh, activeSubView]);
   const canonicalAvailable = Boolean(canonicalEnabled && canonicalCatalog && canonicalGovernance && canonicalOrganizationId);
   const selectTab = (value: ParameterAdminModulesSubView) => {
     const params = new URLSearchParams(search);
@@ -265,12 +260,12 @@ export function ParameterModuleMappingPanel({
   }, [onNavigate, pathname, requestedSubView, search]);
 
   const refreshAfterCanonicalChange = async () => {
-    try {
-      setRegistry(await client.getRegistry());
-      await refreshDriverRegistry();
-    } catch (refreshError) {
-      setError(presentError(refreshError, "登记已完成，模块摘要刷新失败，请重试刷新。"));
-    }
+    await Promise.all([refreshRegistry(), refreshDriverRegistry()]);
+  };
+  const applyModuleChange = (nextRegistry: ParameterModuleRegistry) => {
+    registryGeneration.current += 1;
+    setRegistry(nextRegistry);
+    setLoading(false);
   };
 
   const moduleTree = (
@@ -315,7 +310,7 @@ export function ParameterModuleMappingPanel({
         setBusy(true);
         setError(null);
         try {
-          setRegistry(await client.updateModule(moduleId, patch));
+          applyModuleChange(await client.updateModule(moduleId, patch));
           setCanonicalDiscoveryRefresh((value) => value + 1);
         } catch (updateError) {
           setError(presentError(updateError, "更新模块失败，请稍后重试。"));
@@ -328,7 +323,7 @@ export function ParameterModuleMappingPanel({
         setBusy(true);
         setError(null);
         try {
-          setRegistry(await client.updateModule(moduleId, { parentId }));
+          applyModuleChange(await client.updateModule(moduleId, { parentId }));
           setCanonicalDiscoveryRefresh((value) => value + 1);
         } catch (moveError) {
           setError(presentError(moveError, "移动模块失败，请稍后重试。"));
@@ -341,7 +336,7 @@ export function ParameterModuleMappingPanel({
         setBusy(true);
         setError(null);
         try {
-          setRegistry(await client.deleteModule(moduleId));
+          applyModuleChange(await client.deleteModule(moduleId));
           setCanonicalDiscoveryRefresh((value) => value + 1);
           if (selectedModuleId === moduleId) selectModule(null);
           await refreshDriverRegistry();
@@ -356,7 +351,7 @@ export function ParameterModuleMappingPanel({
         setBusy(true);
         setError(null);
         try {
-          setRegistry(
+          applyModuleChange(
             await client.createModule({
               name: input.name,
               description: input.description,
@@ -440,7 +435,7 @@ export function ParameterModuleMappingPanel({
         actor={canonicalActor} sessionPermissions={canonicalSessionPermissions} canAdmin={canAdmin} modules={registry.modules}
         onChanged={refreshAfterCanonicalChange} selectedModuleId={selectedModuleId} selectedSubjectId={selectedSubjectId}
         onTreeSubjectsChange={setTreeSubjects} visibleModuleIds={visibleModuleScope}
-        search={search} refreshKey={canonicalDiscoveryRefresh} managedRefresh onNavigate={onNavigate}
+        search={search} refreshKey={canonicalDiscoveryRefresh} onNavigate={onNavigate}
         onCreateBusinessModule={canManageTaxonomy ? () => setCreateRootRequest((value) => value + 1) : undefined} />
         : canonicalEnabled ? <p role="alert">规范目录发现服务不可用，请检查组织与治理接口。</p>
           : <SectionEmpty message="Mock 模式仅支持共享业务分类管理，请使用 API 模式管理规范主体与归属。" />}
@@ -450,10 +445,12 @@ export function ParameterModuleMappingPanel({
       tableState={<div role="tabpanel" id={activeTab.panelId} aria-labelledby={activeTab.id}>
         {canonicalAvailable && canonicalGovernance && canonicalOrganizationId ? <CanonicalDriverDiscovery
           governance={canonicalGovernance} catalog={canonicalCatalog} projects={projects} organizationId={canonicalOrganizationId}
-          onNavigate={onNavigate} refreshKey={canonicalDiscoveryRefresh} managedRefresh />
+          onNavigate={onNavigate} refreshKey={canonicalDiscoveryRefresh} />
           : <SectionEmpty message={canonicalEnabled ? "来源识别需要可用的 API 组织与治理服务。" : "Mock 模式不提供来源识别，请使用 API 模式。"} />}
       </div>} /> : <section aria-label="历史驱动注册表" aria-busy={driverRegistryLoading}>
-      <div role="tabpanel" id={activeTab.panelId} aria-labelledby={activeTab.id}><AdminListPage label="历史注册表" headerActions={null}
+      <div role="tabpanel" id={activeTab.panelId} aria-labelledby={activeTab.id}><AdminListPage label="历史注册表"
+        headerActions={<Button type="button" variant="outline" size="sm" disabled={driverRegistryLoading}
+          onClick={() => void refreshDriverRegistry()}>刷新历史注册表</Button>}
         notice={<p>历史注册快照仅用于溯源，不代表当前主体身份或归属；此接口不提供历史时间线。当前登记请在模块页查阅。</p>}
         filterBar={<><label className="admin-list-page__filter-field">搜索历史记录<input type="search" aria-label="搜索历史记录" placeholder="驱动组、兼容标识或业务分类"
           value={historyQuery} onChange={(event) => updateHistorySearch({ historyQ: event.target.value })} /></label>
