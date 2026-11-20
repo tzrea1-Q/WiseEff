@@ -46,6 +46,8 @@ export type LogLoopEvalScenario = {
   maxSteps?: number;
   singleShotFallback?: boolean;
   tokenBudget?: number;
+  /** Per-call context window; small values force tool-result folding. */
+  contextTokens?: number;
   sourceSnapshot?: AnalyzeLogInput["sourceSnapshot"];
   sourceMatches?: Awaited<ReturnType<NonNullable<LogAnalysisToolContext["locateLogStatement"]>>>;
   sourceSearch?: Awaited<ReturnType<NonNullable<LogAnalysisToolContext["searchSource"]>>>;
@@ -315,6 +317,8 @@ function sourceFinal(line: number, path = sourceSearchHit.path) {
 
 const invalidLoopOutput = { content: "Invalid report" };
 
+// Folding scenarios set the context window so exactly the oldest read folds before the final call
+// (prompt estimate + 4,096-token output reserve). Recompute with a contextTokens sweep if prompts change.
 export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
   {
     name: "loop-invalid-output-recovers-with-grounded-single-shot",
@@ -833,6 +837,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     category: "loop-context",
     fileName: "charging.log",
     logContent: chargingLog,
+    contextTokens: 5_700,
     script: [...toolFoldingScript, { content: loopFinalPayload }],
     expectations: [...foldedLogEvidence, { type: "expectsNoDegradation" }]
   },
@@ -870,6 +875,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     category: "loop-context",
     fileName: "charging.log",
     logContent: chargingLog,
+    contextTokens: protocol === "json" ? hypothesisLedger ? 5_900 : 5_700 : hypothesisLedger ? 10_750 : 7_350,
     protocol,
     hypothesisLedger,
     script: [
@@ -915,6 +921,7 @@ export const LOG_LOOP_EVAL_SCENARIOS: LogLoopEvalScenario[] = [
     fileName: "charging.log",
     logContent: chargingLog,
     tokenBudget: 8000,
+    contextTokens: 3_600,
     script: [...toolFoldingScript.map((turn, index) => ({ ...turn,
       usage: { inputTokens: [1300, 1500, 2250][index], outputTokens: 20 } })),
     { content: loopFinalPayload, usage: { inputTokens: 1500, outputTokens: 150 } }],

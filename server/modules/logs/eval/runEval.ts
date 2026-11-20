@@ -191,7 +191,8 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     LOG_ANALYSIS_PROTOCOL: scenario.protocol ?? "json",
     LOG_ANALYSIS_API_TIMEOUT_MS: 1000,
     LOG_ANALYSIS_TOKEN_BUDGET: scenario.tokenBudget ?? SCRIPTED_LOOP_TOKEN_BUDGET,
-    LOG_ANALYSIS_MAX_STEPS: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS
+    LOG_ANALYSIS_MAX_STEPS: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
+    LOG_ANALYSIS_CONTEXT_TOKENS: scenario.contextTokens
   }, { model: scriptedModel }) : createAgentLoopLogAnalyzer({
     model: scriptedModel,
     modelLabel: EVAL_MODEL_LABEL,
@@ -204,6 +205,7 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
     repairJsonOutput: scenario.repairJsonOutput,
     tokenBudget: scenario.tokenBudget ?? SCRIPTED_LOOP_TOKEN_BUDGET,
     maxSteps: scenario.maxSteps ?? EVAL_LOOP_MAX_STEPS,
+    contextTokens: scenario.contextTokens,
     bindToolBackends: () => ({
       ...(scenario.sourceMatches ? { locateLogStatement: async () => scenario.sourceMatches! } : {}),
       ...(scenario.sourceSearch ? { searchSource: async () => scenario.sourceSearch! } : {}),

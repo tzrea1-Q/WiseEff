@@ -16,6 +16,7 @@ import {
 import { createDeterministicLogAnalysisLoopModel } from "./deterministicModel";
 import { LogAnalysisProviderError } from "./llmAnalyzer";
 import { createScriptedLogAnalysisModel, type ScriptedModelResponse } from "./scriptedModel";
+import { estimateLogPromptTokens } from "./modelBudget";
 import { summarizeTraceArguments, type LogAnalysisTraceStep } from "../traceTypes";
 import { logTraceStepSchema } from "../../contracts/dtoSchemas/logs";
 import { createLogAnalyzerFromEnv } from "./analyzerFromEnv";
@@ -296,7 +297,9 @@ describe("createAgentLoopLogAnalyzer", () => {
       { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } } },
       { content: { ...finalPayload, notes: { hypotheses: [finalHypothesis] },
         alternativeHypotheses: [alternative, { ...alternative, statement: "未接地的猜测", anchors: [{ ...unseen, line: 9999 }] }] } }
-    ], { protocol, hypothesisLedger: true, maxSteps: 3 });
+    ], { protocol, hypothesisLedger: true, maxSteps: 3,
+      // Small enough that the final prompt (plus its 4,096-token output reserve) must fold the first reads.
+      contextTokens: protocol === "json" ? 5_900 : 7_000 });
     const output = await adapter.analyze(buildInput({ filePath: seen.file, onTrace: (step) => { trace.push(step); } }));
     expect(output).toMatchObject({ analysisSource: "agent", degradedReason: "step-budget-exhausted",
       alternativeHypotheses: [{ ...alternative, anchors: [seen] }] });
@@ -498,6 +501,8 @@ describe("createAgentLoopLogAnalyzer", () => {
       { content: report }
     ], {
       maxSteps: 6,
+      // Fits the first two results verbatim; the fifth call must fold them and keep the latest two.
+      contextTokens: 6_000,
       bindToolBackends: () => ({
         searchSource: async () => ({ items: Array.from({ length: 5 }, (_, index) => ({
           ...sourceLocation, line: index + 1, excerpt: sourceExcerpt, rank: 1, versionLabel: "v1"
@@ -896,6 +901,39 @@ describe("createAgentLoopLogAnalyzer", () => {
     expect(output.confidence).toBeLessThanOrEqual(0.5);
     expect(output.evidence.length).toBeGreaterThan(0);
     expect(trace).toContainEqual(expect.objectContaining({ kind: "early-convergence", reason: "step-budget-exhausted" }));
+  });
+
+  it("keeps earlier tool results verbatim while the prompt fits the context window", async () => {
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 6, endLine: 6 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 1 } } },
+      { content: finalPayload }
+    ], { maxSteps: 6, contextTokens: 128_000 });
+
+    const output = await adapter.analyze(buildInput());
+
+    expect(output).toMatchObject({ analysisSource: "agent", confidence: 0.9 });
+    const finalInput = model.calls.at(-1)!.map(({ content }) => content).join("\n");
+    expect(finalInput).toContain("thermal foldback engaged");
+    expect(finalInput).not.toContain("Folded tool result");
+  });
+
+  it("folds the oldest tool results so every prompt fits a small context window", async () => {
+    const contextTokens = 2_600;
+    const { adapter, model } = analyzer([
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 12 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 12 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 1, endLine: 12 } } },
+      { content: { action: "tool", tool: "read_line_range", args: { startLine: 3, endLine: 4 } } },
+      { content: finalPayload }
+    ], { maxSteps: 6, contextTokens });
+
+    const output = await adapter.analyze(buildInput());
+
+    expect(output).toMatchObject({ analysisSource: "agent", evidence: [{ lineNumbers: [3, 4] }] });
+    expect(model.calls.at(-1)!.map(({ content }) => content).join("\n")).toContain("Folded tool result for read_line_range");
+    for (const call of model.calls) expect(estimateLogPromptTokens(call)).toBeLessThanOrEqual(contextTokens);
   });
 
   it("keeps a grounded final report whose reported usage overshoots the budget", async () => {

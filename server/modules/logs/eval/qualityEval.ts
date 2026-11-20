@@ -478,7 +478,8 @@ export function evaluateQualityCaseOutput(
     refusal: {
       expected: goldenCase.expectRefusal,
       refused,
-      appropriate: goldenCase.expectRefusal ? refused : null
+      appropriate: goldenCase.expectRefusal
+        ? refused || (goldenCase.rootCauseCategory === "no-fault" && extras.judge?.categoryMatch === true) : null
     },
     judge: extras.judge
   };
@@ -668,7 +669,9 @@ async function runQualityTrial(
     now: () => new Date(now())
   });
   const latencyMs = Math.max(0, now() - startedAtMs);
-  const judge = goldenCase.expectRefusal ? null : await rubric.score({ goldenCase, output }).catch(() => {
+  // A no-fault case is also answered by a confident "no fault" report, which only the judge can recognize.
+  const judged = !goldenCase.expectRefusal || goldenCase.rootCauseCategory === "no-fault";
+  const judge = !judged ? null : await rubric.score({ goldenCase, output }).catch(() => {
     throw new Error(`The ${rubric.label} judge failed to score the output.`);
   });
   const result = evaluateQualityCaseOutput(goldenCase, output, { latencyMs, judge, ...prepared.scoring });

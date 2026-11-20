@@ -61,7 +61,6 @@ const EARLY_CONVERGENCE_MAX_CONFIDENCE = 0.5;
 const FINAL_ANSWER_RESERVE_FRACTION = 0.2;
 const CONVERGENCE_CONTEXT_HEADROOM_TOKENS = 128;
 
-const RAW_TOOL_RESULTS_TO_KEEP = 2;
 const FOLDED_TOOL_ANCHOR_LIMIT = 4;
 const FOLDED_TOOL_ARGS_MAX_CHARS = 240;
 const MAX_TOOLS_PER_TURN = 3;
@@ -254,6 +253,8 @@ export type CreateAgentLoopAnalyzerOptions = {
   /** Set only for endpoint-backed models. Capability is independent of per-skill budgets. */
   endpoint?: string;
   maxSteps: number;
+  /** Largest prompt plus completion one model call may use; older tool results fold to fit. */
+  contextTokens?: number;
   fallback?: LogAnalysisAdapter;
   recoverInvalidModelOutput?: (input: AnalyzeLogInput, remainingTokens: number) => Promise<AnalyzeLogOutput | "token-budget-exhausted" | undefined>;
   telemetry?: LogAnalysisLlmTelemetry;
@@ -494,11 +495,21 @@ export function createAgentLoopLogAnalyzer(options: CreateAgentLoopAnalyzerOptio
       const investigationLimit = (history = messages) => Math.min(investigationBudget,
         options.tokenBudget - convergenceCost(history, finalOutputReserve) - CONVERGENCE_CONTEXT_HEADROOM_TOKENS);
 
+      // Tool results stay verbatim while the prompt fits the context window; the oldest fold first.
+      const contextTokens = options.contextTokens ?? Number.POSITIVE_INFINITY;
+      const foldToContext = (toolTokens: number, outputTokens: number) => {
+        while (recentToolResults.length > 0 && estimateLogPromptTokens(messages, toolTokens) + outputTokens > contextTokens) {
+          const oldest = recentToolResults.shift()!;
+          messages[oldest.index] = { ...messages[oldest.index], content: oldest.folded };
+        }
+      };
+
       const invokeModel = async (finalOnly = false, mayProbe = false): Promise<{ content: string; turn?: LoopTurn; exhausted?: boolean }> => {
         refreshNotes();
-        const estimatedInputTokens = estimateLogPromptTokens(messages, protocol === "tools"
-          ? finalOnly ? finalToolTokens : nativeToolTokens : 0);
-        const maxOutputTokens = Math.min(logCompletionLimit(options.tokenBudget),
+        const toolTokens = protocol === "tools" ? finalOnly ? finalToolTokens : nativeToolTokens : 0;
+        foldToContext(toolTokens, finalOnly ? finalOutputReserve : logCompletionLimit(options.tokenBudget));
+        const estimatedInputTokens = estimateLogPromptTokens(messages, toolTokens);
+        const maxOutputTokens = Math.min(logCompletionLimit(options.tokenBudget), contextTokens - estimatedInputTokens,
           (finalOnly ? options.tokenBudget : investigationLimit()) - usedTokens - estimatedInputTokens);
         if (maxOutputTokens < MIN_LOG_ANALYSIS_OUTPUT_TOKENS) {
           if (mayProbe && protocol === "tools") {
@@ -739,10 +750,6 @@ ${JSON.stringify({ conclusion: report.conclusion, evidence: report.evidence,
               folded: foldToolResult(tool, args, outcome.result, truncated, anchors.values())
             });
             messages.push(resultMessage(`Tool result for ${tool}:\n${resultText}`));
-            if (recentToolResults.length > RAW_TOOL_RESULTS_TO_KEEP) {
-              const oldest = recentToolResults.shift()!;
-              messages[oldest.index] = { ...messages[oldest.index], content: oldest.folded };
-            }
           }
           invalidStreak = invalid ? invalidStreak + 1 : 0;
           if (invalidStreak >= LOG_ANALYSIS_MAX_CONSECUTIVE_INVALID) {

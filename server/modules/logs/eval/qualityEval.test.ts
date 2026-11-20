@@ -129,6 +129,19 @@ describe("evaluateQualityCaseOutput", () => {
     });
     expect(fabricated.refusal.appropriate).toBe(false);
   });
+
+  it("accepts a confident no-fault answer only when the judge places it in the no-fault category", () => {
+    const judged = (categoryMatch: boolean) => ({ rootCauseScore: 1, categoryMatch, actionsScore: 1, reasoning: "judged" });
+    const scoring = { latencyMs: 5, parsedLineNumbers: new Set([1, 2, 3, 4]) };
+    const healthy = makeGoldenCase({ expectRefusal: true, rootCausePoints: [], keyEvidenceLines: [], expectedActions: [],
+      rootCauseCategory: "no-fault" });
+    const truncated = { ...healthy, rootCauseCategory: "insufficient-evidence" as const };
+    const confident = makeOutput({ confidence: 0.95 });
+
+    expect(evaluateQualityCaseOutput(healthy, confident, { ...scoring, judge: judged(true) }).refusal.appropriate).toBe(true);
+    expect(evaluateQualityCaseOutput(healthy, confident, { ...scoring, judge: judged(false) }).refusal.appropriate).toBe(false);
+    expect(evaluateQualityCaseOutput(truncated, confident, { ...scoring, judge: judged(true) }).refusal.appropriate).toBe(false);
+  });
 });
 
 describe("deterministic rubric judge", () => {
@@ -428,6 +441,22 @@ describe("runQualityEval (deterministic end-to-end)", () => {
     expect(markdown).toContain("`loop`");
     expect(markdown).toContain("## 中文摘要");
     expect(markdown).toContain(report.promptVersion);
+  });
+
+  it("asks the judge whether a no-fault case's report stays in the no-fault category", async () => {
+    const judged: string[] = [];
+    const judge: LogAnalysisQualityJudge = { label: "category-judge",
+      score: async ({ goldenCase }) => { judged.push(goldenCase.id); return { rootCauseScore: 1, categoryMatch: true, actionsScore: 1, reasoning: "no fault" }; } };
+    const healthy = makeGoldenCase({ id: "healthy", expectRefusal: true, rootCausePoints: [], keyEvidenceLines: [], expectedActions: [],
+      rootCauseCategory: "no-fault" });
+    const truncated = { ...healthy, id: "truncated", rootCauseCategory: "insufficient-evidence" as const };
+    const analyzer = { analyze: async () => makeOutput({ confidence: 0.95 }) };
+
+    const report = await runQualityEval({ analyzer, judge, cases: [healthy, truncated], problems: [], kernel: "loop",
+      deterministic: true, modelLabel: "scripted", baseline: null });
+
+    expect(judged).toEqual(["healthy"]);
+    expect(report.caseResults.map(({ id, passed }) => [id, passed])).toEqual([["healthy", true], ["truncated", false]]);
   });
 
   it("pipes a scriptable judge stub's scores into the report", async () => {

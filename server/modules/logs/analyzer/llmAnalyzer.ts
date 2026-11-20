@@ -78,6 +78,8 @@ export type CreateLlmLogAnalyzerOptions = {
   model: LogAnalysisChatModel;
   modelLabel: string;
   tokenBudget: number;
+  /** Per-call context window (prompt + completion). */
+  contextTokens?: number;
   repairJsonOutput?: boolean;
   fallback?: LogAnalysisAdapter;
   telemetry?: LogAnalysisLlmTelemetry;
@@ -263,6 +265,16 @@ function buildUserPrompt(input: AnalyzeLogInput, findings: PrefilterFindings, ex
   return sections.join("\n\n");
 }
 
+/**
+ * Reasoning models (for example MiniMax-M3, DeepSeek-R1, Qwen3) can put their
+ * reasoning in the reply as a leading `<think>…</think>` block. It is neither
+ * the answer nor history worth resending; an unclosed block means truncation.
+ */
+export function stripLeadingReasoning(text: string) {
+  const stripped = text.replace(/^\s*(?:<think>[\s\S]*?<\/think>\s*)+/, "");
+  return /^\s*<think>/.test(stripped) ? "" : stripped;
+}
+
 export function extractJsonPayload(content: string): string {
   const trimmed = content.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
@@ -375,7 +387,8 @@ export function createLlmLogAnalyzer(options: CreateLlmLogAnalyzerOptions): LogA
   }
 
   const analyzer = {
-    async tryAnalyze(input: AnalyzeLogInput, remainingTokens = options.tokenBudget): Promise<AnalyzeLogOutput | "token-budget-exhausted" | undefined> {
+    async tryAnalyze(input: AnalyzeLogInput, remainingBudget = options.tokenBudget): Promise<AnalyzeLogOutput | "token-budget-exhausted" | undefined> {
+      const remainingTokens = Math.min(remainingBudget, options.contextTokens ?? Number.POSITIVE_INFINITY);
       const findings = input.files?.find((file) => file.prefilter)?.prefilter ?? runLogPrefilter(input.files?.find((file) => file.parsed)?.parsed?.entries ?? input.parsed.entries, input.signalRules);
       const systemMessage = { role: "system" as const, content: appendSkillProcedure(buildSystemPrompt(Boolean(input.relatedParameterSnapshot)), input.procedure) };
       const basePromptTokens = estimateLogPromptTokens([systemMessage,

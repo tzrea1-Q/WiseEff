@@ -190,6 +190,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_SINGLE_SHOT_FALLBACK` | `false` | 日志分析模型兼容性 | 循环内核以 `invalid-model-output` 结束时，通过单次 JSON 内核重试一次。重试得到有依据的证据时返回 `single-shot-fallback`。 |
 | `LOG_ANALYSIS_PAST_CONCLUSIONS` | `false` | 日志分析 Worker | 开启后，仅在同组织同技能存在符合条件的历史结论时开放只读检索。PostgreSQL 文本检索覆盖所有符合条件的历史结论，查询和历史报告均留在 PostgreSQL 内。 |
 | `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 版本 `stepBudget` 的默认值与平台上限。步数耗尽且仍有 token 预算时，触发标记为 `step-budget-exhausted` 的提前收敛。 |
+| `LOG_ANALYSIS_CONTEXT_TOKENS` | `128000` | 单次调用上下文窗口 | 单次模型调用的提示词与输出合计上限。循环内核在提示词放得下时保留工具结果原文，超出时从最早的结果开始折叠为锚点摘要；全部折叠仍放不下时提前收敛。单发内核的摘录以该值与 token 预算中较小者为界。应设为模型实际窗口或更小。 |
 | `LOG_ANALYSIS_JOB_MAX_MS` | `600000` | worker 尝试时限 | 从任务认领开始，覆盖预处理、分析与持久化的总墙钟时限；续租不会重置截止时间。须为不超过 `2147483647` 的正整数；中央环境校验拒绝无效值，直接独立调用 worker 时回退默认值。 |
 | `LOG_ANALYSIS_PREPROCESS_MAX_MS` | `20000` | 信号与解码共享时限 | 从信号提取开始的固定合计额度，并受本次尝试剩余墙钟时限约束。续租不补充额度；`LOG_SIGNAL_MAX_MS` 和 `LOG_DECODE_MAX_MS` 仍分别约束各阶段。校验与独立调用回退规则同 `LOG_ANALYSIS_JOB_MAX_MS`。 |
 | `LOG_DRY_RUN_MAX_CONCURRENT` | `2` | 技能试运行并发接收 | 整数 1–4，无效值回退为 2。PostgreSQL 原子地执行此跨 API 实例的保守总量上限，每组织最多一个执行。各实例应使用相同值。直到执行实际结束才释放容量，包括超时后仍在退出的工作。容量已满时，在读取样例或调用分析器前返回 `429 RATE_LIMITED`，提示「试运行繁忙，请稍后重试」。 |

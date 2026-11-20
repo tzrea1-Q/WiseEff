@@ -13,7 +13,8 @@ import {
   LOG_ANALYSIS_DETERMINISTIC_MODEL,
   type LogAnalysisNativeCall,
   type LogAnalysisChatModel,
-  type LogAnalysisLlmTelemetry
+  type LogAnalysisLlmTelemetry,
+  stripLeadingReasoning
 } from "./llmAnalyzer";
 import { createWorkerLogAnalysisToolBackends } from "./tools/workerToolBackends";
 import type { LogAnalysisToolContext } from "./tools/toolContext";
@@ -30,6 +31,8 @@ export type LogAnalyzerEnv = {
   /** P2: "loop" (default, multi-step agent) or "single-shot" (P1 kernel kept as a config fallback). */
   LOG_ANALYSIS_KERNEL: "loop" | "single-shot";
   LOG_ANALYSIS_MAX_STEPS: number;
+  /** Per-call context window (prompt + completion); defaults to 128,000. */
+  LOG_ANALYSIS_CONTEXT_TOKENS?: number;
   LOG_ANALYSIS_REPAIR_JSON?: boolean;
   LOG_ANALYSIS_SINGLE_SHOT_FALLBACK?: boolean;
   LOG_ANALYSIS_PAST_CONCLUSIONS?: boolean;
@@ -39,6 +42,8 @@ export type LogAnalyzerEnv = {
   LOG_ANALYSIS_VERIFY_CONCLUSION?: boolean;
   LOG_ANALYSIS_VERIFIER_MODEL?: string;
 };
+
+export const DEFAULT_LOG_ANALYSIS_CONTEXT_TOKENS = 128_000;
 
 function readNonBlank(value: string | undefined) {
   const trimmed = value?.trim();
@@ -62,16 +67,6 @@ function contentToText(content: unknown): string {
       .join("");
   }
   return String(content ?? "");
-}
-
-/**
- * Reasoning models (for example MiniMax-M3, DeepSeek-R1, Qwen3) can put their
- * reasoning in the reply as a leading `<think>…</think>` block. It is neither
- * the answer nor history worth resending; an unclosed block means truncation.
- */
-function stripLeadingReasoning(text: string) {
-  const stripped = text.replace(/^\s*(?:<think>[\s\S]*?<\/think>\s*)+/, "");
-  return /^\s*<think>/.test(stripped) ? "" : stripped;
 }
 
 function createChatOpenAiModel(
@@ -215,6 +210,7 @@ export function createLogAnalyzerFromEnv(
       model: resolveModel(modelLabel, tokenBudget, retry),
       modelLabel,
       tokenBudget,
+      contextTokens: env.LOG_ANALYSIS_CONTEXT_TOKENS ?? DEFAULT_LOG_ANALYSIS_CONTEXT_TOKENS,
       repairJsonOutput: env.LOG_ANALYSIS_REPAIR_JSON,
       telemetry: options.telemetry
     });
@@ -226,6 +222,7 @@ export function createLogAnalyzerFromEnv(
       modelLabel,
       tokenBudget,
       maxSteps: stepBudget,
+      contextTokens: env.LOG_ANALYSIS_CONTEXT_TOKENS ?? DEFAULT_LOG_ANALYSIS_CONTEXT_TOKENS,
       protocol,
       hypothesisLedger: env.LOG_ANALYSIS_HYPOTHESIS_LEDGER,
       procedureChecklist: env.LOG_ANALYSIS_PROCEDURE_CHECKLIST,
