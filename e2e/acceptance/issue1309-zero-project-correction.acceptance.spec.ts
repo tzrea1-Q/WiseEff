@@ -136,6 +136,7 @@ for (const choice of ["target", "source"] as const) {
       };
       if (choice === "source") {
         await expect(result.getByRole("link", { name: "打开目标绑定" })).toHaveAttribute("href", new RegExp(`bindingId=${target.id}`));
+        await expect(resume).toBeEnabled();
         await catalogScreenshot(page, testInfo, "issue1579-source-target-review");
         await changeValue(target, "set");
         await resume.click();
