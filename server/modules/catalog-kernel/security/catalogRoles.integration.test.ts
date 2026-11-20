@@ -747,6 +747,7 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
 
     // Preserve the checksum-pinned 0180 list and the exact forward auth reads.
     // 0321 extends the capture reader for the owner-aware Catalog snapshot and epoch.
+    // 0345 lets the reader resolve an alias owner at its pinned release.
     const migration = await fs.readFile(path.join(migrationsDir, "0180_mod_d02_offline_capture.sql"), "utf8");
     expect(createHash("sha256").update(migration).digest("hex"))
       .toBe("3c7f39c3d5866b0a61be8ccd3b1a5f5c2d44514e9d77857634b303b7237caffb");
