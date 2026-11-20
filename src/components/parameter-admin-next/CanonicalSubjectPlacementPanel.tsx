@@ -841,13 +841,15 @@ export function CanonicalSubjectPlacementPanel({
                         {childCount && registrationStatus === "unregistered" ? <span>，将随驱动一同登记</span> : null}
                       </span>
                       <span className="canonical-subject-meta">
-                        {registrationStatus === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">已停用 · </span> : null}
+                        {subject.membership.status === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">共享已退役 · </span>
+                          : owner?.membership.status === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">所属驱动已退役 · </span> : null}
+                        {registrationStatus === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">组织已停用 · </span> : null}
                         {placement && !placement.moduleId ? <span className="parameter-catalog__badge" data-tone="warning">未分配模块</span> : placement
                           ? `归属：${moduleLabels.get(placement.moduleId ?? "") ?? placement.displayName}`
                           : "未登记"}
                       </span>
                       <div className="parameter-module-mapping-panel__actions canonical-subject-actions">
-                        {canManageIdentity && subject.membership.status === "active" ? <button type="button" className="button subtle"
+                        {canManageIdentity ? <button type="button" className="button subtle"
                           aria-label={`共享标识：${subject.canonicalName}`} onClick={() => setIdentitySubjectId(subject.id)}>共享标识</button> : null}
                         {subject.type === "driver" && subject.membership.status === "active" && canCreateSubject ? <button
                           type="button" className="button subtle" aria-label={`新增子节点类型：${subject.canonicalName}`}

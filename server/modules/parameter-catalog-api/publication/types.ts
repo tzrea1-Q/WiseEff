@@ -150,6 +150,7 @@ export type CatalogPublicationPorts = {
     readonly candidateId: string;
     readonly organizationId: string;
     readonly actorKind: TrustedPublicationActorKind;
+    readonly projectScope?: UsageProjectScope;
   }) => Promise<{ ok: true; value: PublicationCandidateView } | { ok: false; error: CatalogPublicationFailure }>;
   readonly publishCandidate: (
     command: PublishPublicationCommand,

@@ -30,6 +30,7 @@ export const CATALOG_CAPABILITY_CONTRACT_REVISION = "catalog-capability/v4" as c
 export const CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION = "catalog-capability/v5" as const;
 export const CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION = "catalog-capability/v6" as const;
 export const CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION = "catalog-capability/v7" as const;
+export const CATALOG_SUBJECT_RULES_CAPABILITY_REVISION = "catalog-capability/v8" as const;
 export const CATALOG_CAPABILITY_V3_REVISION = "catalog-capability/v3" as const;
 export const CATALOG_CAPABILITY_ALLOW_LIST_ID = "page-historical-definition-content" as const;
 export type CatalogCapabilityAllowListRevision =
@@ -37,7 +38,8 @@ export type CatalogCapabilityAllowListRevision =
   | typeof CATALOG_CAPABILITY_CONTRACT_REVISION
   | typeof CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION
   | typeof CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION
-  | typeof CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION;
+  | typeof CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION
+  | typeof CATALOG_SUBJECT_RULES_CAPABILITY_REVISION;
 
 export const M1_VALUE_SCHEMA_TYPES = [
   "integer",

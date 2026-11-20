@@ -38,6 +38,7 @@ import {
   CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION,
   CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION,
   CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION,
+  CATALOG_SUBJECT_RULES_CAPABILITY_REVISION,
   validateSupportedDefinitionContent,
 } from "./capabilities";
 import {
@@ -68,8 +69,9 @@ import type {
   SupportedDefinitionContent,
 } from "./types";
 import { preparedPredecessorBundle } from "./preparedPredecessor";
-import { subjectIdentityProvenance } from "../../catalog-kernel/compiler/subjectIdentity";
+import { subjectIdentityProvenance, subjectRulesProvenance } from "../../catalog-kernel/compiler/subjectIdentity";
 import { applySubjectIdentityChange } from "./subjectIdentity";
+import { applySubjectRulesChange } from "./subjectRules";
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CREATE_DEFINITION_KEYS = new Set(["op", "subjectId", "propertyKey", "content"]);
@@ -107,8 +109,7 @@ const changeSortKey = (change: CatalogChange): string => {
     return `revise\0${change.definitionId}`;
   }
   if (change.op === "declare-subject-owner") return `zz-owner\0${change.subjectId}`;
-  if (change.op === "rename-subject" || change.op === "set-subject-alias") return `identity\0${change.subjectId}`;
-  return `subject\0${change.canonicalKey}`;
+  return "canonicalKey" in change ? `subject\0${change.canonicalKey}` : `identity\0${change.subjectId}`;
 };
 
 const ok = <T>(value: T): { readonly ok: true; readonly value: T } => ({ ok: true, value });
@@ -148,9 +149,11 @@ export function impactSummaryFromReport(impact: CatalogImpactReport): {
   };
 }
 
-const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[]): CapabilityContract => {
+const capabilityContract = (changeSet: readonly CatalogChange[], documents: readonly CatalogReleaseDocument[], hasSubjectRules: boolean): CapabilityContract => {
   const identity = CATALOG_CAPABILITY_ALLOW_LIST;
-  const revision = documents.some(subjectIdentityProvenance) ? CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION
+  const revision = hasSubjectRules
+    ? CATALOG_SUBJECT_RULES_CAPABILITY_REVISION
+    : documents.some(subjectIdentityProvenance) ? CATALOG_SUBJECT_IDENTITY_CAPABILITY_REVISION
     : documents.some((document) => document.kind === "subject" && document.content.ownerSubjectId)
     ? CATALOG_SUBJECT_OWNER_CAPABILITY_REVISION : changeSet.some((change) => change.op === "create-subject")
     ? CATALOG_STANDALONE_SUBJECT_CAPABILITY_REVISION : CATALOG_CAPABILITY_CONTRACT_REVISION;
@@ -859,6 +862,15 @@ export async function buildCompleteSuccessor(
       if (error) return fail(error);
       continue;
     }
+    if (change.op === "set-driver-defaults" || change.op === "change-subject-owner" || change.op === "retire-subject" ||
+      change.op === "restore-subject" || change.op === "replace-subject-kind") {
+      if (input.changeSet.length !== 1) {
+        return fail({ kind: "invalid-input", reason: "subject corrections are published individually" });
+      }
+      const error = applySubjectRulesChange(change, documents, frozen.releaseId);
+      if (error) return fail(error);
+      continue;
+    }
     if (change.op === "declare-subject-owner") {
       if (extraKeys(change as unknown as Record<string, unknown>, DECLARE_OWNER_KEYS).length
         || typeof change.subjectId !== "string" || typeof change.ownerSubjectId !== "string") {
@@ -1204,7 +1216,8 @@ export async function buildCompleteSuccessor(
     }
   }
 
-  const contract = capabilityContract(input.changeSet, successor.documents);
+  const contract = capabilityContract(input.changeSet, successor.documents,
+    bundle.releases.some(release => release.documents.some(subjectRulesProvenance)));
   const impact = { ...buildImpact(predecessorTarget, successor, requestedClasses), capabilityContractRevision: contract.revision };
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);
   const artifactBytes = encodeBundleBytes(bundle);

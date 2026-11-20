@@ -10,6 +10,8 @@ Accepted for [#1479](https://github.com/tzrea1-Q/WiseEff/issues/1479). Implement
 
 [ADR-0054](0054-module-structure-transfer-is-explicit-organization-governance.md) adds the accepted design for organization structure transfer and retired-registration placement editing. Its implementation is pending; this ADR's Catalog ownership and child-lifecycle invariants remain in force.
 
+[#1578](https://github.com/tzrea1-Q/WiseEff/issues/1578) adds a reviewed exception to permanent shared ownership. An approved Catalog successor can change a node's shared owner while preserving its stable subject and release history. Organization overrides remain explicit. Changes between driver, node and configuration source shapes create a new subject linked from the retired subject's successor record. Existing references retain their identity until a separate migration carries them forward.
+
 ## Context
 
 ADR-0042 placed each Subject registration into a module whose kind mirrored the subject kind (`driver-group`, `node-type`, or `business` for configuration schemas), and the database allowed one placement per module. Users therefore had to create a technical module named after each driver inside a business category, the "adjust placement" picker hid business categories, and a module's tree position looked like, but was not, a structural relation between a driver and its child nodes. The Catalog also drops a driver schema's `childNodes`, and node types are globally unique by name, so an identically named child node under another driver can match the wrong subject.

@@ -4,7 +4,7 @@ import type { z } from "zod";
 import { ApiError } from "../../../shared/http/errors";
 import type { Queryable } from "../../../shared/database/client";
 import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
-import { listOrganizationOwnedSubjects, readCatalogSubjectOwner } from "../../catalog-kernel/ownerSchema";
+import { currentPublishedSubjectOwner, listOrganizationOwnedSubjects, publishedSubjectOwner, readCatalogSubjectOwner } from "../../catalog-kernel/ownerSchema";
 import { CatalogReleaseId, CatalogSubjectId } from "../../parameter-catalog-contract";
 import { insertPlacement, insertRegistration } from "../registration/repositories";
 import { readInheritedRegistrationRecognitionSettings, readRegistrationRecognitionSettings, registrationRecognitionEtag, validateRecognitionCapacity, validateRegistrationRecognitionSettings, type UpdateModuleRecognition } from "../../parameter-modules/recognitionSettings";
@@ -41,7 +41,7 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
   const conflicts: { key: string; moduleId: string; field: string; baseline: unknown; file: unknown; current: unknown }[] = [];
   const versions = (await client.query<{ id: string; subject_id: string; version: string; owner_subject_id: string | null }>(
     `select r.id,r.subject_id,r.status || ':' || (extract(epoch from r.updated_at) * 1000000)::bigint::text as version,
-      coalesce(r.owner_subject_id,s.owner_subject_id) as owner_subject_id
+      coalesce(r.owner_subject_id,${currentPublishedSubjectOwner("s")}) as owner_subject_id
      from parameter_catalog.organization_subject_registrations r
      join parameter_catalog.catalog_subjects s on s.id=r.subject_id where r.organization_id=$1 order by r.subject_id`, [organizationId])).rows;
   const evidence: unknown[] = [{ versions }];
@@ -53,7 +53,7 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
     if (seen.has(subject.subjectId)) throw new ApiError("VALIDATION_FAILED", "Duplicate Subject.", { path: `subjects.${index}.subjectId` });
     seen.add(subject.subjectId);
     const catalog = (await client.query<{ kind: Subject["kind"]; owner_subject_id: string | null; lifecycle: string }>(
-      `select s.kind,s.owner_subject_id,rs.lifecycle from parameter_catalog.catalog_subjects s
+      `select s.kind,${publishedSubjectOwner("rs", "s")} as owner_subject_id,rs.lifecycle from parameter_catalog.catalog_subjects s
        join parameter_catalog.catalog_release_subjects rs on rs.subject_id=s.id and rs.release_id=$2 where s.id=$1`, [subject.subjectId, releaseId])).rows[0];
     const correctedDriver = catalog?.kind === "node-type" && subject.kind === "driver"
       && catalog.owner_subject_id === null && subject.ownerSubjectId === null
@@ -222,7 +222,7 @@ export async function planCopySubjects(client: pg.PoolClient, organizationId: st
     from parameter_catalog.organization_subject_registrations owner
     join parameter_catalog.organization_subject_registrations child on child.organization_id=owner.organization_id
     join parameter_catalog.catalog_subjects s on s.id=child.subject_id and
-      (s.id=owner.subject_id or coalesce(child.owner_subject_id,s.owner_subject_id)=owner.subject_id)
+      (s.id=owner.subject_id or coalesce(child.owner_subject_id,${currentPublishedSubjectOwner("s")})=owner.subject_id)
     join parameter_catalog.project_parameter_bindings b on b.organization_id=owner.organization_id and b.subject_id=s.id
     where owner.organization_id=$1 and owner.subject_id=any($2::text[]) group by 1,2 order by 1,2`, [organizationId, impactedIds])).rows : [];
   evidence.push({ impact });

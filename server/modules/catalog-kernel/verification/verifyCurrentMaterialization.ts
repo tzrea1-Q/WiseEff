@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
 import { readCatalogSubjectOwners } from "../ownerSchema";
+import { subjectRulesProvenance, subjectRulesSnapshot } from "../compiler/subjectIdentity";
 
 import {
   CatalogEventTime,
@@ -288,6 +289,7 @@ type SubjectRow = {
   lifecycle: string;
   selector_snapshot: unknown;
   tombstone_provenance: unknown;
+  rules_snapshot?: unknown;
 };
 
 type AliasRow = {
@@ -437,7 +439,8 @@ export const compareCompiledProjection = async (
        coalesce(introduction.selector_snapshot->'values'->>0, introduction.selector_snapshot->>'value') as introduced_selector,
        membership.lifecycle,
        membership.selector_snapshot,
-       membership.tombstone_provenance
+       membership.tombstone_provenance,
+       to_jsonb(membership)->'rules_snapshot' as rules_snapshot
      from parameter_catalog.catalog_release_subjects membership
      join parameter_catalog.catalog_subjects subject on subject.id = membership.subject_id
      left join parameter_catalog.catalog_release_subjects introduction
@@ -447,6 +450,8 @@ export const compareCompiledProjection = async (
   );
   const subjectOwners = await readCatalogSubjectOwners(client, releaseId);
   const subjectsById = new Map(subjectRows.rows.map((row) => [row.id, row]));
+  const versioned = new Set(compiled.model.releases.flatMap(release => release.documents.flatMap(document =>
+    document.kind === "subject" && subjectRulesProvenance(document) ? [document.content.id] : [])));
   for (const subject of subjects) {
     const row = subjectsById.get(subject.content.id);
     if (!row) {
@@ -480,7 +485,8 @@ export const compareCompiledProjection = async (
     if (
       row.lifecycle !== subject.content.lifecycle ||
       !isDeepStrictEqual(row.selector_snapshot, expectedSelectorSnapshot(subject)) ||
-      !isDeepStrictEqual(row.tombstone_provenance, expectedTombstone)
+      !isDeepStrictEqual(row.tombstone_provenance, expectedTombstone) ||
+      !isDeepStrictEqual(row.rules_snapshot ?? null, versioned.has(subject.content.id) ? subjectRulesSnapshot(subject.content) : null)
     ) {
       violations.push(
         violation(

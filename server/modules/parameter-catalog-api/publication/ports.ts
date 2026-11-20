@@ -356,6 +356,7 @@ export function bindCatalogPublicationCommands(input: {
         changeSet: parsed,
         authorPrincipalId: command.principalId,
         authorOrganizationId: command.organizationId,
+        projectScope: command.projectScope,
         proposalId: command.proposalId,
         proposalRevisionId: command.proposalRevisionId,
         markdownSource: plan?.source,
@@ -406,6 +407,16 @@ export function bindCatalogPublicationCommands(input: {
       if (!view || !inScope(view.authorOrganizationId, query.organizationId)) {
         return { ok: false, error: { kind: "not-found" } };
       }
+      const identity = view.impactSummary.subjectIdentity;
+      if (identity?.rules) {
+        if (query.actorKind !== "platform-admin") return { ok: false, error: { kind: "not-found" } };
+        const scope = query.projectScope;
+        const canSee = (projectId: string) => scope?.kind === "all" || (scope?.kind === "only" && scope.ids.includes(projectId));
+        return { ok: true, value: { ...view, impactSummary: { ...view.impactSummary, subjectIdentity: {
+          ...identity, rules: { ...identity.rules, projects: identity.rules.projects.filter(row => canSee(row.id)),
+            conflicts: identity.rules.conflicts.filter(row => !row.projectId || canSee(row.projectId)) },
+        } } } };
+      }
       return { ok: true, value: view };
     },
     async publishCandidate(command) {
@@ -433,6 +444,9 @@ export function bindCatalogPublicationCommands(input: {
       const view = candidateView(loaded.value);
       if (!view) {
         return { ok: false, error: { kind: "reason", reason: "candidate-tampered" } };
+      }
+      if (view.impactSummary.subjectIdentity?.rules?.conflictCounts.length) {
+        return { ok: false, error: { kind: "reason", reason: "candidate-stale", httpStatus: 409 } };
       }
       const enqueued = await enqueuePublicationJob({
         db,

@@ -26,7 +26,7 @@ test.use({ catalogRuntimeScope: import.meta.url, catalogRuntimeDatabaseUrl: proc
   viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
-test("confirms the Huawei organization match and publishes a shared alias from module management", async ({ page, catalogRuntime }, testInfo) => {
+test("reviews Huawei shared aliases and driver rules from module management", async ({ page, catalogRuntime }, testInfo) => {
   test.setTimeout(180_000);
   const db = createPostgresDatabase(catalogRuntime.databaseUrl);
   const pool = getRootPostgresPool(db)!;
@@ -107,6 +107,39 @@ test("confirms the Huawei organization match and publishes a shared alias from m
     await expect(identity.getByRole("status")).toContainText("目录发布已生效", { timeout: 30_000 });
     await expect(identity.getByText("direct_charger（启用）", { exact: true })).toBeVisible();
     await catalogScreenshot(page, testInfo, "huawei-shared-alias-active-1440x900");
+
+    await signInCatalogActor(page, "platform-admin", route);
+    await page.getByRole("button", { name: `共享标识：${name}` }).click();
+    await identity.getByRole("combobox", { name: "共享标识操作" }).click();
+    await page.getByRole("option", { name: "修订驱动默认规则" }).click();
+    await identity.getByRole("combobox", { name: "驱动性质" }).click();
+    await page.getByRole("option", { name: "逻辑服务" }).click();
+    await identity.getByRole("combobox", { name: "项目实例规则" }).click();
+    await page.getByRole("option", { name: "每项目单例" }).click();
+    await identity.getByRole("button", { name: "生成发布预览" }).press("Enter");
+    await confirmGovernanceDialog(page, "确认预览");
+    await expect(preview).toContainText("当前规则 驱动 · 生效 · 物理设备 · 多实例");
+    await expect(preview).toContainText("发布后 驱动 · 生效 · 逻辑服务 · 每项目单例");
+    await preview.getByText("当前组织登记与覆盖").click();
+    await expect(preview).toContainText("组织多实例");
+    const rulesCandidateId = await preview.getByText(/^候选编号/u).locator("code").first().textContent();
+    expect(rulesCandidateId).toMatch(/^ccand_/u);
+    await assertNoPageOverflow(page);
+    await catalogScreenshot(page, testInfo, "huawei-shared-driver-rules-preview-1440x900");
+
+    await signInBrowserAsUser(page, reviewer.userId, reviewer.email, reviewer.name, catalogAppUrl(route));
+    await page.getByRole("button", { name: `共享标识：${name}` }).click();
+    await identity.getByText("复核已有共享标识候选").click();
+    await identity.getByLabel("候选编号").fill(rulesCandidateId!);
+    await identity.getByRole("button", { name: "读取待审核候选" }).click();
+    await expect(preview).toContainText("逻辑服务 · 每项目单例");
+    await identity.getByRole("button", { name: "提交发布" }).click();
+    await confirmGovernanceDialog(page, "确认发布");
+    await expect(identity.getByRole("status")).toContainText("发布已入队");
+    expect(await runPublicationManagerOnce({ db, pool, installer: createCatalogInstaller(pool),
+      resolvePublisherActor: async (id) => createUserInvocation(await getAuthContext(db, id)) })).toBe("claimed");
+    await expect(identity.getByRole("status")).toContainText("目录发布已生效", { timeout: 30_000 });
+    await catalogScreenshot(page, testInfo, "huawei-shared-driver-rules-active-1440x900");
   } finally {
     await db.close();
   }

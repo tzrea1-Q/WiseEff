@@ -1,6 +1,7 @@
 import type pg from "pg";
 import type { z } from "zod";
 import { ApiError } from "../../../shared/http/errors";
+import { currentPublishedSubjectOwner } from "../../catalog-kernel/ownerSchema";
 import { moduleStructureExportSchema, moduleStructureUpdateDocumentSchema } from "../../contracts/dtoSchemas/moduleStructure";
 import { updatePlacementModule, updateRegistrationDisplayAlias } from "../registration/repositories";
 
@@ -51,7 +52,7 @@ export function planSubjectPlacement(edits: SubjectEdit[], baseline: Subject[], 
 export async function applySubjectPlacement(client: pg.PoolClient, organizationId: string, changes: SubjectChange[], moduleIds: Map<string, string>) {
   for (const change of changes) {
     const result = await client.query<{ id: string; placement_id: string; owner_subject_id: string | null }>(
-      `select r.id,r.current_placement_id as placement_id,coalesce(r.owner_subject_id,s.owner_subject_id) as owner_subject_id
+      `select r.id,r.current_placement_id as placement_id,coalesce(r.owner_subject_id,${currentPublishedSubjectOwner("s")}) as owner_subject_id
        from parameter_catalog.organization_subject_registrations r
        join parameter_catalog.catalog_subjects s on s.id=r.subject_id
        where r.organization_id=$1 and r.subject_id=$2 for update of r`, [organizationId, change.subjectId]);

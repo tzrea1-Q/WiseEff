@@ -3,9 +3,10 @@ import {
   parseCanonicalConfigurationSchemaId,
   parseCanonicalNodeName,
 } from "../../parameter-catalog-contract";
-import type { CatalogReleaseDocument, CatalogReleaseNode } from "./types";
+import type { CatalogReleaseDocument, CatalogReleaseNode, CatalogReleaseSubjectDocument } from "./types";
 
 export const SUBJECT_IDENTITY_CORRECTION = "catalog-subject-identity-correction";
+export const SUBJECT_RULES_CORRECTION = "catalog-subject-rules-correction";
 export const TYPED_CHANGESET_SOURCE_PATH = "schemas/dts/catalog-release/typed-changeset.yaml";
 
 export function parseCatalogSelector(kind: string, value: unknown) {
@@ -23,4 +24,23 @@ export function subjectIdentityProvenance(document: CatalogReleaseDocument) {
 export function isCorrectedIdentity(document: CatalogReleaseDocument, release: CatalogReleaseNode): boolean {
   return document.source.path === TYPED_CHANGESET_SOURCE_PATH &&
     subjectIdentityProvenance(document)?.reviewReference === release.manifest.release.id;
+}
+
+export function subjectRulesProvenance(document: CatalogReleaseDocument) {
+  return document.kind === "subject" && document.content.selector.provenance.source === SUBJECT_RULES_CORRECTION
+    ? document.content.selector.provenance : undefined;
+}
+
+export function isCorrectedSubjectRules(document: CatalogReleaseDocument, release: CatalogReleaseNode): boolean {
+  return document.source.path === TYPED_CHANGESET_SOURCE_PATH &&
+    subjectRulesProvenance(document)?.reviewReference === release.manifest.release.id;
+}
+
+export function subjectRulesSnapshot(subject: CatalogReleaseSubjectDocument["content"]) {
+  return {
+    ownerSubjectId: subject.ownerSubjectId ?? null,
+    ...("nature" in subject.subtype ? { defaults: {
+      nature: subject.subtype.nature, cardinality: subject.subtype.cardinality.kind,
+    } } : {}),
+  };
 }

@@ -191,6 +191,7 @@ async function dispatch(
       candidateId,
       organizationId: scope.organizationId,
       actorKind: scope.actorKind,
+      projectScope: scope.projectScope,
     });
     if (!result.ok) {
       return mapPublicationFailure(result.error, request.requestId);

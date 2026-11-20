@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import { ApiError } from "../../../shared/http/errors";
+import { currentPublishedSubjectOwner, publishedSubjectOwner } from "../../catalog-kernel/ownerSchema";
 import { assertTrustedInvocationMatchesScope, type TrustedInvocationContext, type UserInvocationContext } from "../../auth/trustedInvocation";
 import { moduleStructureExportSchema, moduleStructurePreviewRequestSchema } from "../../contracts/dtoSchemas/moduleStructure";
 import type { z } from "zod";
@@ -106,7 +107,7 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
     if (requested) subject.operation = requested;
     if (subject.operation) {
       const target = current.subjects.find(row => row.subjectId === subject.subjectId);
-      const catalog = (await client.query<{ kind: LifecycleChange["kind"]; owner_subject_id: string | null; lifecycle: string; registration_id: string | null }>(`select s.kind,coalesce(r.owner_subject_id,s.owner_subject_id) as owner_subject_id,rs.lifecycle,r.id as registration_id
+      const catalog = (await client.query<{ kind: LifecycleChange["kind"]; owner_subject_id: string | null; lifecycle: string; registration_id: string | null }>(`select s.kind,coalesce(r.owner_subject_id,${publishedSubjectOwner("rs", "s")}) as owner_subject_id,rs.lifecycle,r.id as registration_id
         from parameter_catalog.catalog_subjects s join parameter_catalog.catalog_state cs on cs.singleton
         join parameter_catalog.catalog_release_subjects rs on rs.release_id=cs.current_catalog_release_id and rs.subject_id=s.id
         left join parameter_catalog.organization_subject_registrations r on r.organization_id=$1 and r.subject_id=s.id where s.id=$2`, [organizationId, subject.subjectId])).rows[0];
@@ -145,7 +146,7 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
     const reserved = await client.query("select 1 from parameter_modules where organization_id=$1 and kind='unclassified' and parent_id is null and archived_at is null", [organizationId]);
     if (!reserved.rowCount) throw new ApiError("CONFLICT", "Unclassified destination is unavailable.");
   }
-  const subjectVersions = await client.query(`select r.subject_id,r.status,r.updated_at::text,p.id as placement_id,p.updated_at::text as placement_updated_at,coalesce(r.owner_subject_id,s.owner_subject_id) as owner_subject_id
+  const subjectVersions = await client.query(`select r.subject_id,r.status,r.updated_at::text,p.id as placement_id,p.updated_at::text as placement_updated_at,coalesce(r.owner_subject_id,${currentPublishedSubjectOwner("s")}) as owner_subject_id
     from parameter_catalog.organization_subject_registrations r
     join parameter_catalog.subject_placements p on p.id=r.current_placement_id and p.organization_id=r.organization_id
     join parameter_catalog.catalog_subjects s on s.id=r.subject_id
@@ -159,7 +160,7 @@ async function planModuleStructureContent(client: pg.PoolClient, organizationId:
     from parameter_catalog.organization_subject_registrations owner
     join parameter_catalog.organization_subject_registrations child on child.organization_id=owner.organization_id
     join parameter_catalog.catalog_subjects s on s.id=child.subject_id and
-      (s.id=owner.subject_id or coalesce(child.owner_subject_id,s.owner_subject_id)=owner.subject_id)
+      (s.id=owner.subject_id or coalesce(child.owner_subject_id,${currentPublishedSubjectOwner("s")})=owner.subject_id)
     join parameter_catalog.project_parameter_bindings b on b.organization_id=owner.organization_id and b.subject_id=s.id
     where owner.organization_id=$1 and owner.subject_id=any($2::text[]) group by 1,2 order by 1,2`, [organizationId, impactedIds])).rows : [];
   const allowedChoices = new Set([...document.modules.flatMap(module => fields.map(field => `${module.ref}:${field}`)),
