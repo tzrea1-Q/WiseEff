@@ -130,7 +130,8 @@ describe("archived source snapshot restoration over HTTP and PostgreSQL", () => 
     const runs = await request<{ items: LogRunDto[] }>(`${original.path}/runs`);
     expect(runs.body.items.map(run => run.sourceSnapshot?.id)).toEqual([h.snapshot.id, h.snapshot.id]);
     const configReplay = await request<{ item: Skill }>(`${skillPath}/revisions/${originalPublished.body.item.currentRevision.id}/restore`, "POST");
-    expect(configReplay).toMatchObject({ status: 200, body: { item: { draft: { spec: { defaultSourceSnapshotId: h.snapshot.id } } } } });
+    expect(configReplay).toMatchObject({ status: 200, body: { item: { currentRevision: { status: "published", spec: { defaultSourceSnapshotId: h.snapshot.id } } } } });
+    expect((await analyze("stable-build")).item).toMatchObject({ sourceSnapshot: { id: h.snapshot.id }, sourceSnapshotSelection: "default" });
   }, 120_000);
 
   it("returns the active occupant to the loser of a concurrent restore and label correction", async () => {
