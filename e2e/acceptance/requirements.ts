@@ -76,6 +76,10 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "A platform administrator previews and transfers a local account with explicit target roles, revoked old sessions and pairings, retained source work and machine credentials, and a successful target login."
   },
   {
+    id: "ORG-MEMBER-BRIDGE-CORRECTION-001", workflow: "H", required: false,
+    title: "A platform administrator corrects a selected Organization's local login name, member profile email and Bridge display name and reads them back in the affected views."
+  },
+  {
     id: "PCAT-REGISTRATION-INITIALIZE-001", workflow: "C", required: false,
     title: "An authorized organization administrator explicitly creates a typed destination under a business parent and registers its subject atomically, with tenant, release, retry and rollback guards."
   },

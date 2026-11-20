@@ -13,6 +13,7 @@ import { createDeviceBridgeWsHandler } from "./wsHandler";
 import { createSimulatorDebugDeviceGateway } from "../debugging/simulator";
 import { dropLabRuntimeLogins, provisionPublicationRuntimeLogins } from "../../testing/labRuntimeLogins";
 import { requestJson } from "../../test/testClient";
+import type { AuditEventDto } from "../audit/types";
 
 type Bridge = { id: string; ownerUserId: string; ownerName: string; machineLabel: string; online: boolean; revokedAt: string | null };
 let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
@@ -102,6 +103,43 @@ it("lets an organization administrator inventory and revoke a member's actual co
   expect((await request<{ item: Bridge }>(path)).body.item).toMatchObject({ id: paired.bridgeId, online: false });
   expect((await db.query("select actor_user_id,metadata from audit_events where target_id=$1 and kind='device-bridge-admin-revoke'", [paired.bridgeId])).rows)
     .toEqual([{ actor_user_id: "bridge-admin-admin", metadata: expect.objectContaining({ reason: "成员离职", ownerUserId: "bridge-admin-member" }) }]);
+});
+
+it("corrects a Bridge label in the selected organization while preserving the owner, connection and credential", async () => {
+  const platform = "bridge-scope-platform", owner = "bridge-other-member";
+  const paired = await pair("ORIGINAL-BRIDGE", owner), socket = connect(paired.bridgeToken); await hello(socket);
+  const path = `/api/v1/device-bridges/organization/${paired.bridgeId}`, scope = "?organizationId=bridge-other";
+  const rename = (label: string, user = platform, suffix = scope) => request<{ item: Bridge }>(`${path}${suffix}`, "PATCH", { machineLabel: label }, user);
+  expect((await rename("CORRECTED-BRIDGE", "bridge-other-admin")).status).toBe(403);
+  expect((await rename("CORRECTED-BRIDGE", owner)).status).toBe(403);
+  expect((await rename("CORRECTED-BRIDGE", platform, "?organizationId=bridge-admin")).status).toBe(404);
+  expect((await rename("  ")).status).toBe(400);
+  expect((await request(`${path}${scope}`, "PATCH", { machineLabel: "CORRECTED-BRIDGE", ownerUserId: platform }, platform)).status).toBe(400);
+
+  const renamed = await rename("  CORRECTED-BRIDGE  ");
+  expect(renamed.status).toBe(200);
+  expect(renamed.body.item).toMatchObject({ id: paired.bridgeId, ownerUserId: owner, online: true, revokedAt: null, machineLabel: "CORRECTED-BRIDGE" });
+  const pong = new Promise<void>(resolve => socket.once("message", raw => { expect(JSON.parse(raw.toString()).type).toBe("bridge.pong"); resolve(); }));
+  socket.send(JSON.stringify({ type: "bridge.ping" })); await pong;
+  socket.terminate();
+  const reconnected = connect(paired.bridgeToken); await hello(reconnected);
+  expect((await request<{ items: Bridge[] }>("/api/v1/device-bridges/mine", "GET", undefined, owner)).body.items)
+    .toContainEqual(expect.objectContaining({ id: paired.bridgeId, machineLabel: "CORRECTED-BRIDGE", revokedAt: null }));
+  expect((await request<{ item: Bridge }>(`${path}${scope}`, "GET", undefined, platform)).body.item)
+    .toMatchObject({ id: paired.bridgeId, machineLabel: "CORRECTED-BRIDGE", ownerUserId: owner, online: true });
+  const audit = await request<{ items: AuditEventDto[] }>(`/api/v1/audit-events${scope}&kind=device-bridge-admin-rename&targetId=${paired.bridgeId}`, "GET", undefined, platform);
+  expect(audit.body.items).toEqual([expect.objectContaining({ actorUserId: platform, organizationId: "bridge-other", targetId: paired.bridgeId,
+    metadata: { actorHomeOrganizationId: "bridge-admin", operatingOrganizationId: "bridge-other", ownerUserId: owner, initiator: "user" } })]);
+  expect(JSON.stringify(audit.body)).not.toContain(paired.bridgeToken);
+  expect(JSON.stringify(audit.body)).not.toMatch(/tokenHash|token_hash|bridgeToken|pairingCode/);
+
+  const disconnected = closed(reconnected);
+  const revoked = await request<{ item: Bridge }>(`${path}/revoke${scope}`, "POST", { reason: "Retired" }, platform);
+  expect(revoked.status).toBe(200); expect(await disconnected).toBe(4401);
+  const corrected = await rename("RETIRED-BRIDGE");
+  expect(corrected.status).toBe(200);
+  expect(corrected.body.item).toMatchObject({ machineLabel: "RETIRED-BRIDGE", ownerUserId: owner, revokedAt: revoked.body.item.revokedAt, online: false });
+  expect(await closed(connect(paired.bridgeToken))).toBe(4401);
 });
 
 it("keeps member management private, rejects foreign organization details and permits only home organization administrators", async () => {

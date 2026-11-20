@@ -38,6 +38,10 @@ export async function listOrganizationBridges(apiClient: ApiClient = createDefau
   return (await apiClient.get<ItemsEnvelope<OrganizationDeviceBridge>>(withOrganizationScope("/api/v1/device-bridges/organization", organizationId))).items;
 }
 
+export async function renameOrganizationBridge(bridgeId: string, machineLabel: string, apiClient: ApiClient = createDefaultApiClient(), organizationId?: string) {
+  return (await apiClient.patch<{ item: OrganizationDeviceBridge }>(withOrganizationScope(`/api/v1/device-bridges/organization/${encodeURIComponent(bridgeId)}`, organizationId), { machineLabel })).item;
+}
+
 export async function revokeOrganizationBridge(bridgeId: string, reason: string, apiClient: ApiClient = createDefaultApiClient(), organizationId?: string) {
   return (await apiClient.post<{ item: OrganizationDeviceBridge }>(withOrganizationScope(`/api/v1/device-bridges/organization/${encodeURIComponent(bridgeId)}/revoke`, organizationId), { reason })).item;
 }

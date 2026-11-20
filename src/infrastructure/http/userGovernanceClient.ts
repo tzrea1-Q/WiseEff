@@ -232,7 +232,11 @@ export function createUserGovernanceClient(
       });
       return userFromDto(response.item);
     },
-    async updateUserProfile(userId: string, input: { name: string; title: string }) {
+    async correctLocalUsername(userId: string, username: string) {
+      const response = await apiClient.patch<ItemEnvelope<UserGovernanceDto>>(scoped(`/api/v1/users/${encodeURIComponent(userId)}/username`), { username });
+      return userFromDto(response.item);
+    },
+    async updateUserProfile(userId: string, input: { name: string; title: string; email?: string }) {
       const response = await apiClient.patch<ItemEnvelope<UserGovernanceDto>>(scoped(`/api/v1/users/${encodeURIComponent(userId)}`), input);
       return userFromDto(response.item);
     },

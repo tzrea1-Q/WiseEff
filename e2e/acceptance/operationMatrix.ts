@@ -162,6 +162,15 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     deferralReason: "Browser workflow requires an isolated real local-auth API lane; HMAC and OIDC lanes skip this local-password interaction."
   },
   {
+    id: "ORG-MEMBER-BRIDGE-CORRECTION-001", priority: "P1", area: "platform", coverage: "conditional",
+    route: "/organization/members → /organization/bridges → /node-debugging", roles: ["Platform Admin", "Org Admin"],
+    action: "Correct a local login name, profile email and Bridge display name with the selected Organization, and confirm the persisted names and retained account and Bridge identity.",
+    acceptanceIds: ["ORG-MEMBER-BRIDGE-CORRECTION-001"],
+    specFiles: ["e2e/acceptance/organization-resources.acceptance.spec.ts", "server/modules/users/usernameCorrection.integration.test.ts", "server/modules/deviceBridge/administration.integration.test.ts"],
+    assertions: ["ui", "api", "screenshot"],
+    deferralReason: "Browser workflow requires an isolated local-auth API lane."
+  },
+  {
     id: "PCAT-REGISTRATION-INITIALIZE-001", priority: "P1", area: "parameters", coverage: "future",
     route: "/parameter-admin/modules", roles: ["Org Admin"],
     action: "Choose an explicit business parent and destination name, confirm atomic typed-module initialization and subject registration; retain tenant, release, idempotency and rollback guards.",

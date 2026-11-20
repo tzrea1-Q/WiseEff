@@ -47,6 +47,25 @@ it("keeps the inventory during refresh, prevents repeat requests and ignores an 
   expect(actions.list).toHaveBeenCalledTimes(2);
 });
 
+it("uses the selected Bridge for a label correction and reloads the corrected inventory", async () => {
+  const updated = { ...bridge, machineLabel: "OFFICE-PC" };
+  const actions = { list: vi.fn().mockResolvedValueOnce([bridge]).mockResolvedValueOnce([updated]), revoke: vi.fn(), rename: vi.fn().mockResolvedValue(updated) };
+  render(<OrganizationBridgePanel enabled actions={actions} />);
+  const trigger = await screen.findByRole("button", { name: "更正设备名称" });
+  trigger.focus(); await userEvent.keyboard("{Enter}");
+  const dialog = screen.getByRole("dialog", { name: "更正设备名称" });
+  expect(dialog).toHaveTextContent(bridge.ownerName);
+  const name = within(dialog).getByRole("textbox", { name: "设备名称" });
+  await userEvent.clear(name); await userEvent.type(name, "  OFFICE-PC  ");
+  await userEvent.click(within(dialog).getByRole("button", { name: "保存名称" }));
+  expect(actions.rename).toHaveBeenCalledExactlyOnceWith(bridge.id, "OFFICE-PC");
+  expect(actions.revoke).not.toHaveBeenCalled();
+  expect(await screen.findByText("OFFICE-PC")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "刷新目录" }));
+  expect(await screen.findByText("OFFICE-PC")).toBeVisible();
+  expect(actions.list).toHaveBeenCalledTimes(2);
+});
+
 it("provides the current pairing route and preserves read-only inventories", async () => {
   const actions = { list: vi.fn().mockResolvedValue([]), revoke: vi.fn() }, onNavigate = vi.fn();
   const view = render(<OrganizationBridgePanel enabled actions={actions} onNavigate={onNavigate} />);
