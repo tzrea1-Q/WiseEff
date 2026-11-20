@@ -191,6 +191,7 @@ function appendQuery(path: string, query?: CatalogListQuery) {
   if (!query) return path;
   const params = new URLSearchParams();
   if (query.view) params.set("view", query.view);
+  if (query.status) params.set("status", query.status);
   if (query.cursor) params.set("cursor", query.cursor);
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.type) params.set("type", query.type);

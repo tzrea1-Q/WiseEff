@@ -9,7 +9,9 @@ import {
   DefinitionProposalRevisionId,
 } from "../parameter-catalog-contract/index";
 import type { Database } from "../../shared/database/client";
-import { isSubjectIdentityOp, subjectIdentityChangeSchema, type SubjectIdentityImpact } from "../contracts/dtoSchemas/catalogSubjectIdentity";
+import { isSubjectIdentityOp, isSubjectRulesOp, subjectIdentityChangeSchema,
+  type SubjectIdentityChange, type SubjectIdentityImpact } from "../contracts/dtoSchemas/catalogSubjectIdentity";
+import { inspectSubjectRulesImpact } from "./subjectRulesImpact";
 import { classifyImpact } from "./authorization/classify";
 import type { OwnerDeclaration } from "./claimedOwners";
 import type { ImpactFacts, PublicationRiskClass } from "./authorization/types";
@@ -409,6 +411,7 @@ export async function previewPublicationCandidate(input: {
   readonly changeSet: readonly CatalogChange[];
   readonly authorPrincipalId: string;
   readonly authorOrganizationId: string;
+  readonly projectScope?: Parameters<typeof inspectSubjectRulesImpact>[1]["projectScope"];
   readonly replacementSourceDefinitionId?: string;
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
@@ -536,9 +539,15 @@ export async function previewPublicationCandidate(input: {
     document.kind === "definition" && document.content.id === successorChange.successorDefinitionId);
   const replacementChange = input.replacementSourceDefinitionId && input.changeSet.length === 1 && change?.op === "create-definition"
     ? { definitionId: input.replacementSourceDefinitionId, propertyKey: change.propertyKey, subjectId: change.subjectId } : null;
-  const identity = input.changeSet.find(change => change.op === "rename-subject" || change.op === "set-subject-alias");
+  const identity = input.changeSet.find((change): change is SubjectIdentityChange => isSubjectIdentityOp(change.op));
   const identityIds = identity ? [identity.subjectId, ...(identity.op === "set-subject-alias" && identity.fromSubjectId ? [identity.fromSubjectId] : [])] : [];
-  const subjectIdentity = identity ? { change: identity, subjects: predecessorTarget.documents.flatMap(document =>
+  const target = targetReleaseOf(built.value.artifact.bundle);
+  const rulesReview = identity && isSubjectRulesOp(identity.op) && target ? await inspectSubjectRulesImpact(input.db, {
+    subjectId: identity.subjectId, before: predecessorTarget.documents, after: target.documents,
+    organizationId: input.authorOrganizationId, projectScope: input.projectScope,
+  }) : undefined;
+  const subjectIdentity = identity ? { change: identity, ...(rulesReview ? { rules: rulesReview.impact } : {}),
+    subjects: predecessorTarget.documents.flatMap(document =>
     document.kind === "subject" && identityIds.includes(document.content.id)
       ? [{ id: document.content.id, canonicalName: document.content.selector.value,
           ...(document.content.ownerSubjectId ? { ownerSubjectId: document.content.ownerSubjectId } : {}),
@@ -569,6 +578,9 @@ export async function previewPublicationCandidate(input: {
               authorOrganizationId: input.authorOrganizationId,
               impactFacts: facts as unknown as JsonObject,
               impactSummary,
+              ...(rulesReview && identity && isSubjectRulesOp(identity.op) ? { subjectRulesReview: {
+                subjectId: identity.subjectId, fingerprint: rulesReview.fingerprint,
+              } } : {}),
             },
           }),
       },

@@ -138,8 +138,11 @@ export const loadSourceRegistrationAgreement = async (
 export const activeOwnerRegistered = async (client: BindingWriterClient, organizationId: string, subjectId: string): Promise<boolean> => {
   const owner = await readOrganizationSubjectOwner(client as unknown as pg.Client, organizationId, subjectId);
   if (!owner) return true;
-  const result = await client.query(`select 1 from parameter_catalog.organization_subject_registrations
-    where organization_id=$1 and subject_id=$2 and status='active'`, [organizationId, owner]);
+  const result = await client.query(`select 1 from parameter_catalog.organization_subject_registrations registration
+    join parameter_catalog.catalog_release_subjects membership on membership.subject_id=registration.subject_id
+      and membership.release_id=(select current_catalog_release_id from parameter_catalog.catalog_state)
+      and membership.lifecycle='active'
+    where registration.organization_id=$1 and registration.subject_id=$2 and registration.status='active'`, [organizationId, owner]);
   return result.rows.length === 1;
 };
 

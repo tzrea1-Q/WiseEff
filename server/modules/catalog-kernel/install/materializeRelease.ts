@@ -11,6 +11,7 @@ import type {
   CatalogReleaseSubjectDocument,
   CompiledCatalogRelease,
 } from "../compiler/types";
+import { SUBJECT_IDENTITY_CORRECTION, SUBJECT_RULES_CORRECTION, subjectRulesProvenance, subjectRulesSnapshot } from "../compiler/subjectIdentity";
 
 export type CatalogMaterializeClient = Pick<pg.Client, "query">;
 
@@ -118,7 +119,7 @@ const selectorSnapshot = (subject: CatalogReleaseSubjectDocument): string => {
 };
 
 const selectorProvenance = ({ source, reviewReference }: CatalogReleaseSubjectDocument["content"]["selector"]["provenance"]): string =>
-  JSON.stringify({ source, ...(source === "catalog-subject-identity-correction" ? { reviewReference } : {}) });
+  JSON.stringify({ source, ...([SUBJECT_IDENTITY_CORRECTION, SUBJECT_RULES_CORRECTION].includes(source) ? { reviewReference } : {}) });
 
 const tombstoneProvenance = (
   tombstone: CatalogReleaseSubjectDocument["content"]["tombstone"],
@@ -227,6 +228,8 @@ const stageSubjects = async (
     (document): document is CatalogReleaseSubjectDocument =>
       document.kind === "subject",
   );
+  const versionedSubjects = new Set(compiled.model.releases.flatMap(release => release.documents.flatMap(document =>
+    document.kind === "subject" && subjectRulesProvenance(document) ? [document.content.id] : [])));
   for (const subject of subjects) {
     if (!existingSubjects.has(subject.content.id)) {
       if (subject.content.ownerSubjectId) {
@@ -266,7 +269,7 @@ const stageSubjects = async (
         throw new Error("unsupported catalog subject kind during materialization");
       }
       existingSubjects.add(subject.content.id);
-    } else if (subject.content.ownerSubjectId !== undefined) {
+    } else if (subject.content.ownerSubjectId !== undefined && !versionedSubjects.has(subject.content.id)) {
       const existing = await client.query<{ owner_subject_id: string | null }>(
         `select owner_subject_id from parameter_catalog.catalog_subjects where id=$1`, [subject.content.id],
       );
@@ -277,10 +280,11 @@ const stageSubjects = async (
         }] });
       }
     }
+    const snapshot = versionedSubjects.has(subject.content.id) ? JSON.stringify(subjectRulesSnapshot(subject.content)) : null;
     await client.query(
       `insert into parameter_catalog.catalog_release_subjects (
-         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance, tombstone_provenance
-       ) values ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb)`,
+         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance, tombstone_provenance${snapshot ? ", rules_snapshot" : ""}
+       ) values ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb${snapshot ? ",$7::jsonb" : ""})`,
       [
         compiled.release.id,
         subject.content.id,
@@ -288,6 +292,7 @@ const stageSubjects = async (
         selectorSnapshot(subject),
         selectorProvenance(subject.content.selector.provenance),
         tombstoneProvenance(subject.content.tombstone),
+        ...(snapshot ? [snapshot] : []),
       ],
     );
   }

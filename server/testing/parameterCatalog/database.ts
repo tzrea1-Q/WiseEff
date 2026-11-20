@@ -261,11 +261,21 @@ export const S2_SCH_0336_FINGERPRINT = "df6018672d57c85b1bee5dcaa2e62e3fbd78fd7f
 export const S2_SCH_0337_FINGERPRINT = "0eb643b1c8438c3ce184060ef0239e4caf3a17759f63cbbb1ef70a3a39defe90";
 /** 0338 replaces only the property-key predicate; all prior schema pins remain unchanged. */
 export const S2_SCH_0338_FINGERPRINT = "91311a8fbd21e52e89c3ea854fe8f74b6d98a2ebb9c1ce12eeefe36d99436954";
+/** The #1578 subject-rule and alias-scope migrations before the reviewed definition merge. */
+export const S2_SCH_0341_FINGERPRINT = "5147f7d02a93266d181ed47ceba1056f9a3467227874a2ab19ad58650487ec0b";
 /** 0339, 0343 and 0344 add versioned subject identities and reviewed definition merges. Measured on PostgreSQL/pgvector. */
 export const S2_SCH_0344_FINGERPRINT = "bb07ddfaf7b7d5eaa31d65c7b8053120ba4b9470fb05868a803d7da314bdca0f";
+/** The integrated PostgreSQL schema with shared rules, alias-scope history and reviewed definition merges. */
+export const S2_SCH_0345_FINGERPRINT = "2f4891e9b70ac0ef2e86449afe2dd55a5b4f9532c886e81ad3d1b3a31f9c1a76";
 /** 0351 adds JSON instance correction receipts and their integrity checks. */
 export const S2_SCH_0351_FINGERPRINT = "1cc2f02a9ef8ac04f3ff2431eb02aa24a711681f905f68f22b577e1501583239";
-export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0351_FINGERPRINT;
+/** 0351 measured with the #1578 subject rules and alias scope migrations. */
+export const S2_SCH_0351_WITH_SUBJECT_RULES_FINGERPRINT = "dfbbf1bffcba94da9f413b83f9defa6acae868b7631f5a16ffae28db869a0e9e";
+/** 0356–0357 measured before integrating shared subject rules and alias scope. */
+export const S2_SCH_0357_FINGERPRINT = "1636751685f8389d204e15c27b1f5543807f5e0abf5d431ade653b895514af68";
+/** 0357 measured with the #1578 subject rules and alias scope migrations. */
+export const S2_SCH_0357_WITH_SUBJECT_RULES_FINGERPRINT = "9306d9556e9ebd7c934cd38fe65461cc78290968a2bbc51dcc8dfa570731299c";
+export const S2_SCH_LIVE_FINGERPRINT = S2_SCH_0357_WITH_SUBJECT_RULES_FINGERPRINT;
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

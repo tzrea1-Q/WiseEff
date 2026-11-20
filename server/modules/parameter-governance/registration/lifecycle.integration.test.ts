@@ -1003,6 +1003,48 @@ describe("conditional registration lifecycle on the real application SQL LOGIN",
     if (!changed.ok) expect(changed.error.kind).toBe("invalid-command");
   });
 
+  it("sets and clears an owned child's organization display alias through its versioned registration", async () => {
+    await registerTarget(targetSubject, moduleId);
+    const child = (await api.query<{ id: string }>("select id from parameter_catalog.organization_subject_registrations where organization_id=$1 and subject_id=$2", [organizationId, ownedNodeSubject])).rows[0]!;
+    const actor = await auditedContext("http-child-alias");
+    await admin.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$2,$3,'admin')", [randomUUID(), actor.principalId, organizationId]);
+    const app = createWiseEffServer({ db: apiDatabase, auth: { mode: "production", verifier: { verify: async () => makeTestAuthContext({ userId: actor.principalId, organizationId }) } } });
+    const path = `/api/v2/organizations/${organizationId}/subject-registrations/${child.id}`;
+    const read = await requestJson(app, path);
+    const placement = await requestJson(app, `${path}/placement`);
+    const recognition = await requestJson(app, `${path}/recognition`);
+    const headers = { "X-WiseEff-Catalog-Release": pin.id, "If-Match": placement.headers.get("etag")!, "Idempotency-Key": randomUUID() };
+    const alias = { method: "PATCH", headers, body: JSON.stringify({ displayAlias: { value: "Organization child label", registrationEtag: read.headers.get("etag")! } }) };
+    const changed = await requestJson(app, `${path}/placement`, alias);
+    expect(changed.status, changed.bodyText).toBe(200);
+    expect((await requestJson(app, `${path}/placement`, alias)).body).toEqual(changed.body);
+    expect((await requestJson(app, `${path}/placement`, { ...alias, headers: { ...headers, "Idempotency-Key": randomUUID() } })).status).toBe(409);
+    expect((await requestJson(app, path.replace(organizationId, "another-organization") + "/placement", alias)).status).toBe(403);
+    const current = await requestJson(app, path);
+    expect(current.body).toMatchObject({ item: { id: child.id, displayAlias: "Organization child label", ownerSubjectId: targetSubject, placement: { moduleId } } });
+    expect((await requestJson(app, `${path}/recognition`)).body).toEqual(recognition.body);
+    const transfer = `/api/v2/organizations/${organizationId}/module-structure`;
+    const exported = await requestJson<{ subjects: { subjectId: string; displayAlias: string | null }[] }>(app, `${transfer}/exports`, { method: "POST", body: "{}" });
+    expect(exported.status, exported.bodyText).toBe(200);
+    expect(exported.body.subjects).toContainEqual(expect.objectContaining({ subjectId: ownedNodeSubject, displayAlias: "Organization child label", placement: null }));
+    const cleared = await requestJson(app, `${path}/placement`, { ...alias, headers: { ...headers, "Idempotency-Key": randomUUID() },
+      body: JSON.stringify({ displayAlias: { value: null, registrationEtag: current.headers.get("etag")! } }) });
+    expect(cleared.status, cleared.bodyText).toBe(200);
+    expect((await requestJson<{ item: { displayAlias?: string } }>(app, path)).body.item.displayAlias).toBeUndefined();
+    const document = { ...exported.body, subjects: exported.body.subjects.map(subject =>
+      subject.subjectId === ownedNodeSubject ? { ...subject, displayAlias: "Edited in package" } : subject) };
+    const preview = await requestJson<{ token: string }>(app, `${transfer}/previews`, { method: "POST", body: JSON.stringify({ document, resolutions: {} }) });
+    expect(preview.status, preview.bodyText).toBe(200);
+    expect(preview.body).toMatchObject({ conflicts: [{ key: `subject:${ownedNodeSubject}:displayAlias` }] });
+    const transferInput = { document, resolutions: { [`subject:${ownedNodeSubject}:displayAlias`]: "file" } };
+    const confirmed = await requestJson<{ token: string }>(app, `${transfer}/previews`, { method: "POST", body: JSON.stringify(transferInput) });
+    expect(confirmed.status, confirmed.bodyText).toBe(200);
+    const applied = await requestJson(app, `${transfer}/applies`, { method: "POST", body: JSON.stringify({ ...transferInput,
+      token: confirmed.body.token, idempotencyKey: randomUUID(), reason: "Reviewed child display alias" }) });
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect((await requestJson(app, path)).body).toMatchObject({ item: { id: child.id, displayAlias: "Edited in package", ownerSubjectId: targetSubject, placement: { moduleId } } });
+  });
+
   it("guards driver changes with current tenant authorization, registration ETags and active target evidence", async () => {
     await registerTarget(targetSubject, moduleId);
     const destination = await registerTarget(thirdSubject);

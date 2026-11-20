@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
+import { asAuditTx, writeAuditEventInTx } from "../../audit/auditedWrite";
+import { assertTrustedInvocationMatchesScope } from "../../auth/trustedInvocation";
+import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
+import { lockCatalogPointerForGovernance } from "../../parameter-modules/recognitionLock";
 
 import {
   CatalogSubjectId,
@@ -16,6 +20,7 @@ import {
   projectReviewQueueItem,
 } from "../review/group";
 import { loadReviewObservationSource } from "../queries/reviewObservationSource";
+import { fingerprintResolvedItem } from "../review/fingerprint";
 
 import {
   fingerprintResolveReviewItemCommand,
@@ -30,7 +35,6 @@ import {
 import type { Result, ReviewResolutionResult } from "./result";
 import {
   commitIdempotency,
-  fingerprintResolvedItem,
   insertDraftProposal,
   insertResolution,
   insertSuccessAudit,
@@ -119,7 +123,7 @@ const projectLockedItem = async (
   client: Parameters<typeof loadEvidenceRecords>[0],
   item: ReviewItemRow,
   command: ResolveReviewItemCommand,
-): Promise<Result<{ etag: string; allowedResolutions: readonly ReviewResolutionType[] }, GovernanceFailure>> => {
+): Promise<Result<{ etag: string; allowedResolutions: ReturnType<typeof projectReviewQueueItem>["allowedResolutions"] }, GovernanceFailure>> => {
   const records = await loadEvidenceRecords(client, command.organizationId);
   const grouped = groupReviewEvidence(records, command.expectedRelease, {
     existingOpenItems: [
@@ -183,6 +187,8 @@ const executeResolution = async (
     });
   }
   if (reserved.state === "committed" && reserved.result_ref) {
+    if (reserved.result_kind === "review-reopen")
+      return { ok: true, value: { ...JSON.parse(reserved.result_ref) as ReviewResolutionResult, outcome: "replayed" } };
     const stored = await loadStoredResult(client, command, reserved.result_ref, fingerprint);
     if (!stored) {
       return fail({ kind: "review-item-not-found", reviewItemId: command.reviewItemId });
@@ -194,6 +200,7 @@ const executeResolution = async (
   if (!item) {
     return fail({ kind: "review-item-not-found", reviewItemId: command.reviewItemId });
   }
+  if (command.resolution === "reopen-out-of-scope") return reopenReviewItem(client, item, command, fingerprint);
   if (item.status !== "open") {
     return fail({
       kind: "revision-conflict",
@@ -319,6 +326,57 @@ const executeResolution = async (
   }
   return { ok: true, value: committed };
 };
+
+async function reopenReviewItem(
+  client: Parameters<typeof loadEvidenceRecords>[0],
+  item: ReviewItemRow,
+  command: Extract<ResolveReviewItemCommand, { resolution: "reopen-out-of-scope" }>,
+  fingerprint: string,
+): Promise<Result<ReviewResolutionResult, GovernanceFailure>> {
+  const invocation = command.invocation;
+  if (!invocation || !command.requestId || !("principalId" in command.context) ||
+      invocation.principal.user.id !== command.context.principalId)
+    return fail({ kind: "permission-denied", actorKind: command.context.actorKind });
+  assertTrustedInvocationMatchesScope(invocation.principal, invocation, command.organizationId, "review item reopen");
+  await lockCatalogPointerForGovernance(client);
+  const current = await readCurrentCatalogPointer(client);
+  if (current.kind !== "installed" || current.current.id !== command.expectedRelease.id || current.current.digest !== command.expectedRelease.digest)
+    return fail({ kind: "release-drift", code: "PCAT-GUARD-RELEASE-MISMATCH", sqlstate: "PCA01", expected: command.expectedRelease });
+  if (item.status !== "out-of-scope" || !item.current_resolution_id || item.catalog_release_id !== current.current.id)
+    return fail({ kind: "revision-conflict", reviewItemId: item.id, storedEtag: "", attemptedEtag: command.etag });
+  const etag = fingerprintResolvedItem({ id: item.id, etagVersion: Number(item.etag_version),
+    status: item.status, groupingFingerprint: item.evidence_fingerprint, catalogReleaseId: item.catalog_release_id,
+    matcherRevision: item.matcher_revision, reason: item.reason, resolutionId: item.current_resolution_id });
+  if (etag !== command.etag) return fail({ kind: "revision-conflict", reviewItemId: item.id, storedEtag: etag, attemptedEtag: command.etag });
+  const original = await client.query<{ out_of_scope_reason: string }>(`select out_of_scope_reason
+    from parameter_catalog.parameter_review_resolutions
+    where id=$1 and review_item_id=$2 and resolution_type='mark-out-of-scope'`, [item.current_resolution_id, item.id]);
+  if (!original.rows[0]) return fail({ kind: "invalid-command", reason: "original-out-of-scope-verdict" });
+  const projected = await projectLockedItem(client, item, command);
+  if (!projected.ok) return projected;
+  const reopenedReviewItemId = ReviewItemId(`prit_${randomUUID()}`);
+  const inserted = await client.query(`insert into parameter_catalog.parameter_review_items
+    (id, organization_id, evidence_fingerprint, matcher_revision, catalog_release_id, reason, status, etag_version, reopened_from_item_id, reopen_reason)
+    values ($1,$2,$3,$4,$5,$6,'open',1,$7,$8) on conflict do nothing`,
+  [reopenedReviewItemId, item.organization_id, item.evidence_fingerprint, item.matcher_revision, item.catalog_release_id,
+    item.reason, item.id, command.correctionReason]);
+  if (!inserted.rowCount) return fail({ kind: "revision-conflict", reviewItemId: item.id, status: item.status });
+
+  const auditId = `aud_${randomUUID()}`;
+  await writeAuditEventInTx(asAuditTx(client), invocation, { requestId: command.requestId }, {
+    id: auditId, app: "parameter-governance", kind: "parameter-catalog-governance", action: "review-item-reopened", severity: "Medium",
+    projectId: null, targetType: "review-item", targetId: item.id,
+    metadata: { originalResolutionId: item.current_resolution_id, originalVerdict: "mark-out-of-scope", originalReason: original.rows[0].out_of_scope_reason,
+      reason: command.correctionReason, reopenedReviewItemId, catalogReleaseId: item.catalog_release_id },
+  });
+  const result: ReviewResolutionResult = {
+    outcome: "committed", reviewItemId: ReviewItemId(item.id), resolutionId: ReviewResolutionId(item.current_resolution_id),
+    resolutionType: command.resolution, organizationId: item.organization_id, status: item.status, etag, beforeEtag: command.etag,
+    release: command.expectedRelease, idempotencyKey: command.idempotencyKey, fingerprint, successAuditRef: auditId, reopenedReviewItemId,
+  };
+  await commitIdempotency(client, command, JSON.stringify(result), "review-reopen");
+  return { ok: true, value: result };
+}
 
 export const resolveReviewItem = async (
   pool: pg.Pool,

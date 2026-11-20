@@ -184,7 +184,8 @@ const registrationSelect = `
     registration.organization_id,
     registration.subject_id,
     registration.display_alias,
-    coalesce(registration.owner_subject_id, subject.owner_subject_id) as owner_subject_id,
+    coalesce(registration.owner_subject_id, case when membership.rules_snapshot is null then subject.owner_subject_id
+      else membership.rules_snapshot->>'ownerSubjectId' end) as owner_subject_id,
     registration.status,
     registration.registration_method,
     registration.current_placement_id,
@@ -196,6 +197,8 @@ const registrationSelect = `
     parent_placement.id as parent_placement_id
   from parameter_catalog.organization_subject_registrations registration
   join parameter_catalog.catalog_subjects subject on subject.id = registration.subject_id
+  left join parameter_catalog.catalog_release_subjects membership on membership.subject_id=subject.id
+    and membership.release_id=(select current_catalog_release_id from parameter_catalog.catalog_state)
   left join parameter_catalog.subject_placements placement
     on placement.id = registration.current_placement_id
    and placement.organization_id = registration.organization_id

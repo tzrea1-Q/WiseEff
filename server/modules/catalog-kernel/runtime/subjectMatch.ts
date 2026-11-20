@@ -253,9 +253,10 @@ export const resolveCatalogSubject = (
   const ownerDecision = decideHits(
     collectHits(subjects, "driver", parsedDriverCompatibles(selector.ownerContext ?? [])),
   );
-  if (ownerDecision.kind === "result" && ownerDecision.result.status === "matched") {
+  if (ownerDecision.kind === "result" && (ownerDecision.result.status === "matched" || ownerDecision.result.status === "retired")) {
     const ownerId = ownerDecision.result.subject.id;
-    const ownedDecision = decideHits(collectHits(subjects.filter((subject) => subject.owner === ownerId), "node-type", [nodeTypeName]));
+    const hits = collectHits(subjects.filter((subject) => subject.owner === ownerId), "node-type", [nodeTypeName]);
+    const ownedDecision = decideHits(ownerDecision.result.status === "retired" ? hits.map(hit => ({ ...hit, live: false })) : hits);
     if (ownedDecision.kind === "result") return ownedDecision.result;
   }
   const nodeDecision = decideHits(collectHits(subjects.filter((subject) => subject.owner === undefined), "node-type", [nodeTypeName]));

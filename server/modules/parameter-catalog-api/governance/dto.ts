@@ -127,6 +127,9 @@ export function mapReviewItem(
     allowedResolutions: [...item.allowedResolutions],
     candidateState: item.candidateState,
     ...details,
+    ...(item.decision ? { decision: item.decision } : {}),
+    ...(item.reopenedFrom ? { reopenedFrom: item.reopenedFrom } : {}),
+    ...(item.reopenedReviewItemId ? { reopenedReviewItemId: item.reopenedReviewItemId } : {}),
   });
 }
 
@@ -153,6 +156,7 @@ export function mapReviewResolution(
         }
       : {}),
     ...(result.proposalId ? { proposalId: result.proposalId } : {}),
+    ...(result.reopenedReviewItemId ? { reopenedReviewItemId: result.reopenedReviewItemId } : {}),
     catalogReleaseId: result.release.id,
   });
 }

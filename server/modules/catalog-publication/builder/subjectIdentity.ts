@@ -19,6 +19,9 @@ export function applySubjectIdentityChange(
   const parsed = subjectIdentityChangeSchema.safeParse(input);
   if (!parsed.success) return { kind: "invalid-input", reason: "invalid subject identity correction" };
   const change = parsed.data;
+  if (change.op !== "rename-subject" && change.op !== "set-subject-alias") {
+    return { kind: "invalid-input", reason: "invalid subject identity correction" };
+  }
   const subjects = documents.filter((doc): doc is CatalogReleaseSubjectDocument => doc.kind === "subject");
   const aliases = documents.filter((doc): doc is CatalogReleaseAliasDocument => doc.kind === "alias");
   const subject = subjects.find(doc => doc.content.id === change.subjectId);

@@ -307,9 +307,58 @@ describe("Review Queue closed item through authenticated root HTTP", () => {
     const otherQuery = await reader.list({ ...queueQuery, organizationId: OTHER_ORG,
       context: { actorKind: "org-admin", principalId: "other", organizationId: OTHER_ORG } });
     expect(otherQuery.ok && otherQuery.value.ignoredReviewItemCount).toBe(0);
-    expect(detail.status).toBe(404);
+    expect(detail.status).toBe(200);
+    expect(detail.body.item).toMatchObject({ id: closed.id, status: "out-of-scope", decision: { reason: "reviewed irrelevant observation" } });
     expect((await request("member", "GET", path)).status).toBe(403);
     expect((await request("other", "GET", path)).status).toBe(403);
+  });
+
+  it("reopens one linked pending item and retains both decisions through stale and concurrent HTTP requests", async () => {
+    const evidenceId = await ingestFixture({ organizationId: ORG, sourceIdentity: `reopen:${randomUUID()}`, catalogReleaseId: pin.id,
+      matcherRevision: MATCHER, matcherOutput: { status: "unknown" }, evidence: { propertyKey: "reopen-key" }, provenance: null });
+    const path = `/api/v2/organizations/${ORG}/parameter-review-items`;
+    const pending = await request("admin", "GET", path);
+    const original = await itemForEvidence(pending.body.items, evidenceId);
+    const endpoint = `${path}/${original.id}/resolve`;
+    const headers = { "X-WiseEff-Catalog-Release": pin.id, "Idempotency-Key": randomUUID(), "If-Match": `"${original.etag}"` };
+    const mark = { headers, body: { resolution: { type: "mark-out-of-scope" }, reason: "Original verdict" } };
+    const closed = await request("admin", "POST", endpoint, mark);
+    expect(closed.status, JSON.stringify(closed.body)).toBe(200);
+    const history = await request("admin", "GET", `${path}?status=out-of-scope`);
+    expect(history.body.items).toContainEqual(expect.objectContaining({ id: original.id, status: "out-of-scope",
+      allowedResolutions: ["reopen-out-of-scope"], decision: expect.objectContaining({ reason: "Original verdict" }) }));
+    const body = { resolution: { type: "reopen-out-of-scope" }, reason: "Evidence belongs in this organization" };
+    expect((await request("admin", "POST", endpoint, { headers: { ...headers, "Idempotency-Key": randomUUID() }, body })).status).toBe(409);
+    const current = { ...headers, "If-Match": closed.headers.get("etag")!, "Idempotency-Key": randomUUID() };
+    expect((await request("other", "POST", endpoint, { headers: current, body })).status).toBe(403);
+    expect((await request("other", "POST", endpoint.replace(ORG, OTHER_ORG), { headers: current, body })).status).toBe(404);
+    const another = { ...current, "Idempotency-Key": randomUUID() };
+    const [first, second] = await Promise.all([current, another].map(concurrent =>
+      request("admin", "POST", endpoint, { headers: concurrent, body })));
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+    const succeeded = first.status === 200 ? first : second;
+    const successorId = succeeded.body.item.reopenedReviewItemId;
+    expect(successorId).toEqual(expect.any(String));
+    expect(successorId).not.toBe(original.id);
+    const retried = await request("admin", "POST", endpoint, { headers: first.status === 200 ? current : another, body });
+    expect(retried.status).toBe(200);
+    expect(retried.body).toEqual(succeeded.body);
+    expect((await request("admin", "POST", endpoint, mark)).body).toEqual(closed.body);
+    const refreshed = await request("admin", "GET", path);
+    const matching = refreshed.body.items.filter((item: { observation?: { propertyKey?: string } }) => item.observation?.propertyKey === "reopen-key");
+    expect(matching).toEqual([expect.objectContaining({ id: successorId, status: "open", reopenedFrom: { id: original.id, reason: body.reason } })]);
+    const next = await request("admin", "POST", `${path}/${successorId}/resolve`, { headers: { ...headers,
+      "If-Match": `"${matching[0].etag}"`, "Idempotency-Key": randomUUID() },
+      body: { resolution: { type: "open-definition-proposal" }, reason: "New decision" } });
+    expect(next.status, JSON.stringify(next.body)).toBe(200);
+    const originalDetail = await request("admin", "GET", `${path}/${original.id}`);
+    expect(originalDetail.body.item).toMatchObject({ status: "out-of-scope", allowedResolutions: [], decision: { reason: "Original verdict" }, reopenedReviewItemId: successorId });
+    const nextDetail = await request("admin", "GET", `${path}/${successorId}`);
+    expect(nextDetail.body.item).toMatchObject({ status: "resolved", decision: { type: "open-definition-proposal" }, reopenedFrom: { id: original.id, reason: body.reason } });
+    const audit = await pool.query("select actor_user_id,metadata from audit_events where organization_id=$1 and action='review-item-reopened' and target_id=$2", [ORG, original.id]);
+    expect(audit.rows).toEqual([expect.objectContaining({ actor_user_id: "admin", metadata: expect.objectContaining({
+      originalVerdict: "mark-out-of-scope", originalReason: "Original verdict", reason: body.reason, reopenedReviewItemId: successorId,
+    }) })]);
   });
 
   it("projects Catalog candidates and only same-organization retired registrations with real identifiers", async () => {

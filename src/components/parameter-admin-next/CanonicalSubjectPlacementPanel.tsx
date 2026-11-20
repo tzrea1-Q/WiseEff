@@ -841,13 +841,15 @@ export function CanonicalSubjectPlacementPanel({
                         {childCount && registrationStatus === "unregistered" ? <span>，将随驱动一同登记</span> : null}
                       </span>
                       <span className="canonical-subject-meta">
-                        {registrationStatus === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">已停用 · </span> : null}
+                        {subject.membership.status === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">共享已退役 · </span>
+                          : owner?.membership.status === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">所属驱动已退役 · </span> : null}
+                        {registrationStatus === "retired" ? <span className="parameter-catalog__badge" data-tone="warning">组织已停用 · </span> : null}
                         {placement && !placement.moduleId ? <span className="parameter-catalog__badge" data-tone="warning">未分配模块</span> : placement
                           ? `归属：${moduleLabels.get(placement.moduleId ?? "") ?? placement.displayName}`
                           : "未登记"}
                       </span>
                       <div className="parameter-module-mapping-panel__actions canonical-subject-actions">
-                        {canManageIdentity && subject.membership.status === "active" ? <button type="button" className="button subtle"
+                        {canManageIdentity ? <button type="button" className="button subtle"
                           aria-label={`共享标识：${subject.canonicalName}`} onClick={() => setIdentitySubjectId(subject.id)}>共享标识</button> : null}
                         {subject.type === "driver" && subject.membership.status === "active" && canCreateSubject ? <button
                           type="button" className="button subtle" aria-label={`新增子节点类型：${subject.canonicalName}`}
@@ -862,6 +864,13 @@ export function CanonicalSubjectPlacementPanel({
                             if (subject.type === "configuration-schema") void openPlacement(subject, registrationId);
                             else setRecognitionSubject({ registrationId, subject });
                           }}>{canAdmin ? "编辑" : "查看"}{subject.ownerSubjectId ? "节点" : "主体"}</button> : null}
+                        {subject.ownerSubjectId && placementAllowed && registrationId ? <button type="button" className="button subtle"
+                          aria-label={`编辑展示别名：${subject.canonicalName}`} disabled={!inventoryReady || openingSubjectId === subject.id}
+                          onClick={event => {
+                            editorTrigger.current = event.currentTarget;
+                            closeEditor();
+                            void openPlacement(subject, registrationId);
+                          }}>编辑展示别名</button> : null}
                         {subject.definitionCounts.active > 0 ? <button
                           type="button"
                           className="button subtle"
@@ -1008,7 +1017,7 @@ export function CanonicalSubjectPlacementPanel({
         }} /> : null}
       {placementDialog && catalogReleaseId ? (
         <RegistrationDialog
-          editor={placementDialog.intent === "update-placement" && placementDialog.registrationId
+          editor={placementDialog.intent === "update-placement" && placementDialog.registrationId && !placementDialog.subject.ownerSubjectId
             ? editorOptions(placementDialog.subject, placementDialog.registrationId, "placement") : undefined}
           open
           intent={placementDialog.intent}
@@ -1027,6 +1036,7 @@ export function CanonicalSubjectPlacementPanel({
           subjectImpact={placementDialog.subjectImpact}
           currentModuleName={placementDialog.currentModuleName}
           displayAlias={placementDialog.displayAlias}
+          displayAliasOnly={Boolean(placementDialog.subject.ownerSubjectId)}
           createIdempotencyKey={createGovernanceIdempotencyKey}
           onOpenChange={(open) => {
             if (!open) closeEditor();

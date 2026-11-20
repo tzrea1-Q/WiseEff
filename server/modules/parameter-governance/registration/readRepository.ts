@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { publishedSubjectOwner } from "../../catalog-kernel/ownerSchema";
 
 export async function readPlacementHintEvidence(pool: Pick<pg.Client, "query">, organizationId: string) {
   const [modules, registrations] = await Promise.all([
@@ -33,12 +34,12 @@ export async function listUnregisteredSubjects(pool: pg.Pool, organizationId: st
           join parameter_catalog.catalog_release_subjects child_membership on child_membership.subject_id=child.id
           left join parameter_catalog.organization_subject_registrations child_registration
             on child_registration.subject_id=child.id and child_registration.organization_id=$2
-          where coalesce(child_registration.owner_subject_id,child.owner_subject_id)=subject.id
+          where coalesce(child_registration.owner_subject_id,${publishedSubjectOwner("child_membership", "child")})=subject.id
             and child_membership.release_id=$1 and child_membership.lifecycle='active') as "childCount"
        from parameter_catalog.catalog_release_subjects membership
        join parameter_catalog.catalog_subjects subject on subject.id = membership.subject_id
        where membership.release_id = $1 and membership.lifecycle = 'active'
-         and subject.owner_subject_id is null
+         and (${publishedSubjectOwner("membership", "subject")}) is null
          and not exists (select 1 from parameter_catalog.organization_subject_registrations registration
                          where registration.organization_id = $2 and registration.subject_id = subject.id)
          and ($3 = 'all' or exists (
