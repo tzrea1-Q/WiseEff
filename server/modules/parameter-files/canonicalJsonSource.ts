@@ -21,6 +21,7 @@ import { loadCanonicalSourceCohort, loadCanonicalSourceSnapshot, requireCanonica
 import { normalizeManifestLogicalPath, normalizePersistedManifest } from "../parameter-topology/configRevisionManifest";
 import type { ConfigRevisionManifestMember } from "../parameter-topology/types";
 import { discoverCurrentSourceRevisionPins, loadSourceValueReplay, loadSourceBindingCohortReadOnly, loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
+import { selectCurrentJsonInstancesForFile } from "../parameter-bindings/queries/currentInstances";
 import { loadExactSourceRevisionForProof, lockExactSourceRevisionsForProof, rethrowSourceTransactionError } from "./sourceVersion";
 import { filterPreviouslySuspendedSourceBindings } from "./sourceManagedScope";
 import { assertCanonicalValueConstraints } from "../parameter-bindings/values/service";
@@ -28,12 +29,6 @@ import { assertCanonicalValueConstraints } from "../parameter-bindings/values/se
 export type JsonInstanceMapping = {
   configurationSchemaId: string; rootPointer: string;
   mappings: Array<{ definitionId: string; pointer: string }>;
-};
-
-export type CurrentJsonInstance = {
-  occurrenceId: string; configurationInstanceId: string; configurationSchemaId: string;
-  subjectId: string; rootPointer: string;
-  bindings: Array<{ bindingId: string; valueId: string; definitionId: string; pointer: string; value: ContractJsonValue }>;
 };
 
 export async function readCurrentJsonInstances(
@@ -44,20 +39,8 @@ export async function readCurrentJsonInstances(
     where organization_id=$1 and project_id=$2 and id=$3 and format='json'`,
   [scope.organizationId, scope.projectId, scope.fileId])).rows[0];
   if (!file) throw new ApiError("NOT_FOUND", "Project JSON file not found.");
-  const instances = (await db.query<Omit<CurrentJsonInstance, "configurationSchemaId">>(`
-    select occurrence.id as "occurrenceId",occurrence.configuration_instance_id as "configurationInstanceId",
-      occurrence.configuration_schema_subject_id as "subjectId",occurrence.root_pointer as "rootPointer",
-      jsonb_agg(jsonb_build_object('bindingId',binding.id,'valueId',value.id,'definitionId',binding.definition_id,
-        'pointer',pin.locator->>'pointer','value',value.value) order by binding.definition_id) as bindings
-    from parameter_catalog.project_parameter_source_occurrences occurrence
-    join parameter_catalog.current_project_parameter_bindings binding on binding.source_occurrence_id=occurrence.id
-    join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id and value.binding_id=binding.id
-    join parameter_catalog.project_value_source_pins pin on pin.binding_id=binding.id and pin.project_value_id=value.id
-    where occurrence.organization_id=$1 and occurrence.project_id=$2 and occurrence.file_id=$3 and occurrence.config_set_id=$4
-      and occurrence.occurrence_kind='json' and pin.file_id=$3 and pin.file_version_id=$5 and pin.format='json'
-    group by occurrence.id order by occurrence.root_pointer,occurrence.id`,
-  [scope.organizationId, scope.projectId, scope.fileId, file.configSetId, file.fileVersionId])).rows;
-  const items: CurrentJsonInstance[] = instances.map(instance => {
+  const instances = await selectCurrentJsonInstancesForFile(db, { ...scope, ...file });
+  const items = instances.map(instance => {
     const subject = snapshot.getSubject(CatalogSubjectId(instance.subjectId));
     const selector = subject.status === "found" ? subject.subject.membership.selector : undefined;
     return { ...instance, configurationSchemaId: selector?.kind === "configuration-schema-id" ? selector.value : instance.subjectId };
