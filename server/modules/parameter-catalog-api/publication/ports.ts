@@ -46,6 +46,7 @@ import type {
   PublicationCandidateView,
   PublicationJobView,
   PublicationSurfaceView,
+  TrustedPublicationScope,
 } from "./types";
 
 async function readImportCompatibleRules(pool: CatalogPointerPool, organizationId: string) {
@@ -159,6 +160,24 @@ const inScope = (
   authorOrganizationId: string,
   organizationId: string,
 ): boolean => authorOrganizationId === organizationId;
+
+function isPlatformSubjectReviewer(scope: Pick<TrustedPublicationScope, "actorKind" | "trustedActor">) {
+  return scope.actorKind === "platform-admin" && scope.trustedActor.initiator === "user" &&
+    scope.trustedActor.principal.roles.some(role => role.roleId === "platform-admin" && role.projectId === null);
+}
+
+function projectSubjectRulesImpact(view: PublicationCandidateView, scope: Pick<TrustedPublicationScope, "organizationId" | "projectScope">): PublicationCandidateView {
+  const identity = view.impactSummary.subjectIdentity;
+  if (!identity?.rules || scope.projectScope?.kind === "all") return view;
+  const { rules } = identity;
+  const projectIds = new Set(scope.projectScope?.kind === "only" ? scope.projectScope.ids : []);
+  const canSee = (projectId: string, organizationId = view.authorOrganizationId) =>
+    organizationId === scope.organizationId && projectIds.has(projectId);
+  return { ...view, impactSummary: { ...view.impactSummary, subjectIdentity: { ...identity, rules: {
+    ...rules, projects: rules.projects.filter(row => canSee(row.id, row.organizationId)),
+    conflicts: rules.conflicts.filter(row => !row.projectId || canSee(row.projectId, row.organizationId)),
+  } } } };
+}
 
 const jobFailure = (
   job: PublicationJobRecord,
@@ -346,7 +365,7 @@ export function bindCatalogPublicationCommands(input: {
       const parsed = claimedChanges ?? plan?.changeSet ?? parsePublicationChangeSet(command.changeSet);
       if ("error" in parsed) return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
       if (parsed.some(change => isSubjectIdentityOp(change.op)) &&
-        (command.actorKind !== "platform-admin" || !command.permissions.includes("catalog:author"))) {
+        (!isPlatformSubjectReviewer(command) || !command.permissions.includes("catalog:author"))) {
         return { ok: false, error: { kind: "forbidden", reason: "publication-capability-missing" } };
       }
       const previewed = await previewPublicationCandidate({
@@ -356,7 +375,6 @@ export function bindCatalogPublicationCommands(input: {
         changeSet: parsed,
         authorPrincipalId: command.principalId,
         authorOrganizationId: command.organizationId,
-        projectScope: command.projectScope,
         proposalId: command.proposalId,
         proposalRevisionId: command.proposalRevisionId,
         markdownSource: plan?.source,
@@ -380,7 +398,7 @@ export function bindCatalogPublicationCommands(input: {
           return { ...entry, ...(classified.ok ? { riskClass: classified.value } : {}) };
         });
       }
-      const candidate = {
+      const candidate = projectSubjectRulesImpact({
         id: previewed.value.candidate.id,
         expectedBaseReleaseId: previewed.value.candidate.expectedBaseReleaseId,
         expectedBaseReleaseDigest: previewed.value.candidate.expectedBaseReleaseDigest,
@@ -388,7 +406,7 @@ export function bindCatalogPublicationCommands(input: {
         impactSummary: previewed.value.impactSummary,
         capabilityContract: capabilityOf(previewed.value.candidate),
         authorOrganizationId: command.organizationId,
-      };
+      }, command);
       return { ok: true, value: command.claimedOwners ? { candidate, noChange: false }
         : plan ? { candidate, noChange: plan.noChange, entries: publicImportEntries(plan.entries), source: plan.source, placementHints } : candidate };
     },
@@ -407,17 +425,11 @@ export function bindCatalogPublicationCommands(input: {
       if (!view || !inScope(view.authorOrganizationId, query.organizationId)) {
         return { ok: false, error: { kind: "not-found" } };
       }
-      const identity = view.impactSummary.subjectIdentity;
-      if (identity?.rules) {
-        if (query.actorKind !== "platform-admin") return { ok: false, error: { kind: "not-found" } };
-        const scope = query.projectScope;
-        const canSee = (projectId: string) => scope?.kind === "all" || (scope?.kind === "only" && scope.ids.includes(projectId));
-        return { ok: true, value: { ...view, impactSummary: { ...view.impactSummary, subjectIdentity: {
-          ...identity, rules: { ...identity.rules, projects: identity.rules.projects.filter(row => canSee(row.id)),
-            conflicts: identity.rules.conflicts.filter(row => !row.projectId || canSee(row.projectId)) },
-        } } } };
+      if (view.impactSummary.subjectIdentity?.rules && (!isPlatformSubjectReviewer(query) ||
+        !query.permissions.some(permission => permission === "catalog:author" || permission === "catalog:publish" || permission === "catalog:review-high-risk"))) {
+        return { ok: false, error: { kind: "not-found" } };
       }
-      return { ok: true, value: view };
+      return { ok: true, value: projectSubjectRulesImpact(view, query) };
     },
     async publishCandidate(command) {
       const loaded = await withPublicationCoordinator(db, (tx) => {

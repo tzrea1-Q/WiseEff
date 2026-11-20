@@ -47,12 +47,13 @@ export const subjectRulesImpactSchema = z.object({
   definitions: z.array(z.object({ id: z.string(), propertyKey: z.string(), subjectId }).strict()),
   registrationCounts: z.object({ active: count, independentlyRetired: count, cascadeRetired: count,
     ownerOverrides: count, recognitionOverrides: count, sharedSuspended: count }).strict(),
-  registrations: z.array(z.object({ id: z.string(), subjectId, status: z.enum(["active", "retired"]),
-    cascadeRetired: z.boolean(), ownerOverride: subjectId.nullable(), cardinalityOverride: cardinality.nullable() }).strict()),
+  registrations: z.array(z.object({ id: z.string(), organizationId: z.string().optional(), subjectId, status: z.enum(["active", "retired"]),
+    cascadeRetired: z.boolean(), ownerOverride: subjectId.nullable(), cardinalityOverride: cardinality.nullable(),
+    recognitionOverride: z.boolean().optional(), natureOverride: nature.nullable().optional(), sharedSuspended: z.boolean().optional() }).strict()),
   projectCount: count, bindingCount: count,
-  projects: z.array(z.object({ id: z.string(), bindingCount: count, instanceCount: count }).strict()),
+  projects: z.array(z.object({ id: z.string(), organizationId: z.string().optional(), bindingCount: count, instanceCount: count }).strict()),
   conflictCounts: z.array(z.object({ reason: subjectRulesConflictSchema, count }).strict()),
-  conflicts: z.array(z.object({ reason: subjectRulesConflictSchema, projectId: z.string().optional(),
+  conflicts: z.array(z.object({ reason: subjectRulesConflictSchema, organizationId: z.string().optional(), projectId: z.string().optional(),
     subjectId: subjectId.optional(), instanceCount: count.optional() }).strict()),
 }).strict();
 export type SubjectRulesImpact = z.infer<typeof subjectRulesImpactSchema>;

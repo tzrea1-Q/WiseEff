@@ -2105,7 +2105,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterFiles.appendBaselineErratum": {
-    summary: "Append sourced errata to a published configuration baseline", tags: ["parameter-files"], successStatus: 201,
+    summary: "Append sourced errata to a published baseline, replaying the original result for an identical client mutation", tags: ["parameter-files"], successStatus: 201,
     requestBody: "AppendBaselineErratumRequest", responseBody: "ReleaseBaselineResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
@@ -2454,6 +2454,8 @@ for (const routeId of [
   "catalog.listRegistrations", "catalog.createRegistration", "catalog.getRegistration", "catalog.retireRegistration", "catalog.restoreRegistration", "catalog.changeRegistrationOwner",
   "catalog.getPlacement", "catalog.updatePlacement", "catalog.listDriverCompatibleDiscovery",
   "catalog.listReviewItems", "catalog.getReviewItem", "catalog.resolveReviewItem",
+  "catalog.createPublicationCandidate", "catalog.getPublicationCandidate", "catalog.publishPublicationCandidate",
+  "catalog.getPublicationSurface", "catalog.listPublications", "catalog.getPublication",
   ...Object.keys(schemaRegistry).filter((routeId) => schemaRegistry[routeId].successStatus !== 410 && (
     routeId.startsWith("organization.teams.") || routeId.startsWith("knowledge.") || routeId.startsWith("xiaoze.") || routeId.startsWith("logs.") || routeId.startsWith("productFeedback.") ||
     routeId.startsWith("parameters.") || routeId.startsWith("parameters-dashboard-") ||

@@ -35,6 +35,20 @@ function props() {
 const unavailable = "当前属性没有唯一关联的参数定义，单位与业务约束尚不可用。";
 
 describe("WorkbenchPropertyDefinition", () => {
+  it("links to the current published recommendation in the operating organization and keeps pinned constraints", async () => {
+    const input = { ...props(), organizationId: "org-remote" };
+    const current = { ...definition("current-revision").item, unit: { kind: "symbol", symbol: "A" } };
+    const catalogRepository = { ...input.catalogRepository, getDefinition: vi.fn().mockResolvedValue({ item: {
+      id: "definition", propertyKey: "iin_max", currentRevision: current,
+      recommendedDefinition: { id: "pdef_successor", displayName: "推荐电流", propertyKey: "input_limit" }
+    } }) };
+    render(<WorkbenchPropertyDefinition {...input} catalogRepository={catalogRepository} />);
+    expect(await screen.findByRole("link", { name: "推荐电流" })).toHaveAttribute("href",
+      "/parameters/definitions?definitionId=pdef_successor&organizationId=org-remote");
+    expect(screen.getByText("mA")).toBeInTheDocument();
+    expect(screen.queryByText("A")).not.toBeInTheDocument();
+  });
+
   it("uses the exact file, node and property binding and its effective immutable revision", async () => {
     const input = props();
     input.topologyRepository.listBindings.mockResolvedValue([

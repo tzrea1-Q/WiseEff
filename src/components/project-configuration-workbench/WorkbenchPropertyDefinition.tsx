@@ -3,14 +3,17 @@ import type { ParameterTopologyRepository } from "@/application/ports/ParameterT
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { CanonicalDtsDefinitionDetail } from "@/domain/parameter-topology/types";
 import { formatParameterConstraints } from "@/domain/parameter-topology/formatParameterConstraints";
-import { loadCanonicalDtsDefinitionDetail } from "@/application/parameters/loadCanonicalDtsDefinitionDetail";
+import { loadCanonicalDtsDefinitionDetail, loadCurrentCanonicalDtsDefinitionDetail } from "@/application/parameters/loadCanonicalDtsDefinitionDetail";
+import { CATALOG_READ_PAGE_PATH } from "@/application/parameter-catalog/urlAnchor";
 import { presentError } from "@/infrastructure/http/presentError";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { formatDtsValueSchema } from "@/domain/dts/dtsValueSchema";
 
 type DefinitionInput = {
   projectId: string; revisionId: string | null; fileId: string | null; nodePath: string | null; propertyName: string | null;
   topologyRepository?: Pick<ParameterTopologyRepository, "listBindings">;
-  catalogRepository?: Pick<ParameterCatalogRepository, "getDefinitionRevision">;
+  catalogRepository?: Pick<ParameterCatalogRepository, "getDefinitionRevision"> & Partial<Pick<ParameterCatalogRepository, "getDefinition">>;
+  organizationId?: string;
 };
 
 export type WorkbenchDefinitionState = {
@@ -46,18 +49,27 @@ export function useWorkbenchPropertyDefinition({ projectId, revisionId, fileId, 
       if (cancelled) return;
       if (matches.length !== 1) { update(matches.length ? "ambiguous" : "missing"); return; }
       const binding = matches[0]!;
-      if (!binding.definitionId || !(binding.effectiveRevisionId || binding.definitionRevisionId)) { update("unavailable"); return; }
+      const definitionId = binding.definitionId;
+      const revision = binding.effectiveRevisionId || binding.definitionRevisionId;
+      if (!definitionId || !revision) { update("unavailable"); return; }
       const next = await loadCanonicalDtsDefinitionDetail(catalogRepository, {
-        definitionId: binding.definitionId!, revisionId: (binding.effectiveRevisionId || binding.definitionRevisionId)!, propertyKey: propertyName
+        definitionId, revisionId: revision, propertyKey: propertyName
       });
       update("ready", next);
+      if (cancelled || !catalogRepository.getDefinition) return;
+      const current = await loadCurrentCanonicalDtsDefinitionDetail({ getDefinition: catalogRepository.getDefinition }, {
+        definitionId, propertyKey: propertyName
+      }).catch(() => null);
+      if (current?.recommendedDefinition) update("ready", { ...next, recommendedDefinition: current.recommendedDefinition });
     })().catch((cause) => { update("error", null, presentError(cause, "参数定义加载失败。")); });
     return () => { cancelled = true; };
   }, [catalogRepository, fileId, identity, nodePath, projectId, propertyName, revisionId, retry, topologyRepository]);
   return { ...(state.identity === identity ? state : { detail: null, status: "loading" as const, error: "" }), retry: retryDefinition };
 }
 
-export function WorkbenchPropertyDefinitionContent({ state, propertyName }: { state: WorkbenchDefinitionState; propertyName: string }) {
+export function WorkbenchPropertyDefinitionContent({ state, propertyName, organizationId }: {
+  state: WorkbenchDefinitionState; propertyName: string; organizationId?: string;
+}) {
   const { detail, status, error, retry } = state;
   const shape = detail?.valueShape;
   const schema = shape && typeof shape === "object" && "schema" in shape ? shape.schema : undefined;
@@ -66,6 +78,9 @@ export function WorkbenchPropertyDefinitionContent({ state, propertyName }: { st
     {status === "loading" ? <p role="status">正在加载参数定义…</p> : error ? <p role="alert">{error} <button type="button" className="button subtle" onClick={retry}>重试定义</button><span className="muted">业务约束尚未校验，输入已保留。</span></p>
       : detail ? <>
         {detail.displayName !== propertyName ? <strong>{detail.displayName}</strong> : null}
+        {detail.recommendedDefinition ? <p>此定义已弃用。推荐使用 <a href={withOrganizationScope(
+          `${CATALOG_READ_PAGE_PATH}?${new URLSearchParams({ definitionId: detail.recommendedDefinition.id })}`, organizationId)}>
+          {detail.recommendedDefinition.displayName}</a>。</p> : null}
         {detail.documentation ? <details><summary>参数说明</summary><p>{detail.documentation}</p></details> : <p className="muted">尚无参数说明。</p>}
         <dl><div><dt>单位</dt><dd>{detail.unit || "未提供"}</dd></div><div><dt>取值约束</dt><dd>{constraints || "未提供业务约束；仍需符合下方类型语法。"}</dd></div></dl>
       </> : <><p className="muted">当前属性没有唯一关联的参数定义，单位与业务约束尚不可用。</p>
@@ -75,5 +90,5 @@ export function WorkbenchPropertyDefinitionContent({ state, propertyName }: { st
 
 export function WorkbenchPropertyDefinition(props: DefinitionInput) {
   const state = useWorkbenchPropertyDefinition(props);
-  return <WorkbenchPropertyDefinitionContent state={state} propertyName={props.propertyName ?? ""} />;
+  return <WorkbenchPropertyDefinitionContent state={state} propertyName={props.propertyName ?? ""} organizationId={props.organizationId} />;
 }

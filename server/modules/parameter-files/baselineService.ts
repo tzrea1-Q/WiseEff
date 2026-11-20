@@ -234,15 +234,18 @@ export async function getBaseline(
   return { baseline, members };
 }
 
-async function attachBaselineErrata(db: Queryable, organizationId: string, projectId: string, baselines: ReleaseBaselineDto[]) {
+const baselineErrataScope = `organization_id=$1 and project_id=$2 and app='parameters' and kind='baseline'
+  and target_type='dts-release-baseline' and action='erratum_appended'`;
+
+async function attachBaselineErrata(db: Queryable, organizationId: string, projectId: string, baselines: ReleaseBaselineDto[], through?: number) {
   const ids = baselines.filter(baseline => baseline.status !== "draft").map(baseline => baseline.id);
   if (!ids.length) return;
   const rows = (await db.query<BaselineErratum & { baselineId: string }>(`
     select id, target_id as "baselineId", metadata->>'note' as note, metadata->>'source' as source,
       metadata->>'actorName' as "actorName", to_jsonb(created_at)#>>'{}' as "createdAt"
-    from audit_events where organization_id=$1 and project_id=$2 and app='parameters' and kind='baseline'
-      and target_type='dts-release-baseline' and target_id=any($3::text[]) and action='erratum_appended'
-    order by created_at,id`, [organizationId, projectId, ids])).rows;
+    from audit_events where ${baselineErrataScope} and target_id=any($3::text[])
+      and ($4::integer is null or coalesce((metadata->>'erratumPosition')::integer, 0) <= $4)
+    order by created_at,id`, [organizationId, projectId, ids, through ?? null])).rows;
   for (const baseline of baselines) {
     const errata = rows.filter(row => row.baselineId === baseline.id).map(({ baselineId: _id, ...row }) => row);
     if (errata.length) baseline.errata = errata;
@@ -251,17 +254,19 @@ async function attachBaselineErrata(db: Queryable, organizationId: string, proje
 
 export async function correctBaseline(
   db: Database, auth: AuthContext, input: { projectId: string; baselineId: string } &
-    ({ name: string; notes?: string | null } | { note: string; source: string }),
+    ({ name: string; notes?: string | null } | { note: string; source: string; clientMutationId: string }),
   context: BaselineServiceContext
 ) {
   requireParameterFileAdmin(auth);
+  const organizationId = parameterOrganizationId(auth);
+  const invocation = parameterInvocation(auth) ?? createUserInvocation(auth);
   return db.transaction(async (tx) => {
-    await requireActiveOrganization(tx, parameterOrganizationId(auth), true);
-    const baseline = (await tx.query<{ status: string }>(`
+    await requireActiveOrganization(tx, organizationId, true);
+    const baseline = (await tx.query<{ status: ReleaseBaselineDto["status"] }>(`
       select baseline.status from dts_release_baseline baseline
       join dts_config_set config on config.id=baseline.config_set_id and config.organization_id=baseline.organization_id
       where baseline.id=$1 and baseline.organization_id=$2 and config.project_id=$3 for update of baseline`,
-    [input.baselineId, parameterOrganizationId(auth), input.projectId])).rows[0];
+    [input.baselineId, organizationId, input.projectId])).rows[0];
     if (!baseline) throw new ApiError("NOT_FOUND", "Baseline not found.");
     const draftEdit = "name" in input;
     if (draftEdit !== (baseline.status === "draft")) {
@@ -270,13 +275,30 @@ export async function correctBaseline(
     if (draftEdit) {
       await tx.query("update dts_release_baseline set name=$2, notes=case when $3 then $4 else notes end where id=$1",
         [input.baselineId, input.name, input.notes !== undefined, input.notes ?? null]);
+      await writeBaselineAudit(asAuditTx(tx), invocation, { action: "updated", projectId: input.projectId, targetId: input.baselineId,
+        metadata: { name: input.name, notes: input.notes } }, context);
+      return (await getBaseline(tx, auth, input.baselineId, input.projectId)).baseline;
     }
-    await writeBaselineAudit(asAuditTx(tx), parameterInvocation(auth) ?? createUserInvocation(auth), {
-      action: draftEdit ? "updated" : "erratum_appended", projectId: input.projectId, targetId: input.baselineId,
-      metadata: draftEdit ? { name: input.name, notes: input.notes } :
-        { note: input.note, source: input.source, actorName: auth.user.name }
+
+    // Allocate positions under the baseline row lock. Audit timestamps can precede lock acquisition.
+    const { nextPosition, receipt } = (await tx.query<{
+      nextPosition: number; receipt: { note: string; source: string; baselineStatus: ReleaseBaselineDto["status"]; erratumPosition: number } | null;
+    }>(`select coalesce(max((metadata->>'erratumPosition')::integer), 0) + 1 as "nextPosition",
+      jsonb_agg(metadata) filter (where metadata->>'clientMutationId'=$4) -> 0 as receipt
+      from audit_events where ${baselineErrataScope} and target_id=$3`,
+    [organizationId, input.projectId, input.baselineId, input.clientMutationId])).rows[0]!;
+    if (receipt && (receipt.note !== input.note || receipt.source !== input.source)) {
+      throw new ApiError("CONFLICT", "This mutation ID was already used for different baseline errata.");
+    }
+    if (!receipt) await writeBaselineAudit(asAuditTx(tx), invocation, {
+      action: "erratum_appended", projectId: input.projectId, targetId: input.baselineId,
+      metadata: { note: input.note, source: input.source, actorName: auth.user.name, clientMutationId: input.clientMutationId,
+        erratumPosition: nextPosition, baselineStatus: baseline.status },
     }, context);
-    return (await getBaseline(tx, auth, input.baselineId, input.projectId)).baseline;
+    const result = (await getReleaseBaselineById(tx, { organizationId, baselineId: input.baselineId }))!;
+    result.status = receipt?.baselineStatus ?? baseline.status;
+    await attachBaselineErrata(tx, organizationId, input.projectId, [result], receipt?.erratumPosition ?? nextPosition);
+    return result;
   }).catch((error: unknown) => {
     if (typeof error === "object" && error && "constraint" in error && error.constraint === "dts_release_baseline_config_set_id_name_key") {
       throw new ApiError("CONFLICT", "A baseline with this name already exists in the configuration.");

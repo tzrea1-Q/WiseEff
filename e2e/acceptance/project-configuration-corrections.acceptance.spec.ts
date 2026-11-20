@@ -83,9 +83,25 @@ test("corrects project configuration metadata, file path, baseline and JSON inst
     const erratum = page.getByRole("dialog", { name: "追加版本勘误" });
     await erratum.getByLabel("勘误说明").fill("Correct the published annotation");
     await erratum.getByLabel("勘误来源").fill("QA correction memorandum");
+    const erratumRoute = (url: URL) => url.pathname === `${project}/baselines/${baseline.id}/errata`;
+    const sent: string[] = [];
+    await page.route(erratumRoute, async route => {
+      sent.push(route.request().postDataJSON().clientMutationId);
+      const response = await route.fetch();
+      expect(response.status()).toBe(201);
+      if (sent.length === 1) await route.abort("connectionreset");
+      else await route.fulfill({ response });
+    });
     await erratum.getByRole("button", { name: "追加勘误" }).click();
-    await expect(versions.getByRole("region", { name: "版本勘误" })).toContainText("QA correction memorandum");
+    await expect(erratum.getByRole("alert")).toBeVisible();
+    await erratum.getByRole("button", { name: "追加勘误" }).click();
+    const errata = versions.getByRole("region", { name: "版本勘误" });
+    await expect(errata).toContainText("QA correction memorandum");
+    await expect(errata.getByText("Correct the published annotation", { exact: true })).toHaveCount(1);
+    expect(sent).toEqual([expect.any(String), sent[0]]);
+    await page.unroute(erratumRoute);
     await expect(versions.getByText("Original publication note")).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("baseline-erratum-retry-1440.png") });
     await versions.getByRole("button", { name: "关闭配置版本" }).click();
 
     const menu = await openWorkbenchFileActions(page, "correction.json");

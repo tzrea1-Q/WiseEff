@@ -692,7 +692,7 @@ export const activateOnlinePublication = async (
       throw new PublicationActivationFailure({ kind: "publication-not-authorized", reason: "candidate-tampered" });
     }
     const checked = await inspectSubjectRulesImpact(db, {
-      subjectId: review.subjectId, before: base.documents, after: target.documents, organizationId,
+      subjectId: review.subjectId, before: base.documents, after: target.documents,
     });
     if (checked.fingerprint !== review.fingerprint || checked.impact.conflictCounts.length) {
       throw new PublicationActivationFailure({ kind: "needs-rebase", installed: pointer.current,

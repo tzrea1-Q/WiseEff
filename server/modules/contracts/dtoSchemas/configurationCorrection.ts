@@ -11,10 +11,12 @@ export const updateDraftBaselineSchema = z.object({
   notes: z.string().nullish()
 }).strict();
 
-export const appendBaselineErratumSchema = z.object({
+const clientMutationId = z.string().trim().min(1).max(160);
+const baselineErratumContent = z.object({
   note: z.string().trim().min(1),
   source: z.string().trim().min(1)
 }).strict();
+export const appendBaselineErratumSchema = baselineErratumContent.extend({ clientMutationId });
 
 export const correctedConfigSetResponseSchema = z.object({ item: z.object({
   id: z.string(), organizationId: z.string(), projectId: z.string(), name: z.string(),
@@ -24,7 +26,7 @@ export const correctedConfigSetResponseSchema = z.object({ item: z.object({
 const baseline = z.object({
   id: z.string(), organizationId: z.string(), configSetId: z.string(), name: z.string(), notes: z.string().optional(),
   status: z.enum(["draft", "released", "historical"]), createdAt: z.string(), createdBy: z.string().optional(),
-  errata: z.array(appendBaselineErratumSchema.extend({ id: z.string(), actorName: z.string(), createdAt: z.string() })).optional()
+  errata: z.array(baselineErratumContent.extend({ id: z.string(), actorName: z.string(), createdAt: z.string() })).optional()
 });
 export const correctedBaselineResponseSchema = z.object({ item: baseline });
 export const correctedBaselineDetailResponseSchema = correctedBaselineResponseSchema.extend({
@@ -36,7 +38,7 @@ export const correctedBaselineListResponseSchema = z.object({ items: z.array(bas
 const confirmation = {
   proofToken: z.string().regex(/^[0-9a-f]{64}$/),
   reason: z.string().trim().min(1).max(2000),
-  clientMutationId: z.string().trim().min(1).max(160)
+  clientMutationId
 };
 export const pathCorrectionSchema = z.object({ sourceName: z.string().min(1).max(240) }).strict();
 export const pathCorrectionApplySchema = pathCorrectionSchema.extend(confirmation);

@@ -411,7 +411,6 @@ export async function previewPublicationCandidate(input: {
   readonly changeSet: readonly CatalogChange[];
   readonly authorPrincipalId: string;
   readonly authorOrganizationId: string;
-  readonly projectScope?: Parameters<typeof inspectSubjectRulesImpact>[1]["projectScope"];
   readonly replacementSourceDefinitionId?: string;
   readonly proposalId?: string;
   readonly proposalRevisionId?: string;
@@ -544,7 +543,7 @@ export async function previewPublicationCandidate(input: {
   const target = targetReleaseOf(built.value.artifact.bundle);
   const rulesReview = identity && isSubjectRulesOp(identity.op) && target ? await inspectSubjectRulesImpact(input.db, {
     subjectId: identity.subjectId, before: predecessorTarget.documents, after: target.documents,
-    organizationId: input.authorOrganizationId, projectScope: input.projectScope,
+    includeNatureOverride: true,
   }) : undefined;
   const subjectIdentity = identity ? { change: identity, ...(rulesReview ? { rules: rulesReview.impact } : {}),
     subjects: predecessorTarget.documents.flatMap(document =>

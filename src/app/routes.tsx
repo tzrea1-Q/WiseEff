@@ -352,6 +352,7 @@ export function PageRouter({
           dispatch={dispatch}
           onNavigate={navigateParameters}
           search={search}
+          organizationId={runtime?.operatingOrganizationId ?? organizationId}
           parameterActions={parameterActions}
           topologyRepository={parameterTopologyRepository}
           canonicalRepository={runtime?.parameterCatalogRepository}

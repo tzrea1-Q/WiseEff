@@ -3,7 +3,7 @@ import { expect } from "playwright/test";
 import { catalogAppUrl, catalogRuntimeTest as test } from "./helpers/catalogFixtureRuntime";
 import { assertNoPageOverflow, CATALOG_EXPECTED_API_FAILURES, catalogScreenshot, confirmGovernanceDialog, openCatalogAt, signInCatalogActor } from "./helpers/catalogBrowser";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { signInBrowserAsUser } from "./helpers/bearerAuth";
+import { authHeadersForRole, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { ACCEPTANCE_ORGANIZATION, acceptanceCast } from "./helpers/cast";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { compileLocalizedVendorCatalogSuccessor } from "../../scripts/compile-vendor-catalog-release";
@@ -19,14 +19,19 @@ import { encodeBundleBytes } from "../../server/modules/catalog-publication/buil
 import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "../../server/modules/catalog-publication/builder/types";
 import { runPublicationManagerOnce } from "../../server/modules/catalog-publication/jobs/manager";
 import { createCatalogInstaller } from "../../server/modules/catalog-kernel/install/installer";
+import { readCurrentCatalogPointer } from "../../server/modules/catalog-kernel/install/currentPointer";
 import { CatalogSubjectId } from "../../server/modules/parameter-catalog-contract";
 import { createRegistrationService } from "../../server/modules/parameter-governance/registration/service";
+import { makeTestAuthContext } from "../../server/testing/authContext";
+import { addConfigSetFile, createConfigSet } from "../../server/modules/parameter-files/configSetService";
+import { ingestConfigRevision } from "../../server/modules/parameter-topology/ingestService";
+import { CATALOG_RELEASE_HEADER } from "../../server/modules/contracts/dtoSchemas/parameterCatalog";
 
 test.use({ catalogRuntimeScope: import.meta.url, catalogRuntimeDatabaseUrl: process.env.TEST_DATABASE_URL,
   viewport: { width: 1440, height: 900 } });
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
-test("reviews Huawei shared aliases and driver rules from module management", async ({ page, catalogRuntime }, testInfo) => {
+test("reviews Huawei shared aliases and driver rules from module management", async ({ page, request, catalogRuntime }, testInfo) => {
   test.setTimeout(180_000);
   const db = createPostgresDatabase(catalogRuntime.databaseUrl);
   const pool = getRootPostgresPool(db)!;
@@ -36,6 +41,8 @@ test("reviews Huawei shared aliases and driver rules from module management", as
   const name = "huawei,direct_charger";
   const subjectId = "csub_drv_huawei_direct_charger";
   const route = `/parameter-admin/modules?selectedSubject=${subjectId}`;
+  const foreignOrganizationId = "org-foreign-rules";
+  const foreignProjectId = "foreign-rules-project";
   try {
     await seedAcceptanceRoleMatrix();
     await db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('alias-browser-reviewer',$1,$2,'platform-admin')",
@@ -108,6 +115,31 @@ test("reviews Huawei shared aliases and driver rules from module management", as
     await expect(identity.getByText("direct_charger（启用）", { exact: true })).toBeVisible();
     await catalogScreenshot(page, testInfo, "huawei-shared-alias-active-1440x900");
 
+    const foreignUser = "shared-rules-fixture-admin";
+    await db.query("insert into organizations (id,name) values ($1,'Foreign rules fixture')", [foreignOrganizationId]);
+    await db.query("insert into users (id,organization_id,name,title) values ($1,$2,'Fixture editor','Editor')", [foreignUser, foreignOrganizationId]);
+    await db.query("insert into projects (id,organization_id,name,code,status) values ($1,$2,'Foreign singleton blocker','FOREIGNRULES','initialized')", [foreignProjectId, foreignOrganizationId]);
+    await db.query("insert into parameter_modules (id,organization_id,name,path,depth,kind,origin) values ('foreign-rules-module',$1,'Huawei','foreign-rules-module',1,'business','curated')", [foreignOrganizationId]);
+    const pointer = await readCurrentCatalogPointer(pool);
+    if (pointer.kind !== "installed") throw new Error("Catalog fixture is not installed");
+    const foreignRegistration = await createRegistrationService(pool).execute({ kind: "register", organizationId: foreignOrganizationId,
+      subjectId: CatalogSubjectId(subjectId), subjectKind: "driver", expectedRelease: pointer.current, placement: { mode: "use-default" },
+      destinationModuleId: "foreign-rules-module", method: "explicit", proof: {}, idempotencyKey: "browser-foreign-rules-registration",
+      context: { actorKind: "platform-admin", principalId: author.userId } });
+    if (!foreignRegistration.ok) throw new Error(JSON.stringify(foreignRegistration));
+    const foreignAuth = makeTestAuthContext({ organizationId: foreignOrganizationId, userId: foreignUser, roleId: "admin" });
+    const foreignSet = await createConfigSet(db, foreignAuth, { projectId: foreignProjectId, name: "Two foreign chargers" });
+    const fileName = "foreign-chargers.dts";
+    const content = '/dts-v1/; / { first { compatible = "huawei,direct_charger"; }; second { compatible = "huawei,direct_charger"; }; };';
+    const upload = await request.post(`${catalogRuntime.apiUrl}/api/v1/projects/${foreignProjectId}/parameter-files?organizationId=${foreignOrganizationId}`,
+      { headers: authHeadersForRole("platform-admin"), data: { fileName, contentBase64: Buffer.from(content).toString("base64") } });
+    expect(upload.status(), await upload.text()).toBe(201);
+    const file = await upload.json() as { item: { id: string }; version: { id: string } };
+    await addConfigSetFile(db, foreignAuth, { configSetId: foreignSet.id, fileId: file.item.id, role: "base", sortOrder: 0 });
+    await ingestConfigRevision(db, { organizationId: foreignOrganizationId, projectId: foreignProjectId, configSetId: foreignSet.id,
+      entryFile: fileName, includeSearchPaths: ["."], overlayOrder: [], members: [{ fileId: file.item.id, fileVersionId: file.version.id,
+        fileName, role: "base", sortOrder: 0, content }] }, foreignAuth);
+
     await signInCatalogActor(page, "platform-admin", route);
     await page.getByRole("button", { name: `共享标识：${name}` }).click();
     await identity.getByRole("combobox", { name: "共享标识操作" }).click();
@@ -120,10 +152,41 @@ test("reviews Huawei shared aliases and driver rules from module management", as
     await confirmGovernanceDialog(page, "确认预览");
     await expect(preview).toContainText("当前规则 驱动 · 生效 · 物理设备 · 多实例");
     await expect(preview).toContainText("发布后 驱动 · 生效 · 逻辑服务 · 每项目单例");
-    await preview.getByText("当前组织登记与覆盖").click();
+    const blocker = preview.getByRole("alert");
+    await expect(blocker).toContainText(foreignOrganizationId);
+    await expect(blocker.getByRole("link", { name: foreignProjectId })).toHaveAttribute("href",
+      `/parameter-admin/projects/${foreignProjectId}/configuration?organizationId=${foreignOrganizationId}`);
+    await expect(blocker).toContainText("2 个实例");
+    await expect(identity.getByRole("button", { name: "提交发布" })).toHaveCount(0);
+    await blocker.getByRole("link", { name: foreignProjectId }).scrollIntoViewIfNeeded();
+    await catalogScreenshot(page, testInfo, "cross-organization-singleton-blocker-1440x900");
+    const blockedCandidateId = await preview.getByText(/^候选编号/u).locator("code").first().textContent();
+    await db.query(`insert into public.registration_recognition_rules
+      (organization_id,registration_id,canonical_subject_id,compatibles,driver_nature,instance_cardinality)
+      values ($1,$2,$3,array['huawei,direct_charger'],'physical-device','multiple')`,
+    [foreignOrganizationId, foreignRegistration.value.registrationId, subjectId]);
+    await identity.getByRole("button", { name: "生成发布预览" }).click();
+    await confirmGovernanceDialog(page, "确认预览");
+    await expect(blocker).toHaveCount(0);
+    await preview.getByText("受影响的组织登记与覆盖").click();
     await expect(preview).toContainText("组织多实例");
+    await expect(preview).toContainText(foreignRegistration.value.registrationId);
     const rulesCandidateId = await preview.getByText(/^候选编号/u).locator("code").first().textContent();
     expect(rulesCandidateId).toMatch(/^ccand_/u);
+    expect(rulesCandidateId).not.toBe(blockedCandidateId);
+    const candidatesUrl = `${catalogRuntime.apiUrl}/api/v2/catalog/publication-candidates`;
+    const foreignScope = `organizationId=${foreignOrganizationId}`;
+    const platformHeaders = authHeadersForRole("platform-admin");
+    const scoped = await request.post(`${candidatesUrl}?${foreignScope}`, { headers: { ...platformHeaders, [CATALOG_RELEASE_HEADER]: pointer.current.id },
+      data: { changeSet: [{ op: "set-driver-defaults", subjectId, nature: "logical-service", cardinality: "singleton-per-project" }] } });
+    expect(scoped.status(), await scoped.text()).toBe(201);
+    const scopedId = (await scoped.json()).item.id;
+    expect((await request.get(`${candidatesUrl}/${scopedId}`, { headers: platformHeaders })).status()).toBe(404);
+    const scopedRead = await request.get(`${candidatesUrl}/${scopedId}?${foreignScope}`, { headers: platformHeaders });
+    expect(scopedRead.status(), await scopedRead.text()).toBe(200);
+    expect((await scopedRead.json()).item.impactSummary.subjectIdentity.rules.registrations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ organizationId }), expect.objectContaining({ organizationId: foreignOrganizationId }),
+    ]));
     await assertNoPageOverflow(page);
     await catalogScreenshot(page, testInfo, "huawei-shared-driver-rules-preview-1440x900");
 

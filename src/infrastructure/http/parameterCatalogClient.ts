@@ -279,7 +279,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     const pathname = path.split("?")[0]!;
     const organizationProjection = method === "GET" && /^\/api\/v2\/catalog\/(subjects|definitions|revision-document)(\/|$)/.test(pathname)
       && !pathname.endsWith("/deletion-preview");
-    const resourcePath = path.startsWith("/api/v2/projects/") || organizationProjection || /^\/api\/v2\/catalog\/definition-replacements(\/|$)/.test(pathname)
+    const scopedCatalogOperation = /^\/api\/v2\/catalog\/(definition-replacements|publication-candidates|publication-surface|publications)(\/|$)/.test(pathname);
+    const resourcePath = path.startsWith("/api/v2/projects/") || organizationProjection || scopedCatalogOperation
       ? withOrganizationScope(path, options.organizationId) : path;
     const response = await fetchImpl(`${baseUrl}${resourcePath}`, {
       method,

@@ -5,17 +5,17 @@ import { listModuleRecognitionInstances } from "../parameter-modules/recognition
 import { sha256Digest } from "./builder/bundleCodec";
 
 type Subject = CatalogReleaseSubjectDocument["content"];
-type ProjectScope = { kind: "all" } | { kind: "only"; ids: readonly string[] };
 type Registration = {
   id: string; organizationId: string; subjectId: string; status: "active" | "retired";
   cascadeRetired: boolean; ownerOverride: string | null; cardinalityOverride: "multiple" | "singleton-per-project" | null;
+  natureOverride: "physical-device" | "logical-service" | null;
   compatibles: string[] | null; nodeName: string | null;
 };
 type Conflict = SubjectRulesImpact["conflicts"][number] & { organizationId: string };
 
 export async function inspectSubjectRulesImpact(db: Queryable, input: {
   subjectId: string; before: readonly CatalogReleaseDocument[]; after: readonly CatalogReleaseDocument[];
-  organizationId: string; projectScope?: ProjectScope;
+  includeNatureOverride?: boolean;
 }): Promise<{ impact: SubjectRulesImpact; fingerprint: string }> {
   const subjects = (documents: readonly CatalogReleaseDocument[]) => new Map(documents.flatMap(document =>
     document.kind === "subject" ? [[document.content.id, document.content] as const] : []));
@@ -45,7 +45,8 @@ export async function inspectSubjectRulesImpact(db: Queryable, input: {
   const registrations = (await db.query<Registration>(`select registration.id,
       registration.organization_id as "organizationId", registration.subject_id as "subjectId",
       registration.status, registration.cascade_retired as "cascadeRetired", registration.owner_subject_id as "ownerOverride",
-      rule.instance_cardinality as "cardinalityOverride", rule.compatibles, rule.node_type_name as "nodeName"
+      rule.instance_cardinality as "cardinalityOverride", rule.compatibles, rule.node_type_name as "nodeName",
+      ${input.includeNatureOverride ? "rule.driver_nature" : "null::text"} as "natureOverride"
     from parameter_catalog.organization_subject_registrations registration
     left join public.registration_recognition_rules rule
       on rule.organization_id=registration.organization_id and rule.registration_id=registration.id
@@ -95,16 +96,24 @@ export async function inspectSubjectRulesImpact(db: Queryable, input: {
      order by organization_id, project_id, subject_id, "nodeId"`, [[...inReview]],
   )).rows;
   const projects = new Map<string, { organizationId: string; id: string; bindingCount: number; nodes: Set<string> }>();
-  const project = (organizationId: string, id: string) => {
+  const reviewProjects = new Map(projects);
+  const project = (entries: typeof projects, organizationId: string, id: string) => {
     const key = JSON.stringify([organizationId, id]);
-    const entry = projects.get(key) ?? { organizationId, id, bindingCount: 0, nodes: new Set<string>() };
-    projects.set(key, entry);
+    const entry = entries.get(key) ?? { organizationId, id, bindingCount: 0, nodes: new Set<string>() };
+    entries.set(key, entry);
     return entry;
   };
   for (const row of bindings) {
-    const entry = project(row.organizationId, row.projectId);
+    const entry = project(projects, row.organizationId, row.projectId);
     entry.bindingCount += row.count;
     entry.nodes.add(row.nodeId);
+    const ownerOverride = byOrganization.get(row.organizationId)?.get(row.subjectId)?.ownerOverride;
+    // A node pulled into scope by a local override is only affected in that Organization.
+    if (refs.has(row.subjectId) || (ownerOverride && source.has(ownerOverride))) {
+      const visible = project(reviewProjects, row.organizationId, row.projectId);
+      visible.bindingCount += row.count;
+      visible.nodes.add(row.nodeId);
+    }
   }
 
   const singleton = [current, successor].filter((subject): subject is Subject => Boolean(subject?.lifecycle === "active" &&
@@ -123,7 +132,8 @@ export async function inspectSubjectRulesImpact(db: Queryable, input: {
           const nodes = nodesByProject.get(projectId) ?? new Set<string>();
           nodes.add(nodeId);
           nodesByProject.set(projectId, nodes);
-          project(organizationId, projectId).nodes.add(nodeId);
+          project(projects, organizationId, projectId).nodes.add(nodeId);
+          project(reviewProjects, organizationId, projectId).nodes.add(nodeId);
         };
         for (const row of bindings) {
           if (row.organizationId === organizationId && row.subjectId === driver.id) add(row.projectId, row.nodeId);
@@ -143,13 +153,15 @@ export async function inspectSubjectRulesImpact(db: Queryable, input: {
     kind: subject.kind, selector: subject.selector.value, lifecycle: subject.lifecycle, ownerSubjectId: subject.ownerSubjectId ?? null,
     ...("nature" in subject.subtype ? { defaults: { nature: subject.subtype.nature, cardinality: subject.subtype.cardinality.kind } } : {}),
   });
-  const scoped = (organizationId: string) => organizationId === input.organizationId;
-  const visibleProject = (id: string) => input.projectScope?.kind === "all" ||
-    (input.projectScope?.kind === "only" && input.projectScope.ids.includes(id));
   const totals = new Map<Conflict["reason"], number>();
   for (const conflict of conflicts) totals.set(conflict.reason, (totals.get(conflict.reason) ?? 0) + 1);
-  const orderedProjects = [...projects.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, project]) => project);
-  const projectsWithCounts = orderedProjects.map(({ nodes, ...entry }) => ({ ...entry, instanceCount: nodes.size }));
+  const orderedProjects = (entries: typeof projects) => [...entries.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, entry]) => entry);
+  const projectsWithCounts = orderedProjects(reviewProjects).map(({ nodes, ...entry }) => ({ ...entry, instanceCount: nodes.size }));
+  const projectedRegistrations = affected.map(({ compatibles, nodeName, ...row }) => ({
+    ...row, recognitionOverride: compatibles !== null || nodeName !== null,
+    sharedSuspended: row.status === "active" && (after.get(row.subjectId)?.lifecycle === "retired" ||
+      after.get(row.ownerOverride ?? after.get(row.subjectId)?.ownerSubjectId ?? "")?.lifecycle === "retired"),
+  }));
   const impact: SubjectRulesImpact = {
     before: state(previous), after: state(current), ...(successor ? { successor: { id: successor.id, ...state(successor) } } : {}),
     children,
@@ -161,22 +173,21 @@ export async function inspectSubjectRulesImpact(db: Queryable, input: {
       independentlyRetired: affected.filter(row => row.status === "retired" && !row.cascadeRetired).length,
       cascadeRetired: affected.filter(row => row.status === "retired" && row.cascadeRetired).length,
       ownerOverrides: affected.filter(row => row.ownerOverride !== null).length,
-      recognitionOverrides: affected.filter(row => row.compatibles !== null).length,
-      sharedSuspended: affected.filter(row => row.status === "active" && (after.get(row.subjectId)?.lifecycle === "retired" ||
-        after.get(row.ownerOverride ?? after.get(row.subjectId)?.ownerSubjectId ?? "")?.lifecycle === "retired")).length,
+      recognitionOverrides: projectedRegistrations.filter(row => row.recognitionOverride).length,
+      sharedSuspended: projectedRegistrations.filter(row => row.sharedSuspended).length,
     },
-    registrations: affected.filter(row => scoped(row.organizationId)).map(({ organizationId: _org, compatibles: _compatibles, nodeName: _nodeName, ...row }) => row),
-    projectCount: projects.size,
-    bindingCount: bindings.reduce((count, row) => count + row.count, 0),
-    projects: projectsWithCounts.filter(row => scoped(row.organizationId) && visibleProject(row.id))
-      .map(({ organizationId: _org, ...project }) => project),
+    registrations: projectedRegistrations,
+    projectCount: reviewProjects.size,
+    bindingCount: projectsWithCounts.reduce((count, row) => count + row.bindingCount, 0),
+    projects: projectsWithCounts,
     conflictCounts: [...totals].map(([reason, count]) => ({ reason, count })),
-    conflicts: conflicts.filter(row => scoped(row.organizationId) && (!row.projectId || visibleProject(row.projectId)))
-      .map(({ organizationId: _org, ...conflict }) => conflict),
+    conflicts,
   };
   return { impact, fingerprint: sha256Digest(JSON.stringify({
-    affected, conflicts: conflicts.map(conflict => JSON.stringify(conflict)).sort(), bindings,
-    projects: orderedProjects.map(({ nodes, ...project }) => ({
+    // Nature is display metadata. Preserve the activation proof's existing inputs for stored candidates.
+    affected: affected.map(({ natureOverride: _nature, ...row }) => row),
+    conflicts: conflicts.map(conflict => JSON.stringify(conflict)).sort(), bindings,
+    projects: orderedProjects(projects).map(({ nodes, ...project }) => ({
       ...project, nodes: [...nodes].sort(),
     })),
   })) };

@@ -37,6 +37,7 @@ export function WorkbenchCorrectionDialog({ target, client, onClose, onSaved }: 
   const [json, setJson] = useState<JsonCorrection>({ configurationSchemaId: "", rootPointer: "", mappings: [] });
   const [preview, setPreview] = useState<SourceCorrectionPreview>();
   const [mutationId, setMutationId] = useState("");
+  const erratumSubmission = useRef<{ note: string; source: string; clientMutationId: string } | null>(null);
   const firstInput = useRef<HTMLInputElement>(null);
   const reasonInput = useRef<HTMLInputElement>(null);
   const [readAttempt, setReadAttempt] = useState(0);
@@ -85,7 +86,13 @@ export function WorkbenchCorrectionDialog({ target, client, onClose, onSaved }: 
     try {
       if (target.kind === "config") await client.updateSet(target.item.id, { name: name.trim(), description: notes.trim() || null });
       else if (target.kind === "baseline") {
-        if (erratum) await client.appendErratum(target.item.id, { note: notes.trim(), source: source.trim() });
+        if (erratum) {
+          const note = notes.trim(), citation = source.trim();
+          if (erratumSubmission.current?.note !== note || erratumSubmission.current.source !== citation) {
+            erratumSubmission.current = { note, source: citation, clientMutationId: crypto.randomUUID() };
+          }
+          await client.appendErratum(target.item.id, erratumSubmission.current);
+        }
         else await client.updateBaseline(target.item.id, { name: name.trim(), notes: notes.trim() || null });
       } else if (!preview) {
         const response = target.kind === "path" ? await client.previewPath(target.configSetId, target.fileId, name)

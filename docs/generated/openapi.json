@@ -15872,6 +15872,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -15956,6 +15965,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -16020,6 +16038,15 @@
             "in": "header",
             "required": true,
             "description": "Catalog release observed by the client.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -16089,6 +16116,17 @@
         "tags": [
           "catalog"
         ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -16155,6 +16193,15 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -16210,6 +16257,15 @@
             "name": "jobId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "description": "Explicit operating Organization; cross-Organization access requires a platform super administrator. Omitting it preserves the endpoint's existing scope.",
             "schema": {
               "type": "string"
             }
@@ -28691,7 +28747,7 @@
     "/api/v1/projects/{projectId}/baselines/{baselineId}/errata": {
       "post": {
         "operationId": "parameterFiles.appendBaselineErratum",
-        "summary": "Append sourced errata to a published configuration baseline",
+        "summary": "Append sourced errata to a published baseline, replaying the original result for an identical client mutation",
         "tags": [
           "parameter-files"
         ],
@@ -82446,11 +82502,15 @@
           },
           "source": {
             "type": "string"
+          },
+          "clientMutationId": {
+            "type": "string"
           }
         },
         "required": [
           "note",
-          "source"
+          "source",
+          "clientMutationId"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "AppendBaselineErratumRequest"
@@ -98791,6 +98851,9 @@
                                     "id": {
                                       "type": "string"
                                     },
+                                    "organizationId": {
+                                      "type": "string"
+                                    },
                                     "subjectId": {
                                       "type": "string"
                                     },
@@ -98819,6 +98882,22 @@
                                         "multiple",
                                         "singleton-per-project"
                                       ]
+                                    },
+                                    "recognitionOverride": {
+                                      "type": "boolean"
+                                    },
+                                    "natureOverride": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ],
+                                      "enum": [
+                                        "physical-device",
+                                        "logical-service"
+                                      ]
+                                    },
+                                    "sharedSuspended": {
+                                      "type": "boolean"
                                     }
                                   },
                                   "required": [
@@ -98844,6 +98923,9 @@
                                   "type": "object",
                                   "properties": {
                                     "id": {
+                                      "type": "string"
+                                    },
+                                    "organizationId": {
                                       "type": "string"
                                     },
                                     "bindingCount": {
@@ -98899,6 +98981,9 @@
                                         "organization-selector-collision",
                                         "organization-driver-override"
                                       ]
+                                    },
+                                    "organizationId": {
+                                      "type": "string"
                                     },
                                     "projectId": {
                                       "type": "string"
@@ -99414,6 +99499,9 @@
                                         "id": {
                                           "type": "string"
                                         },
+                                        "organizationId": {
+                                          "type": "string"
+                                        },
                                         "subjectId": {
                                           "type": "string"
                                         },
@@ -99442,6 +99530,22 @@
                                             "multiple",
                                             "singleton-per-project"
                                           ]
+                                        },
+                                        "recognitionOverride": {
+                                          "type": "boolean"
+                                        },
+                                        "natureOverride": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ],
+                                          "enum": [
+                                            "physical-device",
+                                            "logical-service"
+                                          ]
+                                        },
+                                        "sharedSuspended": {
+                                          "type": "boolean"
                                         }
                                       },
                                       "required": [
@@ -99467,6 +99571,9 @@
                                       "type": "object",
                                       "properties": {
                                         "id": {
+                                          "type": "string"
+                                        },
+                                        "organizationId": {
                                           "type": "string"
                                         },
                                         "bindingCount": {
@@ -99522,6 +99629,9 @@
                                             "organization-selector-collision",
                                             "organization-driver-override"
                                           ]
+                                        },
+                                        "organizationId": {
+                                          "type": "string"
                                         },
                                         "projectId": {
                                           "type": "string"
@@ -100334,6 +100444,9 @@
                                         "id": {
                                           "type": "string"
                                         },
+                                        "organizationId": {
+                                          "type": "string"
+                                        },
                                         "subjectId": {
                                           "type": "string"
                                         },
@@ -100362,6 +100475,22 @@
                                             "multiple",
                                             "singleton-per-project"
                                           ]
+                                        },
+                                        "recognitionOverride": {
+                                          "type": "boolean"
+                                        },
+                                        "natureOverride": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ],
+                                          "enum": [
+                                            "physical-device",
+                                            "logical-service"
+                                          ]
+                                        },
+                                        "sharedSuspended": {
+                                          "type": "boolean"
                                         }
                                       },
                                       "required": [
@@ -100387,6 +100516,9 @@
                                       "type": "object",
                                       "properties": {
                                         "id": {
+                                          "type": "string"
+                                        },
+                                        "organizationId": {
                                           "type": "string"
                                         },
                                         "bindingCount": {
@@ -100442,6 +100574,9 @@
                                             "organization-selector-collision",
                                             "organization-driver-override"
                                           ]
+                                        },
+                                        "organizationId": {
+                                          "type": "string"
                                         },
                                         "projectId": {
                                           "type": "string"
@@ -100970,6 +101105,9 @@
                                     "id": {
                                       "type": "string"
                                     },
+                                    "organizationId": {
+                                      "type": "string"
+                                    },
                                     "subjectId": {
                                       "type": "string"
                                     },
@@ -100998,6 +101136,22 @@
                                         "multiple",
                                         "singleton-per-project"
                                       ]
+                                    },
+                                    "recognitionOverride": {
+                                      "type": "boolean"
+                                    },
+                                    "natureOverride": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ],
+                                      "enum": [
+                                        "physical-device",
+                                        "logical-service"
+                                      ]
+                                    },
+                                    "sharedSuspended": {
+                                      "type": "boolean"
                                     }
                                   },
                                   "required": [
@@ -101023,6 +101177,9 @@
                                   "type": "object",
                                   "properties": {
                                     "id": {
+                                      "type": "string"
+                                    },
+                                    "organizationId": {
                                       "type": "string"
                                     },
                                     "bindingCount": {
@@ -101078,6 +101235,9 @@
                                         "organization-selector-collision",
                                         "organization-driver-override"
                                       ]
+                                    },
+                                    "organizationId": {
+                                      "type": "string"
                                     },
                                     "projectId": {
                                       "type": "string"
@@ -101885,6 +102045,9 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "organizationId": {
+                                  "type": "string"
+                                },
                                 "subjectId": {
                                   "type": "string"
                                 },
@@ -101913,6 +102076,22 @@
                                     "multiple",
                                     "singleton-per-project"
                                   ]
+                                },
+                                "recognitionOverride": {
+                                  "type": "boolean"
+                                },
+                                "natureOverride": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "enum": [
+                                    "physical-device",
+                                    "logical-service"
+                                  ]
+                                },
+                                "sharedSuspended": {
+                                  "type": "boolean"
                                 }
                               },
                               "required": [
@@ -101938,6 +102117,9 @@
                               "type": "object",
                               "properties": {
                                 "id": {
+                                  "type": "string"
+                                },
+                                "organizationId": {
                                   "type": "string"
                                 },
                                 "bindingCount": {
@@ -101993,6 +102175,9 @@
                                     "organization-selector-collision",
                                     "organization-driver-override"
                                   ]
+                                },
+                                "organizationId": {
+                                  "type": "string"
                                 },
                                 "projectId": {
                                   "type": "string"

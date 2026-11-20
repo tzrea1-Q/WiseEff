@@ -288,14 +288,73 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         await ingestConfigRevision(api, { organizationId, projectId, configSetId: manySet.id, entryFile: manyFileName,
           includeSearchPaths: ["."], overlayOrder: [], members: [{ fileId: manyFile.file.id, fileVersionId: manyFile.version.id,
             fileName: manyFileName, sourceName: manyFileName, role: "base", sortOrder: 0, content: manyDts }] }, editor);
+        const foreignProjectId = "identity-foreign-blocker";
+        const foreignEditor = makeTestAuthContext({ organizationId: foreignOrganizationId, userId: "identity-foreign-editor", roleId: "admin" });
+        await db.query("insert into users(id,organization_id,name,title) values ($1,$2,'Foreign editor','Editor')", [foreignEditor.user.id, foreignOrganizationId]);
+        await db.query("insert into projects(id,organization_id,name,code,status) values ($1,$2,'Foreign DTS','I1578','initialized')", [foreignProjectId, foreignOrganizationId]);
+        await db.query("insert into parameter_modules(id,organization_id,name,path,depth,kind,origin) values ('foreign-huawei-module',$1,'Huawei','huawei',1,'business','curated')", [foreignOrganizationId]);
+        const foreignRegistration = await createRegistrationService(pool).execute({ kind: "register", organizationId: foreignOrganizationId,
+          subjectId: CatalogSubjectId(subjectId), subjectKind: "driver", destinationModuleId: "foreign-huawei-module",
+          expectedRelease: transferred, placement: { mode: "use-default" }, method: "explicit", proof: {}, idempotencyKey: "foreign-huawei",
+          context: { actorKind: "platform-admin", principalId: author.principalId } });
+        if (!foreignRegistration.ok) throw new Error(JSON.stringify(foreignRegistration));
+        const foreignSet = await createConfigSet(api, foreignEditor, { projectId: foreignProjectId, name: "Foreign chargers" });
+        const foreignFile = await uploadProjectParameterFile(api, createLocalObjectStore(objectRoot), foreignEditor, {
+          projectId: foreignProjectId, fileName: manyFileName, bytes: Buffer.from(manyDts),
+        });
+        await addConfigSetFile(api, foreignEditor, { configSetId: foreignSet.id, fileId: foreignFile.file.id, role: "base", sortOrder: 0 });
+        await ingestConfigRevision(api, { organizationId: foreignOrganizationId, projectId: foreignProjectId, configSetId: foreignSet.id,
+          entryFile: manyFileName, includeSearchPaths: ["."], overlayOrder: [], members: [{ fileId: foreignFile.file.id,
+            fileVersionId: foreignFile.version.id, fileName: manyFileName, sourceName: manyFileName, role: "base", sortOrder: 0, content: manyDts }] }, foreignEditor);
         scope = author;
         const blocked = await preview(defaults);
-        expect(blocked).toMatchObject({ status: 201, body: { item: { riskClass: "high", impactSummary: { subjectIdentity: { rules: {
-          conflictCounts: [{ count: 1, reason: "singleton-project" }],
-          conflicts: [{ projectId, instanceCount: 3, reason: "singleton-project" }],
-        } } } } } });
+        expect(blocked.status).toBe(201);
+        const rules = (body: unknown) => catalogPublicationCandidateResponseSchema.parse(body).item.impactSummary.subjectIdentity!.rules!;
+        const blockedRules = rules(blocked.body);
+        expect(blockedRules.conflictCounts).toEqual([{ count: 2, reason: "singleton-project" }]);
+        expect(blockedRules.conflicts).toEqual(expect.arrayContaining([
+          expect.objectContaining({ organizationId, projectId, instanceCount: 3 }),
+          expect.objectContaining({ organizationId: foreignOrganizationId, projectId: foreignProjectId, instanceCount: 2 }),
+        ]));
+        expect(blockedRules.projects).toEqual(expect.arrayContaining([
+          expect.objectContaining({ organizationId: foreignOrganizationId, id: foreignProjectId }),
+        ]));
+        expect(blockedRules.registrations).toEqual(expect.arrayContaining([
+          expect.objectContaining({ organizationId: foreignOrganizationId, id: foreignRegistration.value.registrationId }),
+        ]));
+        const getBlocked = () => fetch(`${http.baseUrl}/api/v2/catalog/publication-candidates/${candidateId(blocked.body)}`);
+        scope = reviewer;
+        expect(rules(await (await getBlocked()).json())).toEqual(blockedRules);
+        scope = { ...reviewer, projectScope: { kind: "only", ids: [projectId] } };
+        const limited = rules(await (await getBlocked()).json());
+        expect(limited.projects.map(row => row.id)).toEqual([projectId]);
+        expect(limited.conflicts.map(row => row.projectId)).toEqual([projectId]);
+        scope = { ...author, projectScope: { kind: "only", ids: [projectId] } };
+        const limitedPreview = await preview(defaults);
+        expect(limitedPreview.status).toBe(201);
+        expect(rules(limitedPreview.body)).toEqual(limited);
+        scope = reviewer;
+        const fullRead = await fetch(`${http.baseUrl}/api/v2/catalog/publication-candidates/${candidateId(limitedPreview.body)}`);
+        expect(rules(await fullRead.json())).toEqual(blockedRules);
+        scope = { ...reviewer, permissions: [] };
+        expect((await getBlocked()).status).toBe(404);
+        scope = orgAdmin;
+        expect((await getBlocked()).status).toBe(404);
+        expect((await preview(defaults)).status).toBe(403);
+        scope = { ...orgAdmin, actorKind: "agent" };
+        expect((await getBlocked()).status).toBe(404);
+        expect((await preview(defaults)).status).toBe(403);
+        scope = { ...reviewer, organizationId: foreignOrganizationId };
+        expect((await getBlocked()).status).toBe(404);
         scope = reviewer;
         expect((await publish(candidateId(blocked.body), "blocked-huawei-defaults")).status).toBe(409);
+        const foreignRule = await readRegistrationRecognitionSettings(api, foreignOrganizationId, foreignRegistration.value.registrationId);
+        if (!foreignRule) throw new Error("missing foreign recognition settings");
+        await updateRegistrationRecognitionSettings(api, {
+          organizationId: foreignOrganizationId, registrationId: foreignRegistration.value.registrationId, ifMatch: registrationRecognitionEtag(foreignRule),
+          idempotencyKey: "retain-foreign-multiple", requestId: "retain-foreign-multiple", invocation: createUserInvocation(foreignEditor),
+          catalogReleaseId: releaseId, body: { instanceCardinality: "multiple" },
+        });
         if (!result.ok) throw new Error("missing Huawei registration");
         const currentRule = await readRegistrationRecognitionSettings(api, organizationId, result.value.registrationId);
         if (!currentRule) throw new Error("missing inherited recognition settings");
@@ -308,7 +367,11 @@ it("upgrades a populated Catalog and reviews versioned identity, owner, kind, de
         if (!overridden) throw new Error("missing saved override");
         scope = author;
         const untilChanged = await preview(defaults);
-        expect(untilChanged.body).toMatchObject({ item: { impactSummary: { subjectIdentity: { rules: { conflictCounts: [] } } } } });
+        expect(rules(untilChanged.body).conflictCounts).toEqual([]);
+        expect(rules(untilChanged.body).registrations).toEqual(expect.arrayContaining([
+          expect.objectContaining({ organizationId: foreignOrganizationId, id: foreignRegistration.value.registrationId,
+            cardinalityOverride: "multiple", natureOverride: "physical-device", recognitionOverride: true }),
+        ]));
         expect((await publish(candidateId(untilChanged.body), "author-cannot-approve-shared-rules")).status).toBe(403);
         scope = reviewer;
         const queued = await publish(candidateId(untilChanged.body), "before-organization-rule-changed");

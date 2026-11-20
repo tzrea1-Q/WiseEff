@@ -2,7 +2,7 @@ import posixPath from "node:path/posix";
 import { ApiError } from "../../shared/http/errors";
 import { lexDts } from "../dts";
 import { resolveIncludeTarget } from "../dts/configSetResolver";
-import { inspectDtsCppIncludes, requiresDtsPreprocessing } from "../dts/cppSources";
+import { inspectDtsCppIncludeArguments, inspectDtsCppIncludes, requiresDtsPreprocessing } from "../dts/cppSources";
 import { stripDtsComments } from "../dts/preprocess";
 
 type Files = Map<string, { content: string; fileVersionId: string }>;
@@ -25,21 +25,18 @@ export function retargetProjectIncludes(
       refusal(reference, "无法安全改写此 include。请先在其所有者的源码中修正引用，再重新预览。");
     }
     const edits = affected.get(reference.sourceName) ?? [];
-    edits.push({ ...span!, text: JSON.stringify(posixPath.relative(posixPath.dirname(rename(reference.sourceName)), rename(reference.target))) });
+    const { start, end } = span!;
+    const literal = JSON.stringify(posixPath.relative(posixPath.dirname(rename(reference.sourceName)), rename(reference.target)));
+    const splices = cpp ? input.files.get(reference.sourceName)!.content.slice(start, end).match(/\\\r?\n/gu) : null;
+    edits.push({ start, end, text: splices ? `"${splices.join("")}${literal.slice(1)}` : literal });
     affected.set(reference.sourceName, edits);
     references.push(reference);
   };
-  const cppEdges = cpp ? inspectDtsCppIncludes(input) : [];
+  const cppEdges = cpp ? inspectDtsCppIncludeArguments(input) : [];
   if (cpp) {
-    for (const edge of cppEdges) {
+    for (const { argumentSpan, ...edge } of cppEdges) {
       if (edge.target !== from && posixPath.dirname(rename(edge.sourceName)) === posixPath.dirname(edge.sourceName)) continue;
-      const { content } = input.files.get(edge.sourceName)!;
-      const lines = stripDtsComments(content).split("\n");
-      const lineStart = lines.slice(0, edge.line - 1).reduce((size, line) => size + line.length + 1, 0);
-      const directive = lines[edge.line - 1]!.slice(edge.column - 1);
-      const match = /^(?:#\s*include\s*|\/include\/\s*)("([^"\r\n]+)"|<([^>\r\n]+)>)/u.exec(directive);
-      const end = match && lineStart + edge.column - 1 + match[0].length;
-      rewrite(edge, end ? { start: end - match![1]!.length, end } : undefined);
+      rewrite(edge, argumentSpan);
     }
   } else {
     for (const [sourceName, file] of input.files) {
@@ -68,7 +65,7 @@ export function retargetProjectIncludes(
   if (cpp) {
     const next = inspectDtsCppIncludes({ ...input, files, entryFile: rename(input.entryFile), overlayOrder: input.overlayOrder.map(rename) });
     const byLocation = new Map(next.map(edge => [JSON.stringify([edge.sourceName, edge.line, edge.column]), edge.target]));
-    for (const edge of cppEdges) {
+    for (const { argumentSpan: _span, ...edge } of cppEdges) {
       if (byLocation.get(JSON.stringify([rename(edge.sourceName), edge.line, edge.column])) !== rename(edge.target)) {
         refusal(edge, "新路径改变了 include 的解析目标，请选择其他路径。");
       }

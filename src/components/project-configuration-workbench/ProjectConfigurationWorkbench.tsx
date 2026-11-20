@@ -1889,7 +1889,8 @@ export function ProjectConfigurationWorkbench({
                   onNavigate(formatWorkbenchPath(project.id, canvasSearch, { configSet: selectedConfigSet.id,
                     file: candidate.fileId ?? null, candidate: candidate.id, sourceMode: "candidate", version: null, node: null, property: null, inspector: "candidates" }));
                 }} />}
-              propertyDefinition={selectedStructureProperty ? <WorkbenchPropertyDefinitionContent state={propertyDefinition} propertyName={selectedStructureProperty.name} /> : null}
+              propertyDefinition={selectedStructureProperty ? <WorkbenchPropertyDefinitionContent state={propertyDefinition}
+                propertyName={selectedStructureProperty.name} organizationId={resolvedOrganizationId ?? undefined} /> : null}
               propertyValueSchema={propertyValueSchema}
               draftStorageError={storageError}
               onDiscardPropertyDraft={() => { if (activePropertyDraftKey) structuredEditSession.discard(activePropertyDraftKey); }}

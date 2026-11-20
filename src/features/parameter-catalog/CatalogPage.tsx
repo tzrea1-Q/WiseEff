@@ -1,4 +1,5 @@
 import { SelectControl } from "@/components/common/SelectControl";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, CircleX } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
@@ -1109,7 +1110,7 @@ export function CatalogPage({
               <div className="parameter-library-detail__reading">
                 <section className="parameter-library-detail__section"><h2>定义说明</h2>
                   {reading.recommendedDefinition ? <p>此定义已弃用。推荐使用 <a
-                    href={`${CATALOG_READ_PAGE_PATH}?${new URLSearchParams({ definitionId: reading.recommendedDefinition.id })}`}>
+                    href={withOrganizationScope(`${CATALOG_READ_PAGE_PATH}?${new URLSearchParams({ definitionId: reading.recommendedDefinition.id })}`, organizationId)}>
                     {reading.recommendedDefinition.displayName}</a>。</p> : null}
                   {revision.documentation ? <div className="knowledge-markdown-preview" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(revision.documentation) }} /> : <p className="parameter-catalog__muted">该定义暂未提供说明。</p>}
                 </section>

@@ -1,5 +1,5 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
@@ -9,6 +9,8 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import { withAuditedWrite } from "../audit/auditedWrite";
 import { createEphemeralTestDatabase } from "../../testing/testDatabase";
 import { installDriverSourceFixture } from "../../testing/parameterCatalog/driverSource";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
@@ -23,8 +25,10 @@ import { registerSharedDtsiRoutes } from "../shared-dtsi/routes";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { registerParameterFileRoutes } from "./routes";
 import { uploadProjectParameterFile } from "./service";
+import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
 import type { ExportConfigSetResult } from "./exportService";
 import { configSetPackageManifestName, type ConfigSetImportPreview, type ConfigSetImportResult } from "../contracts/dtoSchemas/configSetPackage";
+import { correctedBaselineDetailResponseSchema, correctedBaselineResponseSchema } from "../contracts/dtoSchemas/configurationCorrection";
 import { captureConfigurationSourceState, installConfigurationSourceFixture } from "../../testing/parameterCatalog/configurationSource";
 import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { createBaseline, type RestorePreviewResult } from "./baselineService";
@@ -127,11 +131,33 @@ describe("complete configuration package through the actual API role",()=>{
     const released = await post(`${baseline}/release`, { gateToken: readiness.body.item.gateToken });
     expect(released.status, released.bodyText).toBe(200);
     expect((await patch(baseline)).status).toBe(409);
+    await withAuditedWrite(api, createUserInvocation(auth), { requestId: "legacy-erratum-fixture" }, async () => ({ result: undefined, audit: {
+      app: "parameters", kind: "baseline", action: "erratum_appended", severity: "Medium", projectId: SOURCE,
+      targetType: "dts-release-baseline", targetId: created.body.item.id,
+      metadata: { note: "An older correction", source: "Legacy memo", actorName: auth.user.name }
+    } }));
     const erratum = { note: "Correct the test-board label", source: "Engineering record QA-107" };
-    expect((await post(`${baseline}/errata`, erratum)).status).toBe(201);
+    const submission = { ...erratum, clientMutationId: "package-erratum-1581" };
+    const [first, retry] = await Promise.all([
+      post(`${baseline}/errata`, submission), post(`${baseline}/errata`, submission)
+    ]);
+    expect(first.status, first.bodyText).toBe(201);
+    expect(correctedBaselineResponseSchema.parse(first.body).item.errata).toHaveLength(2);
+    expect(retry.status, retry.bodyText).toBe(201);
+    expect(retry.body).toEqual(first.body);
+    expect((await post(`${baseline}/errata`, { ...submission, source: "Changed source" })).status).toBe(409);
+    expect((await post(`${baseline.replace(SOURCE, PRIVATE)}/errata`, submission)).status).toBe(404);
     const replay = await requestJson(server(), baseline);
-    expect(replay.body).toMatchObject({ item: { ...body, status: "released",
-      errata: [expect.objectContaining({ ...erratum, actorName: auth.user.name })] }, members: before.body.members });
+    expect(correctedBaselineDetailResponseSchema.parse(replay.body)).toMatchObject({ item: { ...body, status: "released",
+      errata: [expect.objectContaining({ source: "Legacy memo" }), expect.objectContaining({ ...erratum, actorName: auth.user.name })] },
+      members: before.body.members });
+    const next = await post<{item:{id:string}}>(`${root}/config-sets/${setId}/baselines`, {
+      name: "Successor release", gateToken: readiness.body.item.gateToken
+    });
+    expect(next.status, next.bodyText).toBe(201);
+    expect((await post(`${root}/baselines/${next.body.item.id}/release`, { gateToken: readiness.body.item.gateToken })).status).toBe(200);
+    expect((await post(`${baseline}/errata`, { ...submission, clientMutationId: "later-erratum" })).status).toBe(201);
+    expect((await post(`${baseline}/errata`, submission)).body).toEqual(first.body);
   });
 
   it("moves private members with stable file identity and keeps the old source manifest replayable", async () => {
@@ -178,6 +204,62 @@ describe("complete configuration package through the actual API role",()=>{
     expect(replayed.body.files).toEqual(initial.body.files);
   });
 
+  it("corrects continued and single-line CPP includes while keeping the original baseline replayable", async () => {
+    const projectId = "package-cpp-correction";
+    await createEmptyProject(projectId, "CORRECTIONCPP");
+    const entryFile = "board.dts";
+    const source = '\uFEFF/dts-v1/;\r\n#include \\\r\n  "common.dtsi" // keep this comment\r\n#if 0\r\n  #include "common.dtsi"\r\n#endif\r\n/ { model = "CPP project"; compatible = "test,board"; };\r\n';
+    const configSet = await createConfigSet(api, auth, { projectId, name: "CPP source correction" });
+    const members = [];
+    for (const [index, { fileName, content, role }] of ([
+      { fileName: entryFile, content: source, role: "base" },
+      { fileName: "common.dtsi", content: '/ { charger { compatible = "acme,power"; iin_max = <31>; }; };\n', role: "include" },
+    ] as const).entries()) {
+      const stored = await storage.put({ organizationId: ORG, fileName: randomUUID(), contentType: "text/plain", bytes: Buffer.from(content) });
+      const file = await insertProjectParameterFile(db, { id: randomUUID(), organizationId: ORG, projectId, fileName, format: "dts" });
+      const version = await insertFileVersion(db, { id: randomUUID(), fileId: file.id, versionNumber: 1, storageKey: stored.storageKey,
+        checksum: stored.checksumSha256, sizeBytes: Buffer.byteLength(content), origin: "upload", createdByUserId: ADMIN });
+      await setCurrentVersion(db, { fileId: file.id, versionId: version.id });
+      await addConfigSetFile(api, auth, { configSetId: configSet.id, fileId: file.id, role: role === "include" ? "misc" : role, sortOrder: index });
+      members.push({ fileId: file.id, fileVersionId: version.id, fileName, sourceName: fileName, content, role, sortOrder: index });
+    }
+    const revision = await ingestConfigRevision(db, { organizationId: ORG, projectId, configSetId: configSet.id,
+      entryFile, includeSearchPaths: [], overlayOrder: [], members }, auth);
+    expect(revision.status).toBe("resolved");
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    await db.transaction(tx => syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx), catalog!, {
+      organizationId: ORG, projectId, configSetId: configSet.id, configRevisionId: revision.id
+    }));
+    const gate = await evaluateReleaseReadiness(api, auth, { configSetId: configSet.id }, { objectStore: storage });
+    const snapshot = await createBaseline(api, auth, { configSetId: configSet.id, name: "Before CPP include correction",
+      gateToken: gate.gateToken, acknowledgedWarningIds: gate.warnings.filter(row => row.acknowledgementRequired).map(row => row.id) }, {}, { objectStore: storage });
+    const root = `/api/v1/projects/${projectId}`;
+    const setPath = `${root}/config-sets/${configSet.id}`;
+    const initial = await requestJson<ExportConfigSetResult>(server(), `${setPath}/export`);
+    const fileId = members[1]!.fileId;
+    const move = `${setPath}/files/${fileId}/path-correction`;
+    const sourceName = "parts/corrected.dtsi";
+    const preview = await post<{item:{proofToken:string}}>(`${move}/preview`, { sourceName });
+    expect(preview.status, preview.bodyText).toBe(200);
+    expect(preview.body.item).toMatchObject({ pathCorrection: { references: [
+      { sourceName: entryFile, target: "common.dtsi", line: 2, column: 1 },
+      { sourceName: entryFile, target: "common.dtsi", line: 5, column: 3 },
+    ] } });
+    const applied = await post(`${move}/apply`, { sourceName, proofToken: preview.body.item.proofToken,
+      clientMutationId: "move-cpp-include", reason: "Correct CPP include source path" });
+    expect(applied.status, applied.bodyText).toBe(200);
+    expect(applied.body).toMatchObject({ item: { fileId } });
+    const moved = await requestJson<ExportConfigSetResult>(server(), `${setPath}/export`);
+    expect(moved.body.files).toContainEqual(expect.objectContaining({ name: entryFile, content: source.replaceAll('"common.dtsi"', `"${sourceName}"`) }));
+    const baselinePath = `${root}/baselines/${snapshot.id}`;
+    const restore = await requestJson<{item:RestorePreviewResult}>(server(), `${baselinePath}/restore-preview`);
+    expect(restore.status, restore.bodyText).toBe(200);
+    const back = await post(`${baselinePath}/rollback`, { clientMutationId: "replay-cpp-include",
+      reason: "Replay the original CPP include graph", confirmCompositionChanges: true, proofToken: restore.body.item.canonical?.proofToken });
+    expect(back.status, back.bodyText).toBe(200);
+    expect((await requestJson<ExportConfigSetResult>(server(), `${setPath}/export`)).body.files).toEqual(initial.body.files);
+  }, 120_000);
+
   it("imports ordinary project source archives with explicit entry, ordered overlays and private original bytes",async()=>{
     const TARGET="package-raw-target";await createEmptyProject(TARGET,"RAWNEW");
     const files=[{name:"boards/board.dts",content:'\uFEFF/dts-v1/;\r\n/include/ "../common/defaults.dtsi"\r\n/ { model = "Raw project"; compatible = "unknown,board"; };\r\n'},
@@ -202,6 +284,9 @@ describe("complete configuration package through the actual API role",()=>{
     expect(readback.body.files.map(({name,content})=>({name,content}))).toEqual(files);expect(readback.body.manifest.sourcePackage?.overlayOrder).toEqual(chosen.sourceConfiguration.overlayOrder);
     expect(readback.body.manifest.sourcePackage?.sharedClosure).toEqual([]);expect(await listCatalogBindingRowsForProject(api,auth,{projectId:TARGET})).toEqual([]);
     const setPath = `/api/v1/projects/${TARGET}/config-sets/${imported.body.item.configSetId}`;
+    const gate = await evaluateReleaseReadiness(api, auth, { configSetId: imported.body.item.configSetId }, { objectStore: storage });
+    const snapshot = await createBaseline(api, auth, { configSetId: imported.body.item.configSetId, name: "Before include correction",
+      gateToken: gate.gateToken, acknowledgedWarningIds: gate.warnings.filter(row => row.acknowledgementRequired).map(row => row.id) }, {}, { objectStore: storage });
     async function move(before: string, after: string, expected: Record<string, unknown>) {
       const state = await requestJson<ExportConfigSetResult>(server(), `${setPath}/export`);
       const member = state.body.manifest.members.find(row => row.fileName === before)!;
@@ -222,6 +307,14 @@ describe("complete configuration package through the actual API role",()=>{
     expect(moved.status, moved.bodyText).toBe(200);
     expect(moved.body.files).toContainEqual(expect.objectContaining({ name: "board.dts",
       content: files[0]!.content.replace("../common/defaults.dtsi", "local/defaults.dtsi") }));
+    const baselinePath = `/api/v1/projects/${TARGET}/baselines/${snapshot.id}`;
+    const restore = await requestJson<{item:RestorePreviewResult}>(server(), `${baselinePath}/restore-preview`);
+    expect(restore.status, restore.bodyText).toBe(200);
+    const back = await post(`${baselinePath}/rollback`, { clientMutationId: "replay-native-include",
+      reason: "Replay the original include graph", confirmCompositionChanges: true, proofToken: restore.body.item.canonical?.proofToken });
+    expect(back.status, back.bodyText).toBe(200);
+    const replayed = await requestJson<ExportConfigSetResult>(server(), `${setPath}/export`);
+    expect(replayed.body.files).toEqual(readback.body.files);
     expect((await post(`${importPath(PRIVATE)}/preview`,{...chosen,ownership:"reuse"})).status).toBe(400);
     expect((await post(`${importPath(PRIVATE)}/preview`,{...chosen,sourceConfiguration:{...chosen.sourceConfiguration,entryFile:"../outside.dts"}})).status).toBe(400);
     expect((await post(`${importPath("package-foreign-project")}/preview`,chosen)).status).toBe(404);

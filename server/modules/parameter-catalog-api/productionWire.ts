@@ -9,7 +9,7 @@ import {
 } from "../auth/trustedInvocation";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { resolveOperatingContext } from "../auth/operatingContext";
-import { parameterOrganizationId, parameterRequestAccess } from "../parameters/operatingScope";
+import { parameterInvocation, parameterOrganizationId, parameterRequestAccess } from "../parameters/operatingScope";
 import { createCatalogKernel, type CatalogKernel, type CatalogSubjectDetailSnapshot } from "../catalog-kernel/interface";
 import { isCatalogProjectionEmpty, readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import {
@@ -529,21 +529,22 @@ const authenticateGovernance =
 
 const publicationScope = (auth: AuthContext): TrustedPublicationScope => ({
   principalId: auth.user.id,
-  organizationId: auth.organization.id,
+  organizationId: parameterOrganizationId(auth),
   actorKind: governanceActorKind(auth),
   permissions: auth.permissions,
-  trustedActor: createUserInvocation(auth),
+  trustedActor: parameterInvocation(auth) ?? createUserInvocation(auth),
   projectScope: parameterUsageProjectScope(auth) ?? { kind: "only", ids: [] },
 });
 
 const authenticatePublication =
-  (resolveAuth: CatalogApiAuthResolver) =>
+  (resolveAuth: CatalogApiAuthResolver, db?: Database) =>
   async (request: CatalogPublicationRequest) => {
     const auth = await resolveAuth(request as RouteRequest);
     if (!auth.user.isActive) {
       return { ok: false as const, status: 401 as const };
     }
-    return { ok: true as const, scope: publicationScope(auth) };
+    const access = await parameterRequestAccess(db, createUserInvocation(auth), request as RouteRequest);
+    return { ok: true as const, scope: publicationScope(access) };
   };
 
 const factsFromSnapshot = (snapshot: LoadedCatalogSnapshot): CatalogDocumentFacts => ({
@@ -962,7 +963,7 @@ const createPublicationPorts = (
     ? bindCatalogPublicationCommands({ db, pool })
     : unavailablePublicationCommandPorts;
   return {
-    authenticate: authenticatePublication(resolveAuth),
+    authenticate: authenticatePublication(resolveAuth, db),
     currentRelease: async () => {
       if (!pool) {
         return null;

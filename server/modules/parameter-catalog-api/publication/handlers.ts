@@ -191,6 +191,8 @@ async function dispatch(
       candidateId,
       organizationId: scope.organizationId,
       actorKind: scope.actorKind,
+      trustedActor: scope.trustedActor,
+      permissions: scope.permissions,
       projectScope: scope.projectScope,
     });
     if (!result.ok) {

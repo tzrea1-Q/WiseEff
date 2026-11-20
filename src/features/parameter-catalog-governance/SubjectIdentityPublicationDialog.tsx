@@ -3,6 +3,7 @@ import type { ParameterCatalogRepository } from "@/application/ports/ParameterCa
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SelectControl } from "@/components/common/SelectControl";
 import { Input } from "@/components/ui/input";
+import { withOrganizationScope } from "@/infrastructure/http/organizationScope";
 import type { CatalogSubjectResponse } from "@/infrastructure/http/parameterCatalogDtos";
 import type { SubjectIdentityChange, SubjectRulesImpact } from "../../../server/modules/contracts/dtoSchemas/catalogSubjectIdentity";
 import { PublicationConfirmation } from "./PublicationConfirmation";
@@ -39,7 +40,7 @@ const resolution: Record<SubjectRulesImpact["conflicts"][number]["reason"], stri
   "organization-driver-override": "将节点挂到驱动前，请在相关组织重置该节点的驱动识别覆盖。",
 };
 
-function SubjectRulesPreview({ rules }: { rules: SubjectRulesImpact }) {
+function SubjectRulesPreview({ rules, organizationId }: { rules: SubjectRulesImpact; organizationId: string }) {
   const describe = (state: SubjectRulesImpact["after"]) => [
     kinds.find(item => item.value === state.kind)?.label,
     state.lifecycle === "active" ? "生效" : "退役",
@@ -47,6 +48,10 @@ function SubjectRulesPreview({ rules }: { rules: SubjectRulesImpact }) {
     natures.find(item => item.value === state.defaults?.nature)?.label,
     cardinalities.find(item => item.value === state.defaults?.cardinality)?.label,
   ].filter(Boolean).join(" · ");
+  const projectLink = (projectId: string, owner: string) => <a href={withOrganizationScope(`/parameter-admin/projects/${encodeURIComponent(projectId)}/configuration`, owner)}
+    target="_blank" rel="noreferrer">{projectId}</a>;
+  const subjectLink = (subjectId: string, owner: string) => <a href={withOrganizationScope(
+    `/parameter-admin/modules?${new URLSearchParams({ selectedSubject: subjectId })}`, owner)} target="_blank" rel="noreferrer">{subjectId}</a>;
   const counts = rules.registrationCounts;
   return <>
     <p>当前规则 {describe(rules.before)}<br />发布后 {describe(rules.after)}</p>
@@ -61,19 +66,27 @@ function SubjectRulesPreview({ rules }: { rules: SubjectRulesImpact }) {
     {rules.definitions.length ? <details><summary>有效定义明细</summary>
       <ul>{rules.definitions.map(definition => <li key={definition.id}>{definition.propertyKey} · <code>{definition.id}</code></li>)}</ul>
     </details> : null}
-    {rules.registrations.length ? <details><summary>当前组织登记与覆盖</summary><ul>
-      {rules.registrations.map(row => <li key={row.id}>{row.subjectId} · {row.status === "active" ? "启用" : row.cascadeRetired ? "级联停用" : "独立停用"}
+    {rules.registrations.length ? <details><summary>受影响的组织登记与覆盖</summary><ul>
+      {rules.registrations.map(row => <li key={row.id}>组织 {row.organizationId ?? organizationId} · {subjectLink(row.subjectId, row.organizationId ?? organizationId)} ·
+        登记 <code>{row.id}</code> · {row.status === "active" ? "启用" : row.cascadeRetired ? "级联停用" : "独立停用"}
+        {row.sharedSuspended ? " · 因共享退役暂停" : ""}
+        {row.recognitionOverride ? " · 保留组织识别覆盖" : ""}
         {row.ownerOverride ? ` · 组织所属驱动 ${row.ownerOverride}` : ""}
+        {row.natureOverride ? ` · 组织${natures.find(item => item.value === row.natureOverride)?.label}` : ""}
         {row.cardinalityOverride ? ` · 组织${cardinalities.find(item => item.value === row.cardinalityOverride)?.label}` : ""}</li>)}
     </ul></details> : null}
     {rules.projects.length ? <details><summary>可查看的项目引用</summary>
-      <ul>{rules.projects.map(project => <li key={project.id}>{project.id} · {project.instanceCount} 个实例 · {project.bindingCount} 项绑定</li>)}</ul>
+      <ul>{rules.projects.map(project => <li key={`${project.organizationId}:${project.id}`}>组织 {project.organizationId ?? organizationId} ·
+        项目 {projectLink(project.id, project.organizationId ?? organizationId)} · {project.instanceCount} 个实例 · {project.bindingCount} 项绑定</li>)}</ul>
     </details> : null}
     {rules.conflictCounts.length ? <div role="alert">
       <p>解决以下冲突后可重新预览。</p>
-      <ul>{rules.conflictCounts.map(conflict => <li key={conflict.reason}>{conflict.count} 项。{resolution[conflict.reason]}</li>)}</ul>
-      <ul>{rules.conflicts.map((conflict, index) => <li key={`${conflict.reason}-${conflict.projectId ?? conflict.subjectId}-${index}`}>
-        {conflict.projectId ? `项目 ${conflict.projectId} · ${conflict.instanceCount} 个实例` : `主体 ${conflict.subjectId}`}
+      <ul>{rules.conflictCounts.map(({ reason, count }) => <li key={reason}>{count} 项。{resolution[reason]}
+        <ul>{rules.conflicts.filter(row => row.reason === reason).map((conflict, index) => <li key={index}>
+          组织 {conflict.organizationId ?? organizationId} · {conflict.projectId ? <>
+            项目 {projectLink(conflict.projectId, conflict.organizationId ?? organizationId)} · {conflict.instanceCount} 个实例
+          </> : <>主体 {conflict.subjectId && subjectLink(conflict.subjectId, conflict.organizationId ?? organizationId)}</>}
+        </li>)}</ul>
       </li>)}</ul>
     </div> : null}
   </>;
@@ -179,6 +192,7 @@ export function SubjectIdentityPublicationDialog(props: {
         <h2 id={titleId}>共享标识：{subject.canonicalName}</h2>
         <div className="confirm-dialog__scroll"><div className="governance-confirm-dialog__body">
           <p id={descriptionId}>共享目录规则适用于所有组织。各组织已有的识别覆盖、所属驱动覆盖和独立停用记录各自保留。</p>
+          <p>操作组织 {props.organizationId}</p>
           <dl className="parameter-catalog-publication-dialog__preview">
             <div><dt>规范标识</dt><dd>{subject.canonicalName}</dd></div>
             <div><dt>正式目录别名</dt><dd>{subject.formalAliases?.length ? subject.formalAliases.map(alias =>
@@ -237,7 +251,7 @@ export function SubjectIdentityPublicationDialog(props: {
             </li>)}</ul>
             {impact.change.op === "rename-subject" ? <p>新规范标识 {impact.change.selector}。{impact.change.keepOldAlias ? "旧名继续匹配。" : "旧名退出共享匹配。"}</p>
               : impact.change.op === "set-subject-alias" ? <p>正式目录别名 {impact.change.selector} {success ? "已" : "将"}{impact.change.active ? "启用" : "停用"}。</p> : null}
-            {rules ? <SubjectRulesPreview rules={rules} /> : null}
+            {rules ? <SubjectRulesPreview rules={rules} organizationId={props.organizationId} /> : null}
             {!success ? <p>高风险发布。复核人可凭候选编号读取并确认影响。</p> : null}
             <p>候选编号 <code>{candidate.id}</code> · 基准版本 <code>{candidate.expectedBaseReleaseId}</code></p>
           </section> : null}

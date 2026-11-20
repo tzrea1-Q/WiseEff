@@ -1,4 +1,5 @@
 import {
+  appendBaselineErratumSchema,
   correctedBaselineResponseSchema, correctedConfigSetResponseSchema, jsonCorrectionApplyResponseSchema, jsonCorrectionApplySchema,
   jsonCorrectionOptionsResponseSchema, jsonCorrectionPreviewResponseSchema, jsonCorrectionSchema,
   pathCorrectionApplyResponseSchema, pathCorrectionApplySchema, pathCorrectionPreviewResponseSchema
@@ -24,7 +25,7 @@ export function createConfigurationCorrectionClient(client: ApiClient, projectId
       correctedConfigSetResponseSchema.parse(await client.patch(set(id), body)),
     updateBaseline: async (id: string, body: { name: string; notes: string | null }) =>
       correctedBaselineResponseSchema.parse(await client.patch(baseline(id), body)),
-    appendErratum: async (id: string, body: { note: string; source: string }) =>
+    appendErratum: async (id: string, body: z.infer<typeof appendBaselineErratumSchema>) =>
       correctedBaselineResponseSchema.parse(await client.post(`${baseline(id)}/errata`, body)),
     previewPath: async (setId: string, id: string, sourceName: string) =>
       pathCorrectionPreviewResponseSchema.parse(await client.post(`${file(setId, id)}/preview`, { sourceName })),
