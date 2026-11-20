@@ -13,6 +13,7 @@ import { createCatalogInstaller } from "../catalog-kernel/install/installer";
 import { runPublicationManagerOnce } from "../catalog-publication/jobs/manager";
 import { enablePublicationPolicy } from "../catalog-publication/authorization/testHarness";
 import { catalogReplacementPreviewResponseSchema, catalogReplacementResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
+import type { KnowledgeEntryDto } from "../knowledge/types";
 import { createMigrationHarness, integerContent, PREDECESSOR_DEFINITION_ID, PREDECESSOR_PROPERTY_KEY, PREDECESSOR_REVISION_ID, PREDECESSOR_SUBJECT_ID, type MigrationHarness } from "./testing/harness";
 
 const ORG = "org-zero-correction", ADMIN = "zero-platform-admin";
@@ -49,6 +50,27 @@ describe("#1309 zero-project identity correction through the real API role", () 
       registrationId, ...definition, ...(newPropertyKey ? { propertyKeys: [newPropertyKey] } : {}),
       sources: [{ sourceRef: `${label}.dts`, configRevisionId: `zero-revision-${label}` }], values: [5] });
   };
+  const archiveKnowledgeReference = async (organizationId: string, definitionId: string) => {
+    const knowledge = async (suffix: string, method = "GET", body?: unknown) => {
+      const response = await requestJson<{ item: KnowledgeEntryDto }>(app(), `/api/v1/knowledge/entries${suffix}?organizationId=${organizationId}`, {
+        method, headers: { authorization: "Bearer administrator" }, ...(body === undefined ? {} : { body: JSON.stringify(body) })
+      });
+      expect(response.status, response.bodyText).toBe(method === "POST" && suffix === "" ? 201 : 200);
+      return response.body.item;
+    };
+    const created = await knowledge("", "POST", { title: "Definition history", contentForm: "markdown", contentMarkdown: "Original definition guidance", tags: [] });
+    const entry = `/${created.id}`;
+    const link = (id: string) => `${entry}/definition-references/${id}`;
+    await knowledge(link(definitionId), "PUT");
+    await knowledge(`${entry}/publish`, "POST");
+    const archived = await knowledge(`${entry}/archive`, "POST");
+    return {
+      archived,
+      read: () => knowledge(entry),
+      add: (id: string) => knowledge(link(id), "PUT"),
+      remove: (id: string) => knowledge(link(id), "DELETE")
+    };
+  };
 
   beforeAll(async () => {
     harness = await createMigrationHarness();
@@ -68,6 +90,7 @@ describe("#1309 zero-project identity correction through the real API role", () 
 
   it("previews, publishes and completes without a project while preserving the old identity and history", async () => {
     const before = await pin();
+    const knowledge = await archiveKnowledgeReference(ORG, PREDECESSOR_DEFINITION_ID);
     const preview = await post("/preview", { oldDefinitionId: PREDECESSOR_DEFINITION_ID,
       newSubjectId: PREDECESSOR_SUBJECT_ID, newPropertyKey: "iin_corrected_unused", ...integerContent("Corrected unused current", 0),
       projectIds: [], reason: "Correct an unused permanent identity" });
@@ -89,6 +112,13 @@ describe("#1309 zero-project identity correction through the real API role", () 
     try {
       const continued = await post(`/${result.id}/continue`, { idempotencyKey: "zero-platform-only-continue" }, result.etag);
       expect(continued.status, continued.bodyText).toBe(202);
+      expect(await knowledge.read()).toEqual(knowledge.archived);
+      await knowledge.add(result.newIdentity.definitionId);
+      await knowledge.remove(PREDECESSOR_DEFINITION_ID);
+      expect(await knowledge.read()).toMatchObject({
+        status: "archived", archivedAt: knowledge.archived.archivedAt, headRevisionId: knowledge.archived.headRevisionId,
+        parameterReferences: [{ definitionId: result.newIdentity.definitionId, lifecycle: "active" }]
+      });
     } finally { await harness.db.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ('zero-admin',$1,$2,'admin')", [ADMIN, ORG]); }
     expect((await pin()).id).not.toBe(before.id);
     const old = await requestJson(app(), `/api/v2/catalog/definitions/${PREDECESSOR_DEFINITION_ID}`, { headers: { authorization: "Bearer administrator" } });
@@ -194,6 +224,7 @@ describe("#1309 zero-project identity correction through the real API role", () 
     const target = await unused("lifecycle_target");
     const terminal = await unused("lifecycle_terminal");
     const originalBinding = await reference(source, "org-lifecycle-project", "lifecycle");
+    const knowledge = await archiveKnowledgeReference("org-lifecycle-project", source.definitionId);
     const definitionPath = `/api/v2/catalog/definitions/${source.definitionId}`;
     const projectPath = "/api/v2/projects/zero-project-lifecycle/parameter-bindings?organizationId=org-lifecycle-project";
     const read = (path: string) => requestJson(app(), path, { headers: { authorization: "Bearer administrator" } });
@@ -227,6 +258,11 @@ describe("#1309 zero-project identity correction through the real API role", () 
       const first = await read(definitionPath);
       expect(first.body).toMatchObject({ item: { lifecycle: "deprecated", currentRevision: { successorDefinitionId: target.definitionId },
         recommendedDefinition: { id: target.definitionId, propertyKey: "lifecycle_target" } } });
+      const oldLink = knowledge.archived.parameterReferences[0];
+      expect(await knowledge.read()).toMatchObject({
+        status: "archived", archivedAt: knowledge.archived.archivedAt, headRevisionId: knowledge.archived.headRevisionId,
+        parameterReferences: [{ ...oldLink, lifecycle: "deprecated" }]
+      });
       expect((await read(projectPath)).body).toMatchObject({ items: [{ definitionId: source.definitionId,
         effectiveRevisionId: source.revisionId, currentValueId: originalBinding.valueId,
         effectiveValue: { groups: [[{ value: "5" }]] } }] });
@@ -238,6 +274,7 @@ describe("#1309 zero-project identity correction through the real API role", () 
       expect((await read(definitionPath)).body).toMatchObject({ item: { currentRevision: { successorDefinitionId: terminal.definitionId } } });
       await applyLifecycle(source.definitionId, null);
       expect((await read(definitionPath)).body).toMatchObject({ item: { lifecycle: "active" } });
+      expect(await knowledge.read()).toEqual(knowledge.archived);
       const original = await read(`${definitionPath}/revisions/${source.revisionId}`);
       expect(original.body).toMatchObject({ item: { id: source.revisionId, displayName: "lifecycle_source" } });
       expect(original.body).not.toMatchObject({ item: { successorDefinitionId: expect.anything() } });
