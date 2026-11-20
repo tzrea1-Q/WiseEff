@@ -205,7 +205,8 @@ export function CanonicalSubjectPlacementPanel({
     ifMatch?: string;
     subjectImpact?: RegistrationSubjectImpact;
     currentModuleName?: string;
-    currentModuleId?: string;
+    currentModuleId?: string | null;
+    displayAlias?: { value: string; registrationEtag: string };
   } | null>(null);
 
   useEffect(() => {
@@ -514,7 +515,8 @@ export function CanonicalSubjectPlacementPanel({
           projectCount: impact.projectCount
         },
         currentModuleName,
-        currentModuleId: placementModuleId ?? undefined
+        currentModuleId: placementModuleId,
+        displayAlias: { value: registration.item.displayAlias ?? "", registrationEtag: registration.etag ?? "" }
       });
     } catch (error) {
       if (generation === placementGeneration.current) setRowErrors((current) => ({ ...current, [subject.id]: presentError(error, "无法读取当前主体归属，请刷新后重试。") }));
@@ -549,7 +551,8 @@ export function CanonicalSubjectPlacementPanel({
       const impact = registration.item.impact;
       if (!impact) throw new Error("刷新后缺少主体影响数据，未发送写入。");
       setPlacementDialog((current) => current ? { ...current, subject, ifMatch,
-        currentModuleId: placement.item.moduleId ?? undefined,
+        currentModuleId: placement.item.moduleId,
+        displayAlias: { value: registration.item.displayAlias ?? "", registrationEtag: registration.etag ?? "" },
         currentModuleName: (() => {
           const module = modules.find((item) => item.id === placement.item.moduleId);
           const path = moduleLabels.get(placement.item.moduleId ?? "") ?? placement.item.displayName;
@@ -565,7 +568,7 @@ export function CanonicalSubjectPlacementPanel({
   const selectedModuleOptions = placementDialog ? moduleOptions : [];
   const newDestinationParents = modules.filter((module) => module.kind === "business" || (module.kind === "unclassified" && module.parentId === null))
     .map((module) => ({ id: module.id, displayName: moduleLabels.get(module.id) ?? module.name, kind: module.kind }));
-  const currentDestinationModuleId =
+  const currentDestinationModuleId = placementDialog?.currentModuleId === null ? "" :
     placementDialog?.currentModuleId ??
     selectedRegistration?.placement.moduleId ??
     (placementDialog?.subject.registration.status === "unregistered"
@@ -966,6 +969,7 @@ export function CanonicalSubjectPlacementPanel({
           initialDestinationModuleId={selectedDestinationModuleId}
           subjectImpact={placementDialog.subjectImpact}
           currentModuleName={placementDialog.currentModuleName}
+          displayAlias={placementDialog.displayAlias}
           createIdempotencyKey={createGovernanceIdempotencyKey}
           onOpenChange={(open) => {
             if (!open) closeEditor();

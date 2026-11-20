@@ -13889,7 +13889,7 @@
       },
       "patch": {
         "operationId": "catalog.updatePlacement",
-        "summary": "Rename or reparent the retained placement using If-Match",
+        "summary": "Update the retained placement or organization display alias using the applicable ETags",
         "tags": [
           "catalog"
         ],
@@ -89355,98 +89355,149 @@
         "x-wiseeff-schema": "CatalogPlacementResponse"
       },
       "CatalogUpdatePlacementRequest": {
-        "type": "object",
-        "properties": {
-          "placement": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "enum": [
-                      "use-default"
-                    ]
-                  }
-                },
-                "required": [
-                  "mode"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "enum": [
-                      "choose-parent"
-                    ]
-                  },
-                  "parentPlacementId": {
-                    "type": "string"
-                  },
-                  "displayName": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "mode",
-                  "parentPlacementId",
-                  "displayName"
-                ],
-                "additionalProperties": false
-              }
-            ]
-          },
-          "destinationModuleId": {
-            "type": "string"
-          },
-          "newDestination": {
+        "anyOf": [
+          {
             "type": "object",
             "properties": {
-              "parentModuleId": {
+              "placement": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "use-default"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "choose-parent"
+                        ]
+                      },
+                      "parentPlacementId": {
+                        "type": "string"
+                      },
+                      "displayName": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "mode",
+                      "parentPlacementId",
+                      "displayName"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "displayAlias": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "registrationEtag": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "value",
+                  "registrationEtag"
+                ],
+                "additionalProperties": false
+              },
+              "destinationModuleId": {
                 "type": "string"
               },
-              "name": {
-                "type": "string"
+              "newDestination": {
+                "type": "object",
+                "properties": {
+                  "parentModuleId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "parentModuleId",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "replacement": {
+                "type": "object",
+                "properties": {
+                  "registrationId": {
+                    "type": "string"
+                  },
+                  "placementEtag": {
+                    "type": "string"
+                  },
+                  "registrationEtag": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "registrationId",
+                  "placementEtag",
+                  "registrationEtag",
+                  "reason"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
-              "parentModuleId",
-              "name"
+              "placement"
             ],
             "additionalProperties": false
           },
-          "replacement": {
+          {
             "type": "object",
             "properties": {
-              "registrationId": {
-                "type": "string"
-              },
-              "placementEtag": {
-                "type": "string"
-              },
-              "registrationEtag": {
-                "type": "string"
-              },
-              "reason": {
-                "type": "string"
+              "displayAlias": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "registrationEtag": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "value",
+                  "registrationEtag"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
-              "registrationId",
-              "placementEtag",
-              "registrationEtag",
-              "reason"
+              "displayAlias"
             ],
             "additionalProperties": false
           }
-        },
-        "required": [
-          "placement"
         ],
-        "additionalProperties": false,
         "x-wiseeff-schema": "CatalogUpdatePlacementRequest"
       },
       "CatalogRegistrationRecognitionResponse": {

@@ -2,7 +2,7 @@ import type pg from "pg";
 import type { z } from "zod";
 import { ApiError } from "../../../shared/http/errors";
 import { moduleStructureExportSchema, moduleStructureUpdateDocumentSchema } from "../../contracts/dtoSchemas/moduleStructure";
-import { updatePlacementModule } from "../registration/repositories";
+import { updatePlacementModule, updateRegistrationDisplayAlias } from "../registration/repositories";
 
 type Subject = z.infer<typeof moduleStructureExportSchema>["subjects"][number];
 type SubjectEdit = z.infer<typeof moduleStructureUpdateDocumentSchema>["subjects"][number];
@@ -58,9 +58,7 @@ export async function applySubjectPlacement(client: pg.PoolClient, organizationI
     const row = result.rows[0];
     if (!row || row.owner_subject_id) throw new ApiError("CONFLICT", "Subject registration or ownership changed.");
     if (change.field === "displayAlias") {
-      await client.query(`update parameter_catalog.organization_subject_registrations
-        set display_alias=$3,updated_at=greatest(clock_timestamp(),updated_at + interval '1 microsecond')
-        where organization_id=$1 and id=$2`, [organizationId, row.id, change.after]);
+      await updateRegistrationDisplayAlias(client, organizationId, row.id, change.after as string | null);
     } else {
       const placement = change.after as Placement;
       let moduleId: string | null = null;

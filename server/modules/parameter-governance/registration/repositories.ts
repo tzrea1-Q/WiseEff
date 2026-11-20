@@ -272,6 +272,22 @@ export const updateRegistrationStatus = async (
   return result.rows[0]!;
 };
 
+export const updateRegistrationDisplayAlias = async (
+  client: RegistrationWriterClient,
+  organizationId: string,
+  registrationId: string,
+  alias: string | null,
+): Promise<string> => {
+  const result = await client.query<{ version: string }>(
+    `update parameter_catalog.organization_subject_registrations
+     set display_alias = $3, updated_at = greatest(clock_timestamp(), updated_at + interval '1 microsecond')
+     where organization_id = $1 and id = $2
+     returning (extract(epoch from updated_at) * 1000000)::bigint::text as version`,
+    [organizationId, registrationId, alias],
+  );
+  return result.rows[0]!.version;
+};
+
 export const updatePlacementModule = async (
   client: RegistrationWriterClient,
   placementId: string,

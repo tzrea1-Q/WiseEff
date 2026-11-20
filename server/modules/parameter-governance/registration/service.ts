@@ -42,7 +42,8 @@ export async function auditRegistration(client: pg.PoolClient, command: Registra
   const context = command.context;
   await writeAuditEventInTx(asAuditTx(client), trusted.invocation, { requestId: trusted.requestId }, {
     app: "parameter-governance", kind: "parameter-catalog-registration",
-    action: result.replacement ? "registration-replace-placement" : command.kind === "retire-unregistered" ? "registration-retire" : `registration-${command.kind}`, severity: "Medium",
+    action: result.replacement ? "registration-replace-placement" : command.kind === "retire-unregistered" ? "registration-retire" :
+      command.kind === "move-placement" && !command.destinationModuleId ? "registration-update-display-alias" : `registration-${command.kind}`, severity: "Medium",
     projectId: null, targetType: "organization-subject-registration", targetId: result.registrationId,
     ...(trusted.invocation.initiator === "system" ? { organizationId: command.organizationId } : {}),
     metadata: { catalogReleaseId: command.expectedRelease.id, actorKind: context.actorKind, ...(batchId ? { batchId } : {}),
@@ -52,6 +53,7 @@ export async function auditRegistration(client: pg.PoolClient, command: Registra
       } : {}),
       ...(command.kind === "change-owner" ? { reason: command.reason,
         beforeOwnerSubjectId: result.previousOwnerSubjectId, afterOwnerSubjectId: result.ownerSubjectId } : {}),
+      ...(command.kind === "move-placement" && command.displayAlias ? { requestedDisplayAlias: command.displayAlias.value } : {}),
       ...(command.kind === "move-placement" && command.replacement && result.replacement ? {
         reason: command.replacement.reason,
         source: { registrationId: result.registrationId, placementId: result.placementId,

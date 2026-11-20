@@ -853,9 +853,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       assertOrganizationScope(organizationId);
       assertRelease(store, write.catalogReleaseId);
       const parsed = catalogUpdatePlacementRequestSchema.parse(body);
+      const placement = "placement" in parsed ? parsed.placement : undefined;
       // This adapter holds only one registration; it cannot validate another
       // owner's replacement proof. Never silently ignore a two-sided command.
-      if (parsed.replacement) throw catalogApiFailure("placement-conflict");
+      if ("replacement" in parsed && parsed.replacement) throw catalogApiFailure("placement-conflict");
       if (!store.registration || store.registration.id !== registrationId) {
         throw catalogApiFailure("registration-required", { subjectId: CATALOG_SUBJECT_ID });
       }
@@ -863,14 +864,16 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         throw catalogApiFailure("revision-conflict");
       }
       if (
-        parsed.placement.mode === "choose-parent" &&
-        parsed.placement.parentPlacementId === store.registration.placement.id
+        placement?.mode === "choose-parent" &&
+        placement.parentPlacementId === store.registration.placement.id
       ) {
         throw catalogApiFailure("invalid-placement-parent");
       }
       return replayOrStore(store, "updatePlacement", write, parsed, () => {
-        const nextPlacement = placementFromIntent(parsed.placement);
-        store.registration = { ...store.registration!, placement: nextPlacement };
+        const current = store.registration!;
+        const nextPlacement = placement ? placementFromIntent(placement) : current.placement;
+        store.registration = { ...current, placement: nextPlacement,
+          ...(parsed.displayAlias ? { displayAlias: parsed.displayAlias.value ?? undefined } : {}) };
         return { item: clone(nextPlacement) };
       });
     },

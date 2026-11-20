@@ -513,8 +513,14 @@ export const catalogRegistrationRecognitionResponseSchema = itemEnvelopeSchema(c
   nodeTypeName: z.string().nullable(), overridden: z.boolean(),
 }));
 
-export const catalogUpdatePlacementRequestSchema = catalogObject({
+const catalogDisplayAliasUpdateSchema = catalogObject({
+  value: z.string().min(1).refine(value => value === value.trim() && [...value].length <= 128 && !/[\u0000-\u001f\u007f-\u009f]/u.test(value)).nullable(),
+  registrationEtag: z.string().min(1)
+});
+
+const catalogPlacementUpdateSchema = catalogObject({
   placement: catalogPlacementIntentSchema,
+  displayAlias: catalogDisplayAliasUpdateSchema.optional(),
   destinationModuleId: z.string().min(1).optional(),
   newDestination: catalogObject({
     parentModuleId: z.string().trim().min(1),
@@ -534,6 +540,11 @@ export const catalogUpdatePlacementRequestSchema = catalogObject({
     context.addIssue({ code: z.ZodIssueCode.custom, message: "A placement replacement requires an explicit destination module." });
   }
 });
+
+export const catalogUpdatePlacementRequestSchema = z.union([
+  catalogPlacementUpdateSchema,
+  catalogObject({ displayAlias: catalogDisplayAliasUpdateSchema })
+]);
 
 export const catalogObservationDtoSchema = catalogObject({
   id: z.string(),
@@ -2730,7 +2741,7 @@ export const parameterCatalogSchemaRegistry = {
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   },
   "catalog.updatePlacement": {
-    summary: "Rename or reparent the retained placement using If-Match",
+    summary: "Update the retained placement or organization display alias using the applicable ETags",
     tags: ["catalog"],
     requestBody: "CatalogUpdatePlacementRequest",
     responseBody: "CatalogPlacementResponse",
