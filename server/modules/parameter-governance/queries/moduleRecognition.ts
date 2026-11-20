@@ -76,7 +76,7 @@ export type ModuleRecognitionSubjectDefault = {
 
 /** Published selectors and driver attributes for a captured release, or the current release when absent. */
 export async function readModuleRecognitionSubjectDefaults(
-  db: Queryable, subjectIds: readonly string[], releaseId: string | null,
+  db: Queryable, subjectIds: readonly string[] | "versioned-singletons", releaseId: string | null,
 ): Promise<ModuleRecognitionSubjectDefault[]> {
   if (subjectIds.length === 0) return [];
   const result = await db.query<ModuleRecognitionSubjectDefault>(
@@ -90,8 +90,10 @@ export async function readModuleRecognitionSubjectDefaults(
            and alias_membership.lifecycle = 'active'), '{}') as aliases
      from parameter_catalog.catalog_release_subjects membership
      left join parameter_catalog.catalog_drivers driver on driver.subject_id = membership.subject_id
-     where membership.subject_id = any($1::text[]) and membership.release_id = coalesce($2::text,
-       (select current_catalog_release_id from parameter_catalog.catalog_state))`, [subjectIds, releaseId],
+     where membership.release_id = coalesce($2::text, (select current_catalog_release_id from parameter_catalog.catalog_state))
+       and case when $1::text[] is null then
+         membership.lifecycle='active' and to_jsonb(membership)->'rules_snapshot'->'defaults'->>'cardinality'='singleton-per-project'
+       else membership.subject_id=any($1::text[]) end`, [subjectIds === "versioned-singletons" ? null : subjectIds, releaseId],
   );
   return result.rows;
 }

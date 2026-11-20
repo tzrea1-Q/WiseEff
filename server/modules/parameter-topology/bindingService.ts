@@ -481,12 +481,7 @@ export async function countSingletonCardinalityConflicts(
   await lockOrganizationModuleRecognition(db, input.organizationId);
   const settings = await loadModuleRecognitionSettings(db, input.organizationId);
   const releaseId = await lockCurrentRecognitionRelease(db);
-  const publishedIds = releaseId ? (await db.query<{ subject_id: string }>(
-    `select subject_id from parameter_catalog.catalog_release_subjects membership
-      where release_id=$1 and lifecycle='active'
-        and to_jsonb(membership)->'rules_snapshot'->'defaults'->>'cardinality'='singleton-per-project'`,
-    [releaseId])).rows.map(row => row.subject_id) : [];
-  const governed = await readModuleRecognitionSubjectDefaults(db, publishedIds, releaseId);
+  const governed = releaseId ? await readModuleRecognitionSubjectDefaults(db, "versioned-singletons", releaseId) : [];
   const overrides = governed.length ? await loadOrganizationRecognitionRules(db, input.organizationId) : [];
   const rules = [
     ...[...settings].flatMap(([moduleId, rule]) => rule.instanceCardinality === "singleton-per-project"
