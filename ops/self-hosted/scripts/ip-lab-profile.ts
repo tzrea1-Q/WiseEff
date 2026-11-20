@@ -249,7 +249,7 @@ export function renderIpLabEnv(input: IpLabInitInput) {
     `LOG_ANALYSIS_MODEL=${logAnalysisModel}`,
     `LOG_ANALYSIS_API_KEY=${logAnalysisApiKey}`,
     "LOG_ANALYSIS_API_TIMEOUT_MS=30000",
-    "LOG_ANALYSIS_TOKEN_BUDGET=256000",
+    "LOG_ANALYSIS_TOKEN_BUDGET=512000",
     `LOG_ANALYSIS_DETERMINISTIC=${logAnalysisDeterministic}`,
     "",
     "LOG_WORKER_ENABLED=false",
